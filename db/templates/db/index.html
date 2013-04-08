@@ -1,0 +1,37 @@
+{% extends "db/base.html" %}
+{% block content %}
+	<div class="span9">
+		<div id="search">
+		  <form action="{{ request.get_full_path }}" method="get"> <!-- needed for post: {% csrf_token %}  --> 
+	            <label for="id_search">Search all categories:</label>
+	            <input type="submit" value="search" />
+	            <span class="input-auto-width-wrapper">
+	              <input id="id_search" type="text" name="search" value="{{ search }}" maxlength="100" tabindex="1" />
+	            </span>
+		  </form>
+		</div>
+	</div>
+	
+	<div class="hero-unit">
+	{% if table %}
+		{% load render_table from django_tables2 %}
+		{% render_table table %}
+	{% elif search %}
+	  No results were found for the search term: "{{search}}"
+	{% else %}
+Welcome to the Screensaver Database
+	<ul>
+		<li>Use "Browse Libraries" to view the set of small molecule and RNAi libraries available for use at the screening facility. For each library, you can view descriptive information on the Library Viewer page. From that page, <li>you can navigate to the Wells Browser page, to browse the contents of each library well and reagent information including structures, SMILES strings, and links to PubChem, ChemBank, and GenBank.</li>
+		Use "Find Wells" or "Find Reagents" to search for information on library reagents, using library plate/well designations or vendor-assigned reagent identifiers, respectively.</li>
+		<li>Use "My Screens" to view your own screens and result data, and "Browse Screens" to view basic information about other screens performed at ICCB-L. For your own screens, you can browse, filter, sort, and export your result <li>data, and compare it to other shared screen results and studies. You can also view each screening data plate with a heat map viewer and export the screen result data as a spreadsheet.</li>
+		If your screen result data is not shown, please contact David Wrobel and we will make it a priority to import your data.</li>
+		<li>Note that you will not be able to view screen results from any screens other than your own unless they have been classified as "shared" by the screener, in which case they are available for viewing. ICCB-L is in the <li>process of developing guidelines for data sharing. Please contact Caroline Shamu or Su Chiang if you have any questions.</li>
+		<li>Use "Browse Studies" to view the studies that have been added to Screensaver. Studies associate biologically significant annotations with library reagents.</li>
+		Use "Browse Lab Activities" to view the activities you have performed at our facility.</li>
+		<li>Use "Browse Associates" to view the individuals you have been working with, including your fellow lab members and screen collaborators. Click on your account name (at the top of the menu panel) to view your own <li>information, including screens, lab members, etc.</li>
+		Use "Data Downloads" to download SD files for all ICCB-L libraries, either as a single file or as individual library files.</li>
+	</ul>
+  </div>
+	{% endif %}
+{% endblock %}
+

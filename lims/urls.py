@@ -1,17 +1,18 @@
 from django.conf.urls import patterns, include, url
+from lims.views import *
 
-# Uncomment the next two lines to enable the admin:
-# from django.contrib import admin
-# admin.autodiscover()
+from django.contrib import admin
+admin.autodiscover()
 
 urlpatterns = patterns('',
-    # Examples:
-    # url(r'^$', 'lims.views.home', name='home'),
-    # url(r'^lims/', include('lims.foo.urls')),
+    url(r'^admin/doc/', include('django.contrib.admindocs.urls')),
+    url(r'^admin/', include(admin.site.urls)),
 
-    # Uncomment the admin/doc line below to enable admin documentation:
-    # url(r'^admin/doc/', include('django.contrib.admindocs.urls')),
-
-    # Uncomment the next line to enable the admin:
-    # url(r'^admin/', include(admin.site.urls)),
+    # Login / logout.
+    # Note: the name "login_url" name is set to the request by the registered hmslincs.context_procesor.login_url_with_redirect
+    (r'^db/login/$', 'django.contrib.auth.views.login', {'template_name': 'db/login.html'}),
+    url(r'^db/logout/$', logout_page, name='logout'),
+    
+    url(r'^db/', include('db.urls')),
 )
+

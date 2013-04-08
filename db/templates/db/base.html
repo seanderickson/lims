@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% load iccbl_tags %}
+
+{% block head %}
+	<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/basic_tabs.css" />
+  	<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/hmsiccbl.css" />
+	<link href="http://netdna.bootstrapcdn.com/twitter-bootstrap/2.3.0/css/bootstrap-combined.min.css" rel="stylesheet">
+	<title>Screensaver 2</title>
+{% endblock %}	
+
+{% block body%}
+
+    <div class="navbar navbar-inverse navbar-fixed-top">
+      <div class="navbar-inner">
+        <div class="container-fluid">
+          <button type="button" class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+          </button>
+          <a class="brand" href="#">Screensaver 2</a>
+          <div class="nav-collapse collapse">
+            <p class="navbar-text pull-right">
+			  <div class="navbar-text pull-right" id=loginmsg>
+			    {% if user.is_authenticated %}
+			      logged in as: {{ user }} <a href="{% url 'logout' %}">Log out</a>
+			    {% else %}
+			      <a href="{{ login_url }}">Log in</a>
+			    {% endif %}
+			  </div>
+            </p>
+            
+            
+            <ul class="nav">
+              <li class="active"><a href="#">Home</a></li>
+              <li><a href="#about">About</a></li>
+              <li><a href="#contact">Contact</a></li>
+            </ul>
+          </div><!--/.nav-collapse -->
+        </div>
+      </div>
+    </div>
+
+    <div class="container-fluid">
+      <div class="row-fluid">
+        <div class="span3">
+          <div class="well sidebar-nav">
+            <ul class="nav nav-list">
+              <li class='{% activeTag request "^/db/$" %}'><a href="{% url 'home' %}" >Home</a></li>
+              <li class="nav-header">Libraries</li>
+              <li class='{% activeTag request "^/db/sm/$" %}' ><a href="#">SM</a></li>
+              <li class='{% activeTag request "^/db/rnai/$" %}' ><a href="#">RNAi</a></li>
+              <li class="nav-header">Screens</li>
+              <li class='{% activeTag request "^/db/screens_sm/$" %}' ><a href="#">SM</a></li>
+              <li class='{% activeTag request "^/db/screens_rnai/$" %}' ><a href="#">RNAi</a></li>
+              <li class='{% activeTag request "^/db/my_screens/$" %}' ><a href="#">My Screens</a></li>
+              <li class='{% activeTag request "^/db/studies/$" %}' ><a href="#">Studies</a></li>
+              <li class='{% activeTag request "^/db/cpr/$" %}' ><a href="#">CP Requests</a></li>
+              <li class='{% activeTag request "^/db/activities/$" %}' ><a href="#">Activities</a></li>
+              <li class="nav-header">Find Wells By...</li>
+              <li class='{% activeTag request "^/db/search_compound/$" %}' ><a href="#">Compound</a></li>
+              <li class='{% activeTag request "^/db/search_plate_well/$" %}' ><a href="#">Plate/Well</a></li>
+              <li class='{% activeTag request "^/db/search_screen/$" %}' ><a href="#">Screen ID</a></li>
+              <li class='{% activeTag request "^/db/search_cpr/$" %}' ><a href="#">CPR #</a></li>
+            </ul>
+          </div><!--/.well -->
+        </div><!--/span-->
+        <div class="span9">
+	   	{% block content %}
+          <div class="hero-unit">
+            <h1>Main Section</h1>
+            <p>Intructions for usage.</p>
+          </div>
+		{% endblock %} 	
+        </div><!--/span-->
+      </div><!--/row-->
+
+      <hr>
+
+      <footer>
+        <p>&copy; ICCBL 2013</p>
+      </footer>
+
+    </div><!--/.fluid-container-->	
+
+
+{% endblock %}

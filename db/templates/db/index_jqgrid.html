@@ -1,0 +1,117 @@
+{% extends "db/base.html" %}
+{% block content %}
+   <link rel="stylesheet" type="text/css" href="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.13/themes/redmond/jquery-ui.css" />
+
+<script src="{{ STATIC_URL }}/js/grid.locale-en.js" type="text/javascript"></script>
+<script src="{{ STATIC_URL }}/js/jquery.jqGrid.min.js" type="text/javascript"></script>
+<link rel="stylesheet" type="text/css" media="screen" href="{{ STATIC_URL }}/css/ui.jqgrid.css" />
+<style>
+.ui-jqgrid .ui-jqgrid-bdiv {
+  position: relative; 
+  margin: 0em; 
+  padding:0; 
+  /*overflow: auto;*/ 
+  overflow-x:hidden; 
+  overflow-y:auto; 
+  text-align:left;
+}	
+	
+</style>
+<script type="text/javascript">
+$(document).ready(function(){
+
+//_url =  url 'dispatch_list' resource_name='screensaveruser' api_name='v1' %}
+_url = '/db/api/v1/screensaveruser/'
+_url_schema = '/db/api/v1/screensaveruser/schema/'
+$.ajax(
+    {
+       type: "GET",
+       url: _url_schema,
+       data: "",
+       dataType: "json",
+       success: function(result) {
+       		console.log('initial load: ' + JSON.stringify(result))
+			//jQuery("#example").jqGrid('setGridParam',{colModel:result.colModel, colNames: result.colNames}).trigger("reloadGrid");
+		  	
+		  	var _colModel = [];
+		  	var i = 0;
+			for (var field in result.fields){
+				_colModel[i++] = { name: field, index: field }
+			}
+			_colModel[i] = {'id': 'id', index:'id'}
+			console.log('colModel:' + JSON.stringify(_colModel))
+			$.ajax({
+				type: "GET",
+		       	url: _url,
+		      	data: "",
+		       	dataType: "json",
+		       	success: function(result) {
+					$("#example").jqGrid({
+					    datatype: 'local',
+					    colModel:_colModel, 
+					    //colNames: _colModel,
+					    pager: '#pager',
+					    rowNum:10,
+					    rowList:[10,20,30],
+					    forceFit: true, 
+					    sortname: 'facility_id',
+					    sortorder: 'desc',
+					    viewrecords: true,
+					    gridview: true,
+					    caption: 'Users',
+					    shrinkToFit: true,
+					    width: '100%',
+			        	height: '100%'});
+					for(var i=0;i<result.objects.length;i++) {
+						data = result.objects[i]
+						data['id'] = data['screensaver_user_id']
+						console.log('add data: ' + JSON.stringify(data))
+						jQuery("#example").jqGrid('addRowData',i+1,data);
+					}
+					$("#example").jqGrid()
+				},
+				error: function(x,e){
+		            alert(x.readyState + " "+ x.status +" "+ e.msg);   
+				}
+			});
+       },
+       error: function(x, e) {
+            alert(x.readyState + " "+ x.status +" "+ e.msg);   
+       }
+    });
+
+});
+
+  	var timeoutHnd;
+	var flAuto = true;
+
+	function doSearch(ev){
+		if(!flAuto)
+			return;
+	//	var elem = ev.target||ev.srcElement;
+		if(timeoutHnd)
+			clearTimeout(timeoutHnd)
+		timeoutHnd = setTimeout(gridReload,500)
+	};
+	
+	function gridReload(){
+		var search_val = jQuery("#search_val").val();
+		jQuery("#example").jqGrid('setGridParam',{url:"{{ request.get_full_path }}search/?search="+search_val,page:1}).trigger("reloadGrid");
+	};
+	function enableAutosubmit(state){
+		flAuto = state;
+		jQuery("#submitButton").attr("disabled",state);
+	};
+</script>
+<div id="dynamic" class="span10">
+	<div>
+		Search:<br />
+		<input type="text" id="search_val" onkeydown="doSearch(arguments[0]||event)" />
+	</div>
+	<table id="example" >
+	</table>
+	<div id="pager"></div>
+</div>
+
+{% endblock %}
+

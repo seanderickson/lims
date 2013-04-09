@@ -31,9 +31,9 @@ class Activity(models.Model):
     version = models.IntegerField()
     date_created = models.DateTimeField()
     comments = models.TextField(blank=True)
-    performed_by = models.ForeignKey('ScreensaverUser',related_name='activities_performed')
+    performed_by = models.ForeignKey('ScreensaverUser')
     date_of_activity = models.DateField()
-    created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True, related_name='activities_created')
+    created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
     date_loaded = models.DateTimeField(null=True, blank=True)
     date_publicly_available = models.DateTimeField(null=True, blank=True)
     class Meta:
@@ -415,7 +415,7 @@ class DataColumn(models.Model):
 
 class DataColumnDerivedFromLink(models.Model):
     derived_data_column = models.ForeignKey(DataColumn)
-    derived_from_data_column = models.ForeignKey(DataColumn, related_name='derived_from')
+    derived_from_data_column = models.ForeignKey(DataColumn)
     class Meta:
         db_table = 'data_column_derived_from_link'
 
@@ -561,7 +561,7 @@ class Library(models.Model):
     plate_size = models.TextField()
     latest_released_contents_version_id = models.IntegerField(null=True, blank=True)
     experimental_well_count = models.IntegerField(null=True, blank=True)
-    is_pool = models.NullBooleanField(null=True, blank=True)
+    is_pool = models.BooleanField(null=True, blank=True)
     created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
     owner_screener = models.ForeignKey('ScreeningRoomUser', null=True, blank=True)
     solvent = models.TextField()
@@ -575,8 +575,8 @@ class LibraryContentsVersion(models.Model):
     version = models.IntegerField()
     version_number = models.IntegerField()
     library = models.ForeignKey(Library)
-    library_contents_loading_activity = models.ForeignKey(AdministrativeActivity, related_name='lcv_load')
-    library_contents_release_activity = models.ForeignKey(AdministrativeActivity, null=True, blank=True, related_name='lcv_release')
+    library_contents_loading_activity = models.ForeignKey(AdministrativeActivity)
+    library_contents_release_activity = models.ForeignKey(AdministrativeActivity, null=True, blank=True)
     class Meta:
         db_table = 'library_contents_version'
 
@@ -694,9 +694,9 @@ class ReagentPublicationLink(models.Model):
 class ResultValue(models.Model):
     result_value_id = models.IntegerField(null=True, blank=True)
     assay_well_control_type = models.TextField(blank=True)
-    is_exclude = models.NullBooleanField(null=True, blank=True)
+    is_exclude = models.BooleanField(null=True, blank=True)
     numeric_value = models.FloatField(null=True, blank=True)
-    is_positive = models.NullBooleanField(null=True, blank=True)
+    is_positive = models.BooleanField(null=True, blank=True)
     value = models.TextField(blank=True)
     data_column = models.ForeignKey(DataColumn, null=True, blank=True)
     well = models.ForeignKey('Well', null=True, blank=True)
@@ -872,8 +872,8 @@ class ScreeningRoomUser(models.Model):
     lab_head = models.ForeignKey(LabHead, null=True, blank=True)
     coms_crhba_permit_number = models.TextField(blank=True)
     coms_crhba_permit_principal_investigator = models.TextField(blank=True)
-    last_notified_smua_checklist_item_event = models.ForeignKey(ChecklistItemEvent, null=True, blank=True, related_name='smua_user')
-    last_notified_rnaiua_checklist_item_event = models.ForeignKey(ChecklistItemEvent, null=True, blank=True, related_name='rnai_ua_user')
+    last_notified_smua_checklist_item_event = models.ForeignKey(ChecklistItemEvent, null=True, blank=True)
+    last_notified_rnaiua_checklist_item_event = models.ForeignKey(ChecklistItemEvent, null=True, blank=True)
     class Meta:
         db_table = 'screening_room_user'
 
@@ -899,7 +899,7 @@ class ScreensaverUser(models.Model):
     harvard_id = models.TextField(blank=True)
     harvard_id_expiration_date = models.DateField(null=True, blank=True)
     harvard_id_requested_expiration_date = models.DateField(null=True, blank=True)
-    created_by = models.ForeignKey('self', null=True, blank=True)
+    created_by = models.ForeignKey(''self'', null=True, blank=True)
     date_loaded = models.DateTimeField(null=True, blank=True)
     date_publicly_available = models.DateTimeField(null=True, blank=True)
     class Meta:
@@ -929,8 +929,8 @@ class SilencingReagent(models.Model):
     reagent = models.ForeignKey(Reagent, primary_key=True)
     sequence = models.TextField(blank=True)
     silencing_reagent_type = models.TextField(blank=True)
-    vendor_gene = models.ForeignKey(Gene, unique=True, null=True, blank=True, related_name='vendor_reagent')
-    facility_gene = models.ForeignKey(Gene, unique=True, null=True, blank=True, related_name='facility_reagent')
+    vendor_gene = models.ForeignKey(Gene, unique=True, null=True, blank=True)
+    facility_gene = models.ForeignKey(Gene, unique=True, null=True, blank=True)
     is_restricted_sequence = models.BooleanField()
     class Meta:
         db_table = 'silencing_reagent'
@@ -1012,7 +1012,7 @@ class Well(models.Model):
     library = models.ForeignKey(Library)
     deprecation_admin_activity = models.ForeignKey(AdministrativeActivity, null=True, blank=True)
     is_deprecated = models.BooleanField()
-    latest_released_reagent = models.ForeignKey(Reagent, null=True, blank=True, related_name='reagent_well')
+    latest_released_reagent = models.ForeignKey(Reagent, null=True, blank=True)
     molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
     mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
     class Meta:

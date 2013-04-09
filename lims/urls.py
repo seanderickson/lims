@@ -15,4 +15,3 @@ urlpatterns = patterns('',
     
     url(r'^db/', include('db.urls')),
 )
-

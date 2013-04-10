@@ -34,31 +34,69 @@ $.ajax(
        success: function(result) {
 		  	var _colModel = [];
 		  	var i = 0;
+		  	var _total_count = 0;
 			for (var field in result.fields){
 				_colModel[i++] = { name: field, index: field }
 			}
-			//console.log('colModel:' + JSON.stringify(_colModel))
+			
+			// Follows is a modified instantiation to make django-tastypie json output and pagination work with jqGrid
+			// specifically: tastypie: offset and limit -> jqGrid: page and rows (rowNum setting)
 			$("#example").jqGrid({
 			    datatype: 'json',
 			    url: _url,
 			    jsonReader: {
 			    	//total pages
-		    		total:  function (obj) { var val = Math.floor(obj.meta.total_count/obj.meta.limit + 1); 
-		    			console.log('xx1:'+ val); return val; },
+		    		total:  function (obj) {
+		    			var val = Math.floor(obj.meta.total_count/obj.meta.limit + 1); 
+	    				_total_count = obj.meta.total_count;
+		    			console.log('pages:'+ val); 
+		    			return val;
+	    			},
 		    		//current page  
 		    		page: function (obj) { 
-		    			_offset = obj.meta.offset + _limit; 
+		    			//_offset = obj.meta.offset + _limit; 
 		    			var val = Math.floor(obj.meta.offset/obj.meta.limit +1); 
-		    			console.log('newoffset: ' + _offset + ', page: ' + val); 
+		    			console.log('page: ' + val); 
 		    			return val; 
 		    		},
 		    		records: 'meta.total_count',
 		    		root: 'objects',
-		    		cell: function (obj) { console.log('x1:'); var cell = []; var i=0; for (var field in obj){ cell[i++] = obj[field]; } return cell; },
+		    		cell: function (obj) { 
+		    			var cell = []; 
+		    			var i=0; for (var field in obj){ cell[i++] = obj[field]; } 
+		    			return cell; 
+		    		},
 		    		id: 'screensaver_user_id'
 			    },
 			    //prmNames: {rows: 'limit', page: 'offset'},
-			    postData: { 'limit':'10', 'offset': function () { var temp = _offset; _offset += _limit; return temp; } }, 
+			    // post the right params for tastypie: offset, limit; jqGrid: page, rows
+			    postData: { 'limit': function() { 
+			    	return $("#example").getGridParam('rowNum'); 
+			    	},
+			    	'offset': function () { return _offset; } 
+			    }, 
+			    // More customization for tastypie
+			    // event handling on each click on the paging toolbar; need to convert rowNum to offset,
+			    // also need to grab the user input if the page field has been set by the user.
+			    onPaging: function(pgButton) {
+			    	var rowNum = $("#example").getGridParam('rowNum');
+					console.log('paging clicked: ' + JSON.stringify(pgButton) + ', rowNum: ' + rowNum );
+					if (pgButton === 'next_pager'){
+						_offset += rowNum;
+					} else if (pgButton === 'prev_pager'){
+						_offset -= rowNum;
+						if (_offset < 0 ) _offset = 0;
+					} else if (pgButton === 'last_pager'){
+						_offset = Math.floor(_total_count/rowNum)*rowNum;
+					} else if (pgButton === 'first_pager'){
+						_offset = 0;
+					} else if (pgButton == 'user'){
+				    	// sadly, this doesn't work: var page = $("#example").getGridParam('page');
+				    	// this works, less specific: var page = $(".ui-pg-input").val();
+				    	var page = $($("#example").jqGrid("getGridParam", "pager") + " .ui-pg-input").val();
+						_offset = (page-1) * rowNum;
+					}
+			 	},
 			    colModel:_colModel, 
 			    //colNames: _colModel,
 			    pager: '#pager',
@@ -83,40 +121,7 @@ $.ajax(
 
 });
 
-			// $.ajax({
-			// 	type: "GET",
-		 //       	url: _url,
-		 //      	data: "",
-		 //       	dataType: "json",
-		 //       	success: function(result) {
-			// 		$("#example").jqGrid({
-			// 		    datatype: 'local',
-			// 		    colModel:_colModel, 
-			// 		    //colNames: _colModel,
-			// 		    pager: '#pager',
-			// 		    rowNum:10,
-			// 		    rowList:[10,20,30],
-			// 		    forceFit: true, 
-			// 		    sortname: 'facility_id',
-			// 		    sortorder: 'desc',
-			// 		    viewrecords: true,
-			// 		    gridview: true,
-			// 		    caption: 'Users',
-			// 		    shrinkToFit: true,
-			// 		    width: '100%',
-			//         	height: '100%'});
-			// 		for(var i=0;i<result.objects.length;i++) {
-			// 			data = result.objects[i]
-			// 			data['id'] = data['screensaver_user_id']
-			// 			console.log('add data: ' + JSON.stringify(data))
-			// 			jQuery("#example").jqGrid('addRowData',i+1,data);
-			// 		}
-			// 		$("#example").jqGrid()
-			// 	},
-			// 	error: function(x,e){
-		 //            alert(x.readyState + " "+ x.status +" "+ e.msg);   
-			// 	}
-			// });
+////  auto search stuff below - not done!
 
   	var timeoutHnd;
 	var flAuto = true;

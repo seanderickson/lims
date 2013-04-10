@@ -40,7 +40,8 @@ $.ajax(
 			}
 			
 			// Follows is a modified instantiation to make django-tastypie json output and pagination work with jqGrid
-			// specifically: tastypie: offset and limit -> jqGrid: page and rows (rowNum setting)
+			// specifically, converting: tastypie offset and limit to jqGrid page and rows variables (also rowNum setting)
+			// also, jsonReader: converts the tastypie JSON to jqGrid format (root, cell values)
 			$("#example").jqGrid({
 			    datatype: 'json',
 			    url: _url,
@@ -75,9 +76,9 @@ $.ajax(
 			    	},
 			    	'offset': function () { return _offset; } 
 			    }, 
-			    // More customization for tastypie
-			    // event handling on each click on the paging toolbar; need to convert rowNum to offset,
-			    // also need to grab the user input if the page field has been set by the user.
+			    // More customization for tastypie:
+			    // event handling on each click on the paging toolbar; need to convert "rowNum" to tastypie "offset",
+			    // also, need to grab the user input "page" field, if it has been set by the user, and convert to tastypie "offset".
 			    onPaging: function(pgButton) {
 			    	var rowNum = $("#example").getGridParam('rowNum');
 					console.log('paging clicked: ' + JSON.stringify(pgButton) + ', rowNum: ' + rowNum );
@@ -92,13 +93,13 @@ $.ajax(
 						_offset = 0;
 					} else if (pgButton == 'user'){
 				    	// sadly, this doesn't work: var page = $("#example").getGridParam('page');
-				    	// this works, less specific: var page = $(".ui-pg-input").val();
+				    	// so have to query the dom: less specific: var page = $(".ui-pg-input").val();
 				    	var page = $($("#example").jqGrid("getGridParam", "pager") + " .ui-pg-input").val();
 						_offset = (page-1) * rowNum;
 					}
 			 	},
 			    colModel:_colModel, 
-			    //colNames: _colModel,
+			    //TODO: colNames: _colModel,
 			    pager: '#pager',
 			    rowNum:10,
 			    rowList:[10,20,30],

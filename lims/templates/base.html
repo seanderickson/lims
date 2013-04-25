@@ -1,34 +1,124 @@
 <!DOCTYPE html>
-
 <html>
-
 <head>
 	<meta charset="utf-8" />
-        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <!-- Le styles -->
+
+	<link rel="stylesheet" media="screen" href="{{ STATIC_URL }}css/bootstrap.css" />
+	<link rel="stylesheet" media="screen" href="{{ STATIC_URL }}css/bootstrap-responsive.css" />
+  	<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/hmsiccbl.css" />
+
+	<script type='text/javascript' src='{{STATIC_URL}}js/jquery-2.0.0.js'
+	<!--script type='text/javascript' src='//ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js'></script>-->
+
+	{% load admin_urls %}
+
 	<link rel="shortcut icon" href="/favicon.ico" type="image/x-icon" />
-	
-	<!--[if IE 6]>
-	<link rel="stylesheet" href="//lincs.hms.harvard.edu/wordpress/wp-content/themes/lincs/css/ie6.css" type="text/css" />
-	<![endif]-->
-	
-	<script type='text/javascript' src='//ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js'></script>
-	
-	<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/hmsiccbl.css" />
-	
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="">
+    <meta name="author" content="">
+
+	<style type='text/css'>
+		body {
+			background-color: #CCC;
+ 			padding-top: 0px;
+  			padding-left: 0px;
+		}
+
+		/* Sticky footer styles
+		-------------------------------------------------- */
+
+		html,
+		body {
+			height: 100%;
+			/* The html and body elements cannot have any padding or margin. */
+		}
+
+		/* Wrapper for page content to push down footer */
+		#wrap {
+			min-height: 100%;
+			height: auto !important;
+			height: 100%;
+			/* Negative indent footer by it's height */
+			margin: 0 auto -60px;
+		}
+
+		/* Set the fixed height of the footer here */
+		#push,
+		#footer {
+			height: 60px;
+		}
+		#footer {
+			background-color: #f5f5f5;
+		}
+
+		/* Lastly, apply responsive CSS fixes as necessary */
+		@media (max-width: 767px) {
+			#footer {
+				margin-left: -20px;
+				margin-right: -20px;
+				padding-left: 20px;
+				padding-right: 20px;
+			}
+		}
+	</style>
+
 	{% block head %}
 	  <title>ICCBL Screensaver</title>
 	{% endblock %}
 
-<style type='text/css'>
-body {
-background-color: #CCC;
-}
-</style>
-
 </head>
 
 <body>
-{% block body %}{% endblock %}
+	<div id="wrap">
+		{% block body%}
+			{% block navbar %}
+			    <div class="navbar navbar-inverse navbar-fixed-top">
+			      <div class="navbar-inner">
+			        <div class="container-fluid">
+			          <button type="button" class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+			            <span class="icon-bar"></span>
+			            <span class="icon-bar"></span>
+			            <span class="icon-bar"></span>
+			          </button>
+			          <a class="brand" href="#">Screensaver 2</a>
+			          <div class="nav-collapse collapse">
+			            <ul class="nav">
+			              <li class="active"><a href="#">Home</a></li>
+			              <li><a href="#about">About</a></li>
+			              <li><a href="#contact">Contact</a></li>
+			            </ul>
+						  <div class="navbar-text pull-right" id=loginmsg>
+						    {% if user.is_authenticated %}
+						      logged in as: {{ user }} <a href="{% url 'logout' %}">Log out</a>
+						    {% else %}
+						      <a href="{{ login_url }}">Log in</a>
+						    {% endif %}
+						  </div>
+			          </div><!--/.nav-collapse -->
+			        </div>
+			      </div>
+			    </div>
+			{% endblock %} <!-- navbar -->
+
+			{% block application %}
+			{% endblock %}
+
+		{% endblock %} <!-- body -->
+	</div> <!-- wrap -->
+	<div id="footer">
+	  <div class="container">
+	  	Screensaver | ICCB-Longwood/NSRB | Release Notes | Feedback | Help | <a href="{% url 'admin:index' %}">Admin</a>
+	  </div>
+	</div>
+
+
+    <!-- Le javascript
+    ================================================== -->
+    <!-- Placed at the end of the document so the pages load faster -->
+	<script src="{{ STATIC_URL }}js/bootstrap.js"></script>
+
 </body>
 
 </html>

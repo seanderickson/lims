@@ -665,7 +665,7 @@ class Publication(models.Model):
     journal = models.TextField(blank=True)
     pages = models.TextField(blank=True)
     pubmed_id = models.TextField(blank=True)
-    title = models.TextField(blank=True)
+    title = models.TexptField(blank=True)
     version = models.IntegerField()
     volume = models.TextField(blank=True)
     year_published = models.TextField(blank=True)
@@ -1017,6 +1017,7 @@ class Well(models.Model):
     mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
     class Meta:
         db_table = 'well'
+
 
 class WellVolumeAdjustment(models.Model):
     well_volume_adjustment_id = models.IntegerField(primary_key=True)

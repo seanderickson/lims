@@ -1,0 +1,154 @@
+{% extends "db/base.html" %}
+{% block content %}
+
+
+<script type='text/javascript' src='{{ STATIC_URL }}/js/jquery.dataTables.js'></script>
+<script type='text/javascript' src='{{ STATIC_URL }}/js/dataTables.bootstrap.js'></script>
+<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/DT_bootstrap2.css" />
+	
+<script type="text/javascript">
+	var get_data = function() {
+		console.log('get_data called');
+	}
+
+	$(document).ready(function(){
+		
+		var _url_schema = '/db/api/v1/screensaveruser/schema/'; // TODO: how to use django url tag here
+		var _url = '/db/api/v1/screensaveruser/'; // TODO: how to use django url tag here
+		$.ajax({
+			type: "GET",
+	       	url: _url_schema,
+	       	data: "",
+	       	dataType: "json",
+	       	success: function(result) {
+			  	var _colModel = [];
+			  	var i = 0;
+			  	var _total_count = 0;
+				for (var field in result.fields){
+					i++;
+				}
+
+				//var _colWidth = 1/i * _width;
+				//console.log('colWidth:' + _colWidth);
+				i = 0;
+				for (var field in result.fields){
+					_colModel[i++] = { 'sTitle':field, 'bSortable':true }
+				}
+
+				
+				$('#example').dataTable({
+					"bProcessing": true,
+					"bServerSide": true, //server side processing
+					"aoColumns": _colModel,
+					//"sAjaxSource": _url,
+				    "bJQueryUI": false, //use existing jquery ui theme
+			        "sDom": "<'row-fluid no-space'<'span3'f><'span7'lp>r>t<'row-fluid no-space'<'span10'i>>",
+					"sPaginationType": "bootstrap",
+					"oLanguage": {
+						"sLengthMenu": "_MENU_ records per page"
+					},					
+					
+					// see http://datatables.net/usage/callbacks#fnServerData
+					// This parameter allows you to override the default function which obtains the data from the server.
+					// see also http://datatables.net/usage/server-side
+					"fnServerData": function ( sSource, aoData, fnCallback, oSettings ) {
+						console.log('aoData: ' + JSON.stringify(aoData));
+						var iDisplayStart = 0;
+						var iDisplayLength = 0;
+						var sEcho = 0;
+						var sortCols = [];
+						var sortDirs = [];
+						var sortColPattern = /iSortCol_(\d+)/
+						var sortDirPattern = /sSortDir_(\d+)/
+						for (var k=0;k<aoData.length;k++){
+							if(aoData[k]['name'] == 'iDisplayStart'){
+								iDisplayStart = aoData[k]['value'];
+							}
+							if (aoData[k]['name'] == 'iDisplayLength'){
+								iDisplayLength = aoData[k]['value'];
+							}							
+							if (aoData[k]['name'] == 'sEcho'){
+								sEcho = aoData[k]['value'];
+							}
+							var sortMatch = sortColPattern.exec(aoData[k]['name']);
+							if (sortMatch){
+								sortCols.push(_colModel[aoData[k]['value']]['sTitle']);
+							}
+							var dirMatch = sortDirPattern.exec(aoData[k]['name']);
+							if (dirMatch){
+								sortDirs.push(aoData[k]['value']);
+							}
+							
+						}
+						console.log('Sortd: ' + JSON.stringify(sortDirs));
+						for(var i=0;i<sortCols.length;i++){
+							if(sortDirs[i] === 'desc'){
+								sortCols[i] = '-' + sortCols[i];
+							}
+						}
+						console.log('Sort: ' + JSON.stringify(sortCols));
+						newData = {
+							'offset': iDisplayStart,
+							'limit': iDisplayLength,
+							'sEcho': sEcho,
+							
+						}
+						if (sortCols.length>0){
+							newData['order_by'] = sortCols;
+						}
+						// if (iSortCol_0 !== ''){
+							// newData['order_by'] = sSortDir_0 + _colModel[iSortCol_0]['sTitle'];
+						// }
+
+						$.ajax( {
+							type: "GET",
+							url: _url + '?offset='+iDisplayStart+"&limit="+iDisplayLength,
+							data: newData,
+							traditional: true,
+							dataType: "json",
+							success: function(result) {
+   								var aaData = [];
+							    var output = {
+							        "iTotalRecords" : result.meta.total_count,
+							        "iTotalDisplayRecords" : result.meta.total_count,
+							        "aaData": aaData,
+							        "sEcho": result.meta.sEcho
+							    };
+//								console.log('output: ' + JSON.stringify(output));
+								var j = 0;
+//								console.log('objects: ' + JSON.stringify(result.objects));
+								for( var j=0; j<result.objects.length; j++){
+									var obj = result.objects[j];
+									var row = [];
+									var i = 0;
+									for (var x=0; x<_colModel.length;x++)
+									{
+										var name = _colModel[x]['sTitle'];
+										//console.log('name: '+ name + ', ' + obj[name]);
+										row[i++] = obj[name]; // todo: redo this and get the cols from tastypie resource
+									}
+									//for (var field in obj){ row[i++] = obj[field]; }
+									
+									aaData[j] = row;
+								}
+								console.log('output: ' + JSON.stringify(output));
+								fnCallback(output);
+							}
+				      } );
+				   } // end Datatable definition
+				});
+			},
+			error: function(x, e) {
+				alert(x.readyState + " "+ x.status +" "+ e.msg);
+			}			
+		});
+	});
+
+</script>
+
+	<table cellpadding="0" cellspacing="0" border="0" class="table table-striped table-bordered" id="example">
+	<thead>
+	</thead>
+	</table>
+
+{% endblock %}

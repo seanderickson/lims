@@ -10,6 +10,12 @@ from __future__ import unicode_literals
 
 from django.db import models
 
+
+class MetaModel(models.Model):
+    def __iter__(self):
+        for i in self._meta.get_all_field_names():
+            yield (i, getattr(self, i))
+
 class LegacySmallMoleculeCasNumber(models.Model):
     smiles = models.CharField(max_length=2047)
     cas_number = models.TextField()

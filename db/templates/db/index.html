@@ -1,8 +1,7 @@
 {% extends "db/base.html" %}
 {% block content %}
-	<div class="span10">
 		<div id="search">
-		  <form action="{{ request.get_full_path }}" method="get"> <!-- needed for post: {% csrf_token %}  --> 
+		  <form action="{{ request.get_full_path }}" method="get"> <!-- needed for post: {% csrf_token %}  -->
 	            <label for="id_search">Search all categories:</label>
 	            <input type="submit" value="search" />
 	            <span class="input-auto-width-wrapper">
@@ -10,9 +9,7 @@
 	            </span>
 		  </form>
 		</div>
-	</div>
-	
-	<div class="span9">
+
 	{% if table %}
 	<div id='table'>
 		{% load render_table from django_tables2 %}
@@ -35,7 +32,6 @@
 		<li>Use "Browse Associates" to view the individuals you have been working with, including your fellow lab members and screen collaborators. Click on your account name (at the top of the menu panel) to view your own <li>information, including screens, lab members, etc.</li>
 		Use "Data Downloads" to download SD files for all ICCB-L libraries, either as a single file or as individual library files.</li>
 	</ul>
-  </div>
 	{% endif %}
 {% endblock %}
 

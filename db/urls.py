@@ -9,7 +9,9 @@ v1_api.register(ScreensaverUserResource())
 
 urlpatterns = patterns('',
     url(r'^$', views.main, name="home"),
-    url(r'^smallmolecule/$', views.smallmolecule, name="smallmolecule"),
-    url(r'^smallmolecule1/$', views.smallmolecule1, name="smallmolecule1"),
+    url(r'^screeners/$', views.screeners, name="screeners"),
+    url(r'^screeners1/$', views.screeners1, name="screeners1"),
+    url(r'^staff/$', views.staff, name="staff"),
+    url(r'^screeners_datatables/$', views.screeners_datatables, name="screeners_datatables"),
     (r'^api/', include(v1_api.urls)),
 )

@@ -4,15 +4,83 @@
 
 <script type='text/javascript' src='{{ STATIC_URL }}/js/jquery.dataTables.js'></script>
 <script type='text/javascript' src='{{ STATIC_URL }}/js/dataTables.bootstrap.js'></script>
+<script type='text/javascript' src='{{ STATIC_URL }}/js/jquery.parsequery.js'></script>
+
 <link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/DT_bootstrap2.css" />
+
+<style type="text/css">
+	@media screen{
+		.table th, .table td {
+			padding: 1px;
+		}
+	}	
+</style>
 	
 <script type="text/javascript">
 	var get_data = function() {
 		console.log('get_data called');
-	}
+	};
+//window.dontpush = false;
+	
+$.fn.dataTableExt.oApi.fnStandingRedraw = function(oSettings){//, start) {
+	console.log('=====draw');
+    //if(oSettings.oFeatures.bServerSide === false){
+        var before = oSettings._iDisplayStart;
+ 
+        oSettings.oApi._fnReDraw(oSettings);
+ 
+        // iDisplayStart has been reset to zero - so lets change it back
+        oSettings._iDisplayStart = before;
+        oSettings.oApi._fnCalculateEnd(oSettings);
+    //}
+      
+    // draw the 'current' page
+    oSettings.oApi._fnDraw(oSettings);
+    console.log('====done draw');
+    //window.dontpush = true;
+};
+
+(function(window,undefined){
+
+    // Prepare
+    var History = window.History; // Note: We are using a capital H instead of a lower h
+    window.updatingHistory = false;
+    if ( !History.enabled ) {
+         // History.js is disabled for this browser.
+         // This is because we can optionally choose to support HTML4 browsers or not.
+        return false;
+    }
+
+    // Bind to StateChange Event
+    History.Adapter.bind(window,'statechange',function(e){ // Note: We are using statechange instead of popstate
+        var State = History.getState(); // Note: We are using History.getState() instead of event.state
+        History.log(State.data, State.title, State.url);
+        var oTable = $('#example').dataTable();
+		var oSettings = oTable.fnSettings();
+
+		// Show an example parameter from the settings
+		
+		//if (oSettings._iDisplayStart !== State.data['state'] && oSettings._iDisplayStart !== 0 ){
+		oSettings._iDisplayStart = parseInt(State.data['state']);
+//		if (!window.updatingHistory){
+			console.log( '++++ onstatechange: ' + JSON.stringify(History.getState().data) + ', ' + JSON.stringify(oSettings._iDisplayStart) );
+			//oTable.fnDraw(oSettings);
+			oTable.fnStandingRedraw(oSettings); //State.data['state']);
+//		}
+		
+		
+    });
+
+})(window);
 
 	$(document).ready(function(){
-		
+		var offsetPattern = /#offset=(\d+)/
+		var offsetMatch = offsetPattern.exec(location.hash);
+		var _offset = 0;
+		if (offsetMatch){
+			_offset = offsetMatch[1];
+		}
+		console.log('_offset: ' + _offset);
 		var _url_schema = '/db/api/v1/screensaveruser/schema/'; // TODO: how to use django url tag here
 		var _url = '/db/api/v1/screensaveruser/'; // TODO: how to use django url tag here
 		$.ajax({
@@ -40,6 +108,7 @@
 					"bProcessing": true,
 					"bServerSide": true, //server side processing
 					"aoColumns": _colModel,
+					'iDisplayStart': _offset,
 					//"sAjaxSource": _url,
 				    "bJQueryUI": false, //use existing jquery ui theme
 			        "sDom": "<'row-fluid no-space'<'span3'f><'span7'lp>r>t<'row-fluid no-space'<'span10'i>>",
@@ -47,12 +116,40 @@
 					"oLanguage": {
 						"sLengthMenu": "_MENU_ records per page"
 					},					
-					
+					"fnDrawCallback":function (oSettings) {
+						
+						// do we need to make sure the history is initialized? I guess we don't - sde
+						// console.log('H:'+ JSON.stringify(History.getState().data['state']));
+						// if(typeof History.getState().data['state'] === 'undefined' ){
+							// $.pushOffsetHistory(oSettings._iDisplayStart);
+						// }
+						
+						
+						
+						
+						
+						
+						// location.hash="#offset="+iDisplayStart;
+						//console.log('hash: ' + location.hash);
+// 						
+						// if(!window.dontpush){
+						// window.updatingHistory = true;
+						// console.log('---------fnDrawCallback history state before xx: ' + JSON.stringify(History.getState().data) + 
+							// ',' + oSettings._iDisplayStart );
+						// History.pushState({state:oSettings._iDisplayStart,rand:Math.random()}, null, "?offset="+oSettings._iDisplayStart);
+						// console.log('pushed: ' + JSON.stringify(History.getState().data));
+						// window.updatingHistory = false;
+						// console.log('done pushing');
+						// }else{
+							// window.dontpush = false;
+						// }
+			        },
 					// see http://datatables.net/usage/callbacks#fnServerData
 					// This parameter allows you to override the default function which obtains the data from the server.
 					// see also http://datatables.net/usage/server-side
 					"fnServerData": function ( sSource, aoData, fnCallback, oSettings ) {
-						console.log('aoData: ' + JSON.stringify(aoData));
+						//console.log('aoData: ' + JSON.stringify(aoData));
+						console.log('get server data');
 						var iDisplayStart = 0;
 						var iDisplayLength = 0;
 						var sEcho = 0;
@@ -80,19 +177,33 @@
 							}
 							
 						}
-						console.log('Sortd: ' + JSON.stringify(sortDirs));
+						
+						// Since we're using the history plugin, and reflecting current the page on the querystring, 
+						// we override the oaData if the querystring is set - sde
+						var _paramOffset = $.parseQuery().offset;
+						if ( typeof _paramOffset !== 'undefined'){
+							console.log('paramOffset: '  + _paramOffset);
+							iDisplayStart = _paramOffset;
+							oSettings._iDisplayStart = parseInt(_paramOffset);
+        					oSettings.oApi._fnCalculateEnd(oSettings);
+						}
+						
+
+						//console.log('Sortd: ' + JSON.stringify(sortDirs));
 						for(var i=0;i<sortCols.length;i++){
 							if(sortDirs[i] === 'desc'){
 								sortCols[i] = '-' + sortCols[i];
 							}
 						}
-						console.log('Sort: ' + JSON.stringify(sortCols));
+						//console.log('Sort: ' + JSON.stringify(sortCols));
 						newData = {
 							'offset': iDisplayStart,
 							'limit': iDisplayLength,
 							'sEcho': sEcho,
 							
 						}
+						
+
 						if (sortCols.length>0){
 							newData['order_by'] = sortCols;
 						}
@@ -100,6 +211,7 @@
 							// newData['order_by'] = sSortDir_0 + _colModel[iSortCol_0]['sTitle'];
 						// }
 
+						
 						$.ajax( {
 							type: "GET",
 							url: _url + '?offset='+iDisplayStart+"&limit="+iDisplayLength,
@@ -131,7 +243,7 @@
 									
 									aaData[j] = row;
 								}
-								console.log('output: ' + JSON.stringify(output));
+								//console.log('output: ' + JSON.stringify(output));
 								fnCallback(output);
 							}
 				      } );

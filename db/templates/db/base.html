@@ -2,11 +2,17 @@
 {% load iccbl_tags %}
 {% load admin_urls %}
 {% block head %}
+<!-- jQuery ScrollTo Plugin -->
+<script src="//balupton.github.io/jquery-scrollto/scripts/jquery.scrollto.min.js"></script>
+
+<!-- History.js -->
+<script src="//browserstate.github.io/history.js/scripts/bundled/html4+html5/jquery.history.js"></script>
+
 <link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/basic_tabs.css" />
 
 <style type="text/css">
       #wrap > .container-fluid {
-        padding-top: 30px;
+        padding-top: 50px;
         padding-bottom: 60px;
       }
      .container-fluid .credit {
@@ -54,7 +60,7 @@
 	            <h1>Main Section</h1>
 	            <p>Intructions for usage.</p>
 	          </div>
-        {% endblock %}
+        	{% endblock %}
         </div><!--/span-->
       </div><!--/row-->
 

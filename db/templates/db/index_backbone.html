@@ -1,0 +1,148 @@
+{% extends "db/base.html" %}
+{% block content %}
+
+<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/backgrid.css" />
+<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/backgrid-paginator.css" />
+
+<script type='text/javascript' src='{{ STATIC_URL }}js/underscore.js'></script>
+<script type='text/javascript' src='{{ STATIC_URL }}js/backbone.js'></script>
+<script type='text/javascript' src='{{ STATIC_URL }}js/backbone-pageable.js'></script>
+<script type='text/javascript' src='{{ STATIC_URL }}js/backbone-tastypie.js'></script>
+<script type='text/javascript' src='{{ STATIC_URL }}js/backgrid.js'></script>
+<script type='text/javascript' src='{{ STATIC_URL }}js/backgrid-paginator.js'></script>
+
+<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/DT_bootstrap2.css" />
+
+<style type="text/css">
+	@media screen{
+		.table th, .table td {
+			padding: 1px;
+		}
+	}	
+</style>
+	
+<script type="text/javascript">
+
+$(document).ready(function(){
+	var _url_schema = '/db/api/v1/screensaveruser/schema/'; // TODO: how to use django url tag here
+	var _url = '/db/api/v1/screensaveruser/?format=json'; // TODO: how to use django url tag here
+
+	window.App = {
+	    Models: {},
+	    Collections: {},
+	    Views: {},
+	    Router: {}
+	};
+	
+	App.Router = Backbone.Router.extend({
+	    routes: {
+	        '': 'index',
+	        'page/:page': 'toPage'
+	    },
+
+	    index: function(){
+	        console.log("Index route has been called..");
+	    },	
+	    toPage: function(page){
+	    	console.log("page called: " + page);
+	    	screensaverUsers.getPage(page);
+	        // nav to page
+	    }
+	
+	});	
+	router = new App.Router;
+	var ScreensaverUser = Backbone.Model.extend({});
+	var getOffset = function(){
+		return 10;
+	}
+	var ScreensaverUsers = Backbone.PageableCollection.extend({
+		model: ScreensaverUser,
+		url: _url,
+		state: {
+			pageSize: 15,
+			totalRecords: 2142
+		},
+		queryParams: { 
+			// adjust the query params for tastypie
+			pageSize: 'limit',
+			offset: function(){
+				return (this.state.currentPage-1) * this.state.pageSize;
+			},
+			totalRecords: null,
+			totalPages: null,
+			currentPage: null
+		},
+		parse: function(response) { 
+			// hack the response for tastypie: 
+			// note, this is because the pageable collection doesn't work with the backbone-tastypie.js fix
+      		return response.objects;
+   		},
+   		getPage: function(page) { // override and hack in paging URL support
+   			console.log('getPage called: ' + page);
+   			router.navigate('/page/'+ page);
+   			return Backbone.PageableCollection.prototype.getPage.call(this,page);
+   		}
+	});
+	
+	var screensaverUsers = new ScreensaverUsers();
+	
+	var allEvent = function(event){
+		console.log("event fired: " + event);
+	};
+	screensaverUsers.on({
+	  "all": allEvent,
+	});
+
+//	Backbone.history.start();
+
+	Backbone.history || (Backbone.history = new Backbone.History());
+	Backbone.history.start({
+	  pushState: false,
+	  root: '/db/screeners2/'
+	});
+
+	$.ajax({
+		type: "GET",
+       	url: _url_schema,
+       	data: "",
+       	dataType: "json",
+       	success: function(result) {
+       		var columns = iccbl.createBackgridColModel(result.fields);
+			
+			// Initialize a new Grid instance
+			var grid = new Backgrid.Grid({
+			  columns: columns,
+			  collection: screensaverUsers
+			});
+			
+			var exampleGrid = $("#example-table");
+			// Render the grid and attach the root to your HTML document
+			exampleGrid.append(grid.render().$el);
+
+			// Initialize the paginator
+			var paginator = new Backgrid.Extension.Paginator({
+			  columns: columns,
+			  collection: screensaverUsers
+			});
+			
+			// Render the paginator
+			exampleGrid.append(paginator.render().$el);
+			
+			// Fetch some countries from the url
+			screensaverUsers.fetch({reset: true});
+			
+	   	}, // end success outer ajax call
+		error: function(x, e) {
+			alert(x.readyState + " "+ x.status +" "+ e.msg);
+		}			
+	});
+
+
+});
+
+</script>
+
+<div class="container-fluid" style="margin-left: 0px; background-color: #c5d2db;">
+	<div id="example-table"></div>
+</div>
+{% endblock %}

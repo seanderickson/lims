@@ -9,7 +9,55 @@
 from __future__ import unicode_literals
 
 from django.db import models
+from django.db.models.query import QuerySet
+from django.db.models.sql.query import Query
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+#class PostgresQuerySql(Query):
+##    def sql_with_params(self):
+##        sql = super(PostgresQuerySql,self).sql_with_params()
+##        logger.info('--------------sql: ' + sql)
+##        return sql        
+#    def prepend_ordering(self, ordering):
+#        logger.info(str(('------------prepend_ordering', ordering, self.order_by)))
+#        self.order_by.insert(0,ordering)
+#        
+#class PostgresQueryset(QuerySet):
+#    
+#    def __init__(self,*args,**kwargs):
+#        logger.info(str(('args',args, kwargs)))
+#        if 'model' in kwargs:
+#            _query = PostgresQuerySql(kwargs['model'])
+##            kwargs.setdefault('query',_query)
+#            del kwargs['query']
+#            logger.info(str(('---- using custom: ',type(_query), _query)) )
+#            super(PostgresQueryset,self).__init__(*args,query=_query,**kwargs)
+#        else:
+#            logger.info('---- not using custom')
+#            super(PostgresQueryset,self).__init__(*args,**kwargs)
+#        
+#    
+#    
+##    def as_sql(self, connection):
+##        sql = super(PostgresQueryset,self)._as_sql(connection)
+##        logger.info('sql: ' + sql)
+##        return sql
+##
+##    def sql_with_params(self):
+##        """
+##        Returns the query as an SQL string and the parameters that will be
+##        subsituted into the query.
+##        """
+##        sql = super(PostgresQueryset,self).sql_with_params()
+##        logger.info('sql: ' + sql)
+##        return sql
+#    
+#class PostgresManager(models.Manager):
+#    def get_query_set(self):
+#        return PostgresQueryset(self.model)
 
 class MetaModel(models.Model):
     def __iter__(self):
@@ -890,6 +938,8 @@ class ScreeningRoomUserFacilityUsageRole(models.Model):
         db_table = 'screening_room_user_facility_usage_role'
 
 class ScreensaverUser(models.Model):
+#    objects = PostgresManager()
+    
     screensaver_user_id = models.IntegerField(primary_key=True)
     version = models.IntegerField()
     date_created = models.DateTimeField()

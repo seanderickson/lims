@@ -11,22 +11,117 @@ from __future__ import unicode_literals
 from django.db import models
 from django.db.models.query import QuerySet
 from django.db.models.sql.query import Query
+from django.db.models.sql.compiler import SQLCompiler
 
 import logging
 
 logger = logging.getLogger(__name__)
 
-#class PostgresQuerySql(Query):
-##    def sql_with_params(self):
-##        sql = super(PostgresQuerySql,self).sql_with_params()
-##        logger.info('--------------sql: ' + sql)
-##        return sql        
-#    def prepend_ordering(self, ordering):
-#        logger.info(str(('------------prepend_ordering', ordering, self.order_by)))
-#        self.order_by.insert(0,ordering)
-#        
-#class PostgresQueryset(QuerySet):
-#    
+class PostgresSqlCompiler(): # wraps SQLCompiler
+    """
+    failed attempt to wrap SQLCompiler!  it fails because the "iterator" method returns a copy of the wrapped version,
+    or, more generally, because it needs to be extended not wrapped.
+    """
+    
+    def __init__(self, sqlcompiler):
+        logger.info(str(('----init custom compiler', sqlcompiler)))
+        self.sqlcompiler = sqlcompiler
+        
+    def pre_sql_setup(self):
+        logger.info(str(('---- wrapped method')))
+        return self.sqlcompiler.pre_sql_setup()
+    
+    def quote_name_unless_alias(self, name):
+        logger.info(str(('---- wrapped method')))
+        return self.sqlcompiler.quote_name_unless_alias(name)
+    
+    def as_sql(self, with_limits=True, with_col_aliases=False):
+        logger.info('---- as_sql')
+        return self.sqlcompiler.as_sql(with_limits=with_limits, with_col_aliases=with_col_aliases)
+        
+    def as_nested_sql(self):
+        logger.info(str(('---- wrapped method')))
+        return self.sqlcompiler.as_nested_sql()
+    
+    def get_columns(self, with_aliases=False):
+        logger.info(str(('---- wrapped method')))
+        return self.sqlcompiler.get_columns(with_aliases=with_aliases)
+    
+    def get_default_columns(self, with_aliases=False, col_aliases=None,
+            start_alias=None, opts=None, as_pairs=False, local_only=False):
+        logger.info(str(('---- wrapped method')))
+        return self.sqlcompiler.get_default_columns(with_aliases=with_aliases, col_aliases=col_aliases, 
+                                                    start_alias=start_alias, as_pairs=as_pairs, local_only=local_only)
+        
+    def get_distinct(self):
+        logger.info(str(('---- wrapped method')))
+        return self.sqlcompiler.get_distinct()
+
+    def get_ordering(self):
+        logger.info(str(('---- wrapped method')))
+        result, group_by = self.sqlcompiler.get_ordering()
+        logger.info(str(('-----get_ordering', result, group_by)))
+    
+    def find_ordering_name(self, name, opts, alias=None, default_order='ASC',
+                already_seen=None):
+        logger.info(str(('---- wrapped method')))
+        return self.sqlcompiler.find_ordering_name(name, opts, alias=alias, default_order=default_order, 
+                                                   already_seen=already_seen)
+
+    def _setup_joins(self, pieces, opts, alias):
+        logger.info(str(('---- wrapped method')))
+        return self.sqlcompiler.setup_joins(pieces, opts, alias)
+
+    def _final_join_removal(self, col, alias):
+        logger.info(str(('---- wrapped method')))
+        return self.sqlcompiler._final_join_removal(col, alias)
+    
+    def get_from_clause(self):
+        logger.info(str(('---- wrapped method')))
+        return self.sqlcompiler.get_from_clause()
+    
+    def get_grouping(self, ordering_group_by):
+        logger.info(str(('---- wrapped method')))
+        return self.sqlcompiler.get_grouping(ordering_group_by)
+    
+    def fill_related_selections(self, **kwargs):
+        logger.info(str(('---- wrapped method')))
+        return self.sqlcompiler.fill_related_selections(**kwargs)
+    
+    def deferred_to_columns(self):
+        logger.info(str(('---- wrapped method')))
+        return self.sqlcompiler.deferred_to_columns()
+    
+    def results_iter(self):
+        logger.info(str(('---- wrapped method')))
+        return self.sqlcompiler.results_iter()
+    
+    def execute_sql(self, **kwargs):
+        logger.info(str(('---- wrapped method')))
+        return self.sqlcompiler.execute_sql(**kwargs)
+
+
+class PostgresQuerySql(Query):
+    
+    def sql_with_params(self):
+        sql = super(PostgresQuerySql,self).sql_with_params()
+        logger.info('--------------sql: ' + sql)
+        return sql        
+    
+    def prepend_ordering(self, ordering):
+        logger.info(str(('------------prepend_ordering', ordering, self.order_by)))
+        self.order_by.insert(0,ordering)
+        
+    def get_compiler(self, using=None, connection=None):
+        compiler = super(PostgresQuerySql,self).get_compiler(using=using, connection=connection)
+        logger.info('------ get_compiler')
+        return PostgresSqlCompiler(compiler);
+        
+class PostgresQueryset(QuerySet):
+    def __init__(self, model=None, query=None, using=None):
+        _query = query or PostgresQuerySql(model)
+        super(PostgresQueryset,self).__init__(model=model, query=_query, using=using)
+        
 #    def __init__(self,*args,**kwargs):
 #        logger.info(str(('args',args, kwargs)))
 #        if 'model' in kwargs:
@@ -37,27 +132,32 @@ logger = logging.getLogger(__name__)
 #            super(PostgresQueryset,self).__init__(*args,query=_query,**kwargs)
 #        else:
 #            logger.info('---- not using custom')
-#            super(PostgresQueryset,self).__init__(*args,**kwargs)
-#        
-#    
-#    
-##    def as_sql(self, connection):
-##        sql = super(PostgresQueryset,self)._as_sql(connection)
-##        logger.info('sql: ' + sql)
-##        return sql
-##
-##    def sql_with_params(self):
-##        """
-##        Returns the query as an SQL string and the parameters that will be
-##        subsituted into the query.
-##        """
-##        sql = super(PostgresQueryset,self).sql_with_params()
-##        logger.info('sql: ' + sql)
-##        return sql
-#    
-#class PostgresManager(models.Manager):
-#    def get_query_set(self):
-#        return PostgresQueryset(self.model)
+#            _query = PostgresQuerySql(args)
+##            kwargs.setdefault('query',_query)
+#            if 'query' in kwargs:
+#                del kwargs['query']
+#            logger.info(str(('---- using custom: ',type(_query), _query)) )
+#            super(PostgresQueryset,self).__init__(*args,query=_query,**kwargs)
+        
+    
+    
+#    def as_sql(self, connection):
+#        sql = super(PostgresQueryset,self)._as_sql(connection)
+#        logger.info('sql: ' + sql)
+#        return sql
+#
+#    def sql_with_params(self):
+#        """
+#        Returns the query as an SQL string and the parameters that will be
+#        subsituted into the query.
+#        """
+#        sql = super(PostgresQueryset,self).sql_with_params()
+#        logger.info('sql: ' + sql)
+#        return sql
+    
+class PostgresManager(models.Manager):
+    def get_query_set(self):
+        return PostgresQueryset(self.model)
 
 class MetaModel(models.Model):
     def __iter__(self):
@@ -938,7 +1038,7 @@ class ScreeningRoomUserFacilityUsageRole(models.Model):
         db_table = 'screening_room_user_facility_usage_role'
 
 class ScreensaverUser(models.Model):
-#    objects = PostgresManager()
+    objects = PostgresManager()
     
     screensaver_user_id = models.IntegerField(primary_key=True)
     version = models.IntegerField()

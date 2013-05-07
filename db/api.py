@@ -67,31 +67,37 @@ class ScreensaverUserResource(ModelResource):
 #        return q
     
     def apply_sorting(self, obj_list, options):
-#        logger.info(str(('apply_sorting', obj)))
-        obj_list = obj_list.extra(select={'comments_null': 'comments is null'},
-                                  order_by=['-comments_null'])
-#        
-#        options2 = options.copy()
-#        if hasattr(options2, 'getlist'):
-#            order_bits = options2.getlist('order_by')
-#        else:
-#            order_bits = options2.get('order_by')
-#
-#            if not isinstance(order_bits, (list, tuple)):
-#                order_bits = [order_bits]
-#        
-#        order_bits.append(u'-comments_null')
+        """
+        Create a non-too-pretty workaround for the postgresql null sorting issue - nulls sort higher than values, 
+        which is not desired.  We want nulls to sort lower than values.
+        """ 
+        
         obj_list = super(ScreensaverUserResource, self).apply_sorting(obj_list, options)
-# doesn't work because it must be prepended        obj_list.query.add_ordering('comments_null')
-#        obj_list.query.prepend_ordering('comments_null')
+        
+        extra_select = {}
+        extra_ordering = []
+        for field in obj_list.query.order_by:
+            if field.startswith('-'):
+                field = field[1:]
+            extra_select[field+"_null"]=field + ' is null'
+            extra_ordering.append(field+"_null")
+        logger.info(str(('extra_select', extra_select)))
+        obj_list = obj_list.extra(extra_select)
+
+        # Note that this doesn't work, something in the framework deletes the extra 
+        # order_by clause when apply_sorting, or, if this is run last, it deletes the sorting applied in apply_sorting...
+        #        obj_list = obj_list.extra(order_by=['-comments_null'])
+
+        # note: this doesn't work because the "is null" field order by clauses
+        # must be prepended so that they occur before their intended fields
+        #        obj_list.query.add_ordering('comments_null')
         
         temp = obj_list.query.order_by;
         obj_list.query.clear_ordering()
-        temp.insert(0,'comments_null')
-        obj_list.query.add_ordering(*temp  )
+        for xfield in extra_ordering:
+            temp.insert(0,xfield)
+        obj_list.query.add_ordering(*temp)
         
-# NOPE, ...        obj_list.query.add_extra(None, None, None, None, None, ('screensaver_user.comments NULLS LAST',))
-#        obj_list = obj_list.extra(order_by=['-comments_null'])
         return obj_list
     
     

@@ -37,16 +37,34 @@ $(document).ready(function(){
 	App.Router = Backbone.Router.extend({
 	    routes: {
 	        '': 'index',
-	        'page/:page': 'toPage'
+	        'page/:page': 'toPage',
+	        'order_by/:orderBy(/page/:page)': 'toOrderedToPage'
 	    },
 
 	    index: function(){
 	        console.log("Index route has been called..");
 	    },	
 	    toPage: function(page){
-	    	console.log("page called: " + page);
-	    	screensaverUsers.getPage(page);
-	        // nav to page
+	    	// this is what hooks the URL read to the model action - sde
+	    	console.log("toPage route: " + page);
+	    	screensaverUsers.getPage(parseInt(page));
+	    },
+	    toOrderedToPage: function(orderBy,page){
+	    	console.log("toOrderedToPage route: " + orderBy + ", page: " + page);
+	    	var dir = 1;
+	    	var direction = 'ascending';
+	    	if(orderBy.charAt(0) === '-'){
+	    		dir = -1;
+	    		direction = 'descending';
+	    		orderBy = orderBy.substring(1);
+	    	}
+	    	// tell the pageable collection about it
+	    	screensaverUsers.setSorting(orderBy, dir);
+	    	// trigger the sort event to let the backgrid header cell know to change the sort indicator on the column
+	    	screensaverUsers.trigger("backgrid:sort", orderBy, direction, null, screensaverUsers);
+	    	if(typeof page !== 'undefined'){
+	    		screensaverUsers.getPage(page);
+	    	}
 	    }
 	
 	});	
@@ -68,18 +86,67 @@ $(document).ready(function(){
 			offset: function(){
 				return (this.state.currentPage-1) * this.state.pageSize;
 			},
-			totalRecords: null,
-			totalPages: null,
-			currentPage: null
+			totalRecords: null, // unset for tastypie
+			totalPages: null, // unset for tastypie
+			currentPage: null, // unset for tastypie
+		    sortKey: "order_by", // modified for tastypie
+		    order: null, // unset for tastypie
+		    order_by: function() { // modified for tastypie: use only "order_by=(-)field_name"
+		    	if (typeof this.state !== 'undefined' && this.state.sortKey && this.state.order) {
+		    		var dir = "";
+		    		if (this.state.order<0) dir = "-";
+		    		return dir + this.state.sortKey;
+		    	}
+		    },
+			
 		},
 		parse: function(response) { 
 			// hack the response for tastypie: 
 			// note, this is because the pageable collection doesn't work with the backbone-tastypie.js fix
       		return response.objects;
    		},
+   		setSorting: function(sortKey,order,options) { // override and hack in sorting URL support
+   			console.log('setSorting called: ' + sortKey+ ', order: ' + order + ', options: ' + options );
+   			
+   			var dir = '';
+   			var direction = 'ascending';
+   			if(typeof order !== 'undefined' && order === -1){
+   				dir = '-';
+   				direction = 'descending';
+   			}
+   			if(this.state.currentPage !== null){
+   				console.log('currentPage: ' + this.state.currentPage);
+   				if (sortKey !== 'null'){
+		   			router.navigate('/order_by/' + dir+ sortKey + '/page/'+ this.state.currentPage);
+   				}else{
+		   			router.navigate('/page/'+ this.state.currentPage);
+   				}
+   			}else{
+   				if (sortKey !== null){
+		   			router.navigate('/order_by/' + dir+ sortKey);
+   				}else{
+		   			router.navigate('/');
+   				}
+   			}
+   			var obj = Backbone.PageableCollection.prototype.setSorting.call(this,sortKey, order);
+   			//Backbone.PageableCollection.prototype.trigger(this,'backgrid:sort');
+	    	//this.trigger("backgrid:sort", sortKey, direction, null, this);
+	    	return obj;
+
+   			
+   		},
    		getPage: function(page) { // override and hack in paging URL support
    			console.log('getPage called: ' + page);
-   			router.navigate('/page/'+ page);
+   			page = parseInt(page);
+   			if(this.state.sortKey !== null){
+   				var sortKey = this.state.sortKey;
+   				if(this.state.order < 0){
+   					sortKey = '-' + sortKey;
+   				}
+   	   			router.navigate('order_by/' + sortKey +'/page/'+ page);
+   			}else{
+	   			router.navigate('/page/'+ page);
+   			}
    			return Backbone.PageableCollection.prototype.getPage.call(this,page);
    		}
 	});
@@ -92,8 +159,6 @@ $(document).ready(function(){
 	screensaverUsers.on({
 	  "all": allEvent,
 	});
-
-//	Backbone.history.start();
 
 	Backbone.history || (Backbone.history = new Backbone.History());
 	Backbone.history.start({
@@ -109,12 +174,10 @@ $(document).ready(function(){
        	success: function(result) {
        		var columns = iccbl.createBackgridColModel(result.fields);
 			
-			// Initialize a new Grid instance
 			var grid = new Backgrid.Grid({
 			  columns: columns,
 			  collection: screensaverUsers
 			});
-			
 			var exampleGrid = $("#example-table");
 			// Render the grid and attach the root to your HTML document
 			exampleGrid.append(grid.render().$el);

@@ -51,20 +51,31 @@ $(document).ready(function(){
 	    },
 	    toOrderedToPage: function(orderBy,page){
 	    	console.log("toOrderedToPage route: " + orderBy + ", page: " + page);
-	    	var dir = 1;
+	    	var order = -1;
 	    	var direction = 'ascending';
 	    	if(orderBy.charAt(0) === '-'){
-	    		dir = -1;
+	    		order = 1; // according to the docs, 1 == descending 
 	    		direction = 'descending';
 	    		orderBy = orderBy.substring(1);
 	    	}
-	    	// tell the pageable collection about it
-	    	screensaverUsers.setSorting(orderBy, dir);
-	    	// trigger the sort event to let the backgrid header cell know to change the sort indicator on the column
-	    	screensaverUsers.trigger("backgrid:sort", orderBy, direction, null, screensaverUsers);
 	    	if(typeof page !== 'undefined'){
-	    		screensaverUsers.getPage(page);
+//	    		screensaverUsers.getPage(page);
+		    	screensaverUsers.state.currentPage = parseInt(page);
 	    	}
+	    	
+
+	    	// trigger the sort event to let the backgrid header cell know to change the sort indicator on the column
+	    	// Note: the following two triggers fail to actually notify the header cell of the sort, not sure why, but 
+	    	// perhaps it is not yet listening.
+//			Backbone.PageableCollection.prototype.trigger(screensaverUsers,"backgrid:sort", orderBy, direction, null, screensaverUsers);
+	    	// tell the pageable collection about it
+//	    	screensaverUsers.setSorting(orderBy, order);
+	    	screensaverUsers.state.sortKey = orderBy;
+	    	screensaverUsers.state.order = order;
+	    	screensaverUsers.fetch({reset: true});
+			screensaverUsers.trigger("backgrid:sort", orderBy, direction, null, screensaverUsers);
+			screensaverUsers.trigger("backgrid:refresh", orderBy, direction, null, screensaverUsers);
+
 	    }
 	
 	});	
@@ -93,8 +104,10 @@ $(document).ready(function(){
 		    order: null, // unset for tastypie
 		    order_by: function() { // modified for tastypie: use only "order_by=(-)field_name"
 		    	if (typeof this.state !== 'undefined' && this.state.sortKey && this.state.order) {
-		    		var dir = "";
-		    		if (this.state.order<0) dir = "-";
+		    		var dir = "-";
+		    		if (this.state.order<0){  // according to docs, -1 == ascending
+		    			dir = "";
+		    		} 
 		    		return dir + this.state.sortKey;
 		    	}
 		    },
@@ -105,15 +118,21 @@ $(document).ready(function(){
 			// note, this is because the pageable collection doesn't work with the backbone-tastypie.js fix
       		return response.objects;
    		},
+   		/**
+	       @property {-1|0|1} [state.order=-1] The order to use for sorting. Specify
+	       -1 for ascending order or 1 for descending order. If 0, no client side
+	       sorting will be done and the order query parameter will not be sent to
+   		 */
    		setSorting: function(sortKey,order,options) { // override and hack in sorting URL support
-   			console.log('setSorting called: ' + sortKey+ ', order: ' + order + ', options: ' + options );
+   			console.log('setSorting called: ' + sortKey+ ', order: ' + order + typeof(order) + ', options: ' + options );
    			
-   			var dir = '';
-   			var direction = 'ascending';
-   			if(typeof order !== 'undefined' && order === -1){
-   				dir = '-';
-   				direction = 'descending';
+   			var dir = '-';
+   			var direction = 'descending';
+   			if(typeof order !== 'undefined' && order < 0){
+   				dir = '';
+   				direction = 'ascending';
    			}
+
    			if(this.state.currentPage !== null){
    				console.log('currentPage: ' + this.state.currentPage);
    				if (sortKey !== 'null'){
@@ -130,7 +149,7 @@ $(document).ready(function(){
    			}
    			var obj = Backbone.PageableCollection.prototype.setSorting.call(this,sortKey, order);
    			//Backbone.PageableCollection.prototype.trigger(this,'backgrid:sort');
-	    	//this.trigger("backgrid:sort", sortKey, direction, null, this);
+	    	// Backbone.PageableCollection.prototype.trigger(this,"backgrid:sort", sortKey, direction, null, this);
 	    	return obj;
 
    			
@@ -140,7 +159,7 @@ $(document).ready(function(){
    			page = parseInt(page);
    			if(this.state.sortKey !== null){
    				var sortKey = this.state.sortKey;
-   				if(this.state.order < 0){
+   				if(this.state.order > 0){
    					sortKey = '-' + sortKey;
    				}
    	   			router.navigate('order_by/' + sortKey +'/page/'+ page);
@@ -191,9 +210,17 @@ $(document).ready(function(){
 			// Render the paginator
 			exampleGrid.append(paginator.render().$el);
 			
-			// Fetch some countries from the url
-			screensaverUsers.fetch({reset: true});
+			// ServerSideFilter delegates the searching to the server by submitting a query.
+			// var serverSideFilter = new Backgrid.Extension.ServerSideFilter({
+			  // collection: screensaverUsers,
+			  // name: "comments", // the name of the URL query parameter
+			  // placeholder: "Search comments" // HTML5 placeholder for the search box
+			// });
+// 			
+			// exampleGrid.append(serverSideFilter.render().$el);
 			
+			// Fetch some data from the url
+			screensaverUsers.fetch({reset: true});
 	   	}, // end success outer ajax call
 		error: function(x, e) {
 			alert(x.readyState + " "+ x.status +" "+ e.msg);

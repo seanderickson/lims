@@ -165,6 +165,31 @@ $(document).ready(function(){
         toSearchOrderedToPage: function(searchBy, orderBy,page){
             console.log("toSearchOrderedToPage route: searchBy: " + searchBy + ", order: "+  orderBy + ", page: " + page);
             
+           
+            if(typeof page !== 'undefined' && page !== null ){
+                console.log('page: ' + page);
+                // set the state instead, will be caught and used with a refresh
+                //              screensaverUsers.getPage(page);
+                screensaverUsers.state.currentPage = parseInt(page);
+            }
+            console.log('-----------1a');
+                
+            var direction = 'ascending';
+            if(typeof orderBy !== 'undefined' && orderBy !== null ){
+                var order = -1;
+                if(orderBy.charAt(0) === '-'){
+                    order = 1; // according to the docs, 1 == descending 
+                    direction = 'descending';
+                    orderBy = orderBy.substring(1);
+                    screensaverUsers.state.sortKey = orderBy;
+                    screensaverUsers.state.order = order;
+                    // Notify header cells
+                    screensaverUsers.trigger("backgrid:sort", orderBy, direction, null, screensaverUsers);
+                }
+            }           
+          
+            console.log('-----------1b');
+            
             var data = {};
             if(typeof searchBy !== 'undefined' && searchBy !== null){
                 screensaverUsers.searchBy = searchBy;
@@ -176,36 +201,19 @@ $(document).ready(function(){
                     // console.log('parsed search: ' + JSON.stringify(data)); 
                     var searchColumn = match[1];
                     var searchTerm = match[2];
-                    console.log('parsed search: ' + JSON.stringify(data)); 
+                    console.log('parsed search: ' + searchColumn + ', ' + searchTerm ); 
+                    // notify search listeners
                     screensaverUsers.trigger("backgrid:search", searchColumn, searchTerm, screensaverUsers);
                  }
-            }
+            }  
             
-            if(typeof page !== 'undefined' && page !== null ){
-                console.log('page: ' + page);
-                // set the state instead, will be caught and used with a refresh
-                //              screensaverUsers.getPage(page);
-                screensaverUsers.state.currentPage = parseInt(page);
-            }
-
-            if(typeof orderBy !== 'undefined' && orderBy !== null ){
-                var direction = 'ascending';
-                var order = -1;
-                if(orderBy.charAt(0) === '-'){
-                    order = 1; // according to the docs, 1 == descending 
-                    direction = 'descending';
-                    orderBy = orderBy.substring(1);
-                }
-            }           
-                
-            screensaverUsers.state.sortKey = orderBy;
-            screensaverUsers.state.order = order;
-            screensaverUsers.trigger("backgrid:refresh", null, screensaverUsers);
+            console.log('-----------1c');
+            screensaverUsers.fetch({reset: true});
+            //screensaverUsers.trigger("backgrid:refresh", null, screensaverUsers);
             
 //            console.log('fetch: ' + JSON.stringify(data));
 //            screensaverUsers.fetch({data: data});
             
-            screensaverUsers.trigger("backgrid:sort", orderBy, direction, null, screensaverUsers);
             // this trigger is for the custom header
             // trigger the sort event to let the backgrid header cell know to change the sort indicator on the column
 //              Backbone.PageableCollection.prototype.trigger(screensaverUsers,"backgrid:sort", orderBy, direction, null, screensaverUsers);
@@ -249,6 +257,7 @@ $(document).ready(function(){
                 this.remove(); // this is the filter
             };
 
+            // listen for search submission by the user and set the routes
             this._serverSideFilter['events']['submit'] = function(e) {
                 // TODO: this should be handled by a backbone event
                 this.collection.searchBy = this.columnName + '=' + this.$el.find("input[type=text]").val();
@@ -265,6 +274,7 @@ $(document).ready(function(){
                     // TODO: remove searchbox
                     this._serverSideFilter.remove();
                 }else{
+                    console.log('on backgrid:search: ' + searchColumn + ',' + searchTerm );
                     // doesn't work: 
                     //this._serverSideFilter.value = match[2];
                     this.$el.append(this._serverSideFilter.render().el);

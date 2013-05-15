@@ -172,23 +172,20 @@ $(document).ready(function(){
                 //              screensaverUsers.getPage(page);
                 screensaverUsers.state.currentPage = parseInt(page);
             }
-            console.log('-----------1a');
                 
-            var direction = 'ascending';
             if(typeof orderBy !== 'undefined' && orderBy !== null ){
+                var direction = 'ascending';
                 var order = -1;
                 if(orderBy.charAt(0) === '-'){
                     order = 1; // according to the docs, 1 == descending 
                     direction = 'descending';
                     orderBy = orderBy.substring(1);
-                    screensaverUsers.state.sortKey = orderBy;
-                    screensaverUsers.state.order = order;
-                    // Notify header cells
-                    screensaverUsers.trigger("backgrid:sort", orderBy, direction, null, screensaverUsers);
                 }
+                screensaverUsers.state.sortKey = orderBy;
+                screensaverUsers.state.order = order;
+                // Notify header cells
+                screensaverUsers.trigger("backgrid:sort", orderBy, direction, null, screensaverUsers);
             }           
-          
-            console.log('-----------1b');
             
             var data = {};
             if(typeof searchBy !== 'undefined' && searchBy !== null){
@@ -207,12 +204,7 @@ $(document).ready(function(){
                  }
             }  
             
-            console.log('-----------1c');
             screensaverUsers.fetch({reset: true});
-            //screensaverUsers.trigger("backgrid:refresh", null, screensaverUsers);
-            
-//            console.log('fetch: ' + JSON.stringify(data));
-//            screensaverUsers.fetch({data: data});
             
             // this trigger is for the custom header
             // trigger the sort event to let the backgrid header cell know to change the sort indicator on the column
@@ -225,7 +217,8 @@ $(document).ready(function(){
     });   
     
     var MyServerSideFilter = Backgrid.Extension.ServerSideFilter.extend({
-        
+        // override so that we can keep a handle to the containing column name.
+        // TODO: can handle this with events instead (so that the filter notifies the containing headercell?)
         columnName : null,
         
         initialize: function (options) {
@@ -293,8 +286,6 @@ $(document).ready(function(){
          Renders a header cell with a sorter and a label.
        */
       render: function () {
-        // how to call the super
-        //this.__super__.render();
         Backgrid.HeaderCell.prototype.render.apply(this);
 
         var _handle = this;

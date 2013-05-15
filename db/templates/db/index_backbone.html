@@ -3,6 +3,7 @@
 
 <link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/backgrid.css" />
 <link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/backgrid-paginator.css" />
+<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/backgrid-filter.css" />
 
 <script type='text/javascript' src='{{ STATIC_URL }}js/underscore.js'></script>
 <script type='text/javascript' src='{{ STATIC_URL }}js/backbone.js'></script>
@@ -11,7 +12,9 @@
 <script type='text/javascript' src='{{ STATIC_URL }}js/backgrid.js'></script>
 <script type='text/javascript' src='{{ STATIC_URL }}js/backgrid-paginator.js'></script>
 
-<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/DT_bootstrap2.css" />
+<!--TODO: lunr is a dependency of backgrid-filter.js -->
+<script type='text/javascript' src='{{ STATIC_URL }}js/lunr.js'></script>
+<script type='text/javascript' src='{{ STATIC_URL }}js/backgrid-filter.js'></script>
 
 <style type="text/css">
 	@media screen{
@@ -34,156 +37,6 @@ $(document).ready(function(){
 	    Router: {}
 	};
 	
-	App.Router = Backbone.Router.extend({
-	    routes: {
-	        '': 'index',
-	        'page/:page': 'toPage',
-	        'order_by/:orderBy(/page/:page)': 'toOrderedToPage'
-	    },
-
-	    index: function(){
-	        console.log("Index route has been called..");
-	    },	
-	    toPage: function(page){
-	    	// this is what hooks the URL read to the model action - sde
-	    	console.log("toPage route: " + page);
-	    	screensaverUsers.getPage(parseInt(page));
-	    },
-	    toOrderedToPage: function(orderBy,page){
-	    	console.log("toOrderedToPage route: " + orderBy + ", page: " + page);
-	    	var order = -1;
-	    	var direction = 'ascending';
-	    	if(orderBy.charAt(0) === '-'){
-	    		order = 1; // according to the docs, 1 == descending 
-	    		direction = 'descending';
-	    		orderBy = orderBy.substring(1);
-	    	}
-	    	if(typeof page !== 'undefined'){
-//	    		screensaverUsers.getPage(page);
-		    	screensaverUsers.state.currentPage = parseInt(page);
-	    	}
-	    	
-
-	    	// trigger the sort event to let the backgrid header cell know to change the sort indicator on the column
-	    	// Note: the following two triggers fail to actually notify the header cell of the sort, not sure why, but 
-	    	// perhaps it is not yet listening.
-//			Backbone.PageableCollection.prototype.trigger(screensaverUsers,"backgrid:sort", orderBy, direction, null, screensaverUsers);
-	    	// tell the pageable collection about it
-//	    	screensaverUsers.setSorting(orderBy, order);
-	    	screensaverUsers.state.sortKey = orderBy;
-	    	screensaverUsers.state.order = order;
-	    	screensaverUsers.fetch({reset: true});
-			screensaverUsers.trigger("backgrid:sort", orderBy, direction, null, screensaverUsers);
-			screensaverUsers.trigger("backgrid:refresh", orderBy, direction, null, screensaverUsers);
-
-	    }
-	
-	});	
-	router = new App.Router;
-	var ScreensaverUser = Backbone.Model.extend({});
-	var getOffset = function(){
-		return 10;
-	}
-	var ScreensaverUsers = Backbone.PageableCollection.extend({
-		model: ScreensaverUser,
-		url: _url,
-		state: {
-			pageSize: 15,
-			totalRecords: 2142
-		},
-		queryParams: { 
-			// adjust the query params for tastypie
-			pageSize: 'limit',
-			offset: function(){
-				return (this.state.currentPage-1) * this.state.pageSize;
-			},
-			totalRecords: null, // unset for tastypie
-			totalPages: null, // unset for tastypie
-			currentPage: null, // unset for tastypie
-		    sortKey: "order_by", // modified for tastypie
-		    order: null, // unset for tastypie
-		    order_by: function() { // modified for tastypie: use only "order_by=(-)field_name"
-		    	if (typeof this.state !== 'undefined' && this.state.sortKey && this.state.order) {
-		    		var dir = "-";
-		    		if (this.state.order<0){  // according to docs, -1 == ascending
-		    			dir = "";
-		    		} 
-		    		return dir + this.state.sortKey;
-		    	}
-		    },
-			
-		},
-		parse: function(response) { 
-			// hack the response for tastypie: 
-			// note, this is because the pageable collection doesn't work with the backbone-tastypie.js fix
-      		return response.objects;
-   		},
-   		/**
-	       @property {-1|0|1} [state.order=-1] The order to use for sorting. Specify
-	       -1 for ascending order or 1 for descending order. If 0, no client side
-	       sorting will be done and the order query parameter will not be sent to
-   		 */
-   		setSorting: function(sortKey,order,options) { // override and hack in sorting URL support
-   			console.log('setSorting called: ' + sortKey+ ', order: ' + order + typeof(order) + ', options: ' + options );
-   			
-   			var dir = '-';
-   			var direction = 'descending';
-   			if(typeof order !== 'undefined' && order < 0){
-   				dir = '';
-   				direction = 'ascending';
-   			}
-
-   			if(this.state.currentPage !== null){
-   				console.log('currentPage: ' + this.state.currentPage);
-   				if (sortKey !== 'null'){
-		   			router.navigate('/order_by/' + dir+ sortKey + '/page/'+ this.state.currentPage);
-   				}else{
-		   			router.navigate('/page/'+ this.state.currentPage);
-   				}
-   			}else{
-   				if (sortKey !== null){
-		   			router.navigate('/order_by/' + dir+ sortKey);
-   				}else{
-		   			router.navigate('/');
-   				}
-   			}
-   			var obj = Backbone.PageableCollection.prototype.setSorting.call(this,sortKey, order);
-   			//Backbone.PageableCollection.prototype.trigger(this,'backgrid:sort');
-	    	// Backbone.PageableCollection.prototype.trigger(this,"backgrid:sort", sortKey, direction, null, this);
-	    	return obj;
-
-   			
-   		},
-   		getPage: function(page) { // override and hack in paging URL support
-   			console.log('getPage called: ' + page);
-   			page = parseInt(page);
-   			if(this.state.sortKey !== null){
-   				var sortKey = this.state.sortKey;
-   				if(this.state.order > 0){
-   					sortKey = '-' + sortKey;
-   				}
-   	   			router.navigate('order_by/' + sortKey +'/page/'+ page);
-   			}else{
-	   			router.navigate('/page/'+ page);
-   			}
-   			return Backbone.PageableCollection.prototype.getPage.call(this,page);
-   		}
-	});
-	
-	var screensaverUsers = new ScreensaverUsers();
-	
-	var allEvent = function(event){
-		console.log("event fired: " + event);
-	};
-	screensaverUsers.on({
-	  "all": allEvent,
-	});
-
-	Backbone.history || (Backbone.history = new Backbone.History());
-	Backbone.history.start({
-	  pushState: false,
-	  root: '/db/screeners2/'
-	});
 
 	$.ajax({
 		type: "GET",
@@ -191,48 +44,304 @@ $(document).ready(function(){
        	data: "",
        	dataType: "json",
        	success: function(result) {
-       		var columns = iccbl.createBackgridColModel(result.fields);
-			
-			var grid = new Backgrid.Grid({
-			  columns: columns,
-			  collection: screensaverUsers
-			});
-			var exampleGrid = $("#example-table");
-			// Render the grid and attach the root to your HTML document
-			exampleGrid.append(grid.render().$el);
+       	    window.App.buildGrid(result.fields);
 
-			// Initialize the paginator
-			var paginator = new Backgrid.Extension.Paginator({
-			  columns: columns,
-			  collection: screensaverUsers
-			});
-			
-			// Render the paginator
-			exampleGrid.append(paginator.render().$el);
-			
-			// ServerSideFilter delegates the searching to the server by submitting a query.
-			// var serverSideFilter = new Backgrid.Extension.ServerSideFilter({
-			  // collection: screensaverUsers,
-			  // name: "comments", // the name of the URL query parameter
-			  // placeholder: "Search comments" // HTML5 placeholder for the search box
-			// });
-// 			
-			// exampleGrid.append(serverSideFilter.render().$el);
-			
-			// Fetch some data from the url
-			screensaverUsers.fetch({reset: true});
 	   	}, // end success outer ajax call
 		error: function(x, e) {
 			alert(x.readyState + " "+ x.status +" "+ e.msg);
 		}			
 	});
+    // router = new App.Router;
+    var ScreensaverUser = Backbone.Model.extend({});
+    
+    var ScreensaverUsers = Backbone.PageableCollection.extend({
+        searchBy: null,
+        model: ScreensaverUser,
+        url: _url,
+        state: {
+            pageSize: 15,
+            totalRecords: 2142
+        },
+        queryParams: { 
+            // adjust the query params for tastypie
+            pageSize: 'limit',
+            offset: function(){
+                return (this.state.currentPage-1) * this.state.pageSize;
+            },
+            totalRecords: null, // unset for tastypie
+            totalPages: null, // unset for tastypie
+            currentPage: null, // unset for tastypie
+            sortKey: "order_by", // modified for tastypie
+            order: null, // unset for tastypie
+            order_by: function() { // modified for tastypie: use only "order_by=(-)field_name"
+                if (typeof this.state !== 'undefined' && this.state.sortKey && this.state.order) {
+                    var dir = "-";
+                    if (this.state.order<0){  // according to docs, -1 == ascending
+                        dir = "";
+                    } 
+                    return dir + this.state.sortKey;
+                }
+            },
+            
+        },
+        parse: function(response) { 
+            // hack the response for tastypie: 
+            // note, this is because the pageable collection doesn't work with the backbone-tastypie.js fix
+            return response.objects;
+        },
+        /**
+           @property {-1|0|1} [state.order=-1] The order to use for sorting. Specify
+           -1 for ascending order or 1 for descending order. If 0, no client side
+           sorting will be done and the order query parameter will not be sent to
+         */
+        
+        setRoutes: function() {
+            console.log('setRoutes: ' + this.searchBy + ', ' 
+                + this.state.sortKey + ', ' + this.state.order + ', '+ this.state.currentPage);
+            var route = '';
+            if(this.searchBy !== null){
+                route += 'search/'+this.searchBy ;
+            }
+            if(this.state.sortKey !== null){
+                var sortKey = this.state.sortKey;
+                if(this.state.order > 0){
+                    sortKey = '-' + sortKey;
+                }
+                if(route.length > 0) route += '/';
+                
+                route += 'order_by/' + sortKey;
+                //router.navigate('order_by/' + sortKey +'/page/'+ this.state.currentPage);
+            }
+            if(route.length > 0) route += '/';
+            
+            route += 'page/' + this.state.currentPage;
+            
+            // router.navigate('/page/'+ this.state.currentPage);
+            router.navigate(route);
+        },
+        
+        setSorting: function(sortKey,order,options) { // override and hack in sorting URL support
+            console.log('setSorting called: ' + sortKey+ ', order: ' + order + typeof(order) + ', options: ' + options );
+            console.log('searchBy: ' + JSON.stringify(this.data));
+            var dir = '-';
+            var direction = 'descending';
+            if(typeof order !== 'undefined' && order < 0){
+                dir = '';
+                direction = 'ascending';
+            }
+            var obj = Backbone.PageableCollection.prototype.setSorting.call(this,sortKey, order);
+            
+            this.setRoutes();
+            
+            return obj;
+        },
+        getPage: function(page) { // override and hack in paging URL support
+            console.log('getPage called: ' + page);
+            page = parseInt(page);
+            var obj = Backbone.PageableCollection.prototype.getPage.call(this,page);
+            this.setRoutes();
+            return obj;
+        }
+    });
+    
+    var screensaverUsers = new ScreensaverUsers();
+    App.Router = Backbone.Router.extend({
+        routes: {
+            '': 'index',
+            'page/:page': 'toPage',
+            'order_by/:orderBy(/page/:page)': 'toOrderedToPage',
+            'search/:searchBy(/order_by/:orderBy)(/page/:page)': 'toSearchOrderedToPage'
+        },
 
+        index: function(){
+            console.log("Index route has been called..");
+        },  
+        toPage: function(page){
+            // this is what hooks the URL read to the model action - sde
+            console.log("toPage route: " + page);
+            //screensaverUsers.getPage(parseInt(page));
+            this.toSearchOrderedPage(null, null, page);
+        },
+        toSearchOrderedToPage: function(searchBy, orderBy,page){
+            console.log("toSearchOrderedToPage route: searchBy: " + searchBy + ", order: "+  orderBy + ", page: " + page);
+            
+            var data = {};
+            if(typeof searchBy !== 'undefined' && searchBy !== null){
+                screensaverUsers.searchBy = searchBy;
+                // TODO: only can search one term at a time
+                var p = /([^=]+)=([^=]+)/
+                var match = p.exec(searchBy);
+                if (match){
+                    // data[match[1] + '__contains'] = match[2];
+                    // console.log('parsed search: ' + JSON.stringify(data)); 
+                    var searchColumn = match[1];
+                    var searchTerm = match[2];
+                    console.log('parsed search: ' + JSON.stringify(data)); 
+                    screensaverUsers.trigger("backgrid:search", searchColumn, searchTerm, screensaverUsers);
+                 }
+            }
+            
+            if(typeof page !== 'undefined' && page !== null ){
+                console.log('page: ' + page);
+                // set the state instead, will be caught and used with a refresh
+                //              screensaverUsers.getPage(page);
+                screensaverUsers.state.currentPage = parseInt(page);
+            }
 
+            if(typeof orderBy !== 'undefined' && orderBy !== null ){
+                var direction = 'ascending';
+                var order = -1;
+                if(orderBy.charAt(0) === '-'){
+                    order = 1; // according to the docs, 1 == descending 
+                    direction = 'descending';
+                    orderBy = orderBy.substring(1);
+                }
+            }           
+                
+            screensaverUsers.state.sortKey = orderBy;
+            screensaverUsers.state.order = order;
+            screensaverUsers.trigger("backgrid:refresh", null, screensaverUsers);
+            
+//            console.log('fetch: ' + JSON.stringify(data));
+//            screensaverUsers.fetch({data: data});
+            
+            screensaverUsers.trigger("backgrid:sort", orderBy, direction, null, screensaverUsers);
+            // this trigger is for the custom header
+            // trigger the sort event to let the backgrid header cell know to change the sort indicator on the column
+//              Backbone.PageableCollection.prototype.trigger(screensaverUsers,"backgrid:sort", orderBy, direction, null, screensaverUsers);
+        },
+        toOrderedToPage: function(orderBy,page){
+            console.log("toOrderedToPage route: " + orderBy + ", page: " + page);
+            this.toSearchOrderedToPage(null, orderBy, page);
+        },
+    });   
+    
+    var MyServerSideFilter = Backgrid.Extension.ServerSideFilter.extend({
+        
+        columnName : null,
+        
+        initialize: function (options) {
+            this.columnName = options.columnName;
+            Backgrid.Extension.ServerSideFilter.prototype.initialize.apply(this, [options])
+            
+        }        
+    });
+    
+    var MyHeaderCell = Backgrid.HeaderCell.extend({
+        _serverSideFilter : null,
+        initialize: function (options) {
+            // call the super constructor
+            //MyHeaderCell.__super__.initialize(options);
+            console.log('MyHeaderCell initialize');
+            this.constructor.__super__.initialize.apply(this, [options])
+            
+            
+            this._serverSideFilter = new MyServerSideFilter({
+              collection: screensaverUsers,
+              name: this.column.get("name")+"__contains", // the name of the URL query parameter
+              placeholder: "Search "+ this.column.get("label"), // HTML5 placeholder for the search box
+              columnName: this.column.get("name"),
+            });
+            
+            this.listenTo(this.collection, "backgrid:search", this._search);
+            
+            this._serverSideFilter['events']['click .close'] = function() {
+                this.remove(); // this is the filter
+            };
+
+            this._serverSideFilter['events']['submit'] = function(e) {
+                // TODO: this should be handled by a backbone event
+                this.collection.searchBy = this.columnName + '=' + this.$el.find("input[type=text]").val();
+                this.collection.setRoutes();
+                this.search(e);
+            };
+        },
+        
+        
+        // function to listen for router generated search event backgrid:search
+        _search: function(searchColumn, searchTerm, collection){
+            if (collection == this.collection) {
+                if (searchColumn !== this.column.get("name")){
+                    // TODO: remove searchbox
+                    this._serverSideFilter.remove();
+                }else{
+                    // doesn't work: 
+                    //this._serverSideFilter.value = match[2];
+                    this.$el.append(this._serverSideFilter.render().el);
+                    this._serverSideFilter.$el.find("input[type=text]").val(searchTerm)
+                    // this works because the super constructor has this:
+                    // collection.queryParams[this.name] = function () {
+                      // return self.$el.find("input[type=text]").val();
+                    // };
+                    this.collection.fetch();
+                }
+            }
+            
+        },
+        
+      /**
+         Renders a header cell with a sorter and a label.
+       */
+      render: function () {
+        // how to call the super
+        //this.__super__.render();
+        Backgrid.HeaderCell.prototype.render.apply(this);
+
+        var _handle = this;
+        
+
+        var filterIcon = $('<i class="icon-search"></i>');
+        filterIcon.click(function(e) {
+            _handle.$el.append(_handle._serverSideFilter.render().el);
+        });
+        this.$el.append(filterIcon);
+        
+        return this;
+      }     
+    });
+    
+
+    var router = new App.Router;
+
+    window.App.buildGrid = function(fieldDefinitions) {
+        var columns = iccbl.createBackgridColModel(fieldDefinitions, MyHeaderCell);
+        var allEvent = function(event){
+            console.log("event fired: " + event);
+        };
+        screensaverUsers.on({
+          "all": allEvent,
+        });
+        var grid = new Backgrid.Grid({
+          columns: columns,
+          collection: screensaverUsers
+        });
+        var exampleGrid = $("#example-table");
+        // Render the grid and attach the root to your HTML document
+        exampleGrid.append(grid.render().$el);
+        
+        // Initialize the paginator
+        var paginator = new Backgrid.Extension.Paginator({
+          columns: columns,
+          collection: screensaverUsers
+        });
+        
+        // Render the paginator
+        exampleGrid.append(paginator.render().$el);
+        
+        screensaverUsers.fetch();
+        
+
+        Backbone.history || (Backbone.history = new Backbone.History());
+        Backbone.history.start({
+          pushState: false,
+          root: '/db/screeners2/'
+        });
+    }
 });
 
 </script>
 
 <div class="container-fluid" style="margin-left: 0px; background-color: #c5d2db;">
-	<div id="example-table"></div>
+	<div id="example-table" class='table-striped' ></div>
 </div>
 {% endblock %}

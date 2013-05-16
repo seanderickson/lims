@@ -21,7 +21,13 @@
 		.table th, .table td {
 			padding: 1px;
 		}
-	}	
+	}
+	/*hack to make the header fit the filter search box and side icons (side icons are the problem)*/
+    @media screen{ 
+        .backgrid th {
+            padding-right: 35px;
+        }
+    }	
 </style>
 	
 <script type="text/javascript">
@@ -200,7 +206,7 @@ $(document).ready(function(){
                     var searchTerm = match[2];
                     console.log('parsed search: ' + searchColumn + ', ' + searchTerm ); 
                     // notify search listeners
-                    screensaverUsers.trigger("backgrid:search", searchColumn, searchTerm, screensaverUsers);
+                    screensaverUsers.trigger("MyServerSideFilter:search", searchColumn, searchTerm, screensaverUsers);
                  }
             }  
             
@@ -244,10 +250,19 @@ $(document).ready(function(){
               columnName: this.column.get("name"),
             });
             
-            this.listenTo(this.collection, "backgrid:search", this._search);
+            this.listenTo(this.collection, "MyServerSideFilter:search", this._search);
             
-            this._serverSideFilter['events']['click .close'] = function() {
+            this._serverSideFilter['events']['click .close'] = function(e) {
+                if (e) e.preventDefault();
+
                 this.remove(); // this is the filter
+                this.clear();
+                this.collection.searchBy = null;
+                this.collection.setRoutes();
+                //this.remove();
+                //this.$el.find("input[type=text]").val(null);
+                //this.collection.fetch({reset:true});
+                //this.collection.setRoutes();
             };
 
             // listen for search submission by the user and set the routes
@@ -260,22 +275,29 @@ $(document).ready(function(){
         },
         
         
-        // function to listen for router generated search event backgrid:search
+        // function to listen for router generated search event MyServerSideFilter:search
         _search: function(searchColumn, searchTerm, collection){
             if (collection == this.collection) {
                 if (searchColumn !== this.column.get("name")){
                     // TODO: remove searchbox
                     this._serverSideFilter.remove();
                 }else{
-                    console.log('on backgrid:search: ' + searchColumn + ',' + searchTerm );
+                    console.log('on MyServerSideFilter:search: ' + searchColumn + ',' + searchTerm );
                     // doesn't work: 
                     //this._serverSideFilter.value = match[2];
-                    this.$el.append(this._serverSideFilter.render().el);
-                    this._serverSideFilter.$el.find("input[type=text]").val(searchTerm)
-                    // this works because the super constructor has this:
-                    // collection.queryParams[this.name] = function () {
-                      // return self.$el.find("input[type=text]").val();
-                    // };
+                    this.$el.append(this._serverSideFilter.render().el); // create the DOM element
+                    this._serverSideFilter.$el.find("input[type=text]").val(searchTerm) // set the search term
+                    // it works to just call fetch, I think, because the super constructor has 
+                    // the following, which is run when server-side data is retreived.
+                      // if (Backbone.PageableCollection &&
+                          // collection instanceof Backbone.PageableCollection &&
+                          // collection.mode == "server") {
+                        // collection.queryParams[this.name] = function () {
+                          // return self.$el.find("input[type=text]").val();
+                        // };
+                      // }  
+                    // TODO: it might be better to explicitly call this.search, (but how?)  
+                                        
                     this.collection.fetch();
                 }
             }

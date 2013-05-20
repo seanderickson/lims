@@ -102,7 +102,7 @@ $(document).ready(function(){
         url: _url,
         state: {
             pageSize: 25,
-            totalRecords: 2142
+//            totalRecords: 2142
         },
         queryParams: {
             // adjust the query params for tastypie
@@ -129,6 +129,11 @@ $(document).ready(function(){
         parse: function(response) {
             // hack the response for tastypie:
             // note, this is because the pageable collection doesn't work with the backbone-tastypie.js fix
+            //this.state.totalRecords = response.meta.total_count;
+            var state = _.clone(this.state);
+            state.totalRecords = response.meta.total_count;
+            this.state = this._checkState(state); // recalculate the state and do sanity checks.
+            console.log('new state: ' + JSON.stringify(this.state));
             return response.objects;
         },
         /**
@@ -201,6 +206,7 @@ $(document).ready(function(){
 
         index: function(){
             console.log("Index route has been called..");
+            screensaverUsers.fetch();
         },
         toPage: function(page){
             // this is what hooks the URL read to the model action - sde
@@ -462,6 +468,9 @@ $(document).ready(function(){
           columns: columns,
           collection: screensaverUsers
         });
+//        paginator.listenTo(screensaverUsers, 'collection:updateTotal', screensaverUsers.reset());
+
+
 
         // Render the paginator
         // exampleGrid.prepend(paginator.render().$el);
@@ -471,15 +480,19 @@ $(document).ready(function(){
         var allEvent = function(event){
             console.log("event fired: " + event);
         };
+        var syncEvent = function(event){
+            console.log("event fired: " + event);
+        };
         screensaverUsers.on({
           "all": allEvent,
+          "sync": syncEvent,
         });
 
         screensaverUsers.bind('request', window.App.ajaxStart, this);
         screensaverUsers.bind('sync', window.App.ajaxComplete, this);
-        screensaverUsers.bind('sync', selector.updateSelection, selector);
+        screensaverUsers.bind('sync', selector.updateSelection, selector);  // TODO: selector.listenTo(screensaverUsers, 'sync'...
 
-        screensaverUsers.fetch();
+        //screensaverUsers.fetch();
 
 
         Backbone.history || (Backbone.history = new Backbone.History());

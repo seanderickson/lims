@@ -15,6 +15,7 @@
 <!--TODO: lunr is a dependency of backgrid-filter.js -->
 <script type='text/javascript' src='{{ STATIC_URL }}js/lunr.js'></script>
 <script type='text/javascript' src='{{ STATIC_URL }}js/backgrid-filter.js'></script>
+<script type='text/javascript' src='{{ STATIC_URL }}js/spin.min.js'></script>
 <!--
 <link href="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/css/bootstrap-combined.no-icons.min.css" rel="stylesheet">
 <link href="//netdna.bootstrapcdn.com/font-awesome/3.1.1/css/font-awesome.css" rel="stylesheet">
@@ -24,20 +25,45 @@
 		.table th, .table td {
 			padding: 1px;
 		}
-	}
 	/*hack to make the header fit the filter search box and side icons (side icons are the problem)*/
-    @media screen{
         .backgrid th {
             padding-right: 35px;
+        }
+        .form-horizontal .control-group {
+            margin-bottom: 0px;
+        }
+        form {
+            margin: 0 0 0px;
+        }
+        .loading1 {
+            background:rgba(0,0,0,0.3);
+        }
+        #loading{
+            position:fixed;
+            z-index:999;
+            top:0;
+            left:0;
+            width:100%;
+            height: 100%;
+            background: url('/static/images/ajax-loading2.gif')
+                50% 20%
+                no-repeat;
         }
     }
 </style>
 <script type="text/template" id="rows-per-page-template">
-    <select id="rowsperpage_selector">
+    <form class="form-horizontal">
+        <div class="control-group">
+    <label class="control-label" for="rowsperpage_selector">Rows per page:</label>
+    <div class="controls">
+    <select  class="input-mini" id="rowsperpage_selector">
         <% options.each(function(option) { %>
             <option value="<%= option %>"><%= option %></option>
         <% }); %>
     </select>
+    </div>
+    </div>
+    </form>
 </script>
 <script type="text/javascript">
 
@@ -68,7 +94,6 @@ $(document).ready(function(){
 	});
 
 
-    // router = new App.Router;
     var ScreensaverUser = Backbone.Model.extend({});
 
     var ScreensaverUsers = Backbone.PageableCollection.extend({
@@ -76,7 +101,7 @@ $(document).ready(function(){
         model: ScreensaverUser,
         url: _url,
         state: {
-            pageSize: 15,
+            pageSize: 25,
             totalRecords: 2142
         },
         queryParams: {
@@ -114,7 +139,7 @@ $(document).ready(function(){
 
         setRoutes: function() {
             console.log('setRoutes: ' + this.searchBy + ', '
-                + this.state.sortKey + ', ' + this.state.order + ', '+ this.state.currentPage);
+                + this.state.sortKey + ', ' + this.state.order + ', '+ this.state.pageSize + ', ', + this.state.currentPage);
             var route = '';
             if(this.searchBy !== null){
                 route += 'search/'+this.searchBy ;
@@ -131,7 +156,7 @@ $(document).ready(function(){
             }
             if(route.length > 0) route += '/';
 
-            route += 'page/' + this.state.currentPage;
+            route += 'rpp/' + this.state.pageSize + '/page/' + this.state.currentPage;
 
             // router.navigate('/page/'+ this.state.currentPage);
             router.navigate(route);
@@ -169,8 +194,9 @@ $(document).ready(function(){
         routes: {
             '': 'index',
             'page/:page': 'toPage',
-            'order_by/:orderBy(/page/:page)': 'toOrderedToPage',
-            'search/:searchBy(/order_by/:orderBy)(/page/:page)': 'toSearchOrderedToPage'
+            '/rpp/:rpp(page/:page)': 'toRowsPerPage',
+            'order_by/:orderBy(/rpp/:rpp)(/page/:page)': 'toOrderedToPage',
+            'search/:searchBy(/order_by/:orderBy)(/rpp/:rpp)(/page/:page)': 'toSearchOrderedToPage'
         },
 
         index: function(){
@@ -180,17 +206,32 @@ $(document).ready(function(){
             // this is what hooks the URL read to the model action - sde
             console.log("toPage route: " + page);
             //screensaverUsers.getPage(parseInt(page));
-            this.toSearchOrderedPage(null, null, page);
+            this.toSearchOrderedPage(null, null, null, page);
         },
-        toSearchOrderedToPage: function(searchBy, orderBy,page){
-            console.log("toSearchOrderedToPage route: searchBy: " + searchBy + ", order: "+  orderBy + ", page: " + page);
-
+        toRowsPerPage: function(rpp,page){
+            console.log("toRowsPerPage route: " + rpp + ", page: " + page);
+            this.toSearchOrderedToPage(null, orderBy, rpp, page);
+        },
+        toOrderedToPage: function(orderBy,rpp, page){
+            console.log("toOrderedToPage route: " + orderBy + ", rpp: " + rpp + ", page: " + page);
+            this.toSearchOrderedToPage(null, orderBy, rpp, page);
+        },
+        toSearchOrderedToPage: function(searchBy, orderBy,rpp, page){
+            console.log("toSearchOrderedToPage route: searchBy: " + searchBy
+                + ", order: "+  orderBy + ", rpp: " + rpp + ", page: " + page);
 
             if(typeof page !== 'undefined' && page !== null ){
                 console.log('page: ' + page);
                 // set the state instead, will be caught and used with a refresh
                 //              screensaverUsers.getPage(page);
                 screensaverUsers.state.currentPage = parseInt(page);
+            }
+
+            if(typeof rpp !== 'undefined' && rpp !== null ){
+                console.log('rpp: ' + rpp);
+                // set the state instead, will be caught and used with a refresh
+                //              screensaverUsers.getPage(page);
+                screensaverUsers.state.pageSize = parseInt(rpp);
             }
 
             if(typeof orderBy !== 'undefined' && orderBy !== null ){
@@ -229,10 +270,6 @@ $(document).ready(function(){
             // this trigger is for the custom header
             // trigger the sort event to let the backgrid header cell know to change the sort indicator on the column
 //              Backbone.PageableCollection.prototype.trigger(screensaverUsers,"backgrid:sort", orderBy, direction, null, screensaverUsers);
-        },
-        toOrderedToPage: function(orderBy,page){
-            console.log("toOrderedToPage route: " + orderBy + ", page: " + page);
-            this.toSearchOrderedToPage(null, orderBy, page);
         },
     });
 
@@ -343,7 +380,7 @@ $(document).ready(function(){
     var router = new App.Router;
 
     var ItemsPerPageSelector = Backbone.View.extend({
-        el: $("#selector-div"), // view must have the element to get events for
+//        el: $("#selector-div"), // view must have the element to get events for
         template: _.template($("#rows-per-page-template").html()),
 
         events: {
@@ -351,39 +388,67 @@ $(document).ready(function(){
         },
 
         initialize: function(options, collection){
-            console.log('a options: ' + JSON.stringify(options));
             this.options = _(options);
             this.collection = collection;
             this.render();
         },
         setItemsPerPage: function(e){
-            console.log('event: ' + e);
             e.preventDefault();
             var option = e.currentTarget.value;
             console.log('option: ' + option + ', clicked');
             this.collection.state.pageSize = parseInt(option);
             this.collection.fetch({reset:true});
+            this.collection.setRoutes();
         },
         render: function(){
             var selector_template = _.template($("#rows-per-page-template").html(), {
                 options: this.options,
             });
             this.$el.html(selector_template);
+            this.delegateEvents();
             return this;
+        },
+        updateSelection: function(e){
+            $('#rowsperpage_selector').val(String(this.collection.state.pageSize));
         },
     });
 
-    var selector = new ItemsPerPageSelector(['25','50','100','200'], screensaverUsers);
+    var selector = new ItemsPerPageSelector(['25','50','200','1000'], screensaverUsers);
 
+    // // Spinner
+    // var opts = {
+      // lines: 13, // The number of lines to draw
+      // length: 10, // The length of each line
+      // width: 2, // The line thickness
+      // radius: 11, // The radius of the inner circle
+      // corners: 0, // Corner roundness (0..1)
+      // rotate: 50, // The rotation offset
+      // direction: 1, // 1: clockwise, -1: counterclockwise
+      // color: '#000', // #rgb or #rrggbb
+      // speed: 0.6, // Rounds per second
+      // trail: 78, // Afterglow percentage
+      // shadow: false, // Whether to render a shadow
+      // hwaccel: false, // Whether to use hardware acceleration
+      // className: 'spinner', // The CSS class to assign to the spinner
+      // zIndex: 2e9, // The z-index (defaults to 2000000000)
+      // top: 'auto', // Top position relative to parent in px
+      // left: 'auto' // Left position relative to parent in px
+    // };
+    // var target = $('#loading');
+    // var spinner = new Spinner(opts).spin(target);
+    window.App.ajaxStart = function(){
+        console.log("start spinner...");
+//        spinner.spin(target);
+        $('#loading').fadeIn({duration:100});
+    };
+    window.App.ajaxComplete = function(){
+        console.log("stop spinner...");
+//        spinner.stop();
+        $('#loading').fadeOut({duration:100});
+    };
 
     window.App.buildGrid = function(fieldDefinitions) {
         var columns = iccbl.createBackgridColModel(fieldDefinitions, MyHeaderCell);
-        var allEvent = function(event){
-            console.log("event fired: " + event);
-        };
-        screensaverUsers.on({
-          "all": allEvent,
-        });
         var grid = new Backgrid.Grid({
           columns: columns,
           collection: screensaverUsers
@@ -399,7 +464,20 @@ $(document).ready(function(){
         });
 
         // Render the paginator
-        exampleGrid.append(paginator.render().$el);
+        // exampleGrid.prepend(paginator.render().$el);
+        $("#paginator-div").append(paginator.render().$el);
+        $("#rows-selector-div").append(selector.render().$el);
+
+        var allEvent = function(event){
+            console.log("event fired: " + event);
+        };
+        screensaverUsers.on({
+          "all": allEvent,
+        });
+
+        screensaverUsers.bind('request', window.App.ajaxStart, this);
+        screensaverUsers.bind('sync', window.App.ajaxComplete, this);
+        screensaverUsers.bind('sync', selector.updateSelection, selector);
 
         screensaverUsers.fetch();
 
@@ -415,7 +493,13 @@ $(document).ready(function(){
 </script>
 
 <div class="container-fluid" style="margin-left: 0px; background-color: #c5d2db;">
-<div id="selector-div"></div>
-	<div id="example-table" class='table-striped' ></div>
+    <div class="row-fluid no-space">
+        <div class="span8" id="paginator-div"></div>
+        <div class="span2" id="rows-selector-div"></div>
+    </div>
+    <div class="row-fluid no-space">
+    	<div id="example-table" class='table-striped' ></div>
+    </div><!-- table row -->
 </div>
+    <div id="loading"></div><!-- loading indicator -->
 {% endblock %}

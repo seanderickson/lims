@@ -112,7 +112,7 @@ $(document).ready(function(){
             },
             totalRecords: null, // unset for tastypie
             totalPages: null, // unset for tastypie
-            currentPage: null, // unset for tastypie
+//            currentPage: null, // unset for tastypie
             sortKey: "order_by", // modified for tastypie
             order: null, // unset for tastypie
             order_by: function() { // modified for tastypie: use only "order_by=(-)field_name"
@@ -132,8 +132,13 @@ $(document).ready(function(){
             //this.state.totalRecords = response.meta.total_count;
             var state = _.clone(this.state);
             state.totalRecords = response.meta.total_count;
+            if(Math.ceil(state.totalRecords/state.pageSize) < state.currentPage ){
+                console.log('adjust currentPage');
+                state.currentPage=1;
+            }
             this.state = this._checkState(state); // recalculate the state and do sanity checks.
             console.log('new state: ' + JSON.stringify(this.state));
+            this.setRoutes();
             return response.objects;
         },
         /**
@@ -179,17 +184,15 @@ $(document).ready(function(){
             }
             var obj = Backbone.PageableCollection.prototype.setSorting.call(this,sortKey, order);
 
-            this.setRoutes();
+            //this.setRoutes();
 
             return obj;
         },
 
         // Override
         getPage: function(page) { // override and hack in paging URL support
-            console.log('getPage called: ' + page);
-            page = parseInt(page);
             var obj = Backbone.PageableCollection.prototype.getPage.call(this,page);
-            this.setRoutes();
+            //this.setRoutes();
             return obj;
         }
     });
@@ -238,6 +241,7 @@ $(document).ready(function(){
                 // set the state instead, will be caught and used with a refresh
                 //              screensaverUsers.getPage(page);
                 screensaverUsers.state.pageSize = parseInt(rpp);
+                // TODO: catch when pageSize is too large
             }
 
             if(typeof orderBy !== 'undefined' && orderBy !== null ){
@@ -320,7 +324,7 @@ $(document).ready(function(){
                 this.remove(); // this is the filter
                 this.clear();
                 this.collection.searchBy = null;
-                this.collection.setRoutes();
+                //this.collection.setRoutes();
 
 
                 //this.remove();
@@ -334,7 +338,7 @@ $(document).ready(function(){
                 // TODO: this should be handled by a backbone event
                 this.collection.searchBy = this.columnName + '=' + this.$el.find("input[type=text]").val();
                 this.collection.state.currentPage=1;  // if filtering, always set the page to 1
-                this.collection.setRoutes();
+                //this.collection.setRoutes();
                 this.search(e);
             };
         },
@@ -347,12 +351,12 @@ $(document).ready(function(){
                     // TODO: remove searchbox
                     this._serverSideFilter.remove();
                 }else{
-                    console.log('on MyServerSideFilter:search: ' + searchColumn + ',' + searchTerm );
+                    console.log('on MyServerSideFilter:search: ' + searchColumn );
                     // doesn't work:
                     //this._serverSideFilter.value = match[2];
                     this.$el.append(this._serverSideFilter.render().el); // create the DOM element
                     this._serverSideFilter.$el.find("input[type=text]").val(searchTerm) // set the search term
-                    this.collection.state.currentPage=1;  // if filtering, always set the page to 1
+
                     // it works to just call fetch, I think, because the super constructor has
                     // the following, which is run when server-side data is retreived.
                       // if (Backbone.PageableCollection &&
@@ -404,9 +408,17 @@ $(document).ready(function(){
             e.preventDefault();
             var option = e.currentTarget.value;
             console.log('option: ' + option + ', clicked');
-            this.collection.state.pageSize = parseInt(option);
+            // this.collection.state.pageSize = parseInt(option);
+            var state = _.clone(this.collection.state);
+            state.pageSize = parseInt(option);
+            if(Math.ceil(state.totalRecords/state.pageSize) < state.currentPage ){
+                console.log('adjust currentPage');
+                state.currentPage=Math.ceil(state.totalRecords/state.pageSize);
+            }
+            this.collection.state = this.collection._checkState(state); // recalculate the state and do sanity checks.
+
             this.collection.fetch({reset:true});
-            this.collection.setRoutes();
+            //this.collection.setRoutes();
         },
         render: function(){
             var selector_template = _.template($("#rows-per-page-template").html(), {
@@ -470,9 +482,6 @@ $(document).ready(function(){
           columns: columns,
           collection: screensaverUsers
         });
-//        paginator.listenTo(screensaverUsers, 'collection:updateTotal', screensaverUsers.reset());
-
-
 
         // Render the paginator
         // exampleGrid.prepend(paginator.render().$el);
@@ -482,20 +491,14 @@ $(document).ready(function(){
         var allEvent = function(event){
             console.log("event fired: " + event);
         };
-        var syncEvent = function(event){
-            console.log("event fired: " + event);
-        };
         screensaverUsers.on({
           "all": allEvent,
-          "sync": syncEvent,
         });
 
+        // TODO: tie these events into the collection override?
         screensaverUsers.bind('request', window.App.ajaxStart, this);
         screensaverUsers.bind('sync', window.App.ajaxComplete, this);
         screensaverUsers.bind('sync', selector.updateSelection, selector);  // TODO: selector.listenTo(screensaverUsers, 'sync'...
-
-        //screensaverUsers.fetch();
-
 
         Backbone.history || (Backbone.history = new Backbone.History());
         Backbone.history.start({

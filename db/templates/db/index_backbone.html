@@ -333,6 +333,7 @@ $(document).ready(function(){
             this._serverSideFilter['events']['submit'] = function(e) {
                 // TODO: this should be handled by a backbone event
                 this.collection.searchBy = this.columnName + '=' + this.$el.find("input[type=text]").val();
+                this.collection.state.currentPage=1;  // if filtering, always set the page to 1
                 this.collection.setRoutes();
                 this.search(e);
             };
@@ -351,6 +352,7 @@ $(document).ready(function(){
                     //this._serverSideFilter.value = match[2];
                     this.$el.append(this._serverSideFilter.render().el); // create the DOM element
                     this._serverSideFilter.$el.find("input[type=text]").val(searchTerm) // set the search term
+                    this.collection.state.currentPage=1;  // if filtering, always set the page to 1
                     // it works to just call fetch, I think, because the super constructor has
                     // the following, which is run when server-side data is retreived.
                       // if (Backbone.PageableCollection &&

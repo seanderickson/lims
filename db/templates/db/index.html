@@ -1,15 +1,21 @@
 {% extends "db/base.html" %}
 {% block content %}
-		<div id="search">
-		  <form action="{{ request.get_full_path }}" method="get"> <!-- needed for post: {% csrf_token %}  -->
-	            <label for="id_search">Search all categories:</label>
-	            <input type="submit" value="search" />
-	            <span class="input-auto-width-wrapper">
-	              <input id="id_search" type="text" name="search" value="{{ search }}" maxlength="100" tabindex="1" />
-	            </span>
-		  </form>
-		</div>
-
+<div class="input-append span7">
+  <input class="span5 " id="appendedInputButtons" type="text">
+  <button class="btn" type="button">Search</button>
+	<div class="btn-group">
+	    <button class="btn dropdown-toggle" data-toggle="dropdown">
+	      Type
+	      <span class="caret"></span>
+	    </button>
+	    <ul class="dropdown-menu">
+	    	<li>Reagents</li>
+	    	<li>Screens</li>
+	    	<li>Screeners</li>
+	    </ul>
+	</div>
+</div>
+<div class="hero-unit">
 	{% if table %}
 	<div id='table'>
 		{% load render_table from django_tables2 %}
@@ -33,5 +39,6 @@
 		Use "Data Downloads" to download SD files for all ICCB-L libraries, either as a single file or as individual library files.</li>
 	</ul>
 	{% endif %}
+</div>
 {% endblock %}
 

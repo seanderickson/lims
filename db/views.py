@@ -11,14 +11,9 @@ logger = logging.getLogger(__name__)
 def main(request):
     search = request.GET.get('search', '')
     logger.debug(str(('main search: ', search)))
-
     return render(request, 'db/index.html', {'search': search})
 
-
 def screeners(request):
-    """
-    find all the screener users in the system.
-    """
     search = request.GET.get('search', '')
     logger.debug(str(('main search: ', search)))
     return render(request, 'db/index_jqgrid.html', {'search': search})
@@ -28,11 +23,32 @@ def screeners1(request):
     logger.debug(str(('main search: ', search)))
     return render(request, 'db/index_datatables.html', {'search': search})
 
+def screeners2(request):
+    search = request.GET.get('search', '')
+    logger.debug(str(('screeners2')))
+    
+    # TODO: all these urls should be located using reverse
+    root_url = '/db/screeners2/'
+    url_schema = '/db/api/v1/screensaveruser/schema/' # TODO: how to use django url tag here
+    url = '/db/api/v1/screensaveruser/?format=json' # TODO: how to use django url tag here
+
+    return render(request, 'db/index_backbone.html', {'search': search, 'root_url': root_url, 'api_url': url, 'api_url_schema': url_schema })
 
 def staff(request):
     search = request.GET.get('search', '')
     logger.debug(str(('main search: ', search)))
     return render(request, 'db/index_jqgrid.html', {'search': search})
+
+def screens_sm(request):
+    search = request.GET.get('search', '')
+    logger.debug(str(('main search: ', search)))
+
+    # TODO: all these urls should be located using reverse
+    root_url = '/db/screens_sm/'
+    url_schema = '/db/api/v1/screen/schema/' # TODO: how to use django url tag here
+    url = '/db/api/v1/screen/?format=json' # TODO: how to use django url tag here
+
+    return render(request, 'db/index_backbone.html', {'search': search, 'root_url': root_url, 'api_url': url, 'api_url_schema': url_schema })
 
 from django.forms.models import model_to_dict
 

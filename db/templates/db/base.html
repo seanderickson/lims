@@ -2,11 +2,17 @@
 {% load iccbl_tags %}
 {% load admin_urls %}
 {% block head %}
-<!-- jQuery ScrollTo Plugin -->
+<!-- jQuery ScrollTo Plugin
 <script src="//balupton.github.io/jquery-scrollto/scripts/jquery.scrollto.min.js"></script>
-
-<!-- History.js -->
+-->
+<!-- History.js
 <script src="//browserstate.github.io/history.js/scripts/bundled/html4+html5/jquery.history.js"></script>
+-->
+<script type='text/javascript' src='{{ STATIC_URL }}/js/jquery.scrollto.js'></script>
+<script type='text/javascript' src='{{ STATIC_URL }}/js/history.js'></script>
+<script type='text/javascript' src='{{ STATIC_URL }}/js/iccbl-lims.js'></script>
+
+
 
 <link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/basic_tabs.css" />
 
@@ -30,7 +36,8 @@
       <div class="row-fluid no-space">
         <div class="span2">
           <div class="well sidebar-nav">
-            <ul class="nav nav-list">
+			<div>
+            <ul class="nav nav-pills nav-stacked">
               <li class='{% activeTag request "^/db/$" %}'><a href="{% url 'home' %}" >Home</a></li>
               <li class="nav-header">Libraries</li>
               <li class='{% activeTag request "^/db/sm/$" %}' ><a href="#">SM</a></li>
@@ -38,9 +45,10 @@
               <li class="nav-header">Users</li>
               <li class='{% activeTag request "^/db/screeners/$" %}' ><a href="{% url 'screeners' %}">Screeners</a></li>
               <li class='{% activeTag request "^/db/screeners1/$" %}' ><a href="{% url 'screeners1' %}">Screeners1</a></li>
+              <li class='{% activeTag request "^/db/screeners2/$" %}' ><a href="{% url 'screeners2' %}">Screeners2</a></li>
               <li class='{% activeTag request "^/db/staff/$" %}' ><a href="staff">Staff</a></li>
               <li class="nav-header">Screens</li>
-              <li class='{% activeTag request "^/db/screens_sm/$" %}' ><a href="#">SM</a></li>
+              <li class='{% activeTag request "^/db/screens_sm/$" %}' ><a href="{% url 'screens_sm' %}">SM</a></li>
               <li class='{% activeTag request "^/db/screens_rnai/$" %}' ><a href="#">RNAi</a></li>
               <li class='{% activeTag request "^/db/my_screens/$" %}' ><a href="#">My Screens</a></li>
               <li class='{% activeTag request "^/db/studies/$" %}' ><a href="#">Studies</a></li>
@@ -52,6 +60,7 @@
               <li class='{% activeTag request "^/db/search_screen/$" %}' ><a href="#">Screen ID</a></li>
               <li class='{% activeTag request "^/db/search_cpr/$" %}' ><a href="#">CPR #</a></li>
             </ul>
+            </div>
           </div><!--/.well -->
         </div><!--/span-->
         <div class="span10">

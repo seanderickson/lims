@@ -61,4 +61,26 @@ iccbl.createColModel = function(fields_from_rest) {
 	//console.log('colWidth:' + _colWidth);
 	return colModel;
 };
+
+iccbl.createBackgridColModel = function(fields_from_rest, optionalHeaderCell) {
+	var colModel = [];
+	var i = 0;
+	var _total_count = 0;
+	for (var field in fields_from_rest){
+		if (fields_from_rest.hasOwnProperty(field)) { // filter
+			var prop = fields_from_rest[field];
+			colModel[i] = { 'name':field, 'label':prop['name'], cell: 'string', order: prop['order']};
+			if (optionalHeaderCell){
+				colModel[i]['headerCell'] = optionalHeaderCell;
+			}
+			i++;
+		}
+	}
+	
+	colModel.sort(function(a,b){ return a['order']-b['order'] });
+	//console.log('colModel: ' + JSON.stringify(colModel));
+	//var _colWidth = 1/i * _width;
+	//console.log('colWidth:' + _colWidth);
+	return colModel;
+};
 	

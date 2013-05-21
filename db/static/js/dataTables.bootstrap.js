@@ -33,25 +33,6 @@ $.fn.dataTableExt.oApi.fnPagingInfo = function ( oSettings )
 	};
 };
 
-(function ($) {
-    $.pushOffsetHistory = function (offset) {
-		History.pushState({state:offset,rand:Math.random()}, "?offset="+offset, "?offset="+offset);
-    	
-		// if(!window.dontpush){
-			// console.log('button: ' + parseInt($('a', this).text(),10) + ',' + oSettings._iDisplayStart);
-			// window.updatingHistory = true;
-			// console.log('---------fnDrawCallback history state before xx: ' + JSON.stringify(History.getState().data) + 
-				// ',' + oSettings._iDisplayStart );
-			// History.pushState({state:oSettings._iDisplayStart,rand:Math.random()}, null, "?offset="+oSettings._iDisplayStart);
-			// console.log('pushed: ' + JSON.stringify(History.getState().data));
-			// window.updatingHistory = false;
-			// console.log('done pushing');
-		// }else{
-			// console.log('unset window.dontpush');
-			// window.dontpush = false;
-		// }
-	};
-}(jQuery));
 
 /* Bootstrap style pagination control */
 $.extend( $.fn.dataTableExt.oPagination, {

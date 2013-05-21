@@ -20,15 +20,13 @@
 	var get_data = function() {
 		console.log('get_data called');
 	};
-//window.dontpush = false;
 	
 $.fn.dataTableExt.oApi.fnStandingRedraw = function(oSettings){//, start) {
-	console.log('=====draw');
-    //if(oSettings.oFeatures.bServerSide === false){
+    //if(oSettings.oFeatures.bServerSide === false){  // original example 
         var before = oSettings._iDisplayStart;
  
         oSettings.oApi._fnReDraw(oSettings);
- 
+ 		console.log('iDisplayStart has been reset?:' + oSettings._iDisplayStart);
         // iDisplayStart has been reset to zero - so lets change it back
         oSettings._iDisplayStart = before;
         oSettings.oApi._fnCalculateEnd(oSettings);
@@ -36,15 +34,12 @@ $.fn.dataTableExt.oApi.fnStandingRedraw = function(oSettings){//, start) {
       
     // draw the 'current' page
     oSettings.oApi._fnDraw(oSettings);
-    console.log('====done draw');
-    //window.dontpush = true;
 };
 
 (function(window,undefined){
 
     // Prepare
     var History = window.History; // Note: We are using a capital H instead of a lower h
-    window.updatingHistory = false;
     if ( !History.enabled ) {
          // History.js is disabled for this browser.
          // This is because we can optionally choose to support HTML4 browsers or not.
@@ -57,18 +52,12 @@ $.fn.dataTableExt.oApi.fnStandingRedraw = function(oSettings){//, start) {
         History.log(State.data, State.title, State.url);
         var oTable = $('#example').dataTable();
 		var oSettings = oTable.fnSettings();
-
-		// Show an example parameter from the settings
-		
-		//if (oSettings._iDisplayStart !== State.data['state'] && oSettings._iDisplayStart !== 0 ){
 		oSettings._iDisplayStart = parseInt(State.data['state']);
-//		if (!window.updatingHistory){
-			console.log( '++++ onstatechange: ' + JSON.stringify(History.getState().data) + ', ' + JSON.stringify(oSettings._iDisplayStart) );
-			//oTable.fnDraw(oSettings);
-			oTable.fnStandingRedraw(oSettings); //State.data['state']);
-//		}
+		//console.log( '++++ onstatechange: ' + JSON.stringify(History.getState().data) + ', ' + JSON.stringify(oSettings._iDisplayStart) );
 		
-		
+		// TODO: don't know if fnStandingRedraw is still necessary - sde
+		oTable.fnStandingRedraw(oSettings); //State.data['state']);
+		//oTable.fnDraw(false);
     });
 
 })(window);
@@ -89,20 +78,7 @@ $.fn.dataTableExt.oApi.fnStandingRedraw = function(oSettings){//, start) {
 	       	data: "",
 	       	dataType: "json",
 	       	success: function(result) {
-			  	var _colModel = [];
-			  	var i = 0;
-			  	var _total_count = 0;
-				for (var field in result.fields){
-					i++;
-				}
-
-				//var _colWidth = 1/i * _width;
-				//console.log('colWidth:' + _colWidth);
-				i = 0;
-				for (var field in result.fields){
-					_colModel[i++] = { 'sTitle':field, 'bSortable':true }
-				}
-
+	       		var _colModel = iccbl.createColModel(result.fields);
 				
 				$('#example').dataTable({
 					"bProcessing": true,
@@ -117,42 +93,30 @@ $.fn.dataTableExt.oApi.fnStandingRedraw = function(oSettings){//, start) {
 						"sLengthMenu": "_MENU_ records per page"
 					},					
 					"fnDrawCallback":function (oSettings) {
-						
+						console.log("[fnDrawCallback] bSorted: " + oSettings.bSorted);
+						if (oSettings.bSorted){
+							// NOTE: this is how a sort click can be 'caught'
+							// see: http://datatables.net/forums/discussion/2976/sort-callback/p1
+							// 
+							console.log('aaSorting: ' + JSON.stringify(oSettings.aaSorting));
+						}
+						// This gets called after the fnDraw function completes
 						// do we need to make sure the history is initialized? I guess we don't - sde
 						// console.log('H:'+ JSON.stringify(History.getState().data['state']));
 						// if(typeof History.getState().data['state'] === 'undefined' ){
 							// $.pushOffsetHistory(oSettings._iDisplayStart);
-						// }
-						
-						
-						
-						
-						
-						
-						// location.hash="#offset="+iDisplayStart;
-						//console.log('hash: ' + location.hash);
-// 						
-						// if(!window.dontpush){
-						// window.updatingHistory = true;
-						// console.log('---------fnDrawCallback history state before xx: ' + JSON.stringify(History.getState().data) + 
-							// ',' + oSettings._iDisplayStart );
-						// History.pushState({state:oSettings._iDisplayStart,rand:Math.random()}, null, "?offset="+oSettings._iDisplayStart);
-						// console.log('pushed: ' + JSON.stringify(History.getState().data));
-						// window.updatingHistory = false;
-						// console.log('done pushing');
-						// }else{
-							// window.dontpush = false;
 						// }
 			        },
 					// see http://datatables.net/usage/callbacks#fnServerData
 					// This parameter allows you to override the default function which obtains the data from the server.
 					// see also http://datatables.net/usage/server-side
 					"fnServerData": function ( sSource, aoData, fnCallback, oSettings ) {
-						//console.log('aoData: ' + JSON.stringify(aoData));
-						console.log('get server data');
+
+						console.log('fnServerData: get server data');
 						var iDisplayStart = 0;
 						var iDisplayLength = 0;
 						var sEcho = 0;
+						
 						var sortCols = [];
 						var sortDirs = [];
 						var sortColPattern = /iSortCol_(\d+)/
@@ -169,13 +133,12 @@ $.fn.dataTableExt.oApi.fnStandingRedraw = function(oSettings){//, start) {
 							}
 							var sortMatch = sortColPattern.exec(aoData[k]['name']);
 							if (sortMatch){
-								sortCols.push(_colModel[aoData[k]['value']]['sTitle']);
+								sortCols.push(_colModel[aoData[k]['value']]['field']);
 							}
 							var dirMatch = sortDirPattern.exec(aoData[k]['name']);
 							if (dirMatch){
 								sortDirs.push(aoData[k]['value']);
 							}
-							
 						}
 						
 						// Since we're using the history plugin, and reflecting current the page on the querystring, 
@@ -188,7 +151,6 @@ $.fn.dataTableExt.oApi.fnStandingRedraw = function(oSettings){//, start) {
         					oSettings.oApi._fnCalculateEnd(oSettings);
 						}
 						
-
 						//console.log('Sortd: ' + JSON.stringify(sortDirs));
 						for(var i=0;i<sortCols.length;i++){
 							if(sortDirs[i] === 'desc'){
@@ -202,15 +164,10 @@ $.fn.dataTableExt.oApi.fnStandingRedraw = function(oSettings){//, start) {
 							'sEcho': sEcho,
 							
 						}
-						
 
 						if (sortCols.length>0){
 							newData['order_by'] = sortCols;
 						}
-						// if (iSortCol_0 !== ''){
-							// newData['order_by'] = sSortDir_0 + _colModel[iSortCol_0]['sTitle'];
-						// }
-
 						
 						$.ajax( {
 							type: "GET",
@@ -226,28 +183,26 @@ $.fn.dataTableExt.oApi.fnStandingRedraw = function(oSettings){//, start) {
 							        "aaData": aaData,
 							        "sEcho": result.meta.sEcho
 							    };
-//								console.log('output: ' + JSON.stringify(output));
 								var j = 0;
-//								console.log('objects: ' + JSON.stringify(result.objects));
 								for( var j=0; j<result.objects.length; j++){
 									var obj = result.objects[j];
 									var row = [];
 									var i = 0;
 									for (var x=0; x<_colModel.length;x++)
 									{
-										var name = _colModel[x]['sTitle'];
-										//console.log('name: '+ name + ', ' + obj[name]);
+										var name = _colModel[x]['field'];
 										row[i++] = obj[name]; // todo: redo this and get the cols from tastypie resource
 									}
-									//for (var field in obj){ row[i++] = obj[field]; }
-									
 									aaData[j] = row;
 								}
-								//console.log('output: ' + JSON.stringify(output));
 								fnCallback(output);
 							}
-				      } );
-				   } // end Datatable definition
+				      } );// end Datatable definition
+				      $('#example').dataTable().bind('sort', function () {
+							console.log('DataTables has done a sort....');
+						} );
+
+				   } // end success outer ajax call
 				});
 			},
 			error: function(x, e) {
@@ -257,10 +212,10 @@ $.fn.dataTableExt.oApi.fnStandingRedraw = function(oSettings){//, start) {
 	});
 
 </script>
-
+<div class="container-fluid" style="margin-left: 0px; background-color: #c5d2db;">
 	<table cellpadding="0" cellspacing="0" border="0" class="table table-striped table-bordered" id="example">
 	<thead>
 	</thead>
 	</table>
-
+</div>
 {% endblock %}

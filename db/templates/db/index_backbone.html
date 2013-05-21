@@ -12,7 +12,7 @@
 <script type='text/javascript' src='{{ STATIC_URL }}js/backgrid.js'></script>
 <script type='text/javascript' src='{{ STATIC_URL }}js/backgrid-paginator.js'></script>
 
-<!--TODO: lunr is a dependency of backgrid-filter.js -->
+<!--TODO: lunr is a dependency of backgrid-filter.js but shouldn't be - its for client side filtering -->
 <script type='text/javascript' src='{{ STATIC_URL }}js/lunr.js'></script>
 <script type='text/javascript' src='{{ STATIC_URL }}js/backgrid-filter.js'></script>
 <script type='text/javascript' src='{{ STATIC_URL }}js/spin.min.js'></script>
@@ -54,22 +54,22 @@
 <script type="text/template" id="rows-per-page-template">
     <form class="form-horizontal">
         <div class="control-group">
-    <label class="control-label" for="rowsperpage_selector">Rows per page:</label>
-    <div class="controls">
-    <select  class="input-mini" id="rowsperpage_selector">
-        <% options.each(function(option) { %>
-            <option value="<%= option %>"><%= option %></option>
-        <% }); %>
-    </select>
-    </div>
-    </div>
+            <label class="control-label" for="rowsperpage_selector">Rows per page:</label>
+            <div class="controls">
+                <select  class="input-mini" id="rowsperpage_selector">
+                    <% options.each(function(option) { %>
+                        <option value="<%= option %>"><%= option %></option>
+                    <% }); %>
+                </select>
+            </div>
+        </div>
     </form>
 </script>
 <script type="text/javascript">
 
 $(document).ready(function(){
-	var _url_schema = '/db/api/v1/screensaveruser/schema/'; // TODO: how to use django url tag here
-	var _url = '/db/api/v1/screensaveruser/?format=json'; // TODO: how to use django url tag here
+    var _url_schema = "{{api_url_schema}}";
+    var _url = "{{api_url}}";
 
 	window.App = {
 	    Models: {},
@@ -202,9 +202,14 @@ $(document).ready(function(){
         routes: {
             '': 'index',
             'page/:page': 'toPage',
-            '/rpp/:rpp(page/:page)': 'toRowsPerPage',
+            'rpp/:rpp(/page/:page)': 'toRowsPerPage',
             'order_by/:orderBy(/rpp/:rpp)(/page/:page)': 'toOrderedToPage',
-            'search/:searchBy(/order_by/:orderBy)(/rpp/:rpp)(/page/:page)': 'toSearchOrderedToPage'
+            'search/:searchBy(/order_by/:orderBy)(/rpp/:rpp)(/page/:page)': 'toSearchOrderedToPage',
+            '*unknownAction': 'unknownAction',
+        },
+
+        unknownAction: function(unknownAction){
+            alert('Unknown action entered: ' + unknownAction);
         },
 
         index: function(){
@@ -219,7 +224,7 @@ $(document).ready(function(){
         },
         toRowsPerPage: function(rpp,page){
             console.log("toRowsPerPage route: " + rpp + ", page: " + page);
-            this.toSearchOrderedToPage(null, orderBy, rpp, page);
+            this.toSearchOrderedToPage(null, null, rpp, page);
         },
         toOrderedToPage: function(orderBy,rpp, page){
             console.log("toOrderedToPage route: " + orderBy + ", rpp: " + rpp + ", page: " + page);
@@ -468,6 +473,7 @@ $(document).ready(function(){
     };
 
     window.App.buildGrid = function(fieldDefinitions) {
+        console.log('buildGrid...');
         var columns = iccbl.createBackgridColModel(fieldDefinitions, MyHeaderCell);
         var grid = new Backgrid.Grid({
           columns: columns,
@@ -500,11 +506,13 @@ $(document).ready(function(){
         screensaverUsers.bind('sync', window.App.ajaxComplete, this);
         screensaverUsers.bind('sync', selector.updateSelection, selector);  // TODO: selector.listenTo(screensaverUsers, 'sync'...
 
+        console.log('start history...');
         Backbone.history || (Backbone.history = new Backbone.History());
         Backbone.history.start({
           pushState: false,
           root: '/db/screeners2/'
         });
+        console.log('initialized');
     }
 });
 

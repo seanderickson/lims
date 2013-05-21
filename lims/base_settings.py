@@ -1,6 +1,10 @@
 # Django settings for lims project
 
 import os
+import django.template
+
+# Force the new url syntax 
+django.template.add_to_builtins('django.templatetags.future')
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 

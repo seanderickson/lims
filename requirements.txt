@@ -4,4 +4,4 @@ Django>=1.5
 psycopg2==2.4.6
 # implied wsgiref==0.1.2
 django-tables2==0.13.0
-django-tastypie==0.9.14
+django-tastypie==0.9.15

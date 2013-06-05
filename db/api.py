@@ -1,6 +1,6 @@
 from django.db import connection, DatabaseError
 
-from db.models import ScreensaverUser,Screen
+from db.models import ScreensaverUser,Screen, LabHead, LabAffiliation, ScreeningRoomUser
 from django.conf.urls import url
 
 from tastypie.authorization import Authorization
@@ -9,6 +9,8 @@ from tastypie.resources import ModelResource, Resource
 from tastypie.serializers import Serializer
 from tastypie.authentication import BasicAuthentication, SessionAuthentication, MultiAuthentication
 from tastypie.constants import ALL, ALL_WITH_RELATIONS
+from tastypie import fields, utils
+
 import logging
         
 logger = logging.getLogger(__name__)
@@ -33,7 +35,7 @@ class PostgresSortingResource(ModelResource):
         logger.info(str(('extra_select', extra_select)))
         obj_list = obj_list.extra(extra_select)
 
-        # Note that this doesn't work, something in the framework deletes the extra 
+        # Note that the following doesn't work, something in the framework deletes the extra 
         # order_by clause when apply_sorting, or, if this is run last, it deletes the sorting applied in apply_sorting...
         #        obj_list = obj_list.extra(order_by=['-comments_null'])
 
@@ -51,6 +53,11 @@ class PostgresSortingResource(ModelResource):
 
 
 class ScreensaverUserResource(PostgresSortingResource):
+    screens = fields.ToManyField('db.api.ScreenResource', attribute='screens', related_name='lab_head', blank=True, null=True)
+
+    version = fields.IntegerField(attribute='version', null=True)
+    date_created = fields.DateTimeField(readonly=True, help_text='When the person was created', null=True)
+        
     class Meta:
         queryset = ScreensaverUser.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
@@ -62,7 +69,7 @@ class ScreensaverUserResource(PostgresSortingResource):
         
     def dehydrate(self, bundle):
         return bundle
-
+    
     def build_schema(self):
         schema = super(ScreensaverUserResource,self).build_schema()
         
@@ -141,28 +148,6 @@ class ScreensaverUserResource(PostgresSortingResource):
 #        
 #        return obj_list
     
-    
-#    def dehydrate(self, bundle):
-#        _filter = lambda field_information: not bundle.obj.is_restricted or field_information.is_unrestricted # or is_authorized
-#        bundle.data = get_detail_bundle(bundle.obj, ['smallmolecule',''], _filter=_filter)
-#        return bundle
-#
-#    def build_schema(self):
-#        schema = super(SmallMoleculeResource,self).build_schema()
-#        schema['fields'] = get_detail_schema(SmallMolecule(),['smallmolecule'])
-#        return schema 
-#    
-#    def override_urls(self):
-#        """ Note, will be deprecated in >0.9.12; delegate to new method, prepend_urls
-#        """
-#        return self.prepend_urls();
-#    
-#    def prepend_urls(self):
-#
-#        return [
-#            url(r"^(?P<resource_name>%s)/(?P<facility_id>\d+)\-(?P<salt_id>\d+)/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-#        ]
-
     def alter_list_data_to_serialize(self, request, data):
         """
         A hook to alter list data just before it gets serialized & sent to the user.
@@ -179,20 +164,61 @@ class ScreensaverUserResource(PostgresSortingResource):
         if sEcho:
             data['meta']['sEcho'] = int(sEcho)
         return data
+
+class ScreeningRoomUserResource(PostgresSortingResource):
+    screensaver_user = fields.ToOneField('db.api.ScreensaverUserResource', attribute='screensaver_user', full=True, full_detail=True, full_list=False)
+    class Meta:
+        queryset = ScreeningRoomUser.objects.all()
+        authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
     
+class LabAffiliationResource(PostgresSortingResource):   
+    class Meta:
+        queryset = LabAffiliation.objects.all()
+        authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
+    
+from django.forms.models import model_to_dict
+
+class LabHeadResource(PostgresSortingResource):
+    
+    lab_affiliation = fields.ToOneField('db.api.LabAffiliationResource', attribute='lab_affiliation',  full=True)
+    
+    # rather than walk the inheritance hierarchy, will flatten this hierarchy in the dehydrate method
+    #    screening_room_user = fields.ToOneField('db.api.ScreeningRoomUserResource', attribute='screensaver_user',  full=True)
+    
+    id = fields.IntegerField(attribute='screensaver_user_id')
+    
+    class Meta:
+        queryset = LabHead.objects.all()
+        authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
+    
+    def dehydrate(self, bundle):
+        # flatten the inheritance hierarchy, rather than show nested "lab_head->screening_room_user->screensaver_user"
+        bundle.data.update(model_to_dict(bundle.obj.screensaver_user))
+        bundle.data.update(model_to_dict(bundle.obj.screensaver_user.screensaver_user))
+        
+        return bundle        
     
 
 class ScreenResource(PostgresSortingResource):
+    lab_head_full = fields.ToOneField('db.api.LabHeadResource', attribute = 'lab_head',  full=True) #, full_list=False) #, blank=True, null=True)
+    lab_head_id = fields.IntegerField(attribute='lab_head_id')
+    
     class Meta:
         queryset = Screen.objects.all().filter(screen_type='Small Molecule')
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
         
         # TODO: drive this from data
-        ordering = ['first_name', 'last_name', 'comments', 'date_loaded', 'date_publicly_available']
+        ordering = ['facility_id', 'title', 'lead_screener.screensaver_user.last_name', 'date_loaded', 'date_publicly_available']
         # TODO: drive this from data
         filtering = {'first_name':ALL, 'last_name':ALL, 'comments':ALL }
         
     def dehydrate(self, bundle):
+        sru = bundle.obj.lead_screener.screensaver_user
+        bundle.data['lead_screener'] =  sru.first_name + ' ' + sru.last_name
+        lh = bundle.obj.lab_head.screensaver_user.screensaver_user
+        bundle.data['lab_head'] =  lh.first_name + ' ' + lh.last_name
+        
+#        logger.info(str(('bundle: ',bundle)))
         return bundle
 
     def build_schema(self):
@@ -201,6 +227,7 @@ class ScreenResource(PostgresSortingResource):
         # TODO: drive this from data
         field_meta = {
             'screen_id': { 'name':'ID', 'detail_view': False, 'list_view': False, 'order': 100 },
+            'facility_id': { 'name':'ID', 'detail_view': True, 'list_view': True, 'order': -1 },
             'screen_type': { 'name':'Screen Type', 'detail_view': True, 'list_view': True, 'order': 1 },
             'project_phase': { 'name':'Project Phase', 'detail_view': True, 'list_view': True, 'order': 2 },
             'project_id': { 'name':'Project ID', 'detail_view': True, 'list_view': True, 'order': 3 },
@@ -209,16 +236,52 @@ class ScreenResource(PostgresSortingResource):
             'lead_screener': { 'name':'Lead Screener', 'detail_view': True, 'list_view': True, 'order': 6 },
             'date_recorded': { 'name':'Date Recorded', 'detail_view': True, 'list_view': True, 'order': 7 },
             'status': { 'name':'Status', 'detail_view': True, 'list_view': True, 'order': 8 },
-            'status_date': { 'name':'First', 'detail_view': True, 'list_view': True, 'order': 9 },
+            'status_date': { 'name':'Status', 'detail_view': True, 'list_view': True, 'order': 9 },
             'screen_result': { 'name':'Screen Result', 'detail_view': True, 'list_view': True, 'order': 10 },
-            'total_plated_lab_cherry_picks': { 'name':'First', 'detail_view': True, 'list_view': True, 'order': 1 },
+            'total_plated_lab_cherry_picks': { 'name':'Total Cherry Picks', 'detail_view': True, 'list_view': True, 'order': 11 },
         }
 
         for field in field_meta.keys():
             if field not in schema['fields']:
-                schema[field] = field_meta[field]
+                schema['fields'][field] = field_meta[field]
                 
         for field in schema['fields'].keys():
             if field in field_meta:
                 schema['fields'][field].update(field_meta[field])
         return schema    
+
+    def apply_sorting(self, obj_list, options):
+        options = options.copy()
+        logger.info(str(('options', options)))
+        
+        extra_order_by = []
+        order_by = options.getlist('order_by',None)
+        if order_by:
+            logger.info(str(('order_by',order_by)))
+            for field in order_by:
+                temp = field
+                dir=''
+                if field.startswith('-'):
+                    dir = '-'
+                    field = field[1:]
+                if field == 'lead_screener':
+#                    options['order_by']= dir + 'lead_screener.screensaver_user.last_name';
+                    logger.info(str(('remove ', temp)))
+                    order_by.remove(temp)
+                    extra_order_by.append(dir+'lead_screener__screensaver_user__last_name')
+                    extra_order_by.append(dir+'lead_screener__screensaver_user__first_name')
+                if field == 'lab_head':
+                    logger.info(str(('remove ', temp)))
+                    order_by.remove(temp)
+                    extra_order_by.append(dir+'lab_head__screensaver_user__screensaver_user__last_name')
+                    extra_order_by.append(dir+'lab_head__screensaver_user__screensaver_user__first_name')
+            if len(order_by) > 0:
+                options.setlist('order_by', order_by)
+            else:
+                del options['order_by'] 
+        logger.info(str(('options',options)))
+        obj_list = super(ScreenResource, self).apply_sorting(obj_list, options)
+        
+        logger.info(str(('extra_order_by', extra_order_by)))
+        obj_list = obj_list.order_by(*extra_order_by)
+        return obj_list

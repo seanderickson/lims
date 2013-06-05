@@ -17,111 +17,111 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-class PostgresSqlCompiler(): # wraps SQLCompiler
-    """
-    failed attempt to wrap SQLCompiler!  it fails because the "iterator" method returns a copy of the wrapped version,
-    or, more generally, because it needs to be extended not wrapped.
-    """
-    
-    def __init__(self, sqlcompiler):
-        logger.info(str(('----init custom compiler', sqlcompiler)))
-        self.sqlcompiler = sqlcompiler
-        
-    def pre_sql_setup(self):
-        logger.info(str(('---- wrapped method')))
-        return self.sqlcompiler.pre_sql_setup()
-    
-    def quote_name_unless_alias(self, name):
-        logger.info(str(('---- wrapped method')))
-        return self.sqlcompiler.quote_name_unless_alias(name)
-    
-    def as_sql(self, with_limits=True, with_col_aliases=False):
-        logger.info('---- as_sql')
-        return self.sqlcompiler.as_sql(with_limits=with_limits, with_col_aliases=with_col_aliases)
-        
-    def as_nested_sql(self):
-        logger.info(str(('---- wrapped method')))
-        return self.sqlcompiler.as_nested_sql()
-    
-    def get_columns(self, with_aliases=False):
-        logger.info(str(('---- wrapped method')))
-        return self.sqlcompiler.get_columns(with_aliases=with_aliases)
-    
-    def get_default_columns(self, with_aliases=False, col_aliases=None,
-            start_alias=None, opts=None, as_pairs=False, local_only=False):
-        logger.info(str(('---- wrapped method')))
-        return self.sqlcompiler.get_default_columns(with_aliases=with_aliases, col_aliases=col_aliases, 
-                                                    start_alias=start_alias, as_pairs=as_pairs, local_only=local_only)
-        
-    def get_distinct(self):
-        logger.info(str(('---- wrapped method')))
-        return self.sqlcompiler.get_distinct()
-
-    def get_ordering(self):
-        logger.info(str(('---- wrapped method')))
-        result, group_by = self.sqlcompiler.get_ordering()
-        logger.info(str(('-----get_ordering', result, group_by)))
-    
-    def find_ordering_name(self, name, opts, alias=None, default_order='ASC',
-                already_seen=None):
-        logger.info(str(('---- wrapped method')))
-        return self.sqlcompiler.find_ordering_name(name, opts, alias=alias, default_order=default_order, 
-                                                   already_seen=already_seen)
-
-    def _setup_joins(self, pieces, opts, alias):
-        logger.info(str(('---- wrapped method')))
-        return self.sqlcompiler.setup_joins(pieces, opts, alias)
-
-    def _final_join_removal(self, col, alias):
-        logger.info(str(('---- wrapped method')))
-        return self.sqlcompiler._final_join_removal(col, alias)
-    
-    def get_from_clause(self):
-        logger.info(str(('---- wrapped method')))
-        return self.sqlcompiler.get_from_clause()
-    
-    def get_grouping(self, ordering_group_by):
-        logger.info(str(('---- wrapped method')))
-        return self.sqlcompiler.get_grouping(ordering_group_by)
-    
-    def fill_related_selections(self, **kwargs):
-        logger.info(str(('---- wrapped method')))
-        return self.sqlcompiler.fill_related_selections(**kwargs)
-    
-    def deferred_to_columns(self):
-        logger.info(str(('---- wrapped method')))
-        return self.sqlcompiler.deferred_to_columns()
-    
-    def results_iter(self):
-        logger.info(str(('---- wrapped method')))
-        return self.sqlcompiler.results_iter()
-    
-    def execute_sql(self, **kwargs):
-        logger.info(str(('---- wrapped method')))
-        return self.sqlcompiler.execute_sql(**kwargs)
-
-
-class PostgresQuerySql(Query):
-    
-    def sql_with_params(self):
-        sql = super(PostgresQuerySql,self).sql_with_params()
-        logger.info('--------------sql: ' + sql)
-        return sql        
-    
-    def prepend_ordering(self, ordering):
-        logger.info(str(('------------prepend_ordering', ordering, self.order_by)))
-        self.order_by.insert(0,ordering)
-        
-    def get_compiler(self, using=None, connection=None):
-        compiler = super(PostgresQuerySql,self).get_compiler(using=using, connection=connection)
-        logger.info('------ get_compiler')
-        return PostgresSqlCompiler(compiler);
-        
-class PostgresQueryset(QuerySet):
-    def __init__(self, model=None, query=None, using=None):
-        _query = query or PostgresQuerySql(model)
-        super(PostgresQueryset,self).__init__(model=model, query=_query, using=using)
-        
+#class PostgresSqlCompiler(): # wraps SQLCompiler
+#    """
+#    failed attempt to wrap SQLCompiler!  it fails because the "iterator" method returns a copy of the wrapped version,
+#    or, more generally, because it needs to be extended not wrapped.
+#    """
+#    
+#    def __init__(self, sqlcompiler):
+#        logger.info(str(('----init custom compiler', sqlcompiler)))
+#        self.sqlcompiler = sqlcompiler
+#        
+#    def pre_sql_setup(self):
+#        logger.info(str(('---- wrapped method')))
+#        return self.sqlcompiler.pre_sql_setup()
+#    
+#    def quote_name_unless_alias(self, name):
+#        logger.info(str(('---- wrapped method')))
+#        return self.sqlcompiler.quote_name_unless_alias(name)
+#    
+#    def as_sql(self, with_limits=True, with_col_aliases=False):
+#        logger.info('---- as_sql')
+#        return self.sqlcompiler.as_sql(with_limits=with_limits, with_col_aliases=with_col_aliases)
+#        
+#    def as_nested_sql(self):
+#        logger.info(str(('---- wrapped method')))
+#        return self.sqlcompiler.as_nested_sql()
+#    
+#    def get_columns(self, with_aliases=False):
+#        logger.info(str(('---- wrapped method')))
+#        return self.sqlcompiler.get_columns(with_aliases=with_aliases)
+#    
+#    def get_default_columns(self, with_aliases=False, col_aliases=None,
+#            start_alias=None, opts=None, as_pairs=False, local_only=False):
+#        logger.info(str(('---- wrapped method')))
+#        return self.sqlcompiler.get_default_columns(with_aliases=with_aliases, col_aliases=col_aliases, 
+#                                                    start_alias=start_alias, as_pairs=as_pairs, local_only=local_only)
+#        
+#    def get_distinct(self):
+#        logger.info(str(('---- wrapped method')))
+#        return self.sqlcompiler.get_distinct()
+#
+#    def get_ordering(self):
+#        logger.info(str(('---- wrapped method')))
+#        result, group_by = self.sqlcompiler.get_ordering()
+#        logger.info(str(('-----get_ordering', result, group_by)))
+#    
+#    def find_ordering_name(self, name, opts, alias=None, default_order='ASC',
+#                already_seen=None):
+#        logger.info(str(('---- wrapped method')))
+#        return self.sqlcompiler.find_ordering_name(name, opts, alias=alias, default_order=default_order, 
+#                                                   already_seen=already_seen)
+#
+#    def _setup_joins(self, pieces, opts, alias):
+#        logger.info(str(('---- wrapped method')))
+#        return self.sqlcompiler.setup_joins(pieces, opts, alias)
+#
+#    def _final_join_removal(self, col, alias):
+#        logger.info(str(('---- wrapped method')))
+#        return self.sqlcompiler._final_join_removal(col, alias)
+#    
+#    def get_from_clause(self):
+#        logger.info(str(('---- wrapped method')))
+#        return self.sqlcompiler.get_from_clause()
+#    
+#    def get_grouping(self, ordering_group_by):
+#        logger.info(str(('---- wrapped method')))
+#        return self.sqlcompiler.get_grouping(ordering_group_by)
+#    
+#    def fill_related_selections(self, **kwargs):
+#        logger.info(str(('---- wrapped method')))
+#        return self.sqlcompiler.fill_related_selections(**kwargs)
+#    
+#    def deferred_to_columns(self):
+#        logger.info(str(('---- wrapped method')))
+#        return self.sqlcompiler.deferred_to_columns()
+#    
+#    def results_iter(self):
+#        logger.info(str(('---- wrapped method')))
+#        return self.sqlcompiler.results_iter()
+#    
+#    def execute_sql(self, **kwargs):
+#        logger.info(str(('---- wrapped method')))
+#        return self.sqlcompiler.execute_sql(**kwargs)
+#
+#
+#class PostgresQuerySql(Query):
+#    
+#    def sql_with_params(self):
+#        sql = super(PostgresQuerySql,self).sql_with_params()
+#        logger.info('--------------sql: ' + sql)
+#        return sql        
+#    
+#    def prepend_ordering(self, ordering):
+#        logger.info(str(('------------prepend_ordering', ordering, self.order_by)))
+#        self.order_by.insert(0,ordering)
+#        
+#    def get_compiler(self, using=None, connection=None):
+#        compiler = super(PostgresQuerySql,self).get_compiler(using=using, connection=connection)
+#        logger.info('------ get_compiler')
+#        return PostgresSqlCompiler(compiler);
+#        
+#class PostgresQueryset(QuerySet):
+#    def __init__(self, model=None, query=None, using=None):
+#        _query = query or PostgresQuerySql(model)
+#        super(PostgresQueryset,self).__init__(model=model, query=_query, using=using)
+#        
 #    def __init__(self,*args,**kwargs):
 #        logger.info(str(('args',args, kwargs)))
 #        if 'model' in kwargs:
@@ -155,14 +155,14 @@ class PostgresQueryset(QuerySet):
 #        logger.info('sql: ' + sql)
 #        return sql
     
-class PostgresManager(models.Manager):
-    def get_query_set(self):
-        return PostgresQueryset(self.model)
-
-class MetaModel(models.Model):
-    def __iter__(self):
-        for i in self._meta.get_all_field_names():
-            yield (i, getattr(self, i))
+#class PostgresManager(models.Manager):
+#    def get_query_set(self):
+#        return PostgresQueryset(self.model)
+#
+#class MetaModel(models.Model):
+#    def __iter__(self):
+#        for i in self._meta.get_all_field_names():
+#            yield (i, getattr(self, i))
 
 class LegacySmallMoleculeCasNumber(models.Model):
     smiles = models.CharField(max_length=2047)
@@ -283,55 +283,55 @@ class AttachedFileUpdateActivity(models.Model):
     class Meta:
         db_table = 'attached_file_update_activity'
 
-class AuthGroup(models.Model):
-    id = models.IntegerField(primary_key=True)
-    name = models.CharField(max_length=80, unique=True)
-    class Meta:
-        db_table = 'auth_group'
-
-class AuthGroupPermissions(models.Model):
-    id = models.IntegerField(primary_key=True)
-    group = models.ForeignKey(AuthGroup)
-    permission = models.ForeignKey('AuthPermission')
-    class Meta:
-        db_table = 'auth_group_permissions'
-
-class AuthPermission(models.Model):
-    id = models.IntegerField(primary_key=True)
-    name = models.CharField(max_length=50)
-    content_type = models.ForeignKey('DjangoContentType')
-    codename = models.CharField(max_length=100)
-    class Meta:
-        db_table = 'auth_permission'
-
-class AuthUser(models.Model):
-    id = models.IntegerField(primary_key=True)
-    password = models.CharField(max_length=128)
-    last_login = models.DateTimeField()
-    is_superuser = models.BooleanField()
-    username = models.CharField(max_length=30, unique=True)
-    first_name = models.CharField(max_length=30)
-    last_name = models.CharField(max_length=30)
-    email = models.CharField(max_length=75)
-    is_staff = models.BooleanField()
-    is_active = models.BooleanField()
-    date_joined = models.DateTimeField()
-    class Meta:
-        db_table = 'auth_user'
-
-class AuthUserGroups(models.Model):
-    id = models.IntegerField(primary_key=True)
-    user = models.ForeignKey(AuthUser)
-    group = models.ForeignKey(AuthGroup)
-    class Meta:
-        db_table = 'auth_user_groups'
-
-class AuthUserUserPermissions(models.Model):
-    id = models.IntegerField(primary_key=True)
-    user = models.ForeignKey(AuthUser)
-    permission = models.ForeignKey(AuthPermission)
-    class Meta:
-        db_table = 'auth_user_user_permissions'
+#class AuthGroup(models.Model):
+#    id = models.IntegerField(primary_key=True)
+#    name = models.CharField(max_length=80, unique=True)
+#    class Meta:
+#        db_table = 'auth_group'
+#
+#class AuthGroupPermissions(models.Model):
+#    id = models.IntegerField(primary_key=True)
+#    group = models.ForeignKey(AuthGroup)
+#    permission = models.ForeignKey('AuthPermission')
+#    class Meta:
+#        db_table = 'auth_group_permissions'
+#
+#class AuthPermission(models.Model):
+#    id = models.IntegerField(primary_key=True)
+#    name = models.CharField(max_length=50)
+#    content_type = models.ForeignKey('DjangoContentType')
+#    codename = models.CharField(max_length=100)
+#    class Meta:
+#        db_table = 'auth_permission'
+#
+#class AuthUser(models.Model):
+#    id = models.IntegerField(primary_key=True)
+#    password = models.CharField(max_length=128)
+#    last_login = models.DateTimeField()
+#    is_superuser = models.BooleanField()
+#    username = models.CharField(max_length=30, unique=True)
+#    first_name = models.CharField(max_length=30)
+#    last_name = models.CharField(max_length=30)
+#    email = models.CharField(max_length=75)
+#    is_staff = models.BooleanField()
+#    is_active = models.BooleanField()
+#    date_joined = models.DateTimeField()
+#    class Meta:
+#        db_table = 'auth_user'
+#
+#class AuthUserGroups(models.Model):
+#    id = models.IntegerField(primary_key=True)
+#    user = models.ForeignKey(AuthUser)
+#    group = models.ForeignKey(AuthGroup)
+#    class Meta:
+#        db_table = 'auth_user_groups'
+#
+#class AuthUserUserPermissions(models.Model):
+#    id = models.IntegerField(primary_key=True)
+#    user = models.ForeignKey(AuthUser)
+#    permission = models.ForeignKey(AuthPermission)
+#    class Meta:
+#        db_table = 'auth_user_user_permissions'
 
 class Cell(models.Model):
     cell_id = models.IntegerField(primary_key=True)
@@ -573,39 +573,39 @@ class DataColumnDerivedFromLink(models.Model):
     class Meta:
         db_table = 'data_column_derived_from_link'
 
-class DjangoAdminLog(models.Model):
-    id = models.IntegerField(primary_key=True)
-    action_time = models.DateTimeField()
-    user = models.ForeignKey(AuthUser)
-    content_type = models.ForeignKey('DjangoContentType', null=True, blank=True)
-    object_id = models.TextField(blank=True)
-    object_repr = models.CharField(max_length=200)
-    action_flag = models.SmallIntegerField()
-    change_message = models.TextField()
-    class Meta:
-        db_table = 'django_admin_log'
-
-class DjangoContentType(models.Model):
-    id = models.IntegerField(primary_key=True)
-    name = models.CharField(max_length=100)
-    app_label = models.CharField(max_length=100)
-    model = models.CharField(max_length=100)
-    class Meta:
-        db_table = 'django_content_type'
-
-class DjangoSession(models.Model):
-    session_key = models.CharField(max_length=40, primary_key=True)
-    session_data = models.TextField()
-    expire_date = models.DateTimeField()
-    class Meta:
-        db_table = 'django_session'
-
-class DjangoSite(models.Model):
-    id = models.IntegerField(primary_key=True)
-    domain = models.CharField(max_length=100)
-    name = models.CharField(max_length=50)
-    class Meta:
-        db_table = 'django_site'
+#class DjangoAdminLog(models.Model):
+#    id = models.IntegerField(primary_key=True)
+#    action_time = models.DateTimeField()
+#    user = models.ForeignKey(AuthUser)
+#    content_type = models.ForeignKey('DjangoContentType', null=True, blank=True)
+#    object_id = models.TextField(blank=True)
+#    object_repr = models.CharField(max_length=200)
+#    action_flag = models.SmallIntegerField()
+#    change_message = models.TextField()
+#    class Meta:
+#        db_table = 'django_admin_log'
+#
+#class DjangoContentType(models.Model):
+#    id = models.IntegerField(primary_key=True)
+#    name = models.CharField(max_length=100)
+#    app_label = models.CharField(max_length=100)
+#    model = models.CharField(max_length=100)
+#    class Meta:
+#        db_table = 'django_content_type'
+#
+#class DjangoSession(models.Model):
+#    session_key = models.CharField(max_length=40, primary_key=True)
+#    session_data = models.TextField()
+#    expire_date = models.DateTimeField()
+#    class Meta:
+#        db_table = 'django_session'
+#
+#class DjangoSite(models.Model):
+#    id = models.IntegerField(primary_key=True)
+#    domain = models.CharField(max_length=100)
+#    name = models.CharField(max_length=50)
+#    class Meta:
+#        db_table = 'django_site'
 
 class EquipmentUsed(models.Model):
     equipment_used_id = models.IntegerField(primary_key=True)
@@ -691,11 +691,12 @@ class LabCherryPick(models.Model):
     class Meta:
         db_table = 'lab_cherry_pick'
 
-class LabHead(models.Model):
-    screensaver_user = models.ForeignKey('ScreeningRoomUser', primary_key=True)
-    lab_affiliation = models.ForeignKey(LabAffiliation, null=True, blank=True)
-    class Meta:
-        db_table = 'lab_head'
+#class LabHead(models.Model):
+#    screensaver_user = models.ForeignKey('ScreeningRoomUser', primary_key=True)
+#    lab_affiliation = models.ForeignKey(LabAffiliation, null=True, blank=True)
+#    class Meta:
+#        db_table = 'lab_head'
+
 
 class Library(models.Model):
     library_id = models.IntegerField(primary_key=True)
@@ -881,7 +882,7 @@ class Screen(models.Model):
     abase_protocol_id = models.TextField(blank=True)
     publishable_protocol = models.TextField(blank=True)
     lead_screener = models.ForeignKey('ScreeningRoomUser', null=True, blank=True)
-    lab_head = models.ForeignKey(LabHead, null=True, blank=True)
+    lab_head = models.ForeignKey('LabHead', null=True, blank=True)
     publishable_protocol_entered_by = models.TextField(blank=True)
     publishable_protocol_comments = models.TextField(blank=True)
     study_type = models.TextField()
@@ -1023,13 +1024,22 @@ class Screening(models.Model):
 class ScreeningRoomUser(models.Model):
     screensaver_user = models.ForeignKey('ScreensaverUser', primary_key=True)
     user_classification = models.TextField()
-    lab_head = models.ForeignKey(LabHead, null=True, blank=True)
+    lab_head = models.ForeignKey('LabHead', null=True, blank=True)
     coms_crhba_permit_number = models.TextField(blank=True)
     coms_crhba_permit_principal_investigator = models.TextField(blank=True)
     last_notified_smua_checklist_item_event = models.ForeignKey(ChecklistItemEvent, null=True, blank=True, related_name='smua_user')
     last_notified_rnaiua_checklist_item_event = models.ForeignKey(ChecklistItemEvent, null=True, blank=True, related_name='rnai_ua_user')
     class Meta:
         db_table = 'screening_room_user'
+
+class LabHead(models.Model):
+#    screensaver_user = models.ForeignKey('ScreeningRoomUser', primary_key=True)
+    screensaver_user = models.ForeignKey('ScreeningRoomUser', primary_key=True)
+    lab_affiliation = models.ForeignKey(LabAffiliation, null=True, blank=True)
+    
+    
+    class Meta:
+        db_table = 'lab_head'
 
 class ScreeningRoomUserFacilityUsageRole(models.Model):
     screening_room_user = models.ForeignKey(ScreeningRoomUser)
@@ -1038,10 +1048,10 @@ class ScreeningRoomUserFacilityUsageRole(models.Model):
         db_table = 'screening_room_user_facility_usage_role'
 
 class ScreensaverUser(models.Model):
-    objects = PostgresManager()
+#    objects = PostgresManager()
     
     screensaver_user_id = models.IntegerField(primary_key=True)
-    version = models.IntegerField()
+    version = models.IntegerField(blank=True)
     date_created = models.DateTimeField()
     first_name = models.TextField()
     last_name = models.TextField()
@@ -1097,11 +1107,11 @@ class SilencingReagentDuplexWells(models.Model):
     class Meta:
         db_table = 'silencing_reagent_duplex_wells'
 
-class SilencingReagentNonTargettedGenbankAccessionNumber(models.Model):
-    silencing_reagent_id = models.TextField()
-    non_targetted_genbank_accession_number = models.TextField()
-    class Meta:
-        db_table = 'silencing_reagent_non_targetted_genbank_accession_number'
+#class SilencingReagentNonTargettedGenbankAccessionNumber(models.Model):
+#    silencing_reagent_id = models.TextField()
+#    non_targetted_genbank_accession_number = models.TextField()
+#    class Meta:
+#        db_table = 'silencing_reagent_non_targetted_genbank_accession_number'
 
 class SmallMoleculeChembankId(models.Model):
     reagent = models.ForeignKey('SmallMoleculeReagent')

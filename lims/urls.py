@@ -14,4 +14,5 @@ urlpatterns = patterns('',
     url(r'^accounts/logout/$', logout_page, name='logout'),
 
     url(r'^db/', include('db.urls')),
+    url(r'^reports/', include('reports.urls')),
 )

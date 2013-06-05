@@ -16,6 +16,9 @@
 <script type='text/javascript' src='{{ STATIC_URL }}js/lunr.js'></script>
 <script type='text/javascript' src='{{ STATIC_URL }}js/backgrid-filter.js'></script>
 <script type='text/javascript' src='{{ STATIC_URL }}js/spin.min.js'></script>
+
+<script type='text/javascript' src='{{ STATIC_URL }}/js/iccbl-lims.js'></script>
+
 <!--
 <link href="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/css/bootstrap-combined.no-icons.min.css" rel="stylesheet">
 <link href="//netdna.bootstrapcdn.com/font-awesome/3.1.1/css/font-awesome.css" rel="stylesheet">
@@ -94,15 +97,14 @@ $(document).ready(function(){
 	});
 
 
-    var ScreensaverUser = Backbone.Model.extend({});
+    var MyModel = Backbone.Model.extend({});
 
-    var ScreensaverUsers = Backbone.PageableCollection.extend({
+    var MyCollection = Backbone.PageableCollection.extend({
         searchBy: null,
-        model: ScreensaverUser,
+        model: MyModel,
         url: _url,
         state: {
             pageSize: 25,
-//            totalRecords: 2142
         },
         queryParams: {
             // adjust the query params for tastypie
@@ -112,7 +114,6 @@ $(document).ready(function(){
             },
             totalRecords: null, // unset for tastypie
             totalPages: null, // unset for tastypie
-//            currentPage: null, // unset for tastypie
             sortKey: "order_by", // modified for tastypie
             order: null, // unset for tastypie
             order_by: function() { // modified for tastypie: use only "order_by=(-)field_name"
@@ -194,10 +195,25 @@ $(document).ready(function(){
             var obj = Backbone.PageableCollection.prototype.getPage.call(this,page);
             //this.setRoutes();
             return obj;
-        }
-    });
+        },
 
-    var screensaverUsers = new ScreensaverUsers();
+        fetch: function(options) {
+            model = this;
+            if (typeof options !== 'undefined') { // TODO: review; find a better way to _always_ stop the ajax spinner
+                options.error = function(resp){
+                    if (error) error(model, resp, options);
+                    window.App.ajaxComplete();
+                    window.alert(error);
+                };
+            }
+            return Backbone.PageableCollection.prototype.fetch.call(this,options);
+        }
+
+
+    });// end definition of Collection extension
+
+    App._collection = new MyCollection();
+    // TODO: look into the routing package for backbone: https://github.com/jhudson8/backbone-query-parameters
     App.Router = Backbone.Router.extend({
         routes: {
             '': 'index',
@@ -214,12 +230,12 @@ $(document).ready(function(){
 
         index: function(){
             console.log("Index route has been called..");
-            screensaverUsers.fetch();
+            App._collection.fetch();
         },
         toPage: function(page){
             // this is what hooks the URL read to the model action - sde
             console.log("toPage route: " + page);
-            //screensaverUsers.getPage(parseInt(page));
+            //App._collection.getPage(parseInt(page));
             this.toSearchOrderedPage(null, null, null, page);
         },
         toRowsPerPage: function(rpp,page){
@@ -237,15 +253,15 @@ $(document).ready(function(){
             if(typeof page !== 'undefined' && page !== null ){
                 console.log('page: ' + page);
                 // set the state instead, will be caught and used with a refresh
-                //              screensaverUsers.getPage(page);
-                screensaverUsers.state.currentPage = parseInt(page);
+                //              App._collection.getPage(page);
+                App._collection.state.currentPage = parseInt(page);
             }
 
             if(typeof rpp !== 'undefined' && rpp !== null ){
                 console.log('rpp: ' + rpp);
                 // set the state instead, will be caught and used with a refresh
-                //              screensaverUsers.getPage(page);
-                screensaverUsers.state.pageSize = parseInt(rpp);
+                //              App._collection.getPage(page);
+                App._collection.state.pageSize = parseInt(rpp);
                 // TODO: catch when pageSize is too large
             }
 
@@ -257,15 +273,15 @@ $(document).ready(function(){
                     direction = 'descending';
                     orderBy = orderBy.substring(1);
                 }
-                screensaverUsers.state.sortKey = orderBy;
-                screensaverUsers.state.order = order;
+                App._collection.state.sortKey = orderBy;
+                App._collection.state.order = order;
                 // Notify header cells
-                screensaverUsers.trigger("backgrid:sort", orderBy, direction, null, screensaverUsers);
+                App._collection.trigger("backgrid:sort", orderBy, direction, null, App._collection);
             }
 
             var data = {};
             if(typeof searchBy !== 'undefined' && searchBy !== null){
-                screensaverUsers.searchBy = searchBy;
+                App._collection.searchBy = searchBy;
                 // TODO: only can search one term at a time
                 var p = /([^=]+)=([^=]+)/
                 var match = p.exec(searchBy);
@@ -276,15 +292,15 @@ $(document).ready(function(){
                     var searchTerm = match[2];
                     console.log('parsed search: ' + searchColumn + ', ' + searchTerm );
                     // notify search listeners
-                    screensaverUsers.trigger("MyServerSideFilter:search", searchColumn, searchTerm, screensaverUsers);
+                    App._collection.trigger("MyServerSideFilter:search", searchColumn, searchTerm, App._collection);
                  }
             }
 
-            screensaverUsers.fetch({reset: true});
+            App._collection.fetch({reset: true});
 
             // this trigger is for the custom header
             // trigger the sort event to let the backgrid header cell know to change the sort indicator on the column
-//              Backbone.PageableCollection.prototype.trigger(screensaverUsers,"backgrid:sort", orderBy, direction, null, screensaverUsers);
+//              Backbone.PageableCollection.prototype.trigger(App._collection,"backgrid:sort", orderBy, direction, null, App._collection);
         },
     });
 
@@ -315,7 +331,7 @@ $(document).ready(function(){
 
 
             this._serverSideFilter = new MyServerSideFilter({
-              collection: screensaverUsers,
+              collection: App._collection,
               name: this.column.get("name")+"__contains", // the name of the URL query parameter
               placeholder: "Search "+ this.column.get("label"), // HTML5 placeholder for the search box
               columnName: this.column.get("name"),
@@ -329,13 +345,6 @@ $(document).ready(function(){
                 this.remove(); // this is the filter
                 this.clear();
                 this.collection.searchBy = null;
-                //this.collection.setRoutes();
-
-
-                //this.remove();
-                //this.$el.find("input[type=text]").val(null);
-                //this.collection.fetch({reset:true});
-                //this.collection.setRoutes();
             };
 
             // listen for search submission by the user and set the routes
@@ -357,8 +366,6 @@ $(document).ready(function(){
                     this._serverSideFilter.remove();
                 }else{
                     console.log('on MyServerSideFilter:search: ' + searchColumn );
-                    // doesn't work:
-                    //this._serverSideFilter.value = match[2];
                     this.$el.append(this._serverSideFilter.render().el); // create the DOM element
                     this._serverSideFilter.$el.find("input[type=text]").val(searchTerm) // set the search term
 
@@ -438,37 +445,14 @@ $(document).ready(function(){
         },
     });
 
-    var selector = new ItemsPerPageSelector(['25','50','200','1000'], screensaverUsers);
+    var selector = new ItemsPerPageSelector(['25','50','200','1000'], App._collection);
 
-    // // Spinner
-    // var opts = {
-      // lines: 13, // The number of lines to draw
-      // length: 10, // The length of each line
-      // width: 2, // The line thickness
-      // radius: 11, // The radius of the inner circle
-      // corners: 0, // Corner roundness (0..1)
-      // rotate: 50, // The rotation offset
-      // direction: 1, // 1: clockwise, -1: counterclockwise
-      // color: '#000', // #rgb or #rrggbb
-      // speed: 0.6, // Rounds per second
-      // trail: 78, // Afterglow percentage
-      // shadow: false, // Whether to render a shadow
-      // hwaccel: false, // Whether to use hardware acceleration
-      // className: 'spinner', // The CSS class to assign to the spinner
-      // zIndex: 2e9, // The z-index (defaults to 2000000000)
-      // top: 'auto', // Top position relative to parent in px
-      // left: 'auto' // Left position relative to parent in px
-    // };
-    // var target = $('#loading');
-    // var spinner = new Spinner(opts).spin(target);
     window.App.ajaxStart = function(){
         console.log("start spinner...");
-//        spinner.spin(target);
         $('#loading').fadeIn({duration:100});
     };
     window.App.ajaxComplete = function(){
         console.log("stop spinner...");
-//        spinner.stop();
         $('#loading').fadeOut({duration:100});
     };
 
@@ -477,7 +461,7 @@ $(document).ready(function(){
         var columns = iccbl.createBackgridColModel(fieldDefinitions, MyHeaderCell);
         var grid = new Backgrid.Grid({
           columns: columns,
-          collection: screensaverUsers
+          collection: App._collection
         });
         var exampleGrid = $("#example-table");
         // Render the grid and attach the root to your HTML document
@@ -486,7 +470,7 @@ $(document).ready(function(){
         // Initialize the paginator
         var paginator = new Backgrid.Extension.Paginator({
           columns: columns,
-          collection: screensaverUsers
+          collection: App._collection
         });
 
         // Render the paginator
@@ -497,14 +481,15 @@ $(document).ready(function(){
         var allEvent = function(event){
             console.log("event fired: " + event);
         };
-        screensaverUsers.on({
-          "all": allEvent,
+        App._collection.on({
+          "all": allEvent,  // TODO: this is debug code
         });
 
         // TODO: tie these events into the collection override?
-        screensaverUsers.bind('request', window.App.ajaxStart, this);
-        screensaverUsers.bind('sync', window.App.ajaxComplete, this);
-        screensaverUsers.bind('sync', selector.updateSelection, selector);  // TODO: selector.listenTo(screensaverUsers, 'sync'...
+//        App._collection.bind('request', window.App.ajaxStart, this);
+        App._collection.on('request', App.ajaxStart); // NOTE: can use bind or on
+        App._collection.bind('sync', window.App.ajaxComplete, this);
+        App._collection.bind('sync', selector.updateSelection, selector);  // TODO: selector.listenTo(App._collection, 'sync'...
 
         console.log('start history...');
         Backbone.history || (Backbone.history = new Backbone.History());

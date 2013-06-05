@@ -137,6 +137,7 @@ INSTALLED_APPS = (
     'django_tables2', # for UI tabling
     'tastypie', # manual says this is "not necessary, but useful"
     'db',
+    'reports',
 )
 
 # A sample logging configuration. The only tangible logging

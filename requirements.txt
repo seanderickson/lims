@@ -1,7 +1,8 @@
 Django>=1.5
 # implied: argparse==1.2.1
 # implied: distribute==0.6.24
-psycopg2==2.4.6
+psycopg2>=2.4.6
 # implied wsgiref==0.1.2
 django-tables2==0.13.0
 django-tastypie==0.9.15
+South>=0.8.1

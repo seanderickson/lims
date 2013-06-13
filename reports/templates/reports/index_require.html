@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% load iccbl_tags %}
+{% block head %}
+
+<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/backgrid.css" />
+<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/backgrid-paginator.css" />
+<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/backgrid-filter.css" />
+<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/basic_tabs.css" />
+
+<style type="text/css">
+    @media screen{
+        .table th, .table td {
+            padding: 1px;
+        }
+    /*hack to make the header fit the filter search box and side icons (side icons are the problem)*/
+        .backgrid th {
+            padding-right: 35px;
+        }
+        .form-horizontal .control-group {
+            margin-bottom: 0px;
+        }
+        form {
+            margin: 0 0 0px;
+        }
+        .loading1 {
+            background:rgba(0,0,0,0.3);
+        }
+        #loading{
+            position:fixed;
+            z-index:999;
+            top:0;
+            left:0;
+            width:100%;
+            height: 100%;
+            background: url('/static/images/ajax-loading2.gif')
+                50% 20%
+                no-repeat;
+        }
+    }
+</style>
+
+<style type="text/css">
+      #wrap > .container-fluid {
+        padding-top: 50px;
+        padding-bottom: 60px;
+      }
+     .container-fluid .credit {
+        margin: 20px 0;
+      }
+      .no-space [class*="span"] {
+          margin-left: 5px;
+      }
+</style>
+<title>Screensaver 2</title>
+
+<script data-main="{{ STATIC_URL }}/js/main" src="{{ STATIC_URL }}/js/libs/require.js"></script>
+
+{% endblock %}
+
+{% block application%}
+    <div class="container-fluid">
+      <div class="row-fluid no-space">
+        <div class="span2">
+          <div class="well sidebar-nav">
+            <div id="menu"></div>
+          </div><!--/.well -->
+        </div><!--/span-->
+        <div class="span10">
+            {% block content %}
+            <div id="container">
+            </div>
+            {% endblock %}
+        </div><!--/span-->
+      </div><!--/row-->
+
+    </div><!--/.fluid-container-->
+{% endblock %}

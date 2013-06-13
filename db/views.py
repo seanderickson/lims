@@ -28,11 +28,11 @@ def screeners2(request):
     logger.debug(str(('screeners2')))
     
     # TODO: all these urls should be located using reverse
-    root_url = '/db/screeners2/'
+    #    root_url = '/db/screeners2/'
     url_schema = '/db/api/v1/screensaveruser/schema/' # TODO: how to use django url tag here
     url = '/db/api/v1/screensaveruser/?format=json' # TODO: how to use django url tag here
 
-    return render(request, 'db/index_backbone.html', {'search': search, 'root_url': root_url, 'api_url': url, 'api_url_schema': url_schema })
+    return render(request, 'db/index_backbone.html', {'search': search, 'api_url': url, 'api_url_schema': url_schema })
 
 def staff(request):
     search = request.GET.get('search', '')

@@ -1,0 +1,6 @@
+<ul class="nav nav-pills nav-stacked">
+    <li class="nav-header">Actions</li>
+    <% items.each(function(item) { %>
+        <li  id="<%= item.id %>"><a href="#"><%= item.text %></a></li>
+    <% }); %>
+</ul>

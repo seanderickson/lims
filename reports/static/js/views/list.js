@@ -21,21 +21,28 @@ define([
         console.log("stop spinner...");
         $('#loading').fadeOut({duration:100});
     };
+    $(document).bind("ajaxComplete", function(){
+        ajaxComplete(); // TODO: bind this closer to the collection
+    });
 
   var ListView = Backbone.View.extend({
-
-    options: { // TODO: needs to be set from menu changes/app model
-        url_schema : '/reports/api/v1/fieldinformation/schema/',
-        url : '/reports/api/v1/fieldinformation/?format=json',
-        router: {
-            navigate: function(route){
-                console.log('todo: implement the router event notifications: ' + route);
-            }
-        }
-    },
+    // options: { // TODO: needs to be set from menu changes/app model
+        // url_schema : '/reports/api/v1/fieldinformation/schema/',
+        // url : '/reports/api/v1/fieldinformation/?format=json',
+        // router: {
+            // navigate: function(route){
+                // .model.set( { 'route': route } );
+                // console.log('route set on the model: ' + route);
+            // }
+        // }
+    // },
 
     initialize : function() {
         console.log('initialize ListView');
+    },
+
+    setOptions : function(options){
+        this.options = options;
     },
 
     reset_grid : function(options){
@@ -90,7 +97,7 @@ define([
         $("#rows-selector-div").append(selector.render().$el);
         $("#example-table").append(grid.render().$el);
 
-        var allEvent = function(event){
+        var allEvent = function(event, options){
             console.log("event fired: " + event);
         };
         collection.on({
@@ -99,8 +106,11 @@ define([
 
         // TODO: tie these events into the collection override?
         //        collection.bind('request', window.App.ajaxStart, this);
-        collection.on('request', ajaxStart); // NOTE: can use bind or on
+        //collection.on('request', ajaxStart); // NOTE: can use bind or on
+        this.listenTo(collection, 'request', ajaxStart);
+        this.listenTo(collection, 'MyCollection:setRoute', this.setRoute);
         collection.bind('sync', ajaxComplete, this);
+        this.listenTo(collection, 'error', ajaxComplete); // TODO: not tested!
         collection.bind('sync', selector.updateSelection, selector);  // TODO: selector.listenTo(collection, 'sync'...
 
         if (options.page){
@@ -125,6 +135,11 @@ define([
         collection.fetch({ reset: true } );
 
         console.log('list view initialized');
+    },
+
+    setRoute: function(route){
+        console.log('setRoute triggered: ' + route);
+        this.model.set({ route: 'list/' + this.options.type + '/' + route } );
     },
 
     render: function(){

@@ -13,7 +13,7 @@ define([
         // since the router isn't a view, it doesn't have a model, creating one here
         this.model = options.model;
 
-        Backbone.history.start();
+        Backbone.history.start({ pushState: false, root: this.model.get('root_url') });  // TODO: root should not be necessary if not using pushState
         _.bindAll(this,'change_route'); // binds all of the objects function properties to this instance
         this.model.bind('change:route', this.change_route );
         console.log('router initialized...');
@@ -21,8 +21,9 @@ define([
 
     change_route: function(){
         var newRoute = this.model.get('route');
+        this.model.set({ route_content_options: {} }); // unset route specific content options
         console.log('change route to: ' + newRoute);
-        this.navigate( newRoute );
+        this.navigate( newRoute, { trigger: false, replace: true } );
     },
 
     routes: {
@@ -31,7 +32,7 @@ define([
         // 'list/:type(/page/:page)': 'toPage',
         // 'rpp/:rpp(/page/:page)': 'toRowsPerPage',
         // 'order_by/:orderBy(/rpp/:rpp)(/page/:page)': 'toOrderedToPage',
-        'list/:type(/search/:searchBy)(/order_by/:orderBy)(/rpp/:rpp)(/page/:page)': 'toSearchOrderedToPage',
+        'list/:type(/search/:searchBy)(/order_by/:orderBy)(/rpp/:rpp)(/page/:page)': 'toListSearchOrderedToPage',
         '*unknownAction': 'unknownAction',
     },
 
@@ -41,32 +42,25 @@ define([
 
     index: function(){
         console.log("Index route has been called..");
-        // TODO: now set the app_state.menu_item, and presumably it will fire menu change event
         this.model.set({ menu_item:'home'});
     },
 
-    toSearchOrderedToPage: function(type,searchBy, orderBy,rpp, page){
+    toListSearchOrderedToPage: function(type,searchBy, orderBy,rpp, page){
         console.log("toSearchOrderedToPage route: searchBy: " + searchBy
             + ", order: "+  orderBy + ", rpp: " + rpp + ", page: " + page + ', type: ' + type);
 
-        options = { router: this, type: type };
+        options = { type: type };
 
         options.page = null;
         if(typeof page !== 'undefined' && page !== null ){
             console.log('page: ' + page);
             options.page = parseInt(page);
-            // // set the state instead, will be caught and used with a refresh                //              App._collection.getPage(page);
-            // App._collection.state.currentPage = parseInt(page);
         }
 
         options.pageSize = null;
         if(typeof rpp !== 'undefined' && rpp !== null ){
             console.log('rpp: ' + rpp);
             options.pageSize = parseInt(rpp);
-            // set the state instead, will be caught and used with a refresh
-            //              App._collection.getPage(page);
-            // App._collection.state.pageSize = parseInt(rpp);
-            // // TODO: catch when pageSize is too large
         }
 
         options.sortKey = null;
@@ -81,11 +75,6 @@ define([
             options.sortKey = orderBy;
             options.order = order;
             options.direction = direction;
-
-            // App._collection.state.sortKey = orderBy;
-            // App._collection.state.order = order;
-            // // Notify header cells
-            // App._collection.trigger("backgrid:sort", orderBy, direction, null, App._collection);
         }
 
         options.searchBy = null;
@@ -103,23 +92,26 @@ define([
                 options.searchBy = searchBy;
                 options.searchColumn = searchColumn;
                 options.searchTerm = searchTerm;
-
-                // App._collection.searchBy = searchBy;
-                // App._collection.trigger("MyServerSideFilter:search", searchColumn, searchTerm, App._collection);
              }
         }
 
         // TODO: switch list with the different types
-        if (type ==='fieldinformation'){
-            options.url_schema = '/reports/api/v1/fieldinformation/schema/'; // TODO: how to use django url tag here
-            options.url = '/reports/api/v1/fieldinformation/?format=json'; // TODO: how to use django url tag here
-        }else if (type ==='screensaveruser'){
-            options.url_schema = '/db/api/v1/screensaveruser/schema/'; // TODO: how to use django url tag here
-            options.url = '/db/api/v1/screensaveruser/?format=json'; // TODO: how to use django url tag here
-        }else{
-            window.alert('unknown type: ' + type);
-        }
-        ListView.initialize( options ); // TODO: this moves to the app_state, and then set the menu at the same time
+        // if (type ==='fieldinformation'){
+            // options.url_schema = '/reports/api/v1/fieldinformation/schema/'; // TODO: how to use django url tag here
+            // options.url = '/reports/api/v1/fieldinformation/?format=json'; // TODO: how to use django url tag here
+        // }else if (type ==='screensaveruser'){
+            // options.url_schema = '/db/api/v1/screensaveruser/schema/'; // TODO: how to use django url tag here
+            // options.url = '/db/api/v1/screensaveruser/?format=json'; // TODO: how to use django url tag here
+        // }else{
+            // window.alert('unknown type: ' + type);
+        // }
+        // ListView.initialize( options ); // TODO: this moves to the app_state, and then set the menu at the same time
+
+        this.model.set({
+            content_options: options,
+            menu_item: 'list_' + options.type // TODO: this still feels a little hackish, we're encoding the list/type in the menu item
+        });
+
     },
 
   });

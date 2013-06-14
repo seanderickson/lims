@@ -53,8 +53,11 @@ require([
     'router'
   ],
     function($, _, Backbone, AppModel, AppView, AppRouter ) {
+
+        // Augment the view prototype with this close utility function to prevent memory leaks
+        // See: http://lostechies.com/derickbailey/2011/09/15/zombies-run-managing-page-transitions-in-backbone-apps/
+        // Also, consider using the Marionette extension
         Backbone.View.prototype.close = function(){
-          console.log('close called for' + this ); // not so informative
           this.remove();
           this.unbind();
           if (this.onClose){

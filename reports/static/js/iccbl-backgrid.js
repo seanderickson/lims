@@ -114,7 +114,7 @@ define([
                 }
                 // TODO: require these options
                 this.url = options.url;
-                this.router = options.router; // TODO: set the AppModel.route property instead
+                //this.router = options.router; // TODO: set the AppModel.route property instead
                 this.type = options.type;
 
                 Backbone.PageableCollection.prototype.initialize.apply(this, options); // call super constructor
@@ -179,7 +179,8 @@ define([
             setRoutes: function() {
                 console.log('setRoutes: ' + this.searchBy + ', '
                     + this.state.sortKey + ', ' + this.state.order + ', '+ this.state.pageSize + ', ', + this.state.currentPage);
-                var route = 'list/' + this.type;
+                //var route = 'list/' + this.type;
+                var route = '';
                 if(this.searchBy !== null){
                     if(route.length > 0) route += '/';
                     route += 'search/'+this.searchBy ;
@@ -198,7 +199,8 @@ define([
 
                 route += 'rpp/' + this.state.pageSize + '/page/' + this.state.currentPage;
 
-                this.router.navigate(route); // TODO: set AppModel.route instead
+                //this.router.navigate(route); // TODO: set AppModel.route instead
+                this.trigger( "MyCollection:setRoute", route );
             },
 
             // Override
@@ -227,9 +229,9 @@ define([
                 model = this;
                 if (typeof options !== 'undefined') { // TODO: review; find a better way to _always_ stop the ajax spinner
                     options.error = function(resp){
-                        if (error) error(model, resp, options);
-                        window.App.ajaxComplete();
-                        window.alert(error);
+//                        window.App.ajaxComplete();
+                        console.log('error retrieving collection');
+                        // TODO: bind this to the ajaxComplete handler
                     };
                 }
                 return Backbone.PageableCollection.prototype.fetch.call(this,options);
@@ -252,7 +254,7 @@ define([
                   columnName: this.column.get("name"),
                 });
 
-                this.listenTo(this.collection, "MyServerSideFilter:search", this._search);  // custom event
+                this.listenTo(this.collection, "MyServerSideFilter:search", this._search);  // TODO: research use of "bindTo" instead
 
                 this._serverSideFilter['events']['click .close'] = function(e) {
                     if (e) e.preventDefault();
@@ -298,7 +300,6 @@ define([
                         this.collection.fetch({ reset: true });
                     }
                 }
-
             },
 
           /**

@@ -23,18 +23,19 @@ define([
 
         render : function() {
             console.log('MenuView render');
-            var menuitems = { items: _([
-                { id:'home', text:'Home' },
-                { id:'list', text:'List' } ]) };// todo: make these into a collection of menu models?
-            var compiledTemplate = _.template(menuTemplate, menuitems);
+            var data = { items: _( this.model.get('menu_items') ) }; // Note, wrap it in underscore array to facilitate 'each' call in the template
+            var compiledTemplate = _.template(menuTemplate, data);
             this.$el.append(compiledTemplate);
             var self = this;
 
-            $('li').click(function() {
+            $('li').click(function(event) {
+                event.preventDefault();
                 var menuitem = $(this).attr('id');
-                console.log('clicked: ' + menuitem);
+                var route = self.model.get('menu_actions')[menuitem]['route'];
+                console.log('clicked: ' + menuitem + ', route: ' + route );
                 self.model.set({
-                    menu_item : menuitem
+                    menu_item : menuitem,
+                    route: route
                 });
             });
         }

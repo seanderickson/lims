@@ -16,7 +16,6 @@ define([
         },
 
         render: function() {
-            console.log('appView render');
             this.menuView.render();
             this.contentView.render();
         },

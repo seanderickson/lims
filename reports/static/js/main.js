@@ -69,4 +69,5 @@ require([
         var appView = new AppView({ model: appModel });
         var appRouter = new AppRouter({ model: appModel });
         appView.render();
+        Backbone.history.start({ pushState: false, root: appModel.get('root_url') });  // TODO: root should not be necessary if not using pushState
     });

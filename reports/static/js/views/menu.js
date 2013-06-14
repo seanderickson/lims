@@ -33,10 +33,15 @@ define([
                 var menuitem = $(this).attr('id');
                 var route = self.model.get('menu_actions')[menuitem]['route'];
                 console.log('clicked: ' + menuitem + ', route: ' + route );
+                self.model.set({ content_options: {} });
+                console.log("...........");
                 self.model.set({
                     menu_item : menuitem,
-                    route: route
+                    route: route,
+                    content_options: {}, // unset previous content options;
+                    // TODO: this is a bit like magic; if there were a mediator to talk to the app_model, it might be better?
                 });
+                console.log('model: ' + JSON.stringify(self.model));
             });
         }
     });

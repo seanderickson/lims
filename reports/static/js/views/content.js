@@ -32,9 +32,9 @@ define([
             }else if (menu_action.view === 'ListView'){
                 this.currentView = this.listView;
                 var list_options = this.model.get('list_defaults');
-                var route_content_options = this.model.get('route_content_options');
                 var list_endpoints = this.model.get('list_endpoints')[menu_action['options']['type']];
-                var options = _.extend( list_options, list_endpoints, menu_action['options'], route_content_options );
+                var content_options = this.model.get('content_options');
+                var options = _.extend( {}, list_options, list_endpoints, menu_action['options'], content_options );
                 console.log('list view options: ' + JSON.stringify(options) );
                 this.listView.setOptions(options);
             }else{

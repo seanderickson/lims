@@ -1,22 +1,23 @@
 /**
- * @summary     ICCBL-lims Utility Functions
+ * @summary     ICCBL-lims Backgrid Extension Functions
  * @description Utility Functions for the iccbl-lims
  * @version     0.1
- * @file        iccbl-lims.js
+ * @file        iccbl-backgrid.js
  * @author      Sean Erickson
- * @contact     sean_erickson “AT”hms.harvard.edu
+ * @contact     sean_erickson “AT” hms.harvard.edu
  *
  * @copyright Copyright 2013 Harvard University, all rights reserved.
  *
- * This source file is free software, under either the GPL v2 license
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
  *
  * This source file is distributed in the hope that it will be useful, but
  * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
  * or FITNESS FOR A PARTICULAR PURPOSE. See the license files for details.
  *
  * For details please refer to: https://github.com/hmsiccbl/lims
- *
- * Depends on iccbl-lims.js
  *
  **/
 
@@ -42,7 +43,7 @@ define([
         this.on("change", function (model, options) {
           if (options && options.save === false) return;
           // TODO: not sure what the best way to "fix" the URL for the model is yet, but here is a way -sde4
-          self._url = model.id;
+          self._url = self.collection.url + model.id;
           self.url = function() {
               return this._url;
           }
@@ -61,11 +62,6 @@ define([
             Backgrid.Extension.ServerSideFilter.prototype.initialize.apply(this, [options])
 
         },
-
-        // remove: function() {
-          // this.model.unbind('change', this.render);
-          // return Backbone.View.prototype.remove.apply(this, arguments);
-        // },
     });
 
     return {
@@ -229,9 +225,7 @@ define([
                 model = this;
                 if (typeof options !== 'undefined') { // TODO: review; find a better way to _always_ stop the ajax spinner
                     options.error = function(resp){
-//                        window.App.ajaxComplete();
                         console.log('error retrieving collection');
-                        // TODO: bind this to the ajaxComplete handler
                     };
                 }
                 return Backbone.PageableCollection.prototype.fetch.call(this,options);
@@ -242,9 +236,7 @@ define([
         MyHeaderCell: Backgrid.HeaderCell.extend({
             _serverSideFilter : null,
             initialize: function (options) {
-                // console.log('MyHeaderCell initialize, options: ' + JSON.stringify(options) ); // TODO: looking for the collection instance here
                 this.constructor.__super__.initialize.apply(this, [options])
-
 
                 this._serverSideFilter = new MyServerSideFilter({
                   collection: this.collection, // TODO: Try to remove this: the collection should be passed as an option
@@ -255,6 +247,7 @@ define([
                 });
 
                 this.listenTo(this.collection, "MyServerSideFilter:search", this._search);  // TODO: research use of "bindTo" instead
+                //this.collection.bind("MyServerSideFilter:search", this._search, this);
 
                 this._serverSideFilter['events']['click .close'] = function(e) {
                     if (e) e.preventDefault();
@@ -262,6 +255,7 @@ define([
                     this.remove(); // this is the filter
                     this.clear();
                     this.collection.searchBy = null;
+                    this.collection = null;
                 };
 
                 // listen for search submission by the user and set the routes
@@ -274,6 +268,15 @@ define([
                 };
             },
 
+            remove: function(){
+                console.log('headercell remove called');
+                this._serverSideFilter.remove();
+                this._serverSideFilter.unbind();
+                this._serverSideFilter.collection = null;
+                this.unbind();
+
+                Backgrid.HeaderCell.prototype.remove.apply(this);
+            },
 
             // function to listen for router generated custom search event MyServerSideFilter:search
             _search: function(searchColumn, searchTerm, collection){
@@ -319,8 +322,7 @@ define([
 
 
         ItemsPerPageSelector: Backbone.View.extend({
-        //        el: $("#selector-div"), // view must have the element to get events for
-            // template: _.template($("#rows-per-page-template").html()),
+
             template: function(){ return _.template(this._template); },
 
             events: {
@@ -361,7 +363,5 @@ define([
                 $('#rowsperpage_selector').val(String(this.collection.state.pageSize));
             },
         }),
-
-
     };
 });

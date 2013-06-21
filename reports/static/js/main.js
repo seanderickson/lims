@@ -8,6 +8,7 @@ require.config({
     backgrid: 'libs/backgrid',
     backgrid_filter: 'libs/backgrid-filter',
     backgrid_paginator: 'libs/backgrid-paginator',
+    backbone_modelbinder: 'libs/Backbone.ModelBinder',
     lunr: 'libs/lunr',
     text: 'libs/text',
     router: 'router',

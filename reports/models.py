@@ -6,7 +6,7 @@ import re
 import types
 
 logger = logging.getLogger(__name__)
-# Create your models here.
+
 class FieldsManager(models.Manager):
     
     fieldinformation_map = {}
@@ -126,3 +126,34 @@ class FieldInformation(models.Model):
         field_name = field_name[0].lower() + field_name[1:];
         #        logger.info(str(('created camel case name', field_name, 'for', self)))
         return field_name
+
+class MetaManager(models.Manager):
+    
+    # this is how you override a Manager's base QuerySet
+    def get_query_set(self):
+        return super(MetaManager, self).get_query_set()
+
+
+class MetaHash(models.Model):
+    manager                 = MetaManager()
+    objects                 = models.Manager() # default manager
+    
+    scope                   = models.CharField(max_length=35, blank=True)
+    key                     = models.CharField(max_length=35, blank=True)
+    alias                   = models.CharField(max_length=35, blank=True)
+    
+    description             = models.TextField(blank=True)
+    comment                 = models.TextField(blank=True)
+    labels                  = models.TextField(blank=True)
+    capabilities            = models.TextField(blank=True) # i.e. 'edit', 'textsearch'
+    visibilities            = models.TextField(blank=True) # i.e. 'detail', 'list', 'edit'
+    readPermissions         = models.TextField(blank=True) # i.e. roles: admin, etc.
+    writePermissions         = models.TextField(blank=True)
+    createPermissions         = models.TextField(blank=True)
+    type                    = models.CharField(max_length=35, blank=True)
+    
+    class Meta:
+        unique_together = (('scope', 'key'),('scope','alias'))    
+    def __unicode__(self):
+        return unicode(str((self.scope, self.key, self.id, self.alias)))
+    

@@ -37,19 +37,29 @@ define([
     Backbone.PageableCollection = BackbonePageableCollection;
 
     MyModel = Backbone.Model.extend({
-      initialize: function () {
-        Backbone.Model.prototype.initialize.apply(this, arguments);
-        var self = this;
-        this.on("change", function (model, options) {
-          if (options && options.save === false) return;
-          // TODO: not sure what the best way to "fix" the URL for the model is yet, but here is a way -sde4
-          self._url = self.collection.url + model.id;
-          self.url = function() {
-              return this._url;
-          }
-          model.save();
-        });
-      },
+        // we want to make sure there is a trailing slash, or tastypie doesn't work.
+        url : function(){
+            var url = Backbone.Model.prototype.url.call(this);
+            console.log('---- url1: ' + url);
+            return url + (url.charAt(url.length - 1) === '/' ? '' : '/') ;
+        },
+
+        initialize: function () {
+            Backbone.Model.prototype.initialize.apply(this, arguments);
+            console.log('x--- urlRoot: ' + this.urlRoot + ", " + this.id + ', ' + this.collection.url);
+            var self = this;
+            // we want to make sure there is a trailing slash, or tastypie doesnt work.
+            // TODO: not sure why we have to override url function like this
+            // this.url = function(){
+              // var url = Backbone.Model.prototype.url.call(self);
+              // console.log('---- url1: ' + url);
+              // return url + (url.charAt(url.length - 1) === '/' ? '' : '/') ;
+            // };
+            // TODO: not sure why we have to override url function like this
+            // definition above should work, but doesn't.
+            // however, when overriding url like above only, the function has to be attached to the prototype manually here.  why?
+            this.url = MyModel.prototype.url;
+        },
     });
 
     MyServerSideFilter = Backgrid.Extension.ServerSideFilter.extend({
@@ -65,40 +75,6 @@ define([
     });
 
     return {
-
-        createBackgridColModel: function(fields_from_rest, optionalHeaderCell, collection) {
-            var colModel = [];
-            var i = 0;
-            var _total_count = 0;
-            for (var field in fields_from_rest){
-                if (fields_from_rest.hasOwnProperty(field)) { // filter
-                    var prop = fields_from_rest[field];
-                    colModel[i] = { 'name':field, 'label':prop['name'], cell: 'string', order: prop['order']};
-                    if (optionalHeaderCell){
-                        colModel[i]['headerCell'] = optionalHeaderCell;
-                    }
-                    i++;
-                }
-            }
-
-            colModel.sort(function(a,b){
-                //console.log('sort: ' + a['order'] +',' + b['order']);
-                if(typeof a['order'] !== 'undefined' && typeof b['order'] !== 'undefined'){
-                    return a['order']-b['order'];
-                }else if(typeof a['order'] !== 'undefined'){
-                    return -1;
-                }else if(typeof b['order'] !== 'undefined'){
-                    return 1;
-                }else{
-                    return 0;
-                }
-            });
-            //console.log('colModel: ' + JSON.stringify(colModel));
-            //var _colWidth = 1/i * _width;
-            //console.log('colWidth:' + _colWidth);
-            return colModel;
-        },
-
 
         MyCollection: Backbone.PageableCollection.extend({
 

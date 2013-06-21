@@ -1,6 +1,6 @@
 from django.db import connection, DatabaseError
 
-from reports.models import FieldInformation
+from reports.models import FieldInformation, MetaHash
 
 from django.conf.urls import url
 
@@ -38,6 +38,17 @@ class FieldInformationResource(PostgresSortingResource):
 
     class Meta:
         queryset = FieldInformation.objects.all()
+        authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
+        authorization= Authorization()        
+        # TODO: drive this from data
+        ordering = []
+        filtering = {}
+        serializer = BackboneSerializer()
+
+class MetaHashResource(PostgresSortingResource):
+
+    class Meta:
+        queryset = MetaHash.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
         authorization= Authorization()        
         # TODO: drive this from data

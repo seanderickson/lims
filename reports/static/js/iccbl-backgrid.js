@@ -36,17 +36,17 @@ define([
     // see https://github.com/wyuenho/backbone-pageable/issues/62
     Backbone.PageableCollection = BackbonePageableCollection;
 
-    MyModel = Backbone.Model.extend({
-        // we want to make sure there is a trailing slash, or tastypie doesn't work.
+    var MyModel = Backbone.Model.extend({
+        // TODO: we want to make sure there is a trailing slash, or tastypie doesn't work.
         url : function(){
             var url = Backbone.Model.prototype.url.call(this);
-            console.log('---- url1: ' + url);
+            // console.log('---- url1: ' + url);
             return url + (url.charAt(url.length - 1) === '/' ? '' : '/') ;
         },
 
         initialize: function () {
             Backbone.Model.prototype.initialize.apply(this, arguments);
-            console.log('x--- urlRoot: ' + this.urlRoot + ", " + this.id + ', ' + this.collection.url);
+            // console.log('x--- urlRoot: ' + this.urlRoot + ", " + this.id + ', ' + this.collection.url);
             var self = this;
             // we want to make sure there is a trailing slash, or tastypie doesnt work.
             // TODO: not sure why we have to override url function like this
@@ -55,7 +55,6 @@ define([
               // console.log('---- url1: ' + url);
               // return url + (url.charAt(url.length - 1) === '/' ? '' : '/') ;
             // };
-            // TODO: not sure why we have to override url function like this
             // definition above should work, but doesn't.
             // however, when overriding url like above only, the function has to be attached to the prototype manually here.  why?
             this.url = MyModel.prototype.url;
@@ -76,6 +75,70 @@ define([
 
     return {
 
+        EditCell: Backgrid.Cell.extend({
+            className: "detail-cell",
+            events : {
+                "click #edit" : "editDetail",
+            },
+
+            initialize: function(options){
+                Backgrid.Cell.prototype.initialize.apply(this, arguments);
+            },
+
+            render: function () {
+                this.$el.empty();
+                var formattedValue = this.formatter.fromRaw(this.model.get(this.column.get("name")));
+                this.$el.append($("<a id='edit' >", {
+                    tabIndex : -1,
+                    href : '',
+                    title : formattedValue,
+                    //target : "_blank"
+                }).text(formattedValue));
+
+                this.delegateEvents();
+                return this;
+            },
+
+            editDetail: function(e){
+                e.preventDefault();
+                this.model.collection.trigger("MyCollection:edit", this.model);
+            },
+
+        }),
+
+
+        /**
+         * uses the options.attributes.label
+         */
+        DeleteCell: Backgrid.Cell.extend({
+            className: "delete-cell",
+            events : {
+                "click #delete" : "delete"
+            },
+
+            initialize: function(options){
+                Backgrid.Cell.prototype.initialize.apply(this, arguments);
+            },
+
+            render: function () {
+                this.$el.empty();
+
+                this.$el.append("&nbsp;");
+                this.$el.append($("<a id='delete' >", {
+                    tabIndex : -1,
+                    href : '',
+                }).text(this.options.column.attributes['text']));
+                this.delegateEvents();
+                return this;
+            },
+
+            delete: function(e){
+                e.preventDefault();
+                this.model.collection.trigger("MyCollection:delete", this.model);
+            },
+        }),
+
+
         MyCollection: Backbone.PageableCollection.extend({
 
             initialize: function(options){
@@ -88,6 +151,8 @@ define([
                 this.url = options.url;
                 //this.router = options.router; // TODO: set the AppModel.route property instead
                 this.type = options.type;
+
+                // if(!_.isUndefined(options.searchBy)) this.searchBy = options.searchBy;
 
                 Backbone.PageableCollection.prototype.initialize.apply(this, options); // call super constructor
 
@@ -212,7 +277,8 @@ define([
         MyHeaderCell: Backgrid.HeaderCell.extend({
             _serverSideFilter : null,
             initialize: function (options) {
-                this.constructor.__super__.initialize.apply(this, [options])
+                //this.constructor.__super__.initialize.apply(this, [options]);
+                Backgrid.HeaderCell.prototype.initialize.apply(this, [options]);
 
                 this._serverSideFilter = new MyServerSideFilter({
                   collection: this.collection, // TODO: Try to remove this: the collection should be passed as an option
@@ -242,6 +308,7 @@ define([
                     //this.collection.setRoutes();
                     this.search(e);
                 };
+                // _.bindAll(this, 'render');
             },
 
             remove: function(){
@@ -292,6 +359,8 @@ define([
                 _handle.$el.append(_handle._serverSideFilter.render().el);
             });
             this.$el.prepend(filterIcon);
+
+            this.$el.prop('title', this.options['column']['attributes']["description"]);
             return this;
           }
         }),

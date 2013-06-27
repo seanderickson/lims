@@ -10,38 +10,40 @@ define([
 
         initialize : function() {
             console.log('MenuView initialize');
-            _.bindAll(this,'change_menu_item'); // binds all of the objects function properties to this instance
-            this.model.bind('change:menu_item', this.change_menu_item );
+            //_.bindAll(this,'change_menu_item'); // binds all of the objects function properties to this instance
+            // this.model.bind('change:menu_item', this.change_menu_item );
+            this.listenTo(this.model, 'change:current_submodel', this.change_current_submodel);
         },
 
-        change_menu_item : function() {
-            var menu_item = this.model.get('menu_item');
-            console.log('MenuView: change_menu_item: ' + menu_item);
+        change_current_submodel : function() {
+            var current_submodel = this.model.get('current_submodel');
+            console.log('MenuView: change_current_submodel: ' + current_submodel);
             this.$('li').removeClass('active');
-            this.$('#' + menu_item).addClass('active');
+            this.$('#' + current_submodel).addClass('active');
         },
 
         render : function() {
             console.log('MenuView render');
-            var data = { items: _( this.model.get('menu_items') ) }; // Note, wrap it in underscore array to facilitate 'each' call in the template
+            // _.pairs converts the object to array of [key, value]
+            var data = { items: _(_.map(_.pairs(this.model.get('submodels')), function(obj){ return { id: obj[0], text: obj[1]['title'] } } )) }; // Note, wrap it in underscore array to facilitate 'each' call in the template
+            //console.log('--- data: ' + JSON.stringify(data));
             var compiledTemplate = _.template(menuTemplate, data);
             this.$el.append(compiledTemplate);
             var self = this;
 
             $('li').click(function(event) {
                 event.preventDefault();
-                var menuitem = $(this).attr('id');
-                var route = self.model.get('menu_actions')[menuitem]['route'];
-                console.log('clicked: ' + menuitem + ', route: ' + route );
+                var submodel = $(this).attr('id');
+                var route = self.model.get('submodels')[submodel]['route'];
+                console.log('clicked: ' + submodel + ', route: ' + route );
                 self.model.set({ content_options: {} });
-                console.log("...........");
                 self.model.set({
-                    menu_item : menuitem,
+                    current_submodel : submodel,
                     route: route,
                     content_options: {}, // unset previous content options;
                     // TODO: this is a bit like magic; if there were a mediator to talk to the app_model, it might be better?
                 });
-                console.log('model: ' + JSON.stringify(self.model));
+                //console.log('model: ' + JSON.stringify(self.model));
             });
         }
     });

@@ -4,7 +4,30 @@
         <div class="control-group">
             <label class="control-label" for="<%= key %>" ><%= key %></label>
             <div class="controls">
-                <input type="text" name="<%= key %>" id="<%= key %>" />
+                <% if(fieldDefinitions[key] != null) {
+                    options = fieldDefinitions[key]
+                    if(options.type == 'choice') { %>
+                        <select  class="input-mini" name="<%= key %>">
+                            <% options.choices.each(function(option) { %>
+                                <option value="<%= option %>"><%= option %></option>
+                            <% }); %>
+                        </select>
+                    <% } else if(options.type == 'multiselect'){ %>
+                        <select class="multiselect" multiple="multiple" name="<%= key %>">
+                            <% options.choices.each(function(option) { %>
+                                <option value="<%= option %>"><%= option %></option>
+                            <% }); %>
+                        </select>
+                    <% } else if(options.type == 'string'){ %>
+                        <input type="text" name="<%= key %>" id="<%= key %>" />
+                    <% } else if(options.type == 'integer'){ %>
+                        <input type="text" name="<%= key %>" id="<%= key %>" />
+                    <% } else { %>
+                        unknown type: <%= options.type %> !
+                    <% } %>
+                <% } else { %>
+                    <input type="text" name="<%= key %>" id="<%= key %>" />
+                <% } %>
             </div>
         </div>
     <% }); %>

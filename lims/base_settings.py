@@ -135,6 +135,7 @@ INSTALLED_APPS = (
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django_tables2', # for UI tabling
+    'south',
     'tastypie', # manual says this is "not necessary, but useful"
     'db',
     'reports',

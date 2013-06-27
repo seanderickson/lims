@@ -9,6 +9,7 @@ require.config({
     backgrid_filter: 'libs/backgrid-filter',
     backgrid_paginator: 'libs/backgrid-paginator',
     backbone_modelbinder: 'libs/Backbone.ModelBinder',
+    bootstrap: 'libs/bootstrap',
     lunr: 'libs/lunr',
     text: 'libs/text',
     router: 'router',
@@ -42,6 +43,10 @@ require.config({
     backgrid_paginator: {
       deps: ['backgrid', 'backbone', 'underscore', 'jquery'],
       exports: 'BackgridPaginator'
+    },
+    bootstrap: {
+        deps: ['jquery'],
+        // exports: '$.fn.modal'
     }
   }
 });

@@ -24,24 +24,28 @@ define([
                     view: 'HomeView',
                     content_header: 'Welcome',
                 },
-                fieldinformation: {
-                    type: 'fieldinformation',
+
+                fieldmetainformation: {
+                    type: 'fieldmetainformation',
                     header_message: 'Field Meta Information',
-                    title: 'Field Information',
-                    route: 'list/fieldinformation',
-                    view: 'ListView',
-                    url_schema : '/reports/api/v1/fieldinformation/schema/',
-                    url : '/reports/api/v1/fieldinformation/',
-                },
-                metainformation: {
-                    type: 'metainformation',
-                    header_message: 'Meta Information',
-                    title: 'Meta Information',
-                    route: 'list/metainformation',
+                    title: 'Field Meta Information',
+                    route: 'list/fieldmetainformation',
                     view: 'ListView',
                     url_schema : '/reports/api/v1/metahash/schema/',
                     url : '/reports/api/v1/metahash/',
+                    searchBy : 'scope=metahash:fields',
                 },
+
+                vocabularies: {
+                    type: 'vocabularies',
+                    header_message: 'Application Vocabularies',
+                    title: 'Application Vocabularies',
+                    route: 'list/vocabularies',
+                    view: 'ListView',
+                    url_schema : '/reports/api/v1/vocabularies/schema/',
+                    url : '/reports/api/v1/vocabularies/',
+                },
+
                 screensaveruser: {
                     type: 'screensaveruser',
                     header_message: 'Screensaver Users',

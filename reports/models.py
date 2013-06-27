@@ -7,6 +7,20 @@ import types
 
 logger = logging.getLogger(__name__)
 
+class GetOrNoneManager(models.Manager):
+    """Adds get_or_none method to objects
+    """
+    def get_or_none(self, function=None, **kwargs):
+        try:
+            x = self.get(**kwargs)
+            if x and function:
+                return function(x)
+            else:
+                return x
+        except self.model.DoesNotExist:
+            return None
+            
+
 class FieldsManager(models.Manager):
     
     fieldinformation_map = {}
@@ -127,20 +141,21 @@ class FieldInformation(models.Model):
         #        logger.info(str(('created camel case name', field_name, 'for', self)))
         return field_name
 
-class MetaManager(models.Manager):
+class MetaManager(GetOrNoneManager):
     
     # this is how you override a Manager's base QuerySet
     def get_query_set(self):
         return super(MetaManager, self).get_query_set()
 
-
-class MetaHash(models.Model):
+class MetaHash1(models.Model):
     manager                 = MetaManager()
     objects                 = models.Manager() # default manager
     
     scope                   = models.CharField(max_length=35, blank=True)
     key                     = models.CharField(max_length=35, blank=True)
     alias                   = models.CharField(max_length=35, blank=True)
+    
+    value                   = models.TextField(blank=True)
     
     description             = models.TextField(blank=True)
     comment                 = models.TextField(blank=True)
@@ -156,4 +171,83 @@ class MetaHash(models.Model):
         unique_together = (('scope', 'key'),('scope','alias'))    
     def __unicode__(self):
         return unicode(str((self.scope, self.key, self.id, self.alias)))
+
+import json
+
+class MetaHash(models.Model):
+    objects                 = MetaManager()
+#    objects                 = models.Manager() # default manager
+    
+    scope                   = models.CharField(max_length=35, blank=True)
+    key                     = models.CharField(max_length=35, blank=True)
+    alias                   = models.CharField(max_length=35, blank=True)
+    order                   = models.IntegerField();
+    
+    json_field                   = models.TextField(blank=True)
+       
+    class Meta:
+        unique_together = (('scope', 'key'))    
+    
+    def get_field_hash(self):
+        if self.json_field:
+            return json.loads(self.json_field)
+        else:
+            return {}
+    
+    def get_field(self, field):
+        if field in self._meta.get_all_field_names():
+            return getattr(self,field)
+        temp = self.get_field_hash()
+        if(field in temp):
+            return temp[field]
+        else:
+            logger.info('unknown field: ' + field)
+            return None
+            
+    def set_field(self, field, value):
+        temp = self.get_field_hash()
+        temp[field] = value;
+        self.json_field = json.dump(temp)
+    
+    
+    def __unicode__(self):
+        return unicode(str((self.scope, self.key, self.id, self.alias)))
+    
+    
+class Vocabularies(models.Model):
+    objects                 = MetaManager()
+#    objects                 = models.Manager() # default manager
+    
+    scope                   = models.CharField(max_length=35, blank=True)
+    key                     = models.CharField(max_length=35, blank=True)
+    alias                   = models.CharField(max_length=35, blank=True)
+    
+    json_field                   = models.TextField(blank=True)
+       
+    class Meta:
+        unique_together = (('scope', 'key'))    
+    
+    def get_field_hash(self):
+        if self.json_field:
+            return json.loads(self.json_field)
+        else:
+            return {}
+    
+    def get_field(self, field):
+        temp = self.get_field_hash()
+        if(field in temp):
+            return temp[field]
+        else:
+            logger.info('unknown field: ' + field)
+            return None
+            
+    def set_field(self, field, value):
+        temp = self.get_field_hash()
+        temp[field] = value;
+        self.json_field = json.dump(temp)
+    
+    
+    def __unicode__(self):
+        return unicode(str((self.scope, self.key, self.id, self.alias)))
+    
     

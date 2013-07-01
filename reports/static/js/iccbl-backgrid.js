@@ -368,7 +368,7 @@ define([
 
         ItemsPerPageSelector: Backbone.View.extend({
 
-            template: function(){ return _.template(this._template); },
+            template: function(){ return _.template(this._template); }, // TODO: this appears to be unused (see render)
 
             events: {
                 "change #rowsperpage_selector": "setItemsPerPage"
@@ -404,7 +404,7 @@ define([
                 this.delegateEvents();
                 return this;
             },
-            updateSelection: function(e){
+            updateSelection: function(){
                 $('#rowsperpage_selector').val(String(this.collection.state.pageSize));
             },
         }),

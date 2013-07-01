@@ -29,7 +29,7 @@ class BackboneSerializer(Serializer):
         Given some JSON data, returns a Python dictionary of the decoded data.
         Override to quote attributes - the backbone client doesn't want to do this.
         """
-        logger.info(str(("loading content:", content)))
+#        logger.info(str(("loading content:", content)))
         content = content.replace(r'(\w+):', r'"\1" :')
         logger.info(str(("loading content:", content)))
         return json.loads(content)
@@ -62,60 +62,107 @@ class MetaHashResource1(PostgresSortingResource):
 UI_TYPE_CHOICE = 'choice'
 UI_TYPE_MULTISELECT = 'multiselect'  
         
-class MetaHashResource(PostgresSortingResource):
+from copy import deepcopy
 
-#    title = fields.CharField(attribute='title', readonly=True, blank=True, null=True)
-#    description = fields.CharField(attribute='description', readonly=True, blank=True, null=True)
-#    comment = fields.CharField(attribute='comment', readonly=True, blank=True, null=True)
-#    type = fields.CharField(attribute='type', readonly=True, blank=True, null=True)
-#    visibility = fields.ListField(attribute='visibility', readonly=True, blank=True, null=True)
+class JsonAndDatabaseResource(PostgresSortingResource):
+    def __init__(self, scope=None, **kwargs):
+        self.scope = scope
+        super(JsonAndDatabaseResource,self).__init__(**kwargs)
+        self.original_fields = deepcopy(self.fields)
+        self.field_defs = {}
     
-    def __init__(self, **kwargs):
-        super(MetaHashResource,self).__init__(**kwargs)
+    def reset_field_defs(self):
+        self.fields = deepcopy(self.original_fields)
+        self.field_defs = {}
         
-        self.field_defs = {
-                           'title': {'type': fields.CharField, 'dehydrate':'json', 'hydrate':'json'},
-                           'description': {'type': fields.CharField,'dehydrate':'json', 'hydrate':'json' },
-                           'comment': {'type': fields.CharField ,'dehydrate':'json', 'hydrate':'json'},
-                           'type': {'type': fields.CharField, 'ui_type': UI_TYPE_CHOICE, 'vocabulary_term:scope':'field:type','dehydrate':'json', 'hydrate':'json' }, 
-                           'visibility': {'type': fields.ListField, 'ui_type': UI_TYPE_MULTISELECT, 'vocabulary_term:scope':'field:visibility','dehydrate':'json', 'hydrate':'json' },
-                           'json_field': {}, # don't recreate existing fields, TODO: can we get rid of this field?
-                           'resource_uri':{},
-                           'alias':{},
-                           'scope':{},
-                           'key':{},
-                           'order':{},
-                           }
-        for key,value in self.field_defs.items():
-            logger.info(str(('type', value)))
-            if(key not in self.fields): # don't redefine the existing fields
-                self.fields[key] = value['type'](attribute=key, readonly=True, blank=True, null=True)
-    
-    class Meta:
-        queryset = MetaHash.objects.all()
-        authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
-        authorization= Authorization()        
-        # TODO: drive this from data
-        ordering = []
-        filtering = {'scope':ALL, 'key':ALL}
-        serializer = BackboneSerializer()
-        excludes = [] #['json_field']
-        always_return_data = True # this makes Backbone happy
-    
+    def get_field_defs(self, scope):
+        # dynamically define the JSON fields.  
+        # Note that: - for a new database, there will be no JSON fields initially (naturally)
+        #     - also, all JSON field values will be null to start (naturally)
+        # ALSO NOTE: creating new JSON fields requires a restart (to reload) (todo: fix that)
+        if not self.field_defs:
+            logger.info('------get_field_defs: ' + scope)
+            self.field_defs = {}
+            # first, query the metahash for fields defined for this scope
+            for fieldinformation in MetaHash.objects.all().filter(scope=scope):
+                logger.info('---- meta field for scope: ' + scope + ', ' + fieldinformation.key)
+                self.field_defs[fieldinformation.key] = {}
+                if fieldinformation.is_json():
+                    if fieldinformation.key in self.fields:
+                        # TODO: move these validation errors to the client create process
+                        raise DatabaseError('Illegal definition of a json_field with the same name as a database field on this scope: ' + scope + ',' + fieldinformation.key)
+                    self.field_defs[fieldinformation.key].update({ 'json_field_type': fieldinformation.json_field_type })
+                else:
+                    if fieldinformation.key not in self.fields:
+                        raise DatabaseError('Illegal definition of a non-json_field that is not a database field on this scope: ' + scope + ',' + fieldinformation.key)
+            
+            # add in model fields not specified by a metahash entry
+            for resource_field_key in self.fields.keys():
+                if resource_field_key not in self.field_defs: # and not key == 'json_field': # TODO: should exclude the json_field from this list, right?
+                    logger.info('--------------- create default field for ' + resource_field_key)
+                    self.field_defs[resource_field_key] = {}
+            
+            # add the virtual API fields        
+            for schema_key, schema_value in self.field_defs.items():
+                # if the field is a json type, eval the json_field_type into a tastypie fields.Field definition so that tastypie knows about it
+                if schema_value.get('json_field_type'):
+                    # one more, redundant check
+                    if schema_key in self.fields:
+                        # TODO: move these validation errors to the client create process
+                        raise DatabaseError('Illegal attempt to define a json_field with the same name as a database field on this scope: ' + scope + ',' + + schema_key)
+                    self.fields[schema_key] = eval(schema_value['json_field_type'])(attribute=schema_key,readonly=True, blank=True, null=True) # trying to pass the fields.Field object args
+
+            # query metahash for schema defs for all the fields
+            for schema_key,schema_value in self.field_defs.items():
+                logger.info(str(('-----make schema:', self.scope, schema_key)))
+                # now fill in meta information for the schema report to UI; using data from this table itself, either in real or json fields!
+                for meta_record in MetaHash.objects.all().filter(scope='metahash:fields'):  # metahash:fields are defined for all reports
+                    if meta_record.key == 'key':
+                        continue # don't put these into the schema definitions, its too recursive confusing
+                    schema_value.update({
+                          meta_record.key: MetaHash.objects.get_or_none(scope=scope, key=schema_key, function=lambda x : (x.get_field(meta_record.key)) )
+                          })
+                    
+                # now check if the field uses controlled vocabulary, look that up now.  TODO: "vocabulary_scope_ref" should be a constant
+                # TODO: "vocabulary_scope_ref" needs to be created by default as a metahash:field; this argues for making it a "real" field
+                if schema_value.get(u'vocabulary_scope_ref'):
+                    logger.info(str(('looking for a vocabulary', schema_value['vocabulary_scope_ref'] )))
+                    schema_value['choices'] = [x.key for x in Vocabularies.objects.all().filter(scope=schema_value['vocabulary_scope_ref'])]
+                    logger.info(str(('got', schema_value['choices'] )))
+                logger.info(str(('----defined schema: ', schema_key, schema_value)))
+
+
+        return self.field_defs
     
     def build_schema(self):
-        schema = super(MetaHashResource,self).build_schema()
+        logger.info('------build_schema: ' + self.scope)
+        self.reset_field_defs()
+        local_field_defs = self.get_field_defs(self.scope) # trigger a get field defs before building the schema
+        schema = super(JsonAndDatabaseResource,self).build_schema()
         
-        for key,value in self.field_defs.items():
-            if value.get('ui_type',None) in [UI_TYPE_CHOICE,UI_TYPE_MULTISELECT]:
-                schema['fields'][key].update({'type': value['ui_type'],
-                                              'choices': [x.key for x in Vocabularies.objects.all().filter(scope=value['vocabulary_term:scope'])]} )
-            schema['fields'][key].update({
-                  'visibility': MetaHash.objects.get_or_none(scope='metahash:fields', key=key, function=lambda x : (x.get_field('visibility')) ), 
-                  'title': MetaHash.objects.get_or_none(scope='metahash:fields', key=key, function=lambda x : (x.get_field('title')) ),
-                  'description': MetaHash.objects.get_or_none(scope='metahash:fields', key=key, function=lambda x : (x.get_field('description')) ),
-                  'order': MetaHash.objects.get_or_none(scope='metahash:fields', key=key, function=lambda x : (x.get_field('order')) )
-                  });
+        for key, value in local_field_defs.items():
+            schema['fields'][key].update(value)
+            # help for fields not yet defined
+            if not schema['fields'][key].get('ui_type'):
+                if schema['fields'][key].get('type') == 'string':
+                    schema['fields'][key]['ui_type'] = 'text'
+                elif schema['fields'][key].get('type') == 'integer':
+                    schema['fields'][key]['ui_type'] = 'numeric'
+        
+        schema['fields'].pop('json_field')
+        
+
+#        logger.info(str(('generated schema', schema)))
+#        for key,value in self.field_defs.items():
+#            if value.get('ui_type',None) in [UI_TYPE_CHOICE,UI_TYPE_MULTISELECT]:
+#                schema['fields'][key].update({'type': value['ui_type'],
+#                                              'choices': [x.key for x in Vocabularies.objects.all().filter(scope=value['vocabulary_term:scope'])]} )
+#            schema['fields'][key].update({
+#                  'visibility': MetaHash.objects.get_or_none(scope='metahash:fields', key=key, function=lambda x : (x.get_field('visibility')) ), 
+#                  'title': MetaHash.objects.get_or_none(scope='metahash:fields', key=key, function=lambda x : (x.get_field('title')) ),
+#                  'description': MetaHash.objects.get_or_none(scope='metahash:fields', key=key, function=lambda x : (x.get_field('description')) ),
+#                  'order': MetaHash.objects.get_or_none(scope='metahash:fields', key=key, function=lambda x : (x.get_field('order')) )
+#                  });
         
         # TODO: refactor the building of the schema here to a super class
 #        schema['fields']['type'].update({'type': 'choice',
@@ -131,6 +178,147 @@ class MetaHashResource(PostgresSortingResource):
 #           'visibility': MetaHash.objects.get_or_none(scope='metahash:fields', key='json_field', function=lambda x : (x.get_field('visibility'))), })
 #        logger.info(str(('schema', schema)))
         return schema
+
+    def dehydrate(self, bundle):
+        logger.info(str(('dehydrate', bundle)))
+#        bundle = super(JsonAndDatabaseResource, self).dehydrate(bundle);
+        local_field_defs = self.get_field_defs(self.scope) # trigger a get field defs before building the schema
+        for key in [ x for x,y in local_field_defs.items() if y.get('json_field_type') ]:
+#            logger.info('------get field:' + key)
+            bundle.data[key] = bundle.obj.get_field(key);
+        
+        bundle.data['toString'] = '[' + bundle.obj.scope + ',' + bundle.obj.key +']'; # TODO: refactor this, and improve it
+        bundle.data['json_field'] = ''
+        bundle.data.pop('json_field') # json_field will not be part of the public API, it is for internal use only
+        logger.info(str(('deyhdrated', bundle)))
+        return bundle
+    
+    def hydrate_json_field(self, bundle):
+#        bundle = super(JsonAndDatabaseResource, self).hydrate(bundle);
+        
+        logger.info(str(('hydrate', bundle)))
+        
+        # not sure if the bundl obj is id'd yet
+        #        old_json_obj = bundle.obj.get_field_hash()
+        
+        # otherwise have to get it using query
+        #obj = self.queryset.get(scope=bundle.data['scope'], key=bundle.data['key'])  # Note: what if trying to change the key?
+        #old_json_obj = obj.get_field_hash() if obj else {}
+        
+        json_obj = {}
+        field_reset_required = False
+        local_field_defs = self.get_field_defs(self.scope) # trigger a get field defs before building the schema
+        for key in [ x for x,y in local_field_defs.items() if 'json_field_type' in y ]:
+            json_obj.update({ key: bundle.data.get(key,None)})
+
+#        json_obj = {    
+#            'title': bundle.data['title'], 
+#            'description': bundle.data['description'],
+#            'comment': bundle.data['comment'],
+#            'type': bundle.data['type'],
+#            'visibility': bundle.data['visibility'],
+#        };
+        logger.info(str(('--- json obj hydrate:', json_obj)))
+        bundle.data['json_field'] = json.dumps(json_obj);
+        
+        
+        return bundle;
+    
+#    title = fields.CharField(attribute='title', readonly=True, blank=True, null=True)
+#    description = fields.CharField(attribute='description', readonly=True, blank=True, null=True)
+#    comment = fields.CharField(attribute='comment', readonly=True, blank=True, null=True)
+#    type = fields.CharField(attribute='type', readonly=True, blank=True, null=True)
+#    visibility = fields.ListField(attribute='visibility', readonly=True, blank=True, null=True)
+    
+#            # now fill in meta information for the schema report to UI; using data from this table itself, either in real or json fields!
+#            for record in MetaHash.objects.all().filter(scope='metahash:fields'):
+#                value.update({
+#                      record.key: MetaHash.objects.get_or_none(scope='metahash:fields', key=key, function=lambda x : (x.get_field(record.key)) )
+#                      })
+#
+#            # now check if the field uses controlled vocabulary, look that up now.  TODO: "vocabulary_scope_ref" should be a constant
+#            # TODO: "vocabulary_scope_ref" needs to be created by default as a metahash:field; this argues for making it a "real" field
+#            if value.get(u'vocabulary_scope_ref'):
+#                logger.info(str(('looking for a vocabulary', value['vocabulary_scope_ref'] )))
+#                value['choices'] = [x.key for x in Vocabularies.objects.all().filter(scope=value['vocabulary_scope_ref'])]
+#                logger.info(str(('got', value['choices'] )))
+#            logger.info(str(('defined field def: ', key, value)))
+#        logger.info(str(('generated fields for MetaHashResource', self.field_defs)))   
+            
+        # Now add in any "real" fields that aren't yet specified; this allows an empty 
+#        self.field_defs = {
+#                           'title': {'type': fields.CharField, 'dehydrate':'json', 'hydrate':'json'},
+#                           'description': {'type': fields.CharField,'dehydrate':'json', 'hydrate':'json' },
+#                           'comment': {'type': fields.CharField ,'dehydrate':'json', 'hydrate':'json'},
+#                           'type': {'type': fields.CharField, 'ui_type': UI_TYPE_CHOICE, 'vocabulary_term:scope':'field:type','dehydrate':'json', 'hydrate':'json' }, 
+#                           'visibility': {'type': fields.ListField, 'ui_type': UI_TYPE_MULTISELECT, 'vocabulary_term:scope':'field:visibility','dehydrate':'json', 'hydrate':'json' },
+#                           'json_field': {}, # don't recreate existing fields, TODO: can we get rid of declaration of "real" fields?
+#                           'resource_uri':{},
+#                           'alias':{},
+#                           'scope':{},
+#                           'key':{},
+#                           'order':{},
+#                           }
+#        for key,value in self.field_defs.items():
+#            logger.info(str(('type', value)))
+#            if(key not in self.fields): # don't redefine the existing fields
+#                self.fields[key] = value['type'](attribute=key, readonly=True, blank=True, null=True)
+    
+class MetaHashResource(JsonAndDatabaseResource):
+
+    def __init__(self, **kwargs):
+        super(MetaHashResource,self).__init__(scope='metahash:fields', **kwargs)
+
+    class Meta:
+        queryset = MetaHash.objects.all().order_by('scope','order_by','key')
+        authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
+        authorization= Authorization()        
+        # TODO: drive this from data
+        ordering = []
+        filtering = {'scope':ALL, 'key':ALL}
+        serializer = BackboneSerializer()
+        excludes = [] #['json_field']
+        always_return_data = True # this makes Backbone happy
+
+    def build_schema(self):
+        schema = super(MetaHashResource,self).build_schema()
+        temp = [ x.scope for x in self.Meta.queryset.distinct('scope')]
+        logger.info(str(('terms: ', temp)))
+        schema['searchTerms'] = temp
+        return schema
+    
+#    def build_schema(self):
+#        local_field_defs = self.get_field_defs() # trigger a get field defs before building the schema
+#        schema = super(MetaHashResource,self).build_schema()
+#        
+#        for key, value in local_field_defs.items():
+#            schema['fields'][key].update(value)
+#        logger.info(str(('generated schema', schema)))
+##        for key,value in self.field_defs.items():
+##            if value.get('ui_type',None) in [UI_TYPE_CHOICE,UI_TYPE_MULTISELECT]:
+##                schema['fields'][key].update({'type': value['ui_type'],
+##                                              'choices': [x.key for x in Vocabularies.objects.all().filter(scope=value['vocabulary_term:scope'])]} )
+##            schema['fields'][key].update({
+##                  'visibility': MetaHash.objects.get_or_none(scope='metahash:fields', key=key, function=lambda x : (x.get_field('visibility')) ), 
+##                  'title': MetaHash.objects.get_or_none(scope='metahash:fields', key=key, function=lambda x : (x.get_field('title')) ),
+##                  'description': MetaHash.objects.get_or_none(scope='metahash:fields', key=key, function=lambda x : (x.get_field('description')) ),
+##                  'order': MetaHash.objects.get_or_none(scope='metahash:fields', key=key, function=lambda x : (x.get_field('order')) )
+##                  });
+#        
+#        # TODO: refactor the building of the schema here to a super class
+##        schema['fields']['type'].update({'type': 'choice',
+##                                         'choices': [x.key for x in Vocabularies.objects.all().filter(scope='field:type')],
+##                                         'visibility': MetaHash.objects.get_or_none(scope='metahash:fields', key='type', function=lambda x : (x.get_field('visibility')) ), 
+##                                         'title': MetaHash.objects.get_or_none(scope='metahash:fields', key='type', function=lambda x : (x.get_field('title')) ),
+##                                         'description': MetaHash.objects.get_or_none(scope='metahash:fields', key='type', function=lambda x : (x.get_field('description')) ),
+##                                        })
+##        schema['fields']['visibility'].update({ 'type': 'multiselect',
+##                                                'choices': [x.key for x in Vocabularies.objects.all().filter(scope='field:visibility')]})
+##        schema['fields']['resource_uri'].update({ 'visibility': MetaHash.objects.get(scope='metahash:fields', key='resource_uri').get_field('visibility'), })
+##        schema['fields']['json_field'].update({ 
+##           'visibility': MetaHash.objects.get_or_none(scope='metahash:fields', key='json_field', function=lambda x : (x.get_field('visibility'))), })
+##        logger.info(str(('schema', schema)))
+#        return schema
     
     # called by Resource.get_list
     # def obj_get_list(self, bundle, **kwargs):
@@ -148,8 +336,9 @@ class MetaHashResource(PostgresSortingResource):
         return obj
     
     def dehydrate(self, bundle):
-        for key in [ x for x,y in self.field_defs.items() if y.get('dehydrate',None) == 'json']:
-            bundle.data[key] = bundle.obj.get_field(key);
+        bundle = super(MetaHashResource, self).dehydrate(bundle);
+#        for key in [ x for x,y in self.field_defs.items() if 'json_field_type' in y ]:
+#            bundle.data[key] = bundle.obj.get_field(key);
 #        bundle.data['title'] = bundle.obj.get_field('title')
 #        bundle.data['description'] = bundle.obj.get_field('description')
 #        bundle.data['comment'] = bundle.obj.get_field('comment')
@@ -157,28 +346,37 @@ class MetaHashResource(PostgresSortingResource):
 #        bundle.data['visibility'] = bundle.obj.get_field('visibility')
         
         # TODO: "toString" required by the UI dialogs dealing with this object (i.e. delete)       
-        bundle.data['toString'] = '[' + bundle.obj.scope + ',' + bundle.obj.key +']'; # TODO: refactor this, and improve it
+#        bundle.data['toString'] = '[' + bundle.obj.scope + ',' + bundle.obj.key +']'; # TODO: refactor this, and improve it
         
         return bundle
 
     def hydrate(self, bundle):
-        # unnecessary to call the super
-        #        bundle = super(MetaHashResource, self).hydrate(bundle);
-        
-        logger.info(str(('hydrate', bundle)))
-        json_obj = {}
-        for key in [ x for x,y in self.field_defs.items() if y.get('hydrate',None) == 'json']:
-            json_obj.update({ key: bundle.data.get(key,None)})
-        
-#        json_obj = {    
-#            'title': bundle.data['title'], 
-#            'description': bundle.data['description'],
-#            'comment': bundle.data['comment'],
-#            'type': bundle.data['type'],
-#            'visibility': bundle.data['visibility'],
-#        };
-        bundle.data['json_field'] = json.dumps(json_obj);
-        return bundle;
+        bundle = super(MetaHashResource, self).hydrate(bundle);
+        return bundle
+#    
+#        logger.info(str(('hydrate', bundle)))
+#        
+#        # not sure if the bundl obj is id'd yet
+#        old_json_obj = bundle.obj.get_field_hash()
+#        # otherwise have to get it using query
+#        #obj = self.queryset.get(scope=bundle.data['scope'], key=bundle.data['key'])  # Note: what if trying to change the key?
+#        #old_json_obj = obj.get_field_hash() if obj else {}
+#        
+#        json_obj = {}
+#        for key in [ x for x,y in self.field_defs.items() if 'json_field_type' in y ]:
+#            json_obj.update({ key: bundle.data.get(key,None)})
+#            if json_obj.get(key, None) != old_json_obj.get(key,None):
+#                self.reset_field_defs() # force next query to rebuild the schema
+#                
+##        json_obj = {    
+##            'title': bundle.data['title'], 
+##            'description': bundle.data['description'],
+##            'comment': bundle.data['comment'],
+##            'type': bundle.data['type'],
+##            'visibility': bundle.data['visibility'],
+##        };
+#        bundle.data['json_field'] = json.dumps(json_obj);
+#        return bundle;
     
 #    def obj_create(self, bundle, **kwargs):
 #        """
@@ -212,14 +410,17 @@ class MetaHashResource(PostgresSortingResource):
         pass        
 
 
-class VocabulariesResource(PostgresSortingResource):
+class VocabulariesResource(JsonAndDatabaseResource):
 
-    title = fields.CharField(attribute='title', readonly=True, blank=True, null=True)
-    description = fields.CharField(attribute='description', readonly=True, blank=True, null=True)
-    comment = fields.CharField(attribute='comment', readonly=True, blank=True, null=True)
+#    title = fields.CharField(attribute='title', readonly=True, blank=True, null=True)
+#    description = fields.CharField(attribute='description', readonly=True, blank=True, null=True)
+#    comment = fields.CharField(attribute='comment', readonly=True, blank=True, null=True)
+    def __init__(self, **kwargs):
+        super(VocabulariesResource,self).__init__(scope='vocabularies:fields', **kwargs)
+
 
     class Meta:
-        queryset = Vocabularies.objects.all()
+        queryset = Vocabularies.objects.all().order_by('scope', 'order_by', 'key')
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
         authorization= Authorization()        
         # TODO: drive this from data
@@ -229,6 +430,9 @@ class VocabulariesResource(PostgresSortingResource):
         excludes = [] #['json_field']
         always_return_data = True # this makes Backbone happy
     
+#    def build_schema(self, scope):
+#        return super(VocabulariesResource,self).build_schema('metahash:fields')
+
     # called by Resource.get_list
     # def obj_get_list(self, bundle, **kwargs):
     #     calls apply_filters, which calls get_object_list
@@ -243,28 +447,35 @@ class VocabulariesResource(PostgresSortingResource):
         obj = super(VocabulariesResource, self).obj_get(bundle, **kwargs)
         return obj
     
-    def hydrate(self, bundle):
-#        bundle = super(MetaHashResource, self).hydrate(bundle);
+    def build_schema(self):
+        schema = super(VocabulariesResource,self).build_schema()
+        temp = [ x.scope for x in self.Meta.queryset.distinct('scope')]
+        logger.info(str(('terms: ', temp)))
+        schema['searchTerms'] = temp
+        return schema
         
-        
-        logger.info(str(('hydrate', bundle)))
-        json_obj = {    
-            'title': bundle.data['title'], 
-            'description': bundle.data['description'],
-            'comment': bundle.data['comment'],
-        };
-        bundle.data['json_field'] = json.dumps(json_obj);
-        return bundle;
-
-    def dehydrate(self, bundle):
-        logger.info(str(('dehydrate', bundle)))
-        
-        bundle.data['title'] = bundle.obj.get_field('title')
-        bundle.data['description'] = bundle.obj.get_field('description')
-        bundle.data['comment'] = bundle.obj.get_field('comment')
-        
-        # TODO: "toString" required by the UI dialogs dealing with this object (i.e. delete)       
-        bundle.data['toString'] = '[' + bundle.obj.scope + ',' + bundle.obj.key +']'; # TODO: refactor this, and improve it
-        
-        return bundle
+#    def hydrate(self, bundle):
+##        bundle = super(MetaHashResource, self).hydrate(bundle);
+#        
+#        
+#        logger.info(str(('hydrate', bundle)))
+#        json_obj = {    
+#            'title': bundle.data['title'], 
+#            'description': bundle.data['description'],
+#            'comment': bundle.data['comment'],
+#        };
+#        bundle.data['json_field'] = json.dumps(json_obj);
+#        return bundle;
+#
+#    def dehydrate(self, bundle):
+#        logger.info(str(('dehydrate', bundle)))
+#        
+#        bundle.data['title'] = bundle.obj.get_field('title')
+#        bundle.data['description'] = bundle.obj.get_field('description')
+#        bundle.data['comment'] = bundle.obj.get_field('comment')
+#        
+#        # TODO: "toString" required by the UI dialogs dealing with this object (i.e. delete)       
+#        bundle.data['toString'] = '[' + bundle.obj.scope + ',' + bundle.obj.key +']'; # TODO: refactor this, and improve it
+#        
+#        return bundle
     

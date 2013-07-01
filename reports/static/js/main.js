@@ -30,7 +30,6 @@ require.config({
       exports: 'BackbonePageableCollection'
       // Note, object naming rules won't allow the dot separator, as in "Backbone.PageableCollection"
       // so the PageableCollection must be tied back in to the Backbone object with each module it is imported into
-      // see http://localhost:8000/reports/#list/screensaveruser/search/last_name=Y/order_by/first_name/rpp/25/page/2
     },
     backgrid: {
       deps: ['backbone', 'underscore', 'jquery'],

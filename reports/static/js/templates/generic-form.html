@@ -6,27 +6,38 @@
             <div class="controls">
                 <% if(fieldDefinitions[key] != null) {
                     options = fieldDefinitions[key]
-                    if(options.type == 'choice') { %>
-                        <select  class="input-mini" name="<%= key %>">
+                    if(options.ui_type == 'choice') { %>
+
+                        <% options.choices.each(function(option) { %>
+                            <label class="radio">
+                              <input type="radio" name="<%= key %>" id="<%= key %>" value="<%= option %>">
+                              <%= option %>
+                            </label>
+                        <% }); %>
+
+                    <% } else if(options.ui_type == 'choice2'){ %>
+
+                        <select  class="input-medium" name="<%= key %>" >
                             <% options.choices.each(function(option) { %>
                                 <option value="<%= option %>"><%= option %></option>
                             <% }); %>
                         </select>
-                    <% } else if(options.type == 'multiselect'){ %>
-                        <select class="multiselect" multiple="multiple" name="<%= key %>">
+
+                    <% } else if(options.ui_type == 'multiselect'){ %>
+                        <select class="multiselect input-medium" multiple="multiple" name="<%= key %>">
                             <% options.choices.each(function(option) { %>
                                 <option value="<%= option %>"><%= option %></option>
-                            <% }); %>
+                     vocabularies:fields       <% }); %>
                         </select>
-                    <% } else if(options.type == 'string'){ %>
-                        <input type="text" name="<%= key %>" id="<%= key %>" />
-                    <% } else if(options.type == 'integer'){ %>
-                        <input type="text" name="<%= key %>" id="<%= key %>" />
+                    <% } else if(options.ui_type == 'text'){ %>
+                        <input type="text" name="<%= key %>" id="<%= key %>" class="input-block-level"/>
+                    <% } else if(options.ui_type == 'numeric'){ %>
+                        <input type="text" name="<%= key %>" id="<%= key %>" class="input-medium"/>
                     <% } else { %>
-                        unknown type: <%= options.type %> !
+                        unknown type: <%= options.ui_type %> !
                     <% } %>
                 <% } else { %>
-                    <input type="text" name="<%= key %>" id="<%= key %>" />
+                    <input type="text" name="<%= key %>" id="<%= key %>" class="input-medium"/>
                 <% } %>
             </div>
         </div>

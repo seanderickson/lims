@@ -9,7 +9,8 @@ define([
   'text!templates/rows-per-page.html',
   'text!templates/list.html',
   'text!templates/modal_ok_cancel.html',
-], function($, _, Backbone, BackbonePageableCollection, Backgrid,  App, DetailView, rowsPerPageTemplate, listTemplate, modalTemplate ){
+  'text!templates/generic-selector.html',
+], function($, _, Backbone, BackbonePageableCollection, Backgrid,  App, DetailView, rowsPerPageTemplate, listTemplate, modalTemplate, genericSelectorTemplate ){
 
     // for compatibility with require.js, attach PageableCollection in the right place on the Backbone object
     // see https://github.com/wyuenho/backbone-pageable/issues/62
@@ -49,7 +50,7 @@ define([
                 data: "",
                 dataType: "json",
                 success: function(result) {
-                    self.buildGrid(result.fields, options.url, options);
+                    self.buildGrid(result, options.url, options);
                 }, // end success outer ajax call
                 error: function(x, e) {
                     alert(x.readyState + " "+ x.status +" "+ e.msg);
@@ -57,7 +58,9 @@ define([
             });
         },
 
-        buildGrid : function(fieldDefinitions, _url, options) {
+        buildGrid : function(schemaResult, _url, options) {
+
+            var fieldDefinitions = schemaResult.fields;
 
             console.log('buildGrid...');
             // create an underscore wrapped clone of fieldDefinitions (TODO: refactor this to a generic recursive function )
@@ -65,10 +68,10 @@ define([
             // a ref to the object element.  I think this is ok, but when refactoring, let's take care of this!
             var field_defs = {};
             _.each(_.pairs(fieldDefinitions), function(pair){
-                if(pair[1]['type'] == 'choice'){
+                if(pair[1]['ui_type'] == 'choice'){
                     field_defs[pair[0]] = pair[1];
                     field_defs[pair[0]]['choices'] = _(field_defs[pair[0]]['choices']);
-                } else if(pair[1]['type'] == 'multiselect'){
+                } else if(pair[1]['ui_type'] == 'multiselect'){
                     field_defs[pair[0]] = pair[1];
                     field_defs[pair[0]]['choices'] = _(field_defs[pair[0]]['choices']);
                 }else{
@@ -81,6 +84,7 @@ define([
             var self = this; // todo: "this" is the parent ListView, all of this should be handled by events
             this.objects_to_destroy = _([]);
             // TODO: make sure req'd options are present (i.e. router, type)
+            // type == table or query or api resource type
             var collection = this.collection = new App.MyCollection({ 'url': _url, router: options.router, type: options.type  });
 
             this.objects_to_destroy.push(collection);
@@ -131,6 +135,7 @@ define([
                     },
                 });
                 modalDialog.render();
+                $('#modal').empty();
                 $('#modal').html(modalDialog.$el);
                 $('#modal').modal();
                 console.log("removing model: " + JSON.stringify(model));
@@ -149,6 +154,46 @@ define([
             });
             this.objects_to_destroy.push(grid);
 
+            // TODO: is there a way to create this without extending Backbone.View (like footer below)?
+            var extraSelector = Backbone.View.extend({
+                initialize: function(options){
+                    console.log('init: '  + options);
+                    this.label = options.label ;
+                    this._options = options.options;
+                    this._options.unshift(' ');
+
+                },
+                events: {
+                    "change #generic_selector": "selectorChanged"
+                },
+                selectorChanged: function(e){
+                    e.preventDefault();
+                    var option = e.currentTarget.value;
+                    console.log('option: ' + option + ', clicked');
+
+                    var searchTerm, searchColumn, searchExpression;
+                    searchTerm = option;
+                    searchColumn = 'scope'
+                    searchExpression = searchColumn + '=' + searchTerm;
+                    collection.searchBy = searchExpression;
+                    console.log('trigger search');
+                    collection.trigger("MyServerSideFilter:search", searchColumn, searchTerm, collection);
+                    console.log('done: trigger search');
+                },
+                updateSelection: function(searchColumn, searchTerm){
+                    console.log('->-> extraSelector:' + searchColumn + ', ' + searchTerm);
+                    $('#generic_selector').val(searchTerm);
+                },
+                render: function(){
+                    console.log('===============render extra selector' + this)
+                    this.delegateEvents();
+                    this.$el.html(_.template( genericSelectorTemplate,
+                        { label: this.label,
+                          'options': _(this._options) }));  // TODO: this should come from the metahash schema
+                    return this;
+                },
+            });
+
             var selector = new App.ItemsPerPageSelector(
                 { 'selections': ['25','50','200','1000'], 'template': rowsPerPageTemplate },
                 collection);
@@ -166,6 +211,13 @@ define([
             }
             var compiledTemplate = _.template( listTemplate, data );
             this.el.innerHTML = compiledTemplate;
+            if( _.has(schemaResult, 'searchTerms')){
+                console.log('searchTerms: ' + JSON.stringify(schemaResult.searchTerms));
+                var extraSelectorInstance = new extraSelector({ label:'Scope: ', options: schemaResult.searchTerms}); // HMMm: need to understand the "delegate events" better here
+                this.objects_to_destroy.push(extraSelectorInstance);
+                $("#extra-selector-div").append(extraSelectorInstance.render().$el);
+                extraSelectorInstance.listenTo(collection, 'MyServerSideFilter:search', extraSelectorInstance.updateSelection);
+            }
             $("#paginator-div").append(paginator.render().$el);
             $("#rows-selector-div").append(selector.render().$el);
             $("#example-table").append(grid.render().$el);
@@ -219,6 +271,7 @@ define([
             this.listenTo(collection, 'request', ajaxStart);
             this.listenTo(collection, 'MyCollection:setRoute', this.setRoute);
             this.listenTo(collection, 'sync', selector.updateSelection );
+
             // TODO: work out the specifics of communication complete event.  the following are superceded by the global handler for "ajaxComplete"
             this.listenTo(collection, 'error', ajaxComplete);
             this.listenTo(collection, 'complete', ajaxComplete);
@@ -262,9 +315,10 @@ define([
                     console.log('parsed search: ' + searchColumn + ', ' + searchTerm );
 
                     collection.searchBy = options.searchBy;
-                    console.log('trigger search');
+                    console.log('trigger search:' + searchColumn + ', ' + searchTerm );
                     collection.trigger("MyServerSideFilter:search", searchColumn, searchTerm, collection);
                     console.log('done: trigger search');
+
                  }else{
                      console.log('unrecognized searchBy: ' + options.searchBy);
                  }
@@ -308,7 +362,7 @@ define([
                         'label':prop['title'],
                         'description':prop['description'],
                         cell: cell,
-                        order: prop['order'],
+                        order: prop['order_by'],
                         editable: false,
                         };
                     if (optionalHeaderCell){

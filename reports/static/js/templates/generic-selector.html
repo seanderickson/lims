@@ -1,0 +1,12 @@
+<form class="form-horizontal">
+    <div class="control-group">
+        <label class="control-label" for="generic_selector"><%=label%></label>
+        <div class="controls">
+            <select  class="input-medium" id="generic_selector">
+                <% options.each(function(option) { %>
+                    <option value="<%= option %>"><%= option %></option>
+                <% }); %>
+            </select>
+        </div>
+    </div>
+</form>

@@ -174,6 +174,8 @@ class MetaHash1(models.Model):
 
 import json
 
+# Notes on MetaHash Model
+
 class MetaHash(models.Model):
     objects                 = MetaManager()
 #    objects                 = models.Manager() # default manager
@@ -181,9 +183,10 @@ class MetaHash(models.Model):
     scope                   = models.CharField(max_length=35, blank=True)
     key                     = models.CharField(max_length=35, blank=True)
     alias                   = models.CharField(max_length=35, blank=True)
-    order                   = models.IntegerField();
+    order_by                = models.IntegerField();
+    json_field_type         = models.CharField(max_length=128, blank=True, null=True); # required if the field is a JSON field; choices are from the TastyPie field types
     
-    json_field                   = models.TextField(blank=True)
+    json_field                   = models.TextField(blank=True) # This is the "meta" field, it contains "virtual" json fields
        
     class Meta:
         unique_together = (('scope', 'key'))    
@@ -201,7 +204,7 @@ class MetaHash(models.Model):
         if(field in temp):
             return temp[field]
         else:
-            logger.info('unknown field: ' + field)
+            logger.info('unknown field: ' + field + ' for ' + str(self))
             return None
             
     def set_field(self, field, value):
@@ -209,6 +212,11 @@ class MetaHash(models.Model):
         temp[field] = value;
         self.json_field = json.dump(temp)
     
+    def is_json(self):
+        """
+        Determines if this Meta record references a JSON nested field or not
+        """
+        return True if self.json_field_type else False
     
     def __unicode__(self):
         return unicode(str((self.scope, self.key, self.id, self.alias)))
@@ -221,7 +229,11 @@ class Vocabularies(models.Model):
     scope                   = models.CharField(max_length=35, blank=True)
     key                     = models.CharField(max_length=35, blank=True)
     alias                   = models.CharField(max_length=35, blank=True)
+    order_by                = models.IntegerField();
+    json_field_type         = models.CharField(max_length=128, blank=True, null=True); # required if the field is a JSON field; choices are from the TastyPie field types
     
+    # All other fields are "virtual" JSON stored fields, (unless we decide to migrate them out to real fields for rel db use cases)
+    # NOTE: "json_type" for all virtual JSON fields in the entire database are defined in the MetaHash
     json_field                   = models.TextField(blank=True)
        
     class Meta:
@@ -238,7 +250,7 @@ class Vocabularies(models.Model):
         if(field in temp):
             return temp[field]
         else:
-            logger.info('unknown field: ' + field)
+            logger.info(str((self,'unknown field: ',field)))
             return None
             
     def set_field(self, field, value):
@@ -248,6 +260,6 @@ class Vocabularies(models.Model):
     
     
     def __unicode__(self):
-        return unicode(str((self.scope, self.key, self.id, self.alias)))
+        return unicode(str((self.scope, self.key, self.id)))
     
     

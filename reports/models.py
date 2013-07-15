@@ -1,25 +1,14 @@
 from django.db import models
 from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
+from lims.models import GetOrNoneManager
 
+import json
 import logging
 import re
 import types
 
 logger = logging.getLogger(__name__)
 
-class GetOrNoneManager(models.Manager):
-    """Adds get_or_none method to objects
-    """
-    def get_or_none(self, function=None, **kwargs):
-        try:
-            x = self.get(**kwargs)
-            if x and function:
-                return function(x)
-            else:
-                return x
-        except self.model.DoesNotExist:
-            return None
-            
 
 class FieldsManager(models.Manager):
     
@@ -142,10 +131,47 @@ class FieldInformation(models.Model):
         return field_name
 
 class MetaManager(GetOrNoneManager):
+
+    def __init__(self, **kwargs):
+        super(MetaManager,self).__init__(**kwargs)
+#        self.metahash = {}
+
+
     
     # this is how you override a Manager's base QuerySet
     def get_query_set(self):
         return super(MetaManager, self).get_query_set()
+
+    def get_metahash(self, scope=''):
+        '''
+        Query the metahash table for field definitions for this table
+        '''
+#        if not self.metahash:
+        # TODO: one cannot deny, a cache might do some good here    
+        metahash = {}
+        # first, query the metahash for fields defined for this scope
+        for fieldinformation in MetaHash.objects.all().filter(scope=scope):
+            logger.info('---- meta field for scope: ' + scope + ', ' + fieldinformation.key)
+            
+            field_key = fieldinformation.key
+#            hash = schema['fields'][field_key]
+            metahash[field_key] = {}
+            hash = metahash[field_key]
+            for meta_record in MetaHash.objects.all().filter(scope='metahash:fields'):  # metahash:fields are defined for all reports
+                hash.update({
+                      meta_record.key: MetaHash.objects.get_or_none(scope=scope, key=field_key, function=lambda x : (x.get_field(meta_record.key)) )
+                      })
+                    
+            # now check if the field uses controlled vocabulary, look that up now.  TODO: "vocabulary_scope_ref" should be a constant
+            # TODO: "vocabulary_scope_ref" needs to be created by default as a metahash:field; this argues for making it a "real" field
+            if hash.get(u'vocabulary_scope_ref'):
+                vocab_ref = hash['vocabulary_scope_ref']
+                logger.info(str(('looking for a vocabulary', vocab_ref )))
+                hash['choices'] = [x.key for x in Vocabularies.objects.all().filter(scope=vocab_ref)]
+                logger.info(str(('got', hash['choices'] )))
+            
+        return metahash
+
 
 class MetaHash1(models.Model):
     manager                 = MetaManager()
@@ -171,8 +197,6 @@ class MetaHash1(models.Model):
         unique_together = (('scope', 'key'),('scope','alias'))    
     def __unicode__(self):
         return unicode(str((self.scope, self.key, self.id, self.alias)))
-
-import json
 
 # Notes on MetaHash Model
 
@@ -206,17 +230,20 @@ class MetaHash(models.Model):
         else:
             logger.info('unknown field: ' + field + ' for ' + str(self))
             return None
-            
+    
     def set_field(self, field, value):
         temp = self.get_field_hash()
         temp[field] = value;
-        self.json_field = json.dump(temp)
+        self.json_field = json.dumps(temp)
     
     def is_json(self):
         """
         Determines if this Meta record references a JSON nested field or not
         """
         return True if self.json_field_type else False
+            
+    def dehydrate(self, bundle):
+        return bundle
     
     def __unicode__(self):
         return unicode(str((self.scope, self.key, self.id, self.alias)))
@@ -256,7 +283,7 @@ class Vocabularies(models.Model):
     def set_field(self, field, value):
         temp = self.get_field_hash()
         temp[field] = value;
-        self.json_field = json.dump(temp)
+        self.json_field = json.dumps(temp)
     
     
     def __unicode__(self):

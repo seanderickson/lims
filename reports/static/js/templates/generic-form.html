@@ -1,8 +1,10 @@
+<div class='well'>
+
 <h4><%= title %></h4>
 <form id='generic-form' class="form-horizontal" >
-    <% object.each(function(key) { %>
+    <% keys.each(function(key) { %>
         <div class="control-group">
-            <label class="control-label" for="<%= key %>" ><%= key %></label>
+            <label class="control-label" for="<%= key %>" ><%= _(fieldDefinitions[key]).has('title') ? fieldDefinitions[key]['title']:key %></label>
             <div class="controls">
                 <% if(fieldDefinitions[key] != null) {
                     options = fieldDefinitions[key]
@@ -27,7 +29,7 @@
                         <select class="multiselect input-medium" multiple="multiple" name="<%= key %>">
                             <% options.choices.each(function(option) { %>
                                 <option value="<%= option %>"><%= option %></option>
-                     vocabularies:fields       <% }); %>
+                            <% }); %>
                         </select>
                     <% } else if(options.ui_type == 'text'){ %>
                         <input type="text" name="<%= key %>" id="<%= key %>" class="input-block-level"/>
@@ -47,3 +49,5 @@
         <button type="button" class="btn" id="cancel" >Cancel</button>
     </div>
 </form>
+
+</div>

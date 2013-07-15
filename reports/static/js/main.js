@@ -8,7 +8,8 @@ require.config({
     backgrid: 'libs/backgrid',
     backgrid_filter: 'libs/backgrid-filter',
     backgrid_paginator: 'libs/backgrid-paginator',
-    backbone_modelbinder: 'libs/Backbone.ModelBinder',
+//    backbone_modelbinder: 'libs/Backbone.ModelBinder',
+    backbone_stickit: 'libs/backbone.stickit',
     bootstrap: 'libs/bootstrap',
     lunr: 'libs/lunr',
     text: 'libs/text',
@@ -46,7 +47,8 @@ require.config({
     bootstrap: {
         deps: ['jquery'],
         // exports: '$.fn.modal'
-    }
+    },
+    backbone_stickit: { deps: ["backbone"] }
   }
 });
 require([

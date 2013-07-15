@@ -141,6 +141,9 @@ INSTALLED_APPS = (
     'reports',
 )
 
+# for tastypie: will evaluate resource URIs the same with or without the trailing slash
+#APPEND_SLASH=False
+
 # A sample logging configuration. The only tangible logging
 # performed by this configuration is to send an email to
 # the site admins on every HTTP 500 error when DEBUG=False.

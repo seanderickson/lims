@@ -36,6 +36,7 @@ define([
     // see https://github.com/wyuenho/backbone-pageable/issues/62
     Backbone.PageableCollection = BackbonePageableCollection;
 
+    // attach some objs to function scope //TODO: is this needed/correct?
     var MyModel = Backbone.Model.extend({
         // TODO: we want to make sure there is a trailing slash, or tastypie doesn't work.
         url : function(){
@@ -297,7 +298,7 @@ define([
                     this.remove(); // this is the filter
                     this.clear();
                     this.collection.searchBy = null;
-                    this.collection = null;
+                    this.collection.trigger('MyServerSideFilter:clearSearch');
                 };
 
                 // listen for search submission by the user and set the routes

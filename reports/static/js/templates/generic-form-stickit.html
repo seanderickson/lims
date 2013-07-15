@@ -1,0 +1,75 @@
+<div class='well'>
+
+<h4><%= title %></h4>
+<form id='generic-form' class="form-horizontal" >
+    <%
+    keys.each(function(key) { %>
+        <div class="control-group">
+            <label class="control-label" for="<%= key %>" ><%= (_(fieldDefinitions[key]).has('title') && ! _.isNull(fieldDefinitions[key]['title']) ? fieldDefinitions[key]['title'] : key) %></label>
+            <div class="controls">
+                <% if( _.has(fieldDefinitions,key)) {
+                    options = fieldDefinitions[key]
+                    console.log('key: ' + key + ', options: ' + JSON.stringify(options));
+                    if(options.ui_type == 'choice') {
+                        if(_.isUndefined(options.choices)){
+                            window.alert('undefined choices for choice field: ' + key ); // TODO: validate on the input side for this
+                            return;
+                        }
+
+                        %>
+
+                        <% options.choices.each(function(option) { %>
+                            <label class="radio">
+                              <input type="radio" name="<%= key %>" class="<%= 'radio_' + key %>" id="<%= key %>" value="<%= option %>">
+                              <%= option %>
+                            </label>
+                        <% }); %>
+
+                    <% } else if(options.ui_type == 'choice2'){ %>
+
+                        <select  class="input-medium" name="<%= key %>" id="<%= key %>" >
+
+                        </select>
+
+                    <% } else if(options.ui_type == 'multiselect'){
+                        if(_.isUndefined(options.choices)){
+                            window.alert('undefined choices for choice field: ' + key ); // TODO: validate on the input side for this
+                            return;
+                        }
+                        %>
+                        <% options.choices.each(function(option) { %>
+                            <label class="checkbox">
+                                <input type="checkbox" name="<%= key %>" class="<%= 'checkbox_' + key %>" id="<%= key %>" value="<%= option %>">
+                              <%= option %>
+                            </label>
+                        <% }); %>
+                    <% } else if(options.ui_type == 'multiselect2'){ %>
+                        <select class="multiselect input-medium" multiple="multiple" name="<%= key %>" id="<%= key %>" >
+                        </select>
+                    <% } else if(options.ui_type == 'boolean'){ %>
+                        <label class="checkbox">
+                            <input type="checkbox" name="<%= key %>" class="<%= 'checkbox_' + key %>" id="<%= key %>" ">
+                          <%= key %>
+                        </label>
+                    <% } else if(options.ui_type == 'string'){ %>
+                        <input type="text" name="<%= key %>" id="<%= key %>" class="input-block-level"/>
+                    <% } else if(options.ui_type == 'integer'){ %>
+                        <input type="text" name="<%= key %>" id="<%= key %>" class="input-medium"/>
+                    <% } else if(options.ui_type == 'date'){ %>
+                        <input type="text" name="<%= key %>" id="<%= key %>" class="input-medium"/>
+                    <% } else { %>
+                        unknown type: <%= options.ui_type %> !
+                    <% } %>
+                <% } else { %>
+                    <input type="text" name="<%= key %>" id="<%= key %>" class="input-medium"/>
+                <% } %>
+            </div>
+        </div>
+    <% }); %>
+    <div class="controls">
+        <button type="button" class="btn" id="save" >Save</button>
+        <button type="button" class="btn" id="cancel" >Cancel</button>
+    </div>
+</form>
+
+</div>

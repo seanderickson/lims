@@ -1,39 +1,20 @@
-from django.db import connection, DatabaseError
-
-from reports.models import FieldInformation, MetaHash, Vocabularies
-
-from django.conf.urls import url
+from django.db import DatabaseError
 
 from tastypie.authorization import Authorization
-from tastypie.bundle import Bundle
-from tastypie.resources import ModelResource, Resource
-from tastypie.serializers import Serializer
 from tastypie.authentication import BasicAuthentication, SessionAuthentication, MultiAuthentication
-from tastypie.constants import ALL, ALL_WITH_RELATIONS
-from tastypie import fields, utils
+from tastypie.constants import ALL
+from tastypie import fields
 
-from db.api import PostgresSortingResource
+from lims.api import PostgresSortingResource, BackboneSerializer
+from reports.models import FieldInformation, MetaHash, Vocabularies
 
 import logging
-from django.core.serializers.json import DjangoJSONEncoder
-from django.core.serializers import json
-import json,re
+#from django.core.serializers.json import DjangoJSONEncoder
+#from django.core.serializers import json
+import json
         
 logger = logging.getLogger(__name__)
 
-
-class BackboneSerializer(Serializer):
-    
-    def from_json(self, content):
-        """
-        Given some JSON data, returns a Python dictionary of the decoded data.
-        Override to quote attributes - the backbone client doesn't want to do this.
-        """
-#        logger.info(str(("loading content:", content)))
-        content = content.replace(r'(\w+):', r'"\1" :')
-        logger.info(str(("loading content:", content)))
-        return json.loads(content)
-    
 class FieldInformationResource(PostgresSortingResource):
 
     class Meta:
@@ -76,8 +57,8 @@ class JsonAndDatabaseResource(PostgresSortingResource):
         self.field_defs = {}
         
     def get_field_defs(self, scope):
-        # dynamically define the JSON fields.  
-        # Note that: - for a new database, there will be no JSON fields initially (naturally)
+        # dynamically define fields that are stored in the JSON field.  
+        # Note that: - for a new database, there will be no fields in the JSON field initially (naturally)
         #     - also, all JSON field values will be null to start (naturally)
         # ALSO NOTE: creating new JSON fields requires a restart (to reload) (todo: fix that)
         if not self.field_defs:
@@ -96,7 +77,7 @@ class JsonAndDatabaseResource(PostgresSortingResource):
                     if fieldinformation.key not in self.fields:
                         raise DatabaseError('Illegal definition of a non-json_field that is not a database field on this scope: ' + scope + ',' + fieldinformation.key)
             
-            # add in model fields not specified by a metahash entry
+            # add in model/resource fields not specified by a metahash entry
             for resource_field_key in self.fields.keys():
                 if resource_field_key not in self.field_defs: # and not key == 'json_field': # TODO: should exclude the json_field from this list, right?
                     logger.info('--------------- create default field for ' + resource_field_key)
@@ -144,10 +125,11 @@ class JsonAndDatabaseResource(PostgresSortingResource):
             schema['fields'][key].update(value)
             # help for fields not yet defined
             if not schema['fields'][key].get('ui_type'):
-                if schema['fields'][key].get('type') == 'string':
-                    schema['fields'][key]['ui_type'] = 'text'
-                elif schema['fields'][key].get('type') == 'integer':
-                    schema['fields'][key]['ui_type'] = 'numeric'
+                schema['fields'][key]['ui_type'] = schema['fields'][key].get('type')
+#                if schema['fields'][key].get('type') == 'string':
+#                    schema['fields'][key]['ui_type'] = 'text'
+#                elif schema['fields'][key].get('type') == 'integer':
+#                    schema['fields'][key]['ui_type'] = 'numeric'
         
         schema['fields'].pop('json_field')
         

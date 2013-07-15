@@ -5,7 +5,7 @@ define([
   'backbone_pageable',
   'backgrid',
   'iccbl_backgrid',
-  'views/detail',
+  'views/detail_stickit',
   'text!templates/rows-per-page.html',
   'text!templates/list.html',
   'text!templates/modal_ok_cancel.html',
@@ -58,28 +58,47 @@ define([
             });
         },
 
+        wrapAsUnderscore: function(obj) {
+            var self = this;
+            var newObj = {};
+            _.each(_.pairs(obj), function(pair){
+                if(_.isArray(pair[1])){
+                    newObj[pair[0]] = _(pair[1]);
+                }else if(_.isObject(pair[1])){
+                    newObj[pair[0]] = self.wrapAsUnderscore(pair[1]);
+                }else{
+                    newObj[pair[0]] = pair[1];
+                }
+            });
+            return newObj;
+
+        },
+
         buildGrid : function(schemaResult, _url, options) {
 
             var fieldDefinitions = schemaResult.fields;
 
-            console.log('buildGrid...');
-            // create an underscore wrapped clone of fieldDefinitions (TODO: refactor this to a generic recursive function )
-            // NOTE: this appears to be doing an *in place* conversion of the FD object -> ... because we are assigning field_defs[0] = pair[1], which is
-            // a ref to the object element.  I think this is ok, but when refactoring, let's take care of this!
-            var field_defs = {};
-            _.each(_.pairs(fieldDefinitions), function(pair){
-                if(pair[1]['ui_type'] == 'choice'){
-                    field_defs[pair[0]] = pair[1];
-                    field_defs[pair[0]]['choices'] = _(field_defs[pair[0]]['choices']);
-                } else if(pair[1]['ui_type'] == 'multiselect'){
-                    field_defs[pair[0]] = pair[1];
-                    field_defs[pair[0]]['choices'] = _(field_defs[pair[0]]['choices']);
-                }else{
-                    field_defs[pair[0]] = pair[1];
-                }
-                field_defs[pair[0]]['visibility'] = _(field_defs[pair[0]]['visibility']);
+            var field_defs = this.wrapAsUnderscore(fieldDefinitions);
+            console.log('field_defs: ' + JSON.stringify(field_defs));
 
-            });
+            console.log('buildGrid...');
+            // // create an underscore wrapped clone of fieldDefinitions (TODO: refactor this to a generic recursive function )
+            // // NOTE: this appears to be doing an *in place* conversion of the FD object -> ... because we are assigning field_defs[0] = pair[1], which is
+            // // a ref to the object element.  I think this is ok, but when refactoring, let's take care of this!
+            // var field_defs = {};
+            // _.each(_.pairs(fieldDefinitions), function(pair){
+                // if(pair[1]['ui_type'] == 'choice'){
+                    // field_defs[pair[0]] = pair[1];
+                    // field_defs[pair[0]]['choices'] = _(field_defs[pair[0]]['choices']);
+                // } else if(pair[1]['ui_type'] == 'multiselect'){
+                    // field_defs[pair[0]] = pair[1];
+                    // field_defs[pair[0]]['choices'] = _(field_defs[pair[0]]['choices']);
+                // }else{
+                    // field_defs[pair[0]] = pair[1];
+                // }
+                // field_defs[pair[0]]['visibility'] = _(field_defs[pair[0]]['visibility']);
+//
+            // });
 
             var self = this; // todo: "this" is the parent ListView, all of this should be handled by events
             this.objects_to_destroy = _([]);
@@ -98,9 +117,22 @@ define([
               // }
             // });
 
+
+            // TODO: p-o-c of how to do a Link-to-Detail/Edit: should be controlled by the field type
+            var col_options = { customCells: { 'title': App.EditCell, 'screensaver_user_id': App.EditCell } };
+            var columns = this.createBackgridColModel(fieldDefinitions, App.MyHeaderCell, col_options );
+            columns.unshift({ name: 'deletor', label: 'Delete', text:'X', description: 'delete record', cell: App.DeleteCell, sortable: false });
+            var grid = this.grid = new Backgrid.Grid({
+              columns: columns,
+              collection: collection,
+              // row: ClickableRow,
+            });
+            this.objects_to_destroy.push(grid);
+
             self.listenTo(collection, "MyCollection:edit", function (model) {
+                console.log('edit:', model);
                 // TODO: Get the title, and other items from the meta data
-                var detailView = new DetailView({ model: model}, {title: "Edit", fieldDefinitions:field_defs} ); // TODO: get the model "edit title" from the metainformation_hash
+                var detailView = new DetailView({ model: model}, {title: "Details", fields:field_defs} ); // TODO: get the model "edit title" from the metainformation_hash
 
                 $('#list-container').hide();
                 // NOTE: having self bind to the detailView like this:
@@ -143,16 +175,6 @@ define([
                 //model.destroy();
             });
 
-            // TODO: p-o-c of how to do a Link-to-Detail/Edit: should be controlled by the field type
-            var col_options = { customCells: { 'title': App.EditCell, 'screensaver_user_id': App.EditCell } };
-            var columns = this.createBackgridColModel(fieldDefinitions, App.MyHeaderCell, col_options );
-            columns.unshift({ name: 'deletor', label: 'Delete', text:'X', description: 'delete record', cell: App.DeleteCell, sortable: false });
-            var grid = this.grid = new Backgrid.Grid({
-              columns: columns,
-              collection: collection,
-              // row: ClickableRow,
-            });
-            this.objects_to_destroy.push(grid);
 
             // TODO: is there a way to create this without extending Backbone.View (like footer below)?
             var extraSelector = Backbone.View.extend({
@@ -169,19 +191,15 @@ define([
                 selectorChanged: function(e){
                     e.preventDefault();
                     var option = e.currentTarget.value;
-                    console.log('option: ' + option + ', clicked');
-
                     var searchTerm, searchColumn, searchExpression;
                     searchTerm = option;
                     searchColumn = 'scope'
                     searchExpression = searchColumn + '=' + searchTerm;
                     collection.searchBy = searchExpression;
-                    console.log('trigger search');
                     collection.trigger("MyServerSideFilter:search", searchColumn, searchTerm, collection);
-                    console.log('done: trigger search');
                 },
                 updateSelection: function(searchColumn, searchTerm){
-                    console.log('->-> extraSelector:' + searchColumn + ', ' + searchTerm);
+                    console.log('updateSelection: ' + searchColumn + ', ' + searchTerm);
                     $('#generic_selector').val(searchTerm);
                 },
                 render: function(){
@@ -217,6 +235,8 @@ define([
                 this.objects_to_destroy.push(extraSelectorInstance);
                 $("#extra-selector-div").append(extraSelectorInstance.render().$el);
                 extraSelectorInstance.listenTo(collection, 'MyServerSideFilter:search', extraSelectorInstance.updateSelection);
+                extraSelectorInstance.listenTo(collection, 'MyServerSideFilter:clearSearch', extraSelectorInstance.updateSelection);
+
             }
             $("#paginator-div").append(paginator.render().$el);
             $("#rows-selector-div").append(selector.render().$el);
@@ -240,7 +260,7 @@ define([
                             }
                         });
                         var NewModel = Backbone.Model.extend({urlRoot: self.options.url, defaults: defaults });
-                        var detailView = new DetailView({ model: new NewModel}, {title: "Add new record", fieldDefinitions:field_defs}); // TODO: get the model "edit title" from the metainformation_hash
+                        var detailView = new DetailView({ model: new NewModel}, { isEditMode: true, title: "Add new record", fields:field_defs}); // TODO: get the model "edit title" from the metainformation_hash
 
                         $('#list-container').hide();
                         // NOTE: having self bind to the detailView like this:
@@ -336,7 +356,60 @@ define([
          * @param {Object} optionalHeaderCell - a Backgrid.HeaderCell to use for each column
          * @param {Object} options - a hash of { fieldKey: [custom cell: extend Backgrid.Cell] } to map custom cell implementations to fields
          */
-        createBackgridColModel: function(fields_from_rest, optionalHeaderCell, options) {
+        createBackgridColModel: function(restFields, optionalHeaderCell, options) {
+            console.log('createBackgridColModel: restFields: ' + JSON.stringify(restFields));
+            var colModel = [];
+            var i = 0;
+            var _total_count = 0;
+            _.each(_.pairs(restFields), function(pair){
+                var key = pair[0];
+                var prop = pair[1];
+                if(_.has(pair[1], 'visibility') && _.contains(pair[1]['visibility'], 'list')){
+                    console.log('process list field: ' + pair[0] + ', ' + JSON.stringify(pair[1]));
+                    //var cell = 'string';
+                    var cell = prop['ui_type']
+
+                    if(cell == 'choice' || cell == 'multiselect'){ // TODO: should have two types, "gridCellType", and "editFormType"?
+                        cell = 'string';
+                    }
+
+                    if(!_.isUndefined(options['customCells'][key])){ // TODO this should go in the metahash
+                        cell = options['customCells'][key];
+                    }
+                    colModel[i] = {
+                        'name':key,
+                        'label':prop['title'],
+                        'description':prop['description'],
+                        cell: cell,
+                        order: prop['order_by'],
+                        editable: false,
+                    };
+                    if (optionalHeaderCell){
+                        colModel[i]['headerCell'] = optionalHeaderCell;
+                    }
+                    i++;
+                }else{
+                    console.log('field not visible in list view: ' + key)
+                }
+            });
+
+
+            // console.log('colModel: ' + JSON.stringify(colModel));
+            colModel.sort(function(a,b){
+                if(_.isNumber(a['order']) && _.isNumber( b['order'])){
+                    return a['order']-b['order'];
+                }else if(_.isNumber( a['order'])){
+                    return -1;
+                }else if(_.isNumber(b['order'])){
+                    return 1;
+                }else{
+                    return 0;
+                }
+            });
+            return colModel;
+        },
+
+        createBackgridColModelOrig: function(fields_from_rest, optionalHeaderCell, options) {
             // console.log('createBackgridColModel: options: ' + JSON.stringify(options));
             var colModel = [];
             var i = 0;
@@ -344,7 +417,6 @@ define([
             for (var field in fields_from_rest){
                 if (fields_from_rest.hasOwnProperty(field)) { // filter
                     var prop = fields_from_rest[field];
-                    // console.log('prop:' + field + ', ' + JSON.stringify(prop));
 //                    if( !_.has(prop, 'visibility') || prop['visibility'].indexOf('list') == -1 ){
                     if( prop['visibility'].size() > 0 && prop['visibility'].indexOf('list') == -1 ){
                         // console.log('field not visible in list: ' + field);

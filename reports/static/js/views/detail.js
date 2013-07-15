@@ -3,30 +3,68 @@ define([
     'underscore',
     'backbone',
     'backbone_modelbinder',
+    'text!templates/generic-detail.html',
     'text!templates/generic-form.html',
 
-], function( $, _, Backbone, modelbinder, genericFormTemplate ) {
+], function( $, _, Backbone, modelbinder, genericDetailTemplate, genericFormTemplate ) {
     var DetailView = Backbone.View.extend({
 
         events: {
             'click button#save': 'save',
+            'click button#edit': 'edit',
             'click button#cancel': 'cancel'
         },
 
         initialize : function(attributes, options) {
             // console.log('initialize: ' + JSON.stringify(attributes) + ', ' + JSON.stringify(options));
             // console.log('DetailView initializer: options: ' + JSON.stringify(options));
-            var compiledTemplate = _.template( genericFormTemplate,
-                { 'fieldDefinitions': options.fieldDefinitions ,
+
+            keys = _(this.model.attributes).keys().sort(function(a,b){
+                order_a = options.fields[a]['order_by'];  // TODO: need an edit order by
+                order_b = options.fields[b]['order_by'];
+                if(_.isNumber(order_a) && _.isNumber(order_b)){
+                    return order_a - order_b;
+                }else if(_.isNumber(order_a)){
+                    return -1;
+                }else if(_.isNumber(order_b)){
+                    return 1;
+                }else{
+                    return 0;
+                }
+            });
+            this._keys = keys;  // TODO: need to put the sorted keys on the options and remove from this class
+            template = genericDetailTemplate;
+            this._options = options;
+            if(options.isEditMode){
+                template = genericFormTemplate;
+            }
+            console.log(' template: ', template, 'fields: ', options.fields['screensaver_user_id']['title'] );
+            var compiledTemplate = _.template( template,
+                { 'fieldDefinitions': options.fields ,
                   title: options.title,
-                  object: _(_(this.model.attributes).keys())
+                  keys: _(keys),
+                  object: this.model.attributes
+                });
+
+            this.$el.html(compiledTemplate);
+            // this.modelBinder = new modelbinder();
+            // this.modelBinder.bind(this.model, this.el);
+
+            this.listenTo(this.model, 'error', this.error);
+            console.log('initialize DetailView');
+        },
+
+        edit: function(event) {
+            console.log(' template: ', genericFormTemplate, 'fields: ', this._options.fields['screensaver_user_id']['title'], ', k: ' , this._keys, ', t: ', this._options.title );
+            var compiledTemplate = _.template( genericFormTemplate,
+                { 'fieldDefinitions': this._options.fields ,
+                  title: this._options.title,
+                  keys: _(this._keys)
                 });
             this.$el.html(compiledTemplate);
             this.modelBinder = new modelbinder();
             this.modelBinder.bind(this.model, this.el);
 
-            this.listenTo(this.model, 'error', this.error);
-            console.log('initialize DetailView');
         },
 
         save: function(event){

@@ -36,8 +36,55 @@ define([
     // see https://github.com/wyuenho/backbone-pageable/issues/62
     Backbone.PageableCollection = BackbonePageableCollection;
 
+    var root = window;
+    // create a root namespace (note: copying this strategy from Backgrid source
+    var Iccbl = root.Iccbl = {
+
+      VERSION: "0.0.1",
+
+      // Extension: {},
+//
+      // requireOptions: function (options, requireOptionKeys) {
+        // for (var i = 0; i < requireOptionKeys.length; i++) {
+          // var key = requireOptionKeys[i];
+          // if (_.isUndefined(options[key])) {
+            // throw new TypeError("'" + key  + "' is required");
+          // }
+        // }
+      // },
+//
+      // resolveNameToClass: function (name) {
+        // if (_.isString(name)) {
+          // // var key = _.map(name.split('-'), function (e) { return capitalize(e); }).join('') + suffix;
+          // var klass = Iccbl[key]; // || Backgrid.Extension[key];
+          // if (_.isUndefined(klass)) {
+            // throw new ReferenceError("Class '" + key + "' not found");
+          // }
+          // return klass;
+        // }
+//
+        // return name;
+      // }
+    };
+    //var Iccbl = {};
+
+    var stringToFunction = Iccbl.stringToFunction = function(str) {
+      var arr = str.split(".");
+
+      var fn = (window || this);
+      for (var i = 0, len = arr.length; i < len; i++) {
+        fn = fn[arr[i]];
+      }
+
+      if (typeof fn !== "function") {
+        throw new Error("function not found");
+      }
+
+      return  fn;
+    };
+
     // attach some objs to function scope //TODO: is this needed/correct?
-    var MyModel = Backbone.Model.extend({
+    var MyModel = Iccbl.MyModel = Backbone.Model.extend({
         // TODO: we want to make sure there is a trailing slash, or tastypie doesn't work.
         url : function(){
             var url = Backbone.Model.prototype.url.call(this);
@@ -62,7 +109,7 @@ define([
         },
     });
 
-    MyServerSideFilter = Backgrid.Extension.ServerSideFilter.extend({
+    var MyServerSideFilter = Iccbl.MyServerSideFilter = Backgrid.Extension.ServerSideFilter.extend({
         // override so that we can keep a handle to the containing column name.
         // TODO: can handle this with events instead (so that the filter notifies the containing headercell?)
         columnName : null,
@@ -74,73 +121,71 @@ define([
         },
     });
 
-    return {
+//    return {
 
-        EditCell: Backgrid.Cell.extend({
-            className: "detail-cell",
-            events : {
-                "click #edit" : "editDetail",
-            },
+    var EditCell = Iccbl.EditCell = Backgrid.Cell.extend({
+        className: "detail-cell",
+        events : {
+            "click #edit" : "editDetail",
+        },
 
-            initialize: function(options){
-                Backgrid.Cell.prototype.initialize.apply(this, arguments);
-            },
+        initialize: function(options){
+            Backgrid.Cell.prototype.initialize.apply(this, arguments);
+        },
 
-            render: function () {
-                this.$el.empty();
-                var formattedValue = this.formatter.fromRaw(this.model.get(this.column.get("name")));
-                this.$el.append($("<a id='edit' >", {
-                    tabIndex : -1,
-                    href : '',
-                    title : formattedValue,
-                    //target : "_blank"
-                }).text(formattedValue));
+        render: function () {
+            this.$el.empty();
+            var formattedValue = this.formatter.fromRaw(this.model.get(this.column.get("name")));
+            this.$el.append($("<a id='edit' >", {
+                tabIndex : -1,
+                href : '',
+                title : formattedValue,
+                //target : "_blank"
+            }).text(formattedValue));
 
-                this.delegateEvents();
-                return this;
-            },
+            this.delegateEvents();
+            return this;
+        },
 
-            editDetail: function(e){
-                e.preventDefault();
-                this.model.collection.trigger("MyCollection:edit", this.model);
-            },
+        editDetail: function(e){
+            e.preventDefault();
+            this.model.collection.trigger("MyCollection:edit", this.model);
+        },
+    });
 
-        }),
+    /**
+     * uses the options.attributes.label
+     */
+    var DeleteCell = Iccbl.DeleteCell = Backgrid.Cell.extend({
+        className: "delete-cell",
+        events : {
+            "click #delete" : "delete"
+        },
 
+        initialize: function(options){
+            Backgrid.Cell.prototype.initialize.apply(this, arguments);
+        },
 
-        /**
-         * uses the options.attributes.label
-         */
-        DeleteCell: Backgrid.Cell.extend({
-            className: "delete-cell",
-            events : {
-                "click #delete" : "delete"
-            },
+        render: function () {
+            this.$el.empty();
 
-            initialize: function(options){
-                Backgrid.Cell.prototype.initialize.apply(this, arguments);
-            },
+            this.$el.append("&nbsp;");
+            this.$el.append($("<a id='delete' >", {
+                tabIndex : -1,
+                href : '',
+            }).text(this.options.column.attributes['text']));
+            this.delegateEvents();
+            return this;
+        },
 
-            render: function () {
-                this.$el.empty();
-
-                this.$el.append("&nbsp;");
-                this.$el.append($("<a id='delete' >", {
-                    tabIndex : -1,
-                    href : '',
-                }).text(this.options.column.attributes['text']));
-                this.delegateEvents();
-                return this;
-            },
-
-            delete: function(e){
-                e.preventDefault();
-                this.model.collection.trigger("MyCollection:delete", this.model);
-            },
-        }),
+        delete: function(e){
+            e.preventDefault();
+            this.model.collection.trigger("MyCollection:delete", this.model);
+        }
+    });
 
 
-        MyCollection: Backbone.PageableCollection.extend({
+        var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
 
             initialize: function(options){
                 if (typeof(options) !== 'undefined'){
@@ -190,7 +235,7 @@ define([
                 directions: {
                     "-1": "asc",
                     "1": "desc"
-                },
+                }
 
             },
             parse: function(response) {
@@ -272,10 +317,10 @@ define([
                 }
                 return Backbone.PageableCollection.prototype.fetch.call(this,options);
             }
-        }),// end definition of Collection extension
+        });// end definition of Collection extension
 
 
-        MyHeaderCell: Backgrid.HeaderCell.extend({
+        var MyHeaderCell = Iccbl.MyHeaderCell = Backgrid.HeaderCell.extend({
             _serverSideFilter : null,
             initialize: function (options) {
                 //this.constructor.__super__.initialize.apply(this, [options]);
@@ -364,10 +409,10 @@ define([
             this.$el.prop('title', this.options['column']['attributes']["description"]);
             return this;
           }
-        }),
+        });
 
 
-        ItemsPerPageSelector: Backbone.View.extend({
+        var ItemsPerPageSelector = Iccbl.ItemsPerPageSelector = Backbone.View.extend({
 
             template: function(){ return _.template(this._template); }, // TODO: this appears to be unused (see render)
 
@@ -408,6 +453,8 @@ define([
             updateSelection: function(){
                 $('#rowsperpage_selector').val(String(this.collection.state.pageSize));
             },
-        }),
-    };
+        });
+//    };
+    // TODO: I don't think it's standard to return the main object this way?
+    return Iccbl;
 });

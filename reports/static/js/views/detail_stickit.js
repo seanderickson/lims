@@ -72,26 +72,22 @@ define([
 
         edit: function(event) {
             //console.log(' template: ', genericFormTemplate, 'fields: ', this._options.fields['screensaver_user_id']['title'], ', k: ' , this._keys, ', t: ', this._options.title );
-            var compiledTemplate = _.template( genericFormTemplate,
-                { 'fieldDefinitions': this._options.fields ,
-                  title: this._options.title,
-                  keys: _(this._keys)
-                });
-            this.$el.html(compiledTemplate);
-            // this.modelBinder = new modelbinder();
-            // this.modelBinder.bind(this.model, this.el);
-            console.log('calling stickit');
-            // create bindings
             bindings = {};
             var self = this;
             _.each(this._keys, function(key){
                 if( _(self._options.fields).has(key)){
                     option = self._options.fields[key];
                     if(option.ui_type == 'choice' || option.ui_type == 'multiselect' ){
-                        console.log('--choice: ' + JSON.stringify(option));
-                        var _optionsCollection = option.choices.map(function(choice){
-                            return { label: choice, value: choice };
-                        });
+                        console.log('--choice key: ' + key + ', ' + JSON.stringify(option));
+                        var _optionsCollection = [];
+                        if(_.has(option, 'choices')){
+                            _optionsCollection = option.choices.map(function(choice){
+                                return { label: choice, value: choice };
+                            });
+                        }else{
+                            window.alert('Warning, no choices defined for: ' + key); // TODO: use bootstrap alerts!
+                            option.choices = _(_optionsCollection); // so the template doesn't complain
+                        }
                         console.log('-- optionsCollection for choice: ' + key + " , options: " + JSON.stringify(_optionsCollection));
 
                         if(option.ui_type == 'choice' ){ // radio type choice
@@ -111,7 +107,7 @@ define([
                                 observe: key,
                                 selectOptions: { collection: _optionsCollection } };
                         }
-                        else if(option.ui_type == 'multiselect' ){ // traditional multiselect box
+                        else if(option.ui_type == 'multiselect2' ){ // traditional multiselect box
                             bindings['#' + key] = {
                                 observe: key,
                                 selectOptions: { collection: _optionsCollection } };
@@ -124,8 +120,14 @@ define([
                     bindings['#' + key] = key;
                 }
             });
-            console.log('bindings: ' + JSON.stringify(bindings));
-            console.log('model:' + JSON.stringify(this.model.attributes));
+            // console.log('bindings: ' + JSON.stringify(bindings));
+            // console.log('model:' + JSON.stringify(this.model.attributes));
+            var compiledTemplate = _.template( genericFormTemplate,
+                { 'fieldDefinitions': this._options.fields ,
+                  title: this._options.title,
+                  keys: _(this._keys)
+                });
+            this.$el.html(compiledTemplate);
             //this.stickit();
             this.stickit(this.model,  bindings);
             // this.modelBinder = new modelbinder();

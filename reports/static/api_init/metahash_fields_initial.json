@@ -1,0 +1,79 @@
+{
+    "objects": [
+        {
+            "key": "key", 
+            "scope": "metahash:fields", 
+            "order_by": 0 
+        },
+        {
+            "key": "scope", 
+            "scope": "metahash:fields", 
+            "order_by": 1 
+        },
+        {
+            "key": "order_by", 
+            "scope": "metahash:fields", 
+            "order_by": 2 
+        },
+        {
+            "key": "json_field_type", 
+            "scope": "metahash:fields", 
+            "order_by": 20
+        },
+        {
+            "key": "vocabulary_scope_ref", 
+            "scope": "metahash:fields", 
+            "order_by": 21, 
+            "json_field_type": "fields.CharField"
+        },
+       {
+            "key": "title", 
+            "scope": "metahash:fields", 
+            "order_by": 3, 
+            "json_field_type": "fields.CharField" 
+        },
+        {
+            "key": "ui_type", 
+            "scope": "metahash:fields", 
+            "order_by": 4, 
+            "json_field_type": "fields.CharField" 
+        },
+        {
+            "key": "visibility", 
+            "scope": "metahash:fields", 
+            "order_by": 5, 
+            "json_field_type": "fields.ListField" 
+        },
+        {
+            "key": "description", 
+            "scope": "metahash:fields", 
+            "order_by": 4, 
+            "json_field_type": "fields.CharField" 
+        },
+        {
+            "key": "comment", 
+            "scope": "metahash:fields", 
+            "order_by": 4, 
+            "json_field_type": "fields.CharField" 
+        },
+        {
+            "key": "filtering", 
+            "scope": "metahash:fields", 
+            "order_by": 4, 
+            "json_field_type": "fields.CharField" 
+        },
+        {
+            "key": "ordering", 
+            "scope": "metahash:fields", 
+            "order_by": 4, 
+            "json_field_type": "fields.CharField"
+        },
+        {
+            "key": "backgrid_cell_type", 
+            "scope": "metahash:fields", 
+            "order_by": 23, 
+            "json_field_type": "fields.CharField"
+        }
+
+   ]
+}

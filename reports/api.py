@@ -1,4 +1,5 @@
 from django.db import DatabaseError
+from django.conf.urls import url
 
 from tastypie.authorization import Authorization
 from tastypie.authentication import BasicAuthentication, SessionAuthentication, MultiAuthentication
@@ -12,6 +13,7 @@ import logging
 #from django.core.serializers.json import DjangoJSONEncoder
 #from django.core.serializers import json
 import json
+from django.conf.urls import url
         
 logger = logging.getLogger(__name__)
 
@@ -40,8 +42,8 @@ class MetaHashResource1(PostgresSortingResource):
         serializer = BackboneSerializer()
       
       
-UI_TYPE_CHOICE = 'choice'
-UI_TYPE_MULTISELECT = 'multiselect'  
+#UI_TYPE_CHOICE = 'choice'
+#UI_TYPE_MULTISELECT = 'multiselect'  
         
 from copy import deepcopy
 
@@ -51,6 +53,13 @@ class JsonAndDatabaseResource(PostgresSortingResource):
         super(JsonAndDatabaseResource,self).__init__(**kwargs)
         self.original_fields = deepcopy(self.fields)
         self.field_defs = {}
+
+    def prepend_urls(self):
+        # NOTE: this match "((?=(schema))__|(?!(schema))[\w\d_.-]+)" allows us to match any word, except "schema", and use it as the key value to search for.
+        # We don't want "schema" since that reserved word is used by tastypie for the schema definition for the resource (used by the UI)
+        return [
+            url(r"^(?P<resource_name>%s)/(?P<key>((?=(schema))__|(?!(schema))[\w\d_.-]+))/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ]    
     
     def reset_field_defs(self):
         self.fields = deepcopy(self.original_fields)
@@ -169,7 +178,7 @@ class JsonAndDatabaseResource(PostgresSortingResource):
 #            logger.info('------get field:' + key)
             bundle.data[key] = bundle.obj.get_field(key);
         
-        bundle.data['toString'] = '[' + bundle.obj.scope + ',' + bundle.obj.key +']'; # TODO: refactor this, and improve it
+#        bundle.data['toString'] = '[' + bundle.obj.scope + ',' + bundle.obj.key +']'; # TODO: refactor this, and improve it
         bundle.data['json_field'] = ''
         bundle.data.pop('json_field') # json_field will not be part of the public API, it is for internal use only
         logger.info(str(('deyhdrated', bundle)))

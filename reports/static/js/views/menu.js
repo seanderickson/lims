@@ -40,6 +40,8 @@ define([
                 self.model.set({
                     current_submodel : submodel,
                     route: route,
+                    // TODO: this should work to suppress initial history record, but it's also messing up the back action
+                    // routing_options: { replace: true }, // suppresses the url rewriting for this step, the collection will set it when adding pagination/etc. options
                     content_options: {}, // unset previous content options;
                     // TODO: this is a bit like magic; if there were a mediator to talk to the app_model, it might be better?
                 });

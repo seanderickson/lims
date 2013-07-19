@@ -28,8 +28,16 @@ define([
     change_route: function(){
         var newRoute = this.model.get('route');
         this.model.set({ content_options: {} }); // unset specific content options
-        console.log('change route to: ' + newRoute);
-        this.navigate( newRoute, { trigger: false, replace: true } );
+        console.log('------change route to: ' + newRoute + ', ' + JSON.stringify(this.model.attributes));
+        //this.navigate( newRoute, { trigger: false, replace: true } );
+        options = { trigger: false };
+        if(this.model.get('routing_options')){
+            console.log('routing options: ' + JSON.stringify(this.model.get('routing_options')));
+            _.extend(options, this.model.get('routing_options'));
+            console.log('routing options: ' + JSON.stringify(options));
+        }
+        this.navigate( newRoute, options);
+        this.model.set({'routing_options': {}} );
     },
 
     unknownAction: function(unknownAction){

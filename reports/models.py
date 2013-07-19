@@ -5,7 +5,6 @@ from lims.models import GetOrNoneManager
 import json
 import logging
 import re
-import types
 
 logger = logging.getLogger(__name__)
 

@@ -10,7 +10,7 @@ define([
   'text!templates/list.html',
   'text!templates/modal_ok_cancel.html',
   'text!templates/generic-selector.html',
-], function($, _, Backbone, BackbonePageableCollection, Backgrid,  App, DetailView, rowsPerPageTemplate, listTemplate, modalTemplate, genericSelectorTemplate ){
+], function($, _, Backbone, BackbonePageableCollection, Backgrid,  Iccbl, DetailView, rowsPerPageTemplate, listTemplate, modalTemplate, genericSelectorTemplate ){
 
     // for compatibility with require.js, attach PageableCollection in the right place on the Backbone object
     // see https://github.com/wyuenho/backbone-pageable/issues/62
@@ -79,32 +79,15 @@ define([
             var fieldDefinitions = schemaResult.fields;
 
             var field_defs = this.wrapAsUnderscore(fieldDefinitions);
-            console.log('field_defs: ' + JSON.stringify(field_defs));
+            // console.log('field_defs: ' + JSON.stringify(field_defs));
 
             console.log('buildGrid...');
-            // // create an underscore wrapped clone of fieldDefinitions (TODO: refactor this to a generic recursive function )
-            // // NOTE: this appears to be doing an *in place* conversion of the FD object -> ... because we are assigning field_defs[0] = pair[1], which is
-            // // a ref to the object element.  I think this is ok, but when refactoring, let's take care of this!
-            // var field_defs = {};
-            // _.each(_.pairs(fieldDefinitions), function(pair){
-                // if(pair[1]['ui_type'] == 'choice'){
-                    // field_defs[pair[0]] = pair[1];
-                    // field_defs[pair[0]]['choices'] = _(field_defs[pair[0]]['choices']);
-                // } else if(pair[1]['ui_type'] == 'multiselect'){
-                    // field_defs[pair[0]] = pair[1];
-                    // field_defs[pair[0]]['choices'] = _(field_defs[pair[0]]['choices']);
-                // }else{
-                    // field_defs[pair[0]] = pair[1];
-                // }
-                // field_defs[pair[0]]['visibility'] = _(field_defs[pair[0]]['visibility']);
-//
-            // });
 
             var self = this; // todo: "this" is the parent ListView, all of this should be handled by events
             this.objects_to_destroy = _([]);
             // TODO: make sure req'd options are present (i.e. router, type)
             // type == table or query or api resource type
-            var collection = this.collection = new App.MyCollection({ 'url': _url, router: options.router, type: options.type  });
+            var collection = this.collection = new Iccbl.MyCollection({ 'url': _url, router: options.router, type: options.type  });
 
             this.objects_to_destroy.push(collection);
 
@@ -119,9 +102,9 @@ define([
 
 
             // TODO: p-o-c of how to do a Link-to-Detail/Edit: should be controlled by the field type
-            var col_options = { customCells: { 'title': App.EditCell, 'screensaver_user_id': App.EditCell } };
-            var columns = this.createBackgridColModel(fieldDefinitions, App.MyHeaderCell, col_options );
-            columns.unshift({ name: 'deletor', label: 'Delete', text:'X', description: 'delete record', cell: App.DeleteCell, sortable: false });
+            //var col_options = { customCells: { 'title': Iccbl.EditCell, 'screensaver_user_id': Iccbl.EditCell } };
+            var columns = this.createBackgridColModel(fieldDefinitions, Iccbl.MyHeaderCell);//, col_options );
+            columns.unshift({ name: 'deletor', label: 'Delete', text:'X', description: 'delete record', cell: Iccbl.DeleteCell, sortable: false });
             var grid = this.grid = new Backgrid.Grid({
               columns: columns,
               collection: collection,
@@ -212,7 +195,7 @@ define([
                 },
             });
 
-            var selector = new App.ItemsPerPageSelector(
+            var selector = new Iccbl.ItemsPerPageSelector(
                 { 'selections': ['25','50','200','1000'], 'template': rowsPerPageTemplate },
                 collection);
             this.objects_to_destroy.push(selector);
@@ -356,16 +339,104 @@ define([
          * @param {Object} optionalHeaderCell - a Backgrid.HeaderCell to use for each column
          * @param {Object} options - a hash of { fieldKey: [custom cell: extend Backgrid.Cell] } to map custom cell implementations to fields
          */
-        createBackgridColModel: function(restFields, optionalHeaderCell, options) {
-            console.log('createBackgridColModel: restFields: ' + JSON.stringify(restFields));
+        createBackgridColModel: function(restFields, optionalHeaderCell) {
+            // console.log('createBackgridColModel: restFields: ' + JSON.stringify(restFields));
             var colModel = [];
             var i = 0;
             var _total_count = 0;
             _.each(_.pairs(restFields), function(pair){
                 var key = pair[0];
                 var prop = pair[1];
-                if(_.has(pair[1], 'visibility') && _.contains(pair[1]['visibility'], 'list')){
-                    console.log('process list field: ' + pair[0] + ', ' + JSON.stringify(pair[1]));
+
+                var visible = _.has(pair[1], 'visibility') && _.contains(pair[1]['visibility'], 'list');
+                //visible = visible || options.customCells.hasOwnProperty(key);
+//                console.log('field: ' + key + ', ' + options.customCells.hasOwnProperty(key) + ', ' + visible);
+                if(visible){
+                    // console.log('process list field: ' + pair[0] + ', ' + JSON.stringify(pair[1]));
+                    //var cell = 'string';
+                    // var cell = prop['ui_type']
+//
+                    // if(cell == 'choice' || cell == 'multiselect'){ // TODO: should have two types, "gridCellType", and "editFormType"?
+                        // cell = 'string';
+                    // }
+                    var backgridCellType = 'string';
+                    if( !_.isNull(prop['backgrid_cell_type'])){
+                        try{
+                            console.log('look for ' + key + ', ' + prop['backgrid_cell_type']);
+                            var klass = Iccbl.stringToFunction(prop['backgrid_cell_type']);
+                            console.log('got  ' + klass);
+                            if(!_.isUndefined(klass)){
+                                console.log('----- cell found: ' + klass);
+                                backgridCellType = klass;
+                            }else{
+                                backgridCellType = 'string';
+                            }
+                        }catch(ex){
+                            var msg = '----Warn: field: ' + key + ', no Iccbl class found for type: ' + prop['backgrid_cell_type'];
+                            console.log(msg + ': ' + JSON.stringify(ex));
+                            throw ex;
+                        }
+                    }
+                    colModel[i] = {
+                        'name':key,
+                        'label':prop['title'],
+                        'description':prop['description'],
+                        cell: backgridCellType,
+                        order: prop['order_by'],
+                        editable: false,
+                    };
+                    if (optionalHeaderCell){
+                        colModel[i]['headerCell'] = optionalHeaderCell;
+                    }
+                    i++;
+                }else{
+                    console.log('field not visible in list view: ' + key)
+                }
+            });
+
+
+            console.log('colModel: ' + JSON.stringify(colModel));
+            colModel.sort(function(a,b){
+                if(_.isNumber(a['order']) && _.isNumber( b['order'])){
+                    return a['order']-b['order'];
+                }else if(_.isNumber( a['order'])){
+                    return -1;
+                }else if(_.isNumber(b['order'])){
+                    return 1;
+                }else{
+                    return 0;
+                }
+            });
+            return colModel;
+        },
+
+
+
+
+
+
+
+
+        //////////TODO: DELETE!
+
+
+
+
+        //////////TODO: DELETE!
+        createBackgridColModel_orig: function(restFields, optionalHeaderCell, options) {
+            // console.log('createBackgridColModel: restFields: ' + JSON.stringify(restFields));
+            var colModel = [];
+            var i = 0;
+            var _total_count = 0;
+            _.each(_.pairs(restFields), function(pair){
+                var key = pair[0];
+                var prop = pair[1];
+
+                var visible = _.has(pair[1], 'visibility') && _.contains(pair[1]['visibility'], 'list');
+                visible = visible || options.customCells.hasOwnProperty(key);
+                console.log('field: ' + key + ', ' + options.customCells.hasOwnProperty(key) + ', ' + visible);
+                if(visible){
+                    // console.log('process list field: ' + pair[0] + ', ' + JSON.stringify(pair[1]));
                     //var cell = 'string';
                     var cell = prop['ui_type']
 
@@ -409,58 +480,6 @@ define([
             return colModel;
         },
 
-        createBackgridColModelOrig: function(fields_from_rest, optionalHeaderCell, options) {
-            // console.log('createBackgridColModel: options: ' + JSON.stringify(options));
-            var colModel = [];
-            var i = 0;
-            var _total_count = 0;
-            for (var field in fields_from_rest){
-                if (fields_from_rest.hasOwnProperty(field)) { // filter
-                    var prop = fields_from_rest[field];
-//                    if( !_.has(prop, 'visibility') || prop['visibility'].indexOf('list') == -1 ){
-                    if( prop['visibility'].size() > 0 && prop['visibility'].indexOf('list') == -1 ){
-                        // console.log('field not visible in list: ' + field);
-                        continue;
-                    }
-                    var cell = 'string';
-                    if( typeof options !== 'undefined'){
-                        if( options.hasOwnProperty('customCells') && options.customCells.hasOwnProperty(field)){
-                            cell = options.customCells[field];
-                            // console.log('field: ' + field + ' assigned the custom cell: ' + cell);
-                        }
-                    }
-                    colModel[i] = {
-                        'name':field,
-                        'label':prop['title'],
-                        'description':prop['description'],
-                        cell: cell,
-                        order: prop['order_by'],
-                        editable: false,
-                        };
-                    if (optionalHeaderCell){
-                        colModel[i]['headerCell'] = optionalHeaderCell;
-                    }
-                    i++;
-                }
-            }
-            // console.log('colModel: ' + JSON.stringify(colModel));
-            colModel.sort(function(a,b){
-                if(_.isNumber(a['order']) && _.isNumber( b['order'])){
-                    return a['order']-b['order'];
-                }else if(_.isNumber( a['order'])){
-                    return -1;
-                }else if(_.isNumber(b['order'])){
-                    return 1;
-                }else{
-                    return 0;
-                }
-            });
-            // console.log('colModel: ' + JSON.stringify(colModel));
-            //console.log('colModel: ' + JSON.stringify(colModel));
-            //var _colWidth = 1/i * _width;
-            //console.log('colWidth:' + _colWidth);
-            return colModel;
-        },
 
         setRoute: function(route){
             var _route = 'list/' + this.options.type + '/' + route;
@@ -470,11 +489,13 @@ define([
 
         onClose: function(){
             console.log('Extra onclose method called');
-            this.objects_to_destroy.each(function(view_obj){
-                view_obj.remove();
-                view_obj.unbind();
-                view_obj.stopListening();
-            });
+            if(_.isObject(this.objects_to_destroy)){
+                this.objects_to_destroy.each(function(view_obj){
+                    view_obj.remove();
+                    view_obj.unbind();
+                    view_obj.stopListening();
+                });
+            }
         },
 
         render: function(){ // TODO: should the build grid be called from here?

@@ -49,6 +49,11 @@ require.config({
         // exports: '$.fn.modal'
     },
     backbone_stickit: { deps: ["backbone"] }
+    , iccbl_backgrid: {
+        exports: 'Iccbl'
+    }
+    //    deps: ["backbone", "underscore", "jquery", "backgrid", "backgrid_filter", "backgrid_paginator"]
+    //}
   }
 });
 require([
@@ -76,5 +81,8 @@ require([
         var appView = new AppView({ model: appModel });
         var appRouter = new AppRouter({ model: appModel });
         appView.render();
-        Backbone.history.start({ pushState: false, root: appModel.get('root_url') });  // TODO: root should not be necessary if not using pushState
+        Backbone.history = Backbone.history || new Backbone.History({});
+        Backbone.history.start({ pushState: false, root: appModel.get('root_url') });
+
+        //Backbone.history.start({ pushState: false, root: appModel.get('root_url') });  // TODO: root should not be necessary if not using pushState
     });

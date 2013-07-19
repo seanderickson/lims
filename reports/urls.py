@@ -2,11 +2,10 @@ from django.conf.urls import patterns, url, include
 from reports import views
 from tastypie.api import Api
 
-from reports.api import FieldInformationResource, MetaHashResource, VocabulariesResource
+from reports.api import MetaHashResource, VocabulariesResource
 
 
 v1_api = Api(api_name='v1')
-v1_api.register(FieldInformationResource())
 v1_api.register(MetaHashResource())
 v1_api.register(VocabulariesResource())
 

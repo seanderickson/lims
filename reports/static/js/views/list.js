@@ -361,6 +361,7 @@ define([
                     // }
                     var backgridCellType = 'string';
                     if( !_.isNull(prop['backgrid_cell_type'])){
+                        backgridCellType = prop['backgrid_cell_type'];
                         try{
                             console.log('look for ' + key + ', ' + prop['backgrid_cell_type']);
                             var klass = Iccbl.stringToFunction(prop['backgrid_cell_type']);
@@ -368,13 +369,10 @@ define([
                             if(!_.isUndefined(klass)){
                                 console.log('----- cell found: ' + klass);
                                 backgridCellType = klass;
-                            }else{
-                                backgridCellType = 'string';
                             }
                         }catch(ex){
                             var msg = '----Warn: field: ' + key + ', no Iccbl class found for type: ' + prop['backgrid_cell_type'];
                             console.log(msg + ': ' + JSON.stringify(ex));
-                            throw ex;
                         }
                     }
                     colModel[i] = {
@@ -382,7 +380,7 @@ define([
                         'label':prop['title'],
                         'description':prop['description'],
                         cell: backgridCellType,
-                        order: prop['order_by'],
+                        order: prop['ordinal'],
                         editable: false,
                     };
                     if (optionalHeaderCell){
@@ -452,7 +450,7 @@ define([
                         'label':prop['title'],
                         'description':prop['description'],
                         cell: cell,
-                        order: prop['order_by'],
+                        order: prop['ordinal'],
                         editable: false,
                     };
                     if (optionalHeaderCell){

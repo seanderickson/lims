@@ -206,7 +206,7 @@ class MetaHash(models.Model):
     scope                   = models.CharField(max_length=35, blank=True)
     key                     = models.CharField(max_length=35, blank=True)
     alias                   = models.CharField(max_length=35, blank=True)
-    order_by                = models.IntegerField();
+    ordinal                 = models.IntegerField();
     json_field_type         = models.CharField(max_length=128, blank=True, null=True); # required if the field is a JSON field; choices are from the TastyPie field types
     
     json_field                   = models.TextField(blank=True) # This is the "meta" field, it contains "virtual" json fields
@@ -255,7 +255,7 @@ class Vocabularies(models.Model):
     scope                   = models.CharField(max_length=35, blank=True)
     key                     = models.CharField(max_length=35, blank=True)
     alias                   = models.CharField(max_length=35, blank=True)
-    order_by                = models.IntegerField();
+    ordinal                 = models.IntegerField();
     json_field_type         = models.CharField(max_length=128, blank=True, null=True); # required if the field is a JSON field; choices are from the TastyPie field types
     
     # All other fields are "virtual" JSON stored fields, (unless we decide to migrate them out to real fields for rel db use cases)

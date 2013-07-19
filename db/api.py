@@ -39,7 +39,6 @@ class ScreensaverUserResource(PostgresSortingResource):
             if 'filtering' in hash and hash['filtering']:
                 self.Meta.filtering[key] = ALL
         
-        logger.info(str(('ordering', self.Meta.ordering)))
         for key,hash in metahash.items():
             if 'ordering' in hash and hash['ordering']:
                 self.Meta.ordering.append(key)

@@ -25,11 +25,11 @@ define([
 
         initialize : function(attributes, options) {
             // console.log('initialize: ' + JSON.stringify(attributes) + ', ' + JSON.stringify(options));
-            console.log('DetailView initializer: options: ' + JSON.stringify(options));
+            // console.log('DetailView initializer: options: ' + JSON.stringify(options));
 
             keys = _(this.model.attributes).keys().sort(function(a,b){
-                order_a = options.fields[a]['order_by'];  // TODO: need an edit order by
-                order_b = options.fields[b]['order_by'];
+                order_a = options.fields[a]['ordinal'];  // TODO: need an edit order by
+                order_b = options.fields[b]['ordinal'];
                 if(_.isNumber(order_a) && _.isNumber(order_b)){
                     return order_a - order_b;
                 }else if(_.isNumber(order_a)){
@@ -50,9 +50,12 @@ define([
                 //console.log(' template: ', template, 'fields: ', options.fields['screensaver_user_id']['title'] );
                 // filter keys for detail view
                 var detailKeys = _(keys).filter(function(key){
-                    console.log('options for ' + key + ', ' + JSON.stringify(options.fields[key]));
-                    console.log( key + ', ' +_.isObject(options.fields[key]['visibility'])  );
-                    return _.isObject(options.fields[key]['visibility']) ? options.fields[key]['visibility'].contains('detail') : false;
+                    if(_.isUndefined(options.fields[key]['visibility']) || !options.fields[key]['visibility'].contains('detail')){
+                        console.log('skip non-detail field: ' + key);
+                        return false;
+                    }else{
+                        return true;
+                    }
                 });
                 console.log('detail keys: ' + JSON.stringify(detailKeys));
 
@@ -74,9 +77,23 @@ define([
             //console.log(' template: ', genericFormTemplate, 'fields: ', this._options.fields['screensaver_user_id']['title'], ', k: ' , this._keys, ', t: ', this._options.title );
             bindings = {};
             var self = this;
-            _.each(this._keys, function(key){
+            var editKeys = _(this._keys).filter(function(key){
+                var options = self._options;
+                if(_.isUndefined(options.fields[key]['visibility']) || !options.fields[key]['visibility'].contains('edit')){
+                    console.log('skip non-edit field: ' + key);
+                    return false;
+                }else{
+                    return true;
+                }
+            });
+
+            _.each(editKeys, function(key){
                 if( _(self._options.fields).has(key)){
                     option = self._options.fields[key];
+                    // if(!option.visibility.contains('edit')){
+                        // console.log('skip non-edit field: ' + key);
+                        // return;
+                    // }
                     if(option.ui_type == 'choice' || option.ui_type == 'multiselect' ){
                         console.log('--choice key: ' + key + ', ' + JSON.stringify(option));
                         var _optionsCollection = [];
@@ -125,7 +142,7 @@ define([
             var compiledTemplate = _.template( genericFormTemplate,
                 { 'fieldDefinitions': this._options.fields ,
                   title: this._options.title,
-                  keys: _(this._keys)
+                  keys: _(editKeys)
                 });
             this.$el.html(compiledTemplate);
             //this.stickit();

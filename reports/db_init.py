@@ -43,6 +43,9 @@ def main(inputDir, url, auth):
     # define vocabularies
     api_importer.main(input_file_dir + '/metahash_fields_vocabularies.json',url_base + '/metahash/',  'POST', auth=':'.join(authentication))
 
+    # define screensaveruser
+    api_importer.main(input_file_dir + '/metahash_fields_screensaveruser.json',url_base + '/metahash/',  'POST', auth=':'.join(authentication))
+
     # delete the vocabularies records
     obj_url = url_base + '/vocabularies/'
     try:

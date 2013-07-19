@@ -1,226 +1,253 @@
 {
     "objects": [
         {
-            "key": "key", 
-            "scope": "metahash:fields", 
-            "order_by": 0, 
-            "description": "The key field", 
-            "comment": "This is a composite key, along with scope", 
-            "filtering": true, 
-            "ordering": true, 
-            "title": "Key", 
-            "ui_type": "string", 
+            "key": "key",
+            "scope": "metahash:fields",
+            "ordinal": 0,
+            "description": "The key field",
+            "comment": "This is a composite key, along with scope",
+            "filtering": true,
+            "ordering": true,
+            "title": "Key",
+            "ui_type": "string",
             "visibility": [
-                "list", 
+                "list",
                 "detail",
-		"edit"
-            ] 
-        },
-        {
-            "key": "scope", 
-            "scope": "metahash:fields", 
-            "order_by": 1, 
-            "description": "The scope field", 
-            "comment": "This is a composite key, along with key", 
-            "filtering": true, 
-            "ordering": true, 
-            "title": "Scope", 
-            "ui_type": "string", 
-            "visibility": [
-                "list", 
-                "detail",
-		"edit"
-            ] 
-        },
-        {
-            "key": "order_by", 
-            "scope": "metahash:fields", 
-            "order_by": 2, 
-            "description": "The order field determines sort order", 
-            "comment": "The sort order counts from 0, if two are equal in a set, then secondary sort is by key (alpha)", 
-            "filtering": true, 
-            "ordering": true, 
-            "title": "Order By", 
-            "ui_type": "integer",
-	    "required": true, 
-            "visibility": [
-                "list", 
-                "detail",
-		"edit"
-            ] 
-        },
-        {
-            "key": "title", 
-            "scope": "metahash:fields", 
-            "order_by": 3, 
-            "description": "The title is the label that is displayed to the end user", 
-            "comment": "The title of this field", 
-            "filtering": true, 
-            "json_field_type": "fields.CharField", 
-            "ordering": true, 
-            "title": "Title", 
-            "ui_type": "string", 
-            "visibility": [
-                "list", 
-                "detail",
-		"edit"
-            ], 
-            "vocabulary_scope_ref": "",
-	    "backgrid_cell_type": "Iccbl.EditCell"
-        },
-        {
-            "key": "description", 
-            "scope": "metahash:fields", 
-            "order_by": 4, 
-            "description": "The description is used in tooltips and other queues to the user", 
-            "comment": "", 
-            "filtering": true, 
-            "json_field_type": "fields.CharField", 
-            "ordering": true, 
-            "title": "Description", 
-            "ui_type": "string", 
-            "visibility": [
-                "list", 
-                "detail",
-		"edit"
-            ], 
-            "vocabulary_scope_ref": ""
-        },
-        {
-            "key": "comment", 
-            "scope": "metahash:fields", 
-            "order_by": 3, 
-            "description": "The comment is additional information displayed in the detail view", 
-            "comment": "comment on the comment!", 
-            "filtering": true, 
-            "json_field_type": "fields.CharField", 
-            "ordering": true, 
-            "title": "Comment", 
-            "ui_type": "string", 
-            "visibility": [
-                "detail",
-		"edit"
-            ], 
-            "vocabulary_scope_ref": ""
-        },
-        {
-            "key": "filtering", 
-            "scope": "metahash:fields", 
-            "order_by": 3, 
-            "description": "Specifies that this field may be filtered through the API interface", 
-            "comment": "", 
-            "filtering": true, 
-            "json_field_type": "fields.CharField", 
-            "ordering": true, 
-            "title": "Filterable", 
-            "ui_type": "boolean", 
-            "visibility": [
-                "detail",
-		"edit"
-            ], 
-            "vocabulary_scope_ref": ""
-        },
-        {
-            "key": "ui_type", 
-            "scope": "metahash:fields", 
-            "order_by": 4, 
-            "description": "The ui_type controls how the field is displayed and edited", 
-            "comment": "The ui_type may be split into list/view/edit subcategories", 
-            "filtering": true, 
-            "json_field_type": "fields.CharField", 
-            "ordering": true, 
-            "title": "UI Type", 
-            "ui_type": "choice", 
-            "visibility": [
-                "list", 
-                "detail",
-		"edit"
-            ], 
-            "vocabulary_scope_ref": "field:ui_type"
-        },
-        {
-            "key": "backgrid_cell_type", 
-            "scope": "metahash:fields", 
-            "order_by": 23, 
-            "description": "Optional field specifies the Backgrid cell type to use", 
-            "comment": "Specify the full path for iccbl cells, such as 'api.EditCell', and specify first part for Backgrid cells, as in 'date' for 'DateCell'; string cell is the default, so no need to specify that.", 
-            "filtering": true, 
-            "json_field_type": "fields.CharField", 
-            "ordering": true, 
-            "title": "Backgrid Cell Type", 
-            "ui_type": "choice", 
-            "visibility": [
-                "list", 
-                "detail",
-		"edit"
-            ], 
-            "vocabulary_scope_ref": "field:backgrid_cell_type"
-        },
-        {
-            "key": "visibility", 
-            "scope": "metahash:fields", 
-            "order_by": 5, 
-            "description": "The designations of where this field is visible", 
-            "comment": "", 
-            "filtering": true, 
-            "json_field_type": "fields.ListField", 
-            "ordering": true, 
-            "title": "Visibility", 
-            "ui_type": "multiselect", 
-            "visibility": [
-                "list", 
-                "detail",
-		"edit"
-            ], 
-            "vocabulary_scope_ref": "field:visibility"
-        },
-        {
-            "key": "ordering", 
-            "scope": "metahash:fields", 
-            "order_by": 5, 
-            "description": "The designations of whether this field is orderable through the API", 
-            "comment": "", 
-            "filtering": true, 
-            "json_field_type": "fields.CharField", 
-            "ordering": true, 
-            "title": "Orderable", 
-            "ui_type": "boolean", 
-            "visibility": [
-                "detail",
-		"edit"
+                "edit"
             ]
         },
         {
-            "key": "json_field_type", 
-            "scope": "metahash:fields", 
-            "order_by": 21, 
-            "description": "The json_field_type, if set, specifies that this field is stored virtually in the json_field of the metahash", 
-            "comment": "This field both specifies (if set) that this is a json field, and also the type of that field, for use by tastypie in serialization with the client", 
-            "filtering": false, 
-            "ordering": true, 
-            "title": "API (JSON) Field Type", 
-            "ui_type": "choice", 
+            "key": "scope",
+            "scope": "metahash:fields",
+            "ordinal": 1,
+            "description": "The scope field",
+            "comment": "This is a composite key, along with key",
+            "filtering": true,
+            "ordering": true,
+            "title": "Scope",
+            "ui_type": "string",
+            "visibility": [
+                "list",
+                "detail",
+                "edit"
+            ]
+        },
+        {
+            "key": "alias",
+            "scope": "metahash:fields",
+            "ordinal": 99,
+            "description": "unused",
+            "title": "Alias",
+            "ui_type": "string",
+            "visibility": []
+        },
+        {
+            "key": "id",
+            "scope": "metahash:fields",
+            "ordinal": 99,
+            "description": "Internal use only ID",
+            "title": "ID",
+            "ui_type": "string",
+            "visibility": []
+        },
+        {
+            "key": "resource_uri",
+            "scope": "metahash:fields",
+            "ordinal": 99,
+            "description": "Internal use only resource_uri",
+            "title": "URI",
+            "ui_type": "string",
+            "visibility": []
+        },
+        {
+            "key": "ordinal",
+            "scope": "metahash:fields",
+            "ordinal": 2,
+            "description": "The order field determines sort order",
+            "comment": "The sort order counts from 0, if two are equal in a set, then secondary sort is by key (alpha)",
+            "filtering": true,
+            "ordering": true,
+            "title": "Order By",
+            "ui_type": "integer",
+    	    "required": true,
+            "visibility": [
+                "list",
+                "detail",
+	           	"edit"
+            ]
+        },
+        {
+            "key": "title",
+            "scope": "metahash:fields",
+            "ordinal": 3,
+            "description": "The title is the label that is displayed to the end user",
+            "comment": "The title of this field",
+            "filtering": true,
+            "json_field_type": "fields.CharField",
+            "ordering": true,
+            "title": "Title",
+            "ui_type": "string",
+            "visibility": [
+                "list",
+                "detail",
+                "edit"
+            ],
+            "vocabulary_scope_ref": "",
+            "backgrid_cell_type": "Iccbl.EditCell"
+        },
+        {
+            "key": "description",
+            "scope": "metahash:fields",
+            "ordinal": 4,
+            "description": "The description is used in tooltips and other queues to the user",
+            "comment": "",
+            "filtering": true,
+            "json_field_type": "fields.CharField",
+            "ordering": true,
+            "title": "Description",
+            "ui_type": "string",
+            "visibility": [
+                "list",
+                "detail",
+        		"edit"
+            ],
+            "vocabulary_scope_ref": ""
+        },
+        {
+            "key": "comment",
+            "scope": "metahash:fields",
+            "ordinal": 3,
+            "description": "The comment is additional information displayed in the detail view",
+            "comment": "comment on the comment!",
+            "filtering": true,
+            "json_field_type": "fields.CharField",
+            "ordering": true,
+            "title": "Comment",
+            "ui_type": "string",
             "visibility": [
                 "detail",
-		"edit"
-            ], 
+        		"edit"
+            ],
+            "vocabulary_scope_ref": ""
+        },
+        {
+            "key": "filtering",
+            "scope": "metahash:fields",
+            "ordinal": 3,
+            "description": "Specifies that this field may be filtered through the API interface",
+            "comment": "",
+            "filtering": true,
+            "json_field_type": "fields.CharField",
+            "ordering": true,
+            "title": "Filterable",
+            "ui_type": "boolean",
+            "visibility": [
+                "detail",
+                "edit"
+            ],
+            "vocabulary_scope_ref": ""
+        },
+        {
+            "key": "ui_type",
+            "scope": "metahash:fields",
+            "ordinal": 4,
+            "description": "The ui_type controls how the field is displayed and edited",
+            "comment": "The ui_type may be split into list/view/edit subcategories",
+            "filtering": true,
+            "json_field_type": "fields.CharField",
+            "ordering": true,
+            "title": "UI Type",
+            "ui_type": "choice",
+            "visibility": [
+                "list",
+                "detail",
+        		"edit"
+            ],
+            "vocabulary_scope_ref": "field:ui_type"
+        },
+        {
+            "key": "backgrid_cell_type",
+            "scope": "metahash:fields",
+            "ordinal": 23,
+            "description": "Optional field specifies the Backgrid cell type to use",
+            "comment": "Specify the full path for iccbl cells, such as 'api.EditCell', and specify first part for Backgrid cells, as in 'date' for 'DateCell'; string cell is the default, so no need to specify that.",
+            "filtering": true,
+            "json_field_type": "fields.CharField",
+            "ordering": true,
+            "title": "Backgrid Cell Type",
+            "ui_type": "choice",
+            "visibility": [
+                "list",
+                "detail",
+        		"edit"
+            ],
+            "vocabulary_scope_ref": "field:backgrid_cell_type"
+        },
+        {
+            "key": "visibility",
+            "scope": "metahash:fields",
+            "ordinal": 5,
+            "description": "The designations of where this field is visible",
+            "comment": "",
+            "filtering": true,
+            "json_field_type": "fields.ListField",
+            "ordering": true,
+            "title": "Visibility",
+            "ui_type": "multiselect",
+            "visibility": [
+                "list",
+                "detail",
+        		"edit"
+            ],
+            "vocabulary_scope_ref": "field:visibility"
+        },
+        {
+            "key": "ordering",
+            "scope": "metahash:fields",
+            "ordinal": 5,
+            "description": "The designations of whether this field is orderable through the API",
+            "comment": "",
+            "filtering": true,
+            "json_field_type": "fields.CharField",
+            "ordering": true,
+            "title": "Orderable",
+            "ui_type": "boolean",
+            "visibility": [
+                "detail",
+        		"edit"
+            ]
+        },
+        {
+            "key": "json_field_type",
+            "scope": "metahash:fields",
+            "ordinal": 21,
+            "description": "The json_field_type, if set, specifies that this field is stored virtually in the json_field of the metahash",
+            "comment": "This field both specifies (if set) that this is a json field, and also the type of that field, for use by tastypie in serialization with the client",
+            "filtering": false,
+            "ordering": true,
+            "title": "API (JSON) Field Type",
+            "ui_type": "choice",
+            "visibility": [
+                "detail",
+        		"edit"
+            ],
             "vocabulary_scope_ref": "fields:json_field_type"
         },
         {
-            "key": "vocabulary_scope_ref", 
-            "scope": "metahash:fields", 
-            "order_by": 22, 
-            "description": "The vocabulary_scope_ref is used to look up controlled vocabularies for this field in the vocabularies table", 
-            "comment": "This scope field value in the vocabularies table for the vocabulary entries for this field", 
-            "filtering": false, 
-            "json_field_type": "fields.CharField", 
-            "ordering": true, 
-            "title": "Vocabulary:scope", 
-            "ui_type": "string", 
+            "key": "vocabulary_scope_ref",
+            "scope": "metahash:fields",
+            "ordinal": 22,
+            "description": "The vocabulary_scope_ref is used to look up controlled vocabularies for this field in the vocabularies table",
+            "comment": "This scope field value in the vocabularies table for the vocabulary entries for this field",
+            "filtering": false,
+            "json_field_type": "fields.CharField",
+            "ordering": true,
+            "title": "Vocabulary:scope",
+            "ui_type": "string",
             "visibility": [
                 "detail",
-		"edit"
-            ] 
+        		"edit"
+            ]
         }
     ]
 }

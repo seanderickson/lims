@@ -15,7 +15,7 @@ class BackboneSerializer(Serializer):
         Given some JSON data, returns a Python dictionary of the decoded data.
         Override to quote attributes - the backbone client doesn't want to do this.
         """
-#        logger.info(str(("loading content:", content)))
+        logger.info(str(("loading content:", content)))
         content = content.replace(r'(\w+):', r'"\1" :')
         logger.info(str(("loading content:", content)))
         return json.loads(content)

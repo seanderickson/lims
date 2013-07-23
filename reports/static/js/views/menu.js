@@ -25,7 +25,13 @@ define([
         render : function() {
             console.log('MenuView render');
             // _.pairs converts the object to array of [key, value]
-            var data = { items: _(_.map(_.pairs(this.model.get('submodels')), function(obj){ return { id: obj[0], text: obj[1]['title'] } } )) }; // Note, wrap it in underscore array to facilitate 'each' call in the template
+            var data = {
+                items: _(_.map(_.pairs(this.model.get('submodels')),
+                        function(obj){
+                            return {id: obj[0], text: obj[1]['title']}
+                        }
+                    ))
+            };
             //console.log('--- data: ' + JSON.stringify(data));
             var compiledTemplate = _.template(menuTemplate, data);
             this.$el.append(compiledTemplate);

@@ -7,7 +7,7 @@ from dump_obj import dumpObj
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_ID_KEY='id'
+#DEFAULT_ID_KEY='id'
 
 class ApiError(Exception):
     
@@ -23,8 +23,12 @@ class ApiError(Exception):
 
     def __str__(self):
         return repr(self.message)
+    
+
+def main_csv(inputFilePath, url, action, auth=None ):
+    pass
                     
-def main(inputFilePath, url, action, auth=None, id_key=DEFAULT_ID_KEY ):
+def main(inputFilePath, url, action, auth=None): #, id_key=DEFAULT_ID_KEY ):
     logger.info('input path:' + inputFilePath + ', ' + url)
     '''
     Tool for submitting batches of json 'objects' to the REST api, one at a time.
@@ -51,44 +55,29 @@ def main(inputFilePath, url, action, auth=None, id_key=DEFAULT_ID_KEY ):
         i = 0
         for obj in objects:
             if action == 'PUT':
-                obj_url = url + str(obj[id_key]) + '/'
+                obj_url = url # + str(obj[id_key]) + '/'
                 logger.info(str(('PUT (modify) the object: ', obj, 'url', obj_url)) )
                 try:
+                    # TODO: since not using the id in the url, may have to use the data = { objects: [obj]} wrapper as in patch
                     r = requests.put(obj_url, data=json.dumps(obj), auth=tuple(authentication), headers=headers)
                 except Exception, e:
                     logger.error(str(('exception recorded while contacting server', e)))
                     raise e
                 if(r.status_code != 202):
                     raise ApiError(obj_url,action, r) 
-#                    message = ('result', r.reason, r.status_code, r.text)
-#                    try:
-#                        json_status = r.json()
-#                        if json_status:
-#                            message = message + (r.json,)
-#                    except ValueError,e:
-#                        logger.debug('There is no json on this reponse')
-#                    logger.warn(str(message))
-#                    raise Exception(str(('exception putting data', r.reason, r.status_code, json_status['error_message']))) 
 
             elif action == 'PATCH':
-                obj_url = url + str(obj[id_key]) + '/'
+                # NOTE: patch to the resource_uri value inside the obj
+                obj_url = url # + str(obj[id_key]) + '/'
                 logger.info(str(('PATCH (partial modify) the object: ', obj, 'url', obj_url)) )
+                data = { "objects": [obj]} 
                 try:
-                    r = requests.patch(obj_url, data=json.dumps(obj), auth=tuple(authentication), headers=headers)
+                    r = requests.patch(obj_url, data=json.dumps(data), auth=tuple(authentication), headers=headers)
                 except Exception, e:
                     logger.error(str(('exception recorded while contacting server', e)))
                     raise e
                 if(r.status_code != 202): 
                     raise ApiError(obj_url, action, r) 
-#                    message = ('result', r.reason, r.status_code, r.text)
-#                    try:
-#                        json_status = r.json()
-#                        if json_status:
-#                            message = message + (r.json,)
-#                    except ValueError,e:
-#                        logger.debug('There is no json on this reponse')
-#                    logger.warn(str(message))
-#                    raise Exception(str(('exception patching data', r.reason, r.status_code, json_status['error_message']))) 
 
             elif action == 'POST':
                 logger.info(str(('POST (create) the object: ', obj, 'url', obj_url)) )
@@ -99,15 +88,6 @@ def main(inputFilePath, url, action, auth=None, id_key=DEFAULT_ID_KEY ):
                     raise e
                 if(r.status_code != 201): 
                     raise ApiError(r,action, r) 
-#                    message = ('result', r.reason, r.status_code, r.text)
-#                    try:
-#                        json_status = r.json()
-#                        if json_status:
-#                            message = message + (r.json,)
-#                    except ValueError,e:
-#                        logger.debug('There is no json on this reponse')
-#                    logger.warn(str(message))
-#                    raise Exception(str(('exception posting data', r.reason, r.status_code, json_status['error_message']))) 
             else:
                 raise Exception('unknown action: "' + action + '"')
             
@@ -155,8 +135,8 @@ if __name__ == "__main__":
     print 'importing ', args.inputFile, ', to: ', args.url
     
     kwargs = {'auth':args.auth}
-    if args.id_key:
-        kwargs['id_key'] = args.id_key
+#    if args.id_key:
+#        kwargs['id_key'] = args.id_key
     
     main(args.inputFile, args.url, args.action, **kwargs)
     

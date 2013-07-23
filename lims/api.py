@@ -1,7 +1,12 @@
+from django.utils.encoding import smart_str
 
 from tastypie.resources import ModelResource
 from tastypie.serializers import Serializer
+from tastypie.serializers import Serializer
 
+
+import csv
+import StringIO
 import json
 import logging
         
@@ -19,6 +24,82 @@ class BackboneSerializer(Serializer):
         content = content.replace(r'(\w+):', r'"\1" :')
         logger.info(str(("loading content:", content)))
         return json.loads(content)
+
+
+class CSVSerializer(BackboneSerializer):
+    formats = ['json', 'jsonp', 'xml', 'yaml', 'html', 'plist', 'csv']
+    content_types = {
+        'json': 'application/json',
+        'jsonp': 'text/javascript',
+        'xml': 'application/xml',
+        'yaml': 'text/yaml',
+        'html': 'text/html',
+        'plist': 'application/x-plist',
+        'csv': 'text/csv',
+    }
+
+    def to_csv(self, data, options=None):
+        options = options or {}
+        data = self.to_simple(data, options)
+        raw_data = StringIO.StringIO()
+        # TODO: stream this, don't do the whole dict at once 
+        if 'objects' in data:
+            data = data['objects']
+        if len(data) == 0:
+            return raw_data
+        i = 0
+        keys = None
+        # default: delimiter = ',' quotechar='"'
+        writer = csv.writer(raw_data) 
+        for item in data:
+            if i == 0:
+                keys = item.keys()
+                writer.writerow([smart_str(key) for key in keys])
+                i += 1
+            writer.writerow(self.get_list(item))
+        return raw_data.getvalue()
+    
+    def get_list(self,item):
+        _list = []
+        for key in item:
+            logger.info(str(('item', item)))
+            if item[key] and isinstance(item[key], (list, tuple)):
+                _list.append( '[' + ','.join([smart_str(x) for x in item[key]]) + ']' )
+            elif item[key] != None:
+                _list.append(smart_str(item[key]))
+            else:
+                _list.append(None)
+        return _list
+    
+    def from_csv(self, content):
+        raw_data = StringIO.StringIO(content)
+        data = { 'objects': [] }
+        # TODO: also, stream this
+        # default: delimiter = ',' quotechar='"'
+        logger.info('reading...')
+        reader = csv.reader(raw_data)
+        
+        i = 0
+        keys = []
+        list_keys = [] # cache
+        for row in reader:
+            if i == 0:
+                keys = row
+            else:
+                item = dict(zip(keys,row))
+                logger.info(str(('read row', item)))
+                for key in item.keys():
+                    val = item[key]
+                    if val and len(val)> 1 and (key in list_keys or val[1] == '['):
+                        # due to the simplicity of the serializer, above, any quoted string is a nested list
+                        list_keys.append(key)
+                        item[key] = val.strip('"[]').split(',')
+                        logger.info(str(('converted',val,item[key])))
+                data['objects'].append(item)
+            i += 1
+                
+        return data
+    
 
 class PostgresSortingResource(ModelResource):
 

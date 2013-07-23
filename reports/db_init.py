@@ -35,10 +35,13 @@ def main(inputDir, url, auth):
     #             shell=True, stdin=PIPE).stdin
         
     # initial import
+#    api_importer.main(input_file_dir + '/metahash_fields_initial.json', url_base + '/metahash/',  'POST', auth=':'.join(authentication))
     api_importer.main(input_file_dir + '/metahash_fields_initial.json', url_base + '/metahash/',  'POST', auth=':'.join(authentication))
 
     # now that the field defs are created, including the json fields, we can populate these json field values
-    api_importer.main(input_file_dir + '/metahash_fields_initial_patch.json',url_base + '/metahash/',  'PATCH', auth=':'.join(authentication),  id_key='key')
+    # NOTE: using only "key" here, although the real key is the composite key (scope, key).  this works here
+    # because the table is only loaded with the "metahash:fields" scope in the beginning
+    api_importer.main(input_file_dir + '/metahash_fields_initial_patch.json',url_base + '/metahash/',  'PATCH', auth=':'.join(authentication)) #,  id_key='key')
 
     # define vocabularies
     api_importer.main(input_file_dir + '/metahash_fields_vocabularies.json',url_base + '/metahash/',  'POST', auth=':'.join(authentication))

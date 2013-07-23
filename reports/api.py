@@ -6,7 +6,7 @@ from tastypie.authentication import BasicAuthentication, SessionAuthentication, 
 from tastypie.constants import ALL
 from tastypie import fields
 
-from lims.api import PostgresSortingResource, BackboneSerializer
+from lims.api import PostgresSortingResource, CSVSerializer
 from reports.models import FieldInformation, MetaHash, Vocabularies
 
 import logging
@@ -71,8 +71,11 @@ class JsonAndDatabaseResource(PostgresSortingResource):
         
     def prepend_urls(self):
         # NOTE: this match "((?=(schema))__|(?!(schema))[\w\d_.-]+)" allows us to match any word, except "schema", and use it as the key value to search for.
+        # also note the double underscore "__" is because we also don't want to match in the first clause.
         # We don't want "schema" since that reserved word is used by tastypie for the schema definition for the resource (used by the UI)
         return [
+            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<scope>[\w\d_.-:]+)/(?P<key>[\w\d_.-]+)/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/(?P<key>((?=(schema))__|(?!(schema))[\w\d_.-]+))/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
     
@@ -197,6 +200,14 @@ class JsonAndDatabaseResource(PostgresSortingResource):
         bundle.data['json_field'] = ''
         bundle.data.pop('json_field') # json_field will not be part of the public API, it is for internal use only
 #        logger.info(str(('deyhdrated', bundle)))
+        
+        # override the resource_uri, since we want to export the permanent composite key
+        bundle.data['resource_uri'] = self.get_resource_uri() + bundle.data['scope'] + '/' + bundle.data['key'] +'/'
+                
+        # and don't send the internal id out for PATCH uses, at least
+        # But: we _do_ have to send it out for Backbone, since we don't know how to use things like composite keys yet - sde4
+        # bundle.data.pop('id')
+        
         return bundle
     
     def hydrate_json_field(self, bundle):
@@ -214,7 +225,7 @@ class JsonAndDatabaseResource(PostgresSortingResource):
         json_obj = {}
         field_reset_required = False
         local_field_defs = self.get_field_defs(self.scope) # trigger a get field defs before building the schema
-        for key in [ x for x,y in local_field_defs.items() if 'json_field_type' in y ]:
+        for key in [ str(x) for x,y in local_field_defs.items() if 'json_field_type' in y ]:
             json_obj.update({ key: bundle.data.get(key,None)})
 
 #        json_obj = {    
@@ -224,7 +235,7 @@ class JsonAndDatabaseResource(PostgresSortingResource):
 #            'type': bundle.data['type'],
 #            'visibility': bundle.data['visibility'],
 #        };
-        logger.info(str(('--- json obj hydrate:', json_obj)))
+        logger.info(str(('--- json obj hydrated:', json_obj)))
         bundle.data['json_field'] = json.dumps(json_obj);
         
         
@@ -282,7 +293,7 @@ class MetaHashResource(JsonAndDatabaseResource):
         # TODO: drive this from data
         ordering = []
         filtering = {} #{'scope':ALL, 'key':ALL}
-        serializer = BackboneSerializer()
+        serializer = CSVSerializer()
         excludes = [] #['json_field']
         always_return_data = True # this makes Backbone happy
 
@@ -430,7 +441,7 @@ class VocabulariesResource(JsonAndDatabaseResource):
         # TODO: drive this from data
         ordering = []
         filtering = {'scope':ALL, 'key': ALL, 'alias':ALL}
-        serializer = BackboneSerializer()
+        serializer = CSVSerializer()
         excludes = [] #['json_field']
         always_return_data = True # this makes Backbone happy
     

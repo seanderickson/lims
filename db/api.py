@@ -2,7 +2,7 @@
 
 from db.models import ScreensaverUser,Screen, LabHead, LabAffiliation, ScreeningRoomUser
 from reports.models import MetaHash, Vocabularies
-from lims.api import BackboneSerializer, PostgresSortingResource
+from lims.api import CSVSerializer, PostgresSortingResource
 
 #from django.conf.urls import url
 
@@ -29,7 +29,7 @@ class ScreensaverUserResource(PostgresSortingResource):
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
         ordering = []
         filtering = {}
-        serializer = BackboneSerializer()
+        serializer = CSVSerializer()
         
     def __init__(self, **kwargs):
         

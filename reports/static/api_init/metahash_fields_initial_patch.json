@@ -1,6 +1,7 @@
 {
     "objects": [
         {
+            "resource_uri": "/reports/api/v1/metahash/metahash:fields/key/",
             "key": "key",
             "scope": "metahash:fields",
             "ordinal": 0,
@@ -17,6 +18,7 @@
             ]
         },
         {
+            "resource_uri": "/reports/api/v1/metahash/metahash:fields/scope/",
             "key": "scope",
             "scope": "metahash:fields",
             "ordinal": 1,
@@ -33,6 +35,7 @@
             ]
         },
         {
+            "resource_uri": "/reports/api/v1/metahash/metahash:fields/alias/",
             "key": "alias",
             "scope": "metahash:fields",
             "ordinal": 99,
@@ -42,6 +45,7 @@
             "visibility": []
         },
         {
+            "resource_uri": "/reports/api/v1/metahash/metahash:fields/id/",
             "key": "id",
             "scope": "metahash:fields",
             "ordinal": 99,
@@ -51,6 +55,7 @@
             "visibility": []
         },
         {
+            "resource_uri": "/reports/api/v1/metahash/metahash:fields/resource_uri/",
             "key": "resource_uri",
             "scope": "metahash:fields",
             "ordinal": 99,
@@ -60,6 +65,7 @@
             "visibility": []
         },
         {
+            "resource_uri": "/reports/api/v1/metahash/metahash:fields/ordinal/",
             "key": "ordinal",
             "scope": "metahash:fields",
             "ordinal": 2,
@@ -77,6 +83,7 @@
             ]
         },
         {
+            "resource_uri": "/reports/api/v1/metahash/metahash:fields/title/",
             "key": "title",
             "scope": "metahash:fields",
             "ordinal": 3,
@@ -96,6 +103,7 @@
             "backgrid_cell_type": "Iccbl.EditCell"
         },
         {
+            "resource_uri": "/reports/api/v1/metahash/metahash:fields/description/",
             "key": "description",
             "scope": "metahash:fields",
             "ordinal": 4,
@@ -114,6 +122,7 @@
             "vocabulary_scope_ref": ""
         },
         {
+            "resource_uri": "/reports/api/v1/metahash/metahash:fields/comment/",
             "key": "comment",
             "scope": "metahash:fields",
             "ordinal": 3,
@@ -131,6 +140,7 @@
             "vocabulary_scope_ref": ""
         },
         {
+            "resource_uri": "/reports/api/v1/metahash/metahash:fields/filtering/",
             "key": "filtering",
             "scope": "metahash:fields",
             "ordinal": 3,
@@ -148,6 +158,7 @@
             "vocabulary_scope_ref": ""
         },
         {
+            "resource_uri": "/reports/api/v1/metahash/metahash:fields/ui_type/",
             "key": "ui_type",
             "scope": "metahash:fields",
             "ordinal": 4,
@@ -166,6 +177,7 @@
             "vocabulary_scope_ref": "field:ui_type"
         },
         {
+            "resource_uri": "/reports/api/v1/metahash/metahash:fields/backgrid_cell_type/",
             "key": "backgrid_cell_type",
             "scope": "metahash:fields",
             "ordinal": 23,
@@ -184,6 +196,7 @@
             "vocabulary_scope_ref": "field:backgrid_cell_type"
         },
         {
+            "resource_uri": "/reports/api/v1/metahash/metahash:fields/visibility/",
             "key": "visibility",
             "scope": "metahash:fields",
             "ordinal": 5,
@@ -202,6 +215,7 @@
             "vocabulary_scope_ref": "field:visibility"
         },
         {
+            "resource_uri": "/reports/api/v1/metahash/metahash:fields/ordering/",
             "key": "ordering",
             "scope": "metahash:fields",
             "ordinal": 5,
@@ -218,6 +232,7 @@
             ]
         },
         {
+            "resource_uri": "/reports/api/v1/metahash/metahash:fields/json_field_type/",
             "key": "json_field_type",
             "scope": "metahash:fields",
             "ordinal": 21,
@@ -234,6 +249,7 @@
             "vocabulary_scope_ref": "fields:json_field_type"
         },
         {
+            "resource_uri": "/reports/api/v1/metahash/metahash:fields/vocabulary_scope_ref/",
             "key": "vocabulary_scope_ref",
             "scope": "metahash:fields",
             "ordinal": 22,

@@ -1,6 +1,17 @@
 <ul class="nav nav-pills nav-stacked">
     <li class="nav-header">Actions</li>
     <% items.each(function(item) { %>
-        <li  id="<%= item.id %>"><a href="#"><%= item.text %></a></li>
+        <li  id="<%= item.id %>"><a href="#">
+            <%= item.text %></a>
+            <ul class="nav nav-pills nav-stacked">
+                <li  id="<%= item.id %>" class="nav-header">
+                    <a href="#">one</a>
+                </li>
+                <li class="nav-header">
+                    <a href="#">two</a>
+                </li>
+            </ul>
+
+        </li>
     <% }); %>
 </ul>

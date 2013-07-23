@@ -53,24 +53,24 @@ define([
         console.log("toSearchOrderedToPage route: searchBy: " + searchBy
             + ", order: "+  orderBy + ", rpp: " + rpp + ", page: " + page + ', type: ' + type);
 
-        options = { type: type };
+        var _content_options = { type: type };
 
-        options.page = null;
+        _content_options.page = null;
         if(typeof page !== 'undefined' && page !== null ){
-            options.page = parseInt(page);
+            _content_options.page = parseInt(page);
         }
 
-        options.pageSize = null;
+        _content_options.pageSize = null;
         if(typeof rpp !== 'undefined' && rpp !== null ){
-            options.pageSize = parseInt(rpp);
+            _content_options.pageSize = parseInt(rpp);
         }
 
-        options.orderBy = orderBy;
-        options.searchBy = searchBy;
+        _content_options.orderBy = orderBy;
+        _content_options.searchBy = searchBy;
 
         this.model.set({
-            content_options: options,
-            current_submodel: options.type
+            content_options: _content_options,
+            current_submodel: _content_options.type
             // TODO: this still feels a little hackish, we're encoding the list/type in the menu item
             // perhaps a controller passed in to the router is a better option
             // right now, this is an aggressive use of the application model change event system

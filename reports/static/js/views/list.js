@@ -360,7 +360,7 @@ define([
                         // cell = 'string';
                     // }
                     var backgridCellType = 'string';
-                    if( !_.isNull(prop['backgrid_cell_type'])){
+                    if( !_.isEmpty(prop['backgrid_cell_type'])){
                         backgridCellType = prop['backgrid_cell_type'];
                         try{
                             console.log('look for ' + key + ', ' + prop['backgrid_cell_type']);

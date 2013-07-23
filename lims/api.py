@@ -90,7 +90,7 @@ class CSVSerializer(BackboneSerializer):
                 logger.info(str(('read row', item)))
                 for key in item.keys():
                     val = item[key]
-                    if val and len(val)> 1 and (key in list_keys or val[1] == '['):
+                    if val and len(val)> 1 and (key in list_keys or val[0] == '['):
                         # due to the simplicity of the serializer, above, any quoted string is a nested list
                         list_keys.append(key)
                         item[key] = val.strip('"[]').split(',')

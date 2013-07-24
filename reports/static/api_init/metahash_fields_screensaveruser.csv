@@ -1,0 +1,7 @@
+ordinal,comment,ui_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,key,scope,backgrid_cell_type,resource_uri
+2,,,True,Last Name,Last Name,True,,,"[list,detail]",,last_name,screensaveruser:fields,,/reports/api/v1/metahash/screensaveruser:fields/last_name/
+11,,date,True,Date on which this user's record was created,Date Created,True,,,"[list,detail,edit]",,date_created,screensaveruser:fields,date,/reports/api/v1/metahash/screensaveruser:fields/date_created/
+7,,,,Harvard ID expiration date,HUID Exp. Date,True,,,"[list,detail,edit]",,harvard_id_expiration_date,screensaveruser:fields,date,/reports/api/v1/metahash/screensaveruser:fields/harvard_id_expiration_date/
+3,,,True,The given phone number,Phone,True,,,"[list,detail]",,phone,screensaveruser:fields,,/reports/api/v1/metahash/screensaveruser:fields/phone/
+1,,,True,First Name,First Name,True,,,"[list,detail]",,first_name,screensaveruser:fields,,/reports/api/v1/metahash/screensaveruser:fields/first_name/
+0,Arbitrarily assigned internal user ID for the User,,True,The internal user ID,Screensaver User ID,True,,,"[list,detail]",,screensaver_user_id,screensaveruser:fields,Iccbl.EditCell,/reports/api/v1/metahash/screensaveruser:fields/screensaver_user_id/

@@ -22,18 +22,28 @@ the same database settings you have in your settings file: ENGINE, USER, HOST,
 etc. The test database is created by the user specified by USER, so you'll need
 to make sure that the given user account has sufficient privileges to create a
 new database on the system.
+
+NOTE: to run using sqlite in memory, use a test_settings file with the database as:
+DATABASES['default'] = {'ENGINE': 'django.db.backends.sqlite3'}
+and run like:
+$ ./manage.py test --settings=lims.test_settings
+
 """
-import logging
 
 from django.test import TestCase
 
-logger = logging.getLogger(__name__)
-
 import datetime
+import csv
+import StringIO
 from django.contrib.auth.models import User
-from tastypie.test import ResourceTestCase
+from django.test.client import Client
+from tastypie.test import ResourceTestCase, TestApiClient
 from reports.models import MetaHash, Vocabularies
+from lims.api import CSVSerializer
 
+import logging
+
+logger = logging.getLogger(__name__)
 
 class CreateMetaHash(ResourceTestCase):
     # Use ``fixtures`` & ``urls`` as normal. See Django's ``TestCase``
@@ -51,7 +61,7 @@ class CreateMetaHash(ResourceTestCase):
         initializer = {
                        'key': 'key',
                        'scope': 'metahash:fields',
-                       'order_by': 0    }
+                       'ordinal': 0    }
         MetaHash.objects.create(**initializer)
         
 #        # Fetch the ``Entry`` object we'll use in testing.
@@ -90,7 +100,7 @@ class CreateMetaHash(ResourceTestCase):
         initializer = {
                'key': 'scope',
                'scope': 'metahash:fields',
-               'order_by': 0    }
+               'ordinal': 0    }
 
         resp = self.api_client.post('/reports/api/v1/metahash/', format='json', data=initializer, authentication=self.get_credentials())
         print resp
@@ -107,7 +117,7 @@ class CreateMetaHash(ResourceTestCase):
         initializer = {
                'key': 'test_field',
                'scope': 'metahash:fields',
-               'order_by': 0, 
+               'ordinal': 0, 
                'json_field_type': 'fields.CharField'    }
 
         resp = self.api_client.post('/reports/api/v1/metahash/', format='json', data=initializer, authentication=self.get_credentials())
@@ -120,7 +130,7 @@ class CreateMetaHash(ResourceTestCase):
         initializer = {
                'key': 'test_field',
                'scope': 'metahash:fields',
-               'order_by': 0, 
+               'ordinal': 0, 
                'json_field_type': 'fields.CharField', 
                'test_field': 'foo and bar!'    }
 
@@ -136,6 +146,62 @@ class CreateMetaHash(ResourceTestCase):
         self.assertValidJSONResponse(resp)
         self.assertEqual(len(self.deserialize(resp)['objects']), 2)
         logger.info(str(('---- resp:' , resp)))
+        
+
+    # this should work, but the tastypie.ResourceTestCase methods around post for my custom serializer are broken
+    # todo: just test the api directly through the requests api
+    def xxxx_test_csv_serialization(self):
+        print '=============== test_csv_serialization1 ==================='
+        ''' 
+        Note: we are only verifying simple property lists, i.e. key-value lists; 
+        where values must be: either a string or a list of strings
+        '''
+        serializer=CSVSerializer() 
+        self.api_client = TestApiClient(serializer=serializer) # todo: doesn't work for post, see TestApiClient.post() method, it is incorrectly "serializing" the data before posting
+        posting_client = Client()
+        
+        header = ['key', 'scope', 'ordinal', 'json_field_type']
+        vals = ['test_field', 'metahash:fields', 0, 'fields.CharField']
+        
+        raw_data = StringIO.StringIO()
+        writer = csv.writer(raw_data)
+        writer.writerow(header)
+        writer.writerow(vals)
+        
+        kwargs = {  'content_type': 'text/csv',
+                    'HTTP_AUTHORIZATION': self.get_credentials()
+                }
+
+        resp = posting_client.post('/reports/api/v1/metahash/', data=raw_data.getvalue(), **kwargs)
+        new_obj = self.deserialize(resp)
+        print '----- resp:' , resp, '---', new_obj
+        logger.info(str(( '----- resp:' , resp, '---', new_obj)))
+        self.assertHttpCreated(resp)
+
+        print '-------------------  test put_json modification ==================='
+        # now create an some field instance data
+        header = ['key', 'scope', 'test_field']
+        vals = ['test_field', 'metahash:fields', 'foo and bar!']
+        
+        raw_data = StringIO.StringIO()
+        writer = csv.writer(raw_data)
+        writer.writerow(header)
+        writer.writerow(vals)
+
+        uri = '/reports/api/v1/metahash/'+ str(new_obj.get('id')) + '/'
+        print 'uri:', uri
+        resp = self.api_client.put(uri, format='csv', serializer=serializer, data=raw_data.getvalue(), authentication=self.get_credentials())
+        print '--------resp to put:', resp
+        self.assertHttpAccepted(resp)
+        new_obj = self.deserialize(resp)
+        self.assertEqual(new_obj['test_field'], 'foo and bar!', 'unexpected result: ' +new_obj['test_field'])
+
+        resp = self.api_client.get('/reports/api/v1/metahash/', format='json', authentication=self.get_credentials())
+        self.assertValidJSONResponse(resp)
+        self.assertEqual(len(self.deserialize(resp)['objects']), 2)
+        logger.info(str(('---- resp:' , resp)))
+        
+        
         
 #        # Scope out the data for correctness.
 #        self.assertEqual(len(self.deserialize(resp)['objects']), 12)

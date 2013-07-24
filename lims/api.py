@@ -1,9 +1,8 @@
-from django.utils.encoding import smart_str
 
 from tastypie.resources import ModelResource
 from tastypie.serializers import Serializer
 from tastypie.serializers import Serializer
-
+from django.utils.encoding import smart_str
 
 import csv
 import StringIO
@@ -20,9 +19,11 @@ class BackboneSerializer(Serializer):
         Given some JSON data, returns a Python dictionary of the decoded data.
         Override to quote attributes - the backbone client doesn't want to do this.
         """
-        logger.info(str(("loading content:", content)))
+        if(logger.isEnabledFor(logging.DEBUG)):
+            logger.debug(str(("loading content:", content)))
         content = content.replace(r'(\w+):', r'"\1" :')
-        logger.info(str(("loading content:", content)))
+        if(logger.isEnabledFor(logging.DEBUG)):
+            logger.debug(str(("loading content:", content)))
         return json.loads(content)
 
 
@@ -42,6 +43,15 @@ class CSVSerializer(BackboneSerializer):
         options = options or {}
         data = self.to_simple(data, options)
         raw_data = StringIO.StringIO()
+        # default: delimiter = ',' quotechar='"'
+        writer = csv.writer(raw_data) 
+
+        if 'error' in data:
+            writer.writerow(['error'])
+            writer.writerow([data['error']])
+            logger.warn(str(('error', data)))
+            return raw_data.getvalue()
+            
         # TODO: stream this, don't do the whole dict at once 
         if 'objects' in data:
             data = data['objects']
@@ -49,8 +59,6 @@ class CSVSerializer(BackboneSerializer):
             return raw_data
         i = 0
         keys = None
-        # default: delimiter = ',' quotechar='"'
-        writer = csv.writer(raw_data) 
         for item in data:
             if i == 0:
                 keys = item.keys()
@@ -87,14 +95,14 @@ class CSVSerializer(BackboneSerializer):
                 keys = row
             else:
                 item = dict(zip(keys,row))
-                logger.info(str(('read row', item)))
+                logger.debug(str(('read row', item)))
                 for key in item.keys():
                     val = item[key]
                     if val and len(val)> 1 and (key in list_keys or val[0] == '['):
                         # due to the simplicity of the serializer, above, any quoted string is a nested list
                         list_keys.append(key)
                         item[key] = val.strip('"[]').split(',')
-                        logger.info(str(('converted',val,item[key])))
+                        logger.debug(str(('converted',val,item[key])))
                 data['objects'].append(item)
             i += 1
                 
@@ -120,7 +128,7 @@ class PostgresSortingResource(ModelResource):
                 field = field[1:]
             extra_select[field+"_null"]=field + ' is null'
             extra_ordering.append(is_null_dir + field+"_null")
-        logger.info(str(('extra_select', extra_select)))
+        logger.debug(str(('extra_select', extra_select)))
         obj_list = obj_list.extra(extra_select)
 
         # Note that the following doesn't work, something in the framework deletes the extra 

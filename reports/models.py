@@ -150,7 +150,7 @@ class MetaManager(GetOrNoneManager):
         metahash = {}
         # first, query the metahash for fields defined for this scope
         for fieldinformation in MetaHash.objects.all().filter(scope=scope):
-            logger.info('---- meta field for scope: ' + scope + ', ' + fieldinformation.key)
+            logger.debug('---- meta field for scope: ' + scope + ', ' + fieldinformation.key)
             
             field_key = fieldinformation.key
 #            hash = schema['fields'][field_key]
@@ -165,9 +165,9 @@ class MetaManager(GetOrNoneManager):
             # TODO: "vocabulary_scope_ref" needs to be created by default as a metahash:field; this argues for making it a "real" field
             if hash.get(u'vocabulary_scope_ref'):
                 vocab_ref = hash['vocabulary_scope_ref']
-                logger.info(str(('looking for a vocabulary', vocab_ref )))
+                logger.debug(str(('looking for a vocabulary', vocab_ref )))
                 hash['choices'] = [x.key for x in Vocabularies.objects.all().filter(scope=vocab_ref)]
-                logger.info(str(('got', hash['choices'] )))
+                logger.debug(str(('got', hash['choices'] )))
             
         return metahash
 
@@ -227,7 +227,7 @@ class MetaHash(models.Model):
         if(field in temp):
             return temp[field]
         else:
-            logger.info('unknown field: ' + field + ' for ' + str(self))
+            logger.debug('unknown field: ' + field + ' for ' + str(self))
             return None
     
     def set_field(self, field, value):

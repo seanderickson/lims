@@ -18,7 +18,8 @@ class ApiError(Exception):
             if json_status and 'error_message' in json_status:
                 err_msg = json_status['error_message']
         except ValueError,e:
-            logger.debug('There is no json on this response')
+            logger.info('There is no json in the response')
+            logger.debug(str(('-----raw response text-------', result.text)) )
         self.message = str((url,'action',action, result.reason, result.status_code, err_msg ))
 
     def __str__(self):
@@ -87,7 +88,7 @@ def main(inputFilePath, url, action, auth=None): #, id_key=DEFAULT_ID_KEY ):
                     logger.error(str(('exception recorded while contacting server', e)))
                     raise e
                 if(r.status_code != 201): 
-                    raise ApiError(r,action, r) 
+                    raise ApiError(obj_url,action, r) 
             else:
                 raise Exception('unknown action: "' + action + '"')
             

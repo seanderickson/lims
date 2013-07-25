@@ -111,6 +111,9 @@ class CSVSerializer(BackboneSerializer):
 
 class PostgresSortingResource(ModelResource):
 
+    def __init__(self, **kwargs):
+        super(PostgresSortingResource,self).__init__( **kwargs)
+
     def apply_sorting(self, obj_list, options):
         """
         Create a non-too-pretty workaround for the postgresql null sorting issue - nulls sort higher than values, 

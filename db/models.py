@@ -1037,7 +1037,6 @@ class LabHead(models.Model):
     screensaver_user = models.ForeignKey('ScreeningRoomUser', primary_key=True)
     lab_affiliation = models.ForeignKey(LabAffiliation, null=True, blank=True)
     
-    
     class Meta:
         db_table = 'lab_head'
 

@@ -28,6 +28,7 @@ define([
             // console.log('DetailView initializer: options: ' + JSON.stringify(options));
 
             keys = _(this.model.attributes).keys().sort(function(a,b){
+                console.log('sorting: a: ' + a + ', ' + JSON.stringify(options.fields[a]) + ', b: ' + b + ', ' + JSON.stringify(options.fields[b]));
                 order_a = options.fields[a]['ordinal'];  // TODO: need an edit order by
                 order_b = options.fields[b]['ordinal'];
                 if(_.isNumber(order_a) && _.isNumber(order_b)){
@@ -129,7 +130,12 @@ define([
                                 observe: key,
                                 selectOptions: { collection: _optionsCollection } };
                         }
-
+                    }
+                    else if(option.ui_type == 'boolean' ){ //
+                        bindings['.checkbox_' + key] = {
+                                observe: key,
+                                selectOptions: { collection: [{label: 'select', value: "True" }] }
+                            };
                     }else{
                         bindings['#' + key] = key;
                     }

@@ -1,28 +1,65 @@
-#from django.db import connection, DatabaseError
-
-from db.models import ScreensaverUser,Screen, LabHead, LabAffiliation, ScreeningRoomUser
-from reports.models import MetaHash, Vocabularies
-from lims.api import CSVSerializer, PostgresSortingResource
-
-#from django.conf.urls import url
-
 from tastypie.authorization import Authorization
-#from tastypie.bundle import Bundle
-#from tastypie.resources import ModelResource, Resource
-#from tastypie.serializers import Serializer
 from tastypie.authentication import BasicAuthentication, SessionAuthentication, MultiAuthentication
 from tastypie.constants import ALL, ALL_WITH_RELATIONS
 from tastypie import fields, utils
+
+from db.models import ScreensaverUser,Screen, LabHead, LabAffiliation, ScreeningRoomUser
+from lims.api import CSVSerializer, PostgresSortingResource
+from reports.models import MetaHash, Vocabularies
 
 import logging
         
 logger = logging.getLogger(__name__)
 
-class ScreensaverUserResource(PostgresSortingResource):
-    screens = fields.ToManyField('db.api.ScreenResource', attribute='screens', related_name='lab_head', blank=True, null=True)
+# Mixin class - note this class must be mixed in first, since the tastypie Resource class does not call super().__init__
+class MetahashManagedResource(object):
+    def __init__(self, **kwargs):
+#        if not self.scope:
+#            self.scope = kwargs.pop('scope')
+        logger.info(str(('---------init MetahashManagedResource', self.scope)))
+        # TODO: research why calling reset_filtering_and_ordering, as below, fails        
+        metahash = MetaHash.objects.get_metahash(scope=self.scope)
+        
+        for key,hash in metahash.items():
+            if 'filtering' in hash and hash['filtering']:
+                self.Meta.filtering[key] = ALL
+        
+        for key,hash in metahash.items():
+            if 'ordering' in hash and hash['ordering']:
+                self.Meta.ordering.append(key)
+        super(MetahashManagedResource,self).__init__( **kwargs)
+
+    def reset_filtering_and_ordering(self):
+        self.Meta.filtering = {}
+        self.Meta.ordering = []
+        metahash = MetaHash.objects.get_metahash(scope=self.scope)
+        for key,hash in metahash.items():
+            if 'filtering' in hash and hash['filtering']:
+                self.Meta.filtering[key] = ALL
+        
+        for key,hash in metahash.items():
+            if 'ordering' in hash and hash['ordering']:
+                self.Meta.ordering.append(key)
+
+        logger.info(str(('+++filtering', self.Meta.filtering)))
+        logger.info(str(('ordering', self.Meta.ordering)))
+
+    def build_schema(self):
+        logger.info('--- build_schema: ' + self.scope )
+        schema = super(MetahashManagedResource,self).build_schema()
+        metahash = MetaHash.objects.get_metahash(scope=self.scope)
+
+        for key, value in metahash.items():
+            if key not in schema['fields']:
+                logger.info('creating a virtual field: ' + key)
+                schema['fields'][key] = {}
+            schema['fields'][key].update(value)
+        return schema
+    
+class ScreensaverUserResource(MetahashManagedResource, PostgresSortingResource):
+    screens = fields.ToManyField('db.api.ScreenResource', 'screens', related_name='lab_head_id', blank=True, null=True)
 
     version = fields.IntegerField(attribute='version', null=True)
-#    date_created = fields.DateTimeField(readonly=True, help_text='When the person was created', null=True)
         
     class Meta:
         queryset = ScreensaverUser.objects.all()
@@ -32,97 +69,16 @@ class ScreensaverUserResource(PostgresSortingResource):
         serializer = CSVSerializer()
         
     def __init__(self, **kwargs):
+        self.scope = 'screensaveruser:fields'
+        super(ScreensaverUserResource,self).__init__( **kwargs)
+  
+    def dehydrate(self, bundle):
+        bundle = super(ScreensaverUserResource, self).dehydrate(bundle);
+        bundle.data['screens'] = [x.facility_id for x in Screen.objects.filter(lab_head_id=bundle.obj.screensaver_user_id)]
         
-        metahash = MetaHash.objects.get_metahash(scope='screensaveruser:fields')
-        
-        for key,hash in metahash.items():
-            if 'filtering' in hash and hash['filtering']:
-                self.Meta.filtering[key] = ALL
-        
-        for key,hash in metahash.items():
-            if 'ordering' in hash and hash['ordering']:
-                self.Meta.ordering.append(key)
-        super(ScreensaverUserResource,self).__init__(**kwargs)
-        
+        return bundle        
     
-    def build_schema(self):
-        
-        schema = super(ScreensaverUserResource,self).build_schema()
-        
-        scope = 'screensaveruser:fields'
 
-        metahash = MetaHash.objects.get_metahash(scope='screensaveruser:fields')
-                
-        for key, value in schema['fields'].items():
-            if key in metahash:
-                value.update(metahash[key])
-        
-            
-#        # first, query the metahash for fields defined for this scope
-#        for fieldinformation in MetaHash.objects.all().filter(scope=scope):
-#            logger.info('---- meta field for scope: ' + scope + ', ' + fieldinformation.key)
-#            
-#            field_key = fieldinformation.key
-#            hash = schema['fields'][field_key]
-#            for meta_record in MetaHash.objects.all().filter(scope='metahash:fields'):  # metahash:fields are defined for all reports
-#                hash.update({
-#                      meta_record.key: MetaHash.objects.get_or_none(scope=scope, key=field_key, function=lambda x : (x.get_field(meta_record.key)) )
-#                      })
-#                    
-#            # now check if the field uses controlled vocabulary, look that up now.  TODO: "vocabulary_scope_ref" should be a constant
-#            # TODO: "vocabulary_scope_ref" needs to be created by default as a metahash:field; this argues for making it a "real" field
-#            if hash.get(u'vocabulary_scope_ref'):
-#                vocab_ref = hash['vocabulary_scope_ref']
-#                logger.info(str(('looking for a vocabulary', vocab_ref )))
-#                hash['choices'] = [x.key for x in Vocabularies.objects.all().filter(scope=vocab_ref)]
-#                logger.info(str(('got', hash['choices'] )))
-        
-
-# OLDER
-#        # TODO: drive this from data
-#        field_meta = {
-#            'first_name': { 'name':'First', 'detail_view': True, 'list_view': True, 'order': 1 },
-#            'last_name': { 'name':'Last', 'detail_view': True, 'list_view': True, 'order': 2 },
-#            'ecommons_id': { 'name':'eCommons', 'detail_view': True, 'list_view': True, 'order': 3 },
-#            'login_id': { 'name':'Login', 'detail_view': True, 'list_view': True, 'order': 4 },
-#            'harvard_id': { 'name':'HUID', 'detail_view': True, 'list_view': True, 'order': 5 },
-#            'mailing_address': { 'name':'Address', 'detail_view': True, 'list_view': False, 'order': 6 },
-#            'phone': { 'name':'Phone', 'detail_view': True, 'list_view': True, 'order': 7 },
-#            'email': { 'name':'Email', 'detail_view': True, 'list_view': True, 'order': 8 },
-#            'comments': { 'name':'Comments', 'detail_view': True, 'list_view': False, 'order': 9 },
-#            'screensaver_user_id': { 'name':'ID', 'detail_view': True, 'list_view': True, 'order': 10 },
-#            'date_created': { 'name':'Date Created', 'detail_view': True, 'list_view': False, 'order': 100 },
-#            'date_loaded': { 'name':'Date Loaded', 'detail_view': True, 'list_view': False, 'order': 100 },
-#            'date_publicly_available': { 'name':'Publicly Available', 'detail_view': True, 'list_view': False, 'order': 100 },
-#            'digested_password': { 'name':'digested_password', 'detail_view': False, 'list_view': False, 'order': 100 },
-#            'harvard_id_expiration_date': { 'name':'HUID exp.', 'detail_view': True, 'list_view': False, 'order': 100 },
-#            'harvard_id_requested_expiration_date': { 'name':'HUID requested exp.', 'detail_view': True, 'list_view': False, 'order': 100 },
-#            'resource_uri': { 'name':'resource_uri', 'detail_view': False, 'list_view': False, 'order': 100 },
-#            'version': { 'name':'version', 'detail_view': False, 'list_view': False, 'order': 100 },
-#        }
-#        
-#        for field in schema['fields'].keys():
-#            if field in field_meta:
-#                schema['fields'][field].update(field_meta[field])
-        return schema
-    
-    
-#    def alter_list_data_to_serialize(self, request, data):
-#        """
-#        A hook to alter list data just before it gets serialized & sent to the user.
-#
-#        Useful for restructuring/renaming aspects of the what's going to be
-#        sent.
-#
-#        Should accommodate for a list of objects, generally also including
-#        meta data.
-#        """
-#        
-#        # TODO: this is for the datatables jquery component
-#        sEcho = request.GET.get('sEcho','')
-#        if sEcho:
-#            data['meta']['sEcho'] = int(sEcho)
-#        return data
 
 class ScreeningRoomUserResource(PostgresSortingResource):
     screensaver_user = fields.ToOneField('db.api.ScreensaverUserResource', attribute='screensaver_user', full=True, full_detail=True, full_list=False)
@@ -138,8 +94,10 @@ class LabAffiliationResource(PostgresSortingResource):
 from django.forms.models import model_to_dict
 
 class LabHeadResource(PostgresSortingResource):
-    
-    lab_affiliation = fields.ToOneField('db.api.LabAffiliationResource', attribute='lab_affiliation',  full=True)
+
+    screens = fields.ToManyField('db.api.ScreenResource', 'screens', related_name='lab_head', blank=True, null=True)
+
+    lab_affiliation = fields.ToOneField('db.api.LabAffiliationResource', attribute='lab_affiliation',  full=True, null=True)
     
     # rather than walk the inheritance hierarchy, will flatten this hierarchy in the dehydrate method
     #    screening_room_user = fields.ToOneField('db.api.ScreeningRoomUserResource', attribute='screensaver_user',  full=True)
@@ -149,65 +107,44 @@ class LabHeadResource(PostgresSortingResource):
     class Meta:
         queryset = LabHead.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
-    
+#        resource_name = 'lab_head'
+        
     def dehydrate(self, bundle):
         # flatten the inheritance hierarchy, rather than show nested "lab_head->screening_room_user->screensaver_user"
         bundle.data.update(model_to_dict(bundle.obj.screensaver_user))
         bundle.data.update(model_to_dict(bundle.obj.screensaver_user.screensaver_user))
+        bundle.data['screens'] = [model_to_dict(x) for x in Screen.objects.filter(lab_head_id=bundle.obj.screensaver_user.screensaver_user_id)]
         
         return bundle        
     
 
-class ScreenResource(PostgresSortingResource):
-    lab_head_full = fields.ToOneField('db.api.LabHeadResource', attribute = 'lab_head',  full=True) #, full_list=False) #, blank=True, null=True)
-    lab_head_id = fields.IntegerField(attribute='lab_head_id')
+class ScreenResource(MetahashManagedResource,PostgresSortingResource):
+
+    lab_head_full = fields.ToOneField('db.api.LabHeadResource', 'lab_head',  full=True) #, full_list=False) #, blank=True, null=True)
+    lab_head = fields.ToOneField('db.api.LabHeadResource', 'lab_head',  full=True)
     
     class Meta:
         queryset = Screen.objects.all().filter(screen_type='Small Molecule')
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
+        resource_name = 'screen'
         
-        # TODO: drive this from data
-        ordering = ['facility_id', 'title', 'lead_screener.screensaver_user.last_name', 'date_loaded', 'date_publicly_available']
-        # TODO: drive this from data
-        filtering = {'first_name':ALL, 'last_name':ALL, 'comments':ALL }
+        ordering = []
+        filtering = {}
+        serializer = CSVSerializer()
+
         
+    def __init__(self, **kwargs):
+        self.scope = 'screen:fields'
+        super(ScreenResource,self).__init__( **kwargs)
+                
     def dehydrate(self, bundle):
+#        bundle = super(ScreenResource, self).dehydrate(bundle);
         sru = bundle.obj.lead_screener.screensaver_user
         bundle.data['lead_screener'] =  sru.first_name + ' ' + sru.last_name
+        logger.info('lead_screener: ' + bundle.data['lead_screener'])
         lh = bundle.obj.lab_head.screensaver_user.screensaver_user
         bundle.data['lab_head'] =  lh.first_name + ' ' + lh.last_name
-        
-#        logger.info(str(('bundle: ',bundle)))
         return bundle
-
-    def build_schema(self):
-        schema = super(ScreenResource,self).build_schema()
-        
-        # TODO: drive this from data
-        field_meta = {
-            'screen_id': { 'name':'ID', 'detail_view': False, 'list_view': False, 'order': 100 },
-            'facility_id': { 'name':'ID', 'detail_view': True, 'list_view': True, 'order': -1 },
-            'screen_type': { 'name':'Screen Type', 'detail_view': True, 'list_view': True, 'order': 1 },
-            'project_phase': { 'name':'Project Phase', 'detail_view': True, 'list_view': True, 'order': 2 },
-            'project_id': { 'name':'Project ID', 'detail_view': True, 'list_view': True, 'order': 3 },
-            'title': { 'name':'Title', 'detail_view': True, 'list_view': True, 'order': 4 },
-            'lab_head': { 'name':'Lab Head', 'detail_view': True, 'list_view': True, 'order': 5 },
-            'lead_screener': { 'name':'Lead Screener', 'detail_view': True, 'list_view': True, 'order': 6 },
-            'date_recorded': { 'name':'Date Recorded', 'detail_view': True, 'list_view': True, 'order': 7 },
-            'status': { 'name':'Status', 'detail_view': True, 'list_view': True, 'order': 8 },
-            'status_date': { 'name':'Status', 'detail_view': True, 'list_view': True, 'order': 9 },
-            'screen_result': { 'name':'Screen Result', 'detail_view': True, 'list_view': True, 'order': 10 },
-            'total_plated_lab_cherry_picks': { 'name':'Total Cherry Picks', 'detail_view': True, 'list_view': True, 'order': 11 },
-        }
-
-        for field in field_meta.keys():
-            if field not in schema['fields']:
-                schema['fields'][field] = field_meta[field]
-                
-        for field in schema['fields'].keys():
-            if field in field_meta:
-                schema['fields'][field].update(field_meta[field])
-        return schema    
 
     def apply_sorting(self, obj_list, options):
         options = options.copy()

@@ -13,6 +13,7 @@ from lims.api import PostgresSortingResource, CSVSerializer
 from reports.models import FieldInformation, MetaHash, Vocabularies
 
 import logging
+from db.api import ScreensaverUserResource
         
 logger = logging.getLogger(__name__)
         
@@ -20,7 +21,7 @@ class JsonAndDatabaseResource(PostgresSortingResource):
     def __init__(self, scope=None, **kwargs):
         self.scope = scope
 
-        
+        # TODO: research why calling reset_filtering_and_ordering, as below, fails        
         metahash = MetaHash.objects.get_metahash(scope=scope)
         for key,hash in metahash.items():
             if 'filtering' in hash and hash['filtering']:
@@ -32,8 +33,8 @@ class JsonAndDatabaseResource(PostgresSortingResource):
 
         logger.info(str(('+++filtering', self.Meta.filtering)))
         logger.info(str(('ordering', self.Meta.ordering)))
-        
-#        self.reset_filtering_and_ordering()
+        #        self.reset_filtering_and_ordering()
+
         super(JsonAndDatabaseResource,self).__init__(**kwargs)
         self.original_fields = deepcopy(self.fields)
         self.field_defs = {}
@@ -132,7 +133,6 @@ class JsonAndDatabaseResource(PostgresSortingResource):
     
     def build_schema(self):
         logger.info('------build_schema: ' + self.scope)
-#        self.reset_field_defs()
         local_field_defs = self.get_field_defs(self.scope) # trigger a get field defs before building the schema
         schema = super(JsonAndDatabaseResource,self).build_schema()
         
@@ -141,53 +141,19 @@ class JsonAndDatabaseResource(PostgresSortingResource):
             # help for fields not yet defined
             if not schema['fields'][key].get('ui_type'):
                 schema['fields'][key]['ui_type'] = schema['fields'][key].get('type')
-#                if schema['fields'][key].get('type') == 'string':
-#                    schema['fields'][key]['ui_type'] = 'text'
-#                elif schema['fields'][key].get('type') == 'integer':
-#                    schema['fields'][key]['ui_type'] = 'numeric'
         
         schema['fields'].pop('json_field')
         
-
-#        logger.info(str(('generated schema', schema)))
-#        for key,value in self.field_defs.items():
-#            if value.get('ui_type',None) in [UI_TYPE_CHOICE,UI_TYPE_MULTISELECT]:
-#                schema['fields'][key].update({'type': value['ui_type'],
-#                                              'choices': [x.key for x in Vocabularies.objects.all().filter(scope=value['vocabulary_term:scope'])]} )
-#            schema['fields'][key].update({
-#                  'visibility': MetaHash.objects.get_or_none(scope='metahash:fields', key=key, function=lambda x : (x.get_field('visibility')) ), 
-#                  'title': MetaHash.objects.get_or_none(scope='metahash:fields', key=key, function=lambda x : (x.get_field('title')) ),
-#                  'description': MetaHash.objects.get_or_none(scope='metahash:fields', key=key, function=lambda x : (x.get_field('description')) ),
-#                  'order': MetaHash.objects.get_or_none(scope='metahash:fields', key=key, function=lambda x : (x.get_field('order')) )
-#                  });
-        
-        # TODO: refactor the building of the schema here to a super class
-#        schema['fields']['type'].update({'type': 'choice',
-#                                         'choices': [x.key for x in Vocabularies.objects.all().filter(scope='field:type')],
-#                                         'visibility': MetaHash.objects.get_or_none(scope='metahash:fields', key='type', function=lambda x : (x.get_field('visibility')) ), 
-#                                         'title': MetaHash.objects.get_or_none(scope='metahash:fields', key='type', function=lambda x : (x.get_field('title')) ),
-#                                         'description': MetaHash.objects.get_or_none(scope='metahash:fields', key='type', function=lambda x : (x.get_field('description')) ),
-#                                        })
-#        schema['fields']['visibility'].update({ 'type': 'multiselect',
-#                                                'choices': [x.key for x in Vocabularies.objects.all().filter(scope='field:visibility')]})
-#        schema['fields']['resource_uri'].update({ 'visibility': MetaHash.objects.get(scope='metahash:fields', key='resource_uri').get_field('visibility'), })
-#        schema['fields']['json_field'].update({ 
-#           'visibility': MetaHash.objects.get_or_none(scope='metahash:fields', key='json_field', function=lambda x : (x.get_field('visibility'))), })
-#        logger.info(str(('schema', schema)))
         return schema
     
     def dehydrate(self, bundle):
-#        logger.info(str(('dehydrate', bundle)))
 #        bundle = super(JsonAndDatabaseResource, self).dehydrate(bundle);
         local_field_defs = self.get_field_defs(self.scope) # trigger a get field defs before building the schema
         for key in [ x for x,y in local_field_defs.items() if y.get('json_field_type') ]:
-#            logger.info('------get field:' + key)
             bundle.data[key] = bundle.obj.get_field(key);
         
-#        bundle.data['toString'] = '[' + bundle.obj.scope + ',' + bundle.obj.key +']'; # TODO: refactor this, and improve it
         bundle.data['json_field'] = ''
         bundle.data.pop('json_field') # json_field will not be part of the public API, it is for internal use only
-#        logger.info(str(('deyhdrated', bundle)))
         
         # override the resource_uri, since we want to export the permanent composite key
         bundle.data['resource_uri'] = self.get_resource_uri() + bundle.data['scope'] + '/' + bundle.data['key'] +'/'
@@ -216,7 +182,6 @@ class JsonAndDatabaseResource(PostgresSortingResource):
         logger.debug(str(('local_field_defs',local_field_defs)))
         for key in [ str(x) for x,y in local_field_defs.items() if 'json_field_type' in y ]:
             json_obj.update({ key: bundle.data.get(key,None)})
-
 
         bundle.data['json_field'] = json.dumps(json_obj);
         logger.debug(str(('--- hydrated:', bundle)))
@@ -267,6 +232,8 @@ class MetaHashResource(JsonAndDatabaseResource):
         # TODO: there may be a better post-create hook?
         if getattr(bundle.obj,'scope') == 'metahash:fields':
             self.reset_field_defs();
+        elif getattr(bundle.obj,'scope') == 'screensaveruser:fields':
+            ScreensaverUserResource().reset_filtering_and_ordering();
         return bundle
 
     def obj_update(self, bundle, **kwargs):
@@ -281,19 +248,14 @@ class MetaHashResource(JsonAndDatabaseResource):
         bundle = super(MetaHashResource, self).hydrate(bundle);
         return bundle
 
-
     def rollback(self, bundles):
         pass        
 
 
 class VocabulariesResource(JsonAndDatabaseResource):
 
-#    title = fields.CharField(attribute='title', readonly=True, blank=True, null=True)
-#    description = fields.CharField(attribute='description', readonly=True, blank=True, null=True)
-#    comment = fields.CharField(attribute='comment', readonly=True, blank=True, null=True)
     def __init__(self, **kwargs):
         super(VocabulariesResource,self).__init__(scope='vocabularies:fields', **kwargs)
-
 
     class Meta:
         queryset = Vocabularies.objects.all().order_by('scope', 'ordinal', 'key')
@@ -305,13 +267,6 @@ class VocabulariesResource(JsonAndDatabaseResource):
         serializer = CSVSerializer()
         excludes = [] #['json_field']
         always_return_data = True # this makes Backbone happy
-    
-#    def build_schema(self, scope):
-#        return super(VocabulariesResource,self).build_schema('metahash:fields')
-
-    # called by Resource.get_list
-    # def obj_get_list(self, bundle, **kwargs):
-    #     calls apply_filters, which calls get_object_list
     
     # called by ModelResource in ModelResource.apply_filters 
     def get_object_list(self, request):
@@ -328,29 +283,3 @@ class VocabulariesResource(JsonAndDatabaseResource):
         temp = [ x.scope for x in self.Meta.queryset.distinct('scope')]
         schema['searchTerms'] = temp
         return schema
-        
-#    def hydrate(self, bundle):
-##        bundle = super(MetaHashResource, self).hydrate(bundle);
-#        
-#        
-#        logger.info(str(('hydrate', bundle)))
-#        json_obj = {    
-#            'title': bundle.data['title'], 
-#            'description': bundle.data['description'],
-#            'comment': bundle.data['comment'],
-#        };
-#        bundle.data['json_field'] = json.dumps(json_obj);
-#        return bundle;
-#
-#    def dehydrate(self, bundle):
-#        logger.info(str(('dehydrate', bundle)))
-#        
-#        bundle.data['title'] = bundle.obj.get_field('title')
-#        bundle.data['description'] = bundle.obj.get_field('description')
-#        bundle.data['comment'] = bundle.obj.get_field('comment')
-#        
-#        # TODO: "toString" required by the UI dialogs dealing with this object (i.e. delete)       
-#        bundle.data['toString'] = '[' + bundle.obj.scope + ',' + bundle.obj.key +']'; # TODO: refactor this, and improve it
-#        
-#        return bundle
-    

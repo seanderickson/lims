@@ -2,91 +2,91 @@
     "objects": [
         {
             "key": "key",
-            "scope": "metahash:fields",
+            "scope": "fields:metahash",
             "ordinal": 0
         },
         {
             "key": "scope",
-            "scope": "metahash:fields",
+            "scope": "fields:metahash",
             "ordinal": 1
         },
         {
             "key": "ordinal",
-            "scope": "metahash:fields",
+            "scope": "fields:metahash",
             "ordinal": 2
         },
         {
             "key": "json_field_type",
-            "scope": "metahash:fields",
+            "scope": "fields:metahash",
             "ordinal": 20
         },
         {
             "key": "vocabulary_scope_ref",
-            "scope": "metahash:fields",
+            "scope": "fields:metahash",
             "ordinal": 21,
             "json_field_type": "fields.CharField"
         },
         {
             "key": "title",
-            "scope": "metahash:fields",
+            "scope": "fields:metahash",
             "ordinal": 3,
             "json_field_type": "fields.CharField"
         },
         {
             "key": "ui_type",
-            "scope": "metahash:fields",
+            "scope": "fields:metahash",
             "ordinal": 4,
             "json_field_type": "fields.CharField"
         },
         {
             "key": "visibility",
-            "scope": "metahash:fields",
+            "scope": "fields:metahash",
             "ordinal": 5,
             "json_field_type": "fields.ListField"
         },
         {
             "key": "description",
-            "scope": "metahash:fields",
+            "scope": "fields:metahash",
             "ordinal": 4,
             "json_field_type": "fields.CharField"
         },
         {
             "key": "comment",
-            "scope": "metahash:fields",
+            "scope": "fields:metahash",
             "ordinal": 4,
             "json_field_type": "fields.CharField"
         },
         {
             "key": "filtering",
-            "scope": "metahash:fields",
+            "scope": "fields:metahash",
             "ordinal": 4,
             "json_field_type": "fields.CharField"
         },
         {
             "key": "ordering",
-            "scope": "metahash:fields",
+            "scope": "fields:metahash",
             "ordinal": 4,
             "json_field_type": "fields.CharField"
         },
         {
             "key": "backgrid_cell_type",
-            "scope": "metahash:fields",
+            "scope": "fields:metahash",
             "ordinal": 23,
             "json_field_type": "fields.CharField"
         },
         {
             "key": "alias",
-            "scope": "metahash:fields",
+            "scope": "fields:metahash",
             "ordinal": 99
         },
         {
             "key": "id",
-            "scope": "metahash:fields",
+            "scope": "fields:metahash",
             "ordinal": 99
         },
         {
             "key": "resource_uri",
-            "scope": "metahash:fields",
+            "scope": "fields:metahash",
             "ordinal": 99
         }
 

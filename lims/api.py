@@ -1,7 +1,6 @@
 
 from tastypie.resources import ModelResource
 from tastypie.serializers import Serializer
-from tastypie.serializers import Serializer
 from django.utils.encoding import smart_str
 
 import csv
@@ -116,7 +115,7 @@ class PostgresSortingResource(ModelResource):
 
     def apply_sorting(self, obj_list, options):
         """
-        Create a non-too-pretty workaround for the postgresql null sorting issue - nulls sort higher than values, 
+        Create a none-too-pretty workaround for the postgresql null sorting issue - nulls sort higher than values, 
         which is not desired.  We want nulls to sort lower than values.
         """ 
         

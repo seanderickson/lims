@@ -29,9 +29,16 @@ def main(inputDir, url, auth):
         
     # initial import
 #    api_importer.main(input_file_dir + '/metahash_fields_initial.json', url_base + '/metahash/',  'POST', auth=':'.join(authentication))
+#    obj_url = url_base + '/metahash/'
+#    headers = {'content-type': 'application/json'}
+#    input_file = input_file_dir + '/metahash_fields_initial.json'
+#    # NOTE: cannot POST multiple objects to tastypie at this time.  PUT a list will delete also
+#    put(input_file, obj_url, headers, authentication)
+    
+    
     obj_url = url_base + '/metahash/'
-    headers = {'content-type': 'application/json'}
-    input_file = input_file_dir + '/metahash_fields_initial.json'
+    headers = {'content-type': 'text/csv'}
+    input_file = input_file_dir + '/metahash_fields_initial.csv'
     # NOTE: cannot POST multiple objects to tastypie at this time.  PUT a list will delete also
     put(input_file, obj_url, headers, authentication)
     
@@ -47,10 +54,21 @@ def main(inputDir, url, auth):
     obj_url = url_base + '/metahash/'
     headers = {'content-type': 'text/csv'}
     input_file = input_file_dir + '/metahash_fields_initial_patch.csv'
+    patch(input_file, obj_url, headers, authentication)    
+    
+    # define resource fields
+    obj_url = url_base + '/metahash/'
+    headers = {'content-type': 'text/csv'}
+    input_file = input_file_dir + '/metahash_fields_resource.csv'
     patch(input_file, obj_url, headers, authentication)
     
-        
-    # define vocabularies
+    # import resource defs
+    obj_url = url_base + '/resource/'
+    headers = {'content-type': 'text/csv'}
+    input_file = input_file_dir + '/metahash_resource_data.csv'
+    put(input_file, obj_url, headers, authentication)
+            
+    # define vocabularies fields
 #    api_importer.main(input_file_dir + '/metahash_fields_vocabularies.json',url_base + '/metahash/',  'POST', auth=':'.join(authentication))
     obj_url = url_base + '/metahash/'
     headers = {'content-type': 'text/csv'}

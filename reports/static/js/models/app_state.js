@@ -7,62 +7,113 @@ define([
     var AppState = Backbone.Model.extend({
         defaults: {
             root_url: '/reports/',
-            current_submodel: 'home',
+            current_submodel_id: 'home',
             content_options: {},
             route: '',
-            // menu_items: [
-                // { id:'home', text:'Home'},
-                // { id:'list_fieldinformation', text:'List FieldInformation' },
-                // { id:'list_metainformation', text:'List MetaInformation' },
-                // { id:'list_screensaveruser', text:'Show Users' },
-            // ],// todo: make these into a collection of menu models?
+            // menu's can only be two levels deep (todo: recursive cool menu thing)
+            menu: {
+                view: 'home_view',
+                submenus:{
+                'screensaveruser': {
+                    view: 'list_view',
+                    submenus: {
+                    'screeners':{},
+                    'staff':{},
+                    }
+                },
+                'screen': {
+                    view: 'list_view',
+                    submenus: {
+                    'small_molecule_screens':{},
+                    'rnai_screens':{},
+                    }
+                },
+                'admin': {
+                    view: 'menu_view',  // TODO: not implemented; would show children menu items as links in the page
+                    submenus: {
+                        'fieldmetainformation':{
+                            view: 'list_view',
+                        },
+                        'resources':{
+                            view: 'list_view',
+                        },
+                        'vocabularies':{
+                            view: 'list_view',
+                        },
+                    }
+                },
+                }
+            },
+
             submodels: {
-                home: {
-                    type: 'home',
-                    title: 'Home',
+                admin: {
+                    title: 'Admin',
                     route: '',
                     view: 'HomeView',
                     content_header: 'Welcome',
+                    description: 'Perform admin activities'
+                },
+                home: {
+                    title: 'Screensaver Reporting',
+                    route: '',
+                    view: 'HomeView',
+                    content_header: 'Welcome',
+                    description: 'Menu starting point'
                 },
 
                 fieldmetainformation: {
-                    type: 'fieldmetainformation',
-                    header_message: 'Field Meta Information',
-                    title: 'Field Meta Information',
+                    header_message: 'Define fields for display on detail and list views',
+                    title: 'Field Information',
                     route: 'list/fieldmetainformation',
-                    view: 'ListView',
-                    url_schema : '/reports/api/v1/metahash/schema/',
-                    url : '/reports/api/v1/metahash/',
-                    searchBy : 'scope=metahash:fields',
+                    list_view: 'ListView',
+                    detail_view: 'DetailView',
+                    url_schema : '/reports/api/v1/metahash/schema',
+                    url : '/reports/api/v1/metahash',
+                    searchBy : 'scope=fields:metahash',
+                    description: 'Control field settings'
+                },
+
+                resources: {
+                    header_message: 'Define resources for display in the reporting interface',
+                    title: 'Resource Information',
+                    route: 'list/resources',
+                    list_view: 'ListView',
+                    detail_view: 'DetailView',
+                    url_schema : '/reports/api/v1/resource/schema',
+                    url : '/reports/api/v1/resource',
+                    description: 'Control resource information'
                 },
 
                 vocabularies: {
-                    type: 'vocabularies',
-                    header_message: 'Application Vocabularies',
+                    header_message: 'Define controlled vocabularies',
                     title: 'Application Vocabularies',
                     route: 'list/vocabularies',
-                    view: 'ListView',
-                    url_schema : '/reports/api/v1/vocabularies/schema/',
-                    url : '/reports/api/v1/vocabularies/',
+                    list_view: 'ListView',
+                    detail_view: 'DetailView',
+                    url_schema : '/reports/api/v1/vocabularies/schema',
+                    url : '/reports/api/v1/vocabularies',
+                    description: 'Enter controlled vocabularies'
                 },
 
                 screensaveruser: {
-                    type: 'screensaveruser',
-                    header_message: 'Screensaver Users',
-                    title: 'Users',
+                    header_message: 'All users (Screeners and Staff)',
+                    title: 'Screensaver Users',
                     route: 'list/screensaveruser',
-                    view: 'ListView',
-                    url_schema : '/db/api/v1/screensaveruser/schema/' ,
-                    url : '/db/api/v1/screensaveruser/'
+                    list_view: 'ListView',
+                    detail_view: 'DetailView',
+                    url_schema : '/db/api/v1/screensaveruser/schema' ,
+                    url : '/db/api/v1/screensaveruser',
+                    description: 'View user information'
                 },
                 screen: {
-                    type: 'screen',
-                    header_message: 'Screens',
+                    header_message: 'All screens (Small Molecule and RNAi)',
                     title: 'Screens',
                     route: 'list/screen',
-                    view: 'ListView',
-                    url_schema : '/db/api/v1/screen/schema/' ,
-                    url : '/db/api/v1/screen/'
+                    list_view: 'ListView',
+                    detail_view: 'DetailView',
+                    url_schema : '/db/api/v1/screen/schema' ,
+                    url : '/db/api/v1/screen',
+                    description: 'View screen information'
                 }
             },
             list_defaults: {
@@ -72,28 +123,11 @@ define([
                 orderBy: null,
                 searchBy: null,
             },
-            // menu_actions: {
-                // home: {
-                    // route: '',
-                    // view: 'HomeView',
-                    // content_header: 'Welcome',
-                // },
-                // list_fieldinformation: {
-                    // route: 'list/fieldinformation',
-                    // view: 'ListView',
-                    // options: { type: 'fieldinformation', header_message: 'Field Meta Information', title: 'Field Information Table' }
-                // },
-                // list_metainformation: {
-                    // route: 'list/metainformation',
-                    // view: 'ListView',
-                    // options: { type: 'metainformation', header_message: 'Meta Information', title: 'Meta Information Table' }
-                // },
-                // list_screensaveruser: {
-                    // route: 'list/screensaveruser',
-                    // view: 'ListView',
-                    // options: { type: 'screensaveruser', header_message: 'Screensaver Users', title: 'Screensaver User Table' }
-                // }
-            // },
+            detail_defaults: {
+
+
+            },
+
         },
 
         initialize : function() {

@@ -58,27 +58,27 @@ define([
             });
         },
 
-        wrapAsUnderscore: function(obj) {
-            var self = this;
-            var newObj = {};
-            _.each(_.pairs(obj), function(pair){
-                if(_.isArray(pair[1])){
-                    newObj[pair[0]] = _(pair[1]);
-                }else if(_.isObject(pair[1])){
-                    newObj[pair[0]] = self.wrapAsUnderscore(pair[1]);
-                }else{
-                    newObj[pair[0]] = pair[1];
-                }
-            });
-            return newObj;
-
-        },
+        // wrapAsUnderscore: function(obj) {
+            // var self = this;
+            // var newObj = {};
+            // _.each(_.pairs(obj), function(pair){
+                // if(_.isArray(pair[1])){
+                    // newObj[pair[0]] = _(pair[1]);
+                // }else if(_.isObject(pair[1])){
+                    // newObj[pair[0]] = self.wrapAsUnderscore(pair[1]);
+                // }else{
+                    // newObj[pair[0]] = pair[1];
+                // }
+            // });
+            // return newObj;
+//
+        // },
 
         buildGrid : function(schemaResult, _url, options) {
 
-            var fieldDefinitions = schemaResult.fields;
-
-            var field_defs = this.wrapAsUnderscore(fieldDefinitions);
+            // var fieldDefinitions = schemaResult.fields;
+//
+            // var field_defs = this.wrapAsUnderscore(fieldDefinitions);
             // console.log('field_defs: ' + JSON.stringify(field_defs));
 
             console.log('buildGrid...');
@@ -87,7 +87,7 @@ define([
             this.objects_to_destroy = _([]);
             // TODO: make sure req'd options are present (i.e. router, type)
             // type == table or query or api resource type
-            var collection = this.collection = new Iccbl.MyCollection({ 'url': _url, router: options.router, type: options.type  });
+            var collection = this.collection = new Iccbl.MyCollection({ 'url': _url, router: options.router  });
 
             this.objects_to_destroy.push(collection);
 
@@ -103,7 +103,7 @@ define([
 
             // TODO: p-o-c of how to do a Link-to-Detail/Edit: should be controlled by the field type
             //var col_options = { customCells: { 'title': Iccbl.EditCell, 'screensaver_user_id': Iccbl.EditCell } };
-            var columns = this.createBackgridColModel(fieldDefinitions, Iccbl.MyHeaderCell);//, col_options );
+            var columns = this.createBackgridColModel(schemaResult.fields, Iccbl.MyHeaderCell);//, col_options );
             columns.unshift({ name: 'deletor', label: 'Delete', text:'X', description: 'delete record', cell: Iccbl.DeleteCell, sortable: false });
             var grid = this.grid = new Backgrid.Grid({
               columns: columns,
@@ -113,11 +113,28 @@ define([
             this.objects_to_destroy.push(grid);
 
             self.listenTo(collection, "MyCollection:edit", function (model) {
-                console.log('edit:', model);
+                console.log('---- create detail view for '+ this.options.type);
                 // TODO: Get the title, and other items from the meta data
-                var detailView = new DetailView({ model: model}, {title: "Details", fields:field_defs} ); // TODO: get the model "edit title" from the metainformation_hash
+                var detailView = new DetailView({ model: model},
+                    { title: "Details", fields:schemaResult.fields} ); // todo get title
 
                 $('#list-container').hide();
+
+                var _routeFrom = this.model.get('route');
+
+                var id = '/' + model.get('id');
+                if(_.has(schemaResult['resource_definition'], 'id_attribute')){
+                    console.log('create id from ' + schemaResult['resource_definition']['id_attribute']);
+                    id = _.reduce(schemaResult['resource_definition']['id_attribute'],
+                            function(memo, item){ return memo += model.get(item) + '/';}, '/');
+                }else{
+                    console.log('Warn: schema for this type has no resource_definition,id_attribute; type: ' + this.options.type);
+                }
+                console.log('id: ' + id);
+                var _route = 'detail/' + this.options.type + id;
+                this.model.set({ route: _route } );  // TODO: if we can make the "back" button do a navigate back, then all we have to do in this handler is set the route...
+
+
                 // NOTE: having self bind to the detailView like this:
                 // self.listenTo(detailView, 'remove', function(){
                 // causes the detailView to hang around in memory until self is closed
@@ -127,6 +144,7 @@ define([
                     self.collection.fetch({reset:true});
                     $('#list-container').show();
                     detailView.close();
+                    this.model.set({ route: _routeFrom } );
                 });
 
                 $('#detail-container').append(detailView.render().$el);
@@ -234,7 +252,7 @@ define([
                         event.preventDefault();
                         // TODO: set the defaults, also determine if should be set on create, from the Meta Hash
                         var defaults = {};
-                        _.each(fieldDefinitions, function(value, key, list){
+                        _.each(schemaResult.fields, function(value, key){
                             if (key == 'resource_uri') {
                                 defaults[key] = self.options.url;
                             } else if (key == 'id'){ // nop // TODO: using the meta-hash, always exclude the primary key from create
@@ -243,7 +261,7 @@ define([
                             }
                         });
                         var NewModel = Backbone.Model.extend({urlRoot: self.options.url, defaults: defaults });
-                        var detailView = new DetailView({ model: new NewModel}, { isEditMode: true, title: "Add new record", fields:field_defs}); // TODO: get the model "edit title" from the metainformation_hash
+                        var detailView = new DetailView({ model: new NewModel}, { isEditMode: true, title: "Add new record", fields:schemaResult.fields}); // TODO: get the model "edit title" from the metainformation_hash
 
                         $('#list-container').hide();
                         // NOTE: having self bind to the detailView like this:
@@ -349,16 +367,8 @@ define([
                 var prop = pair[1];
 
                 var visible = _.has(pair[1], 'visibility') && _.contains(pair[1]['visibility'], 'list');
-                //visible = visible || options.customCells.hasOwnProperty(key);
-//                console.log('field: ' + key + ', ' + options.customCells.hasOwnProperty(key) + ', ' + visible);
                 if(visible){
-                    // console.log('process list field: ' + pair[0] + ', ' + JSON.stringify(pair[1]));
-                    //var cell = 'string';
-                    // var cell = prop['ui_type']
-//
-                    // if(cell == 'choice' || cell == 'multiselect'){ // TODO: should have two types, "gridCellType", and "editFormType"?
-                        // cell = 'string';
-                    // }
+
                     var backgridCellType = 'string';
                     if( !_.isEmpty(prop['backgrid_cell_type'])){
                         backgridCellType = prop['backgrid_cell_type'];
@@ -388,7 +398,7 @@ define([
                     }
                     i++;
                 }else{
-                    console.log('field not visible in list view: ' + key)
+                    //console.log('field not visible in list view: ' + key)
                 }
             });
 
@@ -425,7 +435,7 @@ define([
             }
         },
 
-        render: function(){ // TODO: should the build grid be called from here?
+        render: function(){
             console.log('render listView');
             this.reset_grid(this.options);
             return this;

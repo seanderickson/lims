@@ -1,0 +1,6 @@
+"key","scope","id_attribute","resource_uri","ordinal","comment","description","title","visibility","alias"
+"resource","resource","[scope,key]","/reports/api/v1/metahash/resource/resource/",0,,"Resource describes tables, queries that are available through the API","Resources","[list,detail]",
+"metahash","resource","[scope,key]","/reports/api/v1/metahash/resource/metahash/",0,,"Metahash describes all the fields in the tables","Field Information","[list,detail]",
+"vocabularies","resource","[scope,key]","/reports/api/v1/metahash/resource/vocabularies/",0,,"Vocabularies describe controlled vocabularies","Vocabularies","[list,detail]",
+"screensaveruser","resource","[screensaver_user_id]","/reports/api/v1/metahash/resource/screensaveruser/",0,,"The Screensaver user resource","Screensaver User","[list,detail]",
+"screen","resource","[facility_id]","/reports/api/v1/metahash/resource/screen/",0,,"The Screen resources","Screen","[list,detail]",

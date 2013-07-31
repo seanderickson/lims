@@ -1,3 +1,4 @@
+from django.conf.urls import url
 from tastypie.authorization import Authorization
 from tastypie.authentication import BasicAuthentication, SessionAuthentication, MultiAuthentication
 from tastypie.constants import ALL, ALL_WITH_RELATIONS
@@ -46,7 +47,7 @@ class MetahashManagedResource(object):
 
     def build_schema(self):
         logger.info('--- build_schema: ' + self.scope )
-        schema = super(MetahashManagedResource,self).build_schema()
+        schema = super(MetahashManagedResource,self).build_schema()  # obligatory super call, this framework does not utilize
         metahash = MetaHash.objects.get_metahash(scope=self.scope)
 
         for key, value in metahash.items():
@@ -54,6 +55,16 @@ class MetahashManagedResource(object):
                 logger.info('creating a virtual field: ' + key)
                 schema['fields'][key] = {}
             schema['fields'][key].update(value)
+            
+                
+        try:
+            logger.info(str(('trying to locate resource information', self._meta.resource_name, self.scope)))
+            resource_def = MetaHash.objects.get(scope='resource', key=self._meta.resource_name)
+        
+            schema['resource_definition'] = resource_def.model_to_dict(scope='fields:resource')
+        except Exception, e:
+            logger.warn(str(('on trying to locate resource information', e, self._meta.resource_name)))
+                
         return schema
     
 class ScreensaverUserResource(MetahashManagedResource, PostgresSortingResource):
@@ -69,7 +80,7 @@ class ScreensaverUserResource(MetahashManagedResource, PostgresSortingResource):
         serializer = CSVSerializer()
         
     def __init__(self, **kwargs):
-        self.scope = 'screensaveruser:fields'
+        self.scope = 'fields:screensaveruser'
         super(ScreensaverUserResource,self).__init__( **kwargs)
   
     def dehydrate(self, bundle):
@@ -78,7 +89,10 @@ class ScreensaverUserResource(MetahashManagedResource, PostgresSortingResource):
         
         return bundle        
     
-
+    def build_schema(self):
+        schema = super(ScreensaverUserResource,self).build_schema()
+        schema['idAttribute'] = ['screensaver_user_id']
+        return schema
 
 class ScreeningRoomUserResource(PostgresSortingResource):
     screensaver_user = fields.ToOneField('db.api.ScreensaverUserResource', attribute='screensaver_user', full=True, full_detail=True, full_list=False)
@@ -134,14 +148,22 @@ class ScreenResource(MetahashManagedResource,PostgresSortingResource):
 
         
     def __init__(self, **kwargs):
-        self.scope = 'screen:fields'
+        self.scope = 'fields:screen'
         super(ScreenResource,self).__init__( **kwargs)
-                
+
+    def prepend_urls(self):
+        # NOTE: this match "((?=(schema))__|(?!(schema))[\w\d_.-]+)" allows us to match any word, except "schema", and use it as the key value to search for.
+        # also note the double underscore "__" is because we also don't want to match in the first clause.
+        # We don't want "schema" since that reserved word is used by tastypie for the schema definition for the resource (used by the UI)
+        return [
+            url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ]    
+                    
     def dehydrate(self, bundle):
 #        bundle = super(ScreenResource, self).dehydrate(bundle);
         sru = bundle.obj.lead_screener.screensaver_user
         bundle.data['lead_screener'] =  sru.first_name + ' ' + sru.last_name
-        logger.info('lead_screener: ' + bundle.data['lead_screener'])
+#        logger.info('lead_screener: ' + bundle.data['lead_screener'])
         lh = bundle.obj.lab_head.screensaver_user.screensaver_user
         bundle.data['lab_head'] =  lh.first_name + ' ' + lh.last_name
         return bundle

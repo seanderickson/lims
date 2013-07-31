@@ -62,7 +62,8 @@ require([
     'backbone',
     'models/app_state',
     'views/app_view',
-    'router'
+    'router',
+    'bootstrap' // Note: Bootstrap does not return an object; it modifies the Jquery object with new methods
   ],
     function($, _, Backbone, AppModel, AppView, AppRouter ) {
 
@@ -78,8 +79,8 @@ require([
         };
 
         var appModel = new AppModel();
-        var appView = new AppView({ model: appModel });
         var appRouter = new AppRouter({ model: appModel });
+        var appView = new AppView({ model: appModel });
         appView.render();
         Backbone.history = Backbone.history || new Backbone.History({});
         Backbone.history.start({ pushState: false, root: appModel.get('root_url') });

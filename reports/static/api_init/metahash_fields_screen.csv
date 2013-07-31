@@ -1,5 +1,5 @@
-ordinal,comment,ui_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,key,scope,backgrid_cell_type,resource_uri
-1,,string,True,The title of the screen,Title,True,,,"[list,detail]",,title,screen:fields,,/reports/api/v1/metahash/screen:fields/title/
-0,Assigned by the facility,string,True,The facility specific ID for this screen,Facility ID,True,,,"[list,detail]",,facility_id,screen:fields,Iccbl.EditCell,/reports/api/v1/metahash/screen:fields/facility_id/
-2,This is a virtual field combining first and last name,string,True,The lead screener,Lead Screener,True,,,"[list,detail]",,lead_screener,screen:fields,,/reports/api/v1/metahash/screen:fields/lead_screener/
-3,This is a virtual field combining first and last name,string,True,The Lab Head (PI),Lab Head,True,,,"[list,detail]",,lab_head,screen:fields,,/reports/api/v1/metahash/screen:fields/lab_head/
+"ordinal","comment","ui_type","filtering","description","title","ordering","json_field_type","vocabulary_scope_ref","visibility","alias","key","scope","backgrid_cell_type","resource_uri"
+1,,"string","True","The title of the screen","Title","True",,,"[list,detail]",,"title","fields:screen",,"/reports/api/v1/metahash/fields:screen/title/"
+0,"Assigned by the facility","string","True","The facility specific ID for this screen","Facility ID","True",,,"[list,detail]",,"facility_id","fields:screen","Iccbl.EditCell","/reports/api/v1/metahash/fields:screen/facility_id/"
+2,"This is a virtual field combining first and last name","string","True","The lead screener","Lead Screener","True",,,"[list,detail]",,"lead_screener","fields:screen",,"/reports/api/v1/metahash/fields:screen/lead_screener/"
+3,"This is a virtual field combining first and last name","string","True","The Lab Head (PI)","Lab Head","True",,,"[list,detail]",,"lab_head","fields:screen",,"/reports/api/v1/metahash/fields:screen/lab_head/"

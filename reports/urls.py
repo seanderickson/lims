@@ -2,12 +2,13 @@ from django.conf.urls import patterns, url, include
 from reports import views
 from tastypie.api import Api
 
-from reports.api import MetaHashResource, VocabulariesResource
+from reports.api import MetaHashResource, VocabulariesResource, ResourceResource
 
 
 v1_api = Api(api_name='v1')
 v1_api.register(MetaHashResource())
 v1_api.register(VocabulariesResource())
+v1_api.register(ResourceResource())
 
 urlpatterns = patterns('',
     url(r'^$', views.main, name="home"),

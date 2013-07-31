@@ -83,6 +83,15 @@ define([
       return  fn;
     };
 
+    // // Given an array property on an object, determine if it contains the value
+    // var safeArrayPropertyContains = Iccbl.safeArrayPropertyContains = function(obj, property, value) {
+        // if(!_.isArray(obj[property])){
+            // var option = option[property];
+            // return option.contains(value);
+        // }
+//
+    // };
+
     // attach some objs to function scope //TODO: is this needed/correct?
     var MyModel = Iccbl.MyModel = Backbone.Model.extend({
         // TODO: we want to make sure there is a trailing slash, or tastypie doesn't work.
@@ -196,7 +205,7 @@ define([
             // TODO: require these options
             this.url = options.url;
             //this.router = options.router; // TODO: set the AppModel.route property instead
-            this.type = options.type;
+            //this.type = options.type;
 
             // if(!_.isUndefined(options.searchBy)) this.searchBy = options.searchBy;
 

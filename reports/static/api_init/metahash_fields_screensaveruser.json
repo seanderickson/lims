@@ -9,7 +9,7 @@
     "objects": [
         {
             "key": "screensaver_user_id",
-            "scope": "screensaveruser:fields",
+            "scope": "fields:screensaveruser",
             "title": "Screensaver User ID",
             "description": "The internal user ID",
             "comment": "Arbitrarily assigned internal user ID for the User",
@@ -24,7 +24,7 @@
         },
         {
             "key": "first_name",
-            "scope": "screensaveruser:fields",
+            "scope": "fields:screensaveruser",
             "title": "First Name",
             "description": "First Name",
             "filtering": true,
@@ -37,7 +37,7 @@
         },
         {
             "key": "last_name",
-            "scope": "screensaveruser:fields",
+            "scope": "fields:screensaveruser",
             "title": "Last Name",
             "description": "Last Name",
             "filtering": true,
@@ -50,7 +50,7 @@
         },
         {
             "key": "phone",
-            "scope": "screensaveruser:fields",
+            "scope": "fields:screensaveruser",
             "title": "Phone",
             "description": "The given phone number",
             "filtering": true,
@@ -63,7 +63,7 @@
         },
         {
             "key": "harvard_id_expiration_date",
-            "scope": "screensaveruser:fields",
+            "scope": "fields:screensaveruser",
             "title": "HUID Exp. Date",
             "ordinal": 7,
             "description": "Harvard ID expiration date",
@@ -78,7 +78,7 @@
         },
         {
             "key": "date_created",
-            "scope": "screensaveruser:fields",
+            "scope": "fields:screensaveruser",
             "title": "Date Created",
             "description": "Date on which this user's record was created",
             "filtering": true,

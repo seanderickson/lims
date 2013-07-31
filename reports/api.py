@@ -1,28 +1,30 @@
-from django.db import DatabaseError
-from django.conf.urls import url
-from django.conf.urls import url
 import json
 from copy import deepcopy
-
+from django.db import DatabaseError
+from django.conf.urls import url
+from django.utils.encoding import smart_str
+from django.forms.models import model_to_dict
 from tastypie.authorization import Authorization
 from tastypie.authentication import BasicAuthentication, SessionAuthentication, MultiAuthentication
 from tastypie.constants import ALL
-from tastypie import fields
+from tastypie import fields # NOTE: required for dynamic resource field definitions using eval
 
 from lims.api import PostgresSortingResource, CSVSerializer
-from reports.models import FieldInformation, MetaHash, Vocabularies
+from reports.models import MetaHash, Vocabularies
 
 import logging
-from db.api import ScreensaverUserResource
         
 logger = logging.getLogger(__name__)
         
 class JsonAndDatabaseResource(PostgresSortingResource):
-    def __init__(self, scope=None, **kwargs):
+    def __init__(self, scope=None, field_definition_scope='fields:metahash', **kwargs):
         self.scope = scope
+        assert scope != None, 'scope kwarg must be defined' 
+        self.field_definition_scope = field_definition_scope
+        logger.info(str(('init resource', scope, field_definition_scope)))
 
         # TODO: research why calling reset_filtering_and_ordering, as below, fails        
-        metahash = MetaHash.objects.get_metahash(scope=scope)
+        metahash = MetaHash.objects.get_metahash(scope=self.scope, field_definition_scope=field_definition_scope)
         for key,hash in metahash.items():
             if 'filtering' in hash and hash['filtering']:
                 self.Meta.filtering[key] = ALL
@@ -50,12 +52,16 @@ class JsonAndDatabaseResource(PostgresSortingResource):
             url(r"^(?P<resource_name>%s)/(?P<key>((?=(schema))__|(?!(schema))[\w\d_.-]+))/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
     
+    # TODO: allow turn on/off of the reset methods for faster loading.
     def reset_field_defs(self):
+#        if(settings.DO_NOT_RESET_FIELDS):
+#            pass # TODO: turn off when loading for speed
         logger.info('----------reset_field_defs, ' + self.scope)
         self.fields = deepcopy(self.original_fields)
         self.field_defs = {}
 #        self.reset_filtering_and_ordering()
         
+    # TODO: allow turn on/off of the reset methods for faster loading.
     def reset_filtering_and_ordering(self):
         self.Meta.filtering = {}
         self.Meta.ordering = []
@@ -73,9 +79,9 @@ class JsonAndDatabaseResource(PostgresSortingResource):
         
     def get_field_defs(self, scope):
         # dynamically define fields that are stored in the JSON field.  
-        # Note that: - for a new database, there will be no fields in the JSON field initially (naturally)
-        #     - also, all JSON field values will be null to start (naturally)
-        # ALSO NOTE: creating new JSON fields requires a restart (to reload) (todo: fix that)
+        # Note that: - for a new database, there will be no fields in the JSON field initially, so they have 
+        # to be populated before they can be filled with data. (cannot define and fill at the same time).
+        # TODO: allow turn on/off of the reset methods for faster loading.
         if not self.field_defs:
             logger.info('------get_field_defs: ' + scope)
             self.field_defs = {}
@@ -108,11 +114,11 @@ class JsonAndDatabaseResource(PostgresSortingResource):
                         raise DatabaseError('Illegal attempt to define a json_field with the same name as a database field on this scope: ' + scope + ',' + + schema_key)
                     self.fields[schema_key] = eval(schema_value['json_field_type'])(attribute=schema_key,readonly=True, blank=True, null=True) # trying to pass the fields.Field object args
 
-            # query metahash for schema defs for all the fields
+            # query metahash for schema defs (attributes) of all the fields 
             for schema_key,schema_value in self.field_defs.items():
                 logger.debug(str(('-----make schema:', self.scope, schema_key)))
                 # now fill in meta information for the schema report to UI; using data from this table itself, either in real or json fields!
-                for meta_record in MetaHash.objects.all().filter(scope='metahash:fields'):  # metahash:fields are defined for all reports
+                for meta_record in MetaHash.objects.all().filter(scope='fields:metahash'):  # fields:metahash are defined for all reports
                     if meta_record.key == 'key':
                         continue # don't put these into the schema definitions, its too recursive confusing
                     schema_value.update({
@@ -120,7 +126,7 @@ class JsonAndDatabaseResource(PostgresSortingResource):
                           })
                     
                 # now check if the field uses controlled vocabulary, look that up now.  TODO: "vocabulary_scope_ref" should be a constant
-                # TODO: "vocabulary_scope_ref" needs to be created by default as a metahash:field; this argues for making it a "real" field
+                # TODO: "vocabulary_scope_ref" needs to be created by default as a field:metahash; this argues for making it a "real" field
                 if schema_value.get(u'vocabulary_scope_ref'):
                     logger.debug(str(('looking for a vocabulary', schema_value['vocabulary_scope_ref'] )))
                     schema_value['choices'] = [x.key for x in Vocabularies.objects.all().filter(scope=schema_value['vocabulary_scope_ref'])]
@@ -134,6 +140,9 @@ class JsonAndDatabaseResource(PostgresSortingResource):
     def build_schema(self):
         logger.info('------build_schema: ' + self.scope)
         local_field_defs = self.get_field_defs(self.scope) # trigger a get field defs before building the schema
+        
+        # TODO: probably out to just create the schema from scratch; here relying on tastypie to give the schema
+        ## caveat: this has the nice side effect of verifying that any field defined is actually known by tastypie (for serialization hooks)
         schema = super(JsonAndDatabaseResource,self).build_schema()
         
         for key, value in local_field_defs.items():
@@ -144,6 +153,14 @@ class JsonAndDatabaseResource(PostgresSortingResource):
         
         schema['fields'].pop('json_field')
         
+        try:
+            logger.info(str(('trying to locate resource information', self._meta.resource_name, self.scope)))
+            resource_def = MetaHash.objects.get(scope='resource', key=self._meta.resource_name)
+        
+            schema['resource_definition'] = resource_def.model_to_dict(scope='fields:resource')
+        except Exception, e:
+            logger.warn(str(('on trying to locate resource information', e, self._meta.resource_name)))
+            
         return schema
     
     def dehydrate(self, bundle):
@@ -180,7 +197,7 @@ class JsonAndDatabaseResource(PostgresSortingResource):
         field_reset_required = False
         local_field_defs = self.get_field_defs(self.scope) # trigger a get field defs before building the schema
         logger.debug(str(('local_field_defs',local_field_defs)))
-        for key in [ str(x) for x,y in local_field_defs.items() if 'json_field_type' in y ]:
+        for key in [ str(x) for x,y in local_field_defs.items() if 'json_field_type' in y and y['json_field_type'] ]:
             json_obj.update({ key: bundle.data.get(key,None)})
 
         bundle.data['json_field'] = json.dumps(json_obj);
@@ -191,13 +208,12 @@ class JsonAndDatabaseResource(PostgresSortingResource):
 class MetaHashResource(JsonAndDatabaseResource):
 
     def __init__(self, **kwargs):
-        super(MetaHashResource,self).__init__(scope='metahash:fields', **kwargs)
+        super(MetaHashResource,self).__init__(scope='fields:metahash', **kwargs)
 
     class Meta:
-        queryset = MetaHash.objects.all().order_by('scope','ordinal','key')
+        queryset = MetaHash.objects.filter(scope__startswith="fields:").order_by('scope','ordinal','key')
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
         authorization= Authorization()        
-        # TODO: drive this from data
         ordering = []
         filtering = {} #{'scope':ALL, 'key':ALL}
         serializer = CSVSerializer()
@@ -210,19 +226,19 @@ class MetaHashResource(JsonAndDatabaseResource):
         schema['searchTerms'] = temp
         return schema
     
-    # called by ModelResource in ModelResource.apply_filters 
-    def get_object_list(self, request):
-        obj_list = super(MetaHashResource, self).get_object_list(request);
-        # could apply filtering here
-        return obj_list
-    
-    def obj_get(self, bundle, **kwargs):
-        obj = super(MetaHashResource, self).obj_get(bundle, **kwargs)
-        return obj
-    
-    def dehydrate(self, bundle):
-        bundle = super(MetaHashResource, self).dehydrate(bundle);
-        return bundle
+#    # called by ModelResource in ModelResource.apply_filters 
+#    def get_object_list(self, request):
+#        obj_list = super(MetaHashResource, self).get_object_list(request);
+#        # could apply filtering here
+#        return obj_list
+#    
+#    def obj_get(self, bundle, **kwargs):
+#        obj = super(MetaHashResource, self).obj_get(bundle, **kwargs)
+#        return obj
+#    
+#    def dehydrate(self, bundle):
+#        bundle = super(MetaHashResource, self).dehydrate(bundle);
+#        return bundle
 
     # because the metahash resource is both a resource and the definer of json fields, 
     # reset_field_defs after each create/update, in case, new json fields are defined,
@@ -230,16 +246,16 @@ class MetaHashResource(JsonAndDatabaseResource):
     def obj_create(self, bundle, **kwargs):
         bundle = super(MetaHashResource, self).obj_create(bundle, **kwargs);
         # TODO: there may be a better post-create hook?
-        if getattr(bundle.obj,'scope') == 'metahash:fields':
+        if getattr(bundle.obj,'scope') == self.scope: #'fields:metahash':
             self.reset_field_defs();
-        elif getattr(bundle.obj,'scope') == 'screensaveruser:fields':
-            ScreensaverUserResource().reset_filtering_and_ordering();
+#        elif getattr(bundle.obj,'scope') == 'screensaveruser:fields':
+#            ScreensaverUserResource().reset_filtering_and_ordering();
         return bundle
 
     def obj_update(self, bundle, **kwargs):
         bundle = super(MetaHashResource, self).obj_update(bundle, **kwargs);
         # TODO: there may be a better post-create hook?
-        if getattr(bundle.obj,'scope') == 'metahash:fields':
+        if getattr(bundle.obj,'scope') == self.scope: #'fields:metahash':
             if getattr(bundle.obj,'json_field_type'):
                 self.reset_field_defs();
         return bundle
@@ -253,9 +269,12 @@ class MetaHashResource(JsonAndDatabaseResource):
 
 
 class VocabulariesResource(JsonAndDatabaseResource):
-
+    '''
+    This resource extends the JsonAndDatabaseResource using a new table (vocabularies) but has
+    fields defined in the Metahash table.
+    '''
     def __init__(self, **kwargs):
-        super(VocabulariesResource,self).__init__(scope='vocabularies:fields', **kwargs)
+        super(VocabulariesResource,self).__init__(scope='fields:vocabularies', **kwargs)
 
     class Meta:
         queryset = Vocabularies.objects.all().order_by('scope', 'ordinal', 'key')
@@ -268,18 +287,44 @@ class VocabulariesResource(JsonAndDatabaseResource):
         excludes = [] #['json_field']
         always_return_data = True # this makes Backbone happy
     
-    # called by ModelResource in ModelResource.apply_filters 
-    def get_object_list(self, request):
-        obj_list = super(VocabulariesResource, self).get_object_list(request);
-        # could apply filtering here
-        return obj_list
-    
-    def obj_get(self, bundle, **kwargs):
-        obj = super(VocabulariesResource, self).obj_get(bundle, **kwargs)
-        return obj
+#    # called by ModelResource in ModelResource.apply_filters 
+#    def get_object_list(self, request):
+#        obj_list = super(VocabulariesResource, self).get_object_list(request);
+#        # could apply filtering here
+#        return obj_list
+#    
+#    def obj_get(self, bundle, **kwargs):
+#        obj = super(VocabulariesResource, self).obj_get(bundle, **kwargs)
+#        return obj
     
     def build_schema(self):
         schema = super(VocabulariesResource,self).build_schema()
+        temp = [ x.scope for x in self.Meta.queryset.distinct('scope')]
+        schema['searchTerms'] = temp
+        return schema
+
+class ResourceResource(JsonAndDatabaseResource):
+    '''
+    This resource extends the JsonAndDatabaseResource using a new table (vocabularies) but has
+    fields defined in the Metahash table.
+    '''
+    def __init__(self, **kwargs):
+        super(ResourceResource,self).__init__(scope='fields:resource', field_definition_scope='fields:resource', **kwargs)
+
+    class Meta:
+        queryset = MetaHash.objects.filter(scope='resource').order_by('scope', 'ordinal', 'key')
+        authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
+        authorization= Authorization()        
+        # TODO: drive this from data
+        ordering = []
+        filtering = {'scope':ALL, 'key': ALL, 'alias':ALL}
+        serializer = CSVSerializer()
+        excludes = [] #['json_field']
+        always_return_data = True # this makes Backbone happy
+        resource_name='resource' # appears that tastypie needs this with a resource named "resource"!
+    
+    def build_schema(self):
+        schema = super(ResourceResource,self).build_schema()
         temp = [ x.scope for x in self.Meta.queryset.distinct('scope')]
         schema['searchTerms'] = temp
         return schema

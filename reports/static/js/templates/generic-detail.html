@@ -1,9 +1,11 @@
 <div class='well'>
 <h4><%= title %></h4>
 <dl class="dl-horizontal">
-        <% keys.each(function(key) { %>
+        <% keys.each(function(key) {
+            console.log('key: ' + key + ', fieldDefinitions[key][title] : ' + fieldDefinitions[key]['title'] + ', object[key]: ' + object[key]);
+            %>
             <dt><%= _(fieldDefinitions[key]).has('title') ? fieldDefinitions[key]['title']:key %></dt>
-            <dd><%= object[key] %></dd>
+            <dd><%= _(object).has(key) && ( !_.isEmpty(object[key]) || _.isNumber(object[key])) ? object[key]:'&nbsp;' %></dd>
     <% }); %>
 </dl>
 <form id='generic-form' class="form-horizontal" >

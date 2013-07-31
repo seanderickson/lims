@@ -3,7 +3,7 @@
 <h4><%= title %></h4>
 <form id='generic-form' class="form-horizontal" >
     <%
-    keys.each(function(key) { %>
+    _(keys).each(function(key) { %>
         <div class="control-group">
             <label class="control-label" for="<%= key %>" ><%= (_(fieldDefinitions[key]).has('title') && ! _.isNull(fieldDefinitions[key]['title']) ? fieldDefinitions[key]['title'] : key) %></label>
             <div class="controls">
@@ -18,7 +18,7 @@
 
                         %>
 
-                        <% options.choices.each(function(option) { %>
+                        <% _(options.choices).each(function(option) { %>
                             <label class="radio">
                               <input type="radio" name="<%= key %>" class="<%= 'radio_' + key %>" id="<%= key %>" value="<%= option %>">
                               <%= option %>
@@ -37,7 +37,7 @@
                             return;
                         }
                         %>
-                        <% options.choices.each(function(option) { %>
+                        <% _(options.choices).each(function(option) { %>
                             <label class="checkbox">
                                 <input type="checkbox" name="<%= key %>" class="<%= 'checkbox_' + key %>" id="<%= key %>" value="<%= option %>">
                               <%= option %>

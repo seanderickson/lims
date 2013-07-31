@@ -10,12 +10,12 @@ define([
     var DetailView = Backbone.View.extend({
 
 
-        bindings: function(){
-            console.log('evaluating bindings...');
-            return {
-            '#screensaver_user_id': 'screensaver_user_id'
-            };
-        },
+        // bindings: function(){
+            // console.log('evaluating bindings...');
+            // return {
+            // '#screensaver_user_id': 'screensaver_user_id'
+            // };
+        // },
 
         events: {
             'click button#save': 'save',
@@ -24,11 +24,12 @@ define([
         },
 
         initialize : function(attributes, options) {
+            console.log('initialize detail_stickit: ' + JSON.stringify(this.model.attributes));
             // console.log('initialize: ' + JSON.stringify(attributes) + ', ' + JSON.stringify(options));
             // console.log('DetailView initializer: options: ' + JSON.stringify(options));
 
             keys = _(this.model.attributes).keys().sort(function(a,b){
-                console.log('sorting: a: ' + a + ', ' + JSON.stringify(options.fields[a]) + ', b: ' + b + ', ' + JSON.stringify(options.fields[b]));
+                //console.log('sorting: a: ' + a + ', ' + JSON.stringify(options.fields[a]) + ', b: ' + b + ', ' + JSON.stringify(options.fields[b]));
                 order_a = options.fields[a]['ordinal'];  // TODO: need an edit order by
                 order_b = options.fields[b]['ordinal'];
                 if(_.isNumber(order_a) && _.isNumber(order_b)){
@@ -48,15 +49,9 @@ define([
                 // template = genericFormTemplate;
                 this.edit(null);
             }else{
-                //console.log(' template: ', template, 'fields: ', options.fields['screensaver_user_id']['title'] );
                 // filter keys for detail view
                 var detailKeys = _(keys).filter(function(key){
-                    if(_.isUndefined(options.fields[key]['visibility']) || !options.fields[key]['visibility'].contains('detail')){
-                        console.log('skip non-detail field: ' + key);
-                        return false;
-                    }else{
-                        return true;
-                    }
+                    return _.has(options.fields[key], 'visibility') && _.contains(options.fields[key]['visibility'], 'detail');
                 });
                 console.log('detail keys: ' + JSON.stringify(detailKeys));
 
@@ -79,22 +74,12 @@ define([
             bindings = {};
             var self = this;
             var editKeys = _(this._keys).filter(function(key){
-                var options = self._options;
-                if(_.isUndefined(options.fields[key]['visibility']) || !options.fields[key]['visibility'].contains('edit')){
-                    console.log('skip non-edit field: ' + key);
-                    return false;
-                }else{
-                    return true;
-                }
+                return _.has(self._options.fields[key], 'visibility') && _.contains(self._options.fields[key]['visibility'], 'edit');
             });
 
             _.each(editKeys, function(key){
                 if( _(self._options.fields).has(key)){
                     option = self._options.fields[key];
-                    // if(!option.visibility.contains('edit')){
-                        // console.log('skip non-edit field: ' + key);
-                        // return;
-                    // }
                     if(option.ui_type == 'choice' || option.ui_type == 'multiselect' ){
                         console.log('--choice key: ' + key + ', ' + JSON.stringify(option));
                         var _optionsCollection = [];
@@ -192,6 +177,7 @@ define([
         },
 
         render : function() {
+            console.log('render detail_stickit');
             return this;
         },
 

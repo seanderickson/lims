@@ -1,8 +1,31 @@
-<ul class="nav nav-pills nav-stacked">
-    <li class="nav-header">Actions</li>
-    <% items.each(function(item) { %>
-        <li  id="<%= item.id %>"><a href="#">
-            <%= item.text %></a>
-        </li>
-    <% }); %>
+<ul class="nav nav-list nav-stacked">
+    <li class="nav-header" id="<%= 'home' %>" title="<%=subModels['home'].description %>">
+        <a  href="#"><%= subModels['home'].title %></a>
+    </li>
+    <% _.each(_(menu['submenus']).keys(), function(key){
+        var submodel = subModels[key];
+        var submenus = menu['submenus'][key]['submenus'];
+    %>
+        <li id="<%= key %>" title="<%=submodel.description %>"><a href="#"><%= submodel.title %></a></li>
+    <%
+        if( !_.isEmpty(submenus)){
+            %>
+            <ul class="nav nav-list nav-stacked">
+            <%
+            _.each(_.keys(submenus), function(key){
+                var submodel = subModels[key];
+                if(_.isUndefined(submodel)){
+                    console.log('error, undefined submodel:' + JSON.stringify(key) );
+                }else{
+                    console.log('found ' + key);
+            %>
+                <li id="<%= key %>" title="<%=submodel.description %>"><a href="#"><%= submodel.title %></a></li>
+            <%
+                }
+            });
+        %></ul>
+        <%
+        }
+    });
+    %>
 </ul>

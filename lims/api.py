@@ -120,7 +120,7 @@ class PostgresSortingResource(ModelResource):
         """ 
         
         obj_list = super(PostgresSortingResource, self).apply_sorting(obj_list, options)
-        
+        logger.info(str(('order_by', obj_list.query.order_by)))
         extra_select = {}
         extra_ordering = []
         for field in obj_list.query.order_by:
@@ -130,7 +130,7 @@ class PostgresSortingResource(ModelResource):
                 field = field[1:]
             extra_select[field+"_null"]=field + ' is null'
             extra_ordering.append(is_null_dir + field+"_null")
-        logger.debug(str(('extra_select', extra_select)))
+        logger.info(str(('extra_select', extra_select, 'extra_ordering', extra_ordering)))
         obj_list = obj_list.extra(extra_select)
 
         # Note that the following doesn't work, something in the framework deletes the extra 
@@ -147,5 +147,6 @@ class PostgresSortingResource(ModelResource):
             temp.insert(0,xfield)
         obj_list.query.add_ordering(*temp)
         
+#        logger.info(str(('obj_list.query', obj_list.query.as_sql())))
         return obj_list
 

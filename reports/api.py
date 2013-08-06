@@ -15,16 +15,17 @@ from reports.models import MetaHash, Vocabularies
 import logging
         
 logger = logging.getLogger(__name__)
+
         
 class JsonAndDatabaseResource(PostgresSortingResource):
     def __init__(self, scope=None, field_definition_scope='fields:metahash', **kwargs):
         self.scope = scope
         assert scope != None, 'scope kwarg must be defined' 
         self.field_definition_scope = field_definition_scope
-        logger.info(str(('init resource', scope, field_definition_scope)))
+        logger.info(str(('---init resource', scope, field_definition_scope)))
 
         # TODO: research why calling reset_filtering_and_ordering, as below, fails        
-        metahash = MetaHash.objects.get_metahash(scope=self.scope, field_definition_scope=field_definition_scope)
+        metahash = MetaHash.objects.get_and_parse(scope=self.scope, field_definition_scope=field_definition_scope)
         for key,hash in metahash.items():
             if 'filtering' in hash and hash['filtering']:
                 self.Meta.filtering[key] = ALL
@@ -40,7 +41,7 @@ class JsonAndDatabaseResource(PostgresSortingResource):
         super(JsonAndDatabaseResource,self).__init__(**kwargs)
         self.original_fields = deepcopy(self.fields)
         self.field_defs = {}
-        
+        logger.info(str(('---init resource, done', scope, field_definition_scope)))
         
     def prepend_urls(self):
         # NOTE: this match "((?=(schema))__|(?!(schema))[\w\d_.-]+)" allows us to match any word, except "schema", and use it as the key value to search for.
@@ -65,7 +66,7 @@ class JsonAndDatabaseResource(PostgresSortingResource):
     def reset_filtering_and_ordering(self):
         self.Meta.filtering = {}
         self.Meta.ordering = []
-        metahash = MetaHash.objects.get_metahash(scope=self.scope)
+        metahash = MetaHash.objects.get_and_parse(scope=self.scope)
         for key,hash in metahash.items():
             if 'filtering' in hash and hash['filtering']:
                 self.Meta.filtering[key] = ALL
@@ -74,8 +75,6 @@ class JsonAndDatabaseResource(PostgresSortingResource):
             if 'ordering' in hash and hash['ordering']:
                 self.Meta.ordering.append(key)
 
-        logger.info(str(('+++filtering', self.Meta.filtering)))
-        logger.info(str(('ordering', self.Meta.ordering)))
         
     def get_field_defs(self, scope):
         # dynamically define fields that are stored in the JSON field.  
@@ -113,7 +112,7 @@ class JsonAndDatabaseResource(PostgresSortingResource):
                         # TODO: move these validation errors to the client create process
                         raise DatabaseError('Illegal attempt to define a json_field with the same name as a database field on this scope: ' + scope + ',' + + schema_key)
                     self.fields[schema_key] = eval(schema_value['json_field_type'])(attribute=schema_key,readonly=True, blank=True, null=True) # trying to pass the fields.Field object args
-
+            logger.info(str(('----- tastypie fields created', self.fields)))
             # query metahash for schema defs (attributes) of all the fields 
             for schema_key,schema_value in self.field_defs.items():
                 logger.debug(str(('-----make schema:', self.scope, schema_key)))
@@ -134,36 +133,45 @@ class JsonAndDatabaseResource(PostgresSortingResource):
                 logger.debug(str(('----defined schema: ', schema_key, schema_value)))
 
             self.reset_filtering_and_ordering()
+            logger.info('------get_field_defs, done: ' + scope)
             
         return self.field_defs
     
     def build_schema(self):
         logger.info('------build_schema: ' + self.scope)
-        local_field_defs = self.get_field_defs(self.scope) # trigger a get field defs before building the schema
-        
-        # TODO: probably out to just create the schema from scratch; here relying on tastypie to give the schema
-        ## caveat: this has the nice side effect of verifying that any field defined is actually known by tastypie (for serialization hooks)
-        schema = super(JsonAndDatabaseResource,self).build_schema()
-        
-        for key, value in local_field_defs.items():
-            schema['fields'][key].update(value)
-            # help for fields not yet defined
-            if not schema['fields'][key].get('ui_type'):
-                schema['fields'][key]['ui_type'] = schema['fields'][key].get('type')
-        
-        schema['fields'].pop('json_field')
-        
         try:
+            local_field_defs = self.get_field_defs(self.scope) # trigger a get field defs before building the schema
+            logger.info('1------build_schema: ' + self.scope)
+            
+            # TODO: probably ought to just create the schema from scratch; here relying on tastypie to give the schema
+            ## caveat: this has the nice side effect of verifying that any field defined is actually known by tastypie (for serialization hooks)
+            schema = super(JsonAndDatabaseResource,self).build_schema()
+            logger.info('2------build_schema: ' + self.scope)
+#            logger.info(str(('build schema: ', schema, local_field_defs)))
+            for key, value in local_field_defs.items():
+                schema['fields'][key].update(value)
+                # help for fields not yet defined
+                if not schema['fields'][key].get('ui_type'):
+                    schema['fields'][key]['ui_type'] = schema['fields'][key].get('type')
+            
+            logger.info('3------build_schema: ' + self.scope)
+            schema['fields'].pop('json_field')
+        
             logger.info(str(('trying to locate resource information', self._meta.resource_name, self.scope)))
             resource_def = MetaHash.objects.get(scope='resource', key=self._meta.resource_name)
+            logger.info('4------build_schema: ' + self.scope)
         
             schema['resource_definition'] = resource_def.model_to_dict(scope='fields:resource')
+            logger.info('5------build_schema: ' + self.scope)
         except Exception, e:
-            logger.warn(str(('on trying to locate resource information', e, self._meta.resource_name)))
+            logger.warn(str(('on building schema', e, self._meta.resource_name)))
+            raise e
             
+        logger.info('------build_schema,done: ' + self.scope)
         return schema
     
     def dehydrate(self, bundle):
+#        logger.info('------dehydrate: ' + self.scope)
 #        bundle = super(JsonAndDatabaseResource, self).dehydrate(bundle);
         local_field_defs = self.get_field_defs(self.scope) # trigger a get field defs before building the schema
         for key in [ x for x,y in local_field_defs.items() if y.get('json_field_type') ]:
@@ -179,6 +187,7 @@ class JsonAndDatabaseResource(PostgresSortingResource):
         # But: we _do_ have to send it out for Backbone, since we don't know how to use things like composite keys yet - sde4
         # bundle.data.pop('id')
         
+#        logger.info('------dehydrate, done: ' + self.scope)
         return bundle
     
     def hydrate_json_field(self, bundle):

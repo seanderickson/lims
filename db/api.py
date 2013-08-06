@@ -19,7 +19,7 @@ class MetahashManagedResource(object):
 #            self.scope = kwargs.pop('scope')
         logger.info(str(('---------init MetahashManagedResource', self.scope)))
         # TODO: research why calling reset_filtering_and_ordering, as below, fails        
-        metahash = MetaHash.objects.get_metahash(scope=self.scope)
+        metahash = MetaHash.objects.get_and_parse(scope=self.scope)
         
         for key,hash in metahash.items():
             if 'filtering' in hash and hash['filtering']:
@@ -31,9 +31,10 @@ class MetahashManagedResource(object):
         super(MetahashManagedResource,self).__init__( **kwargs)
 
     def reset_filtering_and_ordering(self):
+        logger.info(str(('---------reset filtering and ordering', self.scope)))
         self.Meta.filtering = {}
         self.Meta.ordering = []
-        metahash = MetaHash.objects.get_metahash(scope=self.scope)
+        metahash = MetaHash.objects.get_and_parse(scope=self.scope)
         for key,hash in metahash.items():
             if 'filtering' in hash and hash['filtering']:
                 self.Meta.filtering[key] = ALL
@@ -41,18 +42,16 @@ class MetahashManagedResource(object):
         for key,hash in metahash.items():
             if 'ordering' in hash and hash['ordering']:
                 self.Meta.ordering.append(key)
-
-        logger.info(str(('+++filtering', self.Meta.filtering)))
-        logger.info(str(('ordering', self.Meta.ordering)))
+        logger.info(str(('---------reset filtering and ordering, done', self.scope)))
 
     def build_schema(self):
         logger.info('--- build_schema: ' + self.scope )
         schema = super(MetahashManagedResource,self).build_schema()  # obligatory super call, this framework does not utilize
-        metahash = MetaHash.objects.get_metahash(scope=self.scope)
+        metahash = MetaHash.objects.get_and_parse(scope=self.scope)
 
         for key, value in metahash.items():
             if key not in schema['fields']:
-                logger.info('creating a virtual field: ' + key)
+#                logger.info('creating a virtual field: ' + key)
                 schema['fields'][key] = {}
             schema['fields'][key].update(value)
             
@@ -65,6 +64,7 @@ class MetahashManagedResource(object):
         except Exception, e:
             logger.warn(str(('on trying to locate resource information', e, self._meta.resource_name)))
                 
+        logger.info('--- build_schema, done: ' + self.scope )
         return schema
     
 class ScreensaverUserResource(MetahashManagedResource, PostgresSortingResource):
@@ -138,7 +138,7 @@ class ScreenResource(MetahashManagedResource,PostgresSortingResource):
     lab_head = fields.ToOneField('db.api.LabHeadResource', 'lab_head',  full=True)
     
     class Meta:
-        queryset = Screen.objects.all().filter(screen_type='Small Molecule')
+        queryset = Screen.objects.all().filter()
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
         resource_name = 'screen'
         
@@ -160,12 +160,12 @@ class ScreenResource(MetahashManagedResource,PostgresSortingResource):
         ]    
                     
     def dehydrate(self, bundle):
-#        bundle = super(ScreenResource, self).dehydrate(bundle);
+        logger.info('-- dehydrate: ' + self.scope)
         sru = bundle.obj.lead_screener.screensaver_user
         bundle.data['lead_screener'] =  sru.first_name + ' ' + sru.last_name
-#        logger.info('lead_screener: ' + bundle.data['lead_screener'])
         lh = bundle.obj.lab_head.screensaver_user.screensaver_user
         bundle.data['lab_head'] =  lh.first_name + ' ' + lh.last_name
+        logger.info('-- dehydrate, done: ' + self.scope)
         return bundle
 
     def apply_sorting(self, obj_list, options):

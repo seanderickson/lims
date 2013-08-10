@@ -58,28 +58,7 @@ define([
             });
         },
 
-        // wrapAsUnderscore: function(obj) {
-            // var self = this;
-            // var newObj = {};
-            // _.each(_.pairs(obj), function(pair){
-                // if(_.isArray(pair[1])){
-                    // newObj[pair[0]] = _(pair[1]);
-                // }else if(_.isObject(pair[1])){
-                    // newObj[pair[0]] = self.wrapAsUnderscore(pair[1]);
-                // }else{
-                    // newObj[pair[0]] = pair[1];
-                // }
-            // });
-            // return newObj;
-//
-        // },
-
         buildGrid : function(schemaResult, _url, options) {
-
-            // var fieldDefinitions = schemaResult.fields;
-//
-            // var field_defs = this.wrapAsUnderscore(fieldDefinitions);
-            // console.log('field_defs: ' + JSON.stringify(field_defs));
 
             console.log('buildGrid...');
 
@@ -104,13 +83,45 @@ define([
             // TODO: p-o-c of how to do a Link-to-Detail/Edit: should be controlled by the field type
             //var col_options = { customCells: { 'title': Iccbl.EditCell, 'screensaver_user_id': Iccbl.EditCell } };
             var columns = this.createBackgridColModel(schemaResult.fields, Iccbl.MyHeaderCell);//, col_options );
-            columns.unshift({ name: 'deletor', label: 'Delete', text:'X', description: 'delete record', cell: Iccbl.DeleteCell, sortable: false });
+            //columns.unshift({ name: 'deletor', label: 'Delete', text:'X', description: 'delete record', cell: Iccbl.DeleteCell, sortable: false });
             var grid = this.grid = new Backgrid.Grid({
               columns: columns,
               collection: collection,
               // row: ClickableRow,
             });
             this.objects_to_destroy.push(grid);
+
+            self.listenTo(collection, "MyCollection:link", function (model, column) {
+                console.log('---- process link for '+ column);
+
+                // get the schema field definition for this column
+
+                fieldDef = schemaResult.fields[column];
+
+                if( _.has(fieldDef,'backgrid_cell_options')) {
+                    backgrid_cell_options = fieldDef['backgrid_cell_options'];
+                    console.log('backgrid_cell_options: ' + backgrid_cell_options);
+
+                    _route = backgrid_cell_options.replace(/{([^}]+)}/g, function (match) {
+                        console.log('matched: ' + match + ', model: ' + model);
+                        match = match.replace(/[{}]/g,'');
+                        console.log('matched: ' + match + ', model: ' + model.get(match));
+                        return typeof model.get(match) != "undefined" ? model.get(match) : match;
+                    });
+
+                    console.log('route: ' + _route);
+                    this.model.set({ route: _route, routing_options: {trigger:true} } );  // TODO: if we can make the "back" button do a navigate back, then all we have to do in this handler is set the route...
+
+                }else{
+                    console.log('no options defined for link cell');
+                }
+
+                // console.log('id: ' + id);
+                // var _route = 'detail/' + this.options.type + id;
+                // this.model.set({ route: _route } );  // TODO: if we can make the "back" button do a navigate back, then all we have to do in this handler is set the route...
+
+            });
+
 
             self.listenTo(collection, "MyCollection:edit", function (model) {
                 console.log('---- create detail view for '+ this.options.type);
@@ -122,6 +133,8 @@ define([
 
                 var _routeFrom = this.model.get('route');
 
+                // Note: some links must use composite keys - because the composite key is the public key
+                // (don't want to expose the private, possibly transient key)
                 var id = '/' + model.get('id');
                 if(_.has(schemaResult['resource_definition'], 'id_attribute')){
                     console.log('create id from ' + schemaResult['resource_definition']['id_attribute']);
@@ -181,9 +194,7 @@ define([
             var extraSelector = Backbone.View.extend({
                 initialize: function(options){
                     console.log('init: '  + options);
-                    this.label = options.label ;
-                    this._options = options.options;
-                    this._options.unshift(' ');
+                    this._options = options;
 
                 },
                 events: {
@@ -194,7 +205,7 @@ define([
                     var option = e.currentTarget.value;
                     var searchTerm, searchColumn, searchExpression;
                     searchTerm = option;
-                    searchColumn = 'scope'
+                    searchColumn = this._options.searchColumn
                     searchExpression = searchColumn + '=' + searchTerm;
                     collection.searchBy = searchExpression;
                     collection.trigger("MyServerSideFilter:search", searchColumn, searchTerm, collection);
@@ -206,9 +217,11 @@ define([
                 render: function(){
                     console.log('===============render extra selector' + this)
                     this.delegateEvents();
+                    this._options.options.unshift(' '); // create a blank entry
+
                     this.$el.html(_.template( genericSelectorTemplate,
-                        { label: this.label,
-                          'options': _(this._options) }));  // TODO: this should come from the metahash schema
+                        { label: this._options.label,
+                          'options': _(this._options.options ) }));  // TODO: this should come from the metahash schema
                     return this;
                 },
             });
@@ -230,9 +243,9 @@ define([
             }
             var compiledTemplate = _.template( listTemplate, data );
             this.el.innerHTML = compiledTemplate;
-            if( _.has(schemaResult, 'searchTerms')){
+            if( _.has(schemaResult, 'extraSelectorOptions')){
                 console.log('searchTerms: ' + JSON.stringify(schemaResult.searchTerms));
-                var extraSelectorInstance = new extraSelector({ label:'Scope: ', options: schemaResult.searchTerms}); // HMMm: need to understand the "delegate events" better here
+                var extraSelectorInstance = new extraSelector( schemaResult.extraSelectorOptions ); // HMMm: need to understand the "delegate events" better here
                 this.objects_to_destroy.push(extraSelectorInstance);
                 $("#extra-selector-div").append(extraSelectorInstance.render().$el);
                 extraSelectorInstance.listenTo(collection, 'MyServerSideFilter:search', extraSelectorInstance.updateSelection);

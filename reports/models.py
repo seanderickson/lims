@@ -4,6 +4,7 @@ from lims.models import GetOrNoneManager
 import json
 import logging
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,6 +25,9 @@ class MetaManager(GetOrNoneManager):
         if not metahash:
             metahash = self.get_and_parse_int(scope=scope, field_definition_scope=field_definition_scope)
             cache.set('metahash:'+scope, metahash);
+        else:
+            logger.info(str(('cached: get_and_parse table field definitions for ',scope, metahash)))
+
         return metahash
 
 
@@ -33,7 +37,7 @@ class MetaManager(GetOrNoneManager):
         scope - metahash scope, i.e. "fields:screensaveruser", or "fields:screen"
         field_definition_scope - scope that defines the json fields for this hash, e.g. "fields:metahash", or "fields:resource, or fields:vocabularies"
         '''
-        
+        logger.info('get_and_parse table field definitions for ' + scope)
         # try to make clear that the field definitions, though stored in the metahash as well, could be in a separate table
         field_definition_table = MetaHash.objects.all().filter(scope=field_definition_scope)
         
@@ -63,8 +67,36 @@ class MetaManager(GetOrNoneManager):
                 logger.debug(str(('got', parsed_object['choices'] )))
             
             parsed_objects[unparsed_object.key] = parsed_object
-            
+        logger.info(str(('field definitions for ', scope, parsed_objects)))
         return parsed_objects
+
+
+API_ACTION_POST = 'POST'
+API_ACTION_PUT = 'PUT'
+API_ACTION_PATCH = 'PATCH'
+API_ACTION_DELETE = 'DELETE'
+API_ACTION_CHOICES = ((API_ACTION_POST,API_ACTION_POST),
+                      (API_ACTION_PUT,API_ACTION_PUT),
+                      (API_ACTION_PATCH,API_ACTION_PATCH),
+                      (API_ACTION_DELETE,API_ACTION_DELETE))
+class ApiLog(models.Model):
+    objects = models.Manager()
+    user_id = models.IntegerField(null=False, blank=False)
+    username = models.CharField(null=False, max_length=35)
+    resource_name = models.CharField(null=False, max_length=35)
+    key = models.CharField(null=False, max_length=128)
+    uri = models.TextField(null=False)
+    date_time = models.DateTimeField(null=False)
+    api_action = models.CharField(max_length=10, null=False, choices=API_ACTION_CHOICES)
+    
+    added_keys = models.TextField(blank=True)
+    removed_keys = models.TextField(blank=True)
+    diff_keys = models.TextField(blank=True)
+    diffs = models.TextField(blank=True)
+    
+    
+    json_field = models.TextField(blank=True) # This is the "meta" field, it contains "virtual" json fields, defined in the metahash
+
 
 # store field information here
 class MetaHash(models.Model):
@@ -123,17 +155,12 @@ class MetaHash(models.Model):
         - the scope is used to query the "fields" definitions in the metahash - the construct we are using to define all 
         publicly available fields; json or 'real'
         '''
-        logger.info('------1 model_to_dict')
         assert scope, 'Must define the scope (used to query the field definitions in the metahash)'
-        
-        logger.info('------2 model_to_dict')
         fields = MetaHash.objects.get_and_parse(scope=scope)
-#        logger.info(str(('fields', fields)))
+        logger.info(str((scope, 'fields', fields)))
         dict = {}
-        logger.info('------3 model_to_dict')
         for key in fields.keys():
             dict[key] = self.get_field(key)
-        logger.info('------4 model_to_dict')
         return dict
     
     def __unicode__(self):
@@ -179,5 +206,3 @@ class Vocabularies(models.Model):
     
     def __unicode__(self):
         return unicode(str((self.scope, self.key, self.id)))
-    
-    

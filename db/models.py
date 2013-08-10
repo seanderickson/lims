@@ -995,6 +995,7 @@ class ScreenStatusItem(models.Model):
     status_date = models.DateField()
     class Meta:
         db_table = 'screen_status_item'
+        index_together = (('screen', 'status','status_date'),)    
 
 class ScreenUpdateActivity(models.Model):
     screen = models.ForeignKey(Screen)
@@ -1046,9 +1047,9 @@ class ScreeningRoomUserFacilityUsageRole(models.Model):
     class Meta:
         db_table = 'screening_room_user_facility_usage_role'
 
+from django.contrib.auth.models import User
 class ScreensaverUser(models.Model):
 #    objects = PostgresManager()
-    
     screensaver_user_id = models.IntegerField(primary_key=True)
     version = models.IntegerField(blank=True)
     date_created = models.DateTimeField()
@@ -1198,4 +1199,3 @@ class WellVolumeCorrectionActivity(models.Model):
     activity = models.ForeignKey(AdministrativeActivity, primary_key=True)
     class Meta:
         db_table = 'well_volume_correction_activity'
-

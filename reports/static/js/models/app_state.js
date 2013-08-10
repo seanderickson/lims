@@ -31,13 +31,16 @@ define([
                 'admin': {
                     view: 'menu_view',  // TODO: not implemented; would show children menu items as links in the page
                     submenus: {
-                        'fieldmetainformation':{
+                        'metahash':{
                             view: 'list_view',
                         },
                         'resources':{
                             view: 'list_view',
                         },
                         'vocabularies':{
+                            view: 'list_view',
+                        },
+                        'apilogs':{
                             view: 'list_view',
                         },
                     }
@@ -61,7 +64,7 @@ define([
                     description: 'Menu starting point'
                 },
 
-                fieldmetainformation: {
+                metahash: {
                     header_message: 'Define fields for display on detail and list views',
                     title: 'Field Information',
                     route: 'list/fieldmetainformation',
@@ -93,6 +96,17 @@ define([
                     url_schema : '/reports/api/v1/vocabularies/schema',
                     url : '/reports/api/v1/vocabularies',
                     description: 'Enter controlled vocabularies'
+                },
+
+                apilogs: {
+                    header_message: 'View change logs',
+                    title: 'Change logs',
+                    route: 'list/apilogs',
+                    list_view: 'ListView',
+                    detail_view: 'DetailView',
+                    url_schema : '/reports/api/v1/apilog/schema',
+                    url : '/reports/api/v1/apilog',
+                    description: 'Change logs'
                 },
 
                 screensaveruser: {

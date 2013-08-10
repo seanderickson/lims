@@ -1,5 +1,11 @@
-"ordinal","comment","ui_type","filtering","description","title","ordering","json_field_type","vocabulary_scope_ref","visibility","alias","key","scope","backgrid_cell_type","resource_uri"
-1,,"string","True","The title of the screen","Title","True",,,"[list,detail]",,"title","fields:screen",,"/reports/api/v1/metahash/fields:screen/title/"
-0,"Assigned by the facility","string","True","The facility specific ID for this screen","Facility ID","True",,,"[list,detail]",,"facility_id","fields:screen","Iccbl.EditCell","/reports/api/v1/metahash/fields:screen/facility_id/"
-2,"This is a virtual field combining first and last name","string","True","The lead screener","Lead Screener","True",,,"[list,detail]",,"lead_screener","fields:screen",,"/reports/api/v1/metahash/fields:screen/lead_screener/"
-3,"This is a virtual field combining first and last name","string","True","The Lab Head (PI)","Lab Head","True",,,"[list,detail]",,"lab_head","fields:screen",,"/reports/api/v1/metahash/fields:screen/lab_head/"
+"key","scope","resource_uri","ordinal","comment","ui_type","filtering","description","title","ordering","json_field_type","vocabulary_scope_ref","visibility","alias","backgrid_cell_type"
+"facility_id","fields:screen","/reports/api/v1/metahash/fields:screen/facility_id/",0,"Assigned by the facility","string","True","The facility specific ID for this screen","Screen ID","True",,,"[list,detail]",,"Iccbl.EditCell"
+"screen_type","fields:screen","/reports/api/v1/metahash/fields:screen/screen_type/",1,,"string","True",,"Screen Type","True",,"fields:screen_type","[list,detail]",,
+"project_phase","fields:screen","/reports/api/v1/metahash/fields:screen/project_phase/",2,,"string","True",,"Project Phase","True",,"fields:project_phase","[list,detail]",,
+"project_id","fields:screen","/reports/api/v1/metahash/fields:screen/project_id/",3,,"string","True","The project ID of the screen","Project ID","True",,,"[list,detail]",,
+"title","fields:screen","/reports/api/v1/metahash/fields:screen/title/",4,,"string","True","The title of the screen","Title","True",,,"[list,detail]",,
+"lab_head","fields:screen","/reports/api/v1/metahash/fields:screen/lab_head/",5,"This is a virtual field combining first and last name","string","True","The Lab Head (PI)","Lab Head","True",,,"[list,detail]",,
+"lead_screener","fields:screen","/reports/api/v1/metahash/fields:screen/lead_screener/",6,"This is a virtual field combining first and last name","string","True","The lead screener","Lead Screener","True",,,"[list,detail]",,
+"date_created","fields:screen","/reports/api/v1/metahash/fields:screen/date_created/",7,,"date",TRUE,"The date the screen was first recorded in the Screensaver database","Date Recorded",TRUE,,,"[list,detail]",,"date"
+"status","fields:screen","/reports/api/v1/metahash/fields:screen/status/",8,,"string",TRUE,"The current status of the screen","Status",TRUE,,"fields:screen:status","[list,detail]",,
+"status_date","fields:screen","/reports/api/v1/metahash/fields:screen/status_date/",9,,"date",TRUE,"The date of the most recent change of status for the screen","Status Date",TRUE,,,"[list,detail]",,

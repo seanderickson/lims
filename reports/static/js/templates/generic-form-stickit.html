@@ -9,7 +9,7 @@
             <div class="controls">
                 <% if( _.has(fieldDefinitions,key)) {
                     options = fieldDefinitions[key]
-                    console.log('key: ' + key + ', options: ' + JSON.stringify(options));
+                    //console.log('key: ' + key + ', options: ' + JSON.stringify(options));
                     if(options.ui_type == 'choice') {
                         if(_.isUndefined(options.choices)){
                             window.alert('undefined choices for choice field: ' + key ); // TODO: validate on the input side for this

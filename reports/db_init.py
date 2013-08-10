@@ -88,6 +88,12 @@ def main(inputDir, url, auth):
     input_file = input_file_dir + '/metahash_fields_screen.csv'
     patch(input_file, obj_url, headers, authentication)
 
+    # define apilog
+    obj_url = url_base + '/metahash/'
+    headers = {'content-type': 'text/csv'}
+    input_file = input_file_dir + '/metahash_fields_apilog.csv'
+    patch(input_file, obj_url, headers, authentication)
+
     # delete the vocabularies records
     obj_url = url_base + '/vocabularies/'
     headers = {'content-type': 'application/json'}

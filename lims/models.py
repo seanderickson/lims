@@ -13,3 +13,4 @@ class GetOrNoneManager(models.Manager):
                 return x
         except self.model.DoesNotExist: # todo: check for better err to catch
             return None
+

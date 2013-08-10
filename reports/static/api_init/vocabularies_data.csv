@@ -1,14 +1,19 @@
-"ordinal","comment","description","title","json_field_type","alias","key","scope","resource_uri"
-0,,"Allow visibility in list views","Visible in list views",,,"list","field:visibility","/reports/api/v1/vocabularies/field:visibility/list/"
-4,,"Allow visibility in the edit form","Visible in edit forms",,,"edit","field:visibility","/reports/api/v1/vocabularies/field:visibility/edit/"
-0,,"Allow visibility in detail views","Visible in detail views",,,"detail","field:visibility","/reports/api/v1/vocabularies/field:visibility/detail/"
-0,"The field referred to by this record is a single choice vocabulary term","Single choice field","Choice",,,"choice","field:ui_type","/reports/api/v1/vocabularies/field:ui_type/choice/"
-0,,"This is an integer type","Integer",,,"integer","field:ui_type","/reports/api/v1/vocabularies/field:ui_type/integer/"
-0,"The field referred to by this record is a single choice vocabulary term","Multiple choice vocabulary term","Multiselect",,,"multiselect","field:ui_type","/reports/api/v1/vocabularies/field:ui_type/multiselect/"
-0,,"Field contains text","Text",,,"string","field:ui_type","/reports/api/v1/vocabularies/field:ui_type/string/"
-5,"Date field type shows the date only (not the time)","Date field type","Date",,,"date","field:ui_type","/reports/api/v1/vocabularies/field:ui_type/date/"
-0,,"Field is a boolean","Boolean",,,"boolean","field:ui_type","/reports/api/v1/vocabularies/field:ui_type/boolean/"
-0,,"A tastypie fields.CharField type","CharField",,,"fields.CharField","field:json_field_type","/reports/api/v1/vocabularies/field:json_field_type/fields.CharField/"
-10,,"A tastypie fields.ListField type","ListField",,,"fields.ListField","field:json_field_type","/reports/api/v1/vocabularies/field:json_field_type/fields.ListField/"
-20,,"Custom cell - creates a drilldown to the view/edit screen","EditCell",,,"Iccbl.EditCell","field:backgrid_cell_type","/reports/api/v1/vocabularies/field:backgrid_cell_type/Iccbl.EditCell/"
-0,,"This is the default Backgrid cell type – 'stringCell'","StringCell",,,"string","field:backgrid_cell_type","/reports/api/v1/vocabularies/field:backgrid_cell_type/string/"
+key,scope,resource_uri,ordinal,comment,description,title,json_field_type,alias
+list,field:visibility,/reports/api/v1/vocabularies/field:visibility/list/,0,,"Allow visibility in list views","Visible in list views",,
+edit,field:visibility,/reports/api/v1/vocabularies/field:visibility/edit/,4,,"Allow visibility in the edit form","Visible in edit forms",,
+detail,field:visibility,/reports/api/v1/vocabularies/field:visibility/detail/,0,,"Allow visibility in detail views","Visible in detail views",,
+choice,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/choice/,0,"The field referred to by this record is a single choice vocabulary term","Single choice field",Choice,,
+integer,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/integer/,0,,"This is an integer type",Integer,,
+multiselect,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/multiselect/,0,"The field referred to by this record is a single choice vocabulary term","Multiple choice vocabulary term",Multiselect,,
+string,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/string/,0,,"Field contains text",Text,,
+date,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/date/,5,"Date field type shows the date only (not the time)","Date field type",Date,,
+boolean,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/boolean/,0,,"Field is a boolean",Boolean,,
+Iccbl.EditCell,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/Iccbl.EditCell/,20,,"Custom cell - creates a drilldown to the view/edit screen",EditCell,,
+string,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/string/,0,,"This is the default Backgrid cell type – 'stringCell'",StringCell,,
+fields.CharField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.CharField/,0,,"A tastypie fields.CharField type",CharField,,
+fields.ListField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.ListField/,5,,"A tastypie fields.ListField type",ListField,,
+fields.BooleanField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.BooleanField/,2,,"A tastypie fields.BooleanField type",BooleanField,,
+fields.DateField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.DateField/,3,,"A tastypie fields.DateField",DateField,,
+fields.DecimalField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.DecimalField/,7,,"A tastypie fields.DecimalField",DecimalField,,
+fields.FloatField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.FloatField/,6,,"A tastypie fields.FloatField",FloatField,,
+fields.IntegerField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.IntegerField/,4,,"A tastypie fields.IntegerField",IntegerField,,

@@ -5,8 +5,9 @@ define([
     'backbone_stickit',
     'text!templates/generic-detail.html',
     'text!templates/generic-form-stickit.html',
+    'text!templates/modal_ok_cancel.html',
 
-], function( $, _, Backbone, stickit, genericDetailTemplate, genericFormTemplate ) {
+], function( $, _, Backbone, stickit, genericDetailTemplate, genericFormTemplate, modalOkCancel ) {
     var DetailView = Backbone.View.extend({
 
 
@@ -19,6 +20,7 @@ define([
 
         events: {
             'click button#save': 'save',
+            'click button#delete': 'delete',
             'click button#edit': 'edit',
             'click button#cancel': 'cancel'
         },
@@ -161,6 +163,35 @@ define([
                 }
 
             });
+        },
+
+        delete: function(event){
+            event.preventDefault();
+            var self = this;
+            console.log('delete: ' + JSON.stringify(this.model));
+            var model = this.model;
+            var modalDialog = new Backbone.View({
+                el: _.template(modalOkCancel, { body: "Please confirm deletion of record: '" + model.get('toString') + "'", title: "Please confirm deletion" } ),
+                events: {
+                    'click #modal-cancel':function(event) {
+                        console.log('cancel button click event, '); // + JSON.stringify(fieldDefinitions));
+                        event.preventDefault();
+                        $('#modal').modal('hide'); // TODO: read-up on modal!  this is not ideal with the reference to template elements!
+                    },
+                    'click #modal-ok':function(event) {
+                        console.log('ok button click event, '); // + JSON.stringify(fieldDefinitions));
+                        event.preventDefault();
+                        model.destroy();
+                        $('#modal').modal('hide');
+                        self.$el.empty();
+                        self.trigger('remove');
+                    }
+                },
+            });
+            modalDialog.render();
+            $('#modal').empty();
+            $('#modal').html(modalDialog.$el);
+            $('#modal').modal();
         },
 
         cancel: function(event){

@@ -1,13 +1,17 @@
 
-from tastypie.resources import ModelResource
+from tastypie.resources import ModelResource, Resource
 from tastypie.serializers import Serializer
 from django.utils.encoding import smart_str
+from copy import deepcopy
 
 import csv
 import StringIO
 import json
 import logging
         
+from django.core.exceptions import ObjectDoesNotExist
+from tastypie.exceptions import NotFound
+
 logger = logging.getLogger(__name__)
 
 
@@ -106,8 +110,9 @@ class CSVSerializer(BackboneSerializer):
             i += 1
                 
         return data
-    
 
+
+# TODO: this class should be constructed as a Mixin, not inheritor of ModelResource
 class PostgresSortingResource(ModelResource):
 
     def __init__(self, **kwargs):

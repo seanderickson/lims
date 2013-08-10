@@ -4,71 +4,21 @@ from tastypie.authentication import BasicAuthentication, SessionAuthentication, 
 from tastypie.constants import ALL, ALL_WITH_RELATIONS
 from tastypie import fields, utils
 
-from db.models import ScreensaverUser,Screen, LabHead, LabAffiliation, ScreeningRoomUser
+from db.models import ScreensaverUser,Screen, LabHead, LabAffiliation, ScreeningRoomUser,\
+    ScreenStatusItem
 from lims.api import CSVSerializer, PostgresSortingResource
 from reports.models import MetaHash, Vocabularies
 
+import time
+
 import logging
+from reports.api import MetahashManagedResource
         
 logger = logging.getLogger(__name__)
 
-# Mixin class - note this class must be mixed in first, since the tastypie Resource class does not call super().__init__
-class MetahashManagedResource(object):
-    def __init__(self, **kwargs):
-#        if not self.scope:
-#            self.scope = kwargs.pop('scope')
-        logger.info(str(('---------init MetahashManagedResource', self.scope)))
-        # TODO: research why calling reset_filtering_and_ordering, as below, fails        
-        metahash = MetaHash.objects.get_and_parse(scope=self.scope)
-        
-        for key,hash in metahash.items():
-            if 'filtering' in hash and hash['filtering']:
-                self.Meta.filtering[key] = ALL
-        
-        for key,hash in metahash.items():
-            if 'ordering' in hash and hash['ordering']:
-                self.Meta.ordering.append(key)
-        super(MetahashManagedResource,self).__init__( **kwargs)
-
-    def reset_filtering_and_ordering(self):
-        logger.info(str(('---------reset filtering and ordering', self.scope)))
-        self.Meta.filtering = {}
-        self.Meta.ordering = []
-        metahash = MetaHash.objects.get_and_parse(scope=self.scope)
-        for key,hash in metahash.items():
-            if 'filtering' in hash and hash['filtering']:
-                self.Meta.filtering[key] = ALL
-        
-        for key,hash in metahash.items():
-            if 'ordering' in hash and hash['ordering']:
-                self.Meta.ordering.append(key)
-        logger.info(str(('---------reset filtering and ordering, done', self.scope)))
-
-    def build_schema(self):
-        logger.info('--- build_schema: ' + self.scope )
-        schema = super(MetahashManagedResource,self).build_schema()  # obligatory super call, this framework does not utilize
-        metahash = MetaHash.objects.get_and_parse(scope=self.scope)
-
-        for key, value in metahash.items():
-            if key not in schema['fields']:
-#                logger.info('creating a virtual field: ' + key)
-                schema['fields'][key] = {}
-            schema['fields'][key].update(value)
-            
-                
-        try:
-            logger.info(str(('trying to locate resource information', self._meta.resource_name, self.scope)))
-            resource_def = MetaHash.objects.get(scope='resource', key=self._meta.resource_name)
-        
-            schema['resource_definition'] = resource_def.model_to_dict(scope='fields:resource')
-        except Exception, e:
-            logger.warn(str(('on trying to locate resource information', e, self._meta.resource_name)))
-                
-        logger.info('--- build_schema, done: ' + self.scope )
-        return schema
     
 class ScreensaverUserResource(MetahashManagedResource, PostgresSortingResource):
-    screens = fields.ToManyField('db.api.ScreenResource', 'screens', related_name='lab_head_id', blank=True, null=True)
+#    screens = fields.ToManyField('db.api.ScreenResource', 'screens', related_name='lab_head_id', blank=True, null=True)
 
     version = fields.IntegerField(attribute='version', null=True)
         
@@ -78,6 +28,7 @@ class ScreensaverUserResource(MetahashManagedResource, PostgresSortingResource):
         ordering = []
         filtering = {}
         serializer = CSVSerializer()
+        excludes = ['digested_password']
         
     def __init__(self, **kwargs):
         self.scope = 'fields:screensaveruser'
@@ -85,9 +36,16 @@ class ScreensaverUserResource(MetahashManagedResource, PostgresSortingResource):
   
     def dehydrate(self, bundle):
         bundle = super(ScreensaverUserResource, self).dehydrate(bundle);
+#        _time = time.time();
         bundle.data['screens'] = [x.facility_id for x in Screen.objects.filter(lab_head_id=bundle.obj.screensaver_user_id)]
-        
+#        logger.info(str(('dehydrate time', time.time()-_time )))
         return bundle        
+      
+    #    def full_dehydrate(self, bundle, for_list=False):
+    #        _time = time.time();
+    #        bundle = super(ScreensaverUserResource, self).full_dehydrate(bundle, for_list=for_list);
+    #        logger.info(str(('full dehydrate time', time.time()-_time )))
+    #        return bundle        
     
     def build_schema(self):
         schema = super(ScreensaverUserResource,self).build_schema()
@@ -134,8 +92,9 @@ class LabHeadResource(PostgresSortingResource):
 
 class ScreenResource(MetahashManagedResource,PostgresSortingResource):
 
-    lab_head_full = fields.ToOneField('db.api.LabHeadResource', 'lab_head',  full=True) #, full_list=False) #, blank=True, null=True)
-    lab_head = fields.ToOneField('db.api.LabHeadResource', 'lab_head',  full=True)
+#    lab_head_full = fields.ToOneField('db.api.LabHeadResource', 'lab_head',  full=True) #, full_list=False) #, blank=True, null=True)
+    lab_head_link = fields.ToOneField('db.api.LabHeadResource', 'lab_head',  full=False)
+    lead_screener_link = fields.ToOneField('db.api.LabHeadResource', 'lab_head',  full=False)
     
     class Meta:
         queryset = Screen.objects.all().filter()
@@ -160,12 +119,17 @@ class ScreenResource(MetahashManagedResource,PostgresSortingResource):
         ]    
                     
     def dehydrate(self, bundle):
-        logger.info('-- dehydrate: ' + self.scope)
+#        _time = time.time();
         sru = bundle.obj.lead_screener.screensaver_user
         bundle.data['lead_screener'] =  sru.first_name + ' ' + sru.last_name
         lh = bundle.obj.lab_head.screensaver_user.screensaver_user
         bundle.data['lab_head'] =  lh.first_name + ' ' + lh.last_name
-        logger.info('-- dehydrate, done: ' + self.scope)
+        # TODO: the status table does not utilize a primary key, thus it is incompatible with the standard manager
+        #        status_item = ScreenStatusItem.objects.filter(screen=bundle.obj).order_by('status_date')[0]
+        #        bundle.data['status'] = status_item.status
+        #        bundle.data['status_date'] = status_item.status_date
+
+#        logger.info(str(('dehydrate time', time.time()-_time )))
         return bundle
 
     def apply_sorting(self, obj_list, options):

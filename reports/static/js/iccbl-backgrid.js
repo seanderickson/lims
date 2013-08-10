@@ -132,6 +132,36 @@ define([
 
 //    return {
 
+    var LinkCell = Iccbl.LinkCell = Backgrid.Cell.extend({
+        className: "link-cell",
+        events : {
+            "click #link" : "toLink",
+        },
+
+        initialize: function(options){
+            Backgrid.Cell.prototype.initialize.apply(this, arguments);
+        },
+
+        render: function () {
+            this.$el.empty();
+            var formattedValue = this.formatter.fromRaw(this.model.get(this.column.get("name")));
+            this.$el.append($("<a id='link' >", {
+                tabIndex : -1,
+                href : '',
+                title : formattedValue,
+                //target : "_blank"
+            }).text(formattedValue));
+
+            this.delegateEvents();
+            return this;
+        },
+
+        toLink: function(e){
+            e.preventDefault();
+            this.model.collection.trigger("MyCollection:link", this.model, this.column.get("name") );
+        },
+    });
+
     var EditCell = Iccbl.EditCell = Backgrid.Cell.extend({
         className: "detail-cell",
         events : {

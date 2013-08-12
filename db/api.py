@@ -6,7 +6,7 @@ from tastypie import fields, utils
 
 from db.models import ScreensaverUser,Screen, LabHead, LabAffiliation, ScreeningRoomUser,\
     ScreenStatusItem
-from lims.api import CSVSerializer, PostgresSortingResource
+from lims.api import LimsSerializer, PostgresSortingResource
 from reports.models import MetaHash, Vocabularies
 
 import time
@@ -27,7 +27,7 @@ class ScreensaverUserResource(MetahashManagedResource, PostgresSortingResource):
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
         ordering = []
         filtering = {}
-        serializer = CSVSerializer()
+        serializer = LimsSerializer()
         excludes = ['digested_password']
         
     def __init__(self, **kwargs):
@@ -103,7 +103,7 @@ class ScreenResource(MetahashManagedResource,PostgresSortingResource):
         
         ordering = []
         filtering = {}
-        serializer = CSVSerializer()
+        serializer = LimsSerializer()
 
         
     def __init__(self, **kwargs):

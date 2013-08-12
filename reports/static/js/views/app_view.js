@@ -9,10 +9,11 @@ define([
     var AppView = Backbone.View.extend({
         el : $('#container'),
 
-        initialize : function() {
+        initialize : function(attributes, options) {
             console.log('AppView initialize' + this.model );
-            this.menuView = new MenuView({ model: this.model });
-            this.contentView = new ContentView({ model: this.model });
+            this.router = options.router;
+            this.menuView = new MenuView({ model: this.model }, options);
+            this.contentView = new ContentView({ model: this.model }, options);
         },
 
         render: function() {

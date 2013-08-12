@@ -15,32 +15,47 @@ define([
         '*unknownAction': 'unknownAction',
     },
 
-    initialize: function(options){
+    initialize: function(attributes, options){
         console.log('initialize router...' );
         // since the router isn't a view, it doesn't have a model, creating one here
-        this.model = options.model;
+        this.model = attributes.model;
 
         // _.bindAll(this,'change_route'); // make this available to change_route
         // this.model.bind('change:route', this.change_route );
-        this.listenTo(this.model, 'change:route', this.change_route);
+        // this.listenTo(this.model, 'change:route', this.change_route);
+
+        Backbone.history.on('route', function(router, route, params) {
+                this.routesHit++;
+                console.log('detected route: ' + route + ', params: ' + JSON.stringify(params) );
+             }, this);
 
         console.log('router initialized...');
     },
 
-    change_route: function(){
-        var newRoute = this.model.get('route');
-        this.model.set({ content_options: {} }); // unset specific content options
-        console.log('------change route to: ' + newRoute );
-        //this.navigate( newRoute, { trigger: false, replace: true } );
-        options = { trigger: false };
-        if(this.model.get('routing_options')){
-            console.log('routing options: ' + JSON.stringify(this.model.get('routing_options')));
-            _.extend(options, this.model.get('routing_options'));
-            console.log('routing options: ' + JSON.stringify(options));
+    back: function() {  // TODO: not used yet, from example, how to have a safe back action
+        if(this.routesHit > 1) {
+          //more than one route hit -> user did not land to current page directly
+          window.history.back();
+        } else {
+          //otherwise go to the home page. Use replaceState if available so
+          //the navigation doesn't create an extra history entry
+          this.navigate('/', {trigger:true, replace:true});
         }
-        this.navigate( newRoute, options);
-        this.model.set({'routing_options': {}} );
-    },
+      },
+
+    // change_route: function(){
+        // var newRoute = this.model.get('route');
+        // this.model.set({ content_options: {} }); // unset specific content options
+        // //this.navigate( newRoute, { trigger: false, replace: true } );
+        // options = { trigger: false };
+        // if(this.model.get('routing_options')){
+            // console.log('routing options: ' + JSON.stringify(this.model.get('routing_options')));
+            // _.extend(options, this.model.get('routing_options'));
+            // console.log('routing options: ' + JSON.stringify(options));
+        // }
+        // this.navigate( newRoute, options);
+        // this.model.set({'routing_options': {}} );
+    // },
 
     unknownAction: function(unknownAction){
         alert('Unknown action entered: ' + unknownAction);

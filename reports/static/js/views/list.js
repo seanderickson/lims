@@ -28,29 +28,31 @@ define([
 
     var ListView = Backbone.View.extend({
 
-        initialize : function() {
+        initialize : function(attributes, options) {
             console.log('initialize ListView');
+            this.router = options.router;
+            this._options = options;
         },
 
-        setOptions : function(options){
-            this.options = options;
-        },
+        // setOptions : function(options){
+            // this.options = options;
+        // },
 
         remove: function(){
             console.log('ListView remove called');
             Backbone.View.prototype.remove.apply(this);
         },
 
-        reset_grid : function(options){
+        reset_grid : function(){
             var self = this;
             // Call the schema from the server to get the field definitions
             $.ajax({
                 type: "GET",
-                url: options.url_schema,
+                url: this._options.url_schema,
                 data: "",
                 dataType: "json",
                 success: function(result) {
-                    self.buildGrid(result, options.url, options);
+                    self.buildGrid(result);
                 }, // end success outer ajax call
                 error: function(x, e) {
                     alert(x.readyState + " "+ x.status +" "+ e.msg);
@@ -58,7 +60,7 @@ define([
             });
         },
 
-        buildGrid : function(schemaResult, _url, options) {
+        buildGrid : function(schemaResult) {
 
             console.log('buildGrid...');
 
@@ -66,7 +68,7 @@ define([
             this.objects_to_destroy = _([]);
             // TODO: make sure req'd options are present (i.e. router, type)
             // type == table or query or api resource type
-            var collection = this.collection = new Iccbl.MyCollection({ 'url': _url, router: options.router  });
+            var collection = this.collection = new Iccbl.MyCollection({ 'url': this._options.url }); //, router: this._options.router  });
 
             this.objects_to_destroy.push(collection);
 
@@ -99,6 +101,7 @@ define([
                 fieldDef = schemaResult.fields[column];
 
                 if( _.has(fieldDef,'backgrid_cell_options')) {
+                    // NOTE: format for backgrid cell options is "/{attribute_key}/"
                     backgrid_cell_options = fieldDef['backgrid_cell_options'];
                     console.log('backgrid_cell_options: ' + backgrid_cell_options);
 
@@ -110,28 +113,31 @@ define([
                     });
 
                     console.log('route: ' + _route);
-                    this.model.set({ route: _route, routing_options: {trigger:true} } );  // TODO: if we can make the "back" button do a navigate back, then all we have to do in this handler is set the route...
+
+
+                    // // TODO: if we can make the "back" button do a navigate back, then all we have to do is set the route...
+                    // this.model.set({ route: _route, routing_options: {trigger:true} } );
+
+                    this.router.navigate(_route, {trigger:true});
 
                 }else{
                     console.log('no options defined for link cell');
                 }
 
-                // console.log('id: ' + id);
-                // var _route = 'detail/' + this.options.type + id;
-                // this.model.set({ route: _route } );  // TODO: if we can make the "back" button do a navigate back, then all we have to do in this handler is set the route...
-
             });
 
 
             self.listenTo(collection, "MyCollection:edit", function (model) {
-                console.log('---- create detail view for '+ this.options.type);
+                console.log('---- create detail view for '+ this._options.type);
                 // TODO: Get the title, and other items from the meta data
                 var detailView = new DetailView({ model: model},
-                    { title: "Details", fields:schemaResult.fields} ); // todo get title
+                    { title: "Details", fields:schemaResult.fields,
+                      app_model: this.model, resource_definition: schemaResult['resource_definition'],
+                      router: self.router  } ); // todo get title
 
                 $('#list-container').hide();
 
-                var _routeFrom = this.model.get('route');
+                //var _routeFrom = this.model.get('route');
 
                 // Note: some links must use composite keys - because the composite key is the public key
                 // (don't want to expose the private, possibly transient key)
@@ -141,12 +147,16 @@ define([
                     id = _.reduce(schemaResult['resource_definition']['id_attribute'],
                             function(memo, item){ return memo += model.get(item) + '/';}, '/');
                 }else{
-                    console.log('Warn: schema for this type has no resource_definition,id_attribute; type: ' + this.options.type);
+                    console.log('Warn: schema for this type has no resource_definition,id_attribute; type: ' + this._options.type);
                 }
                 console.log('id: ' + id);
-                var _route = 'detail/' + this.options.type + id;
-                this.model.set({ route: _route } );  // TODO: if we can make the "back" button do a navigate back, then all we have to do in this handler is set the route...
+                var _route = 'detail/' + this._options.type + id;
 
+
+                // // TODO: if we can make the "back" button do a navigate back, then all we have to do is set the route...
+                // this.model.set({ route: _route } );
+
+                this.router.navigate(_route);
 
                 // NOTE: having self bind to the detailView like this:
                 // self.listenTo(detailView, 'remove', function(){
@@ -154,10 +164,10 @@ define([
                 // so either:
                 // detailView.on('remove', function(){
                 self.listenToOnce(detailView, 'remove', function(){
-                    self.collection.fetch({reset:true});
+                    //self.collection.fetch({reset:true});
                     $('#list-container').show();
                     detailView.close();
-                    this.model.set({ route: _routeFrom } );
+                    //this.model.set({ route: _routeFrom } );
                 });
 
                 $('#detail-container').append(detailView.render().$el);
@@ -237,9 +247,9 @@ define([
             this.objects_to_destroy.push(paginator);
 
             var data = { message: '' };
-            if (this.options.header_message){
-                data.title = this.options.title;
-                data.message = this.options.header_message; //'hello world!' };
+            if (this._options.header_message){
+                data.title = this._options.title;
+                data.message = this._options.header_message; //'hello world!' };
             }
             var compiledTemplate = _.template( listTemplate, data );
             this.el.innerHTML = compiledTemplate;
@@ -267,13 +277,13 @@ define([
                         var defaults = {};
                         _.each(schemaResult.fields, function(value, key){
                             if (key == 'resource_uri') {
-                                defaults[key] = self.options.url;
+                                defaults[key] = self._options.url;
                             } else if (key == 'id'){ // nop // TODO: using the meta-hash, always exclude the primary key from create
                             } else {
                                  defaults[key] = '';
                             }
                         });
-                        var NewModel = Backbone.Model.extend({urlRoot: self.options.url, defaults: defaults });
+                        var NewModel = Backbone.Model.extend({urlRoot: self._options.url, defaults: defaults });
                         var detailView = new DetailView({ model: new NewModel}, { isEditMode: true, title: "Add new record", fields:schemaResult.fields}); // TODO: get the model "edit title" from the metainformation_hash
 
                         $('#list-container').hide();
@@ -317,13 +327,13 @@ define([
               // "all": allEvent,  // TODO: this is debug code
             // });
 
-            if (options.page){
-                collection.state.currentPage = options.page;
+            if (this._options.page){
+                collection.state.currentPage = this._options.page;
             }
-            if (options.pageSize){
-                collection.state.pageSize = options.pageSize;
+            if (this._options.pageSize){
+                collection.state.pageSize = this._options.pageSize;
             }
-            if(typeof options.orderBy !== 'undefined' && options.orderBy !== null ){
+            if(typeof this._options.orderBy !== 'undefined' && this._options.orderBy !== null ){
                 var direction = 'ascending';
                 var order = -1; // according to the docs, -1 == ascending
                 var sortKey = options.orderBy;
@@ -337,10 +347,10 @@ define([
                 // Notify header cells
                 collection.trigger("backgrid:sort", sortKey, direction, null, collection);
             }
-            if(typeof options.searchBy !== 'undefined' && options.searchBy !== null){
+            if(typeof this._options.searchBy !== 'undefined' && this._options.searchBy !== null){
                 // TODO: only can search one term at a time
                 var p = /([^=]+)=([^=]+)/
-                var match = p.exec(options.searchBy);
+                var match = p.exec(this._options.searchBy);
                 if (match){
                     // data[match[1] + '__contains'] = match[2];
                     // console.log('parsed search: ' + JSON.stringify(data));
@@ -348,13 +358,13 @@ define([
                     var searchTerm = match[2];
                     console.log('parsed search: ' + searchColumn + ', ' + searchTerm );
 
-                    collection.searchBy = options.searchBy;
+                    collection.searchBy = this._options.searchBy;
                     console.log('trigger search:' + searchColumn + ', ' + searchTerm );
                     collection.trigger("MyServerSideFilter:search", searchColumn, searchTerm, collection);
                     console.log('done: trigger search');
 
                  }else{
-                     console.log('unrecognized searchBy: ' + options.searchBy);
+                     console.log('unrecognized searchBy: ' + this._options.searchBy);
                  }
             }
 
@@ -432,9 +442,11 @@ define([
         },
 
         setRoute: function(route){
-            var _route = 'list/' + this.options.type + '/' + route;
+            var _route = 'list/' + this._options.type + '/' + route;
             console.log('setRoute triggered: ' + _route);
-            this.model.set({ route: _route } );
+
+            //this.model.set({ route: _route } );
+            this.router.navigate(_route);
         },
 
         onClose: function(){
@@ -450,7 +462,7 @@ define([
 
         render: function(){
             console.log('render listView');
-            this.reset_grid(this.options);
+            this.reset_grid();
             return this;
         }
     });

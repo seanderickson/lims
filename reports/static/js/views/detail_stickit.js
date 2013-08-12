@@ -22,7 +22,8 @@ define([
             'click button#save': 'save',
             'click button#delete': 'delete',
             'click button#edit': 'edit',
-            'click button#cancel': 'cancel'
+            'click button#cancel': 'cancel',
+            'click button#history': 'history'
         },
 
         initialize : function(attributes, options) {
@@ -47,6 +48,8 @@ define([
             this._keys = keys;  // TODO: need to put the sorted keys on the options and remove from this class
             template = genericDetailTemplate;
             this._options = options;
+            this.router = options.router;
+
             if(options.isEditMode){
                 // template = genericFormTemplate;
                 this.edit(null);
@@ -201,6 +204,18 @@ define([
             // this.$el.remove();
             this.$el.empty();
             this.trigger('remove');
+            this.router.back();
+        },
+
+        history: function(event){
+            event.preventDefault();
+            this.$el.empty();
+            this.trigger('remove');
+            var _route = 'list/apilog/search/ref_resource_name=' + this._options.resource_definition['key'];
+
+            // this._options.app_model.set({ route: _route, routing_options: {trigger:true} });
+
+            this.router.navigate(_route, {trigger: true});
         },
 
         error: function(options){

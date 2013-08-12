@@ -26,7 +26,8 @@ class MetaManager(GetOrNoneManager):
             metahash = self.get_and_parse_int(scope=scope, field_definition_scope=field_definition_scope)
             cache.set('metahash:'+scope, metahash);
         else:
-            logger.info(str(('cached: get_and_parse table field definitions for ',scope, metahash)))
+            logger.info(str(('cached: get_and_parse metahash table field definitions for ',scope)))
+#            logger.debug(str(('cached: get_and_parse table field definitions for ',scope, metahash)))
 
         return metahash
 
@@ -44,7 +45,6 @@ class MetaManager(GetOrNoneManager):
         # the objects themselves are stored in the metahash table as well
         unparsed_objects = MetaHash.objects.all().filter(scope=scope)
         
-        # TODO: one cannot deny, a cache might do some good here    
         parsed_objects = {}
         # first, query the metahash for fields defined for this scope
         for unparsed_object in unparsed_objects:
@@ -67,7 +67,7 @@ class MetaManager(GetOrNoneManager):
                 logger.debug(str(('got', parsed_object['choices'] )))
             
             parsed_objects[unparsed_object.key] = parsed_object
-        logger.info(str(('field definitions for ', scope, parsed_objects)))
+        logger.info(str(('got metahash table field definitions for ', scope ))) #, parsed_objects)))
         return parsed_objects
 
 
@@ -83,9 +83,10 @@ class ApiLog(models.Model):
     objects = models.Manager()
     user_id = models.IntegerField(null=False, blank=False)
     username = models.CharField(null=False, max_length=35)
-    resource_name = models.CharField(null=False, max_length=35)
+    ref_resource_name = models.CharField(null=False, max_length=35)
     key = models.CharField(null=False, max_length=128)
     uri = models.TextField(null=False)
+#    milliseconds = models.IntegerField(null=False)
     date_time = models.DateTimeField(null=False)
     api_action = models.CharField(max_length=10, null=False, choices=API_ACTION_CHOICES)
     
@@ -97,6 +98,13 @@ class ApiLog(models.Model):
     
     json_field = models.TextField(blank=True) # This is the "meta" field, it contains "virtual" json fields, defined in the metahash
 
+    
+#    @property
+#    def get_date_time(self):
+#        return time(self.milliseconds)
+
+    class Meta:
+        unique_together = (('ref_resource_name', 'date_time'))    
 
 # store field information here
 class MetaHash(models.Model):
@@ -157,9 +165,10 @@ class MetaHash(models.Model):
         '''
         assert scope, 'Must define the scope (used to query the field definitions in the metahash)'
         fields = MetaHash.objects.get_and_parse(scope=scope)
-        logger.info(str((scope, 'fields', fields)))
+#        logger.info(str(('create dict: scope for field lookup: ', scope, 'fields found:', fields)))
         dict = {}
         for key in fields.keys():
+#            logger.info('key: ' + key)
             dict[key] = self.get_field(key)
         return dict
     

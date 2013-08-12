@@ -11,6 +11,8 @@ import logging
         
 from django.core.exceptions import ObjectDoesNotExist
 from tastypie.exceptions import NotFound
+from django.utils.timezone import is_naive
+
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +32,22 @@ class BackboneSerializer(Serializer):
         return json.loads(content)
 
 
-class CSVSerializer(BackboneSerializer):
+class TimeZoneAwareDateSerializer(Serializer):
+    """
+    Our own serializer to format datetimes in ISO 8601 but with timezone
+    offset.
+    credit: http://www.tryolabs.com/Blog/2013/03/16/displaying-timezone-aware-dates-tastypie/
+    """
+    def format_datetime(self, data):
+        logger.info(str(('formatting date', data)))
+        # If naive or rfc-2822, default behavior...
+        if is_naive(data) or self.datetime_formatting == 'rfc-2822':
+            return super(TimeZoneAwareDateSerializer, self).format_datetime(data)
+ 
+        return data.isoformat()
+ 
+
+class CSVSerializer(Serializer):
     formats = ['json', 'jsonp', 'xml', 'yaml', 'html', 'plist', 'csv']
     content_types = {
         'json': 'application/json',
@@ -111,6 +128,11 @@ class CSVSerializer(BackboneSerializer):
                 
         return data
 
+class LimsSerializer(BackboneSerializer,TimeZoneAwareDateSerializer,CSVSerializer):
+    ''' Combine all of the Serializers used by the API
+    '''
+    
+    
 
 # TODO: this class should be constructed as a Mixin, not inheritor of ModelResource
 class PostgresSortingResource(ModelResource):

@@ -7,15 +7,12 @@ define([
     var MenuView = Backbone.View.extend({
         el : $('#menu'),
 
-        initialize : function() {
+        initialize : function(attributes, options) {
             console.log('MenuView initialize');
             //_.bindAll(this,'change_menu_item'); // binds all of the objects function properties to this instance
             // this.model.bind('change:menu_item', this.change_menu_item );
 
-            // Note: Menu listens to current_submodel; view pages listen to model.route
-            // this separation makes sense because the menu directly controls the ordered list selection
-            // through the current_submodel property; and routes convey [control state + submodel] to views.
-            // routes also represent explicitly addressable state of the app;
+            this.router = options.router;
             this.listenTo(this.model, 'change:current_submodel_id', this.change_current_submodel);
         },
 
@@ -68,14 +65,18 @@ define([
                 self.model.set({ content_options: {} });
                 self.model.set({
                     current_submodel_id : submodel_id,
-                    route: route,
+                    //route: route,
+
                     // TODO: this should work to suppress initial history record, but it's also messing up the back action
-                    // routing_options: { replace: true }, // suppresses the url rewriting for this step, the collection will set it when adding pagination/etc. options
+                    // routing_options: { replace: true }, // suppresses the url rewriting for this step, the collection will
+                    // set it when adding pagination/etc. options
                     content_options: {
                         view: menu.view
                     }, // unset previous content options;
                     // TODO: this is a bit like magic; if there were a mediator to talk to the app_model, it might be better?
                 });
+
+                self.router.navigate(route);
             });
         }
     });

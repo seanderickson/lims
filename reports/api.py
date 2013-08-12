@@ -17,7 +17,7 @@ from tastypie import fields # NOTE: required for dynamic resource field definiti
 from tastypie.resources import Resource
 
 import time
-from lims.api import PostgresSortingResource, CSVSerializer
+from lims.api import PostgresSortingResource, LimsSerializer, TimeZoneAwareDateSerializer
 from reports.models import MetaHash, Vocabularies, ApiLog
 
 import logging
@@ -38,7 +38,7 @@ class LoggingMixin(Resource):
         log.username = bundle.request.user.username #self._meta.authentication.get_identifier(bundle.request) # see tastypie.authentication.Authentication
         log.user_id = bundle.request.user.id #self._meta.authentication.get_identifier(bundle.request) # see tastypie.authentication.Authentication
         log.date_time = timezone.now()
-        log.resource_name = self._meta.resource_name
+        log.ref_resource_name = self._meta.resource_name
         log.api_action = str((bundle.request.method)).upper()
         log.uri,log.key = self.get_uri(bundle.request.get_full_path(), self._meta.resource_name, bundle.obj, bundle.data)
         log.save()
@@ -54,7 +54,7 @@ class LoggingMixin(Resource):
         log.username = bundle.request.user.username #self._meta.authentication.get_identifier(bundle.request) # see tastypie.authentication.Authentication
         log.user_id = bundle.request.user.id #self._meta.authentication.get_identifier(bundle.request) # see tastypie.authentication.Authentication
         log.date_time = timezone.now()
-        log.resource_name = self._meta.resource_name
+        log.ref_resource_name = self._meta.resource_name
         log.api_action = str((bundle.request.method)).upper()
         log.uri,log.key = self.get_uri(bundle.request.get_full_path(), self._meta.resource_name, bundle.obj, bundle.data)
         log.save()
@@ -162,7 +162,7 @@ class LoggingMixin(Resource):
         log.username = bundle.request.user.username #self._meta.authentication.get_identifier(bundle.request) # see tastypie.authentication.Authentication
         log.user_id = bundle.request.user.id #self._meta.authentication.get_identifier(bundle.request) # see tastypie.authentication.Authentication
         log.date_time = timezone.now()
-        log.resource_name = self._meta.resource_name
+        log.ref_resource_name = self._meta.resource_name
         log.api_action = str((bundle.request.method)).upper()
         log.uri,log.key = self.get_uri(bundle.request.get_full_path(), self._meta.resource_name, bundle.obj, bundle.data)
         
@@ -470,7 +470,7 @@ class MetaHashResource(LoggingMixin, JsonAndDatabaseResource):
         authorization= Authorization()        
         ordering = []
         filtering = {} #{'scope':ALL, 'key':ALL}
-        serializer = CSVSerializer()
+        serializer = LimsSerializer()
         excludes = [] #['json_field']
         always_return_data = True # this makes Backbone happy
 
@@ -537,7 +537,7 @@ class VocabulariesResource(LoggingMixin, JsonAndDatabaseResource):
         # TODO: drive this from data
         ordering = []
         filtering = {'scope':ALL, 'key': ALL, 'alias':ALL}
-        serializer = CSVSerializer()
+        serializer = LimsSerializer()
         excludes = [] #['json_field']
         always_return_data = True # this makes Backbone happy
     
@@ -572,7 +572,7 @@ class ResourceResource(LoggingMixin, JsonAndDatabaseResource):
         # TODO: drive this from data
         ordering = []
         filtering = {'scope':ALL, 'key': ALL, 'alias':ALL}
-        serializer = CSVSerializer()
+        serializer = LimsSerializer()
         excludes = [] #['json_field']
         always_return_data = True # this makes Backbone happy
         resource_name='resource' # appears that tastypie needs this with a resource named "resource"!
@@ -586,14 +586,16 @@ class ResourceResource(LoggingMixin, JsonAndDatabaseResource):
 class ApiLogResource(MetahashManagedResource, PostgresSortingResource):
     '''
     '''
+#    date_time = fields.DateTimeField()
+    
     class Meta:
-        queryset = ApiLog.objects.all().order_by('resource_name', 'username','date_time')
+        queryset = ApiLog.objects.all().order_by('ref_resource_name', 'username','date_time')
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
         authorization= Authorization()        
         # TODO: drive this from data
         ordering = []
-        filtering = {'username':ALL, 'uri': ALL, 'resource_name':ALL}
-        serializer = CSVSerializer()
+        filtering = {'username':ALL, 'uri': ALL, 'ref_resource_name':ALL}
+        serializer = LimsSerializer()
         excludes = [] #['json_field']
         always_return_data = True # this makes Backbone happy
         resource_name='apilog' 
@@ -604,6 +606,12 @@ class ApiLogResource(MetahashManagedResource, PostgresSortingResource):
 
     def build_schema(self):
         schema = super(ApiLogResource,self).build_schema()
-        temp = [ x.resource_name for x in self.Meta.queryset.distinct('resource_name')]
-        schema['extraSelectorOptions'] = { 'label': 'Resource', 'searchColumn': 'resource_name', 'options': temp }
+        temp = [ x.ref_resource_name for x in self.Meta.queryset.distinct('ref_resource_name')]
+        schema['extraSelectorOptions'] = { 'label': 'Resource', 'searchColumn': 'ref_resource_name', 'options': temp }
         return schema
+
+    def prepend_urls(self):
+        return [
+            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<ref_resource_name>[\w\d_.\-:]+)/(?P<date_time>[\w\d_.\-\+:]+)/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ]    

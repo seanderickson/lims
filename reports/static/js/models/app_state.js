@@ -34,13 +34,13 @@ define([
                         'metahash':{
                             view: 'list_view',
                         },
-                        'resources':{
+                        'resource':{
                             view: 'list_view',
                         },
                         'vocabularies':{
                             view: 'list_view',
                         },
-                        'apilogs':{
+                        'apilog':{
                             view: 'list_view',
                         },
                     }
@@ -67,7 +67,7 @@ define([
                 metahash: {
                     header_message: 'Define fields for display on detail and list views',
                     title: 'Field Information',
-                    route: 'list/fieldmetainformation',
+                    route: 'list/metahash',
                     list_view: 'ListView',
                     detail_view: 'DetailView',
                     url_schema : '/reports/api/v1/metahash/schema',
@@ -76,10 +76,10 @@ define([
                     description: 'Control field settings'
                 },
 
-                resources: {
+                resource: {
                     header_message: 'Define resources for display in the reporting interface',
                     title: 'Resource Information',
-                    route: 'list/resources',
+                    route: 'list/resource',
                     list_view: 'ListView',
                     detail_view: 'DetailView',
                     url_schema : '/reports/api/v1/resource/schema',
@@ -98,10 +98,10 @@ define([
                     description: 'Enter controlled vocabularies'
                 },
 
-                apilogs: {
+                apilog: {
                     header_message: 'View change logs',
                     title: 'Change logs',
-                    route: 'list/apilogs',
+                    route: 'list/apilog',
                     list_view: 'ListView',
                     detail_view: 'DetailView',
                     url_schema : '/reports/api/v1/apilog/schema',

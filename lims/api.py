@@ -39,7 +39,7 @@ class TimeZoneAwareDateSerializer(Serializer):
     credit: http://www.tryolabs.com/Blog/2013/03/16/displaying-timezone-aware-dates-tastypie/
     """
     def format_datetime(self, data):
-        logger.info(str(('formatting date', data)))
+#        logger.info(str(('formatting date', data)))
         # If naive or rfc-2822, default behavior...
         if is_naive(data) or self.datetime_formatting == 'rfc-2822':
             return super(TimeZoneAwareDateSerializer, self).format_datetime(data)

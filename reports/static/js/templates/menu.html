@@ -1,25 +1,25 @@
 <ul class="nav nav-list nav-stacked">
-    <li class="nav-header" id="<%= 'home' %>" title="<%=subModels['home'].description %>">
-        <a  href="#"><%= subModels['home'].title %></a>
+    <li class="nav-header" id="<%= 'home' %>" title="<%=ui_resources['home'].description %>">
+        <a  href="#"><%= ui_resources['home'].title %></a>
     </li>
     <% _.each(_(menu['submenus']).keys(), function(key){
-        var submodel = subModels[key];
+        var ui_resource = ui_resources[key];
         var submenus = menu['submenus'][key]['submenus'];
     %>
-        <li id="<%= key %>" title="<%=submodel.description %>"><a href="#"><%= submodel.title %></a></li>
+        <li id="<%= key %>" title="<%=ui_resource.description %>"><a href="#"><%= ui_resource.title %></a></li>
     <%
         if( !_.isEmpty(submenus)){
             %>
             <ul class="nav nav-list nav-stacked">
             <%
             _.each(_.keys(submenus), function(key){
-                var submodel = subModels[key];
-                if(_.isUndefined(submodel)){
-                    console.log('error, undefined submodel:' + JSON.stringify(key) );
+                var ui_resource = ui_resources[key];
+                if(_.isUndefined(ui_resource)){
+                    console.log('error, undefined ui_resource:' + JSON.stringify(key) );
                 }else{
                     console.log('found ' + key);
             %>
-                <li id="<%= key %>" title="<%=submodel.description %>"><a href="#"><%= submodel.title %></a></li>
+                <li id="<%= key %>" title="<%=ui_resource.description %>"><a href="#"><%= ui_resource.title %></a></li>
             <%
                 }
             });

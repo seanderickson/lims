@@ -21,6 +21,11 @@ class MetaManager(GetOrNoneManager):
         return super(MetaManager, self).get_query_set()
 
     def get_and_parse(self, scope='', field_definition_scope='fields:metahash'):
+        '''
+        Query the metahash table for field definitions for the table identified by scope
+        scope - resource whose fields are described, i.e. "fields:screensaveruser", or "fields:screen"
+        field_definition_scope - scope that defines the json fields for this hash, e.g. "fields:metahash", or "fields:resource, or fields:vocabularies"
+        '''
         metahash = cache.get('metahash:'+scope)
         if not metahash:
             metahash = self.get_and_parse_int(scope=scope, field_definition_scope=field_definition_scope)
@@ -57,7 +62,9 @@ class MetaManager(GetOrNoneManager):
 #                        MetaHash.objects.get_or_none(scope=scope, 
 #                                                     key=field_key, 
 #                                                     function=lambda x : (x.get_field(field_key)) )
-                    
+              
+            
+            # NOTE: choices for the "vocabulary_scope_ref" are being stored here for convenience
             # now check if the field uses controlled vocabulary, look that up now.  TODO: "vocabulary_scope_ref" should be a constant
             # TODO: "vocabulary_scope_ref" needs to be created by default as a metahash:field; this argues for making it a "real" field
             if parsed_object.get(u'vocabulary_scope_ref'):
@@ -151,6 +158,7 @@ class MetaHash(models.Model):
         """
         Determines if this Meta record references a JSON nested field or not
         """
+#        return True if ( self.json_field_type and self.json_field_type.upper() != 'VIRTUAL' ) else False
         return True if self.json_field_type else False
             
 #    def dehydrate(self, bundle):

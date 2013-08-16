@@ -3,11 +3,12 @@ define([
     'underscore',
     'backbone',
     'backbone_stickit',
+    'iccbl_backgrid',
     'text!templates/generic-detail.html',
     'text!templates/generic-form-stickit.html',
     'text!templates/modal_ok_cancel.html',
 
-], function( $, _, Backbone, stickit, genericDetailTemplate, genericFormTemplate, modalOkCancel ) {
+], function( $, _, Backbone, stickit, Iccbl, genericDetailTemplate, genericFormTemplate, modalOkCancel ) {
     var DetailView = Backbone.View.extend({
 
 
@@ -27,14 +28,19 @@ define([
         },
 
         initialize : function(attributes, options) {
-            console.log('initialize detail_stickit: ' + JSON.stringify(this.model.attributes));
-            // console.log('initialize: ' + JSON.stringify(attributes) + ', ' + JSON.stringify(options));
-            // console.log('DetailView initializer: options: ' + JSON.stringify(options));
+            var self = this;
+            Iccbl.assert( !_.isUndefined(options.schemaResult), 'detail view requires a schemaResult struct');
+            Iccbl.assert( !_.isUndefined(options.schemaResult['resource_definition']), 'detail view schemaResult requires a resource_definition');
+            Iccbl.assert( !_.isUndefined(options.router), 'detail view requires a router');
 
-            keys = _(this.model.attributes).keys().sort(function(a,b){
+            this._schemaResult = options['schemaResult'];
+            this._resource_definition = this._schemaResult['resource_definition'];
+            this._router = options.router;
+
+            this._keys = _(this.model.attributes).keys().sort(function(a,b){
                 //console.log('sorting: a: ' + a + ', ' + JSON.stringify(options.fields[a]) + ', b: ' + b + ', ' + JSON.stringify(options.fields[b]));
-                order_a = options.fields[a]['ordinal'];  // TODO: need an edit order by
-                order_b = options.fields[b]['ordinal'];
+                order_a = self._schemaResult.fields[a]['ordinal'];  // TODO: need an edit order by
+                order_b = self._schemaResult.fields[b]['ordinal'];
                 if(_.isNumber(order_a) && _.isNumber(order_b)){
                     return order_a - order_b;
                 }else if(_.isNumber(order_a)){
@@ -45,24 +51,21 @@ define([
                     return 0;
                 }
             });
-            this._keys = keys;  // TODO: need to put the sorted keys on the options and remove from this class
             template = genericDetailTemplate;
-            this._options = options;
-            this.router = options.router;
 
             if(options.isEditMode){
                 // template = genericFormTemplate;
                 this.edit(null);
             }else{
                 // filter keys for detail view
-                var detailKeys = _(keys).filter(function(key){
-                    return _.has(options.fields[key], 'visibility') && _.contains(options.fields[key]['visibility'], 'detail');
+                var detailKeys = _(this._keys).filter(function(key){
+                    return _.has(self._schemaResult.fields[key], 'visibility') && _.contains(self._schemaResult.fields[key]['visibility'], 'detail');
                 });
                 console.log('detail keys: ' + JSON.stringify(detailKeys));
 
                 var compiledTemplate = _.template( template,
-                    { 'fieldDefinitions': options.fields ,
-                      title: options.title,
+                    { 'fieldDefinitions': this._schemaResult.fields ,
+                      title: 'Details for ' + this._resource_definition['title'], // TODO format string for title using fields
                       keys: _(detailKeys),
                       object: this.model.attributes
                     });
@@ -83,8 +86,8 @@ define([
             });
 
             _.each(editKeys, function(key){
-                if( _(self._options.fields).has(key)){
-                    option = self._options.fields[key];
+                if( _(self._schemaResult.fields).has(key)){
+                    option = self._schemaResult.fields[key];
                     if(option.ui_type == 'choice' || option.ui_type == 'multiselect' ){
                         console.log('--choice key: ' + key + ', ' + JSON.stringify(option));
                         var _optionsCollection = [];
@@ -136,16 +139,15 @@ define([
             // console.log('bindings: ' + JSON.stringify(bindings));
             // console.log('model:' + JSON.stringify(this.model.attributes));
             var compiledTemplate = _.template( genericFormTemplate,
-                { 'fieldDefinitions': this._options.fields ,
-                  title: this._options.title,
+                { 'fieldDefinitions': this._schemaResult.fields ,
+                  title: 'Edit ' + this._resource_definition['title'], // TODO format string for title using fields
                   keys: _(editKeys)
                 });
             this.$el.html(compiledTemplate);
-            //this.stickit();
             this.stickit(this.model,  bindings);
+
             // this.modelBinder = new modelbinder();
             // this.modelBinder.bind(this.model, this.el);
-
         },
 
         save: function(event){
@@ -204,18 +206,36 @@ define([
             // this.$el.remove();
             this.$el.empty();
             this.trigger('remove');
-            this.router.back();
+            this._router.back();
         },
 
         history: function(event){
             event.preventDefault();
             this.$el.empty();
             this.trigger('remove');
-            var _route = 'list/apilog/search/ref_resource_name=' + this._options.resource_definition['key'];
+            var self = this;
+            var _history_search = "ref_resource_name=" + this._resource_definition['key'];
+            var id = this.model.get('id');
+            if(_.has(this._resource_definition, 'id_attribute')){
+                //console.log('create id from ' + this._resource_definition['id_attribute']);
+                id = _.reduce(this._resource_definition['id_attribute'],
+                        function(memo, item){
+                            if(!_.isEmpty(memo)) memo += '/';
+                            return memo += self.model.get(item);}, '');
+            }else{
+                console.log('Warn: schema for this type has no resource_definition,id_attribute; type: ' + this._options.type);
+            }
+            _history_search += ',key='+id;
+            // TODO: discuss whether full encoding of the search fragment is necessary.
+            // to-date, we know that the forward slash messes up the backbone router parsing, but other URL chars do not,
+            // and full encoding reduces the usability of the URL for the end user
+            //_history_search = encodeURIComponent(_history_search);
+            _history_search = _history_search.replace('\/','%2F');
+            //console.log('history_search:' + _history_search);
 
-            // this._options.app_model.set({ route: _route, routing_options: {trigger:true} });
-
-            this.router.navigate(_route, {trigger: true});
+            var _route = 'list/apilog/search/' + _history_search; //ref_resource_name=' + _resource_name + ',key='+ id;
+            console.log('-- set route: ' + _route);
+            this._router.navigate(_route, {trigger: true});
         },
 
         error: function(options){

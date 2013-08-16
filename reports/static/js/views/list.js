@@ -72,34 +72,18 @@ define([
 
             this.objects_to_destroy.push(collection);
 
-            // var ClickableRow = Backgrid.Row.extend({
-              // events: {
-                // "click": "onClick"
-              // },
-              // onClick: function () {
-                // self.trigger("MyCollection:edit", this.model);
-              // }
-            // });
-
-
-            // TODO: p-o-c of how to do a Link-to-Detail/Edit: should be controlled by the field type
-            //var col_options = { customCells: { 'title': Iccbl.EditCell, 'screensaver_user_id': Iccbl.EditCell } };
             var columns = this.createBackgridColModel(schemaResult.fields, Iccbl.MyHeaderCell);//, col_options );
             //columns.unshift({ name: 'deletor', label: 'Delete', text:'X', description: 'delete record', cell: Iccbl.DeleteCell, sortable: false });
             var grid = this.grid = new Backgrid.Grid({
               columns: columns,
               collection: collection,
-              // row: ClickableRow,
             });
             this.objects_to_destroy.push(grid);
 
             self.listenTo(collection, "MyCollection:link", function (model, column) {
                 console.log('---- process link for '+ column);
 
-                // get the schema field definition for this column
-
-                fieldDef = schemaResult.fields[column];
-
+                var fieldDef = schemaResult.fields[column];
                 if( _.has(fieldDef,'backgrid_cell_options')) {
                     // NOTE: format for backgrid cell options is "/{attribute_key}/"
                     backgrid_cell_options = fieldDef['backgrid_cell_options'];
@@ -111,31 +95,23 @@ define([
                         console.log('matched: ' + match + ', model: ' + model.get(match));
                         return typeof model.get(match) != "undefined" ? model.get(match) : match;
                     });
-
                     console.log('route: ' + _route);
-
-
-                    // // TODO: if we can make the "back" button do a navigate back, then all we have to do is set the route...
-                    // this.model.set({ route: _route, routing_options: {trigger:true} } );
-
                     this.router.navigate(_route, {trigger:true});
-
                 }else{
                     console.log('no options defined for link cell');
                 }
-
             });
 
 
             self.listenTo(collection, "MyCollection:edit", function (model) {
-                console.log('---- create detail view for '+ this._options.type);
+                console.log('---- create detail view for '+ this._options.ui_resource_id);
                 // TODO: Get the title, and other items from the meta data
-                var detailView = new DetailView({ model: model},
-                    { title: "Details", fields:schemaResult.fields,
-                      app_model: this.model, resource_definition: schemaResult['resource_definition'],
-                      router: self.router  } ); // todo get title
-
-                $('#list-container').hide();
+                // var detailView = new DetailView({ model: model},
+                    // { title: "Details", fields:schemaResult.fields,
+                      // app_model: this.model, resource_definition: schemaResult['resource_definition'],
+                      // router: self.router  } ); // todo get title
+//
+                // $('#list-container').hide();
 
                 //var _routeFrom = this.model.get('route');
 
@@ -145,32 +121,38 @@ define([
                 if(_.has(schemaResult['resource_definition'], 'id_attribute')){
                     console.log('create id from ' + schemaResult['resource_definition']['id_attribute']);
                     id = _.reduce(schemaResult['resource_definition']['id_attribute'],
-                            function(memo, item){ return memo += model.get(item) + '/';}, '/');
+                            function(memo, item){ return memo += model.get(item) + '/';}, '');
                 }else{
-                    console.log('Warn: schema for this type has no resource_definition,id_attribute; type: ' + this._options.type);
+                    console.log('Warn: schema for this type has no resource_definition,id_attribute; type: ' + this._options.ui_resource_id);
                 }
                 console.log('id: ' + id);
-                var _route = 'detail/' + this._options.type + id;
+                // TODO: Move route setting to the parent (contentview controller/view)
+                var _route = 'detail/' + this._options.ui_resource_id + '/' + id;
 
 
                 // // TODO: if we can make the "back" button do a navigate back, then all we have to do is set the route...
                 // this.model.set({ route: _route } );
 
-                this.router.navigate(_route);
+                console.log('-- set route: ' + _route);
+                //this.router.navigate(_route, {trigger: true} );  // trigger false since don't want route actions firing
+                this.model.set({    content_options: { schemaResult: schemaResult, model: model} ,
+                                    current_view: 'detail',
+                                    current_route_options: id } ); // signal to the app_model that the current view has changed // todo: separate out app_model from list_model
+                //this.model.set({ current_view: 'detail_view'}, { silent: true } ); // silent: true since we don't want content view reacting to change event
 
                 // NOTE: having self bind to the detailView like this:
                 // self.listenTo(detailView, 'remove', function(){
                 // causes the detailView to hang around in memory until self is closed
                 // so either:
                 // detailView.on('remove', function(){
-                self.listenToOnce(detailView, 'remove', function(){
-                    //self.collection.fetch({reset:true});
-                    $('#list-container').show();
-                    detailView.close();
-                    //this.model.set({ route: _routeFrom } );
-                });
-
-                $('#detail-container').append(detailView.render().$el);
+                // self.listenToOnce(detailView, 'remove', function(){
+                    // //self.collection.fetch({reset:true});
+                    // $('#list-container').show();
+                    // detailView.close();
+                    // //this.model.set({ route: _routeFrom } );
+                // });
+//
+                // $('#detail-container').append(detailView.render().$el);
             });
 
             self.listenTo(collection, "MyCollection:delete", function (model) {
@@ -203,7 +185,7 @@ define([
             // TODO: is there a way to create this without extending Backbone.View (like footer below)?
             var extraSelector = Backbone.View.extend({
                 initialize: function(options){
-                    console.log('init: '  + options);
+                    // console.log('extraselector init: '  + options);
                     this._options = options;
 
                 },
@@ -218,14 +200,18 @@ define([
                     searchColumn = this._options.searchColumn
                     searchExpression = searchColumn + '=' + searchTerm;
                     collection.searchBy = searchExpression;
-                    collection.trigger("MyServerSideFilter:search", searchColumn, searchTerm, collection);
+                    collection.trigger("MyServerSideFilter:search", { searchColumn: searchTerm }, collection);
                 },
-                updateSelection: function(searchColumn, searchTerm){
-                    console.log('updateSelection: ' + searchColumn + ', ' + searchTerm);
-                    $('#generic_selector').val(searchTerm);
+                updateSelection: function( searchItems ){
+                    //console.log('-extraselector updateSelection: ' + JSON.stringify(searchItems) );
+                    if( _(searchItems).has(this._options.searchColumn)){
+                        $('#generic_selector').val(searchItems[this._options.searchColumn]);
+                    }else{
+                        console.log("extra selector set for column: " + this._options.searchColumn + ", not in searchItems: " + JSON.stringify(searchItems));
+                    }
                 },
                 render: function(){
-                    console.log('===============render extra selector' + this)
+                    // console.log('===============render extra selector' + this)
                     this.delegateEvents();
                     this._options.options.unshift(' '); // create a blank entry
 
@@ -348,26 +334,41 @@ define([
                 collection.trigger("backgrid:sort", sortKey, direction, null, collection);
             }
             if(typeof this._options.searchBy !== 'undefined' && this._options.searchBy !== null){
-                // TODO: only can search one term at a time
-                var p = /([^=]+)=([^=]+)/
-                var match = p.exec(this._options.searchBy);
-                if (match){
-                    // data[match[1] + '__contains'] = match[2];
-                    // console.log('parsed search: ' + JSON.stringify(data));
-                    var searchColumn = match[1];
-                    var searchTerm = match[2];
-                    console.log('parsed search: ' + searchColumn + ', ' + searchTerm );
 
+                var searchExpressions = {};
+                // TODO: query terms that tastypie will understand.  these are to be set on the MyHeaderCell
+                // QUERY_TERMS = set([
+                    // 'exact', 'iexact', 'contains', 'icontains', 'gt', 'gte', 'lt', 'lte', 'in',
+                    // 'startswith', 'istartswith', 'endswith', 'iendswith', 'range', 'year',
+                    // 'month', 'day', 'week_day', 'isnull', 'search', 'regex', 'iregex',
+                // ])
+
+                _(this._options.searchBy.split(',')).each(function(searchItem){
+                    var searchExpression = searchItem.split('=');
+                    if(searchExpression.length != 2 ){
+                        console.log('Warning: invalid search item: ' + searchItem + ', in: ' + this_.options.searchBy);
+                    }else{
+                        searchExpressions[searchExpression[0]] = searchExpression[1];
+                    }
+                    // var p = /([^=]+)=([^=]+)/
+                    // var match = p.exec(searchItem);
+                    // if (match){
+                        // // data[match[1] + '__contains'] = match[2];
+                        // // console.log('parsed search: ' + JSON.stringify(data));
+                        // var searchColumn = match[1];
+                        // var searchTerm = match[2];
+                });
+
+                if(!_.isEmpty(searchExpressions)){
                     collection.searchBy = this._options.searchBy;
-                    console.log('trigger search:' + searchColumn + ', ' + searchTerm );
-                    collection.trigger("MyServerSideFilter:search", searchColumn, searchTerm, collection);
-                    console.log('done: trigger search');
-
-                 }else{
-                     console.log('unrecognized searchBy: ' + this._options.searchBy);
-                 }
+                    // console.log('trigger search:' + this._options.searchBy );
+                    collection.trigger("MyServerSideFilter:search", searchExpressions, collection);
+                    // console.log('done: trigger search');
+                }else{
+                    console.log('Warn: no search expressions found in: '  + this._options.searchBy );
+                }
             }
-
+            console.log('collection fetch trigger');
             collection.fetch({ reset: true } );
 
             console.log('list view initialized');
@@ -381,7 +382,7 @@ define([
          * @param {Object} options - a hash of { fieldKey: [custom cell: extend Backgrid.Cell] } to map custom cell implementations to fields
          */
         createBackgridColModel: function(restFields, optionalHeaderCell) {
-            // console.log('createBackgridColModel: restFields: ' + JSON.stringify(restFields));
+            console.log('--createBackgridColModel'); //: restFields: ' + JSON.stringify(restFields));
             var colModel = [];
             var i = 0;
             var _total_count = 0;
@@ -396,11 +397,11 @@ define([
                     if( !_.isEmpty(prop['backgrid_cell_type'])){
                         backgridCellType = prop['backgrid_cell_type'];
                         try{
-                            console.log('look for ' + key + ', ' + prop['backgrid_cell_type']);
+//                            console.log('look for ' + key + ', ' + prop['backgrid_cell_type']);
                             var klass = Iccbl.stringToFunction(prop['backgrid_cell_type']);
-                            console.log('got  ' + klass);
+//                            console.log('got  ' + klass);
                             if(!_.isUndefined(klass)){
-                                console.log('----- cell found: ' + klass);
+//                                console.log('----- cell found: ' + klass);
                                 backgridCellType = klass;
                             }
                         }catch(ex){
@@ -426,7 +427,7 @@ define([
             });
 
 
-            console.log('colModel: ' + JSON.stringify(colModel));
+            //console.log('colModel: ' + JSON.stringify(colModel));
             colModel.sort(function(a,b){
                 if(_.isNumber(a['order']) && _.isNumber( b['order'])){
                     return a['order']-b['order'];
@@ -441,12 +442,12 @@ define([
             return colModel;
         },
 
-        setRoute: function(route){
-            var _route = 'list/' + this._options.type + '/' + route;
-            console.log('setRoute triggered: ' + _route);
+        setRoute: function(route, options){
+            // var _route = 'list/' + this._options.ui_resource_id + '/' + route;
+            // console.log('setRoute triggered: ' + _route + ', ' + JSON.stringify(options) );
+            // this.router.navigate(_route, options);
 
-            //this.model.set({ route: _route } );
-            this.router.navigate(_route);
+            this.model.set({ current_route_update: route });
         },
 
         onClose: function(){

@@ -13,14 +13,14 @@ define([
             // this.model.bind('change:menu_item', this.change_menu_item );
 
             this.router = options.router;
-            this.listenTo(this.model, 'change:current_submodel_id', this.change_current_submodel);
+            this.listenTo(this.model, 'change:current_ui_resource_id', this.change_ui_resource);
         },
 
-        change_current_submodel : function() {
-            var current_submodel_id = this.model.get('current_submodel_id');
-            console.log('MenuView: change_current_submodel_id: ' + current_submodel_id);
+        change_ui_resource : function() {
+            var current_ui_resource_id = this.model.get('current_ui_resource_id');
+            console.log('--MenuView: detected change_current_ui_resource_id: ' + current_ui_resource_id);
             this.$('li').removeClass('active');
-            this.$('#' + current_submodel_id).addClass('active');
+            this.$('#' + current_ui_resource_id).addClass('active');
         },
 
         render : function() {
@@ -28,7 +28,7 @@ define([
 
             var data = {
                 menu: this.model.get('menu'),
-                subModels: this.model.get('submodels')
+                ui_resources: this.model.get('ui_resources')
             };
             var compiledTemplate = _.template(menuTemplate, data);
             this.$el.append(compiledTemplate);
@@ -53,30 +53,28 @@ define([
 
             $('li').click(function(event) {
                 event.preventDefault();
-                var submodel_id = $(this).attr('id');
-                var route = data.subModels[submodel_id]['route'];
-                // var menu = data.menu[submodel_id];
-                var menu = find_submenu(data.menu, submodel_id);
+                var ui_resource_id = $(this).attr('id');
+                console.log('menu click: ' + ui_resource_id);
+                var route = data.ui_resources[ui_resource_id]['route'];
+                var menu = find_submenu(data.menu, ui_resource_id);
                 if(_.isUndefined(menu)){
-                    window.alert('unknown submenu: ' + submodel_id);
+                    window.alert('unknown submenu: ' + ui_resource_id);
                     return;
                 }
-                console.log('clicked: ' + submodel_id + ', route: ' + route + ', view: ' + JSON.stringify(menu.view) );
+                console.log('clicked: ' + ui_resource_id + ', route: ' + route + ', view: ' + JSON.stringify(menu.view) );
                 self.model.set({ content_options: {} });
+                self.model.set({ current_view: {} }, {silent: true} ); // since current view must change to trigger content view
                 self.model.set({
-                    current_submodel_id : submodel_id,
-                    //route: route,
-
-                    // TODO: this should work to suppress initial history record, but it's also messing up the back action
-                    // routing_options: { replace: true }, // suppresses the url rewriting for this step, the collection will
-                    // set it when adding pagination/etc. options
+                    current_ui_resource_id : ui_resource_id,
+                    current_view: menu.view,
                     content_options: {
                         view: menu.view
                     }, // unset previous content options;
                     // TODO: this is a bit like magic; if there were a mediator to talk to the app_model, it might be better?
                 });
 
-                self.router.navigate(route);
+                console.log('-- set route: ' + route);
+//                self.router.navigate(route, {trigger: true} );
             });
         }
     });

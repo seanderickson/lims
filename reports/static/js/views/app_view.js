@@ -14,6 +14,12 @@ define([
             this.router = options.router;
             this.menuView = new MenuView({ model: this.model }, options);
             this.contentView = new ContentView({ model: this.model }, options);
+
+            Backbone.history.on('route', function(router, route, params) {
+                console.log('route changed, set title: ' + route + ', ' + JSON.stringify(params));
+                document.title = route + JSON.stringify(params);
+             }, this);
+
         },
 
         render: function() {

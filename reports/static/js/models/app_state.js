@@ -6,49 +6,58 @@ define([
     // TODO: feed AppState from the server
     var AppState = Backbone.Model.extend({
         defaults: {
-            root_url: '/reports/',
-            current_submodel_id: 'home',
+
+            root_url: '/reports',  // used for the backbone history
+            api_root_url: '/reports/api/v1',
+
+            current_ui_resource_id: 'home',
+            current_view: 'home',
+            current_route_options: {},
+            current_route_update: {},
+
             content_options: {},
             route: '',
             // menu's can only be two levels deep (todo: recursive cool menu thing)
+            // - the menu tree here is composed of ui_resources, defined below.
+            // - the topographical structure here represents the visual structure in the app.
             menu: {
-                view: 'home_view',
+                view: 'home',
                 submenus:{
                 'screensaveruser': {
-                    view: 'list_view',
+                    view: 'list',
                     submenus: {
                     'screeners':{},
                     'staff':{},
                     }
                 },
                 'screen': {
-                    view: 'list_view',
+                    view: 'list',
                     submenus: {
                     'small_molecule_screens':{},
                     'rnai_screens':{},
                     }
                 },
                 'admin': {
-                    view: 'menu_view',  // TODO: not implemented; would show children menu items as links in the page
+                    view: 'menu',  // TODO: not implemented; would show children menu items as links in the page
                     submenus: {
                         'metahash':{
-                            view: 'list_view',
+                            view: 'list',
                         },
                         'resource':{
-                            view: 'list_view',
+                            view: 'list',
                         },
                         'vocabularies':{
-                            view: 'list_view',
+                            view: 'list',
                         },
                         'apilog':{
-                            view: 'list_view',
+                            view: 'list',
                         },
                     }
                 },
                 }
             },
 
-            submodels: {
+            ui_resources: {
                 admin: {
                     title: 'Admin',
                     route: '',
@@ -70,8 +79,9 @@ define([
                     route: 'list/metahash',
                     list_view: 'ListView',
                     detail_view: 'DetailView',
-                    url_schema : '/reports/api/v1/metahash/schema',
-                    url : '/reports/api/v1/metahash',
+                    api_resource: 'metahash',
+                    // url_schema : '/reports/api/v1/metahash/schema',
+                    // url : '/reports/api/v1/metahash',
                     searchBy : 'scope=fields:metahash',
                     description: 'Control field settings'
                 },
@@ -82,8 +92,9 @@ define([
                     route: 'list/resource',
                     list_view: 'ListView',
                     detail_view: 'DetailView',
-                    url_schema : '/reports/api/v1/resource/schema',
-                    url : '/reports/api/v1/resource',
+                    api_resource: 'resource',
+                    // url_schema : '/reports/api/v1/resource/schema',
+                    // url : '/reports/api/v1/resource',
                     description: 'Control resource information'
                 },
 
@@ -93,8 +104,9 @@ define([
                     route: 'list/vocabularies',
                     list_view: 'ListView',
                     detail_view: 'DetailView',
-                    url_schema : '/reports/api/v1/vocabularies/schema',
-                    url : '/reports/api/v1/vocabularies',
+                    api_resource: 'vocabularies',
+                    // url_schema : '/reports/api/v1/vocabularies/schema',
+                    // url : '/reports/api/v1/vocabularies',
                     description: 'Enter controlled vocabularies'
                 },
 
@@ -104,8 +116,9 @@ define([
                     route: 'list/apilog',
                     list_view: 'ListView',
                     detail_view: 'DetailView',
-                    url_schema : '/reports/api/v1/apilog/schema',
-                    url : '/reports/api/v1/apilog',
+                    api_resource: 'apilog',
+                    // url_schema : '/reports/api/v1/apilog/schema',
+                    // url : '/reports/api/v1/apilog',
                     description: 'Change logs'
                 },
 
@@ -115,8 +128,9 @@ define([
                     route: 'list/screensaveruser',
                     list_view: 'ListView',
                     detail_view: 'DetailView',
-                    url_schema : '/db/api/v1/screensaveruser/schema' ,
-                    url : '/db/api/v1/screensaveruser',
+                    api_resource: 'screensaveruser',
+                    // url_schema : '/db/api/v1/screensaveruser/schema' ,
+                    // url : '/db/api/v1/screensaveruser',
                     description: 'View user information'
                 },
                 screen: {
@@ -125,13 +139,14 @@ define([
                     route: 'list/screen',
                     list_view: 'ListView',
                     detail_view: 'DetailView',
-                    url_schema : '/db/api/v1/screen/schema' ,
-                    url : '/db/api/v1/screen',
+                    api_resource: 'screen',
+                    // url_schema : '/db/api/v1/screen/schema' ,
+                    // url : '/db/api/v1/screen',
                     description: 'View screen information'
                 }
             },
             list_defaults: {
-                type: null, // one of the keys for the list_endpoints
+                ui_resource: null, // one of the keys for the list_endpoints
                 page: 1,
                 pageSize: 25,
                 orderBy: null,

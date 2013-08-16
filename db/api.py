@@ -12,7 +12,7 @@ from reports.models import MetaHash, Vocabularies
 import time
 
 import logging
-from reports.api import MetahashManagedResource
+from reports.api import MetahashManagedResource, JsonAndDatabaseResource
         
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,12 @@ class ScreensaverUserResource(MetahashManagedResource, PostgresSortingResource):
         schema = super(ScreensaverUserResource,self).build_schema()
         schema['idAttribute'] = ['screensaver_user_id']
         return schema
+    
+    def prepend_urls(self):
+        return [
+            url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>[\d]+)/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ]    
+    
 
 class ScreeningRoomUserResource(PostgresSortingResource):
     screensaver_user = fields.ToOneField('db.api.ScreensaverUserResource', attribute='screensaver_user', full=True, full_detail=True, full_list=False)
@@ -90,7 +96,7 @@ class LabHeadResource(PostgresSortingResource):
         return bundle        
     
 
-class ScreenResource(MetahashManagedResource,PostgresSortingResource):
+class ScreenResource(JsonAndDatabaseResource):
 
 #    lab_head_full = fields.ToOneField('db.api.LabHeadResource', 'lab_head',  full=True) #, full_list=False) #, blank=True, null=True)
     lab_head_link = fields.ToOneField('db.api.LabHeadResource', 'lab_head',  full=False)
@@ -107,8 +113,8 @@ class ScreenResource(MetahashManagedResource,PostgresSortingResource):
 
         
     def __init__(self, **kwargs):
-        self.scope = 'fields:screen'
-        super(ScreenResource,self).__init__( **kwargs)
+#        self.
+        super(ScreenResource,self).__init__(scope = 'fields:screen', **kwargs)
 
     def prepend_urls(self):
         # NOTE: this match "((?=(schema))__|(?!(schema))[\w\d_.-]+)" allows us to match any word, except "schema", and use it as the key value to search for.

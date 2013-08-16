@@ -325,33 +325,44 @@ class JsonAndDatabaseResource(PostgresSortingResource):
 
         
     def get_field_defs(self, scope):
-        # dynamically define fields that are stored in the JSON field.  
+        ''''
+        Accomplishes two things:
+        1. creates Tastypie resource.field definitions for "virtual" fields defined in the metahash for this table's scope.
+            - virtual fields are fields that exist in the json_field, or, fields composed of other fields (i.e. full name)
+        2. returns a hash of all field definitions for the tastypie fields on this resource.  
+            - used to generate the public "schema"
+            - used to determine "filterable" and "orderable" fields
+        '''
+        # dynamically define fields according to what is defined in the metahash:
+        # - includes fields that are stored in the JSON field.  
         # Note that: - for a new database, there will be no fields in the JSON field initially, so they have 
         # to be populated before they can be filled with data. (cannot define and fill at the same time).
         # TODO: allow turn on/off of the reset methods for faster loading.
         if not self.field_defs:
             logger.debug('------get_field_defs: ' + scope)
             self.field_defs = {}
-            # first, query the metahash for fields defined for this scope
+            # 1. query the metahash for fields defined for this scope
             for fieldinformation in MetaHash.objects.all().filter(scope=scope):
                 logger.debug('---- meta field for scope: ' + scope + ', ' + fieldinformation.key)
                 self.field_defs[fieldinformation.key] = {}
                 if fieldinformation.is_json():
                     if fieldinformation.key in self.fields:
-                        # TODO: move these validation errors to the client create process
                         raise DatabaseError('Illegal definition of a json_field with the same name as a database field on this scope: ' + scope + ',' + fieldinformation.key)
                     self.field_defs[fieldinformation.key].update({ 'json_field_type': fieldinformation.json_field_type })
+#                else if fieldinformation.is_virtual():
+#                    pass
                 else:
                     if fieldinformation.key not in self.fields:
-                        raise DatabaseError('Illegal definition of a non-json_field that is not a database field on this scope: ' + scope + ',' + fieldinformation.key)
+                        raise DatabaseError('Illegal definition of a non-json_field, non-virtual field that is not a resource field on this scope: ' + scope + ',' + fieldinformation.key)
             
-            # add in model/resource fields not specified by a metahash entry
+            # 2. add in model/resource fields not specified by a metahash entry
+            # this is useful because for the first load, nothing is defined for the scope=metash:fields
             for resource_field_key in self.fields.keys():
                 if resource_field_key not in self.field_defs: # and not key == 'json_field': # TODO: should exclude the json_field from this list, right?
                     logger.debug('--------------- create default field for ' + resource_field_key)
                     self.field_defs[resource_field_key] = {}
             
-            # add the virtual API fields        
+            # 3. create the virtual fields as Tastypie resource fields        
             for schema_key, schema_value in self.field_defs.items():
                 # if the field is a json type, eval the json_field_type into a tastypie fields.Field definition so that tastypie knows about it
                 if schema_value.get('json_field_type'):
@@ -362,23 +373,32 @@ class JsonAndDatabaseResource(PostgresSortingResource):
                     self.fields[schema_key] = eval(schema_value['json_field_type'])(attribute=schema_key,readonly=True, blank=True, null=True) # trying to pass the fields.Field object args
             logger.debug(str(('----- tastypie fields created', self.fields)))
             # query metahash for schema defs (attributes) of all the fields 
+            
+            # 4. fill in all of the field definition information for the schema specification
+#            TODO: replace this with a call to reports.models.MetaManager.get_and_parse(scope='fields:metahash', field_definition_scope='fields:metahash');
+#            the preceding logic could be simplified if we defined a "base_fields =['key', 'scope', 'ordinal', 'json_field']"
+            schema_definitions = MetaHash.objects.get_and_parse(scope='fields:metahash', field_definition_scope='fields:metahash')
             for schema_key,schema_value in self.field_defs.items():
-                logger.debug(str(('-----make schema:', self.scope, schema_key)))
-                # now fill in meta information for the schema report to UI; using data from this table itself, either in real or json fields!
-                for meta_record in MetaHash.objects.all().filter(scope='fields:metahash'):  # fields:metahash are defined for all reports
-                    if meta_record.key == 'key':
-                        continue # don't put these into the schema definitions, its too recursive confusing
-                    schema_value.update({
-                          meta_record.key: MetaHash.objects.get_or_none(scope=scope, key=schema_key, function=lambda x : (x.get_field(meta_record.key)) )
-                          })
-                    
-                # now check if the field uses controlled vocabulary, look that up now.  TODO: "vocabulary_scope_ref" should be a constant
-                # TODO: "vocabulary_scope_ref" needs to be created by default as a field:metahash; this argues for making it a "real" field
-                if schema_value.get(u'vocabulary_scope_ref'):
-                    logger.debug(str(('looking for a vocabulary', schema_value['vocabulary_scope_ref'] )))
-                    schema_value['choices'] = [x.key for x in Vocabularies.objects.all().filter(scope=schema_value['vocabulary_scope_ref'])]
-                    logger.debug(str(('got', schema_value['choices'] )))
-                logger.debug(str(('----defined schema: ', schema_key, schema_value)))
+                if schema_key in schema_definitions:
+                    schema_value.update( schema_definitions[schema_key] )
+
+#            for schema_key,schema_value in self.field_defs.items():
+#                logger.debug(str(('-----make schema:', self.scope, schema_key)))
+#                # now fill in meta information for the schema report to UI; using data from this table itself, either in real or json fields!
+#                for schema_field in MetaHash.objects.all().filter(scope='fields:metahash'):  # fields:metahash are defined for all reports
+#                    if schema_field.key == 'key':
+#                        continue # don't put these into the schema definitions, its too recursive confusing
+#                    schema_value.update({
+#                          schema_field.key: MetaHash.objects.get_or_none(scope=scope, key=schema_key, function=lambda x : (x.get_field(schema_field.key)) )
+#                          })
+#                    
+#                # now check if the field uses controlled vocabulary, look that up now.  TODO: "vocabulary_scope_ref" should be a constant
+#                # TODO: "vocabulary_scope_ref" needs to be created by default as a field:metahash; this argues for making it a "real" field
+#                if schema_value.get(u'vocabulary_scope_ref'):
+#                    logger.debug(str(('looking for a vocabulary', schema_value['vocabulary_scope_ref'] )))
+#                    schema_value['choices'] = [x.key for x in Vocabularies.objects.all().filter(scope=schema_value['vocabulary_scope_ref'])]
+#                    logger.debug(str(('got', schema_value['choices'] )))
+#                logger.debug(str(('----defined schema: ', schema_key, schema_value)))
 
             self.reset_filtering_and_ordering()
             logger.debug('------get_field_defs, done: ' + scope)
@@ -397,9 +417,9 @@ class JsonAndDatabaseResource(PostgresSortingResource):
                 schema['fields'][key].update(value)
                 # help for fields not yet defined
                 if not schema['fields'][key].get('ui_type'):
-                    schema['fields'][key]['ui_type'] = schema['fields'][key].get('type')
+                    schema['fields'][key]['ui_type'] = schema['fields'][key].get('type') # TODO: this is vestigial, correct?
             
-            schema['fields'].pop('json_field')
+            schema['fields'].pop('json_field')  # because we don't want this serialized directly (see dehydrate)
         
             logger.info(str(('trying to locate resource information', self._meta.resource_name, self.scope)))
             resource_def = MetaHash.objects.get(scope='resource', key=self._meta.resource_name)
@@ -436,19 +456,17 @@ class JsonAndDatabaseResource(PostgresSortingResource):
         return bundle
     
     def hydrate_json_field(self, bundle):
+        '''
+        hydrate bundle data values that will be stuffed into the json_field
+        -Note: as mentioned elsewhere, for the initial load of the Metahash:fields, fields that
+        are JSON fields (to be stuffed into json_field) must be first defined as a metahash:field,
+        then they can be set as attribute values on other fields in the second step.
+        '''
 #        bundle = super(JsonAndDatabaseResource, self).hydrate(bundle);
         
         logger.debug(str(('hydrate', bundle)))
         
-        # not sure if the bundl obj is id'd yet
-        #        old_json_obj = bundle.obj.get_field_hash()
-        
-        # otherwise have to get it using query
-        #obj = self.queryset.get(scope=bundle.data['scope'], key=bundle.data['key'])  # Note: what if trying to change the key?
-        #old_json_obj = obj.get_field_hash() if obj else {}
-        
         json_obj = {}
-        field_reset_required = False
         local_field_defs = self.get_field_defs(self.scope) # trigger a get field defs before building the schema
         logger.debug(str(('local_field_defs',local_field_defs)))
         for key in [ str(x) for x,y in local_field_defs.items() if 'json_field_type' in y and y['json_field_type'] ]:

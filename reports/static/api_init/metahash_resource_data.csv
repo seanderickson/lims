@@ -4,4 +4,4 @@ metahash,resource,"[scope,key]",/reports/api/v1/metahash/resource/metahash/,0,,"
 vocabularies,resource,"[scope,key]",/reports/api/v1/metahash/resource/vocabularies/,0,,"Vocabularies describe controlled vocabularies",Vocabularies,"[list,detail]",
 screensaveruser,resource,[screensaver_user_id],/reports/api/v1/metahash/resource/screensaveruser/,0,,"The Screensaver user resource","Screensaver User","[list,detail]",
 screen,resource,[facility_id],/reports/api/v1/metahash/resource/screen/,0,,"The Screen resources",Screen,"[list,detail]",
-apilog,resource,"[uri,date_time]",/reports/api/v1/metahash/resource/apilog/,0,,"The Change log resource","Change log","[list,detail]",
+apilog,resource,"[ref_resource_name,date_time]",/reports/api/v1/metahash/resource/apilog/,0,,"The Change log resource","Change log","[list,detail]",

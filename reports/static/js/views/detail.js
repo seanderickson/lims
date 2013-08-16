@@ -51,6 +51,7 @@ define([
             // this.modelBinder.bind(this.model, this.el);
 
             this.listenTo(this.model, 'error', this.error);
+            _.bindAll(this, 'history');
             console.log('initialize DetailView');
         },
 

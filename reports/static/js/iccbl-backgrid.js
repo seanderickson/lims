@@ -68,6 +68,12 @@ define([
     };
     //var Iccbl = {};
 
+    var assertIccbl = Iccbl.assert = function (condition, message) {
+        if (!condition) {
+            throw message || "Assertion failed";
+        }
+    }
+
     var stringToFunction = Iccbl.stringToFunction = function(str) {
       var arr = str.split(".");
 
@@ -82,6 +88,8 @@ define([
 
       return  fn;
     };
+
+
 
     // // Given an array property on an object, determine if it contains the value
     // var safeArrayPropertyContains = Iccbl.safeArrayPropertyContains = function(obj, property, value) {
@@ -277,6 +285,11 @@ define([
             }
 
         },
+
+        /**
+         *  Override pageable collection parse method:
+         *      Parse server response data.
+         */
         parse: function(response) {
             // hack the response for tastypie:
             // note, this is because the pageable collection doesn't work with the backbone-tastypie.js fix
@@ -288,8 +301,9 @@ define([
                 state.currentPage=1;
             }
             this.state = this._checkState(state); // recalculate the state and do sanity checks.
-            console.log('new state: ' + JSON.stringify(this.state));
-            this.setRoutes();
+            console.log('parse: new state: ' + JSON.stringify(this.state));
+            // trigger so our app knows about the route change, replace to modify in place w/out creating browser history
+            this.setRoutes({trigger: false, replace: true });
             return response.objects;
         },
         /**
@@ -298,14 +312,19 @@ define([
            sorting will be done and the order query parameter will not be sent to
          */
 
-        setRoutes: function() {
-            console.log('setRoutes: ' + this.searchBy + ', '
+        setRoutes: function(route_options) {
+            console.log('- setRoutes: ' + this.searchBy + ', '
                 + this.state.sortKey + ', ' + this.state.order + ', '+ this.state.pageSize + ', ', + this.state.currentPage);
-            //var route = 'list/' + this.type;
             var route = '';
             if(this.searchBy !== null){
                 if(route.length > 0) route += '/';
-                route += 'search/'+this.searchBy ;
+
+                // TODO: discuss whether full encoding of the search fragment is necessary.
+                // to-date, we know that the forward slash messes up the backbone router parsing, but other URL chars do not,
+                // and full encoding reduces the usability of the URL for the end user
+                //_history_search = encodeURIComponent(_history_search);
+                route += 'search/' + this.searchBy.replace('\/','%2F');
+                // route += 'search/'+ encodeURIComponent(this.searchBy) ;
             }
             if(typeof this.state.sortKey !== 'undefined' && this.state.sortKey !== null){
                 var sortKey = this.state.sortKey;
@@ -315,20 +334,16 @@ define([
                 if(route.length > 0) route += '/';
 
                 route += 'order_by/' + sortKey;
-                //router.navigate('order_by/' + sortKey +'/page/'+ this.state.currentPage);
             }
             if(route.length > 0) route += '/';
 
             route += 'rpp/' + this.state.pageSize + '/page/' + this.state.currentPage;
-
-            //this.router.navigate(route); // TODO: set AppModel.route instead
-            this.trigger( "MyCollection:setRoute", route );
+            this.trigger( "MyCollection:setRoute", route, route_options); // TODO: need to set replace=false when modifying to add the page, rpp for the first time: { replace: true } );
         },
 
         // Override
         setSorting: function(sortKey,order,options) { // override and hack in sorting URL support
             console.log('setSorting called: ' + sortKey+ ', order: ' + order + typeof(order) + ', options: ' + options );
-            console.log('searchBy: ' + JSON.stringify(this.data));
             var dir = '-';
             var direction = 'descending';
             if(typeof order !== 'undefined' && order < 0){
@@ -343,7 +358,6 @@ define([
         // Override
         getPage: function(page) { // override and hack in paging URL support
             var obj = Backbone.PageableCollection.prototype.getPage.call(this,page);
-            //this.setRoutes();
             return obj;
         },
 
@@ -359,6 +373,7 @@ define([
     });// end definition of Collection extension
 
 
+    // TODO: this should be named "contains" header cell, because it searches using "__contains"
     var MyHeaderCell = Iccbl.MyHeaderCell = Backgrid.HeaderCell.extend({
         _serverSideFilter : null,
         initialize: function (options) {
@@ -390,7 +405,6 @@ define([
                 // TODO: this should be handled by a backbone event
                 this.collection.searchBy = this.columnName + '=' + this.$el.find("input[type=text]").val();
                 this.collection.state.currentPage=1;  // if filtering, always set the page to 1
-                //this.collection.setRoutes();
                 this.search(e);
             };
             // _.bindAll(this, 'render');
@@ -407,29 +421,46 @@ define([
         },
 
         // function to listen for router generated custom search event MyServerSideFilter:search
-        _search: function(searchColumn, searchTerm, collection){
-            console.log('_search excuting from header cell');
+        _search: function(searchItems, collection){
+            //console.log('_search excuting from header cell: ' + JSON.stringify(searchItems));
             if (collection == this.collection) {
-                if (searchColumn !== this.column.get("name")){
-                    this._serverSideFilter.remove();
-                }else{
-                    console.log('on MyServerSideFilter:search: ' + searchColumn );
-                    this.$el.append(this._serverSideFilter.render().el); // create the DOM element
-                    this._serverSideFilter.$el.find("input[type=text]").val(searchTerm) // set the search term
+                var found = false;
+                var self = this;
+                _.each(_(searchItems).pairs(), function(pair){
+                    var key = pair[0];
+                    var val = pair[1];
+                    if( self.column.get("name") == key){
+                        found = true;
+                        self.$el.append(self._serverSideFilter.render().el); // create the DOM element
+                        self._serverSideFilter.$el.find("input[type=text]").val(val) // set the search term
+                    }
+                });
 
-                    // it works to just call fetch, I think, because the super constructor has
-                    // the following, which is run when server-side data is retreived.
-                      // if (Backbone.PageableCollection &&
-                          // collection instanceof Backbone.PageableCollection &&
-                          // collection.mode == "server") {
-                        // collection.queryParams[this.name] = function () {
-                          // return self.$el.find("input[type=text]").val();
-                        // };
-                      // }
-                    // TODO: it might be better to explicitly call this.search, (but how?) (i.e. some event...)
-
+                if(found){
                     this.collection.fetch({ reset: true });
+                }else{
+                    this._serverSideFilter.remove();
                 }
+
+                // if (searchColumn !== this.column.get("name")){
+                    // this._serverSideFilter.remove();
+                // }else{
+                    // console.log('on MyServerSideFilter:search: ' + searchColumn );
+                    // this.$el.append(this._serverSideFilter.render().el); // create the DOM element
+                    // this._serverSideFilter.$el.find("input[type=text]").val(searchTerm) // set the search term
+//
+                    // // it works to just call fetch, I think, because the super constructor has
+                    // // the following, which is run when server-side data is retreived.
+                      // // if (Backbone.PageableCollection &&
+                          // // collection instanceof Backbone.PageableCollection &&
+                          // // collection.mode == "server") {
+                        // // collection.queryParams[this.name] = function () {
+                          // // return self.$el.find("input[type=text]").val();
+                        // // };
+                      // // }
+                    // // TODO: it might be better to explicitly call this.search, (but how?) (i.e. some event...)
+                    // this.collection.fetch({ reset: true });
+                // }
             }
         },
 
@@ -479,7 +510,6 @@ define([
             this.collection.state = this.collection._checkState(state); // recalculate the state and do sanity checks.
 
             this.collection.fetch({reset:true});
-            //this.collection.setRoutes();
         },
         render: function(){
             var selector_template = _.template(this._template, {

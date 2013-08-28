@@ -88,6 +88,7 @@ API_ACTION_CHOICES = ((API_ACTION_POST,API_ACTION_POST),
                       (API_ACTION_DELETE,API_ACTION_DELETE))
 class ApiLog(models.Model):
     objects = models.Manager()
+    
     user_id = models.IntegerField(null=False, blank=False)
     username = models.CharField(null=False, max_length=35)
     ref_resource_name = models.CharField(null=False, max_length=35)
@@ -112,6 +113,11 @@ class ApiLog(models.Model):
 
     class Meta:
         unique_together = (('ref_resource_name', 'date_time'))    
+
+    def __unicode__(self):
+        return unicode(str((self.ref_resource_name, self.key, self.username, self.diffs)))
+    
+
 
 # store field information here
 class MetaHash(models.Model):

@@ -48,8 +48,8 @@ require.config({
         deps: ['jquery'],
         // exports: '$.fn.modal'
     },
-    backbone_stickit: { deps: ["backbone"] }
-    , iccbl_backgrid: {
+    backbone_stickit: { deps: ["backbone"] },
+    iccbl_backgrid: {
         exports: 'Iccbl'
     }
     //    deps: ["backbone", "underscore", "jquery", "backgrid", "backgrid_filter", "backgrid_paginator"]
@@ -80,7 +80,7 @@ require([
 
         var appModel = new AppModel();
         var appRouter = new AppRouter({ model: appModel });
-        var appView = new AppView({ model: appModel },{ router: appRouter} );
+        var appView = new AppView({ model: appModel },{ router: appRouter});
         appView.render();
         Backbone.history = Backbone.history || new Backbone.History({});
         Backbone.history.start({ pushState: false, root: appModel.get('root_url') });

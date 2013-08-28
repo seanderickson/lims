@@ -10,19 +10,30 @@ define([
             root_url: '/reports',  // used for the backbone history
             api_root_url: '/reports/api/v1',
 
-            current_ui_resource_id: 'home',
-            current_view: 'home',
-            current_route_options: {},
-            current_route_update: {},
+            // current_ui_resource_id: 'home',
+            // current_view: 'home',
+            // current_route_options: {},
+            // current_route_update: {},
+            // content_options: {},
+            // route: '',
 
-            content_options: {},
-            route: '',
+            // NOTE: apparently, change notifications are only detected for 'simple' objects (i.e. one level)
+            current_view: 'home',
+            current_resource_id: 'home',
+            current_options: {},
+            routing_options: {},
+            current_scratch: {},
+
+
             // menu's can only be two levels deep (todo: recursive cool menu thing)
             // - the menu tree here is composed of ui_resources, defined below.
             // - the topographical structure here represents the visual structure in the app.
             menu: {
                 view: 'home',
                 submenus:{
+                'home': {
+                    view: 'home'
+                },
                 'screensaveruser': {
                     view: 'list',
                     submenus: {
@@ -80,6 +91,7 @@ define([
                     list_view: 'ListView',
                     detail_view: 'DetailView',
                     api_resource: 'metahash',
+                    url_root: '/reports/api/v1',
                     // url_schema : '/reports/api/v1/metahash/schema',
                     // url : '/reports/api/v1/metahash',
                     searchBy : 'scope=fields:metahash',
@@ -93,6 +105,7 @@ define([
                     list_view: 'ListView',
                     detail_view: 'DetailView',
                     api_resource: 'resource',
+                    url_root: '/reports/api/v1',
                     // url_schema : '/reports/api/v1/resource/schema',
                     // url : '/reports/api/v1/resource',
                     description: 'Control resource information'
@@ -105,6 +118,7 @@ define([
                     list_view: 'ListView',
                     detail_view: 'DetailView',
                     api_resource: 'vocabularies',
+                    url_root: '/reports/api/v1',
                     // url_schema : '/reports/api/v1/vocabularies/schema',
                     // url : '/reports/api/v1/vocabularies',
                     description: 'Enter controlled vocabularies'
@@ -117,6 +131,7 @@ define([
                     list_view: 'ListView',
                     detail_view: 'DetailView',
                     api_resource: 'apilog',
+                    url_root: '/reports/api/v1',
                     // url_schema : '/reports/api/v1/apilog/schema',
                     // url : '/reports/api/v1/apilog',
                     description: 'Change logs'
@@ -129,6 +144,7 @@ define([
                     list_view: 'ListView',
                     detail_view: 'DetailView',
                     api_resource: 'screensaveruser',
+                    url_root: '/db/api/v1',
                     // url_schema : '/db/api/v1/screensaveruser/schema' ,
                     // url : '/db/api/v1/screensaveruser',
                     description: 'View user information'
@@ -140,17 +156,17 @@ define([
                     list_view: 'ListView',
                     detail_view: 'DetailView',
                     api_resource: 'screen',
+                    url_root: '/db/api/v1',
                     // url_schema : '/db/api/v1/screen/schema' ,
                     // url : '/db/api/v1/screen',
                     description: 'View screen information'
                 }
             },
             list_defaults: {
-                ui_resource: null, // one of the keys for the list_endpoints
                 page: 1,
-                pageSize: 25,
-                orderBy: null,
-                searchBy: null,
+                rpp: 25,
+                order: null,
+                search: null,
             },
             detail_defaults: {
 

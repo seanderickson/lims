@@ -939,6 +939,10 @@ class Screen(models.Model):
     date_publicly_available = models.DateTimeField(null=True, blank=True)
     perturbagen_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
     perturbagen_ug_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
+
+    status = models.TextField()
+    status_date = models.DateField()
+    
     class Meta:
         db_table = 'screen'
 

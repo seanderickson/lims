@@ -48,7 +48,7 @@ define([
             // Call the schema from the server to get the field definitions
             $.ajax({
                 type: "GET",
-                url: this._options.url + '/schema',
+                url: this._options.url_schema,
                 data: "",
                 dataType: "json",
                 success: function(result) {
@@ -127,19 +127,17 @@ define([
                 }
                 console.log('id: ' + id);
                 // TODO: Move route setting to the parent (contentview controller/view)
-                // var _route = 'detail/' + this._options.ui_resource_id + '/' + id;
+                var _route = 'detail/' + this._options.ui_resource_id + '/' + id;
 
 
                 // // TODO: if we can make the "back" button do a navigate back, then all we have to do is set the route...
                 // this.model.set({ route: _route } );
 
-                //console.log('-- set route: ' + _route);
+                console.log('-- set route: ' + _route);
                 //this.router.navigate(_route, {trigger: true} );  // trigger false since don't want route actions firing
-                this.model.set({    current_scratch: { schemaResult: schemaResult, model: model} ,
+                this.model.set({    content_options: { schemaResult: schemaResult, model: model} ,
                                     current_view: 'detail',
-                                    current_options: id
-                               }); // signal to the app_model that the current view has changed // todo: separate out app_model from list_model
-
+                                    current_route_options: id } ); // signal to the app_model that the current view has changed // todo: separate out app_model from list_model
                 //this.model.set({ current_view: 'detail_view'}, { silent: true } ); // silent: true since we don't want content view reacting to change event
 
                 // NOTE: having self bind to the detailView like this:
@@ -202,17 +200,14 @@ define([
                     searchColumn = this._options.searchColumn
                     searchExpression = searchColumn + '=' + searchTerm;
                     collection.searchBy = searchExpression;
-                    var searchItems = {};
-                    searchItems[searchColumn] = searchTerm;
-                    console.log('trigger search: ' + searchColumn + ': ' + searchTerm + ', ' + JSON.stringify(searchItems) );
-                    collection.trigger("MyServerSideFilter:search", searchItems , collection);
+                    collection.trigger("MyServerSideFilter:search", { searchColumn: searchTerm }, collection);
                 },
                 updateSelection: function( searchItems ){
                     //console.log('-extraselector updateSelection: ' + JSON.stringify(searchItems) );
                     if( _(searchItems).has(this._options.searchColumn)){
                         $('#generic_selector').val(searchItems[this._options.searchColumn]);
                     }else{
-                        console.log("extra selector set for column: '" + this._options.searchColumn + "', not in searchItems: " + JSON.stringify(searchItems));
+                        console.log("extra selector set for column: " + this._options.searchColumn + ", not in searchItems: " + JSON.stringify(searchItems));
                     }
                 },
                 render: function(){
@@ -304,24 +299,30 @@ define([
             //collection.bind('sync', ajaxComplete, this);
 
             this.listenTo(collection, 'request', ajaxStart);
-            // this.listenTo(collection, 'MyCollection:setRoute', this.setRoute);
-            this.listenTo(collection, 'MyCollection:changeOptions', this.changeOptions);
+            this.listenTo(collection, 'MyCollection:setRoute', this.setRoute);
             this.listenTo(collection, 'sync', selector.updateSelection );
 
             // TODO: work out the specifics of communication complete event.  the following are superceded by the global handler for "ajaxComplete"
             this.listenTo(collection, 'error', ajaxComplete);
             this.listenTo(collection, 'complete', ajaxComplete);
 
+            // var allEvent = function(event){
+                // console.log("event fired: " + event);
+            // };
+            // self.on({
+              // "all": allEvent,  // TODO: this is debug code
+            // });
+
             if (this._options.page){
                 collection.state.currentPage = this._options.page;
             }
-            if (this._options.rpp){
-                collection.state.pageSize = this._options.rpp;
+            if (this._options.pageSize){
+                collection.state.pageSize = this._options.pageSize;
             }
-            if(_.isString(this._options.order) ){
+            if(typeof this._options.orderBy !== 'undefined' && this._options.orderBy !== null ){
                 var direction = 'ascending';
                 var order = -1; // according to the docs, -1 == ascending
-                var sortKey = this._options.order;
+                var sortKey = options.orderBy;
                 if(sortKey.charAt(0) === '-'){
                     order = 1; // according to the docs, 1 == descending
                     direction = 'descending';
@@ -332,7 +333,8 @@ define([
                 // Notify header cells
                 collection.trigger("backgrid:sort", sortKey, direction, null, collection);
             }
-            if(_.isString(this._options.search)){
+            if(typeof this._options.searchBy !== 'undefined' && this._options.searchBy !== null){
+
                 var searchExpressions = {};
                 // TODO: query terms that tastypie will understand.  these are to be set on the MyHeaderCell
                 // QUERY_TERMS = set([
@@ -341,10 +343,10 @@ define([
                     // 'month', 'day', 'week_day', 'isnull', 'search', 'regex', 'iregex',
                 // ])
 
-                _(this._options.search.split(',')).each(function(searchItem){
+                _(this._options.searchBy.split(',')).each(function(searchItem){
                     var searchExpression = searchItem.split('=');
                     if(searchExpression.length != 2 ){
-                        console.log('Warning: invalid search item: ' + searchItem + ', in: ' + this._options.search);
+                        console.log('Warning: invalid search item: ' + searchItem + ', in: ' + this_.options.searchBy);
                     }else{
                         searchExpressions[searchExpression[0]] = searchExpression[1];
                     }
@@ -358,18 +360,16 @@ define([
                 });
 
                 if(!_.isEmpty(searchExpressions)){
-                    collection.searchBy = this._options.search;
-                    console.log('trigger search:' + this._options.search + ', ' + JSON.stringify(searchExpressions) );
+                    collection.searchBy = this._options.searchBy;
+                    // console.log('trigger search:' + this._options.searchBy );
                     collection.trigger("MyServerSideFilter:search", searchExpressions, collection);
                     // console.log('done: trigger search');
                 }else{
-                    console.log('Warn: no search expressions found in: '  + this._options.search );
+                    console.log('Warn: no search expressions found in: '  + this._options.searchBy );
                 }
             }
             console.log('collection fetch trigger');
             collection.fetch({ reset: true } );
-
-            collection.setOptions({trigger: false, replace: true });
 
             console.log('list view initialized');
         },
@@ -442,17 +442,12 @@ define([
             return colModel;
         },
 
-        // setRoute: function(route, options){
-            // // var _route = 'list/' + this._options.ui_resource_id + '/' + route;
-            // console.log('setRoute triggered: ' + route + ', setting current_route_update' );
-            // // this.router.navigate(_route, options);
-//
-            // this.model.set({ current_route_update: route });
-        // },
-        changeOptions: function(new_options, _routing_options ){
-            console.log('changeOptions triggered: ' + JSON.stringify(new_options) + ' , ' + JSON.stringify(_routing_options) );
-            this.model.set({ routing_options: _routing_options,
-                             current_options: new_options });
+        setRoute: function(route, options){
+            // var _route = 'list/' + this._options.ui_resource_id + '/' + route;
+            // console.log('setRoute triggered: ' + _route + ', ' + JSON.stringify(options) );
+            // this.router.navigate(_route, options);
+
+            this.model.set({ current_route_update: route });
         },
 
         onClose: function(){

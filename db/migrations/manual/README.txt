@@ -1,0 +1,1 @@
+* These migrations must be run before the corresponding South migrations are run

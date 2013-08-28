@@ -10,7 +10,9 @@ define([
 
     routes: {
         '': 'index',
+        'home(/*)': 'toHome',
         'list/:ui_resource_id(/search/:searchBy)(/order_by/:orderBy)(/rpp/:rpp)(/page/:page)': 'toList',
+        'list/:ui_resource_id(/search/:searchBy)(/order_by/:orderBy)(/page/:page)(/rpp/:rpp)': 'toList1',
         'detail/:ui_resource_id/:key(/:key2)(/)': 'toDetail',
         '*unknownAction': 'unknownAction',
     },
@@ -31,10 +33,8 @@ define([
              }, this);
 
         this.listenTo(this.model, 'change:current_view', this.model_set_route);
-        this.listenTo(this.model, 'change:current_ui_resource_id', this.model_set_route);
-        this.listenTo(this.model, 'change:current_route_options', this.model_set_route);
-        this.listenTo(this.model, 'change:current_route_update', this.model_update_route);
-
+        this.listenTo(this.model, 'change:current_resource_id', this.model_set_route);
+        this.listenTo(this.model, 'change:current_options', this.model_set_route);
 
         console.log('router initialized...');
     },
@@ -51,20 +51,6 @@ define([
         }
       },
 
-    // change_route: function(){
-        // var newRoute = this.model.get('route');
-        // this.model.set({ content_options: {} }); // unset specific content options
-        // //this.navigate( newRoute, { trigger: false, replace: true } );
-        // options = { trigger: false };
-        // if(this.model.get('routing_options')){
-            // console.log('routing options: ' + JSON.stringify(this.model.get('routing_options')));
-            // _.extend(options, this.model.get('routing_options'));
-            // console.log('routing options: ' + JSON.stringify(options));
-        // }
-        // this.navigate( newRoute, options);
-        // this.model.set({'routing_options': {}} );
-    // },
-
     unknownAction: function(unknownAction){
         alert('Unknown action entered: ' + unknownAction);
     },
@@ -72,95 +58,171 @@ define([
     get_route: function(){
         var current_view = this.model.get('current_view');
         Iccbl.assert( !_.isUndefined(current_view), 'current_view is not defined');
-        var current_ui_resource_id = this.model.get('current_ui_resource_id');
-        Iccbl.assert( !_.isUndefined(current_ui_resource_id), 'current_ui_resource_id is not defined');
-        var _route = current_view + '/' + current_ui_resource_id;
-        var current_route_options = this.model.get('current_route_options');
-        Iccbl.assert( !_.isUndefined(current_route_options), 'current_route_options');
-        if(_.isString(current_route_options)){
-            _route += '/' + current_route_options;
-        }else if(_.isArray(current_route_options)){
-            _route = _.reduce(_.each(current_route_options), function(route, option){
-                return route + '/' + option;
-                }, _route );
-        }else if(_.isArray(current_route_options)){
-            _route = _.reduce(_.pairs(current_route_options), function(route, pair){
+
+        var current_resource_id = this.model.get('current_resource_id');
+        Iccbl.assert( !_.isUndefined(current_resource_id), 'current_resource_id is not defined');
+
+        var current_options = this.model.get('current_options');
+        Iccbl.assert( !_.isUndefined(current_options), 'router.get_route: current_options');
+
+        var _route = current_view + '/' + current_resource_id;
+
+        console.log('getting route: ' + current_resource_id + ', ' + JSON.stringify(current_options));
+        var route_fragment = '';
+        if(_.isString(current_options)){
+            route_fragment += '/' + current_options;
+        }else if(_.isArray(current_options)){
+            route_fragment = '/' + _.reduce(current_options, function(route, option){
+                return route + option + '/'; // use a url-encoded slash between keys
+                }, route_fragment );
+        }else if(_.isObject(current_options)){
+            route_fragment = _.reduce(_.pairs(current_options), function(route, pair){
                 return route + '/' + pair[0] + '/' + pair[1];
-                }, _route );
+                }, route_fragment );
         }
-        console.log('get_route: ' + _route);
+
+        _route += route_fragment;
+        //console.log('get_route: ' + _route);
         return _route;
     },
 
     model_set_route: function(){
+        // trigger false to suppress further parsing, replace false to create browser history
         var options = { trigger: false };
+        var routing_options = this.model.get('routing_options');
+        this.model.set({ routing_options: {} });
+        if(!_.isUndefined(routing_options)){
+            options = _.extend(options, routing_options);
+        }
 
-        this.navigate( this.get_route(), options );
+        var route = this.get_route();
+        console.log('--- model_set_route: ' + route + ', ' + JSON.stringify(options) + ', ' + JSON.stringify(routing_options) );
+        this.navigate( route, options );
     },
 
-    model_update_route: function(){
-        var current_route_update = this.model.get('current_route_update');
-        Iccbl.assert( !_.isUndefined(current_route_update), 'current_route_update');
-
-        var options = { trigger: false, replace: true };
-        console.log('update route: ' + current_route_update );
-        this.navigate( this.get_route() + '/' + current_route_update, options );
-    },
+    // model_update_route: function(){
+        // var current_route_update = this.model.get('current_route_update');
+        // Iccbl.assert( !_.isUndefined(current_route_update), 'current_route_update');
+        // console.log('model_update_route: ' + this.get_route() + " , " +  current_route_update);
+//
+        // // trigger false to suppress further parsing, replace to modify in place w/out creating browser history
+        // var options = { trigger: false, replace: true };
+        // console.log('update route: ' + current_route_update );
+        // this.navigate( this.get_route() + '/' + current_route_update, options );
+    // },
 
     index: function(){
         console.log("Index route has been called..");
         this.model.set({ menu_item:'home', view: 'home' });
     },
 
+    toList1: function(ui_resource_id,searchBy, orderBy,page, rpp){  // kinda crappy that they can't figure this out in either order
+        this.toList(ui_resource_id,searchBy, orderBy,rpp, page);
+    },
     toList: function(ui_resource_id,searchBy, orderBy,rpp, page){
-        console.log("toSearchOrderedToPage route: searchBy: " + searchBy
+        console.log("toList: searchBy: " + searchBy
             + ", order: "+  orderBy + ", rpp: " + rpp + ", page: " + page + ', ui_resource_id: ' + ui_resource_id);
 
-        var _content_options = { ui_resource_id: ui_resource_id, 'view': 'list' };
+        //var _content_options = { ui_resource_id: ui_resource_id, view: 'list' };
+        var _content_options = {};
 
-        _content_options.page = null;
-        if(typeof page !== 'undefined' && page !== null ){
+        if( _.isString(page)){
             _content_options.page = parseInt(page);
         }
 
-        _content_options.pageSize = null;
-        if(typeof rpp !== 'undefined' && rpp !== null ){
-            _content_options.pageSize = parseInt(rpp);
+        if( _.isString(rpp) ){
+            _content_options.rpp = parseInt(rpp);
         }
 
-        _content_options.orderBy = orderBy;
-        _content_options.searchBy = searchBy;
 
-        // TODO: all these content options should really be going into the current_route_options,
-        // and the list view should understand the mappings (i.e. rpp->pageSize)
+        if( _.isString(orderBy) ){
+            _content_options.order = orderBy;
+        }
 
-        this.model.set({ current_view: {}, current_route_options: {} }, {silent:true});
+        if( _.isString(searchBy)){
+            _content_options.search = searchBy;
+        }
 
+        this.model.set({ current_view: {}, current_options: {} }, {silent:true});
+
+        // console.log('toList model.set: ' + ui_resource_id + ', ' + JSON.stringify(_content_options));
         this.model.set({
-            content_options: _content_options,
+            current_options: _content_options,
             current_view: 'list',
-            current_ui_resource_id: _content_options.ui_resource_id
-            // TODO: this still feels a little hackish, we're encoding the list/ui_resource_id in the menu item
-            // perhaps a controller passed in to the router is a better option
-            // right now, this is an aggressive use of the application model change event system
+            current_resource_id: ui_resource_id,
+            routing_options: { trigger: false, replace: true } // TODO: necessary?
         });
     },
 
 
     toDetail: function(ui_resource_id, key, key2){
         console.log('to detail page, ui_resource_id: ' + ui_resource_id + ', ' + key + ', ' + key2);
-        var _content_options = { ui_resource_id: ui_resource_id, key: key, view: 'detail'};
+        var _current_options = key;
         if(!_.isUndefined(key2)){
-            _content_options['key'] = [key,key2]; // allow for composite ids
+            _current_options = [key,key2]; // allow for composite ids
         }
-        // TODO: cleanup; content options are not used by conent view for detail?
         this.model.set({
-            content_options: _content_options,
             current_view: 'detail',
-            current_ui_resource_id: _content_options.ui_resource_id,
-            current_route_options: content_options['key']
+            current_resource_id: ui_resource_id,
+            current_options: _current_options,
+            routing_options: { trigger: false, replace: true } // TODO: necessary?
         });
     },
+
+    toHome: function(){
+        this.model.set({
+            current_view: 'home',
+            current_resource_id: 'home',
+            current_options: {}
+        });
+    },
+
+    // toList1: function(ui_resource_id,searchBy, orderBy,rpp, page){
+        // console.log("toList: searchBy: " + searchBy
+            // + ", order: "+  orderBy + ", rpp: " + rpp + ", page: " + page + ', ui_resource_id: ' + ui_resource_id);
+//
+        // var _content_options = { ui_resource_id: ui_resource_id, 'view': 'list' };
+//
+        // var _route_options = {};
+        // _content_options.page = null;
+        // if(typeof page !== 'undefined' && page !== null ){
+            // _content_options.page = parseInt(page);
+            // _route_options.page = parseInt(page);
+        // }
+//
+        // _content_options.pageSize = null;
+        // if(typeof rpp !== 'undefined' && rpp !== null ){
+            // _content_options.pageSize = parseInt(rpp);
+            // _route_options.pageSize = parseInt(rpp);
+        // }
+//
+//
+        // if( _.isString(orderBy) ){
+            // _content_options.orderBy = orderBy;
+            // _route_options.orderBy = orderBy;
+        // }
+//
+        // if( _.isString(searchBy)){
+            // _content_options.searchBy = searchBy;
+            // _route_options.searchBy = searchBy;
+        // }
+//
+        // // TODO: all these content options should really be going into the current_route_options,
+        // // and the list view should understand the mappings (i.e. rpp->pageSize)
+//
+        // this.model.set({ current_view: {}, current_route_options: {} }, {silent:true});
+//
+        // console.log('toList model.set: ' + JSON.stringify(_route_options));
+        // this.model.set({
+            // content_options: _content_options,
+            // current_view: 'list',
+            // current_resource_id: _content_options.ui_resource_id,
+            // current_route_options: _route_options
+            // // TODO: this still feels a little hackish, we're encoding the list/ui_resource_id in the menu item
+            // // perhaps a controller passed in to the router is a better option
+            // // right now, this is an aggressive use of the application model change event system
+        // });
+    // },
 
   });
 

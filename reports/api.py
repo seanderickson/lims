@@ -82,6 +82,7 @@ class LoggingMixin(Resource):
     
     def get_uri(self, full_path, resource_name, obj, data):
         # replace the id with the "id attribute" ids (public ID's)
+        # this is necessary because users of the API may be using internal IDs not specified as the official IDs
         logger.info('--- get_uri: '+ full_path)
         key = obj.id 
         
@@ -105,7 +106,7 @@ class LoggingMixin(Resource):
                     if key[len(key)-1] == '/': key = key[:len(key)-1]
                     if obj:
                         if (str((obj.id))) == key :
-                            # replace the string
+                            # replace the key given with the key we want to record
                             new_public_key = "/".join([getattr(obj,x) for x in resource['id_attribute']])
                             logging.info(str(('created new public key', new_public_key, 'for object to log:', obj, 'resource', resource_name)))
                             full_path = matchObject.group(1) + new_public_key + '/'
@@ -327,8 +328,8 @@ class JsonAndDatabaseResource(PostgresSortingResource):
     def get_field_defs(self, scope):
         ''''
         Accomplishes two things:
-        1. creates Tastypie resource.field definitions for "virtual" fields defined in the metahash for this table's scope.
-            - virtual fields are fields that exist in the json_field, or, fields composed of other fields (i.e. full name)
+        1. creates Tastypie resource.field definitions for "json" fields defined in the metahash for this table's scope.
+            - json fields are fields that exist in the json_field, or, fields composed of other fields (i.e. full name)
         2. returns a hash of all field definitions for the tastypie fields on this resource.  
             - used to generate the public "schema"
             - used to determine "filterable" and "orderable" fields
@@ -352,8 +353,11 @@ class JsonAndDatabaseResource(PostgresSortingResource):
 #                else if fieldinformation.is_virtual():
 #                    pass
                 else:
-                    if fieldinformation.key not in self.fields:
-                        raise DatabaseError('Illegal definition of a non-json_field, non-virtual field that is not a resource field on this scope: ' + scope + ',' + fieldinformation.key)
+                    pass
+                    # assume, for now, that the field is "virtual", i.e. it is calculated, composite or otherwise created in the Resource.
+                    # Note: may create a flag to designate fields as virtual
+#                    if fieldinformation.key not in self.fields:
+#                        raise DatabaseError('Illegal definition of a non-json_field, non-virtual field that is not a resource field on this scope: ' + scope + ',' + fieldinformation.key)
             
             # 2. add in model/resource fields not specified by a metahash entry
             # this is useful because for the first load, nothing is defined for the scope=metash:fields
@@ -371,16 +375,18 @@ class JsonAndDatabaseResource(PostgresSortingResource):
                         # TODO: move these validation errors to the client create process
                         raise DatabaseError('Illegal attempt to define a json_field with the same name as a database field on this scope: ' + scope + ',' + + schema_key)
                     self.fields[schema_key] = eval(schema_value['json_field_type'])(attribute=schema_key,readonly=True, blank=True, null=True) # trying to pass the fields.Field object args
-            logger.debug(str(('----- tastypie fields created', self.fields)))
+            logger.debug(str(('----- tastypie fields created', self.fields.keys())))
             # query metahash for schema defs (attributes) of all the fields 
             
             # 4. fill in all of the field definition information for the schema specification
 #            TODO: replace this with a call to reports.models.MetaManager.get_and_parse(scope='fields:metahash', field_definition_scope='fields:metahash');
 #            the preceding logic could be simplified if we defined a "base_fields =['key', 'scope', 'ordinal', 'json_field']"
-            schema_definitions = MetaHash.objects.get_and_parse(scope='fields:metahash', field_definition_scope='fields:metahash')
+            schema_definitions = MetaHash.objects.get_and_parse(scope=scope, field_definition_scope='fields:metahash')
             for schema_key,schema_value in self.field_defs.items():
                 if schema_key in schema_definitions:
                     schema_value.update( schema_definitions[schema_key] )
+                else:
+                    logger.info(str(('no field def found for: ', schema_key)))
 
 #            for schema_key,schema_value in self.field_defs.items():
 #                logger.debug(str(('-----make schema:', self.scope, schema_key)))
@@ -410,16 +416,23 @@ class JsonAndDatabaseResource(PostgresSortingResource):
         try:
             local_field_defs = self.get_field_defs(self.scope) # trigger a get field defs before building the schema
             
-            # TODO: probably ought to just create the schema from scratch; here relying on tastypie to give the schema
+            # TODO: ought to just create the schema from scratch; here relying on tastypie to give the schema
             ## caveat: this has the nice side effect of verifying that any field defined is actually known by tastypie (for serialization hooks)
             schema = super(JsonAndDatabaseResource,self).build_schema()
+#TODO haven't figured out virtual fields yet
+#            logger.info(str(('fields', schema['fields'].keys())))
+#            logger.info(str(('fields', local_field_defs.keys())))
             for key, value in local_field_defs.items():
+                if not key in schema['fields']:
+                    schema['fields'][key] = {}
                 schema['fields'][key].update(value)
                 # help for fields not yet defined
                 if not schema['fields'][key].get('ui_type'):
-                    schema['fields'][key]['ui_type'] = schema['fields'][key].get('type') # TODO: this is vestigial, correct?
+                    pass
+#                    schema['fields'][key]['ui_type'] = schema['fields'][key].get('type') # TODO: this is vestigial, correct?
             
-            schema['fields'].pop('json_field')  # because we don't want this serialized directly (see dehydrate)
+            if 'json_field' in schema['fields']: 
+                schema['fields'].pop('json_field')  # because we don't want this serialized directly (see dehydrate)
         
             logger.info(str(('trying to locate resource information', self._meta.resource_name, self.scope)))
             resource_def = MetaHash.objects.get(scope='resource', key=self._meta.resource_name)
@@ -427,6 +440,9 @@ class JsonAndDatabaseResource(PostgresSortingResource):
             schema['resource_definition'] = resource_def.model_to_dict(scope='fields:resource')
         except Exception, e:
             logger.warn(str(('on building schema', e, self._meta.resource_name)))
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            logger.error(str((exc_type, fname, exc_tb.tb_lineno)))
             raise e
             
         logger.info('------build_schema,done: ' + self.scope)

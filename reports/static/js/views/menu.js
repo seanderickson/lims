@@ -13,14 +13,14 @@ define([
             // this.model.bind('change:menu_item', this.change_menu_item );
 
             this.router = options.router;
-            this.listenTo(this.model, 'change:current_ui_resource_id', this.change_ui_resource);
+            this.listenTo(this.model, 'change:current_resource_id', this.change_ui_resource);
         },
 
         change_ui_resource : function() {
-            var current_ui_resource_id = this.model.get('current_ui_resource_id');
-            console.log('--MenuView: detected change_current_ui_resource_id: ' + current_ui_resource_id);
+            var current_resource_id = this.model.get('current_resource_id');
+            console.log('--MenuView: detected change_current_ui_resource_id: ' + current_resource_id);
             this.$('li').removeClass('active');
-            this.$('#' + current_ui_resource_id).addClass('active');
+            this.$('#' + current_resource_id).addClass('active');
         },
 
         render : function() {
@@ -52,29 +52,24 @@ define([
             };
 
             $('li').click(function(event) {
+
                 event.preventDefault();
                 var ui_resource_id = $(this).attr('id');
                 console.log('menu click: ' + ui_resource_id);
-                var route = data.ui_resources[ui_resource_id]['route'];
+
                 var menu = find_submenu(data.menu, ui_resource_id);
                 if(_.isUndefined(menu)){
                     window.alert('unknown submenu: ' + ui_resource_id);
                     return;
                 }
-                console.log('clicked: ' + ui_resource_id + ', route: ' + route + ', view: ' + JSON.stringify(menu.view) );
-                self.model.set({ content_options: {} });
+
                 self.model.set({ current_view: {} }, {silent: true} ); // since current view must change to trigger content view
                 self.model.set({
-                    current_ui_resource_id : ui_resource_id,
+                    current_resource_id: ui_resource_id,
                     current_view: menu.view,
-                    content_options: {
-                        view: menu.view
-                    }, // unset previous content options;
-                    // TODO: this is a bit like magic; if there were a mediator to talk to the app_model, it might be better?
+                    current_options: {}
                 });
 
-                console.log('-- set route: ' + route);
-//                self.router.navigate(route, {trigger: true} );
             });
         }
     });

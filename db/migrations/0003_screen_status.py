@@ -29,11 +29,11 @@ class Migration(DataMigration):
                 log.diff_keys = '["status","status_date"]'
                 diffs = {}
                 if prev_item:
-                    diffs['status'] = ['"' + prev_item.status + '"', '"' + status.status + '"']
-                    diffs['status_date'] = ['"' + str(prev_item.status_date) + '"', '"' + str(status.status_date) + '"']
+                    diffs['status'] = [prev_item.status, status.status]
+                    diffs['status_date'] = [unicode(prev_item.status_date), unicode(status.status_date)]
                 else:
-                    diffs['status'] = ['null', '"' + status.status + '"']
-                    diffs['status_date'] = ['null', '"' + str(status.status_date) + '"']
+                    diffs['status'] = [None, status.status]
+                    diffs['status_date'] = [None, unicode(status.status_date)]
                 log.diffs = json.dumps(diffs)
                 print 'create log: ' , j, log
                 log.save()

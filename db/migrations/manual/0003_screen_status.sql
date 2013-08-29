@@ -7,6 +7,7 @@ current_timestamp,
 'migrate screen_status_item into the api_history and screen';
 
 /* add an id to capture the natural ordering of the table (missing an id field, this also will allow the Django ORM to read it */
+/* because the table has no ID, Django ORM doesn't know what to do with it - so, ironically? the South migration cannot do it either */
 
 alter table screen_status_item add column id integer;
 create sequence screen_status_item_sequence;

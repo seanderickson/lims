@@ -102,8 +102,11 @@ class ScreenResource(JsonAndDatabaseResource):
     lab_head_link = fields.ToOneField('db.api.LabHeadResource', 'lab_head',  full=False)
     lead_screener_link = fields.ToOneField('db.api.LabHeadResource', 'lab_head',  full=False)
     
+    lab_head_id = fields.IntegerField(attribute='lab_head_id');
+    lead_screener_id = fields.IntegerField(attribute='lead_screener_id');
+    
     class Meta:
-        queryset = Screen.objects.all().filter()
+        queryset = Screen.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
         resource_name = 'screen'
         
@@ -170,6 +173,7 @@ class ScreenResource(JsonAndDatabaseResource):
         logger.info(str(('options',options)))
         obj_list = super(ScreenResource, self).apply_sorting(obj_list, options)
         
-        logger.info(str(('extra_order_by', extra_order_by)))
-        obj_list = obj_list.order_by(*extra_order_by)
+        if len(extra_order_by)>0:
+            logger.info(str(('extra_order_by', extra_order_by)))
+            obj_list = obj_list.order_by(*extra_order_by)
         return obj_list

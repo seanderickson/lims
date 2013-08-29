@@ -6,7 +6,7 @@ import os
 from copy import deepcopy
 from django.db import DatabaseError
 from django.conf.urls import url
-from django.utils.encoding import smart_str
+from django.utils.encoding import smart_str, smart_text
 from django.utils import timezone
 
 from django.forms.models import model_to_dict
@@ -24,6 +24,7 @@ import logging
 from django.core.exceptions import ObjectDoesNotExist
 from tastypie.exceptions import NotFound
 from tastypie.bundle import Bundle
+import traceback
         
 logger = logging.getLogger(__name__)
 
@@ -89,16 +90,17 @@ class LoggingMixin(Resource):
         # look up the resource definition
                         
         try:
-            logger.info(str(('trying to locate resource information', resource_name, self.scope)))
+#            logger.info(str(('trying to locate resource information', resource_name, self.scope)))
             resource_def = MetaHash.objects.get(scope='resource', key=resource_name)
-            logger.info(str(('create dict for obj', resource_def)))
+#            logger.info(str(('create dict for obj', resource_def)))
             resource = resource_def.model_to_dict(scope='fields:resource')
-            logger.info(str(('--- got', resource, str((resource['id_attribute'])) )))
+#            logger.info(str(('--- got', resource, str((resource['id_attribute'])) )))
         except Exception, e:
             logger.warn(str(('unable to locate resource information, has it been loaded yet for this resource?', resource_name, e)))
             return (full_path, key)
 
         try:            
+            # parse the key as whatever is after the resource name in the path
             matchObject = re.match(r'(.*\/'+resource_name+'\/)(.*)', full_path)
             if(matchObject):
                 if matchObject.group(2):
@@ -485,9 +487,28 @@ class JsonAndDatabaseResource(PostgresSortingResource):
         json_obj = {}
         local_field_defs = self.get_field_defs(self.scope) # trigger a get field defs before building the schema
         logger.debug(str(('local_field_defs',local_field_defs)))
+        
+        # Use the tastypie field type that has been designated to convert each field in the json stuffed field just like it were a real db field
         for key in [ str(x) for x,y in local_field_defs.items() if 'json_field_type' in y and y['json_field_type'] ]:
-            json_obj.update({ key: bundle.data.get(key,None)})
-
+            val = bundle.data.get(key,None)
+            if val:
+                try:
+                    logger.info(str(('get value for key: ', key, val )))
+    #                logger.info(str(('get value for key: ', key, smart_text(val) )))
+                    if hasattr(val, "strip"): # test if it is a string
+                        val = self.fields[key].convert(smart_text(val,'utf-8', errors='ignore'))
+                        logger.info(str(('got value for key: ', key, val)))
+                    elif hasattr(val, "__getitem__") or hasattr(val, "__iter__"): # test if it is a sequence
+                        val = [smart_text(x,'utf-8', errors='ignore') for x in val]
+                    logger.info(unicode(('got',key, val)))
+                    json_obj.update({ key:val })
+                except Exception:
+                    extype, ex, tb = sys.exc_info()
+                    formatted = traceback.format_exception_only(extype, ex)[-1]
+                    e =  RuntimeError, unicode(('failed to convert', key, 'with value', val, 
+                                             'with tastypie field type', type(self.fields[key]), 'message', formatted)).replace("'",""), 
+                    logger.warn(unicode(('throw', e, tb.tb_frame.f_code.co_filename, 'line', tb.tb_lineno)))
+                    raise e
         bundle.data['json_field'] = json.dumps(json_obj);
         logger.debug(str(('--- hydrated:', bundle)))
         return bundle;

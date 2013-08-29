@@ -5,7 +5,7 @@
             //console.log('key: ' + key + ', fieldDefinitions[key][title] : ' + fieldDefinitions[key]['title'] + ', object[key]: ' + object[key]);
             %>
             <dt><%= _(fieldDefinitions[key]).has('title') ? fieldDefinitions[key]['title']:key %></dt>
-            <dd><%= _(object).has(key) && ( !_.isEmpty(object[key]) || _.isNumber(object[key])) ? object[key]:'&nbsp;' %></dd>
+            <dd><%= _(object).has(key) && !_.isUndefined(object[key]) && (!_.isEmpty(object[key]) || _.isNumber(object[key]) ) ? object[key]:'&nbsp;' %></dd>
     <% }); %>
 </dl>
 <form id='generic-form' class="form-horizontal" >

@@ -172,6 +172,7 @@ class PostgresSortingResource(ModelResource):
         obj_list.query.clear_ordering()
         for xfield in extra_ordering:
             temp.insert(0,xfield)
+        logger.info(unicode(('ordering', temp)))
         obj_list.query.add_ordering(*temp)
         
 #        logger.info(str(('obj_list.query', obj_list.query.as_sql())))

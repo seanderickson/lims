@@ -18,9 +18,9 @@
                     console.log('error, undefined ui_resource:' + JSON.stringify(key) );
                 }else{
                     console.log('found ' + key);
-            %>
-                <li id="<%= key %>" title="<%=ui_resource.description %>"><a href="#"><%= ui_resource.title %></a></li>
-            <%
+                    %>
+                        <li id="<%= key %>" title="<%=ui_resource.description %>"><a href="#"><%= ui_resource.title %></a></li>
+                    <%
                 }
             });
         %></ul>

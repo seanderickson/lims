@@ -20,6 +20,7 @@ define([
             this.router = options.router;
 
             this.currentView = new HomeView({ model: this.model });
+            this.render();
         },
 
         current_view : function(type) {
@@ -42,12 +43,9 @@ define([
             if (current_view === 'home'){  // TODO: make into a "menu view"
                 this.currentView = new HomeView({ model: this.model });
             }else if (current_view === 'list'){
-                var list_options = this.model.get('list_defaults');
-                var options = _.extend( {}, list_options, current_ui_resource, /*current_ui_resource['options'],*/ current_options ); // TODO: move the nested options up into the model
+                var options = _.extend( {}, this.model.get('list_defaults'), current_ui_resource, current_options ); // TODO: move the nested options up into the model
                 options.ui_resource_id = current_resource_id;
-
                 options.router = this.router;
-
                 options.url = options.url_root + '/' + options.api_resource;
                 options.url_schema = options.url + '/schema';
 
@@ -55,26 +53,25 @@ define([
                 this.currentView = this.listView;
                 this.render();
             }else if (current_view === 'detail'){
-                var detail_options = this.model.get('detail_defaults');
-                var options = _.extend( {}, detail_options, current_ui_resource, current_options ); // TODO: move the nested options up into the model
-                var resource_url = options.url_root + '/' + options.api_resource;
+                var options = _.extend( {}, this.model.get('detail_defaults'), current_ui_resource ); // TODO: move the nested options up into the model
 
                 var current_scratch = this.model.get('current_scratch');
                 this.model.set({ current_scratch: {} });
 
                 var createDetail = function(schemaResult, model){
-                    console.log('sr: ' + schemaResult);
                     var detailView =
-                        new DetailView({ model: model}, {
-                            schemaResult:schemaResult,
-                            router:self.router,
-                            isEditMode: false, title: "Detail for " + current_ui_resource.title } );
-                    console.log('detail view: ' + detailView  );
+                        new DetailView({ model: model},
+                            {
+                                schemaResult:schemaResult,
+                                router:self.router,
+                                isEditMode: false, title: "Detail for " + current_ui_resource.title
+                            });
                     self.currentView = detailView;
                     self.render();
                 };
 
                 if(_.isUndefined(current_scratch.schemaResult) ||_.isUndefined(current_scratch.model)){  // allow reloading
+                    var resource_url = current_ui_resource.url_root + '/' + current_ui_resource.api_resource;
                     var schema_url =  resource_url + '/schema';
                     var _key = current_options;
                     Iccbl.assert( !_.isEmpty(_key), 'content:detail: options.key required if not schemaResult, model supplied');
@@ -83,7 +80,7 @@ define([
                         _key = _.reduce(_key, function(memo, item){
                             if(!_.isNull(item)) memo += item + '/';
                             return memo;
-                            }, '');
+                        }, '');
                     }
                     var url = resource_url  + '/' + _key;
 
@@ -108,7 +105,6 @@ define([
             this.$el.append(this.currentView.render().el);
         },
 
-
         getSchema: function (schema_url, callback) {
             $.ajax({
                 type: "GET",
@@ -116,8 +112,6 @@ define([
                 data: "",
                 dataType: "json",
                 success: function(schemaResult) {
-                    console.log('got the schema for detail view');
-                    //var field_defs = self.wrapAsUnderscore(result.fields);
                     callback(schemaResult);
                 }, // end success outer ajax call
                 error: function(x, e) {
@@ -127,12 +121,10 @@ define([
         },
 
         getModel: function(schemaResult, url, callback) {
-            var ModelClass = Backbone.Model.extend({urlRoot: url, defaults: {} });
+            var ModelClass = Backbone.Model.extend({url: url, defaults: {} });
             var instance = new ModelClass();
             instance.fetch({
                 success: function(model){
-                    console.log('model retrieved ' + schemaResult);
-
                     callback(schemaResult, model);
                 },
                 error: function(model, response, options){

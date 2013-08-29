@@ -34,10 +34,6 @@ define([
             this._options = options;
         },
 
-        // setOptions : function(options){
-            // this.options = options;
-        // },
-
         remove: function(){
             console.log('ListView remove called');
             Backbone.View.prototype.remove.apply(this);
@@ -137,7 +133,8 @@ define([
                 //this.router.navigate(_route, {trigger: true} );  // trigger false since don't want route actions firing
                 this.model.set({    current_scratch: { schemaResult: schemaResult, model: model} ,
                                     current_view: 'detail',
-                                    current_options: id
+                                    current_options: id,
+                                    routing_options: {trigger: false, replace: false}
                                }); // signal to the app_model that the current view has changed // todo: separate out app_model from list_model
 
                 //this.model.set({ current_view: 'detail_view'}, { silent: true } ); // silent: true since we don't want content view reacting to change event
@@ -209,9 +206,10 @@ define([
                 },
                 updateSelection: function( searchItems ){
                     //console.log('-extraselector updateSelection: ' + JSON.stringify(searchItems) );
-                    if( _(searchItems).has(this._options.searchColumn)){
+                    if( !_.isUndefined(searchItems) && _(searchItems).has(this._options.searchColumn)){
                         $('#generic_selector').val(searchItems[this._options.searchColumn]);
                     }else{
+                        $('#generic_selector').val('');
                         console.log("extra selector set for column: '" + this._options.searchColumn + "', not in searchItems: " + JSON.stringify(searchItems));
                     }
                 },
@@ -401,11 +399,11 @@ define([
                             var klass = Iccbl.stringToFunction(prop['backgrid_cell_type']);
 //                            console.log('got  ' + klass);
                             if(!_.isUndefined(klass)){
-//                                console.log('----- cell found: ' + klass);
+                                console.log('----- class found: ' + klass);
                                 backgridCellType = klass;
                             }
                         }catch(ex){
-                            var msg = '----Warn: field: ' + key + ', no Iccbl class found for type: ' + prop['backgrid_cell_type'];
+                            var msg = '----for: field: ' + key + ', no Iccbl class found for type: ' + prop['backgrid_cell_type'] + ', this may be a Backgrid cell type';
                             console.log(msg + ': ' + JSON.stringify(ex));
                         }
                     }

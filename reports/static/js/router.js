@@ -10,9 +10,10 @@ define([
 
     routes: {
         '': 'index',
-        'home(/*)': 'toHome',
-        'list/:ui_resource_id(/search/:searchBy)(/order_by/:orderBy)(/rpp/:rpp)(/page/:page)': 'toList',
+        'home(/home)': 'toHome',
+        'list/:ui_resource_id(/rpp/:rpp)(/page/:page)(/order_by/:orderBy)(/search/:searchBy)': 'toList',
         'list/:ui_resource_id(/search/:searchBy)(/order_by/:orderBy)(/page/:page)(/rpp/:rpp)': 'toList1',
+        'list/:ui_resource_id(/search/:searchBy)(/order_by/:orderBy)(/rpp/:rpp)(/page/:page)': 'toList2',
         'detail/:ui_resource_id/:key(/:key2)(/)': 'toDetail',
         '*unknownAction': 'unknownAction',
     },
@@ -41,10 +42,12 @@ define([
 
     back: function() {  // TODO: not used yet, from example, how to have a safe back action
         if(this.routesHit > 1) {
+          console.log('back, routesHit: ' + this.routesHit);
           //more than one route hit -> user did not land to current page directly
           this.routesHit--;
           window.history.back();
         } else {
+          console.log('first route in site, back to home...');
           //otherwise go to the home page. Use replaceState if available so
           //the navigation doesn't create an extra history entry
           this.navigate('/', {trigger:true, replace:true});
@@ -69,17 +72,29 @@ define([
 
         console.log('getting route: ' + current_resource_id + ', ' + JSON.stringify(current_options));
         var route_fragment = '';
-        if(_.isString(current_options)){
-            route_fragment += '/' + current_options;
-        }else if(_.isArray(current_options)){
-            route_fragment = '/' + _.reduce(current_options, function(route, option){
-                return route + option + '/'; // use a url-encoded slash between keys
-                }, route_fragment );
-        }else if(_.isObject(current_options)){
-            route_fragment = _.reduce(_.pairs(current_options), function(route, pair){
-                return route + '/' + pair[0] + '/' + pair[1];
-                }, route_fragment );
+
+        if( current_view == 'list' && ! _.isEmpty(current_options) ) { // in this case, parse the set of list options in the order needed for the route parsing
+            var default_arg_order = ['rpp', 'page','order_by','search'];
+            _.each(default_arg_order, function(option){
+                if(_.has(current_options, option)){
+                    route_fragment += '/' + option + '/' + current_options[option];
+                }
+            });
+        }else{
+            if(_.isString(current_options)){
+                route_fragment += '/' + current_options;
+            }else if(_.isArray(current_options)){
+                route_fragment = '/' + _.reduce(current_options, function(route, option){
+                    if(!_.isNull(option)) route += option + '/';
+                    return  route; // use a url-encoded slash between keys
+                    }, route_fragment );
+            }else if(_.isObject(current_options)){  // generic, option order not defined
+                route_fragment = _.reduce(_.pairs(current_options), function(route, pair){
+                    return route + '/' + pair[0] + '/' + pair[1];
+                    }, route_fragment );
+            }
         }
+
 
         _route += route_fragment;
         //console.log('get_route: ' + _route);
@@ -87,8 +102,8 @@ define([
     },
 
     model_set_route: function(){
-        // trigger false to suppress further parsing, replace false to create browser history
-        var options = { trigger: false };
+        // trigger false to suppress further parsing, replace false (default) to create browser history
+        var options = { trigger: false }; // , replace:false
         var routing_options = this.model.get('routing_options');
         this.model.set({ routing_options: {} });
         if(!_.isUndefined(routing_options)){
@@ -117,9 +132,13 @@ define([
     },
 
     toList1: function(ui_resource_id,searchBy, orderBy,page, rpp){  // kinda crappy that they can't figure this out in either order
-        this.toList(ui_resource_id,searchBy, orderBy,rpp, page);
+        this.toList(ui_resource_id, rpp, page, orderBy, searchBy);
     },
-    toList: function(ui_resource_id,searchBy, orderBy,rpp, page){
+
+    toList2: function(ui_resource_id,searchBy, orderBy,rpp, page){
+    },
+
+    toList: function(ui_resource_id, rpp, page, orderBy, searchBy ){
         console.log("toList: searchBy: " + searchBy
             + ", order: "+  orderBy + ", rpp: " + rpp + ", page: " + page + ', ui_resource_id: ' + ui_resource_id);
 

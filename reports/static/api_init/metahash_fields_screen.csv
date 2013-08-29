@@ -4,8 +4,8 @@ screen_type,fields:screen,/reports/api/v1/metahash/fields:screen/screen_type/,1,
 project_phase,fields:screen,/reports/api/v1/metahash/fields:screen/project_phase/,2,,string,TRUE,,"Project Phase",TRUE,,fields:project_phase,"[list,detail]",,,
 project_id,fields:screen,/reports/api/v1/metahash/fields:screen/project_id/,3,,string,TRUE,"The project ID of the screen","Project ID",TRUE,,,"[list,detail]",,,
 title,fields:screen,/reports/api/v1/metahash/fields:screen/title/,4,,string,TRUE,"The title of the screen",Title,TRUE,,,"[list,detail]",,,
-lab_head,fields:screen,/reports/api/v1/metahash/fields:screen/lab_head/,5,"This is a virtual field combining first and last name",string,TRUE,"The Lab Head (PI)","Lab Head",TRUE,,,"[list,detail]",,iccbl.LinkCell,detail/screensaveruser/{lab_head_user_id}
-lead_screener,fields:screen,/reports/api/v1/metahash/fields:screen/lead_screener/,6,"This is a virtual field combining first and last name",string,TRUE,"The lead screener","Lead Screener",TRUE,,,"[list,detail]",,,
+lab_head,fields:screen,/reports/api/v1/metahash/fields:screen/lab_head/,5,"This is a virtual field combining first and last name",string,TRUE,"The Lab Head (PI)","Lab Head",TRUE,,,"[list,detail]",,Iccbl.LinkCell,detail/screensaveruser/{lab_head_id}
+lead_screener,fields:screen,/reports/api/v1/metahash/fields:screen/lead_screener/,6,"This is a virtual field combining first and last name",string,TRUE,"The lead screener","Lead Screener",TRUE,,,"[list,detail]",,Iccbl.LinkCell,detail/screensaveruser/{lead_screener_id}
 date_created,fields:screen,/reports/api/v1/metahash/fields:screen/date_created/,7,,date,TRUE,"The date the screen was first recorded in the Screensaver database","Date Recorded",TRUE,,,"[list,detail]",,date,
 status,fields:screen,/reports/api/v1/metahash/fields:screen/status/,8,,string,TRUE,"The current status of the screen",Status,TRUE,,fields:screen:status,"[list,detail]",,,
 status_date,fields:screen,/reports/api/v1/metahash/fields:screen/status_date/,9,,date,TRUE,"The date of the most recent change of status for the screen","Status Date",TRUE,,,"[list,detail]",,,

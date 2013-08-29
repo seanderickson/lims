@@ -89,18 +89,6 @@ define([
       return  fn;
     };
 
-
-
-    // // Given an array property on an object, determine if it contains the value
-    // var safeArrayPropertyContains = Iccbl.safeArrayPropertyContains = function(obj, property, value) {
-        // if(!_.isArray(obj[property])){
-            // var option = option[property];
-            // return option.contains(value);
-        // }
-//
-    // };
-
-    // attach some objs to function scope //TODO: is this needed/correct?
     var MyModel = Iccbl.MyModel = Backbone.Model.extend({
         // TODO: we want to make sure there is a trailing slash, or tastypie doesn't work.
         url : function(){
@@ -137,8 +125,6 @@ define([
 
         },
     });
-
-//    return {
 
     var LinkCell = Iccbl.LinkCell = Backgrid.Cell.extend({
         className: "link-cell",
@@ -242,13 +228,8 @@ define([
             }
             // TODO: require these options
             this.url = options.url;
-            //this.router = options.router; // TODO: set the AppModel.route property instead
-            //this.type = options.type;
-
-            // if(!_.isUndefined(options.searchBy)) this.searchBy = options.searchBy;
 
             Backbone.PageableCollection.prototype.initialize.apply(this, options); // call super constructor
-
         },
 
         url: function() {
@@ -301,11 +282,12 @@ define([
                 state.currentPage=1;
             }
             this.state = this._checkState(state); // recalculate the state and do sanity checks.
-            if(! _(state).isEqual(this.state)){
+            //if(! _(state).isEqual(this.state)){
+                // TODO: call setOptions explicitly where needed, i.e. when setting searchBy
                 console.log('parse: new state: ' + JSON.stringify(this.state));
                 // trigger so our app knows about the route change, replace to modify in place w/out creating browser history
                 this.setOptions({trigger: false, replace: true });
-            }
+            //}
             return response.objects;
         },
 
@@ -333,46 +315,47 @@ define([
                 if(this.state.order > 0){
                     sortKey = '-' + sortKey;
                 }
-                new_options['order'] = sortKey;
+                new_options['order_by'] = sortKey;
             }
 
             new_options['page'] = this.state.currentPage;
             new_options['rpp'] =  this.state.pageSize;
             this.trigger( "MyCollection:changeOptions", new_options, route_options); // TODO: need to set replace=false when modifying to add the page, rpp for the first time: { replace: true } );
         },
-        setRoutes: function(route_options) {
-            console.log('- setRoutes: ' + this.searchBy + ', '
-                + this.state.sortKey + ', ' + this.state.order + ', '+ this.state.pageSize
-                + ', ', + this.state.currentPage + ', options: ' + JSON.stringify(route_options));
-            var route = '';
-            if(this.searchBy !== null){
-                if(route.length > 0) route += '/';
 
-                // TODO: discuss whether full encoding of the search fragment is necessary.
-                // to-date, we know that the forward slash messes up the backbone router parsing, but other URL chars do not,
-                // and full encoding reduces the usability of the URL for the end user
-                //_history_search = encodeURIComponent(_history_search);
-                route += 'search/' + this.searchBy.replace('\/','%2F');
-                // route += 'search/'+ encodeURIComponent(this.searchBy) ;
-            }
-            if(typeof this.state.sortKey !== 'undefined' && this.state.sortKey !== null){
-                var sortKey = this.state.sortKey;
-                if(this.state.order > 0){
-                    sortKey = '-' + sortKey;
-                }
-                if(route.length > 0) route += '/';
-
-                route += 'order_by/' + sortKey;
-            }
-            if(route.length > 0) route += '/';
-
-            route += 'rpp/' + this.state.pageSize + '/page/' + this.state.currentPage;
-            this.trigger( "MyCollection:setRoute", route, route_options); // TODO: need to set replace=false when modifying to add the page, rpp for the first time: { replace: true } );
-        },
+        // setRoutes: function(route_options) {
+            // console.log('- setRoutes: ' + this.searchBy + ', '
+                // + this.state.sortKey + ', ' + this.state.order + ', '+ this.state.pageSize
+                // + ', ', + this.state.currentPage + ', options: ' + JSON.stringify(route_options));
+            // var route = '';
+            // if(this.searchBy !== null){
+                // if(route.length > 0) route += '/';
+//
+                // // TODO: discuss whether full encoding of the search fragment is necessary.
+                // // to-date, we know that the forward slash messes up the backbone router parsing, but other URL chars do not,
+                // // and full encoding reduces the usability of the URL for the end user
+                // //_history_search = encodeURIComponent(_history_search);
+                // route += 'search/' + this.searchBy.replace('\/','%2F');
+                // // route += 'search/'+ encodeURIComponent(this.searchBy) ;
+            // }
+            // if(typeof this.state.sortKey !== 'undefined' && this.state.sortKey !== null){
+                // var sortKey = this.state.sortKey;
+                // if(this.state.order > 0){
+                    // sortKey = '-' + sortKey;
+                // }
+                // if(route.length > 0) route += '/';
+//
+                // route += 'order_by/' + sortKey;
+            // }
+            // if(route.length > 0) route += '/';
+//
+            // route += 'rpp/' + this.state.pageSize + '/page/' + this.state.currentPage;
+            // this.trigger( "MyCollection:setRoute", route, route_options); // TODO: need to set replace=false when modifying to add the page, rpp for the first time: { replace: true } );
+        // },
 
         // Override
         setSorting: function(sortKey,order,options) { // override and hack in sorting URL support
-            console.log('setSorting called: ' + sortKey+ ', order: ' + order + typeof(order) + ', options: ' + options );
+            console.log('setSorting called: ' + sortKey+ ', order_by: ' + order + typeof(order) + ', options: ' + options );
             var dir = '-';
             var direction = 'descending';
             if(typeof order !== 'undefined' && order < 0){
@@ -427,6 +410,9 @@ define([
                 this.clear();
                 this.collection.searchBy = null;
                 this.collection.trigger('MyServerSideFilter:clearSearch');
+
+                // this call triggers a route update
+                this.collection.setOptions({trigger: false, replace: false });  // replace = false in order to create a history
             };
 
             // listen for search submission by the user and set the routes
@@ -435,6 +421,9 @@ define([
                 this.collection.searchBy = this.columnName + '=' + this.$el.find("input[type=text]").val();
                 this.collection.state.currentPage=1;  // if filtering, always set the page to 1
                 this.search(e);
+
+                // this call triggers a route update
+                this.collection.setOptions({trigger: false, replace: false });  // replace = false in order to create a history
             };
             // _.bindAll(this, 'render');
         },

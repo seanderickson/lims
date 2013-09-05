@@ -234,6 +234,7 @@ define([
         },
 
         history: function(event){
+            console.log('history click');
             event.preventDefault();
             this.$el.empty();
             this.trigger('remove');

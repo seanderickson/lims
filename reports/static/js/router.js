@@ -11,12 +11,14 @@ define([
     routes: {
         '': 'index',
         'home(/home)': 'toHome',
-        'list/:ui_resource_id(/rpp/:rpp)(/page/:page)(/order_by/:orderBy)(/search/:searchBy)': 'toList',
-        'list/:ui_resource_id(/search/:searchBy)(/order_by/:orderBy)(/page/:page)(/rpp/:rpp)': 'toList1',
-        'list/:ui_resource_id(/search/:searchBy)(/order_by/:orderBy)(/rpp/:rpp)(/page/:page)': 'toList2',
-        'detail/:ui_resource_id/:key(/:key2)(/)': 'toDetail',
+        'list/:ui_resource_id(/rpp/:rpp)(/page/:page)(/order_by/:orderBy)(/search/:searchBy)': 'toList', // note: can tolerate missing routes, but not out of order
+//        'list/:ui_resource_id(/search/:searchBy)(/order_by/:orderBy)(/page/:page)(/rpp/:rpp)': 'toList1',
+//        'list/:ui_resource_id(/search/:searchBy)(/order_by/:orderBy)(/rpp/:rpp)(/page/:page)': 'toList2',
+//        'detail/:ui_resource_id/:key(/:key2)(/tab/:tab)(/)': 'toDetail',
+        'detail/:ui_resource_id/:key(/:key2)(/tab/:tab)(/rpp/:rpp)(/page/:page)(/order_by/:orderBy)(/search/:searchBy)(/)': 'toDetail',
         '*unknownAction': 'unknownAction',
     },
+    LIST_ROUTE_ORDER: ['rpp', 'page','order_by','search'],
 
     initialize: function(attributes, options){
         console.log('initialize router...' );
@@ -73,28 +75,41 @@ define([
         console.log('getting route: ' + current_resource_id + ', ' + JSON.stringify(current_options));
         var route_fragment = '';
 
-        if( current_view == 'list' && ! _.isEmpty(current_options) ) { // in this case, parse the set of list options in the order needed for the route parsing
-            var default_arg_order = ['rpp', 'page','order_by','search'];
-            _.each(default_arg_order, function(option){
-                if(_.has(current_options, option)){
-                    route_fragment += '/' + option + '/' + current_options[option];
+        if( ! _.isEmpty(current_options) ) {
+            if( current_view == 'list' ) { // in this case, parse the set of list options in the order needed for the route parsing
+                _.each(this.LIST_ROUTE_ORDER, function(option){
+                    if(_.has(current_options, option)){
+                        route_fragment += '/' + option + '/' + current_options[option];
+                    }
+                });
+
+            }else if( current_view == 'detail' ){
+                route_fragment = '/';
+                var key = Iccbl.getKey(current_options);
+                if(!_.isEmpty(key)) route_fragment += key;
+                if(key.charAt(key.length-1) != '/' ) route_fragment += '/'; // TODO: cleanup code so no trailing slashes
+                if(!_.isEmpty(current_options['tab'])) route_fragment += 'tab/' + current_options.tab;
+
+                _.each(this.LIST_ROUTE_ORDER, function(option){
+                    if(_.has(current_options, option)){
+                        route_fragment += '/' + option + '/' + current_options[option];
+                    }
+                });
+
+
+            }else{
+                if(_.isString(current_options)){
+                    route_fragment += '/' + current_options;
+                }else if(_.isArray(current_options)){ // an array is just a set of keys, to be separated by slashes
+                    route_fragment = '/' + Iccbl.getKey(current_options);
+                }else if(_.isObject(current_options)){  // generic, option order not defined
+                    route_fragment = _.reduce(_.pairs(current_options), function(route, pair){
+
+                        return route + '/' + pair[0] + '/' + pair[1];
+                    }, route_fragment );
                 }
-            });
-        }else{
-            if(_.isString(current_options)){
-                route_fragment += '/' + current_options;
-            }else if(_.isArray(current_options)){
-                route_fragment = '/' + _.reduce(current_options, function(route, option){
-                    if(!_.isNull(option)) route += option + '/';
-                    return  route; // use a url-encoded slash between keys
-                    }, route_fragment );
-            }else if(_.isObject(current_options)){  // generic, option order not defined
-                route_fragment = _.reduce(_.pairs(current_options), function(route, pair){
-                    return route + '/' + pair[0] + '/' + pair[1];
-                    }, route_fragment );
             }
         }
-
 
         _route += route_fragment;
         //console.log('get_route: ' + _route);
@@ -131,12 +146,12 @@ define([
         this.model.set({ menu_item:'home', view: 'home' });
     },
 
-    toList1: function(ui_resource_id,searchBy, orderBy,page, rpp){  // kinda crappy that they can't figure this out in either order
-        this.toList(ui_resource_id, rpp, page, orderBy, searchBy);
-    },
-
-    toList2: function(ui_resource_id,searchBy, orderBy,rpp, page){
-    },
+    // toList1: function(ui_resource_id,searchBy, orderBy,page, rpp){  // kinda crappy that they can't figure this out in either order
+        // this.toList(ui_resource_id, rpp, page, orderBy, searchBy);
+    // },
+//
+    // toList2: function(ui_resource_id,searchBy, orderBy,rpp, page){
+    // },
 
     toList: function(ui_resource_id, rpp, page, orderBy, searchBy ){
         console.log("toList: searchBy: " + searchBy
@@ -174,16 +189,38 @@ define([
     },
 
 
-    toDetail: function(ui_resource_id, key, key2){
+    toDetail: function(ui_resource_id, key, key2, _tab, rpp, page, orderBy, searchBy){
         console.log('to detail page, ui_resource_id: ' + ui_resource_id + ', ' + key + ', ' + key2);
-        var _current_options = key;
+        var _current_options = { 'key': key };
         if(!_.isUndefined(key2)){
-            _current_options = [key,key2]; // allow for composite ids
+            _current_options['key'] = [key,key2]; // allow for composite ids
         }
+        if(!_.isEmpty(_tab)){
+            _current_options['tab'] = _tab;
+        }
+        if( _.isString(page)){
+            _current_options.page = parseInt(page);
+        }
+
+        if( _.isString(rpp) ){
+            _current_options.rpp = parseInt(rpp);
+        }
+
+
+        if( _.isString(orderBy) ){
+            _current_options.order = orderBy;
+        }
+
+        if( _.isString(searchBy)){
+            _current_options.search = searchBy;
+        }
+
+
         this.model.set({
             current_view: 'detail',
             current_resource_id: ui_resource_id,
             current_options: _current_options,
+            current_detail: _current_options,
             routing_options: { trigger: false, replace: true } // TODO: necessary?
         });
     },

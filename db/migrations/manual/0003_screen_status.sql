@@ -16,12 +16,13 @@ update screen_status_item set id=nextval('screen_status_item_sequence');
 update screen set status = si.status 
     from screen_status_item si 
     join screen s on(si.screen_id=s.screen_id) 
-    where  (si.id = (select max(si1.id) from screen_status_item si1 where si1.screen_id = s.screen_id limit 1) );
+    where  (si.id = (select max(si1.id) from screen_status_item si1 where si1.screen_id = screen.screen_id limit 1) );
+    
 
 update screen set status_date = si.status_date 
     from screen_status_item si 
     join screen s on(si.screen_id=s.screen_id) 
-    where  (si.id = (select max(si1.id) from screen_status_item si1 where si1.screen_id = s.screen_id limit 1) );
+    where  (si.id = (select max(si1.id) from screen_status_item si1 where si1.screen_id = screen.screen_id limit 1) );
 
 /** TODO this migration must be run 1st, then the following is performed with South **/
 /** insert into reports_apilog ( user_id, username, ref_resource_name, key, uri, date_time, api_action, diff_keys, diffs) **/

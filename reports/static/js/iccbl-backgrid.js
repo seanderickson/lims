@@ -72,7 +72,7 @@ define([
         if (!condition) {
             throw message || "Assertion failed";
         }
-    }
+    };
 
     var stringToFunction = Iccbl.stringToFunction = function(str) {
       var arr = str.split(".");
@@ -87,6 +87,80 @@ define([
       }
 
       return  fn;
+    };
+
+    var getKey = Iccbl.getKey = function( options ){
+        var route_fragment = '';
+        if(_.isString(options)){
+            route_fragment += options;
+        }else if( _.isArray(options)) {// an array is just a set of keys, to be separated by slashes
+            route_fragment = _.reduce(options, function(route, option){
+                    if(!_.isNull(option)){
+                        if(!_.isEmpty(route)) route += '/';
+                        route += option;
+                    }
+                    return  route;
+                }, route_fragment );
+        }else if(_.isObject(options)){  // generic, option order not defined
+            if( _.has(options, 'key')){
+                return Iccbl.getKey(options.key);
+            }
+        }
+
+        return route_fragment;
+    }
+    // var getKey = Iccbl.getKey = function( key_array ){
+        // var _key = key_array;
+        // Iccbl.assert( !_.isEmpty(_key), 'content:detail: current_options must be defined (as the key), if not schemaResult, model supplied');
+        // // handle composite keys
+        // if(_.isArray(_key)){
+            // _key = _.reduce(_key, function(memo, item){
+                // if(!_.isNull(item)) memo += item + '/';
+                // return memo;
+            // }, '');
+        // }
+        // return _key;
+    // };
+
+    var getSchema = Iccbl.getSchema = function (schema_url, callback) {
+        $.ajax({
+            type: "GET",
+            url: schema_url, //options.url_schema,
+            data: "",
+            dataType: "json",
+            success: function(schemaResult) {
+                callback(schemaResult);
+            }, // end success outer ajax call
+            error: function(x, e) {
+                alert(x.readyState + " "+ x.status +" "+ e.msg); // TODO: use error div in Bootstrap
+            }
+        });
+    };
+
+    var getModel = Iccbl.getModel = function(schemaResult, url, callback) {
+        var ModelClass = Backbone.Model.extend({url: url, defaults: {} });
+        var instance = new ModelClass();
+        instance.fetch({
+            success: function(model){
+                callback(schemaResult, model);
+            },
+            error: function(model, response, options){
+                //console.log('error fetching the model: '+ model + ', response: ' + JSON.stringify(response));
+                var msg = 'Error locating resource: ' + url;
+                var sep = '\n';
+                if(!_.isUndefined(response.status)) msg += sep + response.status;
+                if(!_.isUndefined(response.statusText)) msg += sep+ response.statusText;
+                if(!_.isEmpty(response.responseText)) msg += sep+ response.responseText;
+                window.alert(msg); // TODO: use Bootstrap inscreen alert classed message div
+            }
+        });
+    };
+
+    var getSchemaAndModel = Iccbl.getSchemaAndModel = function(schema_url, url, callback){
+        Iccbl.getSchema(schema_url, function(schemaResult) {
+            console.log('schemaResult callback: ' + schemaResult + ', ' + url);
+            Iccbl.getModel(schemaResult, url, callback);
+        });
     };
 
     var MyModel = Iccbl.MyModel = Backbone.Model.extend({

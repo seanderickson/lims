@@ -10,12 +10,12 @@ class Migration(SchemaMigration):
     def forwards(self, orm):
         # Adding field 'Screen.status'
         db.add_column(u'screen', 'status',
-                      self.gf('django.db.models.fields.TextField')(default='Unknown'),
+                      self.gf('django.db.models.fields.TextField')(null=True),
                       keep_default=False)
 
         # Adding field 'Screen.status_date'
         db.add_column(u'screen', 'status_date',
-                      self.gf('django.db.models.fields.DateField')(default=datetime.datetime(2013, 8, 26, 0, 0)),
+                      self.gf('django.db.models.fields.DateField')(null=True),
                       keep_default=False)
 
 

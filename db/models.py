@@ -940,8 +940,8 @@ class Screen(models.Model):
     perturbagen_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
     perturbagen_ug_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
 
-    status = models.TextField()
-    status_date = models.DateField()
+    status = models.TextField(null=True)
+    status_date = models.DateField(null=True)
     
     class Meta:
         db_table = 'screen'
@@ -978,7 +978,7 @@ class ScreenResult(models.Model):
     version = models.IntegerField()
     replicate_count = models.IntegerField()
     experimental_well_count = models.IntegerField()
-    screen = models.ForeignKey(Screen)
+    screen = models.OneToOneField(Screen)
     date_created = models.DateTimeField()
     created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
     channel_count = models.IntegerField(null=True, blank=True)

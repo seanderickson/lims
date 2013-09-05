@@ -54,7 +54,7 @@ define([
             $('li').click(function(event) {
 
                 event.preventDefault();
-                var ui_resource_id = $(this).attr('id');
+                var ui_resource_id = event.currentTarget.id;
                 console.log('menu click: ' + ui_resource_id);
 
                 var menu = find_submenu(data.menu, ui_resource_id);

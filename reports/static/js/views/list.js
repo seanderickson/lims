@@ -29,54 +29,50 @@ define([
     var ListView = Backbone.View.extend({
 
         initialize : function(attributes, options) {
-            console.log('initialize ListView');
+            console.log('initialize ListView: ');
+            Iccbl.assert( !_.isUndefined(options.ui_resource_id), 'listView options: ui_resource_id is required');
+            Iccbl.assert( !_.isUndefined(options.router), 'listView options: router is required');
+            Iccbl.assert( !_.isUndefined(options.url), 'listView options: url is required');
+            Iccbl.assert( !_.isUndefined(options.schemaResult), 'listView options: schemaResult is required');
+            // optional: Iccbl.assert( !_.isUndefined(options.url_schema), 'listView options: url_schema is required');
+            Iccbl.assert( !_.isUndefined(options.header_message), 'listView options: header_message is required');
+            Iccbl.assert( !_.isUndefined(options.title), 'listView options: title is required');
+
             this.router = options.router;
             this._options = options;
+            var data = { message: '' };
+            if (this._options.header_message){
+                data.title = this._options.title;
+                data.message = this._options.header_message; //'hello world!' };
+            }
+            var compiledTemplate = _.template( listTemplate, data );
+            this.el.innerHTML = compiledTemplate;
+
+            this.objects_to_destroy = _([]);
+            var collection  = this.collection = new Iccbl.MyCollection({ 'url': this._options.url }); //, router: this._options.router  });
+            this.objects_to_destroy.push(collection);
+
+            this.buildGrid(this._options.schemaResult);
         },
 
-        remove: function(){
-            console.log('ListView remove called');
-            Backbone.View.prototype.remove.apply(this);
-        },
-
-        reset_grid : function(){
-            var self = this;
-            // Call the schema from the server to get the field definitions
-            $.ajax({
-                type: "GET",
-                url: this._options.url + '/schema',
-                data: "",
-                dataType: "json",
-                success: function(result) {
-                    self.buildGrid(result);
-                }, // end success outer ajax call
-                error: function(x, e) {
-                    alert(x.readyState + " "+ x.status +" "+ e.msg);
-                }
-            });
-        },
+        // delegateEvents: function(){
+            // self = this;
+            // Backbone.View.prototype.delegateEvents.apply(this);
+            // _.each(self.objects_to_destroy, function(obj){
+                // if(_.has(obj,'delegateEvents'))
+                    // obj.delegateEvents();
+                // Backbone.View.prototype.delegateEvents.apply(this);
+            // });
+        // },
 
         buildGrid : function(schemaResult) {
 
             console.log('buildGrid...');
 
             var self = this; // todo: "this" is the parent ListView, all of this should be handled by events
-            this.objects_to_destroy = _([]);
-            // TODO: make sure req'd options are present (i.e. router, type)
-            // type == table or query or api resource type
-            var collection = this.collection = new Iccbl.MyCollection({ 'url': this._options.url }); //, router: this._options.router  });
 
-            this.objects_to_destroy.push(collection);
 
-            var columns = this.createBackgridColModel(schemaResult.fields, Iccbl.MyHeaderCell);//, col_options );
-            //columns.unshift({ name: 'deletor', label: 'Delete', text:'X', description: 'delete record', cell: Iccbl.DeleteCell, sortable: false });
-            var grid = this.grid = new Backgrid.Grid({
-              columns: columns,
-              collection: collection,
-            });
-            this.objects_to_destroy.push(grid);
-
-            self.listenTo(collection, "MyCollection:link", function (model, column) {
+            self.listenTo(self.collection, "MyCollection:link", function (model, column) {
                 console.log('---- process link for '+ column);
 
                 var fieldDef = schemaResult.fields[column];
@@ -99,7 +95,7 @@ define([
             });
 
 
-            self.listenTo(collection, "MyCollection:edit", function (model) {
+            self.listenTo(self.collection, "MyCollection:edit", function (model) {
                 console.log('---- create detail view for '+ this._options.ui_resource_id);
                 // TODO: Get the title, and other items from the meta data
                 // var detailView = new DetailView({ model: model},
@@ -154,7 +150,7 @@ define([
                 // $('#detail-container').append(detailView.render().$el);
             });
 
-            self.listenTo(collection, "MyCollection:delete", function (model) {
+            self.listenTo(self.collection, "MyCollection:delete", function (model) {
                 var modalDialog = new Backbone.View({
                     el: _.template(modalTemplate, { body: "Please confirm deletion of record: '" + model.get('toString') + "'", title: "Please confirm deletion" } ),
                     events: {
@@ -198,11 +194,11 @@ define([
                     searchTerm = option;
                     searchColumn = this._options.searchColumn
                     searchExpression = searchColumn + '=' + searchTerm;
-                    collection.searchBy = searchExpression;
+                    self.collection.searchBy = searchExpression;
                     var searchItems = {};
                     searchItems[searchColumn] = searchTerm;
                     console.log('trigger search: ' + searchColumn + ': ' + searchTerm + ', ' + JSON.stringify(searchItems) );
-                    collection.trigger("MyServerSideFilter:search", searchItems , collection);
+                    self.collection.trigger("MyServerSideFilter:search", searchItems , self.collection);
                 },
                 updateSelection: function( searchItems ){
                     //console.log('-extraselector updateSelection: ' + JSON.stringify(searchItems) );
@@ -225,38 +221,38 @@ define([
                 },
             });
 
-            var selector = new Iccbl.ItemsPerPageSelector(
+            var selector = self.selector = new Iccbl.ItemsPerPageSelector(
                 { 'selections': ['25','50','200','1000'], 'template': rowsPerPageTemplate },
-                collection);
+                self.collection);
             this.objects_to_destroy.push(selector);
 
-            var paginator = new Backgrid.Extension.Paginator({
-              collection: collection
+            var paginator = self.paginator = new Backgrid.Extension.Paginator({
+              collection: self.collection
             });
             this.objects_to_destroy.push(paginator);
 
-            var data = { message: '' };
-            if (this._options.header_message){
-                data.title = this._options.title;
-                data.message = this._options.header_message; //'hello world!' };
-            }
-            var compiledTemplate = _.template( listTemplate, data );
-            this.el.innerHTML = compiledTemplate;
             if( _.has(schemaResult, 'extraSelectorOptions')){
                 console.log('searchTerms: ' + JSON.stringify(schemaResult.searchTerms));
-                var extraSelectorInstance = new extraSelector( schemaResult.extraSelectorOptions ); // HMMm: need to understand the "delegate events" better here
+                var extraSelectorInstance = self.extraSelectorInstance = new extraSelector( schemaResult.extraSelectorOptions ); // HMMm: need to understand the "delegate events" better here
                 this.objects_to_destroy.push(extraSelectorInstance);
-                $("#extra-selector-div").append(extraSelectorInstance.render().$el);
-                extraSelectorInstance.listenTo(collection, 'MyServerSideFilter:search', extraSelectorInstance.updateSelection);
-                extraSelectorInstance.listenTo(collection, 'MyServerSideFilter:clearSearch', extraSelectorInstance.updateSelection);
+                self.$("#extra-selector-div").append(extraSelectorInstance.render().$el);
+                extraSelectorInstance.listenTo(self.collection, 'MyServerSideFilter:search', extraSelectorInstance.updateSelection);
+                extraSelectorInstance.listenTo(self.collection, 'MyServerSideFilter:clearSearch', extraSelectorInstance.updateSelection);
 
             }
-            $("#paginator-div").append(paginator.render().$el);
-            $("#rows-selector-div").append(selector.render().$el);
-            $("#example-table").append(grid.render().$el);
+            self.$("#paginator-div").append(paginator.render().$el);
+            self.$("#rows-selector-div").append(selector.render().$el);
+            var columns = this.createBackgridColModel(this._options.schemaResult.fields, Iccbl.MyHeaderCell);//, col_options );
+            //columns.unshift({ name: 'deletor', label: 'Delete', text:'X', description: 'delete record', cell: Iccbl.DeleteCell, sortable: false });
+            var grid = this.grid = new Backgrid.Grid({
+              columns: columns,
+              collection: self.collection,
+            });
+            self.$("#example-table").append(grid.render().$el);
+            this.objects_to_destroy.push(grid);
 
             // encapsulate the footer in a view, help grab button click
-            var footer = new Backbone.View({
+            var footer = self.footer = new Backbone.View({
                 el: $("<form><button type='button' id='addRecord'>Add</button></form>"),
                 events: {
                     'click button':function(event) {
@@ -292,7 +288,7 @@ define([
                 },
 
             });
-            $("#table-footer-div").append(footer.$el);
+            self.$("#table-footer-div").append(footer.$el);
             this.objects_to_destroy.push(footer);
 
 
@@ -301,20 +297,21 @@ define([
             //collection.on('request', ajaxStart); // NOTE: can use bind or on
             //collection.bind('sync', ajaxComplete, this);
 
-            this.listenTo(collection, 'request', ajaxStart);
+            this.listenTo(self.collection, 'request', ajaxStart);
             // this.listenTo(collection, 'MyCollection:setRoute', this.setRoute);
-            this.listenTo(collection, 'MyCollection:changeOptions', this.changeOptions);
-            this.listenTo(collection, 'sync', selector.updateSelection );
+            this.listenTo(self.collection, 'MyCollection:changeOptions', this.change_options);
+            this.listenTo(self.collection, 'sync', selector.updateSelection );
 
             // TODO: work out the specifics of communication complete event.  the following are superceded by the global handler for "ajaxComplete"
-            this.listenTo(collection, 'error', ajaxComplete);
-            this.listenTo(collection, 'complete', ajaxComplete);
+            this.listenTo(self.collection, 'error', ajaxComplete);
+            this.listenTo(self.collection, 'complete', ajaxComplete);
 
             if (this._options.page){
-                collection.state.currentPage = this._options.page;
+                console.log('---set page:'+ this._options.page);
+                self.collection.state.currentPage = this._options.page;
             }
             if (this._options.rpp){
-                collection.state.pageSize = this._options.rpp;
+                self.collection.state.pageSize = this._options.rpp;
             }
             if(_.isString(this._options.order) ){
                 var direction = 'ascending';
@@ -325,10 +322,10 @@ define([
                     direction = 'descending';
                     sortKey = sortKey.substring(1);
                 }
-                collection.state.sortKey = sortKey;
-                collection.state.order = order;
+                self.collection.state.sortKey = sortKey;
+                self.collection.state.order = order;
                 // Notify header cells
-                collection.trigger("backgrid:sort", sortKey, direction, null, collection);
+                self.collection.trigger("backgrid:sort", sortKey, direction, null, self.collection);
             }
             if(_.isString(this._options.search)){
                 var searchExpressions = {};
@@ -356,18 +353,18 @@ define([
                 });
 
                 if(!_.isEmpty(searchExpressions)){
-                    collection.searchBy = this._options.search;
+                    self.collection.searchBy = this._options.search;
                     console.log('trigger search:' + this._options.search + ', ' + JSON.stringify(searchExpressions) );
-                    collection.trigger("MyServerSideFilter:search", searchExpressions, collection);
+                    self.collection.trigger("MyServerSideFilter:search", searchExpressions, self.collection);
                     // console.log('done: trigger search');
                 }else{
                     console.log('Warn: no search expressions found in: '  + this._options.search );
                 }
             }
             console.log('collection fetch trigger');
-            collection.fetch({ reset: true } );
+            self.collection.fetch({ reset: true } );
 
-            collection.setOptions({trigger: false, replace: true });
+            // self.collection.setOptions({trigger: false, replace: true });
 
             console.log('list view initialized');
         },
@@ -447,11 +444,40 @@ define([
 //
             // this.model.set({ current_route_update: route });
         // },
-        changeOptions: function(new_options, _routing_options ){
+        change_options: function(new_options, _routing_options ){
             console.log('changeOptions triggered: ' + JSON.stringify(new_options) + ' , ' + JSON.stringify(_routing_options) );
+
+            var updated_current_options = _.extend({}, this.model.get('current_options'), new_options);
             this.model.set({ routing_options: _routing_options,
-                             current_options: new_options });
+                             current_options: updated_current_options });
         },
+
+        remove: function(){
+            console.log('ListView remove called');
+            Backbone.View.prototype.remove.apply(this);
+        },
+
+        // reset_grid : function(){
+            // var self = this;
+            // // Call the schema from the server to get the field definitions
+            // var url_schema = this._options.url + '/schema';
+            // if(!_.isUndefined(this._options.url_schema)){
+                // url_schema = this._options.url_schema;
+            // }
+//
+            // $.ajax({
+                // type: "GET",
+                // url: url_schema,
+                // data: "",
+                // dataType: "json",
+                // success: function(result) {
+                    // self.buildGrid(result);
+                // }, // end success outer ajax call
+                // error: function(x, e) {
+                    // alert(x.readyState + " "+ x.status +" "+ e.msg);
+                // }
+            // });
+        // },
 
         onClose: function(){
             console.log('Extra onclose method called');
@@ -465,8 +491,15 @@ define([
         },
 
         render: function(){
-            console.log('render listView');
-            this.reset_grid();
+            // console.log('render listView');
+            // this.reset_grid();
+            // this.delegateEvents();
+            // TODO: have to redelegate events in case "empty" was called on a parent between renders. (should be a better way)
+             this.grid.delegateEvents();
+             this.paginator.delegateEvents();
+             this.selector.delegateEvents();
+             if(!_.isUndefined(this.extraSelectorInstance) ) this.extraSelectorInstance.delegateEvents();
+             this.footer.delegateEvents();
             return this;
         }
     });

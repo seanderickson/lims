@@ -12,6 +12,11 @@ import logging
 from django.core.exceptions import ObjectDoesNotExist
 from tastypie.exceptions import NotFound
 from django.utils.timezone import is_naive
+from collections import OrderedDict
+from django.core.serializers.json import DjangoJSONEncoder
+from tastypie.bundle import Bundle
+from psycopg2.psycopg1 import cursor
+from django.db.backends.util import CursorDebugWrapper
 
 
 logger = logging.getLogger(__name__)
@@ -127,6 +132,137 @@ class CSVSerializer(Serializer):
             i += 1
                 
         return data
+
+
+
+class CursorSerializer(Serializer):
+    """
+    A simple serializer that takes a cursor, queries it for its columns, and outputs 
+    this as either CSV or JSON.
+    (The CSV output is used with SAF)
+    """
+    
+    formats = ['json', 'jsonp', 'xml', 'yaml', 'csv']
+    content_types = {
+        'json': 'application/json',
+        'jsonp': 'text/javascript',
+        'xml': 'application/xml',
+        'yaml': 'text/yaml',
+        'csv': 'text/csv',
+    }
+
+#    def get_saf_columns(self, query):
+#        return ['one','two', 'three']
+    
+    def to_csv(self, bundle_or_obj, options=None):
+        '''
+        NOTE: ignores all content except for "objects"
+        '''
+        
+        logger.info(str(('typeof the object sent to_csv',type(cursor))))
+        raw_data = StringIO.StringIO()
+
+        obj = bundle_or_obj            
+        if isinstance(bundle_or_obj, Bundle):
+            obj = bundle_or_obj.obj
+            
+        # this is an unexpected way to get this error, look into tastypie sequence calls
+        if(isinstance(obj,dict) and 'error_message' in obj):
+            logger.info(str(('report error', obj)))
+            raw_data.writelines(('error_message\n',obj['error_message'],'\n'))
+            return raw_data.getvalue() 
+        elif isinstance(obj,dict) :
+            
+            writer = csv.writer(raw_data)
+            wrote_to_csv = False
+            for key, value in obj.items():
+                if isinstance(value, cursor):
+                    self._cursor_to_csv(value, writer)
+                    wrote_to_csv = True
+            
+            for key, value in obj.items():
+                if not isinstance(value, cursor):
+                    if not wrote_to_csv:
+                        writer.writewrow([key,json.dumps(value,skipkeys=False,check_circular=True, allow_nan=True, default=lambda x: str(x))] )
+                    else:
+                        logger.info('non-cursor data will not be written to csv: "' + key 
+                                    + '": ' + json.dumps(value,skipkeys=False,check_circular=True, allow_nan=True, default=lambda x: str(x)))
+            
+        return raw_data.getvalue()
+    
+    def _cursor_to_csv(self, cursor, writer):
+        # no response header needed?
+        #        response = HttpResponse(mimetype='text/csv')
+        #        response['Content-Disposition'] = 'attachment; filename=%s.csv' % unicode('test.output').replace('.', '_')
+        #        raw_data.write(response)
+        i=0
+        cols = [col[0] for col in cursor.description]
+        
+        # TODO: grab the column names here
+        writer.writerow(cols)
+
+        for row in cursor.fetchall():
+            writer.writerow([smart_str(val, 'utf-8', errors='ignore') for val in row])
+            i += 1
+        logger.info('_cursor_to_csv done, wrote: %d' % i)
+
+    def to_json(self,bundle_or_obj, options=None):
+        
+        logger.info(str(('typeof the object sent to_json',type(bundle_or_obj))))
+#        logger.info(str(('to_csv for SAF for cursor', cursor)))
+        raw_data = StringIO.StringIO()
+         
+        if isinstance(bundle_or_obj, Bundle):
+            obj = bundle_or_obj.obj
+        else:
+            obj = bundle_or_obj            
+            
+        # this is an unexpected way to get this error, look into tastypie sequence calls
+        if isinstance(obj,dict) and 'error_message' in obj :
+            logger.info(str(('report error', obj)))
+            raw_data.writelines(('error_message\n',obj['error_message'],'\n'))
+            return raw_data.getvalue() 
+        elif isinstance(obj,dict) :
+            raw_data.write('{');
+            count = 0
+            for key, value in obj.items():
+                if count > 0: raw_data.write(', ')
+                if isinstance(value, (cursor, CursorDebugWrapper) ):
+                    raw_data.write('"' + key + '": [') # key should be 'objects'
+                    self._cursor_to_json(value, raw_data)
+                    raw_data.write(']')
+                else:
+                    raw_data.write('"' + key + '": ')
+                    raw_data.write(json.dumps(value,skipkeys=False,check_circular=True, allow_nan=True, default=lambda x: str(x)))
+                count += 1
+                
+            raw_data.write('}')
+            
+            # then in this case, this is a non-error dict, probably for the schema, dump and return.
+#            raw_data.writelines(json.dumps(obj))
+#            return raw_data.getvalue()
+#            return json.dumps(obj,skipkeys=False,check_circular=True, allow_nan=True, default=lambda x: str(x))
+        
+        return raw_data.getvalue() # TODO: how to stream entire set
+        
+    def _cursor_to_json(self, _cursor, raw_data):
+        if not isinstance(_cursor, (cursor, CursorDebugWrapper) ):
+            raise Exception(unicode(('obj for serialization is not a "cursor": ', type(_cursor) )))
+        
+        i=0
+        cols = [col[0] for col in _cursor.description]
+        
+        logger.info('begin serializing')
+        for row in _cursor.fetchall():
+#            logger.info(unicode((row)))
+            if i!=0:
+                raw_data.write(',\n')
+            raw_data.write(json.dumps(OrderedDict(zip(cols, row)),skipkeys=False,ensure_ascii=True,check_circular=True, allow_nan=True, cls=DjangoJSONEncoder))
+            #            raw_data.write(json.dumps(dict(zip(cols, row))))
+            i += 1
+
+        logger.info('done, wrote: %d' % i)
+
 
 class LimsSerializer(BackboneSerializer,TimeZoneAwareDateSerializer,CSVSerializer):
     ''' Combine all of the Serializers used by the API

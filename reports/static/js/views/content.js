@@ -6,8 +6,9 @@ define([
     'iccbl_backgrid',
     'views/list',
     'views/home',
-    'views/detail_stickit'
-], function($, _, Backbone, Bootstrap, Iccbl, ListView, HomeView, DetailView) {
+    'views/detail_stickit',
+    'views/screen'
+], function($, _, Backbone, Bootstrap, Iccbl, ListView, HomeView, DetailView, ScreenView) {
 
     var ContentView = Backbone.View.extend({
         el: '#container',
@@ -38,6 +39,9 @@ define([
             var current_ui_resource = this.model.get('ui_resources')[current_resource_id];
             Iccbl.assert( !_.isUndefined(current_ui_resource), 'list: current_ui_resource is not defined for current_resource_id: ' + current_resource_id );
 
+            var current_scratch = this.model.get('current_scratch');
+            this.model.set({ current_scratch: {} });
+
             if( !_.isUndefined(this.currentView)) this.currentView.close();
 
             if (current_view === 'home'){  // TODO: make into a "menu view"
@@ -49,53 +53,58 @@ define([
                 options.url = options.url_root + '/' + options.api_resource;
                 options.url_schema = options.url + '/schema';
 
-                this.listView = new ListView({ model: this.model }, options);
-                this.currentView = this.listView;
-                this.render();
-            }else if (current_view === 'detail'){
-                var options = _.extend( {}, this.model.get('detail_defaults'), current_ui_resource ); // TODO: move the nested options up into the model
-
-                var current_scratch = this.model.get('current_scratch');
-                this.model.set({ current_scratch: {} });
-
-                var createDetail = function(schemaResult, model){
-                    var detailView =
-                        new DetailView({ model: model},
-                            {
-                                schemaResult:schemaResult,
-                                router:self.router,
-                                isEditMode: false, title: "Detail for " + current_ui_resource.title
-                            });
-                    self.currentView = detailView;
+                var createResults = function(schemaResult){
+                    options.schemaResult = schemaResult;
+                    self.listView = new ListView({ model: self.model }, options);
+                    self.currentView = self.listView;
                     self.render();
                 };
+                Iccbl.getSchema(options.url_schema, createResults);
 
-                if(_.isUndefined(current_scratch.schemaResult) ||_.isUndefined(current_scratch.model)){  // allow reloading
-                    var resource_url = current_ui_resource.url_root + '/' + current_ui_resource.api_resource;
-                    var schema_url =  resource_url + '/schema';
-                    var _key = current_options;
-                    Iccbl.assert( !_.isEmpty(_key), 'content:detail: options.key required if not schemaResult, model supplied');
-                    // handle composite keys
-                    if(_.isArray(_key)){
-                        _key = _.reduce(_key, function(memo, item){
-                            if(!_.isNull(item)) memo += item + '/';
-                            return memo;
-                        }, '');
-                    }
-                    var url = resource_url  + '/' + _key;
+            }else if (current_view === 'detail'){
 
-                    this.getSchema(schema_url, function(schemaResult) {
-                        console.log('schemaResult callback: ' + schemaResult + ', ' + url);
-                        if(_.isUndefined(current_scratch.model)){
-                            self.getModel(schemaResult, url, createDetail);
-                        }else{
-                            createDetail(schemaResult,current_scratch.model);
-                        }
-                    });
+                if(current_resource_id == 'screen'){
+                    var options = {
+                        url_root: current_ui_resource.url_root,
+                        current_options: current_options,
+                        screen_model: current_scratch.model,
+                        screen_schema: current_scratch.schemaResult,
+                        router: this.router,
+                    };
+
+                    this.currentView = new ScreenView({ model: this.model }, options);
+                    this.render();
                 }else{
-                    createDetail(current_scratch.schemaResult,current_scratch.model);
-                }
+                    var createDetail = function(schemaResult, model){
+                        var detailView =
+                            new DetailView({ model: model},
+                                {
+                                    schemaResult:schemaResult,
+                                    router:self.router,
+                                    isEditMode: false
+                                });
+                        self.currentView = detailView;
+                        self.render();
+                    };
 
+                    if(_.isUndefined(current_scratch.schemaResult) ||_.isUndefined(current_scratch.model)){  // allow reloading
+                        var resource_url = current_ui_resource.url_root + '/' + current_ui_resource.api_resource;
+                        var schema_url =  resource_url + '/schema';
+                        var _key = Iccbl.getKey(current_options);
+                        var url = resource_url  + '/' + _key;
+
+                        Iccbl.getSchema(schema_url, function(schemaResult) {
+                            console.log('schemaResult callback: ' + schemaResult + ', ' + url);
+                            if(_.isUndefined(current_scratch.model)){
+                                Iccbl.getModel(schemaResult, url, createDetail);
+                            }else{
+                                createDetail(schemaResult,current_scratch.model);
+                            }
+                        });
+                    }else{
+                        createDetail(current_scratch.schemaResult,current_scratch.model);
+                    }
+                }
             }else{
                 window.alert('unknown view: ' + current_view);
             }
@@ -104,41 +113,6 @@ define([
         render: function() {
             this.$el.append(this.currentView.render().el);
         },
-
-        getSchema: function (schema_url, callback) {
-            $.ajax({
-                type: "GET",
-                url: schema_url, //options.url_schema,
-                data: "",
-                dataType: "json",
-                success: function(schemaResult) {
-                    callback(schemaResult);
-                }, // end success outer ajax call
-                error: function(x, e) {
-                    alert(x.readyState + " "+ x.status +" "+ e.msg);
-                }
-            });
-        },
-
-        getModel: function(schemaResult, url, callback) {
-            var ModelClass = Backbone.Model.extend({url: url, defaults: {} });
-            var instance = new ModelClass();
-            instance.fetch({
-                success: function(model){
-                    callback(schemaResult, model);
-                },
-                error: function(model, response, options){
-                    //console.log('error fetching the model: '+ model + ', response: ' + JSON.stringify(response));
-                    var msg = 'Error locating resource: ' + url;
-                    var sep = '\n';
-                    if(!_.isUndefined(response.status)) msg += sep + response.status;
-                    if(!_.isUndefined(response.statusText)) msg += sep+ response.statusText;
-                    if(!_.isEmpty(response.responseText)) msg += sep+ response.responseText;
-                    window.alert(msg); // TODO: use Bootstrap inscreen alert classed message div
-                }
-            });
-        },
-
 
     });
 

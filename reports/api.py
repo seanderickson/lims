@@ -453,19 +453,27 @@ class JsonAndDatabaseResource(PostgresSortingResource):
     def dehydrate(self, bundle):
 #        logger.info('------dehydrate: ' + self.scope)
 #        bundle = super(JsonAndDatabaseResource, self).dehydrate(bundle);
+
+        if len(bundle.data) == 0 : return bundle
+        
+        logger.info(str(('=====',bundle.data)))
+        
         local_field_defs = self.get_field_defs(self.scope) # trigger a get field defs before building the schema
         for key in [ x for x,y in local_field_defs.items() if y.get('json_field_type') ]:
             bundle.data[key] = bundle.obj.get_field(key);
+        logger.info(str(('=====2222',bundle.data)))
         
         bundle.data['json_field'] = ''
         bundle.data.pop('json_field') # json_field will not be part of the public API, it is for internal use only
         
         # override the resource_uri, since we want to export the permanent composite key
-        base_uri = self.get_resource_uri()
-        if base_uri[len(base_uri)-1] != '/':
-            base_uri += '/'
-        bundle.data['resource_uri'] =  base_uri + bundle.data['scope'] + '/' + bundle.data['key'] +'/'
-                
+        if 'scope' in bundle.data:
+            base_uri = self.get_resource_uri()
+            if base_uri[len(base_uri)-1] != '/':
+                base_uri += '/'
+            bundle.data['resource_uri'] =  base_uri + bundle.data['scope'] + '/' + bundle.data['key'] +'/'
+        else:
+            logger.warn(str(('Metahash managed resource does not have scope', bundle.data)))
         # and don't send the internal id out for PATCH uses, at least
         # But: we _do_ have to send it out for Backbone, since we don't know how to use things like composite keys yet - sde4
         # bundle.data.pop('id')
@@ -494,7 +502,6 @@ class JsonAndDatabaseResource(PostgresSortingResource):
             if val:
                 try:
                     logger.info(str(('get value for key: ', key, val )))
-    #                logger.info(str(('get value for key: ', key, smart_text(val) )))
                     if hasattr(val, "strip"): # test if it is a string
                         val = self.fields[key].convert(smart_text(val,'utf-8', errors='ignore'))
                         logger.info(str(('got value for key: ', key, val)))

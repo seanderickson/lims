@@ -9,3 +9,4 @@ lead_screener,fields:screen,/reports/api/v1/metahash/fields:screen/lead_screener
 date_created,fields:screen,/reports/api/v1/metahash/fields:screen/date_created/,7,,date,TRUE,"The date the screen was first recorded in the Screensaver database","Date Recorded",TRUE,,,"[list,detail]",,date,
 status,fields:screen,/reports/api/v1/metahash/fields:screen/status/,8,,string,TRUE,"The current status of the screen",Status,TRUE,,fields:screen:status,"[list,detail]",,,
 status_date,fields:screen,/reports/api/v1/metahash/fields:screen/status_date/,9,,date,TRUE,"The date of the most recent change of status for the screen","Status Date",TRUE,,,"[list,detail]",,,
+has_screen_result,fields:screen,/reports/api/v1/metahash/fields:screen/has_screen_result/,9,,boolean,TRUE,"Whether the screen has a screen result","Screen Result Available",TRUE,,,"[list,detail]",,,

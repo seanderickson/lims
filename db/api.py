@@ -316,9 +316,7 @@ class ScreenResultResource(MetahashManagedResource,Resource):
     
 
 class ScreenSummaryResource(JsonAndDatabaseResource):
-
-    experimental_wells_loaded = fields.IntegerField('screenresult__experimental_well_count')    
-    
+        
     class Meta:
         queryset = Screen.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
@@ -338,6 +336,44 @@ class ScreenSummaryResource(JsonAndDatabaseResource):
         # We don't want "schema" since that reserved word is used by tastypie for the schema definition for the resource (used by the UI)
         return [
             url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ]    
+
+    def dehydrate(self, bundle):
+        screen = bundle.obj
+        try:
+            # TODO: this is an example of the old activity system; we'll want to refactor this to a generic entry in apilog and then the actual values
+            activities = bundle.obj.screenupdateactivity_set.all().filter(update_activity__administrative_activity_type='Screen Result Data Loading')
+            if len(activities) > 0: 
+                bundle.data['screenresult_last_imported'] =  activities[:1][0].update_activity.activity.date_created;
+        except ScreenResult.DoesNotExist, e:
+            logger.info(unicode(('no screenresult for ', bundle.obj)))
+        return bundle
+
+
+
+class DataColumnResource(JsonAndDatabaseResource):
+    screen = fields.ToOneField('db.api.ScreenResource', 'screen_result__screen')  # included to allow querying like ?screen__facility_id=##
+    facility_id = fields.CharField('screen_result__screen__facility_id')
+    
+    class Meta:
+        queryset = DataColumn.objects.all() #.order_by('facility_id')
+        authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
+        resource_name = 'datacolumn'
+        
+        ordering = []
+        filtering = { 'screen': ALL_WITH_RELATIONS}
+        serializer = LimsSerializer()
+
+    def __init__(self, **kwargs):
+#        self.
+        super(DataColumnResource,self).__init__(scope = 'fields:datacolumn', **kwargs)
+
+    def prepend_urls(self):
+        # NOTE: this match "((?=(schema))__|(?!(schema))[\w\d_.-]+)" allows us to match any word, except "schema", and use it as the key value to search for.
+        # also note the double underscore "__" is because we also don't want to match in the first clause.
+        # We don't want "schema" since that reserved word is used by tastypie for the schema definition for the resource (used by the UI)
+        return [
+            url(r"^(?P<resource_name>%s)/(?P<data_column_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
 
 class ScreenResource(JsonAndDatabaseResource):
@@ -389,6 +425,13 @@ class ScreenResource(JsonAndDatabaseResource):
         except ScreenResult.DoesNotExist, e:
             logger.info(unicode(('no screenresult for ', bundle.obj)))
         return bundle
+    
+    def build_schema(self):
+        schema = super(ScreenResource,self).build_schema()
+        temp = [ x.screen_type for x in self.Meta.queryset.distinct('screen_type')]
+        schema['extraSelectorOptions'] = { 'label': 'Type', 'searchColumn': 'screen_type', 'options': temp }
+        return schema
+
 
     def apply_sorting(self, obj_list, options):
         options = options.copy()

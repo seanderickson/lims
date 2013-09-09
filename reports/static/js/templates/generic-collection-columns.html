@@ -1,0 +1,41 @@
+<div class="container-fluid" style="margin-left: 0px; background-color: #c5d2db;" id="collection-columns-container" >
+<table class='table-bordered table-striped table-hover'>
+  <thead>
+    <tr>
+    <%
+        console.log('start');
+        _.each(headers, function(header){
+            console.log('header: ' + header);
+    %>
+      <th><%=header %></th>
+    <%
+        });
+      %>
+    </tr>
+  </thead>
+  <tbody>
+    <%
+        _.each(rows, function(row){
+            var i=0;
+    %>
+    <tr>
+    <%
+            _.each(row, function(col){
+                if(i++==0){
+    %>
+      <td><strong><%=col.value %></strong></td>
+    <%
+                }else{
+    %>
+      <td><%=col.value %></td>
+    <%
+                }
+            });
+    %>
+    </tr>
+    <%
+        });
+    %>
+  </tbody>
+</table>
+</div>

@@ -285,9 +285,9 @@ class JsonAndDatabaseResource(PostgresSortingResource):
             if 'ordering' in hash and hash['ordering']:
                 self.Meta.ordering.append(key)
 
-        logger.info(str(('+++filtering', self.Meta.filtering)))
-        logger.info(str(('ordering', self.Meta.ordering)))
-        #        self.reset_filtering_and_ordering()
+#        logger.info(str(('+++filtering', self.Meta.filtering)))
+#        logger.info(str(('ordering', self.Meta.ordering)))
+#        #        self.reset_filtering_and_ordering()
 
         super(JsonAndDatabaseResource,self).__init__(**kwargs)
         self.original_fields = deepcopy(self.fields)

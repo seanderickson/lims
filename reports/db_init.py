@@ -88,16 +88,22 @@ def main(inputDir, url, auth):
     input_file = input_file_dir + '/metahash_fields_screen.csv'
     patch(input_file, obj_url, headers, authentication)
 
+    # define screensummary
+    obj_url = url_base + '/metahash/'
+    headers = {'content-type': 'text/csv'}
+    input_file = input_file_dir + '/metahash_fields_screensummary.csv'
+    patch(input_file, obj_url, headers, authentication)
+
     # define screenresult (non-dynamic fields)
     obj_url = url_base + '/metahash/'
     headers = {'content-type': 'text/csv'}
     input_file = input_file_dir + '/metahash_fields_screenresult.csv'
     patch(input_file, obj_url, headers, authentication)
 
-    # define screensummary
+    # define datacolumn
     obj_url = url_base + '/metahash/'
     headers = {'content-type': 'text/csv'}
-    input_file = input_file_dir + '/metahash_fields_screensummary.csv'
+    input_file = input_file_dir + '/metahash_fields_datacolumn.csv'
     patch(input_file, obj_url, headers, authentication)
 
     # define apilog

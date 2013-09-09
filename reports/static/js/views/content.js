@@ -53,13 +53,13 @@ define([
                 options.url = options.url_root + '/' + options.api_resource;
                 options.url_schema = options.url + '/schema';
 
-                var createResults = function(schemaResult){
+                var createList = function(schemaResult){
                     options.schemaResult = schemaResult;
                     self.listView = new ListView({ model: self.model }, options);
                     self.currentView = self.listView;
                     self.render();
                 };
-                Iccbl.getSchema(options.url_schema, createResults);
+                Iccbl.getSchema(options.url_schema, createList);
 
             }else if (current_view === 'detail'){
 

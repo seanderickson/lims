@@ -12,9 +12,6 @@ define([
         '': 'index',
         'home(/home)': 'toHome',
         'list/:ui_resource_id(/rpp/:rpp)(/page/:page)(/order_by/:orderBy)(/search/:searchBy)': 'toList', // note: can tolerate missing routes, but not out of order
-//        'list/:ui_resource_id(/search/:searchBy)(/order_by/:orderBy)(/page/:page)(/rpp/:rpp)': 'toList1',
-//        'list/:ui_resource_id(/search/:searchBy)(/order_by/:orderBy)(/rpp/:rpp)(/page/:page)': 'toList2',
-//        'detail/:ui_resource_id/:key(/:key2)(/tab/:tab)(/)': 'toDetail',
         'detail/:ui_resource_id/:key(/:key2)(/tab/:tab)(/rpp/:rpp)(/page/:page)(/order_by/:orderBy)(/search/:searchBy)(/)': 'toDetail',
         '*unknownAction': 'unknownAction',
     },
@@ -130,34 +127,15 @@ define([
         this.navigate( route, options );
     },
 
-    // model_update_route: function(){
-        // var current_route_update = this.model.get('current_route_update');
-        // Iccbl.assert( !_.isUndefined(current_route_update), 'current_route_update');
-        // console.log('model_update_route: ' + this.get_route() + " , " +  current_route_update);
-//
-        // // trigger false to suppress further parsing, replace to modify in place w/out creating browser history
-        // var options = { trigger: false, replace: true };
-        // console.log('update route: ' + current_route_update );
-        // this.navigate( this.get_route() + '/' + current_route_update, options );
-    // },
-
     index: function(){
         console.log("Index route has been called..");
         this.model.set({ menu_item:'home', view: 'home' });
     },
 
-    // toList1: function(ui_resource_id,searchBy, orderBy,page, rpp){  // kinda crappy that they can't figure this out in either order
-        // this.toList(ui_resource_id, rpp, page, orderBy, searchBy);
-    // },
-//
-    // toList2: function(ui_resource_id,searchBy, orderBy,rpp, page){
-    // },
-
     toList: function(ui_resource_id, rpp, page, orderBy, searchBy ){
         console.log("toList: searchBy: " + searchBy
             + ", order: "+  orderBy + ", rpp: " + rpp + ", page: " + page + ', ui_resource_id: ' + ui_resource_id);
 
-        //var _content_options = { ui_resource_id: ui_resource_id, view: 'list' };
         var _content_options = {};
 
         if( _.isString(page)){
@@ -192,7 +170,7 @@ define([
     toDetail: function(ui_resource_id, key, key2, _tab, rpp, page, orderBy, searchBy){
         console.log('to detail page, ui_resource_id: ' + ui_resource_id + ', ' + key + ', ' + key2);
         var _current_options = { 'key': key };
-        if(!_.isUndefined(key2)){
+        if(!_.isUndefined(key2) && !_.isNull(key2) ){
             _current_options['key'] = [key,key2]; // allow for composite ids
         }
         if(!_.isEmpty(_tab)){

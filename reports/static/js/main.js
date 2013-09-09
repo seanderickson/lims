@@ -52,8 +52,6 @@ require.config({
     iccbl_backgrid: {
         exports: 'Iccbl'
     }
-    //    deps: ["backbone", "underscore", "jquery", "backgrid", "backgrid_filter", "backgrid_paginator"]
-    //}
   }
 });
 require([

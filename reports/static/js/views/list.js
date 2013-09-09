@@ -40,19 +40,32 @@ define([
 
             this.router = options.router;
             this._options = options;
+
             var data = { message: '' };
             if (this._options.header_message){
                 data.title = this._options.title;
                 data.message = this._options.header_message; //'hello world!' };
             }
-            var compiledTemplate = _.template( listTemplate, data );
-            this.el.innerHTML = compiledTemplate;
-
+            var compiledTemplate = this.compiledTemplate = _.template( listTemplate, data );
             this.objects_to_destroy = _([]);
             var collection  = this.collection = new Iccbl.MyCollection({ 'url': this._options.url }); //, router: this._options.router  });
             this.objects_to_destroy.push(collection);
 
             this.buildGrid(this._options.schemaResult);
+
+            // var data = { message: '' };
+            // if (this._options.header_message){
+                // data.title = this._options.title;
+                // data.message = this._options.header_message; //'hello world!' };
+            // }
+            // var compiledTemplate = _.template( listTemplate, data );
+            // this.$el.html(compiledTemplate);
+//
+            // this.objects_to_destroy = _([]);
+            // var collection  = this.collection = new Iccbl.MyCollection({ 'url': this._options.url }); //, router: this._options.router  });
+            // this.objects_to_destroy.push(collection);
+//
+            // this.buildGrid(this._options.schemaResult);
         },
 
         // delegateEvents: function(){
@@ -113,7 +126,10 @@ define([
                 if(_.has(schemaResult['resource_definition'], 'id_attribute')){
                     console.log('create id from ' + schemaResult['resource_definition']['id_attribute']);
                     id = _.reduce(schemaResult['resource_definition']['id_attribute'],
-                            function(memo, item){ return memo += model.get(item) + '/';}, '');
+                            function(memo, item){
+                                if(!_.isEmpty(memo)) memo += '/';
+                                return memo += model.get(item);
+                            }, '');
                 }else{
                     console.log('Warn: schema for this type has no resource_definition,id_attribute; type: ' + this._options.ui_resource_id);
                 }
@@ -212,7 +228,7 @@ define([
                 render: function(){
                     // console.log('===============render extra selector' + this)
                     this.delegateEvents();
-                    this._options.options.unshift(' '); // create a blank entry
+                    this._options.options.unshift(' '); // create a blank entry // TODO: check if there is already a blank
 
                     this.$el.html(_.template( genericSelectorTemplate,
                         { label: this._options.label,
@@ -240,8 +256,8 @@ define([
                 extraSelectorInstance.listenTo(self.collection, 'MyServerSideFilter:clearSearch', extraSelectorInstance.updateSelection);
 
             }
-            self.$("#paginator-div").append(paginator.render().$el);
-            self.$("#rows-selector-div").append(selector.render().$el);
+            // self.$("#paginator-div").append(paginator.render().$el);
+            // self.$("#rows-selector-div").append(selector.render().$el);
             var columns = this.createBackgridColModel(this._options.schemaResult.fields, Iccbl.MyHeaderCell);//, col_options );
             //columns.unshift({ name: 'deletor', label: 'Delete', text:'X', description: 'delete record', cell: Iccbl.DeleteCell, sortable: false });
             var grid = this.grid = new Backgrid.Grid({
@@ -300,7 +316,7 @@ define([
             this.listenTo(self.collection, 'request', ajaxStart);
             // this.listenTo(collection, 'MyCollection:setRoute', this.setRoute);
             this.listenTo(self.collection, 'MyCollection:changeOptions', this.change_options);
-            this.listenTo(self.collection, 'sync', selector.updateSelection );
+            this.listenTo(self.collection, 'sync', this.selector.updateSelection );
 
             // TODO: work out the specifics of communication complete event.  the following are superceded by the global handler for "ajaxComplete"
             this.listenTo(self.collection, 'error', ajaxComplete);
@@ -343,13 +359,6 @@ define([
                     }else{
                         searchExpressions[searchExpression[0]] = searchExpression[1];
                     }
-                    // var p = /([^=]+)=([^=]+)/
-                    // var match = p.exec(searchItem);
-                    // if (match){
-                        // // data[match[1] + '__contains'] = match[2];
-                        // // console.log('parsed search: ' + JSON.stringify(data));
-                        // var searchColumn = match[1];
-                        // var searchTerm = match[2];
                 });
 
                 if(!_.isEmpty(searchExpressions)){
@@ -437,13 +446,6 @@ define([
             return colModel;
         },
 
-        // setRoute: function(route, options){
-            // // var _route = 'list/' + this._options.ui_resource_id + '/' + route;
-            // console.log('setRoute triggered: ' + route + ', setting current_route_update' );
-            // // this.router.navigate(_route, options);
-//
-            // this.model.set({ current_route_update: route });
-        // },
         change_options: function(new_options, _routing_options ){
             console.log('changeOptions triggered: ' + JSON.stringify(new_options) + ' , ' + JSON.stringify(_routing_options) );
 
@@ -490,7 +492,7 @@ define([
             }
         },
 
-        render: function(){
+        renderOld: function(){
             // console.log('render listView');
             // this.reset_grid();
             // this.delegateEvents();
@@ -501,7 +503,41 @@ define([
              if(!_.isUndefined(this.extraSelectorInstance) ) this.extraSelectorInstance.delegateEvents();
              this.footer.delegateEvents();
             return this;
+        },
+
+        render1: function(){
+
+            var data = { message: '' };
+            if (this._options.header_message){
+                data.title = this._options.title;
+                data.message = this._options.header_message; //'hello world!' };
+            }
+            var compiledTemplate = _.template( listTemplate, data );
+            this.$el.html(compiledTemplate);
+
+            this.objects_to_destroy = _([]);
+            var collection  = this.collection = new Iccbl.MyCollection({ 'url': this._options.url }); //, router: this._options.router  });
+            this.objects_to_destroy.push(collection);
+
+            this.buildGrid(this._options.schemaResult);
+            return this;
+        },
+
+        render: function(){
+            var self = this;
+            this.$el.html(this.compiledTemplate);
+            self.$("#example-table").append(this.grid.render().$el);
+            self.$("#paginator-div").append(self.paginator.render().$el);
+            self.$("#rows-selector-div").append(self.selector.render().$el);
+
+            if(!_.isUndefined(self.extraSelectorInstance)){
+                self.$("#extra-selector-div").append(self.extraSelectorInstance.render().$el);
+            }else{
+                console.log('wherez theextra selector');
+            }
+            return this;
         }
+
     });
 
   return ListView;

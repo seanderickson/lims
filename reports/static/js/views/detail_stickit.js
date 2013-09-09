@@ -51,19 +51,21 @@ define([
             }
             console.log('id: ' + this._id);
 
-            this._keys = _(this.model.attributes).keys().sort(function(a,b){
-                order_a = self._schemaResult.fields[a]['ordinal'];  // TODO: need an edit order by
-                order_b = self._schemaResult.fields[b]['ordinal'];
-                if(_.isNumber(order_a) && _.isNumber(order_b)){
-                    return order_a - order_b;
-                }else if(_.isNumber(order_a)){
-                    return -1;
-                }else if(_.isNumber(order_b)){
-                    return 1;
-                }else{
-                    return 0;
-                }
-            });
+            this._keys = Iccbl.sortOnOrdinal(_.keys(this.model.attributes), self._schemaResult.fields);
+            // this._keys = _(this.model.attributes).keys().sort(function(a,b){
+                // console.log('comparing: ' + a + ', to ' + b );
+                // order_a = self._schemaResult.fields[a]['ordinal'];  // TODO: need an edit order by
+                // order_b = self._schemaResult.fields[b]['ordinal'];
+                // if(_.isNumber(order_a) && _.isNumber(order_b)){
+                    // return order_a - order_b;
+                // }else if(_.isNumber(order_a)){
+                    // return -1;
+                // }else if(_.isNumber(order_b)){
+                    // return 1;
+                // }else{
+                    // return 0;
+                // }
+            // });
 
             if(options.isEditMode){
                 // template = genericFormTemplate;

@@ -2,7 +2,8 @@ from django.conf.urls import patterns, url, include
 from db import views
 from tastypie.api import Api
 
-from db.api import ScreensaverUserResource, ScreenResource, ScreenSummaryResource, ScreenResultResource, LabHeadResource, LabAffiliationResource, ScreeningRoomUserResource
+from db.api import ScreensaverUserResource, ScreenResource, ScreenSummaryResource, ScreenResultResource, LabHeadResource, \
+    LabAffiliationResource, ScreeningRoomUserResource, DataColumnResource
 
 v1_api = Api(api_name='v1')
 v1_api.register(ScreensaverUserResource())
@@ -12,7 +13,7 @@ v1_api.register(ScreenSummaryResource())
 v1_api.register(LabHeadResource())
 v1_api.register(LabAffiliationResource())
 v1_api.register(ScreeningRoomUserResource())
-
+v1_api.register(DataColumnResource())
 urlpatterns = patterns('',
     url(r'^$', views.main, name="home"),
     url(r'^screeners/$', views.screeners, name="screeners"),

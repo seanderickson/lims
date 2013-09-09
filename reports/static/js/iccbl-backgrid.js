@@ -89,6 +89,24 @@ define([
       return  fn;
     };
 
+    var sortOnOrdinal = Iccbl.sortOnOrdinal = function(keys, fieldHash){
+        var sorted = _(keys).sort(function(a,b){
+            console.log('comparing: ' + a + ', to ' + b );
+            order_a = fieldHash[a]['ordinal'];  // TODO: need an edit order by
+            order_b = fieldHash[b]['ordinal'];
+            if(_.isNumber(order_a) && _.isNumber(order_b)){
+                return order_a - order_b;
+            }else if(_.isNumber(order_a)){
+                return -1;
+            }else if(_.isNumber(order_b)){
+                return 1;
+            }else{
+                return 0;
+            }
+        });
+        return sorted;
+    };
+
     var getKey = Iccbl.getKey = function( options ){
         var route_fragment = '';
         if(_.isString(options)){
@@ -108,7 +126,7 @@ define([
         }
 
         return route_fragment;
-    }
+    };
     // var getKey = Iccbl.getKey = function( key_array ){
         // var _key = key_array;
         // Iccbl.assert( !_.isEmpty(_key), 'content:detail: current_options must be defined (as the key), if not schemaResult, model supplied');
@@ -156,12 +174,66 @@ define([
         });
     };
 
+    var getCollection = Iccbl.getCollection = function(schemaResult, url, callback) {
+        var CollectionClass = Iccbl.CollectionOnClient.extend({url: url, defaults: {} });
+        var instance = new CollectionClass();
+        instance.fetch({
+            success: function(collection){
+                callback(schemaResult, collection);
+            },
+            error: function(model, response, options){
+                //console.log('error fetching the model: '+ model + ', response: ' + JSON.stringify(response));
+                var msg = 'Error locating resource: ' + url;
+                var sep = '\n';
+                if(!_.isUndefined(response.status)) msg += sep + response.status;
+                if(!_.isUndefined(response.statusText)) msg += sep+ response.statusText;
+                if(!_.isEmpty(response.responseText)) msg += sep+ response.responseText;
+                window.alert(msg); // TODO: use Bootstrap inscreen alert classed message div
+            }
+        });
+    };
+
+    var getCollection2 = Iccbl.getCollection2 = function(schemaResult, url, callback) {
+        var CollectionClass = Iccbl.CollectionInColumns.extend({url: url, defaults: {} });
+        var instance = new CollectionClass();
+        instance.fetch({
+            success: function(collection){
+                callback(schemaResult, collection);
+            },
+            error: function(model, response, options){
+                //console.log('error fetching the model: '+ model + ', response: ' + JSON.stringify(response));
+                var msg = 'Error locating resource: ' + url;
+                var sep = '\n';
+                if(!_.isUndefined(response.status)) msg += sep + response.status;
+                if(!_.isUndefined(response.statusText)) msg += sep+ response.statusText;
+                if(!_.isEmpty(response.responseText)) msg += sep+ response.responseText;
+                window.alert(msg); // TODO: use Bootstrap inscreen alert classed message div
+            }
+        });
+    };
+
     var getSchemaAndModel = Iccbl.getSchemaAndModel = function(schema_url, url, callback){
         Iccbl.getSchema(schema_url, function(schemaResult) {
             console.log('schemaResult callback: ' + schemaResult + ', ' + url);
             Iccbl.getModel(schemaResult, url, callback);
         });
     };
+
+
+    var getSchemaAndCollection = Iccbl.getSchemaAndCollection = function(schema_url, url, callback){
+        Iccbl.getSchema(schema_url, function(schemaResult) {
+            console.log('schemaResult callback: ' + schemaResult + ', ' + url);
+            Iccbl.getCollection(schemaResult, url, callback);
+        });
+    };
+    var getSchemaAndCollection2 = Iccbl.getSchemaAndCollection2 = function(schema_url, url, callback){
+        Iccbl.getSchema(schema_url, function(schemaResult) {
+            console.log('schemaResult callback: ' + schemaResult + ', ' + url);
+            Iccbl.getCollection2(schemaResult, url, callback);
+        });
+    };
+
+
 
     var MyModel = Iccbl.MyModel = Backbone.Model.extend({
         // TODO: we want to make sure there is a trailing slash, or tastypie doesn't work.
@@ -291,6 +363,40 @@ define([
         }
     });
 
+    var CollectionOnClient = Iccbl.CollectionOnClient = Backbone.Collection.extend({
+        /**
+         *  Override collection parse method:
+         *      Parse server response data.
+         */
+        parse: function(response) {
+            console.log('Collection on client, parse called');
+            // hack the response for tastypie:
+            return response.objects;
+        },
+    });
+    var CollectionInColumns = Iccbl.CollectionInColumns = Backbone.Collection.extend({
+        /**
+         *  Override collection parse method:
+         *      Parse server response data.
+         * untested
+         */
+        parse: function(response) {
+            console.log('Collection on client, parse called');
+            // hack the response for tastypie:
+            var pivoted = {};
+            var i = 0;
+            _.each(response.objects, function(obj){
+                _.pairs(obj, function(pair){
+                    if(_.has(pivoted,pair[0])){
+                        pivoted[pair[0]] = {};
+                    }
+                    pivoted[pair[0]][i] = pair[1];
+                });
+                i++;
+            });
+            return _.values(pivoted);
+        },
+    });
 
     var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
 
@@ -396,36 +502,6 @@ define([
             new_options['rpp'] =  this.state.pageSize;
             this.trigger( "MyCollection:changeOptions", new_options, route_options); // TODO: need to set replace=false when modifying to add the page, rpp for the first time: { replace: true } );
         },
-
-        // setRoutes: function(route_options) {
-            // console.log('- setRoutes: ' + this.searchBy + ', '
-                // + this.state.sortKey + ', ' + this.state.order + ', '+ this.state.pageSize
-                // + ', ', + this.state.currentPage + ', options: ' + JSON.stringify(route_options));
-            // var route = '';
-            // if(this.searchBy !== null){
-                // if(route.length > 0) route += '/';
-//
-                // // TODO: discuss whether full encoding of the search fragment is necessary.
-                // // to-date, we know that the forward slash messes up the backbone router parsing, but other URL chars do not,
-                // // and full encoding reduces the usability of the URL for the end user
-                // //_history_search = encodeURIComponent(_history_search);
-                // route += 'search/' + this.searchBy.replace('\/','%2F');
-                // // route += 'search/'+ encodeURIComponent(this.searchBy) ;
-            // }
-            // if(typeof this.state.sortKey !== 'undefined' && this.state.sortKey !== null){
-                // var sortKey = this.state.sortKey;
-                // if(this.state.order > 0){
-                    // sortKey = '-' + sortKey;
-                // }
-                // if(route.length > 0) route += '/';
-//
-                // route += 'order_by/' + sortKey;
-            // }
-            // if(route.length > 0) route += '/';
-//
-            // route += 'rpp/' + this.state.pageSize + '/page/' + this.state.currentPage;
-            // this.trigger( "MyCollection:setRoute", route, route_options); // TODO: need to set replace=false when modifying to add the page, rpp for the first time: { replace: true } );
-        // },
 
         // Override
         setSorting: function(sortKey,order,options) { // override and hack in sorting URL support
@@ -576,7 +652,7 @@ define([
 
     var ItemsPerPageSelector = Iccbl.ItemsPerPageSelector = Backbone.View.extend({
 
-        template: function(){ return _.template(this._template); }, // TODO: this appears to be unused (see render)
+        //template: function(){ return _.template(this._template); }, // TODO: this appears to be unused (see render)
 
         events: {
             "change #rowsperpage_selector": "setItemsPerPage"
@@ -604,18 +680,16 @@ define([
             this.collection.fetch({reset:true});
         },
         render: function(){
+            this.delegateEvents();
             var selector_template = _.template(this._template, {
                 options: this.options,
             });
             this.$el.html(selector_template);
-            this.delegateEvents();
             return this;
         },
         updateSelection: function(){
             $('#rowsperpage_selector').val(String(this.collection.state.pageSize));
         },
     });
-//    };
-    // TODO: I don't think it's standard to return the main object this way?
     return Iccbl;
 });

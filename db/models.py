@@ -17,152 +17,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-#class PostgresSqlCompiler(): # wraps SQLCompiler
-#    """
-#    failed attempt to wrap SQLCompiler!  it fails because the "iterator" method returns a copy of the wrapped version,
-#    or, more generally, because it needs to be extended not wrapped.
-#    """
-#    
-#    def __init__(self, sqlcompiler):
-#        logger.info(str(('----init custom compiler', sqlcompiler)))
-#        self.sqlcompiler = sqlcompiler
-#        
-#    def pre_sql_setup(self):
-#        logger.info(str(('---- wrapped method')))
-#        return self.sqlcompiler.pre_sql_setup()
-#    
-#    def quote_name_unless_alias(self, name):
-#        logger.info(str(('---- wrapped method')))
-#        return self.sqlcompiler.quote_name_unless_alias(name)
-#    
-#    def as_sql(self, with_limits=True, with_col_aliases=False):
-#        logger.info('---- as_sql')
-#        return self.sqlcompiler.as_sql(with_limits=with_limits, with_col_aliases=with_col_aliases)
-#        
-#    def as_nested_sql(self):
-#        logger.info(str(('---- wrapped method')))
-#        return self.sqlcompiler.as_nested_sql()
-#    
-#    def get_columns(self, with_aliases=False):
-#        logger.info(str(('---- wrapped method')))
-#        return self.sqlcompiler.get_columns(with_aliases=with_aliases)
-#    
-#    def get_default_columns(self, with_aliases=False, col_aliases=None,
-#            start_alias=None, opts=None, as_pairs=False, local_only=False):
-#        logger.info(str(('---- wrapped method')))
-#        return self.sqlcompiler.get_default_columns(with_aliases=with_aliases, col_aliases=col_aliases, 
-#                                                    start_alias=start_alias, as_pairs=as_pairs, local_only=local_only)
-#        
-#    def get_distinct(self):
-#        logger.info(str(('---- wrapped method')))
-#        return self.sqlcompiler.get_distinct()
-#
-#    def get_ordering(self):
-#        logger.info(str(('---- wrapped method')))
-#        result, group_by = self.sqlcompiler.get_ordering()
-#        logger.info(str(('-----get_ordering', result, group_by)))
-#    
-#    def find_ordering_name(self, name, opts, alias=None, default_order='ASC',
-#                already_seen=None):
-#        logger.info(str(('---- wrapped method')))
-#        return self.sqlcompiler.find_ordering_name(name, opts, alias=alias, default_order=default_order, 
-#                                                   already_seen=already_seen)
-#
-#    def _setup_joins(self, pieces, opts, alias):
-#        logger.info(str(('---- wrapped method')))
-#        return self.sqlcompiler.setup_joins(pieces, opts, alias)
-#
-#    def _final_join_removal(self, col, alias):
-#        logger.info(str(('---- wrapped method')))
-#        return self.sqlcompiler._final_join_removal(col, alias)
-#    
-#    def get_from_clause(self):
-#        logger.info(str(('---- wrapped method')))
-#        return self.sqlcompiler.get_from_clause()
-#    
-#    def get_grouping(self, ordering_group_by):
-#        logger.info(str(('---- wrapped method')))
-#        return self.sqlcompiler.get_grouping(ordering_group_by)
-#    
-#    def fill_related_selections(self, **kwargs):
-#        logger.info(str(('---- wrapped method')))
-#        return self.sqlcompiler.fill_related_selections(**kwargs)
-#    
-#    def deferred_to_columns(self):
-#        logger.info(str(('---- wrapped method')))
-#        return self.sqlcompiler.deferred_to_columns()
-#    
-#    def results_iter(self):
-#        logger.info(str(('---- wrapped method')))
-#        return self.sqlcompiler.results_iter()
-#    
-#    def execute_sql(self, **kwargs):
-#        logger.info(str(('---- wrapped method')))
-#        return self.sqlcompiler.execute_sql(**kwargs)
-#
-#
-#class PostgresQuerySql(Query):
-#    
-#    def sql_with_params(self):
-#        sql = super(PostgresQuerySql,self).sql_with_params()
-#        logger.info('--------------sql: ' + sql)
-#        return sql        
-#    
-#    def prepend_ordering(self, ordering):
-#        logger.info(str(('------------prepend_ordering', ordering, self.order_by)))
-#        self.order_by.insert(0,ordering)
-#        
-#    def get_compiler(self, using=None, connection=None):
-#        compiler = super(PostgresQuerySql,self).get_compiler(using=using, connection=connection)
-#        logger.info('------ get_compiler')
-#        return PostgresSqlCompiler(compiler);
-#        
-#class PostgresQueryset(QuerySet):
-#    def __init__(self, model=None, query=None, using=None):
-#        _query = query or PostgresQuerySql(model)
-#        super(PostgresQueryset,self).__init__(model=model, query=_query, using=using)
-#        
-#    def __init__(self,*args,**kwargs):
-#        logger.info(str(('args',args, kwargs)))
-#        if 'model' in kwargs:
-#            _query = PostgresQuerySql(kwargs['model'])
-##            kwargs.setdefault('query',_query)
-#            del kwargs['query']
-#            logger.info(str(('---- using custom: ',type(_query), _query)) )
-#            super(PostgresQueryset,self).__init__(*args,query=_query,**kwargs)
-#        else:
-#            logger.info('---- not using custom')
-#            _query = PostgresQuerySql(args)
-##            kwargs.setdefault('query',_query)
-#            if 'query' in kwargs:
-#                del kwargs['query']
-#            logger.info(str(('---- using custom: ',type(_query), _query)) )
-#            super(PostgresQueryset,self).__init__(*args,query=_query,**kwargs)
-        
-    
-    
-#    def as_sql(self, connection):
-#        sql = super(PostgresQueryset,self)._as_sql(connection)
-#        logger.info('sql: ' + sql)
-#        return sql
-#
-#    def sql_with_params(self):
-#        """
-#        Returns the query as an SQL string and the parameters that will be
-#        subsituted into the query.
-#        """
-#        sql = super(PostgresQueryset,self).sql_with_params()
-#        logger.info('sql: ' + sql)
-#        return sql
-    
-#class PostgresManager(models.Manager):
-#    def get_query_set(self):
-#        return PostgresQueryset(self.model)
-#
-#class MetaModel(models.Model):
-#    def __iter__(self):
-#        for i in self._meta.get_all_field_names():
-#            yield (i, getattr(self, i))
 
 class LegacySmallMoleculeCasNumber(models.Model):
     smiles = models.CharField(max_length=2047)
@@ -179,6 +33,8 @@ class AbaseTestset(models.Model):
     testset_date = models.DateField()
     class Meta:
         db_table = 'abase_testset'
+
+
 
 class Activity(models.Model):
     activity_id = models.IntegerField(primary_key=True)
@@ -204,6 +60,141 @@ class AdministrativeActivity(models.Model):
     administrative_activity_type = models.TextField()
     class Meta:
         db_table = 'administrative_activity'
+
+class AttachedFileUpdateActivity(models.Model):
+    attached_file = models.ForeignKey('AttachedFile')
+    update_activity = models.ForeignKey(AdministrativeActivity)
+    class Meta:
+        db_table = 'attached_file_update_activity'
+
+class CellUpdateActivity(models.Model):
+    cell = models.ForeignKey('Cell')
+    update_activity = models.ForeignKey(AdministrativeActivity, unique=True)
+    class Meta:
+        db_table = 'cell_update_activity'
+
+class ChecklistItemEventUpdateActivity(models.Model):
+    checklist_item_event = models.ForeignKey('ChecklistItemEvent')
+    update_activity = models.ForeignKey(AdministrativeActivity)
+    class Meta:
+        db_table = 'checklist_item_event_update_activity'
+
+class CherryPickLiquidTransfer(models.Model):
+    status = models.TextField()
+    activity = models.ForeignKey('LabActivity', primary_key=True)
+    class Meta:
+        db_table = 'cherry_pick_liquid_transfer'
+
+class CherryPickRequestUpdateActivity(models.Model):
+    cherry_pick_request = models.ForeignKey('CherryPickRequest')
+    update_activity = models.ForeignKey(AdministrativeActivity, unique=True)
+    class Meta:
+        db_table = 'cherry_pick_request_update_activity'
+
+class CherryPickScreening(models.Model):
+    activity = models.ForeignKey('Screening', primary_key=True)
+    cherry_pick_request = models.ForeignKey('CherryPickRequest')
+    class Meta:
+        db_table = 'cherry_pick_screening'
+
+class CopyUpdateActivity(models.Model):
+    copy_id = models.IntegerField()
+    update_activity_id = models.IntegerField(unique=True)
+    class Meta:
+        db_table = 'copy_update_activity'
+
+class LabActivity(models.Model):
+    screen = models.ForeignKey('Screen')
+    activity = models.ForeignKey(Activity, primary_key=True)
+    volume_transferred_per_well_from_library_plates = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
+    molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
+    class Meta:
+        db_table = 'lab_activity'
+
+class LibraryScreening(models.Model):
+    abase_testset_id = models.TextField(blank=True)
+    is_for_external_library_plates = models.BooleanField()
+    activity = models.ForeignKey('Screening', primary_key=True)
+    screened_experimental_well_count = models.IntegerField()
+    libraries_screened_count = models.IntegerField(null=True, blank=True)
+    library_plates_screened_count = models.IntegerField(null=True, blank=True)
+    class Meta:
+        db_table = 'library_screening'
+
+class Screening(models.Model):
+    assay_protocol = models.TextField(blank=True)
+    number_of_replicates = models.IntegerField(null=True, blank=True)
+    assay_protocol_type = models.TextField(blank=True)
+    activity = models.ForeignKey(LabActivity, primary_key=True)
+    assay_protocol_last_modified_date = models.DateField(null=True, blank=True)
+    assay_well_volume = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
+    volume_transferred_per_well_to_assay_plates = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
+    class Meta:
+        db_table = 'screening'
+
+class EquipmentUsed(models.Model):
+    equipment_used_id = models.IntegerField(primary_key=True)
+    version = models.IntegerField()
+    protocol = models.TextField(blank=True)
+    description = models.TextField(blank=True)
+    equipment = models.TextField()
+    lab_activity = models.ForeignKey('LabActivity')
+    class Meta:
+        db_table = 'equipment_used'
+
+class LibraryUpdateActivity(models.Model):
+    library = models.ForeignKey('Library')
+    update_activity = models.ForeignKey(AdministrativeActivity)
+    class Meta:
+        db_table = 'library_update_activity'
+
+class PlateUpdateActivity(models.Model):
+    plate_id = models.IntegerField()
+    update_activity_id = models.IntegerField(unique=True)
+    class Meta:
+        db_table = 'plate_update_activity'
+
+class ScreenResultUpdateActivity(models.Model):
+    screen_result = models.ForeignKey('ScreenResult')
+    update_activity = models.ForeignKey(AdministrativeActivity)
+    class Meta:
+        db_table = 'screen_result_update_activity'
+
+class ScreenUpdateActivity(models.Model):
+    screen = models.ForeignKey('Screen')
+    update_activity = models.ForeignKey(AdministrativeActivity)
+    class Meta:
+        db_table = 'screen_update_activity'
+
+class ScreensaverUserUpdateActivity(models.Model):
+    screensaver_user = models.ForeignKey('ScreensaverUser')
+    update_activity = models.ForeignKey(AdministrativeActivity)
+    class Meta:
+        db_table = 'screensaver_user_update_activity'
+
+class ServiceActivity(models.Model):
+    service_activity_type = models.TextField()
+    activity = models.ForeignKey(Activity, primary_key=True)
+    serviced_screen = models.ForeignKey('Screen', null=True, blank=True)
+    serviced_user = models.ForeignKey('ScreeningRoomUser')
+    class Meta:
+        db_table = 'service_activity'
+
+class WellVolumeCorrectionActivity(models.Model):
+    activity = models.ForeignKey(AdministrativeActivity, primary_key=True)
+    class Meta:
+        db_table = 'well_volume_correction_activity'
+
+
+
+
+
+
+
+
+
+
+
 
 class AdministratorUser(models.Model):
     screensaver_user = models.ForeignKey('ScreensaverUser', primary_key=True)
@@ -276,13 +267,6 @@ class AttachedFileType(models.Model):
     value = models.TextField()
     class Meta:
         db_table = 'attached_file_type'
-
-class AttachedFileUpdateActivity(models.Model):
-    attached_file = models.ForeignKey(AttachedFile)
-    update_activity = models.ForeignKey(AdministrativeActivity)
-    class Meta:
-        db_table = 'attached_file_update_activity'
-
 #class AuthGroup(models.Model):
 #    id = models.IntegerField(primary_key=True)
 #    name = models.CharField(max_length=80, unique=True)
@@ -396,12 +380,6 @@ class CellRelatedProjects(models.Model):
     class Meta:
         db_table = 'cell_related_projects'
 
-class CellUpdateActivity(models.Model):
-    cell = models.ForeignKey(Cell)
-    update_activity = models.ForeignKey(AdministrativeActivity, unique=True)
-    class Meta:
-        db_table = 'cell_update_activity'
-
 class ChecklistItem(models.Model):
     checklist_item_id = models.IntegerField(primary_key=True)
     checklist_item_group = models.TextField()
@@ -426,12 +404,6 @@ class ChecklistItemEvent(models.Model):
     class Meta:
         db_table = 'checklist_item_event'
 
-class ChecklistItemEventUpdateActivity(models.Model):
-    checklist_item_event = models.ForeignKey(ChecklistItemEvent)
-    update_activity = models.ForeignKey(AdministrativeActivity)
-    class Meta:
-        db_table = 'checklist_item_event_update_activity'
-
 class CherryPickAssayPlate(models.Model):
     cherry_pick_assay_plate_id = models.IntegerField(primary_key=True)
     version = models.IntegerField()
@@ -450,12 +422,6 @@ class CherryPickAssayPlateScreeningLink(models.Model):
     cherry_pick_screening = models.ForeignKey('CherryPickScreening')
     class Meta:
         db_table = 'cherry_pick_assay_plate_screening_link'
-
-class CherryPickLiquidTransfer(models.Model):
-    status = models.TextField()
-    activity = models.ForeignKey('LabActivity', primary_key=True)
-    class Meta:
-        db_table = 'cherry_pick_liquid_transfer'
 
 class CherryPickRequest(models.Model):
     cherry_pick_request_id = models.IntegerField(primary_key=True)
@@ -490,18 +456,6 @@ class CherryPickRequestEmptyWell(models.Model):
     class Meta:
         db_table = 'cherry_pick_request_empty_well'
 
-class CherryPickRequestUpdateActivity(models.Model):
-    cherry_pick_request = models.ForeignKey(CherryPickRequest)
-    update_activity = models.ForeignKey(AdministrativeActivity, unique=True)
-    class Meta:
-        db_table = 'cherry_pick_request_update_activity'
-
-class CherryPickScreening(models.Model):
-    activity = models.ForeignKey('Screening', primary_key=True)
-    cherry_pick_request = models.ForeignKey(CherryPickRequest)
-    class Meta:
-        db_table = 'cherry_pick_screening'
-
 class CollaboratorLink(models.Model):
     collaborator = models.ForeignKey('ScreeningRoomUser')
     screen = models.ForeignKey('Screen')
@@ -533,12 +487,6 @@ class Copy(models.Model):
     date_publicly_available = models.DateTimeField(null=True, blank=True)
     class Meta:
         db_table = 'copy'
-
-class CopyUpdateActivity(models.Model):
-    copy_id = models.IntegerField()
-    update_activity_id = models.IntegerField(unique=True)
-    class Meta:
-        db_table = 'copy_update_activity'
 
 class DataColumn(models.Model):
     data_column_id = models.IntegerField(primary_key=True)
@@ -607,16 +555,6 @@ class DataColumnDerivedFromLink(models.Model):
 #    class Meta:
 #        db_table = 'django_site'
 
-class EquipmentUsed(models.Model):
-    equipment_used_id = models.IntegerField(primary_key=True)
-    version = models.IntegerField()
-    protocol = models.TextField(blank=True)
-    description = models.TextField(blank=True)
-    equipment = models.TextField()
-    lab_activity = models.ForeignKey('LabActivity')
-    class Meta:
-        db_table = 'equipment_used'
-
 class ExperimentalCellInformation(models.Model):
     experimental_cell_information_id = models.IntegerField(primary_key=True)
     cell = models.ForeignKey(Cell)
@@ -662,14 +600,6 @@ class GeneSymbol(models.Model):
     ordinal = models.IntegerField()
     class Meta:
         db_table = 'gene_symbol'
-
-class LabActivity(models.Model):
-    screen = models.ForeignKey('Screen')
-    activity = models.ForeignKey(Activity, primary_key=True)
-    volume_transferred_per_well_from_library_plates = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
-    molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
-    class Meta:
-        db_table = 'lab_activity'
 
 class LabAffiliation(models.Model):
     version = models.IntegerField()
@@ -735,22 +665,6 @@ class LibraryContentsVersion(models.Model):
     class Meta:
         db_table = 'library_contents_version'
 
-class LibraryScreening(models.Model):
-    abase_testset_id = models.TextField(blank=True)
-    is_for_external_library_plates = models.BooleanField()
-    activity = models.ForeignKey('Screening', primary_key=True)
-    screened_experimental_well_count = models.IntegerField()
-    libraries_screened_count = models.IntegerField(null=True, blank=True)
-    library_plates_screened_count = models.IntegerField(null=True, blank=True)
-    class Meta:
-        db_table = 'library_screening'
-
-class LibraryUpdateActivity(models.Model):
-    library = models.ForeignKey(Library)
-    update_activity = models.ForeignKey(AdministrativeActivity)
-    class Meta:
-        db_table = 'library_update_activity'
-
 class Molfile(models.Model):
     molfile = models.TextField()
     ordinal = models.IntegerField()
@@ -798,12 +712,6 @@ class PlateLocation(models.Model):
     shelf = models.TextField()
     class Meta:
         db_table = 'plate_location'
-
-class PlateUpdateActivity(models.Model):
-    plate_id = models.IntegerField()
-    update_activity_id = models.IntegerField(unique=True)
-    class Meta:
-        db_table = 'plate_update_activity'
 
 class PrimaryCell(models.Model):
     age_in_years = models.IntegerField()
@@ -987,12 +895,6 @@ class ScreenResult(models.Model):
     class Meta:
         db_table = 'screen_result'
 
-class ScreenResultUpdateActivity(models.Model):
-    screen_result = models.ForeignKey(ScreenResult)
-    update_activity = models.ForeignKey(AdministrativeActivity)
-    class Meta:
-        db_table = 'screen_result_update_activity'
-
 class ScreenStatusItem(models.Model):
     screen = models.ForeignKey(Screen)
     status = models.TextField()
@@ -1001,12 +903,6 @@ class ScreenStatusItem(models.Model):
         db_table = 'screen_status_item'
         index_together = (('screen', 'status','status_date'),)    
 
-class ScreenUpdateActivity(models.Model):
-    screen = models.ForeignKey(Screen)
-    update_activity = models.ForeignKey(AdministrativeActivity)
-    class Meta:
-        db_table = 'screen_update_activity'
-
 class ScreenerCherryPick(models.Model):
     screener_cherry_pick_id = models.IntegerField(primary_key=True)
     version = models.IntegerField()
@@ -1014,17 +910,6 @@ class ScreenerCherryPick(models.Model):
     screened_well = models.ForeignKey('Well')
     class Meta:
         db_table = 'screener_cherry_pick'
-
-class Screening(models.Model):
-    assay_protocol = models.TextField(blank=True)
-    number_of_replicates = models.IntegerField(null=True, blank=True)
-    assay_protocol_type = models.TextField(blank=True)
-    activity = models.ForeignKey(LabActivity, primary_key=True)
-    assay_protocol_last_modified_date = models.DateField(null=True, blank=True)
-    assay_well_volume = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
-    volume_transferred_per_well_to_assay_plates = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
-    class Meta:
-        db_table = 'screening'
 
 class ScreeningRoomUser(models.Model):
     screensaver_user = models.ForeignKey('ScreensaverUser', primary_key=True)
@@ -1080,20 +965,6 @@ class ScreensaverUserRole(models.Model):
     screensaver_user_role = models.TextField()
     class Meta:
         db_table = 'screensaver_user_role'
-
-class ScreensaverUserUpdateActivity(models.Model):
-    screensaver_user = models.ForeignKey(ScreensaverUser)
-    update_activity = models.ForeignKey(AdministrativeActivity)
-    class Meta:
-        db_table = 'screensaver_user_update_activity'
-
-class ServiceActivity(models.Model):
-    service_activity_type = models.TextField()
-    activity = models.ForeignKey(Activity, primary_key=True)
-    serviced_screen = models.ForeignKey(Screen, null=True, blank=True)
-    serviced_user = models.ForeignKey(ScreeningRoomUser)
-    class Meta:
-        db_table = 'service_activity'
 
 class SilencingReagent(models.Model):
     reagent = models.ForeignKey(Reagent, primary_key=True)
@@ -1198,8 +1069,3 @@ class WellVolumeAdjustment(models.Model):
     copy = models.ForeignKey(Copy)
     class Meta:
         db_table = 'well_volume_adjustment'
-
-class WellVolumeCorrectionActivity(models.Model):
-    activity = models.ForeignKey(AdministrativeActivity, primary_key=True)
-    class Meta:
-        db_table = 'well_volume_correction_activity'

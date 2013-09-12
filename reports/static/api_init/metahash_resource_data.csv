@@ -8,3 +8,4 @@ screenresult,resource,[facility_id],[facility_id],/reports/api/v1/metahash/resou
 screensummary,resource,[facility_id],[facility_id],/reports/api/v1/metahash/resource/screensummary/,0,,"The Screening Summary resource","Screen Summary","[list,detail]",
 apilog,resource,"[ref_resource_name,date_time]","[ref_resource_name,: ,key, @,date_time]",/reports/api/v1/metahash/resource/apilog/,0,,"The Change log resource","Change log","[list,detail]",
 datacolumn,resource,[data_column_id],[name],/reports/api/v1/metahash/resource/datacolumn/,0,,"The Screen Result Datacolumn resource","Data Column","[list,detail]",
+library,resource,[short_name],[short_name],/reports/api/v1/metahash/resource/library/,0,,"The reagent library resource",Library,"[list,detail]",

@@ -5,7 +5,7 @@ from tastypie.constants import ALL, ALL_WITH_RELATIONS
 from tastypie import fields, utils
 
 from db.models import ScreensaverUser,Screen, LabHead, LabAffiliation, ScreeningRoomUser,\
-    ScreenStatusItem, ScreenResult, DataColumn
+    ScreenStatusItem, ScreenResult, DataColumn, Library
 from lims.api import CursorSerializer, LimsSerializer, PostgresSortingResource
 from reports.models import MetaHash, Vocabularies
 from django.http import Http404, HttpResponse
@@ -26,14 +26,16 @@ class ScreensaverUserResource(MetahashManagedResource, PostgresSortingResource):
 #    screens = fields.ToManyField('db.api.ScreenResource', 'screens', related_name='lab_head_id', blank=True, null=True)
 
     version = fields.IntegerField(attribute='version', null=True)
-        
+    administratoruser = fields.OneToOneField('db.api.ScreensaverUserResource', 'administratoruser', null=True)
+    screeningroomuser = fields.OneToOneField('db.api.ScreensaverUserResource', 'screeningroomuser', null=True)
     class Meta:
         queryset = ScreensaverUser.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
         ordering = []
-        filtering = {}
+        filtering = { 'administratoruser': ALL_WITH_RELATIONS, 'screeningroomuser': ALL_WITH_RELATIONS }
         serializer = LimsSerializer()
         excludes = ['digested_password']
+        detail_uri_name = 'screensaver_user_id'
         
     def __init__(self, **kwargs):
         self.scope = 'fields:screensaveruser'
@@ -476,4 +478,39 @@ class ScreenResource(JsonAndDatabaseResource):
             logger.info(str(('extra_order_by', extra_order_by)))
             obj_list = obj_list.order_by(*extra_order_by)
         return obj_list
+    
+
+class LibraryResource(JsonAndDatabaseResource):
+
+    class Meta:
+        queryset = Library.objects.all() #.order_by('facility_id')
+        authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
+        resource_name = 'library'
+        
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+
+        
+    def __init__(self, **kwargs):
+#        self.
+        super(LibraryResource,self).__init__(scope = 'fields:library', **kwargs)
+
+    def prepend_urls(self):
+        # NOTE: this match "((?=(schema))__|(?!(schema))[\w\d_.-]+)" allows us to match any word, except "schema", and use it as the key value to search for.
+        # also note the double underscore "__" is because we also don't want to match in the first clause.
+        # We don't want "schema" since that reserved word is used by tastypie for the schema definition for the resource (used by the UI)
+        return [
+            url(r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[\w\d_.-]+))/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ]    
+                    
+    def dehydrate(self, bundle):
+        return bundle
+    
+    def build_schema(self):
+        schema = super(LibraryResource,self).build_schema()
+        temp = [ x.library_type for x in self.Meta.queryset.distinct('library_type')]
+        schema['extraSelectorOptions'] = { 'label': 'Type', 'searchColumn': 'library_type', 'options': temp }
+        return schema
+    
     

@@ -25,6 +25,7 @@ define([
         },
 
         current_view : function(type) {
+            console.log('current_view called');
             var self = this;
 
             var current_resource_id = this.model.get('current_resource_id');
@@ -33,7 +34,7 @@ define([
             var current_view = this.model.get('current_view');
             Iccbl.assert( !_.isUndefined(current_view), 'list: current_view is not defined');
 
-            var current_options = this.model.get('current_options');
+            var current_options = _.clone(this.model.get('current_options'));
             Iccbl.assert( !_.isUndefined(current_options), 'list: current_options is not defined');
 
             var current_ui_resource = this.model.get('ui_resources')[current_resource_id];
@@ -46,8 +47,16 @@ define([
 
             if (current_view === 'home'){  // TODO: make into a "menu view"
                 this.currentView = new HomeView({ model: this.model });
+            }else if (current_view == 'menu'){
+                console.log('todo: "menu" view!');
+
             }else if (current_view === 'list'){
                 var options = _.extend( {}, this.model.get('list_defaults'), current_ui_resource, current_options ); // TODO: move the nested options up into the model
+                if(!_.isUndefined(current_ui_resource['options'])){
+                    current_options = _.extend(current_options,current_ui_resource['options']);
+                    self.model.set({'current_options': current_options });
+                }
+
                 options.ui_resource_id = current_resource_id;
                 options.router = this.router;
                 options.url = options.url_root + '/' + options.api_resource;
@@ -63,7 +72,9 @@ define([
 
             }else if (current_view === 'detail'){
 
-                if(current_resource_id == 'screen'){
+                if(current_resource_id == 'screen' ||
+                    current_resource_id == 'small_molecule_screens' ||
+                    current_resource_id == 'rnai_screens'){
                     var options = {
                         url_root: current_ui_resource.url_root,
                         current_options: current_options,

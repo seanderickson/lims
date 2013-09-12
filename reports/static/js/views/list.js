@@ -30,6 +30,7 @@ define([
 
         initialize : function(attributes, options) {
             console.log('initialize ListView: ');
+            var self = this;
             Iccbl.assert( !_.isUndefined(options.ui_resource_id), 'listView options: ui_resource_id is required');
             Iccbl.assert( !_.isUndefined(options.router), 'listView options: router is required');
             Iccbl.assert( !_.isUndefined(options.url), 'listView options: url is required');
@@ -41,6 +42,49 @@ define([
             this.router = options.router;
             this._options = options;
 
+            var ListModel = Backbone.Model.extend({ defaults: { rpp: 25, page: 1, order: {}, search: {}} });
+            var listModel = this.listModel = new ListModel(_.clone(this.model.get('current_options')));
+            this.listenTo(this.listModel, 'change:search', function(){
+                console.log('===--- listModel change:search');
+
+                var current_options = _.clone(self.model.get('current_options'));
+                current_options.search = self.listModel.get('search');
+                self.model.set({current_options: current_options });
+            });
+            this.listenTo(this.listModel, 'change:order', function(){
+                console.log('===--- listModel change:order');
+
+                var orderHash = self.listModel.get('order');
+                var current_options = _.clone(self.model.get('current_options'));
+                current_options.order = orderHash;
+                self.model.set({current_options: current_options });
+            });
+
+            this.listenTo(this.listModel, 'change:rpp', function(){
+                console.log('===--- listModel change:rpp');
+                var pageSize = parseInt(self.listModel.get('rpp'));
+
+                // self.collection.setPageSize(pageSize);
+                // // Triggers a fetch
+
+                var current_options = _.clone(self.model.get('current_options'));
+                current_options.rpp = pageSize;
+                self.model.set({current_options: current_options });
+            });
+
+            this.listenTo(this.listModel, 'change:page', function(){
+                console.log('===--- listModel change:page');
+                var page = parseInt(self.listModel.get('page'));
+
+                // Not needed since page changes come from the paginator->pageablecollection
+                // self.collection.state.currentPage = page;
+                // self.collection.fetch();
+
+                var current_options = _.clone(self.model.get('current_options'));
+                current_options.page = page;
+                self.model.set({current_options: current_options });
+            });
+
             var data = { message: '' };
             if (this._options.header_message){
                 data.title = this._options.title;
@@ -48,42 +92,23 @@ define([
             }
             var compiledTemplate = this.compiledTemplate = _.template( listTemplate, data );
             this.objects_to_destroy = _([]);
-            var collection  = this.collection = new Iccbl.MyCollection({ 'url': this._options.url }); //, router: this._options.router  });
+
+            var collection  = this.collection = new Iccbl.MyCollection({
+                    'url': this._options.url,
+                    currentPage: parseInt(self.listModel.get('page')),
+                    pageSize: parseInt(self.listModel.get('rpp')),
+                    listModel: listModel
+                });
             this.objects_to_destroy.push(collection);
 
             this.buildGrid(this._options.schemaResult);
-
-            // var data = { message: '' };
-            // if (this._options.header_message){
-                // data.title = this._options.title;
-                // data.message = this._options.header_message; //'hello world!' };
-            // }
-            // var compiledTemplate = _.template( listTemplate, data );
-            // this.$el.html(compiledTemplate);
-//
-            // this.objects_to_destroy = _([]);
-            // var collection  = this.collection = new Iccbl.MyCollection({ 'url': this._options.url }); //, router: this._options.router  });
-            // this.objects_to_destroy.push(collection);
-//
-            // this.buildGrid(this._options.schemaResult);
         },
-
-        // delegateEvents: function(){
-            // self = this;
-            // Backbone.View.prototype.delegateEvents.apply(this);
-            // _.each(self.objects_to_destroy, function(obj){
-                // if(_.has(obj,'delegateEvents'))
-                    // obj.delegateEvents();
-                // Backbone.View.prototype.delegateEvents.apply(this);
-            // });
-        // },
 
         buildGrid : function(schemaResult) {
 
             console.log('buildGrid...');
 
             var self = this; // todo: "this" is the parent ListView, all of this should be handled by events
-
 
             self.listenTo(self.collection, "MyCollection:link", function (model, column) {
                 console.log('---- process link for '+ column);
@@ -107,19 +132,8 @@ define([
                 }
             });
 
-
             self.listenTo(self.collection, "MyCollection:edit", function (model) {
                 console.log('---- create detail view for '+ this._options.ui_resource_id);
-                // TODO: Get the title, and other items from the meta data
-                // var detailView = new DetailView({ model: model},
-                    // { title: "Details", fields:schemaResult.fields,
-                      // app_model: this.model, resource_definition: schemaResult['resource_definition'],
-                      // router: self.router  } ); // todo get title
-//
-                // $('#list-container').hide();
-
-                //var _routeFrom = this.model.get('route');
-
                 // Note: some links must use composite keys - because the composite key is the public key
                 // (don't want to expose the private, possibly transient key)
                 var id = '/' + model.get('id');
@@ -134,36 +148,11 @@ define([
                     console.log('Warn: schema for this type has no resource_definition,id_attribute; type: ' + this._options.ui_resource_id);
                 }
                 console.log('id: ' + id);
-                // TODO: Move route setting to the parent (contentview controller/view)
-                // var _route = 'detail/' + this._options.ui_resource_id + '/' + id;
-
-
-                // // TODO: if we can make the "back" button do a navigate back, then all we have to do is set the route...
-                // this.model.set({ route: _route } );
-
-                //console.log('-- set route: ' + _route);
-                //this.router.navigate(_route, {trigger: true} );  // trigger false since don't want route actions firing
                 this.model.set({    current_scratch: { schemaResult: schemaResult, model: model} ,
                                     current_view: 'detail',
-                                    current_options: id,
+                                    current_options: { key: id },
                                     routing_options: {trigger: false, replace: false}
                                }); // signal to the app_model that the current view has changed // todo: separate out app_model from list_model
-
-                //this.model.set({ current_view: 'detail_view'}, { silent: true } ); // silent: true since we don't want content view reacting to change event
-
-                // NOTE: having self bind to the detailView like this:
-                // self.listenTo(detailView, 'remove', function(){
-                // causes the detailView to hang around in memory until self is closed
-                // so either:
-                // detailView.on('remove', function(){
-                // self.listenToOnce(detailView, 'remove', function(){
-                    // //self.collection.fetch({reset:true});
-                    // $('#list-container').show();
-                    // detailView.close();
-                    // //this.model.set({ route: _routeFrom } );
-                // });
-//
-                // $('#detail-container').append(detailView.render().$el);
             });
 
             self.listenTo(self.collection, "MyCollection:delete", function (model) {
@@ -192,68 +181,54 @@ define([
                 //model.destroy();
             });
 
-
-            // TODO: is there a way to create this without extending Backbone.View (like footer below)?
-            var extraSelector = Backbone.View.extend({
-                initialize: function(options){
-                    // console.log('extraselector init: '  + options);
-                    this._options = options;
-
-                },
-                events: {
-                    "change #generic_selector": "selectorChanged"
-                },
-                selectorChanged: function(e){
-                    e.preventDefault();
-                    var option = e.currentTarget.value;
-                    var searchTerm, searchColumn, searchExpression;
-                    searchTerm = option;
-                    searchColumn = this._options.searchColumn
-                    searchExpression = searchColumn + '=' + searchTerm;
-                    self.collection.searchBy = searchExpression;
-                    var searchItems = {};
-                    searchItems[searchColumn] = searchTerm;
-                    console.log('trigger search: ' + searchColumn + ': ' + searchTerm + ', ' + JSON.stringify(searchItems) );
-                    self.collection.trigger("MyServerSideFilter:search", searchItems , self.collection);
-                },
-                updateSelection: function( searchItems ){
-                    //console.log('-extraselector updateSelection: ' + JSON.stringify(searchItems) );
-                    if( !_.isUndefined(searchItems) && _(searchItems).has(this._options.searchColumn)){
-                        $('#generic_selector').val(searchItems[this._options.searchColumn]);
-                    }else{
-                        $('#generic_selector').val('');
-                        console.log("extra selector set for column: '" + this._options.searchColumn + "', not in searchItems: " + JSON.stringify(searchItems));
-                    }
-                },
-                render: function(){
-                    // console.log('===============render extra selector' + this)
-                    this.delegateEvents();
-                    this._options.options.unshift(' '); // create a blank entry // TODO: check if there is already a blank
-
-                    this.$el.html(_.template( genericSelectorTemplate,
-                        { label: this._options.label,
-                          'options': _(this._options.options ) }));  // TODO: this should come from the metahash schema
-                    return this;
-                },
+            // Rows-per-page selector
+            var rppModel = new Backbone.Model({ selection: this.listModel.get('rpp') });
+            var rppSelectorInstance = self.rppSelectorInstance = new Iccbl.GenericSelector(
+                { model: rppModel }, {label: 'Rows per page:', options: ['25','50','200','1000']} );
+            this.objects_to_destroy.push(rppSelectorInstance);
+            self.$("#extra-selector-div").append(rppSelectorInstance.render().$el);
+            this.listenTo(this.listModel, 'change: rpp', function(){
+                rppModel.set({ selection: self.listModel.get('rpp') });
+            });
+            this.listenTo(rppModel, 'change', function() {
+                console.log('===--- rppModel change');
+                self.listModel.set('rpp', rppModel.get('selection'));
             });
 
-            var selector = self.selector = new Iccbl.ItemsPerPageSelector(
-                { 'selections': ['25','50','200','1000'], 'template': rowsPerPageTemplate },
-                self.collection);
-            this.objects_to_destroy.push(selector);
-
+            // Paginator
             var paginator = self.paginator = new Backgrid.Extension.Paginator({
               collection: self.collection
             });
             this.objects_to_destroy.push(paginator);
 
+            // Extraselector
             if( _.has(schemaResult, 'extraSelectorOptions')){
                 console.log('searchTerms: ' + JSON.stringify(schemaResult.searchTerms));
-                var extraSelectorInstance = self.extraSelectorInstance = new extraSelector( schemaResult.extraSelectorOptions ); // HMMm: need to understand the "delegate events" better here
+
+                var extraSelectorModel = new Backbone.Model({ selection: '' });
+                var extraSelectorKey = schemaResult.extraSelectorOptions.searchColumn;
+                var extraSelectorInstance = self.extraSelectorInstance = new Iccbl.GenericSelector({ model: extraSelectorModel} , schemaResult.extraSelectorOptions ); // HMMm: need to understand the "delegate events" better here
                 this.objects_to_destroy.push(extraSelectorInstance);
                 self.$("#extra-selector-div").append(extraSelectorInstance.render().$el);
-                extraSelectorInstance.listenTo(self.collection, 'MyServerSideFilter:search', extraSelectorInstance.updateSelection);
-                extraSelectorInstance.listenTo(self.collection, 'MyServerSideFilter:clearSearch', extraSelectorInstance.updateSelection);
+
+                this.listenTo(this.listModel, 'change: search', function(){
+                    var searchHash = self.listModel.get('search');
+                    _.each(_.keys(searchHash), function(key){
+                        if( key == extraSelectorKey){
+                            extraSelectorModel.set({ selection: searchHash[key] });
+                        }
+                    });
+                });
+                this.listenTo(extraSelectorModel, 'change', function() {
+                    console.log('===--- extraSelectorModel change');
+                    var searchHash = _.clone(self.listModel.get('search'));
+                    var value = extraSelectorModel.get('selection');
+                    searchHash[extraSelectorKey] = value;
+                    self.listModel.set('search', searchHash);
+                });
+
+                // extraSelectorInstance.listenTo(self.collection, 'MyServerSideFilter:search', extraSelectorInstance.updateSelection);
+                // extraSelectorInstance.listenTo(self.collection, 'MyServerSideFilter:clearSearch', extraSelectorInstance.updateSelection);
 
             }
             // self.$("#paginator-div").append(paginator.render().$el);
@@ -316,64 +291,11 @@ define([
             this.listenTo(self.collection, 'request', ajaxStart);
             // this.listenTo(collection, 'MyCollection:setRoute', this.setRoute);
             this.listenTo(self.collection, 'MyCollection:changeOptions', this.change_options);
-            this.listenTo(self.collection, 'sync', this.selector.updateSelection );
+//            this.listenTo(self.collection, 'sync', this.selector.updateSelection );
 
             // TODO: work out the specifics of communication complete event.  the following are superceded by the global handler for "ajaxComplete"
             this.listenTo(self.collection, 'error', ajaxComplete);
             this.listenTo(self.collection, 'complete', ajaxComplete);
-
-            if (this._options.page){
-                console.log('---set page:'+ this._options.page);
-                self.collection.state.currentPage = this._options.page;
-            }
-            if (this._options.rpp){
-                self.collection.state.pageSize = this._options.rpp;
-            }
-            if(_.isString(this._options.order) ){
-                var direction = 'ascending';
-                var order = -1; // according to the docs, -1 == ascending
-                var sortKey = this._options.order;
-                if(sortKey.charAt(0) === '-'){
-                    order = 1; // according to the docs, 1 == descending
-                    direction = 'descending';
-                    sortKey = sortKey.substring(1);
-                }
-                self.collection.state.sortKey = sortKey;
-                self.collection.state.order = order;
-                // Notify header cells
-                self.collection.trigger("backgrid:sort", sortKey, direction, null, self.collection);
-            }
-            if(_.isString(this._options.search)){
-                var searchExpressions = {};
-                // TODO: query terms that tastypie will understand.  these are to be set on the MyHeaderCell
-                // QUERY_TERMS = set([
-                    // 'exact', 'iexact', 'contains', 'icontains', 'gt', 'gte', 'lt', 'lte', 'in',
-                    // 'startswith', 'istartswith', 'endswith', 'iendswith', 'range', 'year',
-                    // 'month', 'day', 'week_day', 'isnull', 'search', 'regex', 'iregex',
-                // ])
-
-                _(this._options.search.split(',')).each(function(searchItem){
-                    var searchExpression = searchItem.split('=');
-                    if(searchExpression.length != 2 ){
-                        console.log('Warning: invalid search item: ' + searchItem + ', in: ' + this._options.search);
-                    }else{
-                        searchExpressions[searchExpression[0]] = searchExpression[1];
-                    }
-                });
-
-                if(!_.isEmpty(searchExpressions)){
-                    self.collection.searchBy = this._options.search;
-                    console.log('trigger search:' + this._options.search + ', ' + JSON.stringify(searchExpressions) );
-                    self.collection.trigger("MyServerSideFilter:search", searchExpressions, self.collection);
-                    // console.log('done: trigger search');
-                }else{
-                    console.log('Warn: no search expressions found in: '  + this._options.search );
-                }
-            }
-            console.log('collection fetch trigger');
-            self.collection.fetch({ reset: true } );
-
-            // self.collection.setOptions({trigger: false, replace: true });
 
             console.log('list view initialized');
         },
@@ -459,28 +381,6 @@ define([
             Backbone.View.prototype.remove.apply(this);
         },
 
-        // reset_grid : function(){
-            // var self = this;
-            // // Call the schema from the server to get the field definitions
-            // var url_schema = this._options.url + '/schema';
-            // if(!_.isUndefined(this._options.url_schema)){
-                // url_schema = this._options.url_schema;
-            // }
-//
-            // $.ajax({
-                // type: "GET",
-                // url: url_schema,
-                // data: "",
-                // dataType: "json",
-                // success: function(result) {
-                    // self.buildGrid(result);
-                // }, // end success outer ajax call
-                // error: function(x, e) {
-                    // alert(x.readyState + " "+ x.status +" "+ e.msg);
-                // }
-            // });
-        // },
-
         onClose: function(){
             console.log('Extra onclose method called');
             if(_.isObject(this.objects_to_destroy)){
@@ -492,49 +392,101 @@ define([
             }
         },
 
-        renderOld: function(){
-            // console.log('render listView');
-            // this.reset_grid();
-            // this.delegateEvents();
-            // TODO: have to redelegate events in case "empty" was called on a parent between renders. (should be a better way)
-             this.grid.delegateEvents();
-             this.paginator.delegateEvents();
-             this.selector.delegateEvents();
-             if(!_.isUndefined(this.extraSelectorInstance) ) this.extraSelectorInstance.delegateEvents();
-             this.footer.delegateEvents();
-            return this;
-        },
-
-        render1: function(){
-
-            var data = { message: '' };
-            if (this._options.header_message){
-                data.title = this._options.title;
-                data.message = this._options.header_message; //'hello world!' };
-            }
-            var compiledTemplate = _.template( listTemplate, data );
-            this.$el.html(compiledTemplate);
-
-            this.objects_to_destroy = _([]);
-            var collection  = this.collection = new Iccbl.MyCollection({ 'url': this._options.url }); //, router: this._options.router  });
-            this.objects_to_destroy.push(collection);
-
-            this.buildGrid(this._options.schemaResult);
-            return this;
-        },
-
         render: function(){
             var self = this;
             this.$el.html(this.compiledTemplate);
             self.$("#example-table").append(this.grid.render().$el);
             self.$("#paginator-div").append(self.paginator.render().$el);
-            self.$("#rows-selector-div").append(self.selector.render().$el);
+            self.$("#rows-selector-div").append(self.rppSelectorInstance.render().$el);
 
             if(!_.isUndefined(self.extraSelectorInstance)){
                 self.$("#extra-selector-div").append(self.extraSelectorInstance.render().$el);
             }else{
                 console.log('wherez theextra selector');
             }
+
+
+            // // TODO: can set the fetchOptions directly as well
+            // if (!_.isEmpty(self.listModel.get('page'))){
+                // self.collection.state.currentPage = this._options.page;
+            // }
+            // if (!_.isEmpty(self.listModel.get('rpp'))){
+                // // self.collection.state.pageSize = this._options.rpp;
+                // self.collection.setPageSize(parseInt(self.listModel.get('rpp')));
+            // }
+            // if(_.isString(this._options.order) ){
+                // var direction = 'ascending';
+                // var order = -1; // according to the docs, -1 == ascending
+                // var sortKey = this._options.order;
+                // if(sortKey.charAt(0) === '-'){
+                    // order = 1; // according to the docs, 1 == descending
+                    // direction = 'descending';
+                    // sortKey = sortKey.substring(1);
+                // }
+                // self.collection.state.sortKey = sortKey;
+                // self.collection.state.order = order;
+                // // Notify header cells
+                // self.collection.trigger("backgrid:sort", sortKey, direction, null, self.collection);
+            // }
+            var orderHash = self.listModel.get('order');
+            if(!_.isEmpty(orderHash)){
+
+                self.collection.setOrder(orderHash);
+
+            }
+
+            var searchHash = self.listModel.get('search');
+            if(!_.isEmpty(searchHash)){
+
+                self.collection.setSearch(searchHash);
+
+            }
+
+            if(_.isString(this._options.search)){
+                // var searchExpressions = {};
+                // // TODO: query terms that tastypie will understand.  these are to be set on the MyHeaderCell
+                // // QUERY_TERMS = set([
+                    // // 'exact', 'iexact', 'contains', 'icontains', 'gt', 'gte', 'lt', 'lte', 'in',
+                    // // 'startswith', 'istartswith', 'endswith', 'iendswith', 'range', 'year',
+                    // // 'month', 'day', 'week_day', 'isnull', 'search', 'regex', 'iregex',
+                // // ])
+//
+                // _(this._options.search.split(',')).each(function(searchItem){
+                    // var searchExpression = searchItem.split('=');
+                    // if(searchExpression.length != 2 ){
+                        // console.log('Warning: invalid search item: ' + searchItem + ', in: ' + this._options.search);
+                    // }else{
+                        // searchExpressions[searchExpression[0]] = searchExpression[1];
+                    // }
+               // });
+
+                // self.collection.parseSearch(this._options.search, {
+                    // success: function(search_full_string_encoded, searchHash){
+                        // self.collection.setSearch(search_full_string_encoded, searchHash);
+                        // //fetchOptions['data'] = searchHash;
+                    // },
+                    // error: function(search_full_string_encoded, msg){
+                        // console.log("ERROR: " + search_full_string_encoded + ', parse failed with message: ' + msg);
+                    // }
+                // });
+
+
+                // if(!_.isEmpty(searchExpressions)){
+                    // self.collection.setSearch(this.
+                    // self.collection.searchBy = this._options.search;
+                    // console.log('trigger search:' + this._options.search + ', ' + JSON.stringify(searchExpressions) );
+                    // self.collection.trigger("MyServerSideFilter:search", searchExpressions, self.collection);
+                    // // console.log('done: trigger search');
+                // }else{
+                    // console.log('Warn: no search expressions found in: '  + this._options.search );
+                // }
+            }
+            console.log('collection fetch trigger');
+            var fetchOptions = { reset: true };
+            self.collection.fetch(fetchOptions);
+
+
+
             return this;
         }
 

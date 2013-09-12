@@ -11,11 +11,12 @@ define([
     routes: {
         '': 'index',
         'home(/home)': 'toHome',
-        'list/:ui_resource_id(/rpp/:rpp)(/page/:page)(/order_by/:orderBy)(/search/:searchBy)': 'toList', // note: can tolerate missing routes, but not out of order
+        'list/:ui_resource_id(/rpp/:rpp)(/page/:page)(/order_by/:orderBy)(/search/:searchBy)(/)': 'toList', // note: can tolerate missing routes, but not out of order
         'detail/:ui_resource_id/:key(/:key2)(/tab/:tab)(/rpp/:rpp)(/page/:page)(/order_by/:orderBy)(/search/:searchBy)(/)': 'toDetail',
+        'menu/:action' : 'toMenu',
         '*unknownAction': 'unknownAction',
     },
-    LIST_ROUTE_ORDER: ['rpp', 'page','order_by','search'],
+    LIST_ROUTE_ORDER: ['rpp', 'page','order','search'],
 
     initialize: function(attributes, options){
         console.log('initialize router...' );
@@ -56,13 +57,48 @@ define([
     unknownAction: function(unknownAction){
         alert('Unknown action entered: ' + unknownAction);
     },
+    get_list_route: function(current_options){
+        console.log('get list route: ' + JSON.stringify(current_options));
+        var route_fragment = '';
+        _.each(this.LIST_ROUTE_ORDER, function(option){
+
+            if(_.has(current_options, option)){
+                var optionValue = current_options[option]
+                if(!_.isEmpty(optionValue)){
+                    if(route_fragment.length > 0) route_fragment += '/';
+                    route_fragment += option + '/';
+                    if(option == 'rpp' || option == 'page' ){
+                        route_fragment += optionValue;
+
+                    }else if(option == 'order' ){
+                        console.log('order - ' + JSON.stringify(optionValue));
+                        var frag = _.reduce(_.pairs(optionValue), function(frag, pair){
+                            if(frag.length > 0 ) frag += ',';
+                            if(!_.isEmpty(pair[1])) frag += pair[1];
+                            return frag += pair[0];
+                        }, '' );
+                        route_fragment += frag;
+
+                    }else if(option == 'search'){
+                        // TODO: use the type of search comparator as well
+                        var frag = _.reduce(_.pairs(optionValue), function(frag, pair){
+                            if(frag.length > 0 ) frag += ',';
+                            return frag + pair[0] + '=' + pair[1];
+                        }, '' );
+                        route_fragment += frag;
+                    }
+                }
+            }
+        });
+        return route_fragment;
+    },
 
     get_route: function(){
         var current_view = this.model.get('current_view');
-        Iccbl.assert( !_.isUndefined(current_view), 'current_view is not defined');
+        Iccbl.assert( !_.isUndefined(current_view), 'router: current_view is not defined');
 
         var current_resource_id = this.model.get('current_resource_id');
-        Iccbl.assert( !_.isUndefined(current_resource_id), 'current_resource_id is not defined');
+        Iccbl.assert( !_.isUndefined(current_resource_id), 'router: current_resource_id is not defined');
 
         var current_options = this.model.get('current_options');
         Iccbl.assert( !_.isUndefined(current_options), 'router.get_route: current_options');
@@ -74,11 +110,7 @@ define([
 
         if( ! _.isEmpty(current_options) ) {
             if( current_view == 'list' ) { // in this case, parse the set of list options in the order needed for the route parsing
-                _.each(this.LIST_ROUTE_ORDER, function(option){
-                    if(_.has(current_options, option)){
-                        route_fragment += '/' + option + '/' + current_options[option];
-                    }
-                });
+                route_fragment += '/' + this.get_list_route(current_options);
 
             }else if( current_view == 'detail' ){
                 route_fragment = '/';
@@ -87,13 +119,15 @@ define([
                 if(key.charAt(key.length-1) != '/' ) route_fragment += '/'; // TODO: cleanup code so no trailing slashes
                 if(!_.isEmpty(current_options['tab'])) route_fragment += 'tab/' + current_options.tab;
 
-                _.each(this.LIST_ROUTE_ORDER, function(option){
-                    if(_.has(current_options, option)){
-                        route_fragment += '/' + option + '/' + current_options[option];
-                    }
-                });
 
-
+                var list_route = this.get_list_route(current_options);
+                if(!_.isEmpty(list_route)) route_fragment += '/';
+                route_fragment += list_route;
+                // _.each(this.LIST_ROUTE_ORDER, function(option){
+                    // if(_.has(current_options, option)){
+                        // route_fragment += '/' + option + '/' + current_options[option];
+                    // }
+                // });
             }else{
                 if(_.isString(current_options)){
                     route_fragment += '/' + current_options;
@@ -114,6 +148,7 @@ define([
     },
 
     model_set_route: function(){
+        console.log('model_set_route');
         // trigger false to suppress further parsing, replace false (default) to create browser history
         var options = { trigger: false }; // , replace:false
         var routing_options = this.model.get('routing_options');
@@ -123,7 +158,7 @@ define([
         }
 
         var route = this.get_route();
-        console.log('--- model_set_route: ' + route + ', ' + JSON.stringify(options) + ', ' + JSON.stringify(routing_options) );
+        console.log('--- model_set_route: ' + route + ', ' + JSON.stringify(routing_options) );
         this.navigate( route, options );
     },
 
@@ -133,6 +168,7 @@ define([
     },
 
     toList: function(ui_resource_id, rpp, page, orderBy, searchBy ){
+        var self = this;
         console.log("toList: searchBy: " + searchBy
             + ", order: "+  orderBy + ", rpp: " + rpp + ", page: " + page + ', ui_resource_id: ' + ui_resource_id);
 
@@ -152,7 +188,15 @@ define([
         }
 
         if( _.isString(searchBy)){
-            _content_options.search = searchBy;
+
+            self.parseSearch(searchBy, {
+                success: function(search_full_string_encoded, searchExpressionHash){
+                    _content_options.search = searchExpressionHash;
+                },
+                error: function(search_full_string_encoded, msg){
+                    console.log("ERROR: " + search_full_string_encoded + ', parse failed with message: ' + msg);
+                }
+            });
         }
 
         this.model.set({ current_view: {}, current_options: {} }, {silent:true});
@@ -164,6 +208,48 @@ define([
             current_resource_id: ui_resource_id,
             routing_options: { trigger: false, replace: true } // TODO: necessary?
         });
+    },
+
+    // Custom search param parsing method
+    // successCallback: function(search_full_string_encoded,searchExpressionsHash)
+    // errorFunction: function( search_full_string_encoded, errorMessage);
+    parseSearch: function(search_full_string_encoded, options){
+        var searchExpressions = {};
+        // TODO: query terms that tastypie will understand.  these are to be set on the MyHeaderCell
+        // QUERY_TERMS = set([
+            // 'exact', 'iexact', 'contains', 'icontains', 'gt', 'gte', 'lt', 'lte', 'in',
+            // 'startswith', 'istartswith', 'endswith', 'iendswith', 'range', 'year',
+            // 'month', 'day', 'week_day', 'isnull', 'search', 'regex', 'iregex',
+        // ])
+
+        _(search_full_string_encoded.split(',')).each(function(searchItem){
+            var searchExpression = searchItem.split('=');
+            if(searchExpression.length != 2 ){
+                if(_.has(options, 'error')){
+                    options.error(search_full_string_encoded, 'Warning: invalid search item: ' + searchItem );
+                }else{
+                    console.log('Error: invalid search item: ' + searchItem + ', in: ' + search_full_string_encoded);
+                }
+                return;
+            }else{
+                searchExpressions[searchExpression[0]] = searchExpression[1];
+            }
+        });
+
+        if(!_.isEmpty(searchExpressions)){
+            if(_.has(options, 'success')){
+                options.success(search_full_string_encoded, searchExpressions);
+            }else{
+                return searchExpressions;
+            }
+        }else{
+            var msg = 'Error: no search expressions found';
+            if(_.has(options, 'error')){
+                errorFunction(search_full_string_encoded, msg );
+            }else{
+                console.log(msg + ', in: ' + search_full_string_encoded);
+            }
+        }
     },
 
 
@@ -211,6 +297,13 @@ define([
         });
     },
 
+    toMenu: function(action){
+        this.model.set({
+            current_view: 'menu',
+            current_resource_id: action,
+            current_options: {}
+        });
+    },
     // toList1: function(ui_resource_id,searchBy, orderBy,rpp, page){
         // console.log("toList: searchBy: " + searchBy
             // + ", order: "+  orderBy + ", rpp: " + rpp + ", page: " + page + ', ui_resource_id: ' + ui_resource_id);

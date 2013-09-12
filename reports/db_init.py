@@ -100,6 +100,12 @@ def main(inputDir, url, auth):
     input_file = input_file_dir + '/metahash_fields_screenresult.csv'
     patch(input_file, obj_url, headers, authentication)
 
+    # define screenresult (non-dynamic fields)
+    obj_url = url_base + '/metahash/'
+    headers = {'content-type': 'text/csv'}
+    input_file = input_file_dir + '/metahash_fields_library.csv'
+    patch(input_file, obj_url, headers, authentication)
+
     # define datacolumn
     obj_url = url_base + '/metahash/'
     headers = {'content-type': 'text/csv'}

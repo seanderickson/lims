@@ -10,20 +10,13 @@ define([
             root_url: '/reports',  // used for the backbone history
             api_root_url: '/reports/api/v1',
 
-            // current_ui_resource_id: 'home',
-            // current_view: 'home',
-            // current_route_options: {},
-            // current_route_update: {},
-            // content_options: {},
-            // route: '',
-
             // NOTE: apparently, change notifications are only detected for 'simple' objects (i.e. one level)
             current_view: 'home',
             current_resource_id: 'home',
             current_options: {},
             routing_options: {},
             current_scratch: {},
-
+            current_details: {},
 
             // menu's can only be two levels deep (todo: recursive cool menu thing)
             // - the menu tree here is composed of ui_resources, defined below.
@@ -31,44 +24,64 @@ define([
             menu: {
                 view: 'home',
                 submenus:{
-                'home': {
-                    view: 'home'
-                },
-                'screensaveruser': {
-                    view: 'list',
-                    submenus: {
-                    'screeners':{},
-                    'staff':{},
-                    }
-                },
-                'screen': {
-                    view: 'list',
-                    submenus: {
-                    'small_molecule_screens':{},
-                    'rnai_screens':{},
-                    }
-                },
-                'admin': {
-                    view: 'menu',  // TODO: not implemented; would show children menu items as links in the page
-                    submenus: {
-                        'metahash':{
+                    'library': {
+                        expanded: false,
+                        view: 'list',
+                        submenus: {
+                            'smallmoleculelibrary':{
+                                view: 'list'
+                            },
+                            'rnalibrary':{
+                                view: 'list'
+                            },
+                        }
+                    },
+                    'screensaveruser': {
+                        expanded: false,
+                        view: 'list',
+                        submenus: {
+                        'screeners':{
+                            view: 'list'
+                        },
+                        'staff':{
+                            view: 'list'
+                        },
+                        }
+                    },
+                    'screen': {
+                        view: 'list',
+                        expanded: false,
+                        submenus: {
+                        'small_molecule_screens':{
                             view: 'list',
                         },
-                        'resource':{
+                        'rnai_screens':{
                             view: 'list',
                         },
-                        'vocabularies':{
-                            view: 'list',
-                        },
-                        'apilog':{
-                            view: 'list',
-                        },
-                    }
-                },
+                        }
+                    },
+                    'admin': {
+                        expanded: false,
+                        view: 'menu',  // TODO: not implemented; would show children menu items as links in the page
+                        submenus: {
+                            'metahash':{
+                                view: 'list',
+                            },
+                            'resource':{
+                                view: 'list',
+                            },
+                            'vocabularies':{
+                                view: 'list',
+                            },
+                            'apilog':{
+                                view: 'list',
+                            },
+                        }
+                    },
                 }
             },
 
-            ui_resources: {
+            ui_resources: {   /* TODO: *all* of this will come from the resourceResource */
                 admin: {
                     title: 'Admin',
                     route: '',
@@ -92,8 +105,6 @@ define([
                     detail_view: 'DetailView',
                     api_resource: 'metahash',
                     url_root: '/reports/api/v1',
-                    // url_schema : '/reports/api/v1/metahash/schema',
-                    // url : '/reports/api/v1/metahash',
                     searchBy : 'scope=fields:metahash',
                     description: 'Control field settings'
                 },
@@ -106,8 +117,6 @@ define([
                     detail_view: 'DetailView',
                     api_resource: 'resource',
                     url_root: '/reports/api/v1',
-                    // url_schema : '/reports/api/v1/resource/schema',
-                    // url : '/reports/api/v1/resource',
                     description: 'Control resource information'
                 },
 
@@ -119,8 +128,6 @@ define([
                     detail_view: 'DetailView',
                     api_resource: 'vocabularies',
                     url_root: '/reports/api/v1',
-                    // url_schema : '/reports/api/v1/vocabularies/schema',
-                    // url : '/reports/api/v1/vocabularies',
                     description: 'Enter controlled vocabularies'
                 },
 
@@ -132,8 +139,6 @@ define([
                     detail_view: 'DetailView',
                     api_resource: 'apilog',
                     url_root: '/reports/api/v1',
-                    // url_schema : '/reports/api/v1/apilog/schema',
-                    // url : '/reports/api/v1/apilog',
                     description: 'Change logs'
                 },
 
@@ -145,9 +150,29 @@ define([
                     detail_view: 'DetailView',
                     api_resource: 'screensaveruser',
                     url_root: '/db/api/v1',
-                    // url_schema : '/db/api/v1/screensaveruser/schema' ,
-                    // url : '/db/api/v1/screensaveruser',
                     description: 'View user information'
+                },
+                screeners: {
+                    header_message: 'Screening Users',
+                    title: 'Screeners',
+                    route: 'list/screeners',
+                    list_view: 'ListView',
+                    detail_view: 'DetailView',
+                    api_resource: 'screensaveruser',
+                    url_root: '/db/api/v1',
+                    description: 'View user information',
+                    options: { search: {'screeningroomuser__isnull': 'False'} }
+                },
+                staff: {
+                    header_message: 'Staff',
+                    title: 'Staff Users',
+                    route: 'list/staff',
+                    list_view: 'ListView',
+                    detail_view: 'DetailView',
+                    api_resource: 'screensaveruser',
+                    url_root: '/db/api/v1',
+                    description: 'View user information',
+                    options: { search: {'administratoruser__isnull': 'False'} }
                 },
                 screen: {
                     header_message: 'All screens (Small Molecule and RNAi)',
@@ -157,9 +182,61 @@ define([
                     detail_view: 'DetailView',
                     api_resource: 'screen',
                     url_root: '/db/api/v1',
-                    // url_schema : '/db/api/v1/screen/schema' ,
-                    // url : '/db/api/v1/screen',
                     description: 'View screen information'
+                },
+                small_molecule_screens: {
+                    header_message: 'Small Molecule Screens',
+                    title: 'Small Molecule',
+                    route: 'list/small_molecule_screens',
+                    list_view: 'ListView',
+                    detail_view: 'DetailView',
+                    api_resource: 'screen',
+                    url_root: '/db/api/v1',
+                    description: 'View small molecule screen information',
+                    options: { search: { screen_type: 'Small Molecule'} }
+                },
+                rnai_screens: {
+                    header_message: 'All screens (Small Molecule and RNAi)',
+                    title: 'RNAi',
+                    route: 'list/rnai_screens',
+                    list_view: 'ListView',
+                    detail_view: 'DetailView',
+                    api_resource: 'screen',
+                    url_root: '/db/api/v1',
+                    description: 'View rnai screen information',
+                    options: { search: { screen_type: 'RNAi'} }
+                },
+                library: {
+                    header_message: 'All libraries (Small Molecule and RNAi)',
+                    title: 'Libraries',
+                    route: 'list/library',
+                    list_view: 'ListView',
+                    detail_view: 'DetailView',
+                    api_resource: 'library',
+                    url_root: '/db/api/v1',
+                    description: 'View library information'
+                },
+                smallmoleculelibrary: {
+                    header_message: 'Small Molecule Libraries',
+                    title: 'Small Molecule',
+                    route: 'list/smallmoleculelibrary',
+                    list_view: 'ListView',
+                    detail_view: 'DetailView',
+                    api_resource: 'library',
+                    url_root: '/db/api/v1',
+                    description: 'View Small Molecule Library information',
+                    options: { search: { screen_type: 'Small Molecule'} }
+                },
+                rnalibrary: {
+                    header_message: 'RNAi Libraries',
+                    title: 'RNAi',
+                    route: 'list/rnalibrary',
+                    list_view: 'ListView',
+                    detail_view: 'DetailView',
+                    api_resource: 'library',
+                    url_root: '/db/api/v1',
+                    description: 'View RNAi library information',
+                    options: { search: { screen_type: 'RNAi'} }
                 }
             },
             list_defaults: {

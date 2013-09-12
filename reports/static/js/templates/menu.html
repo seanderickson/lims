@@ -2,29 +2,35 @@
     <li class="nav-header" id="<%= 'home' %>" title="<%=ui_resources['home'].description %>">
         <a  href="#"><%= ui_resources['home'].title %></a>
     </li>
-    <% _.each(_(menu['submenus']).keys(), function(key){
+    <%
+    _.each(_(menu['submenus']).keys(), function(key){
         var ui_resource = ui_resources[key];
-        var submenus = menu['submenus'][key]['submenus'];
     %>
         <li id="<%= key %>" title="<%=ui_resource.description %>"><a href="#"><%= ui_resource.title %></a></li>
     <%
-        if( !_.isEmpty(submenus)){
-            %>
-            <ul class="nav nav-list nav-stacked">
-            <%
-            _.each(_.keys(submenus), function(key){
-                var ui_resource = ui_resources[key];
-                if(_.isUndefined(ui_resource)){
-                    console.log('error, undefined ui_resource:' + JSON.stringify(key) );
-                }else{
-                    console.log('found ' + key);
-                    %>
-                        <li id="<%= key %>" title="<%=ui_resource.description %>"><a href="#"><%= ui_resource.title %></a></li>
-                    <%
-                }
-            });
-        %></ul>
-        <%
+        var submenu = menu['submenus'][key];
+        if( submenu['expanded'] ) {
+            console.log('get submenus for: ' + key + ', ' + JSON.stringify(submenu['submenus']));
+            var submenus = submenu['submenus'];
+            if( !_.isEmpty(submenus)){
+    %>
+        <ul class="nav nav-list nav-stacked">
+    <%
+                _.each(_.keys(submenus), function(key){
+                    var ui_resource = ui_resources[key];
+                    if(_.isUndefined(ui_resource)){
+                        console.log('error, undefined ui_resource:' + JSON.stringify(key) );
+                    }else{
+                        console.log('found ' + key);
+    %>
+        <li id="<%= key %>" title="<%=ui_resource.description %>"><a href="#"><%= ui_resource.title %></a></li>
+    <%
+                    }
+                });
+            }
+    %>
+        </ul>
+    <%
         }
     });
     %>

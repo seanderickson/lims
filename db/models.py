@@ -196,10 +196,6 @@ class WellVolumeCorrectionActivity(models.Model):
 
 
 
-class AdministratorUser(models.Model):
-    screensaver_user = models.ForeignKey('ScreensaverUser', primary_key=True)
-    class Meta:
-        db_table = 'administrator_user'
 
 class AnnotationType(models.Model):
     annotation_type_id = models.IntegerField(primary_key=True)
@@ -431,7 +427,7 @@ class CherryPickRequest(models.Model):
     requested_by = models.ForeignKey('ScreeningRoomUser')
     is_randomized_assay_plate_layout = models.BooleanField()
     legacy_cherry_pick_request_number = models.IntegerField(null=True, blank=True)
-    volume_approved_by = models.ForeignKey(AdministratorUser, null=True, blank=True)
+    volume_approved_by = models.ForeignKey('AdministratorUser', null=True, blank=True)
     number_unfulfilled_lab_cherry_picks = models.IntegerField()
     assay_plate_type = models.TextField()
     transfer_volume_per_well_approved = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
@@ -627,44 +623,6 @@ class LabCherryPick(models.Model):
 #    class Meta:
 #        db_table = 'lab_head'
 
-
-class Library(models.Model):
-    library_id = models.IntegerField(primary_key=True)
-    version = models.IntegerField()
-    library_name = models.TextField(unique=True)
-    short_name = models.TextField(unique=True)
-    description = models.TextField(blank=True)
-    provider = models.TextField(blank=True)
-    screen_type = models.TextField()
-    library_type = models.TextField()
-    start_plate = models.IntegerField(unique=True)
-    end_plate = models.IntegerField(unique=True)
-    screening_status = models.TextField()
-    date_received = models.DateField(null=True, blank=True)
-    date_screenable = models.DateField(null=True, blank=True)
-    date_created = models.DateTimeField()
-    plate_size = models.TextField()
-    latest_released_contents_version_id = models.IntegerField(null=True, blank=True)
-    experimental_well_count = models.IntegerField(null=True, blank=True)
-    is_pool = models.NullBooleanField(null=True, blank=True)
-    created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
-    owner_screener = models.ForeignKey('ScreeningRoomUser', null=True, blank=True)
-    solvent = models.TextField()
-    date_loaded = models.DateTimeField(null=True, blank=True)
-    date_publicly_available = models.DateTimeField(null=True, blank=True)
-    class Meta:
-        db_table = 'library'
-
-class LibraryContentsVersion(models.Model):
-    library_contents_version_id = models.IntegerField(primary_key=True)
-    version = models.IntegerField()
-    version_number = models.IntegerField()
-    library = models.ForeignKey(Library)
-    library_contents_loading_activity = models.ForeignKey(AdministrativeActivity, related_name='lcv_load')
-    library_contents_release_activity = models.ForeignKey(AdministrativeActivity, null=True, blank=True, related_name='lcv_release')
-    class Meta:
-        db_table = 'library_contents_version'
-
 class Molfile(models.Model):
     molfile = models.TextField()
     ordinal = models.IntegerField()
@@ -676,42 +634,6 @@ class NaturalProductReagent(models.Model):
     reagent = models.ForeignKey('Reagent', primary_key=True)
     class Meta:
         db_table = 'natural_product_reagent'
-
-class Plate(models.Model):
-    plate_id = models.IntegerField(primary_key=True)
-    version = models.IntegerField()
-    plate_type = models.TextField(blank=True)
-    plate_number = models.IntegerField()
-    well_volume = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
-    copy = models.ForeignKey(Copy)
-    facility_id = models.TextField(blank=True)
-    date_created = models.DateTimeField()
-    created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
-    plate_location = models.ForeignKey('PlateLocation', null=True, blank=True)
-    status = models.TextField()
-    retired_activity_id = models.IntegerField(unique=True, null=True, blank=True)
-    plated_activity_id = models.IntegerField(unique=True, null=True, blank=True)
-    stock_plate_number = models.IntegerField(null=True, blank=True)
-    quadrant = models.IntegerField(null=True, blank=True)
-    min_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
-    max_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
-    min_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
-    max_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
-    primary_well_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
-    primary_well_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
-    date_loaded = models.DateTimeField(null=True, blank=True)
-    date_publicly_available = models.DateTimeField(null=True, blank=True)
-    class Meta:
-        db_table = 'plate'
-
-class PlateLocation(models.Model):
-    plate_location_id = models.IntegerField(primary_key=True)
-    bin = models.TextField()
-    freezer = models.TextField()
-    room = models.TextField()
-    shelf = models.TextField()
-    class Meta:
-        db_table = 'plate_location'
 
 class PrimaryCell(models.Model):
     age_in_years = models.IntegerField()
@@ -741,7 +663,7 @@ class Reagent(models.Model):
     reagent_id = models.IntegerField(primary_key=True)
     vendor_identifier = models.TextField(blank=True)
     vendor_name = models.TextField(blank=True)
-    library_contents_version = models.ForeignKey(LibraryContentsVersion)
+    library_contents_version = models.ForeignKey('LibraryContentsVersion')
     well = models.ForeignKey('Well')
     facility_batch_id = models.IntegerField(null=True, blank=True)
     vendor_batch_id = models.TextField(blank=True)
@@ -753,18 +675,6 @@ class ReagentPublicationLink(models.Model):
     publication_id = models.IntegerField(unique=True)
     class Meta:
         db_table = 'reagent_publication_link'
-
-class ResultValue(models.Model):
-    result_value_id = models.IntegerField(null=True, blank=True)
-    assay_well_control_type = models.TextField(blank=True)
-    is_exclude = models.NullBooleanField(null=True, blank=True)
-    numeric_value = models.FloatField(null=True, blank=True)
-    is_positive = models.NullBooleanField(null=True, blank=True)
-    value = models.TextField(blank=True)
-    data_column = models.ForeignKey(DataColumn, null=True, blank=True)
-    well = models.ForeignKey('Well', null=True, blank=True)
-    class Meta:
-        db_table = 'result_value'
 
 class RnaiCherryPickRequest(models.Model):
     cherry_pick_request = models.ForeignKey(CherryPickRequest, primary_key=True)
@@ -911,32 +821,6 @@ class ScreenerCherryPick(models.Model):
     class Meta:
         db_table = 'screener_cherry_pick'
 
-class ScreeningRoomUser(models.Model):
-    screensaver_user = models.ForeignKey('ScreensaverUser', primary_key=True)
-    user_classification = models.TextField()
-    lab_head = models.ForeignKey('LabHead', null=True, blank=True)
-    coms_crhba_permit_number = models.TextField(blank=True)
-    coms_crhba_permit_principal_investigator = models.TextField(blank=True)
-    last_notified_smua_checklist_item_event = models.ForeignKey(ChecklistItemEvent, null=True, blank=True, related_name='smua_user')
-    last_notified_rnaiua_checklist_item_event = models.ForeignKey(ChecklistItemEvent, null=True, blank=True, related_name='rnai_ua_user')
-    class Meta:
-        db_table = 'screening_room_user'
-
-class LabHead(models.Model):
-#    screensaver_user = models.ForeignKey('ScreeningRoomUser', primary_key=True)
-    screensaver_user = models.ForeignKey('ScreeningRoomUser', primary_key=True)
-    lab_affiliation = models.ForeignKey(LabAffiliation, null=True, blank=True)
-    
-    class Meta:
-        db_table = 'lab_head'
-
-class ScreeningRoomUserFacilityUsageRole(models.Model):
-    screening_room_user = models.ForeignKey(ScreeningRoomUser)
-    facility_usage_role = models.TextField()
-    class Meta:
-        db_table = 'screening_room_user_facility_usage_role'
-
-from django.contrib.auth.models import User
 class ScreensaverUser(models.Model):
 #    objects = PostgresManager()
     screensaver_user_id = models.IntegerField(primary_key=True)
@@ -960,6 +844,40 @@ class ScreensaverUser(models.Model):
     class Meta:
         db_table = 'screensaver_user'
 
+class ScreeningRoomUser(models.Model):
+    screensaver_user = models.OneToOneField('ScreensaverUser', primary_key=True)
+    user_classification = models.TextField()
+    lab_head = models.ForeignKey('LabHead', null=True, blank=True)
+    coms_crhba_permit_number = models.TextField(blank=True)
+    coms_crhba_permit_principal_investigator = models.TextField(blank=True)
+    last_notified_smua_checklist_item_event = models.ForeignKey(ChecklistItemEvent, null=True, blank=True, related_name='smua_user')
+    last_notified_rnaiua_checklist_item_event = models.ForeignKey(ChecklistItemEvent, null=True, blank=True, related_name='rnai_ua_user')
+    class Meta:
+        db_table = 'screening_room_user'
+
+class AdministratorUser(models.Model):
+    screensaver_user = models.OneToOneField('ScreensaverUser', primary_key=True)
+    class Meta:
+        db_table = 'administrator_user'
+        
+class LabHead(models.Model):
+#    screensaver_user = models.ForeignKey('ScreeningRoomUser', primary_key=True)
+    screensaver_user = models.OneToOneField('ScreeningRoomUser', primary_key=True)
+    lab_affiliation = models.OneToOneField(LabAffiliation, null=True, blank=True)
+    
+    class Meta:
+        db_table = 'lab_head'
+
+
+
+
+
+class ScreeningRoomUserFacilityUsageRole(models.Model):
+    screening_room_user = models.ForeignKey(ScreeningRoomUser)
+    facility_usage_role = models.TextField()
+    class Meta:
+        db_table = 'screening_room_user_facility_usage_role'
+        
 class ScreensaverUserRole(models.Model):
     screensaver_user = models.ForeignKey(ScreensaverUser)
     screensaver_user_role = models.TextField()
@@ -1042,6 +960,94 @@ class TransfectionAgent(models.Model):
     version = models.IntegerField()
     class Meta:
         db_table = 'transfection_agent'
+
+
+
+
+class Library(models.Model):
+    library_id = models.IntegerField(primary_key=True)
+    version = models.IntegerField()
+    library_name = models.TextField(unique=True)
+    short_name = models.TextField(unique=True)
+    description = models.TextField(blank=True)
+    provider = models.TextField(blank=True)
+    screen_type = models.TextField()
+    library_type = models.TextField()
+    start_plate = models.IntegerField(unique=True)
+    end_plate = models.IntegerField(unique=True)
+    screening_status = models.TextField()
+    date_received = models.DateField(null=True, blank=True)
+    date_screenable = models.DateField(null=True, blank=True)
+    date_created = models.DateTimeField()
+    plate_size = models.TextField()
+    latest_released_contents_version_id = models.IntegerField(null=True, blank=True)
+    experimental_well_count = models.IntegerField(null=True, blank=True)
+    is_pool = models.NullBooleanField(null=True, blank=True)
+    created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
+    owner_screener = models.ForeignKey('ScreeningRoomUser', null=True, blank=True)
+    solvent = models.TextField()
+    date_loaded = models.DateTimeField(null=True, blank=True)
+    date_publicly_available = models.DateTimeField(null=True, blank=True)
+    class Meta:
+        db_table = 'library'
+
+class LibraryContentsVersion(models.Model):
+    library_contents_version_id = models.IntegerField(primary_key=True)
+    version = models.IntegerField()
+    version_number = models.IntegerField()
+    library = models.ForeignKey(Library)
+    library_contents_loading_activity = models.ForeignKey(AdministrativeActivity, related_name='lcv_load')
+    library_contents_release_activity = models.ForeignKey(AdministrativeActivity, null=True, blank=True, related_name='lcv_release')
+    class Meta:
+        db_table = 'library_contents_version'
+
+class Plate(models.Model):
+    plate_id = models.IntegerField(primary_key=True)
+    version = models.IntegerField()
+    plate_type = models.TextField(blank=True)
+    plate_number = models.IntegerField()
+    well_volume = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
+    copy = models.ForeignKey(Copy)
+    facility_id = models.TextField(blank=True)
+    date_created = models.DateTimeField()
+    created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
+    plate_location = models.ForeignKey('PlateLocation', null=True, blank=True)
+    status = models.TextField()
+    retired_activity_id = models.IntegerField(unique=True, null=True, blank=True)
+    plated_activity_id = models.IntegerField(unique=True, null=True, blank=True)
+    stock_plate_number = models.IntegerField(null=True, blank=True)
+    quadrant = models.IntegerField(null=True, blank=True)
+    min_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
+    max_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
+    min_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
+    max_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
+    primary_well_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
+    primary_well_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
+    date_loaded = models.DateTimeField(null=True, blank=True)
+    date_publicly_available = models.DateTimeField(null=True, blank=True)
+    class Meta:
+        db_table = 'plate'
+
+class PlateLocation(models.Model):
+    plate_location_id = models.IntegerField(primary_key=True)
+    bin = models.TextField()
+    freezer = models.TextField()
+    room = models.TextField()
+    shelf = models.TextField()
+    class Meta:
+        db_table = 'plate_location'
+
+class ResultValue(models.Model):
+    result_value_id = models.IntegerField(null=True, blank=True)
+    assay_well_control_type = models.TextField(blank=True)
+    is_exclude = models.NullBooleanField(null=True, blank=True)
+    numeric_value = models.FloatField(null=True, blank=True)
+    is_positive = models.NullBooleanField(null=True, blank=True)
+    value = models.TextField(blank=True)
+    data_column = models.ForeignKey(DataColumn, null=True, blank=True)
+    well = models.ForeignKey('Well', null=True, blank=True)
+    class Meta:
+        db_table = 'result_value'
 
 class Well(models.Model):
     well_id = models.TextField(primary_key=True)

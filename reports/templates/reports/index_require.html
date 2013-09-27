@@ -15,6 +15,9 @@
         .row-fluid .span2 {
             width: 10%;
         }
+        .nav {
+            margin-bottom: 0px;
+        }
 
 
     /*hack to make the header fit the filter search box and side icons (side icons are the problem)*/
@@ -58,14 +61,14 @@
       </style>
 <title>Screensaver 2</title>
 
-<script data-main="{{ STATIC_URL }}/js/main" src="{{ STATIC_URL }}/js/libs/require.js"></script>
+<script data-main="{{ STATIC_URL }}js/main" src="{{ STATIC_URL }}js/libs/require.js"></script>
 
 {% endblock %}
 
 {% block application%}
     <div class="container-fluid">
       <div class="row-fluid no-space">
-        <div class="span2">
+        <div class="span2" style="min-width: 160px">
           <div class="well sidebar-nav">
             <div id="menu"></div>
           </div><!--/.well -->

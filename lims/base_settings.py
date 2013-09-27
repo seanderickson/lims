@@ -142,7 +142,8 @@ INSTALLED_APPS = (
 )
 
 # for tastypie: will evaluate resource URIs the same with or without the trailing slash
-#APPEND_SLASH=False
+APPEND_SLASH=True
+TASTYPIE_ALLOW_MISSING_SLASH=False
 
 # A sample logging configuration. The only tangible logging
 # performed by this configuration is to send an email to

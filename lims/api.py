@@ -267,8 +267,6 @@ class CursorSerializer(Serializer):
 class LimsSerializer(BackboneSerializer,TimeZoneAwareDateSerializer,CSVSerializer):
     ''' Combine all of the Serializers used by the API
     '''
-    
-    
 
 # TODO: this class should be constructed as a Mixin, not inheritor of ModelResource
 class PostgresSortingResource(ModelResource):
@@ -280,17 +278,27 @@ class PostgresSortingResource(ModelResource):
         """
         Create a none-too-pretty workaround for the postgresql null sorting issue - nulls sort higher than values, 
         which is not desired.  We want nulls to sort lower than values.
+        - caveat: this will not work with joined fields unless they have an alias.  this is because it creates a field like:
+        (screensaver_user_id is null) AS "screensaver_user_id_null"
+        if this field is duplicated in two sides of a join, then it must be referenced by an alias, or as "table".screensaver_user_id, 
+        and we are not supporting that in this method, so aliases only.
         """ 
         
         obj_list = super(PostgresSortingResource, self).apply_sorting(obj_list, options)
         logger.info(str(('order_by', obj_list.query.order_by)))
         extra_select = {}
         extra_ordering = []
+        
+        
+        non_null_fields = options.get('non_null_fields', [])
+        logger.info(str(('==== non null fields', non_null_fields))) 
         for field in obj_list.query.order_by:
             is_null_dir = '-'  # default nulls first for ascending
             if field.startswith('-'):
                 is_null_dir = ''
                 field = field[1:]
+            if field in non_null_fields:
+                continue
             extra_select[field+"_null"]=field + ' is null'
             extra_ordering.append(is_null_dir + field+"_null")
         logger.info(str(('extra_select', extra_select, 'extra_ordering', extra_ordering)))
@@ -308,7 +316,7 @@ class PostgresSortingResource(ModelResource):
         obj_list.query.clear_ordering()
         for xfield in extra_ordering:
             temp.insert(0,xfield)
-        logger.info(unicode(('ordering', temp)))
+        logger.info(str(('ordering', temp)))
         obj_list.query.add_ordering(*temp)
         
 #        logger.info(str(('obj_list.query', obj_list.query.as_sql())))

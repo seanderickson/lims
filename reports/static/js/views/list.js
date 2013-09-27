@@ -35,7 +35,6 @@ define([
             Iccbl.assert( !_.isUndefined(options.router), 'listView options: router is required');
             Iccbl.assert( !_.isUndefined(options.url), 'listView options: url is required');
             Iccbl.assert( !_.isUndefined(options.schemaResult), 'listView options: schemaResult is required');
-            // optional: Iccbl.assert( !_.isUndefined(options.url_schema), 'listView options: url_schema is required');
             Iccbl.assert( !_.isUndefined(options.header_message), 'listView options: header_message is required');
             Iccbl.assert( !_.isUndefined(options.title), 'listView options: title is required');
 
@@ -43,29 +42,50 @@ define([
             this._options = options;
 
             var ListModel = Backbone.Model.extend({ defaults: { rpp: 25, page: 1, order: {}, search: {}} });
-            var listModel = this.listModel = new ListModel(_.clone(this.model.get('current_options')));
-            this.listenTo(this.listModel, 'change:search', function(){
-                console.log('===--- listModel change:search');
+            var current_options = _.clone(this.model.get('current_options'));
+            var listModel = this.listModel = new ListModel({ rpp: current_options.rpp, page: current_options.page,
+                order: _.clone(current_options.order), search: _.clone(current_options.search) });
 
+            this.objects_to_destroy = _([]);
+
+            var collection  = this.collection = new Iccbl.MyCollection({
+                    'url': this._options.url,
+                    currentPage: parseInt(self.listModel.get('page')),
+                    pageSize: parseInt(self.listModel.get('rpp')),
+                    listModel: listModel
+                });
+            this.objects_to_destroy.push(collection);
+
+            this.listenTo(this.listModel, 'change:search', function(){
+                var searchHash = self.listModel.get('search')
                 var current_options = _.clone(self.model.get('current_options'));
-                current_options.search = self.listModel.get('search');
+                console.log('===--- list detect: listModel change:search old: ' + JSON.stringify(current_options.search) + ', ' + JSON.stringify(searchHash));
+
+                // self.collection.setSearch(searchHash);
+//
+
+                current_options.search = searchHash;
                 self.model.set({current_options: current_options });
             });
+
             this.listenTo(this.listModel, 'change:order', function(){
-                console.log('===--- listModel change:order');
+                console.log('===--- list detect: listModel change:order');
 
                 var orderHash = self.listModel.get('order');
+//
+                // self.collection.setOrder(orderHash);
+//
                 var current_options = _.clone(self.model.get('current_options'));
                 current_options.order = orderHash;
                 self.model.set({current_options: current_options });
             });
 
             this.listenTo(this.listModel, 'change:rpp', function(){
-                console.log('===--- listModel change:rpp');
+                console.log('===--- list detect: listModel change:rpp');
                 var pageSize = parseInt(self.listModel.get('rpp'));
-
+//
                 // self.collection.setPageSize(pageSize);
-                // // Triggers a fetch
+                // // // Triggers a fetch
 
                 var current_options = _.clone(self.model.get('current_options'));
                 current_options.rpp = pageSize;
@@ -73,7 +93,7 @@ define([
             });
 
             this.listenTo(this.listModel, 'change:page', function(){
-                console.log('===--- listModel change:page');
+                console.log('===--- list detect: listModel change:page');
                 var page = parseInt(self.listModel.get('page'));
 
                 // Not needed since page changes come from the paginator->pageablecollection
@@ -91,15 +111,30 @@ define([
                 data.message = this._options.header_message; //'hello world!' };
             }
             var compiledTemplate = this.compiledTemplate = _.template( listTemplate, data );
-            this.objects_to_destroy = _([]);
 
-            var collection  = this.collection = new Iccbl.MyCollection({
-                    'url': this._options.url,
-                    currentPage: parseInt(self.listModel.get('page')),
-                    pageSize: parseInt(self.listModel.get('rpp')),
-                    listModel: listModel
-                });
-            this.objects_to_destroy.push(collection);
+            // this.listenTo(this.collection, "MyServerSideFilter:addSearch", function(searchHash, collection){
+                // console.log('MyServerSideFilter:addSearch trigger: ' + JSON.stringify(searchHash));
+//
+                // var oldsearchHash = _.clone(self.listModel.get('search'));
+                // console.log('collection addSearch: current: ' + JSON.stringify(oldsearchHash) + ', adding: ' + JSON.stringify(searchHash));
+                // oldsearchHash = _.extend(oldsearchHash, searchHash);
+                // self.listModel.set({'search': oldsearchHash } );
+//
+                // // var current_options = _.clone(self.model.get('current_options'));
+                // // current_options.search = searchHash;
+                // // self.model.set({current_options: current_options });
+            // });
+//
+            // this.listenTo(this.collection, "MyServerSideFilter:removeSearch", function(keys, collection){
+                // console.log('MyServerSideFilter:removeSearch trigger: ' + JSON.stringify(keys));
+//
+                // var oldsearchHash = _.clone(self.listModel.get('search'));
+                // console.log('collection removeSearch: current: ' + JSON.stringify(oldsearchHash) + ', adding: ' + JSON.stringify(keys));
+                // var newSearchHash = _.omit(oldsearchHash, keys);
+                // self.listModel.set({'search': newSearchHash });
+            // });
+
+            // TODO addOrder, removeOrder
 
             this.buildGrid(this._options.schemaResult);
         },
@@ -107,8 +142,7 @@ define([
         buildGrid : function(schemaResult) {
 
             console.log('buildGrid...');
-
-            var self = this; // todo: "this" is the parent ListView, all of this should be handled by events
+            var self = this;
 
             self.listenTo(self.collection, "MyCollection:link", function (model, column) {
                 console.log('---- process link for '+ column);
@@ -182,17 +216,16 @@ define([
             });
 
             // Rows-per-page selector
-            var rppModel = new Backbone.Model({ selection: this.listModel.get('rpp') });
+            var rppModel = self.rppModel = new Backbone.Model({ selection: String(self.listModel.get('rpp')) });
             var rppSelectorInstance = self.rppSelectorInstance = new Iccbl.GenericSelector(
-                { model: rppModel }, {label: 'Rows per page:', options: ['25','50','200','1000']} );
+                { model: rppModel }, {label: 'Rows per page:', options: ['', '25','50','200','1000'], selectorClass: 'input-small' } );
             this.objects_to_destroy.push(rppSelectorInstance);
-            self.$("#extra-selector-div").append(rppSelectorInstance.render().$el);
             this.listenTo(this.listModel, 'change: rpp', function(){
-                rppModel.set({ selection: self.listModel.get('rpp') });
+                rppModel.set({ selection: String(self.listModel.get('rpp')) });
             });
             this.listenTo(rppModel, 'change', function() {
                 console.log('===--- rppModel change');
-                self.listModel.set('rpp', rppModel.get('selection'));
+                self.listModel.set('rpp', String(rppModel.get('selection')));
             });
 
             // Paginator
@@ -203,17 +236,26 @@ define([
 
             // Extraselector
             if( _.has(schemaResult, 'extraSelectorOptions')){
-                console.log('searchTerms: ' + JSON.stringify(schemaResult.searchTerms));
+                var searchHash = self.listModel.get('search');
+                console.log('extraselector init: searchTerms: ' + JSON.stringify(searchHash));
 
                 var extraSelectorModel = new Backbone.Model({ selection: '' });
                 var extraSelectorKey = schemaResult.extraSelectorOptions.searchColumn;
-                var extraSelectorInstance = self.extraSelectorInstance = new Iccbl.GenericSelector({ model: extraSelectorModel} , schemaResult.extraSelectorOptions ); // HMMm: need to understand the "delegate events" better here
+                _.each(_.keys(searchHash), function(key){
+                    console.log('key: ' + key + ', extrSelectorKey: ' + extraSelectorKey);
+                    if( key == extraSelectorKey){
+                        extraSelectorModel.set({ selection: searchHash[key] });
+                    }
+                });
+                var extraSelectorInstance = self.extraSelectorInstance =
+                    new Iccbl.GenericSelector({ model: extraSelectorModel } , schemaResult.extraSelectorOptions );
                 this.objects_to_destroy.push(extraSelectorInstance);
-                self.$("#extra-selector-div").append(extraSelectorInstance.render().$el);
 
                 this.listenTo(this.listModel, 'change: search', function(){
                     var searchHash = self.listModel.get('search');
+                    console.log('extraselector, search changed: ' + JSON.stringify(searchHash));
                     _.each(_.keys(searchHash), function(key){
+                        console.log('key: ' + key + ', extrSelectorKey: ' + extraSelectorKey);
                         if( key == extraSelectorKey){
                             extraSelectorModel.set({ selection: searchHash[key] });
                         }
@@ -227,19 +269,16 @@ define([
                     self.listModel.set('search', searchHash);
                 });
 
-                // extraSelectorInstance.listenTo(self.collection, 'MyServerSideFilter:search', extraSelectorInstance.updateSelection);
-                // extraSelectorInstance.listenTo(self.collection, 'MyServerSideFilter:clearSearch', extraSelectorInstance.updateSelection);
 
             }
-            // self.$("#paginator-div").append(paginator.render().$el);
-            // self.$("#rows-selector-div").append(selector.render().$el);
+
             var columns = this.createBackgridColModel(this._options.schemaResult.fields, Iccbl.MyHeaderCell);//, col_options );
             //columns.unshift({ name: 'deletor', label: 'Delete', text:'X', description: 'delete record', cell: Iccbl.DeleteCell, sortable: false });
             var grid = this.grid = new Backgrid.Grid({
               columns: columns,
               collection: self.collection,
             });
-            self.$("#example-table").append(grid.render().$el);
+            // self.$("#example-table").append(grid.render().$el);
             this.objects_to_destroy.push(grid);
 
             // encapsulate the footer in a view, help grab button click
@@ -279,7 +318,7 @@ define([
                 },
 
             });
-            self.$("#table-footer-div").append(footer.$el);
+            // self.$("#table-footer-div").append(footer.$el);
             this.objects_to_destroy.push(footer);
 
 
@@ -290,12 +329,13 @@ define([
 
             this.listenTo(self.collection, 'request', ajaxStart);
             // this.listenTo(collection, 'MyCollection:setRoute', this.setRoute);
-            this.listenTo(self.collection, 'MyCollection:changeOptions', this.change_options);
+            // this.listenTo(self.collection, 'MyCollection:changeOptions', this.change_options);
 //            this.listenTo(self.collection, 'sync', this.selector.updateSelection );
 
             // TODO: work out the specifics of communication complete event.  the following are superceded by the global handler for "ajaxComplete"
             this.listenTo(self.collection, 'error', ajaxComplete);
             this.listenTo(self.collection, 'complete', ajaxComplete);
+
 
             console.log('list view initialized');
         },
@@ -368,13 +408,13 @@ define([
             return colModel;
         },
 
-        change_options: function(new_options, _routing_options ){
-            console.log('changeOptions triggered: ' + JSON.stringify(new_options) + ' , ' + JSON.stringify(_routing_options) );
-
-            var updated_current_options = _.extend({}, this.model.get('current_options'), new_options);
-            this.model.set({ routing_options: _routing_options,
-                             current_options: updated_current_options });
-        },
+        // change_options: function(new_options, _routing_options ){
+            // console.log('changeOptions triggered: ' + JSON.stringify(new_options) + ' , ' + JSON.stringify(_routing_options) );
+//
+            // var updated_current_options = _.extend({}, this.model.get('current_options'), new_options);
+            // this.model.set({ routing_options: _routing_options,
+                             // current_options: updated_current_options });
+        // },
 
         remove: function(){
             console.log('ListView remove called');
@@ -393,100 +433,59 @@ define([
         },
 
         render: function(){
+            console.log('render start');
             var self = this;
+
             this.$el.html(this.compiledTemplate);
             self.$("#example-table").append(this.grid.render().$el);
             self.$("#paginator-div").append(self.paginator.render().$el);
             self.$("#rows-selector-div").append(self.rppSelectorInstance.render().$el);
 
+            this.delegateEvents();
+
             if(!_.isUndefined(self.extraSelectorInstance)){
+                //self.extraSelectorInstance.render();
                 self.$("#extra-selector-div").append(self.extraSelectorInstance.render().$el);
-            }else{
-                console.log('wherez theextra selector');
             }
+            self.$("#table-footer-div").append(footer.$el);
 
-
-            // // TODO: can set the fetchOptions directly as well
-            // if (!_.isEmpty(self.listModel.get('page'))){
-                // self.collection.state.currentPage = this._options.page;
-            // }
-            // if (!_.isEmpty(self.listModel.get('rpp'))){
-                // // self.collection.state.pageSize = this._options.rpp;
-                // self.collection.setPageSize(parseInt(self.listModel.get('rpp')));
-            // }
-            // if(_.isString(this._options.order) ){
-                // var direction = 'ascending';
-                // var order = -1; // according to the docs, -1 == ascending
-                // var sortKey = this._options.order;
-                // if(sortKey.charAt(0) === '-'){
-                    // order = 1; // according to the docs, 1 == descending
-                    // direction = 'descending';
-                    // sortKey = sortKey.substring(1);
-                // }
-                // self.collection.state.sortKey = sortKey;
-                // self.collection.state.order = order;
-                // // Notify header cells
-                // self.collection.trigger("backgrid:sort", sortKey, direction, null, self.collection);
-            // }
-            var orderHash = self.listModel.get('order');
-            if(!_.isEmpty(orderHash)){
-
-                self.collection.setOrder(orderHash);
-
-            }
+            console.log('--doms appended--');
 
             var searchHash = self.listModel.get('search');
             if(!_.isEmpty(searchHash)){
-
+                console.log('render: collection.setSearch: ' + JSON.stringify(searchHash));
                 self.collection.setSearch(searchHash);
-
             }
 
-            if(_.isString(this._options.search)){
-                // var searchExpressions = {};
-                // // TODO: query terms that tastypie will understand.  these are to be set on the MyHeaderCell
-                // // QUERY_TERMS = set([
-                    // // 'exact', 'iexact', 'contains', 'icontains', 'gt', 'gte', 'lt', 'lte', 'in',
-                    // // 'startswith', 'istartswith', 'endswith', 'iendswith', 'range', 'year',
-                    // // 'month', 'day', 'week_day', 'isnull', 'search', 'regex', 'iregex',
-                // // ])
-//
-                // _(this._options.search.split(',')).each(function(searchItem){
-                    // var searchExpression = searchItem.split('=');
-                    // if(searchExpression.length != 2 ){
-                        // console.log('Warning: invalid search item: ' + searchItem + ', in: ' + this._options.search);
-                    // }else{
-                        // searchExpressions[searchExpression[0]] = searchExpression[1];
-                    // }
-               // });
+            var orderHash = self.listModel.get('order');
+            if(!_.isEmpty(orderHash)){
+                self.collection.setOrder(orderHash);
+            }
 
-                // self.collection.parseSearch(this._options.search, {
-                    // success: function(search_full_string_encoded, searchHash){
-                        // self.collection.setSearch(search_full_string_encoded, searchHash);
-                        // //fetchOptions['data'] = searchHash;
-                    // },
-                    // error: function(search_full_string_encoded, msg){
-                        // console.log("ERROR: " + search_full_string_encoded + ', parse failed with message: ' + msg);
-                    // }
-                // });
+            var page = self.listModel.get('page');
+            if(!_.isUndefined(page)){
+                self.collection.setPage(page);
+            }
 
+            var rpp = self.listModel.get('rpp');
+            if(!_.isUndefined(rpp)){
+                self.collection.setPageSize(rpp);
+            }
 
-                // if(!_.isEmpty(searchExpressions)){
-                    // self.collection.setSearch(this.
-                    // self.collection.searchBy = this._options.search;
-                    // console.log('trigger search:' + this._options.search + ', ' + JSON.stringify(searchExpressions) );
-                    // self.collection.trigger("MyServerSideFilter:search", searchExpressions, self.collection);
-                    // // console.log('done: trigger search');
-                // }else{
-                    // console.log('Warn: no search expressions found in: '  + this._options.search );
+            this.listenTo(self.collection, 'sync', function(event){
+                console.log('== collection sync event: ' + event );
+                // self.rppSelectorInstance.render();
+                // if(!_.isUndefined(self.extraSelectorInstance)){
+                   // self.extraSelectorInstance.render();
                 // }
-            }
+                self.$('#header_message').html(self._options.header_message + ", total records: " + self.collection.state.totalRecords);
+            });
+
             console.log('collection fetch trigger');
             var fetchOptions = { reset: true };
             self.collection.fetch(fetchOptions);
 
-
-
+            console.log('rendered');
             return this;
         }
 

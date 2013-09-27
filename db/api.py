@@ -54,6 +54,15 @@ class ScreensaverUserResource(MetahashManagedResource, PostgresSortingResource):
     #        logger.info(str(('full dehydrate time', time.time()-_time )))
     #        return bundle        
     
+    def apply_sorting(self, obj_list, options):
+        options = options.copy()
+        options['non_null_fields'] = ['screensaver_user_id']
+        obj_list = super(ScreensaverUserResource, self).apply_sorting(obj_list, options)
+#        for key,value in obj_list.query.extra.items():
+#            obj_list.query.extra[key] = 
+#            field = 'screensaver_user.'+ field; # have to override the field name here, because this query is a join query, and otherwise the "is null" extra clause fails
+        return obj_list
+        
     def build_schema(self):
         schema = super(ScreensaverUserResource,self).build_schema()
         schema['idAttribute'] = ['screensaver_user_id']

@@ -11,8 +11,8 @@ define([
     routes: {
         '': 'index',
         'home(/home)': 'toHome',
-        'list/:ui_resource_id(/rpp/:rpp)(/page/:page)(/order_by/:orderBy)(/search/:searchBy)(/)': 'toList', // note: can tolerate missing routes, but not out of order
-        'detail/:ui_resource_id/:key(/:key2)(/tab/:tab)(/rpp/:rpp)(/page/:page)(/order_by/:orderBy)(/search/:searchBy)(/)': 'toDetail',
+        'list/:ui_resource_id(/rpp/:rpp)(/page/:page)(/order/:orderBy)(/search/:searchBy)(/)': 'toList', // note: can tolerate missing routes, but not out of order
+        'detail/:ui_resource_id/:key(/:key2)(/tab/:tab)(/rpp/:rpp)(/page/:page)(/order/:orderBy)(/search/:searchBy)(/)': 'toDetail',
         'menu/:action' : 'toMenu',
         '*unknownAction': 'unknownAction',
     },
@@ -64,21 +64,20 @@ define([
 
             if(_.has(current_options, option)){
                 var optionValue = current_options[option]
-                if(!_.isEmpty(optionValue)){
+                if(!_.isUndefined(optionValue) && !_.isNull(optionValue)){
                     if(route_fragment.length > 0) route_fragment += '/';
                     route_fragment += option + '/';
                     if(option == 'rpp' || option == 'page' ){
                         route_fragment += optionValue;
 
                     }else if(option == 'order' ){
-                        console.log('order - ' + JSON.stringify(optionValue));
+                        // TODO: use the type of search comparator as well
                         var frag = _.reduce(_.pairs(optionValue), function(frag, pair){
                             if(frag.length > 0 ) frag += ',';
-                            if(!_.isEmpty(pair[1])) frag += pair[1];
-                            return frag += pair[0];
+                            if(pair[1] == '-' ) frag += '-';
+                            return frag + pair[0];
                         }, '' );
                         route_fragment += frag;
-
                     }else if(option == 'search'){
                         // TODO: use the type of search comparator as well
                         var frag = _.reduce(_.pairs(optionValue), function(frag, pair){
@@ -158,7 +157,7 @@ define([
         }
 
         var route = this.get_route();
-        console.log('--- model_set_route: ' + route + ', ' + JSON.stringify(routing_options) );
+        console.log('--- model_set_route: ' + route + ', ' + JSON.stringify(options) );
         this.navigate( route, options );
     },
 
@@ -184,7 +183,7 @@ define([
 
 
         if( _.isString(orderBy) ){
-            _content_options.order = orderBy;
+            _content_options.order = self.parseOrder(orderBy);
         }
 
         if( _.isString(searchBy)){
@@ -252,9 +251,25 @@ define([
         }
     },
 
+    parseOrder: function(orderString){
+        var orderHash = {};
+        if(!_.isEmpty(orderString)){
+            _.each(orderString.split(','), function(item){
+                var key = item;
+                var dir = '+';
+                if(item.charAt(0) == '-' ) {
+                    key = item.substring(1);
+                    dir = '-';
+                }
+                orderHash[key]=dir;
+           });
+        }
+        return orderHash;
+    },
+
 
     toDetail: function(ui_resource_id, key, key2, _tab, rpp, page, orderBy, searchBy){
-        console.log('to detail page, ui_resource_id: ' + ui_resource_id + ', ' + key + ', ' + key2);
+        console.log('to detail page, ui_resource_id: ' + ui_resource_id + ', ' + key + ', ' + key2 + ', ' + rpp + ', ' + page + ', ' + orderBy + ', ' + searchBy);
         var _current_options = { 'key': key };
         if(!_.isUndefined(key2) && !_.isNull(key2) ){
             _current_options['key'] = [key,key2]; // allow for composite ids
@@ -272,13 +287,19 @@ define([
 
 
         if( _.isString(orderBy) ){
-            _current_options.order = orderBy;
+            _current_options.order = this.parseOrder(orderBy);
         }
 
         if( _.isString(searchBy)){
-            _current_options.search = searchBy;
+            this.parseSearch(searchBy, {
+                success: function(search_full_string_encoded, searchExpressionHash){
+                    _content_options.search = searchExpressionHash;
+                },
+                error: function(search_full_string_encoded, msg){
+                    console.log("ERROR: " + search_full_string_encoded + ', parse failed with message: ' + msg);
+                }
+            });
         }
-
 
         this.model.set({
             current_view: 'detail',
@@ -304,52 +325,7 @@ define([
             current_options: {}
         });
     },
-    // toList1: function(ui_resource_id,searchBy, orderBy,rpp, page){
-        // console.log("toList: searchBy: " + searchBy
-            // + ", order: "+  orderBy + ", rpp: " + rpp + ", page: " + page + ', ui_resource_id: ' + ui_resource_id);
-//
-        // var _content_options = { ui_resource_id: ui_resource_id, 'view': 'list' };
-//
-        // var _route_options = {};
-        // _content_options.page = null;
-        // if(typeof page !== 'undefined' && page !== null ){
-            // _content_options.page = parseInt(page);
-            // _route_options.page = parseInt(page);
-        // }
-//
-        // _content_options.pageSize = null;
-        // if(typeof rpp !== 'undefined' && rpp !== null ){
-            // _content_options.pageSize = parseInt(rpp);
-            // _route_options.pageSize = parseInt(rpp);
-        // }
-//
-//
-        // if( _.isString(orderBy) ){
-            // _content_options.orderBy = orderBy;
-            // _route_options.orderBy = orderBy;
-        // }
-//
-        // if( _.isString(searchBy)){
-            // _content_options.searchBy = searchBy;
-            // _route_options.searchBy = searchBy;
-        // }
-//
-        // // TODO: all these content options should really be going into the current_route_options,
-        // // and the list view should understand the mappings (i.e. rpp->pageSize)
-//
-        // this.model.set({ current_view: {}, current_route_options: {} }, {silent:true});
-//
-        // console.log('toList model.set: ' + JSON.stringify(_route_options));
-        // this.model.set({
-            // content_options: _content_options,
-            // current_view: 'list',
-            // current_resource_id: _content_options.ui_resource_id,
-            // current_route_options: _route_options
-            // // TODO: this still feels a little hackish, we're encoding the list/ui_resource_id in the menu item
-            // // perhaps a controller passed in to the router is a better option
-            // // right now, this is an aggressive use of the application model change event system
-        // });
-    // },
+
 
   });
 

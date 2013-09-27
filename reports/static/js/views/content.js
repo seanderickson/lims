@@ -53,7 +53,11 @@ define([
             }else if (current_view === 'list'){
                 var options = _.extend( {}, this.model.get('list_defaults'), current_ui_resource, current_options ); // TODO: move the nested options up into the model
                 if(!_.isUndefined(current_ui_resource['options'])){
-                    current_options = _.extend(current_options,current_ui_resource['options']);
+                    var resource_defined_options = current_ui_resource['options'];
+                    _.each(_.keys(resource_defined_options), function(key){
+                        current_options[key] = _.extend({}, current_options[key], resource_defined_options[key]);
+                    });
+                    console.log('========== current_options: ' + JSON.stringify(current_options));
                     self.model.set({'current_options': current_options });
                 }
 

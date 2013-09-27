@@ -294,7 +294,7 @@ define([
             }
             this.$el.append(_.template( genericSelectorTemplate,
                 { label: this._options.label,
-                  'options': _(this._options.options ) }));  // TODO: this should come from the metahash schema
+                  'options': _(this._options.options ) }));
             if(!_.isUndefined(this._options.selectorClass)){
                 this.$('#generic_selector').removeClass().addClass(this._options.selectorClass);
             };
@@ -527,50 +527,50 @@ define([
                 state.currentPage=1;
             }
             this.state = this._checkState(state); // recalculate the state and do sanity checks.
-            //if(! _(state).isEqual(this.state)){
-                // TODO: call setOptions explicitly where needed, i.e. when setting searchBy
-                console.log('parse: new state: ' + JSON.stringify(this.state));
-                // trigger so our app knows about the route change, replace to modify in place w/out creating browser history
-                this.setOptions({trigger: false, replace: true });
-            //}
+            // //if(! _(state).isEqual(this.state)){
+                // // TODO: call setOptions explicitly where needed, i.e. when setting searchBy
+                // console.log('parse: new state: ' + JSON.stringify(this.state));
+                // // trigger so our app knows about the route change, replace to modify in place w/out creating browser history
+                // this.setOptions({trigger: false, replace: true });
+            // //}
             return response.objects;
         },
 
-        /**
-           @property {-1|0|1} [state.order=-1] The order to use for sorting. Specify
-           -1 for ascending order or 1 for descending order. If 0, no client side
-           sorting will be done and the order query parameter will not be sent to
-         */
-        setOptions: function(route_options) {
-            console.log('- setOptions: ' //+ this.searchBy + ', '
-                + this.state.sortKey + ', ' + this.state.order + ', '+ this.state.pageSize
-                + ', ', + this.state.currentPage + ', options: ' + JSON.stringify(route_options));
-            var new_options = {};
-            // if(this.searchBy !== null){
+        // /**
+           // @property {-1|0|1} [state.order=-1] The order to use for sorting. Specify
+           // -1 for ascending order or 1 for descending order. If 0, no client side
+           // sorting will be done and the order query parameter will not be sent to
+         // */
+        // setOptions: function(route_options) {
+            // console.log('- setOptions: ' //+ this.searchBy + ', '
+                // + this.state.sortKey + ', ' + this.state.order + ', '+ this.state.pageSize
+                // + ', ', + this.state.currentPage + ', options: ' + JSON.stringify(route_options));
+            // var new_options = {};
+            // // if(this.searchBy !== null){
+// //
+                // // // TODO: discuss whether full encoding of the search fragment is necessary.
+                // // // to-date, we know that the forward slash messes up the backbone router parsing, but other URL chars do not,
+                // // // and full encoding reduces the usability of the URL for the end user
+                // // //_history_search = encodeURIComponent(_history_search);
+                // // new_options['search'] = this.searchBy.replace('\/','%2F');
+                // // // route += 'search/'+ encodeURIComponent(this.searchBy) ;
+            // // }
+            // // if(typeof this.state.sortKey !== 'undefined' && this.state.sortKey !== null){
+                // // var sortKey = this.state.sortKey;
+                // // if(this.state.order > 0){
+                    // // sortKey = '-' + sortKey;
+                // // }
+                // // new_options['order_by'] = sortKey;
+            // // }
 //
-                // // TODO: discuss whether full encoding of the search fragment is necessary.
-                // // to-date, we know that the forward slash messes up the backbone router parsing, but other URL chars do not,
-                // // and full encoding reduces the usability of the URL for the end user
-                // //_history_search = encodeURIComponent(_history_search);
-                // new_options['search'] = this.searchBy.replace('\/','%2F');
-                // // route += 'search/'+ encodeURIComponent(this.searchBy) ;
-            // }
-            // if(typeof this.state.sortKey !== 'undefined' && this.state.sortKey !== null){
-                // var sortKey = this.state.sortKey;
-                // if(this.state.order > 0){
-                    // sortKey = '-' + sortKey;
-                // }
-                // new_options['order_by'] = sortKey;
-            // }
-
-            //if (!this.state.sortKey) this.clearOrder();
-
-            new_options['page'] = this.state.currentPage;
-            new_options['rpp'] =  this.state.pageSize;
-
-            // signal to the parent view that the options have changed
-            this.trigger( "MyCollection:changeOptions", new_options, route_options); // TODO: need to set replace=false when modifying to add the page, rpp for the first time: { replace: true } );
-        },
+            // //if (!this.state.sortKey) this.clearOrder();
+//
+            // new_options['page'] = this.state.currentPage;
+            // new_options['rpp'] =  this.state.pageSize;
+//
+            // // signal to the parent view that the options have changed
+            // this.trigger( "MyCollection:changeOptions", new_options, route_options); // TODO: need to set replace=false when modifying to add the page, rpp for the first time: { replace: true } );
+        // },
 
         // Override
         // called from HeaderCells

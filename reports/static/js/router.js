@@ -82,7 +82,14 @@ define([
                         // TODO: use the type of search comparator as well
                         var frag = _.reduce(_.pairs(optionValue), function(frag, pair){
                             if(frag.length > 0 ) frag += ',';
-                            return frag + pair[0] + '=' + pair[1];
+
+                            // // // TODO: discuss whether full encoding of the search fragment is necessary.
+                            // // // to-date, we know that the forward slash messes up the backbone router parsing, but other URL chars do not,
+                            // // // and full encoding reduces the usability of the URL for the end user
+                            // // //_history_search = encodeURIComponent(_history_search);
+                            // // new_options['search'] = this.searchBy.replace('\/','%2F');
+                            var value = pair[1].replace('\/','%2F');
+                            return frag + pair[0] + '=' + value;
                         }, '' );
                         route_fragment += frag;
                     }

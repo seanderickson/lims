@@ -105,7 +105,7 @@ define([
                     detail_view: 'DetailView',
                     api_resource: 'metahash',
                     url_root: '/reports/api/v1',
-                    searchBy : 'scope=fields:metahash',
+                    options: { search: {'scope': 'fields:metahash'}},
                     description: 'Control field settings'
                 },
 
@@ -152,6 +152,7 @@ define([
                     url_root: '/db/api/v1',
                     description: 'View user information'
                 },
+
                 screeners: {
                     header_message: 'Screening Users',
                     title: 'Screeners',
@@ -163,6 +164,7 @@ define([
                     description: 'View user information',
                     options: { search: {'screeningroomuser__isnull': 'False'} }
                 },
+
                 staff: {
                     header_message: 'Staff',
                     title: 'Staff Users',

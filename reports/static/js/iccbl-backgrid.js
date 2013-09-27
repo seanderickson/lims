@@ -629,10 +629,14 @@ define([
             // if the search key is not in the queryParams, then it is not a column search.
             // this will add it manually to the queryParams (which are serialized in the fetch to the server)
             _.each(_.keys(searchHash), function(key){
-                if(!_.has(self.queryParams, key)){
+                // check if param dne, or if param exists and is a value to be set
+                // the reason for the "isFunction" check is that the Backgrid-filter defined params are function calls to get the current value in the searchbox
+                if(!_.has(self.queryParams, key) || !_.isFunction(self.queryParams[key])){
+
                     self.queryParams[key] = searchHash[key];  // NOTE: setting the key on the queryParams means that it will be sent to the server on the next fetch
                 }
             });
+            this.fetch();
         },
 
         // Custom

@@ -60,21 +60,13 @@ define([
                 var searchHash = self.listModel.get('search')
                 var current_options = _.clone(self.model.get('current_options'));
                 console.log('===--- list detect: listModel change:search old: ' + JSON.stringify(current_options.search) + ', ' + JSON.stringify(searchHash));
-
-                // self.collection.setSearch(searchHash);
-//
-
                 current_options.search = searchHash;
                 self.model.set({current_options: current_options });
             });
 
             this.listenTo(this.listModel, 'change:order', function(){
                 console.log('===--- list detect: listModel change:order');
-
                 var orderHash = self.listModel.get('order');
-//
-                // self.collection.setOrder(orderHash);
-//
                 var current_options = _.clone(self.model.get('current_options'));
                 current_options.order = orderHash;
                 self.model.set({current_options: current_options });
@@ -83,10 +75,6 @@ define([
             this.listenTo(this.listModel, 'change:rpp', function(){
                 console.log('===--- list detect: listModel change:rpp');
                 var pageSize = parseInt(self.listModel.get('rpp'));
-//
-                // self.collection.setPageSize(pageSize);
-                // // // Triggers a fetch
-
                 var current_options = _.clone(self.model.get('current_options'));
                 current_options.rpp = pageSize;
                 self.model.set({current_options: current_options });
@@ -95,11 +83,6 @@ define([
             this.listenTo(this.listModel, 'change:page', function(){
                 console.log('===--- list detect: listModel change:page');
                 var page = parseInt(self.listModel.get('page'));
-
-                // Not needed since page changes come from the paginator->pageablecollection
-                // self.collection.state.currentPage = page;
-                // self.collection.fetch();
-
                 var current_options = _.clone(self.model.get('current_options'));
                 current_options.page = page;
                 self.model.set({current_options: current_options });
@@ -111,30 +94,6 @@ define([
                 data.message = this._options.header_message; //'hello world!' };
             }
             var compiledTemplate = this.compiledTemplate = _.template( listTemplate, data );
-
-            // this.listenTo(this.collection, "MyServerSideFilter:addSearch", function(searchHash, collection){
-                // console.log('MyServerSideFilter:addSearch trigger: ' + JSON.stringify(searchHash));
-//
-                // var oldsearchHash = _.clone(self.listModel.get('search'));
-                // console.log('collection addSearch: current: ' + JSON.stringify(oldsearchHash) + ', adding: ' + JSON.stringify(searchHash));
-                // oldsearchHash = _.extend(oldsearchHash, searchHash);
-                // self.listModel.set({'search': oldsearchHash } );
-//
-                // // var current_options = _.clone(self.model.get('current_options'));
-                // // current_options.search = searchHash;
-                // // self.model.set({current_options: current_options });
-            // });
-//
-            // this.listenTo(this.collection, "MyServerSideFilter:removeSearch", function(keys, collection){
-                // console.log('MyServerSideFilter:removeSearch trigger: ' + JSON.stringify(keys));
-//
-                // var oldsearchHash = _.clone(self.listModel.get('search'));
-                // console.log('collection removeSearch: current: ' + JSON.stringify(oldsearchHash) + ', adding: ' + JSON.stringify(keys));
-                // var newSearchHash = _.omit(oldsearchHash, keys);
-                // self.listModel.set({'search': newSearchHash });
-            // });
-
-            // TODO addOrder, removeOrder
 
             this.buildGrid(this._options.schemaResult);
         },
@@ -268,17 +227,15 @@ define([
                     searchHash[extraSelectorKey] = value;
                     self.listModel.set('search', searchHash);
                 });
-
-
             }
 
-            var columns = this.createBackgridColModel(this._options.schemaResult.fields, Iccbl.MyHeaderCell);//, col_options );
+            var columns = Iccbl.createBackgridColModel(this._options.schemaResult.fields, Iccbl.MyHeaderCell);//, col_options );
             //columns.unshift({ name: 'deletor', label: 'Delete', text:'X', description: 'delete record', cell: Iccbl.DeleteCell, sortable: false });
             var grid = this.grid = new Backgrid.Grid({
               columns: columns,
               collection: self.collection,
             });
-            // self.$("#example-table").append(grid.render().$el);
+
             this.objects_to_destroy.push(grid);
 
             // encapsulate the footer in a view, help grab button click
@@ -318,7 +275,6 @@ define([
                 },
 
             });
-            // self.$("#table-footer-div").append(footer.$el);
             this.objects_to_destroy.push(footer);
 
 
@@ -328,93 +284,13 @@ define([
             //collection.bind('sync', ajaxComplete, this);
 
             this.listenTo(self.collection, 'request', ajaxStart);
-            // this.listenTo(collection, 'MyCollection:setRoute', this.setRoute);
-            // this.listenTo(self.collection, 'MyCollection:changeOptions', this.change_options);
-//            this.listenTo(self.collection, 'sync', this.selector.updateSelection );
 
             // TODO: work out the specifics of communication complete event.  the following are superceded by the global handler for "ajaxComplete"
             this.listenTo(self.collection, 'error', ajaxComplete);
             this.listenTo(self.collection, 'complete', ajaxComplete);
-
-
             console.log('list view initialized');
         },
 
-        /**
-         *
-         * @param {Object} fields_from_rest - hash of fields for the current dataset:
-         *      field properties { visibility: [array of strings], title: a label for the field, order: display order of the field }
-         * @param {Object} optionalHeaderCell - a Backgrid.HeaderCell to use for each column
-         * @param {Object} options - a hash of { fieldKey: [custom cell: extend Backgrid.Cell] } to map custom cell implementations to fields
-         */
-        createBackgridColModel: function(restFields, optionalHeaderCell) {
-            console.log('--createBackgridColModel'); //: restFields: ' + JSON.stringify(restFields));
-            var colModel = [];
-            var i = 0;
-            var _total_count = 0;
-            _.each(_.pairs(restFields), function(pair){
-                var key = pair[0];
-                var prop = pair[1];
-
-                var visible = _.has(pair[1], 'visibility') && _.contains(pair[1]['visibility'], 'list');
-                if(visible){
-
-                    var backgridCellType = 'string';
-                    if( !_.isEmpty(prop['backgrid_cell_type'])){
-                        backgridCellType = prop['backgrid_cell_type'];
-                        try{
-//                            console.log('look for ' + key + ', ' + prop['backgrid_cell_type']);
-                            var klass = Iccbl.stringToFunction(prop['backgrid_cell_type']);
-//                            console.log('got  ' + klass);
-                            if(!_.isUndefined(klass)){
-                                console.log('----- class found: ' + klass);
-                                backgridCellType = klass;
-                            }
-                        }catch(ex){
-                            var msg = '----for: field: ' + key + ', no Iccbl class found for type: ' + prop['backgrid_cell_type'] + ', this may be a Backgrid cell type';
-                            console.log(msg + ': ' + JSON.stringify(ex));
-                        }
-                    }
-                    colModel[i] = {
-                        'name':key,
-                        'label':prop['title'],
-                        'description':prop['description'],
-                        cell: backgridCellType,
-                        order: prop['ordinal'],
-                        editable: false,
-                    };
-                    if (optionalHeaderCell){
-                        colModel[i]['headerCell'] = optionalHeaderCell;
-                    }
-                    i++;
-                }else{
-                    //console.log('field not visible in list view: ' + key)
-                }
-            });
-
-
-            //console.log('colModel: ' + JSON.stringify(colModel));
-            colModel.sort(function(a,b){
-                if(_.isNumber(a['order']) && _.isNumber( b['order'])){
-                    return a['order']-b['order'];
-                }else if(_.isNumber( a['order'])){
-                    return -1;
-                }else if(_.isNumber(b['order'])){
-                    return 1;
-                }else{
-                    return 0;
-                }
-            });
-            return colModel;
-        },
-
-        // change_options: function(new_options, _routing_options ){
-            // console.log('changeOptions triggered: ' + JSON.stringify(new_options) + ' , ' + JSON.stringify(_routing_options) );
-//
-            // var updated_current_options = _.extend({}, this.model.get('current_options'), new_options);
-            // this.model.set({ routing_options: _routing_options,
-                             // current_options: updated_current_options });
-        // },
 
         remove: function(){
             console.log('ListView remove called');
@@ -441,13 +317,12 @@ define([
             self.$("#paginator-div").append(self.paginator.render().$el);
             self.$("#rows-selector-div").append(self.rppSelectorInstance.render().$el);
 
-            this.delegateEvents();
-
             if(!_.isUndefined(self.extraSelectorInstance)){
-                //self.extraSelectorInstance.render();
                 self.$("#extra-selector-div").append(self.extraSelectorInstance.render().$el);
             }
             self.$("#table-footer-div").append(footer.$el);
+
+            this.delegateEvents();
 
             console.log('--doms appended--');
 
@@ -474,10 +349,6 @@ define([
 
             this.listenTo(self.collection, 'sync', function(event){
                 console.log('== collection sync event: ' + event );
-                // self.rppSelectorInstance.render();
-                // if(!_.isUndefined(self.extraSelectorInstance)){
-                   // self.extraSelectorInstance.render();
-                // }
                 self.$('#header_message').html(self._options.header_message + ", total records: " + self.collection.state.totalRecords);
             });
 

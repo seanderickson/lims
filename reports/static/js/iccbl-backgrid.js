@@ -29,9 +29,10 @@ define([
   'backgrid',
   'backgrid_filter',
   'backgrid_paginator',
+  'backgrid_select_all',
   'lunr', //TODO: lunr should not be a requirement - it is for client side filtering, and backgrid_filter is requiring it.
   'text!templates/generic-selector.html'
-], function($, _, Backbone, BackbonePageableCollection, Backgrid, BackgridFilter, BackgridPaginator, lunr, genericSelectorTemplate){
+], function($, _, Backbone, BackbonePageableCollection, Backgrid, BackgridFilter, BackgridPaginator, BackgridSelectAll, lunr, genericSelectorTemplate){
 
     // for compatibility with require.js, attach PageableCollection in the right place on the Backbone object
     // see https://github.com/wyuenho/backbone-pageable/issues/62
@@ -92,7 +93,6 @@ define([
 
     var sortOnOrdinal = Iccbl.sortOnOrdinal = function(keys, fieldHash){
         var sorted = _(keys).sort(function(a,b){
-            console.log('comparing: ' + a + ', to ' + b );
             order_a = fieldHash[a]['ordinal'];  // TODO: need an edit order by
             order_b = fieldHash[b]['ordinal'];
             if(_.isNumber(order_a) && _.isNumber(order_b)){
@@ -176,6 +176,31 @@ define([
         });
     };
 
+    /**
+     * Note use this version if the model will be updated.
+     * - Backbone will use "put" if the model has an ID set
+     * - also, use model.save([attribute-list], {patch: true} ) to do incremental updates,
+     * see http://backbonejs.org/#Model-save
+     */
+    var getModel2 = Iccbl.getModel2 = function(schemaResult, urlRoot, id, callback) {
+        var ModelClass = Backbone.Model.extend({urlRoot: urlRoot, defaults: {} });
+        var instance = new ModelClass({id: id});
+        instance.fetch({
+            success: function(model){
+                callback(schemaResult, model);
+            },
+            error: function(model, response, options){
+                //console.log('error fetching the model: '+ model + ', response: ' + JSON.stringify(response));
+                var msg = 'Error locating resource: ' + urlRoot + ', '  + id ;
+                var sep = '\n';
+                if(!_.isUndefined(response.status)) msg += sep + response.status;
+                if(!_.isUndefined(response.statusText)) msg += sep+ response.statusText;
+                if(!_.isEmpty(response.responseText)) msg += sep+ response.responseText;
+                window.alert(msg); // TODO: use Bootstrap inscreen alert classed message div
+            }
+        });
+    };
+
     var getCollection = Iccbl.getCollection = function(schemaResult, url, callback) {
         var CollectionClass = Iccbl.CollectionOnClient.extend({url: url, defaults: {} });
         var instance = new CollectionClass();
@@ -222,6 +247,20 @@ define([
     };
 
 
+    /**
+     * Note use this version if the model will be updated.
+     * - Backbone will use "put" if the model has an ID set
+     * - also, use model.save([attribute-list], {patch: true} ) to do incremental updates,
+     * see http://backbonejs.org/#Model-save
+     */
+    var getSchemaAndModel2 = Iccbl.getSchemaAndModel2 = function(urlRoot, id, callback){
+        Iccbl.getSchema(urlRoot + '/schema', function(schemaResult) {
+            console.log('schemaResult callback: ' + schemaResult + ', ' + urlRoot);
+            Iccbl.getModel2(schemaResult, urlRoot, id, callback);
+        });
+    };
+
+
     var getSchemaAndCollection = Iccbl.getSchemaAndCollection = function(schema_url, url, callback){
         Iccbl.getSchema(schema_url, function(schemaResult) {
             console.log('schemaResult callback: ' + schemaResult + ', ' + url);
@@ -234,6 +273,72 @@ define([
             console.log('schemaResult callback: ' + schemaResult + ', ' + url);
             Iccbl.getCollection2(schemaResult, url, callback);
         });
+    };
+
+    /**
+     *
+     * @param {Object} fields_from_rest - hash of fields for the current dataset:
+     *      field properties { visibility: [array of strings], title: a label for the field, order: display order of the field }
+     * @param {Object} optionalHeaderCell - a Backgrid.HeaderCell to use for each column
+     * @param {Object} options - a hash of { fieldKey: [custom cell: extend Backgrid.Cell] } to map custom cell implementations to fields
+     */
+    var createBackgridColModel = Iccbl.createBackgridColModel = function(restFields, optionalHeaderCell) {
+        console.log('--createBackgridColModel'); //: restFields: ' + JSON.stringify(restFields));
+        var colModel = [];
+        var i = 0;
+        var _total_count = 0;
+        _.each(_.pairs(restFields), function(pair){
+            var key = pair[0];
+            var prop = pair[1];
+
+            var visible = _.has(pair[1], 'visibility') && _.contains(pair[1]['visibility'], 'list');
+            if(visible){
+
+                var backgridCellType = 'string';
+                if( !_.isEmpty(prop['backgrid_cell_type'])){
+                    backgridCellType = prop['backgrid_cell_type'];
+                    try{
+//                            console.log('look for ' + key + ', ' + prop['backgrid_cell_type']);
+                        var klass = Iccbl.stringToFunction(prop['backgrid_cell_type']);
+//                            console.log('got  ' + klass);
+                        if(!_.isUndefined(klass)){
+                            console.log('----- class found: ' + klass);
+                            backgridCellType = klass;
+                        }
+                    }catch(ex){
+                        var msg = '----for: field: ' + key + ', no Iccbl class found for type: ' + prop['backgrid_cell_type'] + ', this may be a Backgrid cell type';
+                        console.log(msg + ': ' + JSON.stringify(ex));
+                    }
+                }
+                colModel[i] = {
+                    'name':key,
+                    'label':prop['title'],
+                    'description':prop['description'],
+                    cell: backgridCellType,
+                    order: prop['ordinal'],
+                    editable: false,
+                };
+                if (optionalHeaderCell){
+                    colModel[i]['headerCell'] = optionalHeaderCell;
+                }
+                i++;
+            }else{
+                //console.log('field not visible in list view: ' + key)
+            }
+        });
+
+        colModel.sort(function(a,b){
+            if(_.isNumber(a['order']) && _.isNumber( b['order'])){
+                return a['order']-b['order'];
+            }else if(_.isNumber( a['order'])){
+                return -1;
+            }else if(_.isNumber(b['order'])){
+                return 1;
+            }else{
+                return 0;
+            }
+        });
+        return colModel;
     };
 
     var MyModel = Iccbl.MyModel = Backbone.Model.extend({

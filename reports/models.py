@@ -91,10 +91,13 @@ class ApiLog(models.Model):
     
     user_id = models.IntegerField(null=False, blank=False)
     username = models.CharField(null=False, max_length=35)
+    # name of the resource, i.e. "apilog" or "screen", "user", etc.
     ref_resource_name = models.CharField(null=False, max_length=35)
+    # full public key of the resource instance being logged (may be composite, separted by '/')
     key = models.CharField(null=False, max_length=128)
+    # the full uri of the resource instance being logged, so a combination of [base api uri]/[resource_name]/[key]
     uri = models.TextField(null=False)
-#    milliseconds = models.IntegerField(null=False)
+    # date and time of the update; this is the key for the apilog record
     date_time = models.DateTimeField(null=False)
     api_action = models.CharField(max_length=10, null=False, choices=API_ACTION_CHOICES)
     
@@ -229,3 +232,63 @@ class Vocabularies(models.Model):
     
     def __unicode__(self):
         return unicode(str((self.scope, self.key, self.id)))
+
+        
+class Permission(models.Model):
+    scope                   = models.CharField(max_length=35, blank=True)  # scope of the permission
+    key                     = models.CharField(max_length=35, blank=True)  # key of the permission
+    # TODO: define types in resources: vocabularies:permission_type
+    type = models.CharField(max_length=15)
+    class Meta:
+        unique_together = (('scope', 'key', 'type'))    
+        
+    def __unicode__(self):
+        return unicode(str((self.scope, self.key, self.type)))
+
+    
+    
+class UserGroup(models.Model):
+    name = models.TextField(unique=True, blank=False)
+    users = models.ManyToManyField('auth.User')
+    permissions = models.ManyToManyField('reports.Permission')
+
+    def __unicode__(self):
+        return unicode(str((self.name)))
+        
+    
+#    
+#class User(models.Model):
+#    username = models.TextField(unique=True, blank=False)
+#
+##    permissions = models.ManyToManyField('Permission')
+#    # permissions are simply a reference to a meta concept
+#    readPermissions = models.ManyToManyField('Metahash', related_name='read_user')
+#    writePermissions = models.ManyToManyField('Metahash', related_name='write_user')
+#
+#    def __unicode__(self):
+#        return unicode(str((self.username)))
+
+#class Permission(models.Model):
+#    name = models.TextField(unique=True, blank=False)
+#    
+#    groups = models.ManyToManyField('Group')
+#    users = models.ManyToManyField('User')
+#    
+#    type = models.TextField();
+#    
+#    resource = models.ManyToManyField('Metahash')
+#
+#    def __unicode__(self):
+#        return unicode(str((self.name)))
+
+    
+#class UserPermission(models.Model):
+#    user = models.ForeignKey('User')
+#    permission = models.ForeignKey('Permission')
+#    
+#class UserGroup(models.Model):
+#    user = models.ForeignKey('User')
+#    group = models.ForeignKey('Group')
+    
+    
+    

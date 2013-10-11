@@ -8,23 +8,26 @@ from django.db import DatabaseError
 from django.conf.urls import url
 from django.utils.encoding import smart_str, smart_text
 from django.utils import timezone
-
 from django.forms.models import model_to_dict
+from django.core.exceptions import ObjectDoesNotExist
+from tastypie.exceptions import NotFound
+from tastypie.bundle import Bundle
+import traceback
+#from django.contrib.auth.models import Group, User, Permission
+
 from tastypie.authorization import Authorization
 from tastypie.authentication import BasicAuthentication, SessionAuthentication, MultiAuthentication
-from tastypie.constants import ALL
+from tastypie.constants import ALL, ALL_WITH_RELATIONS
 from tastypie import fields # NOTE: required for dynamic resource field definitions using eval
 from tastypie.resources import Resource
 
 import time
 from lims.api import PostgresSortingResource, LimsSerializer, TimeZoneAwareDateSerializer
-from reports.models import MetaHash, Vocabularies, ApiLog
+from reports.models import MetaHash, Vocabularies, ApiLog, Permission, UserGroup
 
 import logging
-from django.core.exceptions import ObjectDoesNotExist
-from tastypie.exceptions import NotFound
-from tastypie.bundle import Bundle
-import traceback
+from tastypie.utils.urls import trailing_slash
+from django.contrib.auth.models import User
         
 logger = logging.getLogger(__name__)
 
@@ -192,28 +195,13 @@ class LoggingMixin(Resource):
         
         return updated_bundle
                 
-#    def dispatch(self, request_type, request, **kwargs):
-#        logger.debug('%s %s %s' % (request.method, request.get_full_path(), request.raw_post_data))
-# 
-#        try:
-#            response = super(LoggingMixin, self).dispatch(request_type, request, **kwargs)
-#            
-#            log = ApiLog()
-#            log.uri = request.get_full_path()
-#            log.save()
-#            
-#        except Exception, e:
-#            if hasattr(e, 'response'):
-#                logger.debug(
-#                    'Response %s %s' %
-#                    (e.response.status_code, e.response.content))
-#            else:
-#                logger.debug(str(('failed dispatch', e)))
-#            raise
+
   
+# TODO: obsolete
 # Mixin class - note this class must be mixed in first, since the tastypie Resource class does not call super().__init__
 # TODO: merge/refactor this with reports.JsonAndDatabaseResource
 class MetahashManagedResource(object):
+    ''' obsolete '''
     def __init__(self, **kwargs):
 #        if not self.scope:
 #            self.scope = kwargs.pop('scope')
@@ -223,10 +211,10 @@ class MetahashManagedResource(object):
         
         for key,hash in metahash.items():
             if 'filtering' in hash and hash['filtering']:
-                self.Meta.filtering[key] = ALL
-        
+                self.Meta.filtering[key] = ALL_WITH_RELATIONS
+        logger.info(str(('filtering for ', self.scope, self.Meta.filtering )))
         for key,hash in metahash.items():
-            if 'ordering' in hash and hash['ordering']:
+            if 'ordering' in hash and hash['ordering'] and key not in self.Meta.ordering:
                 self.Meta.ordering.append(key)
         super(MetahashManagedResource,self).__init__( **kwargs)
 
@@ -269,14 +257,34 @@ class MetahashManagedResource(object):
   
         
 class JsonAndDatabaseResource(PostgresSortingResource):
-    def __init__(self, scope=None, field_definition_scope='fields:metahash', **kwargs):
-        self.scope = scope
-        assert scope != None, 'scope kwarg must be defined' 
+    '''
+    This is a Resource wherein the fields are specified in the "Fields" store 
+        (the "Fields" store is the endpoint: 
+        /reports/api/v1/metahash/fields:metahash/[field_name], implemented with
+         the  "MetahashResource" api endpoint defined in this file )
+    -- tastypie.resources.Resource creates Resource.fields for all fields in the 
+        underlying Meta.queryset (TODO: unless using "excludes" "includes")
+    -- fields may be defined on the subclass also, as usual. 
+    -- to be usable and included in the "schema" endpoint, fields must be 
+        defined in the "Fields" store (TODO: exclude undefined fields)
+    -- fields records in the Resource store that define the "json_field_type"
+        value are fields that exist in the "json_field" of the table. 
+    -- to be usable in the (javascript) UI, fields must be defined in the 
+        Resource store 
+        (endpoint: /reports/api/v1/metahash/fields:metahash/[field_name]) 
+    '''
+    
+    
+    def __init__(self, resource=None, field_definition_scope='fields:metahash', **kwargs):
+        assert resource != None, 'resource kwarg must be defined' 
+        self.resource = resource
+        self.scope = 'fields:' + resource
         self.field_definition_scope = field_definition_scope
-        logger.info(str(('---init resource', scope, field_definition_scope)))
+        logger.info(str(('---init resource', self.resource, self.scope, field_definition_scope)))
 
         # TODO: research why calling reset_filtering_and_ordering, as below, fails        
-        metahash = MetaHash.objects.get_and_parse(scope=self.scope, field_definition_scope=field_definition_scope)
+        metahash = MetaHash.objects.get_and_parse(scope=self.scope, 
+                                                  field_definition_scope=field_definition_scope)
         for key,hash in metahash.items():
             if 'filtering' in hash and hash['filtering']:
                 self.Meta.filtering[key] = ALL
@@ -284,24 +292,27 @@ class JsonAndDatabaseResource(PostgresSortingResource):
         for key,hash in metahash.items():
             if 'ordering' in hash and hash['ordering']:
                 self.Meta.ordering.append(key)
-
-#        logger.info(str(('+++filtering', self.Meta.filtering)))
-#        logger.info(str(('ordering', self.Meta.ordering)))
-#        #        self.reset_filtering_and_ordering()
-
+        
         super(JsonAndDatabaseResource,self).__init__(**kwargs)
         self.original_fields = deepcopy(self.fields)
         self.field_defs = {}
-        logger.info(str(('---init resource, done', scope, field_definition_scope)))
+
+#        self.reset_field_defs()
+#        self.get_field_defs(scope)
+        
+        
+        logger.info(str(('---init resource, done', self.resource, field_definition_scope)))
         
     def prepend_urls(self):
-        # NOTE: this match "((?=(schema))__|(?!(schema))[\w\d_.-]+)" allows us to match any word, except "schema", and use it as the key value to search for.
+        # NOTE: this match "((?=(schema))__|(?!(schema))[\w\d_.-]+)" 
+        # [ any word, except "schema" ]
         # also note the double underscore "__" is because we also don't want to match in the first clause.
-        # We don't want "schema" since that reserved word is used by tastypie for the schema definition for the resource (used by the UI)
+        # We don't want "schema" since that reserved word is used by tastypie 
+        # for the schema definition for the resource (used by the UI)
         return [
-            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<scope>[\w\d_.-:]+)/(?P<key>[\w\d_.-]+)/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<key>((?=(schema))__|(?!(schema))[\w\d_.-]+))/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<scope>[\w\d_.-:]+)/(?P<key>[\w\d_.-]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<key>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
     
     # TODO: allow turn on/off of the reset methods for faster loading.
@@ -341,6 +352,8 @@ class JsonAndDatabaseResource(PostgresSortingResource):
         # Note that: - for a new database, there will be no fields in the JSON field initially, so they have 
         # to be populated before they can be filled with data. (cannot define and fill at the same time).
         # TODO: allow turn on/off of the reset methods for faster loading.
+        logger.info(str(('get_field_defs', self.field_defs.keys())))
+       
         if not self.field_defs:
             logger.debug('------get_field_defs: ' + scope)
             self.field_defs = {}
@@ -377,7 +390,7 @@ class JsonAndDatabaseResource(PostgresSortingResource):
                         # TODO: move these validation errors to the client create process
                         raise DatabaseError('Illegal attempt to define a json_field with the same name as a database field on this scope: ' + scope + ',' + + schema_key)
                     self.fields[schema_key] = eval(schema_value['json_field_type'])(attribute=schema_key,readonly=True, blank=True, null=True) # trying to pass the fields.Field object args
-            logger.debug(str(('----- tastypie fields created', self.fields.keys())))
+            logger.info(str(('----- tastypie fields created', self.fields.keys())))
             # query metahash for schema defs (attributes) of all the fields 
             
             # 4. fill in all of the field definition information for the schema specification
@@ -390,24 +403,7 @@ class JsonAndDatabaseResource(PostgresSortingResource):
                 else:
                     logger.info(str(('no field def found for: ', schema_key)))
 
-#            for schema_key,schema_value in self.field_defs.items():
-#                logger.debug(str(('-----make schema:', self.scope, schema_key)))
-#                # now fill in meta information for the schema report to UI; using data from this table itself, either in real or json fields!
-#                for schema_field in MetaHash.objects.all().filter(scope='fields:metahash'):  # fields:metahash are defined for all reports
-#                    if schema_field.key == 'key':
-#                        continue # don't put these into the schema definitions, its too recursive confusing
-#                    schema_value.update({
-#                          schema_field.key: MetaHash.objects.get_or_none(scope=scope, key=schema_key, function=lambda x : (x.get_field(schema_field.key)) )
-#                          })
-#                    
-#                # now check if the field uses controlled vocabulary, look that up now.  TODO: "vocabulary_scope_ref" should be a constant
-#                # TODO: "vocabulary_scope_ref" needs to be created by default as a field:metahash; this argues for making it a "real" field
-#                if schema_value.get(u'vocabulary_scope_ref'):
-#                    logger.debug(str(('looking for a vocabulary', schema_value['vocabulary_scope_ref'] )))
-#                    schema_value['choices'] = [x.key for x in Vocabularies.objects.all().filter(scope=schema_value['vocabulary_scope_ref'])]
-#                    logger.debug(str(('got', schema_value['choices'] )))
-#                logger.debug(str(('----defined schema: ', schema_key, schema_value)))
-
+            logger.debug(str(('---- tastypie fields created: ', self.field_defs)))
             self.reset_filtering_and_ordering()
             logger.debug('------get_field_defs, done: ' + scope)
             
@@ -421,9 +417,7 @@ class JsonAndDatabaseResource(PostgresSortingResource):
             # TODO: ought to just create the schema from scratch; here relying on tastypie to give the schema
             ## caveat: this has the nice side effect of verifying that any field defined is actually known by tastypie (for serialization hooks)
             schema = super(JsonAndDatabaseResource,self).build_schema()
-#TODO haven't figured out virtual fields yet
-#            logger.info(str(('fields', schema['fields'].keys())))
-#            logger.info(str(('fields', local_field_defs.keys())))
+
             for key, value in local_field_defs.items():
                 if not key in schema['fields']:
                     schema['fields'][key] = {}
@@ -449,34 +443,77 @@ class JsonAndDatabaseResource(PostgresSortingResource):
             
         logger.info('------build_schema,done: ' + self.scope)
         return schema
+
     
+    def build_key(self, resource_name, data):
+        try:
+            resource_def = MetaHash.objects.get(scope='resource', key=resource_name)
+            resource = resource_def.model_to_dict(scope='fields:resource')
+            logger.info(str(('found resource', resource)))
+            
+            key_bits = []
+            for x in resource['id_attribute']:
+                if hasattr(data,x ):
+                    key_bits.append(getattr(data,x))
+                else:
+                    key_bits.append(data[x])
+            return  "/".join(key_bits)
+        except Exception, e:
+            logger.warn(str(('unable to locate resource information[id_attribute]; has it been loaded yet for this resource?', resource_name, e)))
+
+    URL_BASE = '/reports/api'
+
+    def build_resource_uri(self, resource, data):
+        new_key = self.build_key(resource, data)
+        if new_key:
+#            base_uri = self.get_resource_uri()
+#            if base_uri[len(base_uri)-1] != '/':
+#                base_uri += '/'
+#            return base_uri + new_key
+            return self.URL_BASE + '/' + self.api_name + '/'  + resource + '/' + new_key
+
+    def obj_resource_uri(self, resource, obj):
+        new_key = self.build_key(resource, obj)
+        if new_key:
+            return self.URL_BASE + '/' + self.api_name + '/'  + resource + '/' + new_key
+#            base_uri = self.get_resource_uri()
+#            if base_uri[len(base_uri)-1] != '/':
+#                base_uri += '/'
+#            return base_uri + new_key
+
     def dehydrate(self, bundle):
-#        logger.info('------dehydrate: ' + self.scope)
+        logger.info('------dehydrate: ' + self.scope)
 #        bundle = super(JsonAndDatabaseResource, self).dehydrate(bundle);
 
         if len(bundle.data) == 0 : return bundle
         
-        logger.info(str(('=====',bundle.data)))
-        
         local_field_defs = self.get_field_defs(self.scope) # trigger a get field defs before building the schema
         for key in [ x for x,y in local_field_defs.items() if y.get('json_field_type') ]:
             bundle.data[key] = bundle.obj.get_field(key);
-        logger.info(str(('=====2222',bundle.data)))
         
         bundle.data['json_field'] = ''
         bundle.data.pop('json_field') # json_field will not be part of the public API, it is for internal use only
         
         # override the resource_uri, since we want to export the permanent composite key
-        if 'scope' in bundle.data:
-            base_uri = self.get_resource_uri()
-            if base_uri[len(base_uri)-1] != '/':
-                base_uri += '/'
-            bundle.data['resource_uri'] =  base_uri + bundle.data['scope'] + '/' + bundle.data['key'] +'/'
-        else:
-            logger.warn(str(('Metahash managed resource does not have scope', bundle.data)))
-        # and don't send the internal id out for PATCH uses, at least
-        # But: we _do_ have to send it out for Backbone, since we don't know how to use things like composite keys yet - sde4
-        # bundle.data.pop('id')
+        bundle.data['resource_uri'] = self.build_resource_uri(self.resource, bundle.data) or bundle.data['resource_uri']
+#        new_key = self.build_key(self.resource, bundle.data)
+#        if new_key:
+#            base_uri = self.get_resource_uri()
+#            if base_uri[len(base_uri)-1] != '/':
+#                base_uri += '/'
+#            bundle.data['resource_uri'] = base_uri + new_key
+            
+#        if self.scope or 'scope' in bundle.data:
+#            scope = self.scope or bundle.data['scope']
+#            base_uri = self.get_resource_uri()
+#            if base_uri[len(base_uri)-1] != '/':
+#                base_uri += '/'
+#            bundle.data['resource_uri'] =  base_uri + scope + '/' + bundle.data['key'] +'/'
+#        else:
+#            logger.warn(str(('Metahash managed resource does not have scope', bundle.data)))
+#        # and don't send the internal id out for PATCH uses, at least
+#        # But: we _do_ have to send it out for Backbone, since we don't know how to use things like composite keys yet - sde4
+#        # bundle.data.pop('id')
         
 #        logger.info('------dehydrate, done: ' + self.scope)
         return bundle
@@ -524,7 +561,7 @@ class JsonAndDatabaseResource(PostgresSortingResource):
 class MetaHashResource(LoggingMixin, JsonAndDatabaseResource):
 
     def __init__(self, **kwargs):
-        super(MetaHashResource,self).__init__(scope='fields:metahash', **kwargs)
+        super(MetaHashResource,self).__init__(resource='metahash', **kwargs)
 
     class Meta:
         queryset = MetaHash.objects.filter(scope__startswith="fields:").order_by('scope','ordinal','key')
@@ -590,7 +627,7 @@ class VocabulariesResource(LoggingMixin, JsonAndDatabaseResource):
     fields defined in the Metahash table.
     '''
     def __init__(self, **kwargs):
-        super(VocabulariesResource,self).__init__(scope='fields:vocabularies', **kwargs)
+        super(VocabulariesResource,self).__init__(resource='vocabularies', **kwargs)
 
     class Meta:
         queryset = Vocabularies.objects.all().order_by('scope', 'ordinal', 'key')
@@ -625,7 +662,7 @@ class ResourceResource(LoggingMixin, JsonAndDatabaseResource):
     fields defined in the Metahash table.
     '''
     def __init__(self, **kwargs):
-        super(ResourceResource,self).__init__(scope='fields:resource', field_definition_scope='fields:resource', **kwargs)
+        super(ResourceResource,self).__init__(resource='resource', field_definition_scope='fields:resource', **kwargs)
 
     class Meta:
         queryset = MetaHash.objects.filter(scope='resource').order_by('key', 'ordinal', 'scope')
@@ -674,6 +711,276 @@ class ApiLogResource(MetahashManagedResource, PostgresSortingResource):
 
     def prepend_urls(self):
         return [
-            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<ref_resource_name>[\w\d_.\-:]+)/(?P<date_time>[\w\d_.\-\+:]+)/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<ref_resource_name>[\w\d_.\-:]+)/(?P<date_time>[\w\d_.\-\+:]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
+
+#
+# Note: Users are in the db model for historical reasons (chose not to migrate at genesis)
+
+class UserResource(JsonAndDatabaseResource):
+    permissions = fields.CharField()
+    
+    class Meta:
+        queryset = User.objects.all()
+        authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
+        resource_name='user' 
+        authorization= Authorization()        
+        
+        excludes = ['password']
+        ordering = []
+        filtering = { }
+        serializer = LimsSerializer()
+        
+    def __init__(self, **kwargs):
+        super(UserResource,self).__init__(resource='user',**kwargs)
+
+    def build_schema(self):
+        schema = super(UserResource,self).build_schema()
+#        temp = [ x.ref_resource_name for x in self.Meta.queryset.distinct('ref_resource_name')]
+#        schema['extraSelectorOptions'] = { 'label': 'Resource', 'searchColumn': 'ref_resource_name', 'options': temp }
+        return schema
+
+    # permissions is a nested property - not exposing it as a resource - 
+    # so hydrate/dehydrate will be done custom
+    def dehydrate_permissions(self, bundle):
+        logger.info('dehydrate permissions')
+        try:
+            screensaverUser = bundle.obj.screensaveruser
+            if screensaverUser:
+                permissions = [ model_to_dict(x, exclude='id') for x in screensaverUser.permissions.all()]
+                logger.info(str(('created permissions', permissions)))
+                return permissions
+        except Exception, e:
+            logger.warn(str(('error accessing the screensaver user element', e)))
+    
+    def hydrate_permissions(self, bundle):
+        logger.info(str(('hydrate_permissions')))
+        try:
+            screensaverUser = bundle.obj.screensaveruser
+            
+            permission_array = bundle.data['permissions']
+            for p in permission_array:
+                try:
+                    permission = Permission.objects.get(**p)
+                except ObjectDoesNotExist, e:
+                    # create the permission on the fly, if the resource it refers to exists
+                    # todo: make sure that the Resource can also be found
+                    resource = MetaHash.objects.get(scope=p['scope'], key=p['key'])
+                    permission = Permission(**p)
+                    permission.save()
+                screensaverUser.permissions.add(permission)
+                screensaverUser.save();
+                logger.info(str(('permission saved', permission)))
+        except Exception, e:
+            logger.warn(str(('error accessing the screensaver user element on hydrate', e)))
+        return bundle
+        
+    def prepend_urls(self):
+        return [
+            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<username>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            ]
+
+# see http://www.maykinmedia.nl/blog/2012/oct/2/nested-resources-tastypie/
+#    def dispatch_child(self, request, **kwargs):
+#        username = kwargs.pop('username')
+#        kwargs['users__username'] = username;
+#        logger.info(str(('kwargs', kwargs)))
+#        return PermissionResource().dispatch('list', request, **kwargs)    
+#    
+    
+
+class UserGroupResource(JsonAndDatabaseResource):
+    
+    permissions = fields.CharField() # virtual field, see hydrate and dehydrate methods
+    
+    users = fields.ToManyField('reports.api.UserResource', 'users', related_name='groups', blank=True, null=True)
+    
+    class Meta:
+        queryset = UserGroup.objects.all();
+        authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
+        authorization= Authorization()        
+
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+        excludes = [] #['json_field']
+        always_return_data = True # this makes Backbone happy
+        resource_name='usergroup' 
+    
+    def __init__(self, **kwargs):
+        super(UserGroupResource,self).__init__(resource='usergroup', **kwargs)
+
+    def build_schema(self):
+        schema = super(UserGroupResource,self).build_schema()
+#        temp = [ x.ref_resource_name for x in self.Meta.queryset.distinct('ref_resource_name')]
+#        schema['extraSelectorOptions'] = { 'label': 'Resource', 'searchColumn': 'ref_resource_name', 'options': temp }
+        return schema
+    def dehydrate_users(self, bundle):
+        uri_list = []
+        for user in bundle.obj.users.all():
+             uri_list.append(self.obj_resource_uri('user', user))
+        
+        return uri_list;
+    
+    def dehydrate_permissions(self, bundle):
+        logger.info('dehydrate permissions')
+        try:
+            permissions = [ model_to_dict(x, exclude='id') for x in bundle.obj.permissions.all()]
+            logger.info(str(('created permissions', permissions)))
+            return permissions
+        except Exception, e:
+            logger.warn(str(('error accessing the permissions attribute on dehydrate', e)))
+    
+    
+    # Unfortunately, we cannot custom manage our m2m reln' using the provided "hydrate_foo" pattern;
+    # this is because tastypie is calling hydrate_permissions before saving the main object - 
+    # see: tastypie.resources.ModelResource.obj_update and obj_create.
+    # With this methodology, the actual hydration of the m2m uri's occurs _after_
+    # the main save() located at the end of ModelResource.obj_create; 
+    # therefore, we'll have to do the same thing.
+    # So, not this: def hydrate_permissions(self, bundle):
+    # but rather, this:
+    def obj_create(self, bundle, **kwargs):
+        bundle = super(UserGroupResource, self).obj_create(bundle, **kwargs)
+        
+        logger.info(str(('hydrate_permissions')))
+        try:
+            permission_array = bundle.data['permissions']
+            for p in permission_array:
+                try:
+                    permission = Permission.objects.get(**p)
+                except ObjectDoesNotExist, e:
+                    # create the permission on the fly, if the resource it refers to exists
+                    # todo: make sure that the Resource can also be found
+                    resource = MetaHash.objects.get(scope=p['scope'], key=p['key'])
+                    permission = Permission(**p)
+                    permission.save()
+                bundle.obj.permissions.add(permission)
+                logger.info(str(('permission added to group', bundle.obj, permission)))
+        except Exception, e:
+            logger.warn(str(('error accessing the permission attribute on hydrate', e)))
+        return bundle
+
+    def prepend_urls(self):
+        return [
+            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            ]
+
+from django.db.models import Q
+class PermissionResource(JsonAndDatabaseResource):
+    
+    users = fields.CharField()
+    groups = fields.CharField()
+    type = fields.CharField()
+    
+    class Meta:
+        queryset = MetaHash.objects.all().filter(Q(scope='resource')|Q(scope__contains='fields:'))
+        authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
+        authorization= Authorization()        
+
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+        excludes = [] #['json_field']
+        always_return_data = True # this makes Backbone happy
+        resource_name='permission' 
+    
+    def __init__(self, **kwargs):
+        super(PermissionResource,self).__init__(resource='permission', **kwargs)
+
+
+    def get_object_list(self, request):
+        query = self._meta.queryset._clone()
+        objs = []
+        i=0
+        for r in query:
+            perms = Permission.objects.filter(scope=r.scope, key=r.key )
+            if len(perms) < 1:
+                objs.append({ 'ordinal': i, 'users':[], 'groups':[], 'scope':r.scope, 'key':r.key, 'type': 'read' })
+                objs.append({  'ordinal': i, 'users':[], 'groups':[], 'scope':r.scope, 'key':r.key, 'type': 'write' })
+            else:
+                for p in perms:
+                    objs.append(model_to_dict(p))
+        logger.info(str(('objs', objs)))
+        return objs
+
+    def obj_get_list(self, request=None, **kwargs):
+        # Filtering disabled for brevity...
+        return self.get_object_list(request)
+    
+    def obj_get(self, request=None, **kwargs):
+        
+        return Permission.objects.get(**kwargs)
+    
+    def apply_sorting(self, obj_list, options):
+        return obj_list
+#    
+#    def dehydrate(self, bundle):
+#        bundle = super(PermissionResource, self).hydrate(bundle);
+#        bundle.data['type'] = 'read'
+#        logger.info(str(('hydrated', bundle.data)))
+#        
+#        return bundle
+
+
+    def prepend_urls(self):
+        return [
+            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<scope>((?=(schema))__|(?!(schema))[\w\d_.-]+))/(?P<key>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            ]
+#
+#class PermissionResource(MetahashManagedResource, PostgresSortingResource):
+#
+#    groups = fields.ToManyField('reports.api.UserGroupResource', 'group', related_name='permissions', blank=True, null=True)
+#    users = fields.ToManyField('reports.api.UserResource', 'user', related_name='permissions', blank=True, null=True)
+##    users_set = fields.ToManyField('reports.api.UserResource', 'user_set', related_name='permissions', blank=True, null=True)
+#    
+#    class Meta:
+#        queryset = Permission.objects.all();
+#        authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
+#        authorization= Authorization()        
+#        # TODO: drive this from data
+#        ordering = []
+#        filtering = {}
+#        serializer = LimsSerializer()
+#        excludes = [] #['json_field']
+#        always_return_data = True # this makes Backbone happy
+#        resource_name='permission' 
+#    
+#    def __init__(self, **kwargs):
+#        self.scope = 'fields:permission'
+#        super(PermissionResource,self).__init__(**kwargs)
+#
+#    def dehydrate(self, bundle):
+#        
+#        # final dehydrate hook
+#        group_query = bundle.obj.group_set;
+#        logger.info(str(('groups', [str(x) for x in group_query.all()])))
+#        # note there is an inconsistency in how the reverse m2m reln is traversed
+#        # when there is no explicit foreign key attribute on this side of the reln
+#        bundle.data['groups'] = [str(x) for x in bundle.obj.group_set.all()]  
+#        
+#        user_query = bundle.obj.user_set;
+#        logger.info(str(('users', [str(x.username) for x in user_query.all()])))
+#        bundle.data['users'] = [str(x.username) for x in bundle.obj.user_set.all()]
+#        
+#        return PostgresSortingResource.dehydrate(self, bundle)
+#
+#    def build_schema(self):
+#        schema = super(PermissionResource,self).build_schema()
+##        temp = [ x.ref_resource_name for x in self.Meta.queryset.distinct('ref_resource_name')]
+##        schema['extraSelectorOptions'] = { 'label': 'Resource', 'searchColumn': 'ref_resource_name', 'options': temp }
+#        return schema
+#
+#    def prepend_urls(self):
+#        return [
+#            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+#            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+#            ]
+
+
+
+        

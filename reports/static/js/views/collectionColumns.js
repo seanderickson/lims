@@ -59,17 +59,7 @@ define([
             return this;
         },
 
-        render2 : function() {
-            var self = this;
-            this.$el.html(this.compiledTemplate);
-            _.each(this.subViews, function(view){
-                var view = view.render();
-                view.$('.well').removeClass('well');
-                view.$el.addClass('thumbnail');
-               self.$('#collection-columns-container').append(view.el);
-            });
-            return this;
-        }
+
     });
 
     return CollectionView;

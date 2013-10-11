@@ -758,8 +758,8 @@ class Screen(models.Model):
     perturbagen_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
     perturbagen_ug_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
 
-    status = models.TextField(null=True)
-    status_date = models.DateField(null=True)
+    status = models.TextField(null=True, blank=True)
+    status_date = models.DateField(null=True, blank=True)
     
     class Meta:
         db_table = 'screen'
@@ -821,8 +821,18 @@ class ScreenerCherryPick(models.Model):
     class Meta:
         db_table = 'screener_cherry_pick'
 
+
+
+
+
+
+
+
+from django.contrib.auth.models import User
+
 class ScreensaverUser(models.Model):
 #    objects = PostgresManager()
+    user = models.OneToOneField(User, null=True)
     screensaver_user_id = models.IntegerField(primary_key=True)
     version = models.IntegerField(blank=True)
     date_created = models.DateTimeField()
@@ -841,8 +851,15 @@ class ScreensaverUser(models.Model):
     created_by = models.ForeignKey('self', null=True, blank=True)
     date_loaded = models.DateTimeField(null=True, blank=True)
     date_publicly_available = models.DateTimeField(null=True, blank=True)
+
+    # TODO: it would be nice to move user out of db
+    permissions = models.ManyToManyField('reports.Permission')
+    
     class Meta:
         db_table = 'screensaver_user'
+        
+    def __unicode__(self):
+        return unicode(str((self.first_name, self.last_name, self.email, self.login_id, self.ecommons_id)))
 
 class ScreeningRoomUser(models.Model):
     screensaver_user = models.OneToOneField('ScreensaverUser', primary_key=True)
@@ -863,14 +880,10 @@ class AdministratorUser(models.Model):
 class LabHead(models.Model):
 #    screensaver_user = models.ForeignKey('ScreeningRoomUser', primary_key=True)
     screensaver_user = models.OneToOneField('ScreeningRoomUser', primary_key=True)
-    lab_affiliation = models.OneToOneField(LabAffiliation, null=True, blank=True)
+    lab_affiliation = models.ForeignKey(LabAffiliation, null=True, blank=True)
     
     class Meta:
         db_table = 'lab_head'
-
-
-
-
 
 class ScreeningRoomUserFacilityUsageRole(models.Model):
     screening_room_user = models.ForeignKey(ScreeningRoomUser)

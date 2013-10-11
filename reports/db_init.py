@@ -118,6 +118,21 @@ def main(inputDir, url, auth):
     input_file = input_file_dir + '/metahash_fields_apilog.csv'
     patch(input_file, obj_url, headers, authentication)
 
+    obj_url = url_base + '/metahash/'
+    headers = {'content-type': 'text/csv'}
+    input_file = input_file_dir + '/metahash_fields_user.csv'
+    patch(input_file, obj_url, headers, authentication)
+
+    obj_url = url_base + '/metahash/'
+    headers = {'content-type': 'text/csv'}
+    input_file = input_file_dir + '/metahash_fields_usergroup.csv'
+    patch(input_file, obj_url, headers, authentication)
+
+    obj_url = url_base + '/metahash/'
+    headers = {'content-type': 'text/csv'}
+    input_file = input_file_dir + '/metahash_fields_permission.csv'
+    patch(input_file, obj_url, headers, authentication)
+
     # delete the vocabularies records
     obj_url = url_base + '/vocabularies/'
     headers = {'content-type': 'application/json'}
@@ -162,11 +177,12 @@ def put(input_file, obj_url,headers,authentication):
     
 def patch(patch_file, obj_url,headers,authentication):
     try:
+        print 'PATCH: ' , patch_file, 'to ', obj_url
         with open(patch_file) as f:
             r = requests.patch(obj_url, auth=authentication, headers=headers, data=f.read() )
             if(r.status_code != 202):
                 raise ApiError(obj_url,'PATCH',r)
-            print 'PATCH: ' , patch_file, 'to ', obj_url, ', count: ',len(r.json()['objects'])
+            print 'PATCH: count: ',len(r.json()['objects'])
             if(logger.isEnabledFor(logging.DEBUG)):
                 logger.debug('--- PATCHED objects:')
                 try:

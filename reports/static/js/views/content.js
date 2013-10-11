@@ -7,8 +7,9 @@ define([
     'views/list',
     'views/home',
     'views/detail_stickit',
-    'views/screen'
-], function($, _, Backbone, Bootstrap, Iccbl, ListView, HomeView, DetailView, ScreenView) {
+    'views/screen',
+    'views/user'
+], function($, _, Backbone, Bootstrap, Iccbl, ListView, HomeView, DetailView, ScreenView, UserView) {
 
     var ContentView = Backbone.View.extend({
         el: '#container',
@@ -89,6 +90,36 @@ define([
 
                     this.currentView = new ScreenView({ model: this.model }, options);
                     this.render();
+                }else if(current_resource_id == 'users'){
+                    // TODO: deal with the hoisting mess here & elsewhere
+                    (function() {
+                        console.log('setup user detail view');
+                        var options = {
+                            url_root: current_ui_resource.url_root,
+                            current_options: current_options,
+                            user_model: current_scratch.model,
+                            user_schema: current_scratch.schemaResult,
+                            router: self.router,
+                        };
+
+                        var setView = function(){
+                            self.currentView = new UserView({ model: self.model }, options);
+                            self.render();
+                        };
+
+                        if(_.isUndefined(options.user_schema ) ||_.isUndefined(options.user_model)){
+                            var resource_url = options.url_root + '/user';
+                            var id = Iccbl.getKey(options.current_options);
+
+                            Iccbl.getSchemaAndModel2(resource_url, id, function(schemaResult, model){
+                                options.user_model = model;
+                                options.user_schema = schemaResult;
+                                setView();
+                            });
+                        }else{
+                            setView();
+                        }
+                    })();
                 }else{
                     var createDetail = function(schemaResult, model){
                         var detailView =

@@ -8,7 +8,8 @@ from reports.models import ApiLog
 from django.utils import timezone
 
 class Migration(DataMigration):
-
+    
+    # migrate the screen_status_item table to the "status" field of the screen object and create the needed ApiLog entries to record the history
     def forwards(self, orm):
         "Write your forwards methods here."
         # Note: Don't use "from appname.models import ModelName". 

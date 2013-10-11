@@ -1,0 +1,7 @@
+key,scope,resource_uri,ordinal,comment,ui_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,backgrid_cell_type,backgrid_cell_options
+username,fields:user,/reports/api/v1/metahash/fields:user/username/,0,,string,TRUE,"The username",Username,TRUE,,,"[list,detail]",,Iccbl.EditCell,
+permissions,fields:user,/reports/api/v1/metahash/fields:user/permissions/,7,,multiselect,TRUE,"Permissions for the group",Permissions,TRUE,,,,,,
+groups,fields:user,/reports/api/v1/metahash/fields:user/groups/,8,,multiselect,TRUE,"Groups the user is in",Groups,TRUE,,,,,,
+group_permissions,fields:user,/reports/api/v1/metahash/fields:user/group_permissions/,9,,string,TRUE,"Permissions for the groups that the user is in","Group permissions",TRUE,,,"[list,detail]",,,
+user_permissions,fields:user,/reports/api/v1/metahash/fields:user/user_permissions/,10,,string,TRUE,"Permissions assigned directly to the user","User Permissions",TRUE,,,"[list,detail]",,,
+group_list,fields:user,/reports/api/v1/metahash/fields:user/group_list/,11,,string,TRUE,"Groups the user is in",Groups,TRUE,,,"[list,detail]",,,

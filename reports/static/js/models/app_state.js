@@ -76,6 +76,15 @@ define([
                             'apilog':{
                                 view: 'list',
                             },
+                            'users':{
+                                view: 'list',
+                            },
+                            'groups':{
+                                view: 'list',
+                            },
+                            'permissions':{
+                                view: 'list',
+                            },
                         }
                     },
                 }
@@ -140,6 +149,36 @@ define([
                     api_resource: 'apilog',
                     url_root: '/reports/api/v1',
                     description: 'Change logs'
+                },
+                users: {
+                    header_message: 'Django users',
+                    title: 'Users',
+                    route: 'list/users',
+                    list_view: 'ListView',
+                    detail_view: 'DetailView',
+                    api_resource: 'user',
+                    url_root: '/reports/api/v1',
+                    description: 'Django user'
+                },
+                groups: {
+                    header_message: 'User Groups',
+                    title: 'User Groups',
+                    route: 'list/groups',
+                    list_view: 'ListView',
+                    detail_view: 'DetailView',
+                    api_resource: 'usergroup',
+                    url_root: '/reports/api/v1',
+                    description: 'User Groups'
+                },
+                permissions: {
+                    header_message: 'Django permissions',
+                    title: 'Permissions',
+                    route: 'list/permissions',
+                    list_view: 'ListView',
+                    detail_view: 'DetailView',
+                    api_resource: 'permission',
+                    url_root: '/reports/api/v1',
+                    description: 'Permissions'
                 },
 
                 screensaveruser: {

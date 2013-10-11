@@ -1,0 +1,5 @@
+key,scope,resource_uri,ordinal,comment,ui_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,backgrid_cell_type,backgrid_cell_options
+name,fields:permission,/reports/api/v1/metahash/fields:permission/name/,0,,string,FALSE,"Permission name",Name,TRUE,,,"[list,detail]",,Iccbl.EditCell,
+users,fields:permission,/reports/api/v1/metahash/fields:permission/users/,3,,multiselect,FALSE,"Users assigned this permission",Users,TRUE,,,"[list,detail]",,,
+groups,fields:permission,/reports/api/v1/metahash/fields:permission/groups/,4,,multiselect,FALSE,"Groups assigned this permission",Groups,TRUE,,,"[list,detail]",,,
+type,fields:permission,/reports/api/v1/metahash/fields:permission/type/,5,,choice,FALSE,"Type of permission",Type,TRUE,,,"[list,detail]",,,

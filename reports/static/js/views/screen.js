@@ -117,39 +117,6 @@ define([
             }
         },
 
-        setDatacolumns2: function(){
-            var self = this;
-            if(_.isUndefined(this.datacolumns)){
-                var _id = Iccbl.getKey(self.options.current_options);
-                var createDetail = function(schemaResult, model){
-                    var _url = self.options.url_root + '/datacolumn';
-                    var options = _.extend({},self.options.current_options,
-                        {
-                            schemaResult:schemaResult,
-                            router:self.options.router,
-                            ui_resource_id : 'datacolumn',
-                            url: _url,
-                            title: 'Data Columns for ' + _id,
-                            header_message: 'Data Columns for ' + _id,
-                            search: 'facility_id=' + _id
-                        });
-
-                    var listView = new ListView({ model: self.model},options);
-                    self.datacolumns = listView;
-                    // self.datacolumns.setElement(self.$('#tab_container')).render();
-                    $('#tab_container').html(self.datacolumns.render().el);
-                };
-                var resource_url = this.options.url_root + '/datacolumn'; // to test
-                var schema_url =  resource_url + '/schema';
-                var url = resource_url;
-
-                Iccbl.getSchema(schema_url, createDetail);
-            }else{
-//                self.datacolumns.setElement(self.$('#tab_container')).render();
-                $('#tab_container').html(self.datacolumns.render().el);
-            }
-            self.$('#datacolumn').addClass('active'); // first time not clicked so set manually
-        },
 
         setDatacolumns: function(){
             var self = this;

@@ -21,6 +21,8 @@ class ApiError(Exception):
             logger.info('There is no json in the response')
             logger.debug(str(('-----raw response text-------', result.text)) )
         self.message = str((url,'action',action, result.reason, result.status_code, err_msg ))
+        if(logger.isEnabledFor(logging.DEBUG)):
+            self.message = str((url,'action',action, result.reason, result.status_code, result ))
 
     def __str__(self):
         return repr(self.message)

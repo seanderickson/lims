@@ -11,12 +11,6 @@ define([
 ], function( $, _, Backbone, stickit, Iccbl, genericDetailTemplate, genericFormTemplate, modalOkCancel ) {
     var DetailView = Backbone.View.extend({
 
-        // bindings: function(){
-            // console.log('evaluating bindings...');
-            // return {
-            // '#screensaver_user_id': 'screensaver_user_id'
-            // };
-        // },
 
         events: {
             'click button#save': 'save',
@@ -39,40 +33,22 @@ define([
 
             this._id = this.model.get('id');
             if(_.has(this._schemaResult['resource_definition'], 'title_attribute')){
-                console.log('create id from ' + this._schemaResult['resource_definition']['title_attribute']);
+                console.log('create title_attribute from ' + this._schemaResult['resource_definition']['title_attribute']);
                 this._id = _.reduce(this._schemaResult['resource_definition']['title_attribute'],
-                        function(memo, item){
-                            if( self.model.has(item) ) memo += self.model.get(item)
-                            else memo += item
-                            return memo ;
-                        }, '');
+                    function(memo, item){
+                        if( self.model.has(item) ) memo += self.model.get(item)
+                        else memo += item
+                        return memo ;
+                    }, '');
             }else{
                 console.log('Warn: schema for this type has no resource_definition,id_attribute; type: ' + JSON.stringify(this._schemaResult));
             }
             console.log('id: ' + this._id);
 
             this._keys = Iccbl.sortOnOrdinal(_.keys(this.model.attributes), self._schemaResult.fields);
-            // this._keys = _(this.model.attributes).keys().sort(function(a,b){
-                // console.log('comparing: ' + a + ', to ' + b );
-                // order_a = self._schemaResult.fields[a]['ordinal'];  // TODO: need an edit order by
-                // order_b = self._schemaResult.fields[b]['ordinal'];
-                // if(_.isNumber(order_a) && _.isNumber(order_b)){
-                    // return order_a - order_b;
-                // }else if(_.isNumber(order_a)){
-                    // return -1;
-                // }else if(_.isNumber(order_b)){
-                    // return 1;
-                // }else{
-                    // return 0;
-                // }
-            // });
+            _.bindAll(this, 'render');
+            this.model.on('change', this.render);
 
-            if(options.isEditMode){
-                // template = genericFormTemplate;
-                this.edit(null);
-            }else{
-                this.detail(null);
-            }
         },
 
         detail: function(event) {
@@ -274,6 +250,14 @@ define([
 
         render : function() {
             console.log('render detail_stickit');
+
+            if(this.options.isEditMode){
+                // template = genericFormTemplate;
+                this.edit(null);
+            }else{
+                this.detail(null);
+            }
+
             return this;
         },
 

@@ -18,6 +18,8 @@ from reports.api import MetahashManagedResource, JsonAndDatabaseResource
 from django.db import connection
 from tastypie.resources import Resource
 from tastypie.exceptions import BadRequest
+from tastypie.utils.urls import trailing_slash
+from django.contrib.auth.models import User
         
 logger = logging.getLogger(__name__)
 
@@ -70,7 +72,7 @@ class ScreensaverUserResource(MetahashManagedResource, PostgresSortingResource):
     
     def prepend_urls(self):
         return [
-            url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>[\d]+)/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>[\d]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
     
 
@@ -145,8 +147,8 @@ class ScreenResultResource(MetahashManagedResource,Resource):
         # also note the double underscore "__" is because we also don't want to match in the first clause.
         # We don't want "schema" since that reserved word is used by tastypie for the schema definition for the resource (used by the UI)
         return [
-            url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))/schema/$" % self._meta.resource_name, self.wrap_view('get_schema'), name="api_get_schema"),
+            url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))/schema%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('get_schema'), name="api_get_schema"),
         ]    
         
     def get_object_list(self, request):
@@ -339,14 +341,14 @@ class ScreenSummaryResource(JsonAndDatabaseResource):
 
     def __init__(self, **kwargs):
 #        self.
-        super(ScreenSummaryResource,self).__init__(scope = 'fields:screensummary', **kwargs)
+        super(ScreenSummaryResource,self).__init__(resource='screensummary', **kwargs)
 
     def prepend_urls(self):
         # NOTE: this match "((?=(schema))__|(?!(schema))[\w\d_.-]+)" allows us to match any word, except "schema", and use it as the key value to search for.
         # also note the double underscore "__" is because we also don't want to match in the first clause.
         # We don't want "schema" since that reserved word is used by tastypie for the schema definition for the resource (used by the UI)
         return [
-            url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
 
     def dehydrate(self, bundle):
@@ -377,14 +379,14 @@ class DataColumnResource(JsonAndDatabaseResource):
 
     def __init__(self, **kwargs):
 #        self.
-        super(DataColumnResource,self).__init__(scope = 'fields:datacolumn', **kwargs)
+        super(DataColumnResource,self).__init__(resource='datacolumn', **kwargs)
 
     def prepend_urls(self):
         # NOTE: this match "((?=(schema))__|(?!(schema))[\w\d_.-]+)" allows us to match any word, except "schema", and use it as the key value to search for.
         # also note the double underscore "__" is because we also don't want to match in the first clause.
         # We don't want "schema" since that reserved word is used by tastypie for the schema definition for the resource (used by the UI)
         return [
-            url(r"^(?P<resource_name>%s)/(?P<data_column_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<data_column_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
 
 class ScreenResource(JsonAndDatabaseResource):
@@ -408,34 +410,33 @@ class ScreenResource(JsonAndDatabaseResource):
         
     def __init__(self, **kwargs):
 #        self.
-        super(ScreenResource,self).__init__(scope = 'fields:screen', **kwargs)
+        super(ScreenResource,self).__init__(resource='screen', **kwargs)
 
     def prepend_urls(self):
         # NOTE: this match "((?=(schema))__|(?!(schema))[\w\d_.-]+)" allows us to match any word, except "schema", and use it as the key value to search for.
         # also note the double underscore "__" is because we also don't want to match in the first clause.
         # We don't want "schema" since that reserved word is used by tastypie for the schema definition for the resource (used by the UI)
         return [
-            url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
                     
-    def dehydrate(self, bundle):
-#        _time = time.time();
-        sru = bundle.obj.lead_screener.screensaver_user
-        bundle.data['lead_screener'] =  sru.first_name + ' ' + sru.last_name
-        lh = bundle.obj.lab_head.screensaver_user.screensaver_user
-        bundle.data['lab_head'] =  lh.first_name + ' ' + lh.last_name
-        # TODO: the status table does not utilize a primary key, thus it is incompatible with the standard manager
-        #        status_item = ScreenStatusItem.objects.filter(screen=bundle.obj).order_by('status_date')[0]
-        #        bundle.data['status'] = status_item.status
-        #        bundle.data['status_date'] = status_item.status_date
-
-#        logger.info(str(('dehydrate time', time.time()-_time )))
-        bundle.data['has_screen_result'] = False
-        try:
-            bundle.data['has_screen_result'] = bundle.obj.screenresult != None
-        except ScreenResult.DoesNotExist, e:
-            logger.info(unicode(('no screenresult for ', bundle.obj)))
-        return bundle
+#    def dehydrate(self, bundle):
+#        sru = bundle.obj.lead_screener.screensaver_user
+#        bundle.data['lead_screener'] =  sru.first_name + ' ' + sru.last_name
+#        lh = bundle.obj.lab_head.screensaver_user.screensaver_user
+#        bundle.data['lab_head'] =  lh.first_name + ' ' + lh.last_name
+#        # TODO: the status table does not utilize a primary key, thus it is incompatible with the standard manager
+#        #        status_item = ScreenStatusItem.objects.filter(screen=bundle.obj).order_by('status_date')[0]
+#        #        bundle.data['status'] = status_item.status
+#        #        bundle.data['status_date'] = status_item.status_date
+#
+##        logger.info(str(('dehydrate time', time.time()-_time )))
+#        bundle.data['has_screen_result'] = False
+#        try:
+#            bundle.data['has_screen_result'] = bundle.obj.screenresult != None
+#        except ScreenResult.DoesNotExist, e:
+#            logger.info(unicode(('no screenresult for ', bundle.obj)))
+#        return bundle
     
     def build_schema(self):
         schema = super(ScreenResource,self).build_schema()
@@ -503,14 +504,14 @@ class LibraryResource(JsonAndDatabaseResource):
         
     def __init__(self, **kwargs):
 #        self.
-        super(LibraryResource,self).__init__(scope = 'fields:library', **kwargs)
+        super(LibraryResource,self).__init__(resource='library', **kwargs)
 
     def prepend_urls(self):
         # NOTE: this match "((?=(schema))__|(?!(schema))[\w\d_.-]+)" allows us to match any word, except "schema", and use it as the key value to search for.
         # also note the double underscore "__" is because we also don't want to match in the first clause.
         # We don't want "schema" since that reserved word is used by tastypie for the schema definition for the resource (used by the UI)
         return [
-            url(r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[\w\d_.-]+))/$" % self._meta.resource_name, self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
                     
     def dehydrate(self, bundle):
@@ -521,5 +522,4 @@ class LibraryResource(JsonAndDatabaseResource):
         temp = [ x.library_type for x in self.Meta.queryset.distinct('library_type')]
         schema['extraSelectorOptions'] = { 'label': 'Type', 'searchColumn': 'library_type', 'options': temp }
         return schema
-    
     

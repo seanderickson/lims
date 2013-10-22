@@ -93,6 +93,14 @@ define([
 
     var sortOnOrdinal = Iccbl.sortOnOrdinal = function(keys, fieldHash){
         var sorted = _(keys).sort(function(a,b){
+            if( !_.contains(fieldHash, a) || !_.contains(fieldHash, b)){
+                if(_.contains(fieldHash, b)){
+                    return -1;
+                }else if(_.contains(fieldHash, a)){
+                    return 1;
+                }
+                return 0;
+            }
             order_a = fieldHash[a]['ordinal'];  // TODO: need an edit order by
             order_b = fieldHash[b]['ordinal'];
             if(_.isNumber(order_a) && _.isNumber(order_b)){

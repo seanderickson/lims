@@ -150,7 +150,7 @@ def delete(obj_url, headers, authentication):
         r = requests.delete(obj_url, auth=authentication, headers=headers)
         if(r.status_code != 204):
             raise ApiError(obj_url,'DELETE',r)
-        print 'DELETE: ', obj_url
+        print 'DELETE: ', obj_url, r
         logger.info(str(('DELETE', obj_url)))
     except Exception, e:
         logger.error(str(('exception recorded while contacting server', e)))

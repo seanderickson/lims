@@ -1,26 +1,28 @@
-key,scope,resource_uri,ordinal,comment,description,title,json_field_type,alias
-list,field:visibility,/reports/api/v1/vocabularies/field:visibility/list/,0,,"Allow visibility in list views","Visible in list views",,
-edit,field:visibility,/reports/api/v1/vocabularies/field:visibility/edit/,4,,"Allow visibility in the edit form","Visible in edit forms",,
-detail,field:visibility,/reports/api/v1/vocabularies/field:visibility/detail/,0,,"Allow visibility in detail views","Visible in detail views",,
-choice,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/choice/,0,"The field referred to by this record is a single choice vocabulary term","Single choice field",Choice,,
-integer,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/integer/,0,,"This is an integer type",Integer,,
-multiselect,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/multiselect/,0,"The field referred to by this record is a single choice vocabulary term","Multiple choice vocabulary term",Multiselect,,
-string,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/string/,0,,"Field contains text",Text,,
-date,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/date/,5,"Date field type shows the date only (not the time)","Date field type",Date,,
-boolean,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/boolean/,0,,"Field is a boolean",Boolean,,
-Iccbl.EditCell,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/Iccbl.EditCell/,20,,"Custom cell - creates a drilldown to the view/edit screen",EditCell,,
-Iccbl.LinkCell,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/Iccbl.LinkCell/,21,"Create a link using data from the record from this cell.  Use braces and the name of other properties to construct the link, as in ""relative/url/{property_name}""","Custom cell - create a relative link to some other URI","Iccbl Link Cell",,
-string,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/string/,1,"StringCell displays HTML escaped strings and accepts anything typed in.","This is the default Backgrid cell type – 'stringCell'",StringCell,,
-date,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/date/,2,"A Backgrid.DatetimeCell without the time part","The Backgrid date cell type",DateCell,,
-time,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/time/,3,"A Backgrid.DatetimeCell without the date part","The Backgrid date cell type",TimeCell,,
-datetime,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/datetime/,4,"DatetimeCell is a basic cell that accepts datetime string values in RFC-2822 or W3C's subset of ISO-8601 and displays them in ISO-8601 format. For a much more sophisticated date time cell with better datetime formatting, take a look at the Backgrid.Extension.MomentCell extension.","The Backgrid datetime cell type",DateTimeCell,,
-integer,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/integer/,5,"An IntegerCell is just a Backgrid.NumberCell with 0 decimals. If a floating point number is supplied, the number is simply rounded the usual way when displayed.","The Backgrid integer cell type",IntegerCell,,
-number,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/number/,6,"NumberCell is a generic cell that renders all numbers. Numbers are formatted using a Backgrid.NumberFormatter.","The Backgrid number cell type",NumberCell,,
-boolean,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/boolean/,7,"BooleanCell renders a checkbox both during display mode and edit mode. The checkbox is checked if the model value is true, unchecked otherwise.","The Backgrid boolean cell type",BooleanCell,,
-fields.CharField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.CharField/,0,,"A tastypie fields.CharField type",CharField,,
-fields.ListField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.ListField/,5,,"A tastypie fields.ListField type",ListField,,
-fields.BooleanField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.BooleanField/,2,,"A tastypie fields.BooleanField type",BooleanField,,
-fields.DateField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.DateField/,3,,"A tastypie fields.DateField",DateField,,
-fields.DecimalField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.DecimalField/,7,,"A tastypie fields.DecimalField",DecimalField,,
-fields.FloatField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.FloatField/,6,,"A tastypie fields.FloatField",FloatField,,
-fields.IntegerField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.IntegerField/,4,,"A tastypie fields.IntegerField",IntegerField,,
+key,scope,resource_uri,ordinal,comment,description,title
+list,field:visibility,/reports/api/v1/vocabularies/field:visibility/list/,0,,"Allow visibility in list views","Visible in list views"
+edit,field:visibility,/reports/api/v1/vocabularies/field:visibility/edit/,4,,"Allow visibility in the edit form","Visible in edit forms"
+detail,field:visibility,/reports/api/v1/vocabularies/field:visibility/detail/,0,,"Allow visibility in detail views","Visible in detail views"
+choice,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/choice/,0,"The field referred to by this record is a single choice vocabulary term","Single choice field",Choice
+integer,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/integer/,0,,"This is an integer type",Integer
+multiselect,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/multiselect/,0,"The field referred to by this record is a single choice vocabulary term","Multiple choice vocabulary term",Multiselect
+string,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/string/,0,,"Field contains text",Text
+date,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/date/,5,"Date field type shows the date only (not the time)","Date field type",Date
+boolean,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/boolean/,0,,"Field is a boolean",Boolean
+Iccbl.EditCell,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/Iccbl.EditCell/,20,,"Custom cell - creates a drilldown to the view/edit screen",EditCell
+Iccbl.LinkCell,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/Iccbl.LinkCell/,21,"Create a link using data from the record from this cell.  Use braces and the name of other properties to construct the link, as in ""relative/url/{property_name}""","Custom cell - create a relative link to some other URI","Iccbl Link Cell"
+string,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/string/,1,"StringCell displays HTML escaped strings and accepts anything typed in.","This is the default Backgrid cell type - 'stringCell'",StringCell
+date,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/date/,2,"A Backgrid.DatetimeCell without the time part","The Backgrid date cell type",DateCell
+time,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/time/,3,"A Backgrid.DatetimeCell without the date part","The Backgrid date cell type",TimeCell
+datetime,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/datetime/,4,"DatetimeCell is a basic cell that accepts datetime string values in RFC-2822 or W3C's subset of ISO-8601 and displays them in ISO-8601 format. For a much more sophisticated date time cell with better datetime formatting, take a look at the Backgrid.Extension.MomentCell extension.","The Backgrid datetime cell type",DateTimeCell
+integer,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/integer/,5,"An IntegerCell is just a Backgrid.NumberCell with 0 decimals. If a floating point number is supplied, the number is simply rounded the usual way when displayed.","The Backgrid integer cell type",IntegerCell
+number,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/number/,6,"NumberCell is a generic cell that renders all numbers. Numbers are formatted using a Backgrid.NumberFormatter.","The Backgrid number cell type",NumberCell
+boolean,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/boolean/,7,"BooleanCell renders a checkbox both during display mode and edit mode. The checkbox is checked if the model value is true, unchecked otherwise.","The Backgrid boolean cell type",BooleanCell
+fields.CharField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.CharField/,0,,"A tastypie fields.CharField type",CharField
+fields.ListField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.ListField/,5,,"A tastypie fields.ListField type",ListField
+fields.BooleanField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.BooleanField/,2,,"A tastypie fields.BooleanField type",BooleanField
+fields.DateField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.DateField/,3,,"A tastypie fields.DateField",DateField
+fields.DecimalField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.DecimalField/,7,,"A tastypie fields.DecimalField",DecimalField
+fields.FloatField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.FloatField/,6,,"A tastypie fields.FloatField",FloatField
+fields.IntegerField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.IntegerField/,4,,"A tastypie fields.IntegerField",IntegerField
+read,permission:type,/reports/api/v1/vocabularies/permission:type/read/,1,,"permission to read the resource",Read
+write,permission:type,/reports/api/v1/vocabularies/permission:type/write/,2,,"permission to write the resource",Write

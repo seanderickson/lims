@@ -20,20 +20,24 @@ class MetaManager(GetOrNoneManager):
     def get_query_set(self):
         return super(MetaManager, self).get_query_set()
 
-    def get_and_parse(self, scope='', field_definition_scope='fields:metahash'):
+    def get_and_parse(self, scope='', field_definition_scope='fields:metahash', clear=False):
         '''
         Query the metahash table for field definitions for the table identified by scope
         scope - resource whose fields are described, i.e. "fields:screensaveruser", or "fields:screen"
         field_definition_scope - scope that defines the json fields for this hash, e.g. "fields:metahash", or "fields:resource, or fields:vocabularies"
         '''
-        metahash = cache.get('metahash:'+scope)
+        metahash = {}
+        if not clear:
+            metahash = cache.get('metahash:'+scope)
+        else:
+            cache.delete('metahash:'+scope)
+            
         if not metahash:
             metahash = self.get_and_parse_int(scope=scope, field_definition_scope=field_definition_scope)
             cache.set('metahash:'+scope, metahash);
         else:
-            logger.info(str(('cached: get_and_parse metahash table field definitions for ',scope)))
-#            logger.debug(str(('cached: get_and_parse table field definitions for ',scope, metahash)))
-
+            logger.debug(str(('retrieve the cached get_and_parse metahash table field definitions for ',scope)))
+        logger.debug(str(('get_and_parse done, for ', scope, 'hash found', metahash)))
         return metahash
 
 
@@ -43,7 +47,7 @@ class MetaManager(GetOrNoneManager):
         scope - metahash scope, i.e. "fields:screensaveruser", or "fields:screen"
         field_definition_scope - scope that defines the json fields for this hash, e.g. "fields:metahash", or "fields:resource, or fields:vocabularies"
         '''
-        logger.info('get_and_parse table field definitions for ' + scope)
+        logger.debug('get_and_parse table field definitions for ' + scope)
         # try to make clear that the field definitions, though stored in the metahash as well, could be in a separate table
         field_definition_table = MetaHash.objects.all().filter(scope=field_definition_scope)
         
@@ -51,30 +55,21 @@ class MetaManager(GetOrNoneManager):
         unparsed_objects = MetaHash.objects.all().filter(scope=scope)
         
         parsed_objects = {}
-        # first, query the metahash for fields defined for this scope
         for unparsed_object in unparsed_objects:
             logger.debug('---- meta field for scope: ' + scope + ', ' + unparsed_object.key)
-            
-#            hash = schema['fields'][field_key]
             parsed_object = {}
             for field_key in [ x.key for x in field_definition_table]:  # only need the key from the field definition table
                 parsed_object.update({ field_key : unparsed_object.get_field(field_key) })
-#                        MetaHash.objects.get_or_none(scope=scope, 
-#                                                     key=field_key, 
-#                                                     function=lambda x : (x.get_field(field_key)) )
-              
             
             # NOTE: choices for the "vocabulary_scope_ref" are being stored here for convenience
             # now check if the field uses controlled vocabulary, look that up now.  TODO: "vocabulary_scope_ref" should be a constant
             # TODO: "vocabulary_scope_ref" needs to be created by default as a metahash:field; this argues for making it a "real" field
             if parsed_object.get(u'vocabulary_scope_ref'):
                 vocab_ref = parsed_object['vocabulary_scope_ref']
-                logger.debug(str(('looking for a vocabulary', vocab_ref )))
                 parsed_object['choices'] = [x.key for x in Vocabularies.objects.all().filter(scope=vocab_ref)]
-                logger.debug(str(('got', parsed_object['choices'] )))
             
             parsed_objects[unparsed_object.key] = parsed_object
-        logger.info(str(('got metahash table field definitions for ', scope ))) #, parsed_objects)))
+        #logger.debug(str(('got metahash, for ', scope, 'hash found', parsed_objects)))
         return parsed_objects
 
 
@@ -118,7 +113,7 @@ class ApiLog(models.Model):
         unique_together = (('ref_resource_name', 'date_time'))    
 
     def __unicode__(self):
-        return unicode(str((self.ref_resource_name, self.key, self.username, self.diffs)))
+        return unicode(str((self.api_action, self.ref_resource_name, self.key, str(self.date_time), self.username, self.diffs)))
     
 
 
@@ -161,6 +156,7 @@ class MetaHash(models.Model):
     def set_field(self, field, value):
         temp = self.get_field_hash()
         temp[field] = value;
+        logger.info(str(('===================setting value', temp, field, value, json.dumps(temp))))
         self.json_field = json.dumps(temp)
     
     def is_json(self):
@@ -221,7 +217,7 @@ class Vocabularies(models.Model):
         if(field in temp):
             return temp[field]
         else:
-            logger.info(str((self,'unknown field: ',field)))
+            logger.debug(str((self,'field not found: ',field))) # Note, json_field is sparse, not padded with empty attributes
             return None
             
     def set_field(self, field, value):
@@ -253,7 +249,7 @@ class UserGroup(models.Model):
     permissions = models.ManyToManyField('reports.Permission')
 
     def __unicode__(self):
-        return unicode(str((self.name)))
+        return unicode(str((self.name, self.users)))
         
     
 #    

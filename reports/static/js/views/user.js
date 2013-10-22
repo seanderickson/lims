@@ -98,6 +98,7 @@ define([
                         console.log('is for: ' + model.get('isForUser'));
 
                         // when the checkbox is selected, use a custom model event to update the group model relationship and refetch the user model
+                        // reln is group->users, so update it that way
                         model.on('change:isForUser', function(model){
                             var currentUsers = model.get('users');
                             var currentUserUri = self.user.get('resource_uri');

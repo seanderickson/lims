@@ -5,3 +5,5 @@ groups,fields:user,/reports/api/v1/metahash/fields:user/groups/,8,,multiselect,T
 group_permissions,fields:user,/reports/api/v1/metahash/fields:user/group_permissions/,9,,string,TRUE,"Permissions for the groups that the user is in","Group permissions",TRUE,,,"[list,detail]",,,
 user_permissions,fields:user,/reports/api/v1/metahash/fields:user/user_permissions/,10,,string,TRUE,"Permissions assigned directly to the user","User Permissions",TRUE,,,"[list,detail]",,,
 group_list,fields:user,/reports/api/v1/metahash/fields:user/group_list/,11,,string,TRUE,"Groups the user is in",Groups,TRUE,,,"[list,detail]",,,
+first_name,fields:user,/reports/api/v1/metahash/fields:user/first_name/,12,,string,TRUE,"First Name",Groups,TRUE,,,,,,
+last_name,fields:user,/reports/api/v1/metahash/fields:user/last_name/,13,,string,TRUE,"Last Name",Groups,TRUE,,,,,,

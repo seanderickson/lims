@@ -1,6 +1,5 @@
 from django.db import models
 
-
 class GetOrNoneManager(models.Manager):
     """Adds get_or_none method to objects
     """
@@ -13,4 +12,3 @@ class GetOrNoneManager(models.Manager):
                 return x
         except self.model.DoesNotExist: # todo: check for better err to catch
             return None
-

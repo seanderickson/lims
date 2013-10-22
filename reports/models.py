@@ -14,7 +14,6 @@ class MetaManager(GetOrNoneManager):
 
     def __init__(self, **kwargs):
         super(MetaManager,self).__init__(**kwargs)
-#        self.metahash = {}
 
     # this is how you override a Manager's base QuerySet
     def get_query_set(self):
@@ -22,9 +21,10 @@ class MetaManager(GetOrNoneManager):
 
     def get_and_parse(self, scope='', field_definition_scope='fields:metahash', clear=False):
         '''
-        Query the metahash table for field definitions for the table identified by scope
-        scope - resource whose fields are described, i.e. "fields:screensaveruser", or "fields:screen"
-        field_definition_scope - scope that defines the json fields for this hash, e.g. "fields:metahash", or "fields:resource, or fields:vocabularies"
+        Query the metahash table for data identified by "scope", and fields defined by "field_definition_scope"
+            e.g. "fields:screensaveruser", or "fields:screen"
+        field_definition_scope - also defines what is in the the json_field for this hash;
+            e.g. "fields:metahash", or "fields:resource, or fields:vocabularies"
         '''
         metahash = {}
         if not clear:
@@ -43,9 +43,10 @@ class MetaManager(GetOrNoneManager):
 
     def get_and_parse_int(self, scope='', field_definition_scope='fields:metahash'):
         '''
-        Query the metahash table for field definitions for this table
-        scope - metahash scope, i.e. "fields:screensaveruser", or "fields:screen"
-        field_definition_scope - scope that defines the json fields for this hash, e.g. "fields:metahash", or "fields:resource, or fields:vocabularies"
+        non-cached Query the metahash table for data identified by "scope", and fields defined by "field_definition_scope"
+            e.g. "fields:screensaveruser", or "fields:screen"
+        field_definition_scope - also defines what is in the the json_field for this hash;
+            e.g. "fields:metahash", or "fields:resource, or fields:vocabularies"
         '''
         logger.debug('get_and_parse table field definitions for ' + scope)
         # try to make clear that the field definitions, though stored in the metahash as well, could be in a separate table

@@ -51,6 +51,13 @@ logger = logging.getLogger(__name__)
 BASE_URI = '/reports/api/v1'
 
 def assert_obj1_to_obj2(obj1, obj2, keys=['key', 'scope', 'ordinal', 'username', 'name'], excludes=['resource_uri']):
+    original_keys = set(obj1.keys())
+    updated_keys = set(obj2.keys())
+        
+    intersect_keys = original_keys.intersection(updated_keys)
+    if intersect_keys != original_keys:
+        return False, ('keys missing', original_keys-intersect_keys)
+#    logger.info(str(('intersect_keys', intersect_keys)))
     for key in keys:
         if key not in obj1:
             continue
@@ -58,52 +65,104 @@ def assert_obj1_to_obj2(obj1, obj2, keys=['key', 'scope', 'ordinal', 'username',
             return False, None
         if str(obj1[key]) != str(obj2[key]):
             return False, None
-    logger.info(str(('----equal so far', obj1, obj2)))
     keys_to_search = set(obj1.keys()) - set(keys) - set(excludes)
-    logger.info(str(('keys to search', keys_to_search)))
+#    logger.info(str(('equal so far, keys to search', keys_to_search)))
+    csvBooleanField = CsvBooleanField()
+    
     for key in keys_to_search:
-        if str(key) not in obj1:
-            continue
-        if str(key) not in obj2:
-            return False, ('key not found', key, 'in return obj', obj2)
-        if str(obj1[key]) != str(obj2[key]):
-            valx = str(obj1[key]).lower()
-            if len(valx) == 0:
-                if bool(obj2[key]) == False:
-                    continue;
-            if  valx == 'true' or valx == 'false':
-                if str(bool(obj2[key])).lower() == valx:
-                    continue
-                return False, ('key not equal', key, obj1, obj2, 'val obj1', str(obj1[key]), 'val 2', str(obj2[key]))
-    return True, (key)
+        if isinstance(obj1[key], basestring):
+            val1 = str(obj1[key])
+            if val1 != str(obj2[key]):
+    #            logger.info('not equal')
+                if csvBooleanField.convert(val1) != csvBooleanField.convert(obj1[key]):
+                    return False, ('key not equal', key, obj1, obj2, 'val obj1', str(obj1[key]), 'val 2', str(obj2[key]))
+    #            logger.info(str((key, 'boolean equal')))
+    #        logger.info(str((key, 'equal', obj1, obj2)))
+        else: # better be a list
+            for v in obj1[key]:
+                found = False
+                for v2 in obj2[key]:
+                    if str(v2) == str(v): # have to do this because return values are being unicoded
+                        found = True
+                if not found:
+                    return False, ('list key not equal', key, obj1, obj2, 'val obj1', str(obj1[key]), 'val 2', str(obj2[key]))
+
+    return True, (key, obj1, obj2)
+
 
 def find_obj_in_list(obj, item_list):
+    list_msgs = []
     for item in item_list:
         result, msgs = assert_obj1_to_obj2(obj, item)
         if result:
-            logger.info(str(('found', obj)))
+            logger.debug(str(('found', obj)))
             return True, (item)
-        elif msgs:
-            return result, msgs
-    return False, ('obj not found in list', obj, '------item list', item_list)
+        else:
+            list_msgs.append(msgs)
+#        elif msgs:
+#            return result, msgs
+    return False, ('obj not found in list', obj, list_msgs)
 
 def find_all_obj_in_list(list1, list2):
     for item in list1:
         result, msgs = find_obj_in_list(item, list2)
         if not result:
-            logger.warn(str(('-----not found', msgs)))
+            logger.debug(str(('-----not found', item, list2, msgs)))
             return False, msgs
     return True, msgs
 
 
-#class TastypieTest(TestCase):
-#    
-#    def test_boolean(self):
-#        
-#        vals = {
-#            'empty string': ['', False],
-#            ''
-#            }
+class BaselineTest(TestCase):
+    
+    def test_assert_obj1_to_obj2(self):
+        # all of obj1 in obj2 (may be more in obj2
+        
+        obj1 = { 'one': 1, 'two': 'two', 'three':''}
+        obj2 = { 'one': 1, 'two': 'two', 'three':'', 'four': 'blah'}
+        result, msgs = assert_obj1_to_obj2(obj1, obj2)
+        self.assertTrue(result, msgs)
+        result, msgs = assert_obj1_to_obj2(obj2, obj1)
+        self.assertFalse(result, msgs)
+
+    def test_find_obj_in_list(self):
+        
+        obj1 = { 'one': 1, 'two': 'two', 'three':''}
+        obj1a = { 'one': 2, 'two': 'two', 'three':''}
+        obj2 = { 'one': 1, 'two': 'two', 'three':'', 'four': 'blah'}
+        obj3 = { 'xxx': 1, 'two': 'two', 'three':'', 'four': 'blah'}
+        
+        obj_list = [ obj2, obj1, obj3 ]
+        result, msgs = find_obj_in_list(obj1, obj_list)
+        self.assertTrue(result, msgs)
+
+        obj_list = [ obj2, obj3 ]
+        result, msgs = find_obj_in_list(obj1, obj_list)
+        self.assertTrue(result, msgs)
+
+        obj_list = [ obj3, obj1a ]
+        result, msgs = find_obj_in_list(obj1, obj_list)
+        logger.info(str((result,msgs)))
+        self.assertFalse(result, str((msgs)))
+
+        obj_list = [ obj1a, obj3 ]
+        result, msgs = find_obj_in_list(obj1, obj_list)
+        self.assertFalse(result, msgs)
+
+    def test_find_all_obj_in_list(self):
+        
+        obj1 = { 'one': 1, 'two': 'two', 'three':''}
+        obj1a = { 'one': 2, 'two': 'two', 'three':''}
+        obj2 = { 'one': 1, 'two': 'two', 'three':'', 'four': 'blah'}
+        obj3 = { 'xxx': 1, 'two': 'two', 'three':'', 'four': 'blah'}
+        
+        obj_list = [ obj1a, obj1 ]
+        obj_list2 = [ obj2, obj1a, obj3 ]
+        result, msgs = find_all_obj_in_list(obj_list, obj_list2)
+        self.assertTrue(result, msgs)
+
+        obj_list2 = [ obj2, obj3 ]
+        result, msgs = find_all_obj_in_list(obj_list, obj_list2)
+        self.assertFalse(result, msgs)
 
 
 class SerializerTest(TestCase):
@@ -164,9 +223,9 @@ class HydrationTest(TestCase):
             self.assertEqual(result, expected[i], str((i,' is not equal', item, result, expected[i])))
             
     
-class AAAMetaHashTest(ResourceTestCase):
+class MetaHashTest(ResourceTestCase):
 
-    def test_aaaget_and_parse(self):
+    def test_get_and_parse(self):
         print '================ test_get_and_parse ========== '
         initializer = {
                        'key': 'key',
@@ -193,7 +252,7 @@ class MetaHashResourceBootstrap(ResourceTestCase):
         
         self.resource_uri = BASE_URI + '/metahash'
                 
-    def xxtest_bootstrap_metahash(self):
+    def test_bootstrap_metahash(self):
         
         print '================ test_bootstrap_metahash =============== '
         # in order for the metahash resource to work, the metahash itself must be "bootstrapped":
@@ -240,7 +299,7 @@ class MetaHashResourceBootstrap(ResourceTestCase):
         
         print '================ test_bootstrap_metahash done ========== '
         
-    def xtest_bootstrap_init_files(self):
+    def test_bootstrap_init_files(self):
         
         print '================ test_bootstrap_init_files =============== '
         serializer=CSVSerializer() 
@@ -463,7 +522,7 @@ class ResourceResourceTest(MetaResourceBase):
         
 class UserGroupResource(ResourceResourceTest):
     
-    def setUp(self):
+    def xsetUp(self):
         
         logger.info(str(('---setUp----')))
         super(UserGroupResource, self).setUp()
@@ -513,7 +572,7 @@ class UserGroupResource(ResourceResourceTest):
 
 
              
-    def test_create_group(self):
+    def xtest_create_group(self):
         
         logger.info(str(('============= test_create_group========', self.testuser1 )))
         initializer = {
@@ -539,89 +598,89 @@ class UserGroupResource(ResourceResourceTest):
         
         logger.info(str(('============= test_create_group done ========' )))
         
-
-class MetaHashResourceUsage(MetaResourceBase):
-    # Use ``fixtures`` & ``urls`` as normal. See Django's ``TestCase``
-    # documentation for the gory details.
-    fixtures = ['test_entries.json']
-
-    def setUp(self):
-        super(MetaHashResourceUsage, self).setUp()
-    
-    def test_get_list_unauthorzied(self):
-        self.assertHttpUnauthorized(self.api_client.get('/reports/api/v1/metahash/', format='json'))
-
-    def test_get_list_json(self):
-        print '=============== test get_list ==================='
-
-        resp = self.api_client.get('/reports/api/v1/metahash/', format='json', authentication=self.get_credentials(), data={ 'limit': 999 })
-        print resp
-        self.assertValidJSONResponse(resp)
-        
-    def test_put_json(self):
-        print '=============== test put_json ==================='
-        resource_uri = '/reports/api/v1/metahash'
-        
-        # first get, see what's there
-        logger.info('=====get prelim:'+ resource_uri)
-        resp = self.api_client.get(resource_uri, format='json', authentication=self.get_credentials(), data={ 'limit': 999 })
-        logger.info(str(('--------resp to get:', resp, resp.status_code)))
-        new_obj = self.deserialize(resp)
-        
-        extant_object_count = len(new_obj['objects'])
-        
-        # first create a "json" field by specifying the "json_type" of the field 
-        # (if this weren't specified, it would throw an error, since there is no "real" field for this (todo: test))
-        initializer = {
-               'key': 'test_field',
-               'scope': 'fields:metahash',
-               'ordinal': 0, 
-               'json_field_type': 'fields.CharField'    }
-
-        logger.info('===== post1:'+ resource_uri)
-        resp = self.api_client.post(resource_uri, format='json', data=initializer, authentication=self.get_credentials())
-        logger.info(str(('--------resp to post:', resp, resp.status_code)))
-        new_obj = self.deserialize(resp)
-        logger.info(str(('deserialized object:', json.dumps(new_obj))))
-        self.assertHttpCreated(resp)
-
-        logger.info('===== get1:'+ resource_uri)
-        resp = self.api_client.get(resource_uri, format='json', authentication=self.get_credentials(), data={ 'limit': 999 })
-        logger.info(str(('--------resp to get:', resp, resp.status_code)))
-        new_obj = self.deserialize(resp)
-        logger.info(str(('deserialized object:', json.dumps(new_obj))))
-        self.assertValidJSONResponse(resp)
-        self.assertEqual(len(new_obj['objects']), extant_object_count+1, str((new_obj)))
-        self.assertTrue(find_obj_in_list(initializer,new_obj['objects'] ), str(('not found', initializer, new_obj['objects'])))
-        
-        # now update with some field instance data
-        initializer = {
-               'key': 'test_field',
-               'scope': 'fields:metahash',
-               'ordinal': 0, 
-               'json_field_type': 'fields.CharField', 
-               'test_field': 'foo and bar!'    }
-        uri = resource_uri + '/' + initializer['scope']+ '/' + initializer['key'] + '/'
-        
-        logger.info('===== put1:'+ uri)
-        resp = self.api_client.put(uri, data=initializer, authentication=self.get_credentials())
-        logger.info(str(('--------resp to put:', resp, resp.status_code)))
-        new_obj = self.deserialize(resp)
-        logger.info(str(('deserialized object:', json.dumps(new_obj))))
-        self.assertHttpAccepted(resp)
-        self.assertEqual(new_obj['test_field'], 'foo and bar!', 'unexpected result: ' +new_obj['test_field'])
-        self.assertTrue(assert_obj1_to_obj2(initializer, new_obj), str(('assert_obj1_to_obj2', initializer, new_obj)))
-
-        logger.info('===== get final:'+ resource_uri)
-        resp = self.api_client.get(resource_uri, format='json', authentication=self.get_credentials(), data={ 'limit': 999 })
-        logger.info(str(('--------resp to get:', resp, resp.status_code)))
-        new_obj = self.deserialize(resp)
-        logger.info(str(('deserialized object:', json.dumps(new_obj))))
-        self.assertValidJSONResponse(resp)
-        self.assertEqual(len(new_obj['objects']), extant_object_count+1, str((new_obj)))
-
-        print '===================  finished: test put_json modification ==================='
-        
+#
+#class MetaHashResourceUsage(MetaResourceBase):
+#    # Use ``fixtures`` & ``urls`` as normal. See Django's ``TestCase``
+#    # documentation for the gory details.
+#    fixtures = ['test_entries.json']
+#
+#    def setUp(self):
+#        super(MetaHashResourceUsage, self).setUp()
+#    
+#    def test_get_list_unauthorzied(self):
+#        self.assertHttpUnauthorized(self.api_client.get('/reports/api/v1/metahash/', format='json'))
+#
+#    def test_get_list_json(self):
+#        print '=============== test get_list ==================='
+#
+#        resp = self.api_client.get('/reports/api/v1/metahash/', format='json', authentication=self.get_credentials(), data={ 'limit': 999 })
+#        print resp
+#        self.assertValidJSONResponse(resp)
+#        
+#    def test_put_json(self):
+#        print '=============== test put_json ==================='
+#        resource_uri = '/reports/api/v1/metahash'
+#        
+#        # first get, see what's there
+#        logger.info('=====get prelim:'+ resource_uri)
+#        resp = self.api_client.get(resource_uri, format='json', authentication=self.get_credentials(), data={ 'limit': 999 })
+#        logger.info(str(('--------resp to get:', resp, resp.status_code)))
+#        new_obj = self.deserialize(resp)
+#        
+#        extant_object_count = len(new_obj['objects'])
+#        
+#        # first create a "json" field by specifying the "json_type" of the field 
+#        # (if this weren't specified, it would throw an error, since there is no "real" field for this (todo: test))
+#        initializer = {
+#               'key': 'test_field',
+#               'scope': 'fields:metahash',
+#               'ordinal': 0, 
+#               'json_field_type': 'fields.CharField'    }
+#
+#        logger.info('===== post1:'+ resource_uri)
+#        resp = self.api_client.post(resource_uri, format='json', data=initializer, authentication=self.get_credentials())
+#        logger.info(str(('--------resp to post:', resp, resp.status_code)))
+#        new_obj = self.deserialize(resp)
+#        logger.info(str(('deserialized object:', json.dumps(new_obj))))
+#        self.assertHttpCreated(resp)
+#
+#        logger.info('===== get1:'+ resource_uri)
+#        resp = self.api_client.get(resource_uri, format='json', authentication=self.get_credentials(), data={ 'limit': 999 })
+#        logger.info(str(('--------resp to get:', resp, resp.status_code)))
+#        new_obj = self.deserialize(resp)
+#        logger.info(str(('deserialized object:', json.dumps(new_obj))))
+#        self.assertValidJSONResponse(resp)
+#        self.assertEqual(len(new_obj['objects']), extant_object_count+1, str((new_obj)))
+#        self.assertTrue(find_obj_in_list(initializer,new_obj['objects'] ), str(('not found', initializer, new_obj['objects'])))
+#        
+#        # now update with some field instance data
+#        initializer = {
+#               'key': 'test_field',
+#               'scope': 'fields:metahash',
+#               'ordinal': 0, 
+#               'json_field_type': 'fields.CharField', 
+#               'test_field': 'foo and bar!'    }
+#        uri = resource_uri + '/' + initializer['scope']+ '/' + initializer['key'] + '/'
+#        
+#        logger.info('===== put1:'+ uri)
+#        resp = self.api_client.put(uri, data=initializer, authentication=self.get_credentials())
+#        logger.info(str(('--------resp to put:', resp, resp.status_code)))
+#        new_obj = self.deserialize(resp)
+#        logger.info(str(('deserialized object:', json.dumps(new_obj))))
+#        self.assertHttpAccepted(resp)
+#        self.assertEqual(new_obj['test_field'], 'foo and bar!', 'unexpected result: ' +new_obj['test_field'])
+#        self.assertTrue(assert_obj1_to_obj2(initializer, new_obj), str(('assert_obj1_to_obj2', initializer, new_obj)))
+#
+#        logger.info('===== get final:'+ resource_uri)
+#        resp = self.api_client.get(resource_uri, format='json', authentication=self.get_credentials(), data={ 'limit': 999 })
+#        logger.info(str(('--------resp to get:', resp, resp.status_code)))
+#        new_obj = self.deserialize(resp)
+#        logger.info(str(('deserialized object:', json.dumps(new_obj))))
+#        self.assertValidJSONResponse(resp)
+#        self.assertEqual(len(new_obj['objects']), extant_object_count+1, str((new_obj)))
+#
+#        print '===================  finished: test put_json modification ==================='
+#        
 #    # this should work, but the tastypie.ResourceTestCase methods around post for my custom serializer are broken
 #    # todo: just test the api directly through the requests api
 #    def xxxx_test_csv_serialization(self):

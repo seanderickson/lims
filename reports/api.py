@@ -297,7 +297,7 @@ class ManagedResource(LoggingMixin):
     def reset_field_defs(self, scope):
         logger.debug(str(('----------reset_field_defs, ' , scope, 'registry', ManagedResource.resource_registry )))
         resource = ManagedResource.resource_registry[scope]
-        logger.info(str(('----------reset_field_defs, resource_name' , resource._meta, 'scope', scope, 'resource', resource )))
+        logger.info(str(('----------reset_field_defs, resource_name' , resource._meta.resource_name, 'scope', scope, 'resource', resource )))
         resource.create_fields();
         resource.reset_filtering_and_ordering();
 

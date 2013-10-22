@@ -1,4 +1,12 @@
 from django.conf.urls import url
+from django.forms.models import model_to_dict
+from django.http import Http404, HttpResponse
+from django.db import connection
+from django.contrib.auth.models import User
+
+from tastypie.resources import Resource
+from tastypie.exceptions import BadRequest
+from tastypie.utils.urls import trailing_slash
 from tastypie.authorization import Authorization
 from tastypie.authentication import BasicAuthentication, SessionAuthentication, MultiAuthentication
 from tastypie.constants import ALL, ALL_WITH_RELATIONS
@@ -8,23 +16,17 @@ from db.models import ScreensaverUser,Screen, LabHead, LabAffiliation, Screening
     ScreenStatusItem, ScreenResult, DataColumn, Library
 from lims.api import CursorSerializer, LimsSerializer, PostgresSortingResource
 from reports.models import MetaHash, Vocabularies
-from django.http import Http404, HttpResponse
+from reports.api import ManagedModelResource, ManagedResource
 
 import time
 import re
 
 import logging
-from reports.api import MetahashManagedResource, JsonAndDatabaseResource
-from django.db import connection
-from tastypie.resources import Resource
-from tastypie.exceptions import BadRequest
-from tastypie.utils.urls import trailing_slash
-from django.contrib.auth.models import User
         
 logger = logging.getLogger(__name__)
 
     
-class ScreensaverUserResource(MetahashManagedResource, PostgresSortingResource):
+class ScreensaverUserResource(ManagedModelResource):
 #    screens = fields.ToManyField('db.api.ScreenResource', 'screens', related_name='lab_head_id', blank=True, null=True)
 
     version = fields.IntegerField(attribute='version', null=True)
@@ -76,20 +78,18 @@ class ScreensaverUserResource(MetahashManagedResource, PostgresSortingResource):
         ]    
     
 
-class ScreeningRoomUserResource(PostgresSortingResource):
+class ScreeningRoomUserResource(ManagedModelResource):
     screensaver_user = fields.ToOneField('db.api.ScreensaverUserResource', attribute='screensaver_user', full=True, full_detail=True, full_list=False)
     class Meta:
         queryset = ScreeningRoomUser.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
     
-class LabAffiliationResource(PostgresSortingResource):   
+class LabAffiliationResource(ManagedModelResource):   
     class Meta:
         queryset = LabAffiliation.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
     
-from django.forms.models import model_to_dict
-
-class LabHeadResource(PostgresSortingResource):
+class LabHeadResource(ManagedModelResource):
 
     screens = fields.ToManyField('db.api.ScreenResource', 'screens', related_name='lab_head', blank=True, null=True)
 
@@ -113,7 +113,7 @@ class LabHeadResource(PostgresSortingResource):
         
         return bundle        
     
-class ScreenResultResource(MetahashManagedResource,Resource):
+class ScreenResultResource(ManagedResource):
 
     class Meta:
         queryset = ScreenResult.objects.all() #.order_by('facility_id')
@@ -328,7 +328,7 @@ class ScreenResultResource(MetahashManagedResource,Resource):
         return data
     
 
-class ScreenSummaryResource(JsonAndDatabaseResource):
+class ScreenSummaryResource(ManagedResource):
         
     class Meta:
         queryset = Screen.objects.all() #.order_by('facility_id')
@@ -341,7 +341,7 @@ class ScreenSummaryResource(JsonAndDatabaseResource):
 
     def __init__(self, **kwargs):
 #        self.
-        super(ScreenSummaryResource,self).__init__(resource='screensummary', **kwargs)
+        super(ScreenSummaryResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
         # NOTE: this match "((?=(schema))__|(?!(schema))[\w\d_.-]+)" allows us to match any word, except "schema", and use it as the key value to search for.
@@ -364,7 +364,7 @@ class ScreenSummaryResource(JsonAndDatabaseResource):
 
 
 
-class DataColumnResource(JsonAndDatabaseResource):
+class DataColumnResource(ManagedModelResource):
     screen = fields.ToOneField('db.api.ScreenResource', 'screen_result__screen')  # included to allow querying like ?screen__facility_id=##
     facility_id = fields.CharField('screen_result__screen__facility_id')
     
@@ -379,7 +379,7 @@ class DataColumnResource(JsonAndDatabaseResource):
 
     def __init__(self, **kwargs):
 #        self.
-        super(DataColumnResource,self).__init__(resource='datacolumn', **kwargs)
+        super(DataColumnResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
         # NOTE: this match "((?=(schema))__|(?!(schema))[\w\d_.-]+)" allows us to match any word, except "schema", and use it as the key value to search for.
@@ -389,11 +389,11 @@ class DataColumnResource(JsonAndDatabaseResource):
             url(r"^(?P<resource_name>%s)/(?P<data_column_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
 
-class ScreenResource(JsonAndDatabaseResource):
+class ScreenResource(ManagedModelResource):
 
 #    lab_head_full = fields.ToOneField('db.api.LabHeadResource', 'lab_head',  full=True) #, full_list=False) #, blank=True, null=True)
-    lab_head_link = fields.ToOneField('db.api.LabHeadResource', 'lab_head',  full=False)
-    lead_screener_link = fields.ToOneField('db.api.LabHeadResource', 'lab_head',  full=False)
+    lab_head_link = fields.ToOneField('db.api.LabHeadResource', 'lab_head',  full=True)
+    lead_screener_link = fields.ToOneField('db.api.LabHeadResource', 'lab_head',  full=True)
     
     lab_head_id = fields.IntegerField(attribute='lab_head_id');
     lead_screener_id = fields.IntegerField(attribute='lead_screener_id');
@@ -410,7 +410,7 @@ class ScreenResource(JsonAndDatabaseResource):
         
     def __init__(self, **kwargs):
 #        self.
-        super(ScreenResource,self).__init__(resource='screen', **kwargs)
+        super(ScreenResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
         # NOTE: this match "((?=(schema))__|(?!(schema))[\w\d_.-]+)" allows us to match any word, except "schema", and use it as the key value to search for.
@@ -420,23 +420,23 @@ class ScreenResource(JsonAndDatabaseResource):
             url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
                     
-#    def dehydrate(self, bundle):
-#        sru = bundle.obj.lead_screener.screensaver_user
-#        bundle.data['lead_screener'] =  sru.first_name + ' ' + sru.last_name
-#        lh = bundle.obj.lab_head.screensaver_user.screensaver_user
-#        bundle.data['lab_head'] =  lh.first_name + ' ' + lh.last_name
-#        # TODO: the status table does not utilize a primary key, thus it is incompatible with the standard manager
-#        #        status_item = ScreenStatusItem.objects.filter(screen=bundle.obj).order_by('status_date')[0]
-#        #        bundle.data['status'] = status_item.status
-#        #        bundle.data['status_date'] = status_item.status_date
-#
-##        logger.info(str(('dehydrate time', time.time()-_time )))
-#        bundle.data['has_screen_result'] = False
-#        try:
-#            bundle.data['has_screen_result'] = bundle.obj.screenresult != None
-#        except ScreenResult.DoesNotExist, e:
-#            logger.info(unicode(('no screenresult for ', bundle.obj)))
-#        return bundle
+    def dehydrate(self, bundle):
+        sru = bundle.obj.lead_screener.screensaver_user
+        bundle.data['lead_screener'] =  sru.first_name + ' ' + sru.last_name
+        lh = bundle.obj.lab_head.screensaver_user.screensaver_user
+        bundle.data['lab_head'] =  lh.first_name + ' ' + lh.last_name
+        # TODO: the status table does not utilize a primary key, thus it is incompatible with the standard manager
+        #        status_item = ScreenStatusItem.objects.filter(screen=bundle.obj).order_by('status_date')[0]
+        #        bundle.data['status'] = status_item.status
+        #        bundle.data['status_date'] = status_item.status_date
+
+#        logger.info(str(('dehydrate time', time.time()-_time )))
+        bundle.data['has_screen_result'] = False
+        try:
+            bundle.data['has_screen_result'] = bundle.obj.screenresult != None
+        except ScreenResult.DoesNotExist, e:
+            logger.info(unicode(('no screenresult for ', bundle.obj)))
+        return bundle
     
     def build_schema(self):
         schema = super(ScreenResource,self).build_schema()
@@ -490,7 +490,7 @@ class ScreenResource(JsonAndDatabaseResource):
         return obj_list
     
 
-class LibraryResource(JsonAndDatabaseResource):
+class LibraryResource(ManagedModelResource):
 
     class Meta:
         queryset = Library.objects.all() #.order_by('facility_id')
@@ -504,7 +504,7 @@ class LibraryResource(JsonAndDatabaseResource):
         
     def __init__(self, **kwargs):
 #        self.
-        super(LibraryResource,self).__init__(resource='library', **kwargs)
+        super(LibraryResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
         # NOTE: this match "((?=(schema))__|(?!(schema))[\w\d_.-]+)" allows us to match any word, except "schema", and use it as the key value to search for.

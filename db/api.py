@@ -30,8 +30,12 @@ class ScreensaverUserResource(ManagedModelResource):
 #    screens = fields.ToManyField('db.api.ScreenResource', 'screens', related_name='lab_head_id', blank=True, null=True)
 
     version = fields.IntegerField(attribute='version', null=True)
-    administratoruser = fields.OneToOneField('db.api.ScreensaverUserResource', 'administratoruser', null=True)
-    screeningroomuser = fields.OneToOneField('db.api.ScreensaverUserResource', 'screeningroomuser', null=True)
+    administratoruser = fields.ToOneField('db.api.ScreensaverUserResource', 'administratoruser', null=True)
+    screeningroomuser = fields.ToOneField('db.api.ScreensaverUserResource', 'screeningroomuser', null=True)
+    
+#    user = fields.ToOneField('reports.api.UserResource', 'screensaveruser', null=True, blank=True)
+    permissions = fields.ToManyField('reports.api.PermissionResource', 'permissions', null=True)
+    
     class Meta:
         queryset = ScreensaverUser.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
@@ -40,9 +44,10 @@ class ScreensaverUserResource(ManagedModelResource):
         serializer = LimsSerializer()
         excludes = ['digested_password']
         detail_uri_name = 'screensaver_user_id'
+        resource_name = 'screensaveruser'
         
     def __init__(self, **kwargs):
-        self.scope = 'fields:screensaveruser'
+#        self.scope = 'fields:screensaveruser'
         super(ScreensaverUserResource,self).__init__( **kwargs)
   
     def dehydrate(self, bundle):

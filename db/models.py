@@ -832,9 +832,9 @@ from django.contrib.auth.models import User
 
 class ScreensaverUser(models.Model):
 #    objects = PostgresManager()
-    user = models.OneToOneField(User, null=True)
+
     screensaver_user_id = models.IntegerField(primary_key=True)
-    version = models.IntegerField(blank=True)
+    version = models.IntegerField(blank=True, default=1) # TODO: legacy hibernate version attribute should go away
     date_created = models.DateTimeField()
     first_name = models.TextField()
     last_name = models.TextField()
@@ -853,8 +853,9 @@ class ScreensaverUser(models.Model):
     date_publicly_available = models.DateTimeField(null=True, blank=True)
 
     # TODO: it would be nice to move user out of db
+    user = models.OneToOneField(User, null=True, blank=True)
     permissions = models.ManyToManyField('reports.Permission')
-    
+#    usergroups = models.ManyToManyField('reports.UserGroup')
     class Meta:
         db_table = 'screensaver_user'
         

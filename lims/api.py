@@ -1,16 +1,14 @@
 
-from tastypie.resources import ModelResource, Resource
+from tastypie.resources import ModelResource
 from tastypie.serializers import Serializer
 from django.utils.encoding import smart_str
-from copy import deepcopy
 
 import csv
 import StringIO
 import json
 import logging
         
-from django.core.exceptions import ObjectDoesNotExist
-from tastypie.exceptions import NotFound
+from tastypie import fields
 from django.utils.timezone import is_naive
 from collections import OrderedDict
 from django.core.serializers.json import DjangoJSONEncoder
@@ -20,6 +18,31 @@ from django.db.backends.util import CursorDebugWrapper
 
 
 logger = logging.getLogger(__name__)
+
+class CsvBooleanField(fields.ApiField):
+    """
+    because csv is not json, have to do some fudging with booleans,
+    basically, for strings, case insensitive "true" is True, all else, are False
+    non-strings are interpreted as usual, using bool(val)
+    """
+    dehydrated_type = 'boolean'
+    help_text = 'Boolean data. Ex: True'
+
+    def convert(self, value):
+#        logger.info(str((self.attribute, ': converting value:', value)) )
+        if value is None:
+#            logger.info('value is None')
+            # return False
+            return None
+        if isinstance(value, basestring):
+            if value.lower() == 'true':
+#                logger.info('value is True')
+                return True
+#            logger.info('value is false')
+            return False
+            
+        else:
+            return bool(value)
 
 
 class BackboneSerializer(Serializer):

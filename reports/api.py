@@ -3,13 +3,15 @@ import re
 import sys
 import os
 
+from collections import defaultdict
+
 from copy import deepcopy
 from django.conf.urls import url
 from django.utils.encoding import smart_str, smart_text
 from django.utils import timezone
 from django.forms.models import model_to_dict
 from django.core.exceptions import ObjectDoesNotExist
-from tastypie.exceptions import NotFound
+from tastypie.exceptions import NotFound, ImmediateHttpResponse
 from tastypie.bundle import Bundle
 import traceback
 #from django.contrib.auth.models import Group, User, Permission
@@ -26,45 +28,27 @@ from reports.models import MetaHash, Vocabularies, ApiLog, Permission, UserGroup
 import logging
 from tastypie.utils.urls import trailing_slash
 from django.contrib.auth.models import User
+from collections import OrderedDict
+from db.models import ScreensaverUser
+from django.db.models.aggregates import Max
 #from reports import dump_obj
+from lims.api import CsvBooleanField
         
 logger = logging.getLogger(__name__)
-
-class CsvBooleanField(fields.ApiField):
-    """
-    because csv is not json, have to do some fudging with booleans,
-    basically, for strings, case insensitive "true" is True, all else, are False
-    non-strings are interpreted as usual, using bool(val)
-    """
-    dehydrated_type = 'boolean'
-    help_text = 'Boolean data. Ex: True'
-
-    def convert(self, value):
-#        logger.info(str((self.attribute, ': converting value:', value)) )
-        if value is None:
-#            logger.info('value is None')
-            # return False
-            return None
-        if isinstance(value, basestring):
-            if value.lower() == 'true':
-#                logger.info('value is True')
-                return True
-#            logger.info('value is false')
-            return False
-            
-        else:
-            return bool(value)
 
 
 class LoggingMixin(Resource):
     '''
     intercepts obj_create, obj_update and creates an ApiLog entry for the action
+    Note: whatever is being extended with the LoggingMixin must also define a
+    "detail_uri_kwargs" method that returns an _ordered_dict_, since we log the kwargs as ordered args.
+    ** note: "detail_uri_kwargs" returns the set of lookup keys for the resource URI construction.
     '''
     def obj_create(self, bundle, **kwargs):
         logger.info('----log obj_create')
         
         bundle = super(LoggingMixin, self).obj_create(bundle=bundle, **kwargs)
-#        logger.info(str(('object created', model_to_dict(bundle.obj) )))
+        logger.info(str(('object created', bundle.obj )))
         log = ApiLog()
         log.username = bundle.request.user.username #self._meta.authentication.get_identifier(bundle.request) # see tastypie.authentication.Authentication
         log.user_id = bundle.request.user.id #self._meta.authentication.get_identifier(bundle.request) # see tastypie.authentication.Authentication
@@ -76,7 +60,10 @@ class LoggingMixin(Resource):
         # user can specify any valid, escaped json for this field
         if 'apilog_json_field' in bundle.data:
             log.json_field = json.dumps(bundle.data['apilog_json_field'])
-        log.uri,log.key = self.get_uri(bundle.request.get_full_path(), self._meta.resource_name, bundle.obj, bundle.data)
+#        log.uri,log.key = self.get_uri(bundle.request.get_full_path(), self._meta.resource_name, bundle.obj, bundle.data)
+        log.uri = self.get_resource_uri(bundle)
+        log.key = '/'.join([str(x) for x in self.detail_uri_kwargs(bundle).values()])
+
         log.save()
         logger.info(str(('create, api log', log)) )
         
@@ -98,7 +85,10 @@ class LoggingMixin(Resource):
         # user can specify any valid, escaped json for this field
         if 'apilog_json_field' in bundle.data:
             log.json_field = json.dumps(bundle.data['apilog_json_field'])
-        log.uri,log.key = self.get_uri(bundle.request.get_full_path(), self._meta.resource_name, bundle.obj, bundle.data)
+#        log.uri,log.key = self.get_uri(bundle.request.get_full_path(), self._meta.resource_name, bundle.obj, bundle.data)
+        log.uri = self.get_resource_uri(bundle)
+        log.key = '/'.join([str(x) for x in self.detail_uri_kwargs(bundle).values()])
+
         log.save()
         logger.info(str(('delete, api log', log)) )
         
@@ -123,107 +113,122 @@ class LoggingMixin(Resource):
         return bundle
     
     
-    def get_uri(self, full_path, resource_name, obj, data):
-        # replace the id with the "id attribute" ids (public ID's)
-        # this is necessary because users of the API may be using internal IDs not specified as the official IDs
-        #
-        # TODO: use Django's "reverse" along with named URLs in urls.py to lookup resource URLS with filled in values
-        # I saw it somewhere on stackoverflow
-        
-        
-#        logger.info('--- get_uri: '+ full_path)
-        key = obj.id 
-        
-        # look up the resource definition
-                        
-        try:
-#            logger.info(str(('trying to locate resource information', resource_name, self.scope)))
-            resource_def = MetaHash.objects.get(scope='resource', key=resource_name)
-#            logger.info(str(('create dict for obj', resource_def)))
-            resource = resource_def.model_to_dict(scope='fields:resource')
-#            logger.info(str(('--- got', resource, resource['id_attribute'] )))
-        except Exception, e:
-            logger.warn(str(('unable to locate resource information, has it been loaded yet for this resource?', resource_name, e)))
-            return (full_path, key)
-
-        try:            
-            # parse the key as whatever is after the resource name in the path
-            matchObject = re.match(r'(.*\/'+resource_name+'(\/)?)(.*)', full_path)
-            
-            provided_key = ''
-            if(matchObject):
-                if matchObject.group(2):
-                    provided_key = matchObject.group(2)
-                    if provided_key[len(provided_key)-1] == '/': 
-                        provided_key = provided_key[:len(provided_key)-1]
-            else:
-                raise Exception(str(('resource name not in path', resource_name, full_path )) )
-
-            # If the obj is provided, use it to get the key attributes    
-            if obj and obj.id:
-                new_public_key = "/".join([getattr(obj,x) for x in resource['id_attribute']])
-                logging.info(str(('created new public key', new_public_key, 'for object to log:', obj, 'resource', resource_name)))
-                full_path = matchObject.group(1) + new_public_key #+ '/'
-                key = new_public_key
-
-                if len(provided_key)> 0 and str(obj.id) != provided_key:
-                    logger.info(str(('provided key in the path is not equal to the obj id', full_path, provided_key, obj.id)))     
-            # otherwise, use the data bundle (i.e. not yet persisted data)
-            else:
-                new_public_key = "/".join([data[x] for x in resource['id_attribute']])
-                logging.info(str(('created new public key', new_public_key, 'for data to log:', data, 'resource', resource_name)))
-                full_path = matchObject.group(1) + new_public_key #+ '/'
-                key = new_public_key
-                    
-#                    if obj and len(key) > 0:  # if the obj has a key, and you gave me a keyits equal to the key we got in the passed in path, then replace
-#                        if (str((obj.id))) == key :
-#                            # replace the key given with the key we want to record
-#                            new_public_key = "/".join([getattr(obj,x) for x in resource['id_attribute']])
-#                            logging.info(str(('created new public key', new_public_key, 'for object to log:', obj, 'resource', resource_name)))
-#                            full_path = matchObject.group(1) + new_public_key # + '/'
-#                            key = new_public_key
-#                        else:
-#                            logger.info(str(('id',obj.id,'doesnt equal match obj', key, full_path, resource_name, matchObject.group())))
-#                    else:
-#                        new_public_key = "/".join([data[x] for x in resource['id_attribute']])
-#                        logging.info(str(('created new public key', new_public_key, 'for data to log:', data, 'resource', resource_name)))
-#                        full_path = matchObject.group(1) + new_public_key #+ '/'
-#                        key = new_public_key
+#    def get_uri(self, full_path, resource_name, obj, data):
+#        # replace the id with the "id attribute" ids (public ID's)
+#        # this is necessary because users of the API may be using internal IDs not specified as the official IDs
+#        #
+#        # TODO: use Django's "reverse" along with named URLs in urls.py to lookup resource URLS with filled in values
+#        # I saw it somewhere on stackoverflow
+#        
+#        
+##        logger.info('--- get_uri: '+ full_path)
+#        key = obj.id 
+#        
+#        # look up the resource definition
 #                        
-#                else: # found the resource, but id was not given
-#                    if obj:
-#                        new_public_key = "/".join([getattr(obj,x) for x in resource['id_attribute']])
-#                        logging.info(str(('created new public key', new_public_key, 'for object to log:', obj, 'resource', resource_name)))
-#                        full_path = matchObject.group(1) + new_public_key #+ '/'
-#                        key = new_public_key
-#                    else: # no object, probably means this is a create
-#                        new_public_key = "/".join([data[x] for x in resource['id_attribute']])
-#                        logging.info(str(('created new public key', new_public_key, 'for data to log:', data, 'resource', resource_name)))
-#                        full_path = matchObject.group(1) + new_public_key #+ '/'
-#                        key = new_public_key
-#                        
+#        try:
+##            logger.info(str(('trying to locate resource information', resource_name, self.scope)))
+#            resource_def = MetaHash.objects.get(scope='resource', key=resource_name)
+##            logger.info(str(('create dict for obj', resource_def)))
+#            resource = resource_def.model_to_dict(scope='fields:resource')
+##            logger.info(str(('--- got', resource, resource['id_attribute'] )))
+#        except Exception, e:
+#            logger.warn(str(('unable to locate resource information, has it been loaded yet for this resource?', resource_name, e)))
+#            return (full_path, key)
+#
+#        try:            
+#            # parse the key as whatever is after the resource name in the path
+#            matchObject = re.match(r'(.*\/'+resource_name+'(\/)?)(.*)', full_path)
+#            
+#            provided_key = ''
+#            if(matchObject):
+#                if matchObject.group(2):
+#                    provided_key = matchObject.group(2)
+#                    if provided_key[len(provided_key)-1] == '/': 
+#                        provided_key = provided_key[:len(provided_key)-1]
 #            else:
-#                logger.warn(str(('non-standard resource, does not contain resource_name:', resource_name, full_path)))
-        except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            logger.error(str((exc_type, fname, exc_tb.tb_lineno)))
-            logger.error(str(('on trying to extract public key information from the object and data', full_path, resource_name, obj, data, resource, e)))
-            logger.error(str(('using uri,key:', full_path, key)))
-        logger.debug(str(('got uri,key:', full_path, key)))
-        return (full_path, key)
+#                raise Exception(str(('resource name not in path', resource_name, full_path )) )
+#
+#            # If the obj is provided, use it to get the key attributes    
+#            if obj and obj.id:
+#                new_public_key = "/".join([getattr(obj,x) for x in resource['id_attribute']])
+#                logging.info(str(('created new public key', new_public_key, 'for object to log:', obj, 'resource', resource_name)))
+#                full_path = matchObject.group(1) + new_public_key #+ '/'
+#                key = new_public_key
+#
+#                if len(provided_key)> 0 and str(obj.id) != provided_key:
+#                    logger.info(str(('provided key in the path is not equal to the obj id', full_path, provided_key, obj.id)))     
+#            # otherwise, use the data bundle (i.e. not yet persisted data)
+#            else:
+#                new_public_key = "/".join([data[x] for x in resource['id_attribute']])
+#                logging.info(str(('created new public key', new_public_key, 'for data to log:', data, 'resource', resource_name)))
+#                full_path = matchObject.group(1) + new_public_key #+ '/'
+#                key = new_public_key
+#                    
+##                    if obj and len(key) > 0:  # if the obj has a key, and you gave me a keyits equal to the key we got in the passed in path, then replace
+##                        if (str((obj.id))) == key :
+##                            # replace the key given with the key we want to record
+##                            new_public_key = "/".join([getattr(obj,x) for x in resource['id_attribute']])
+##                            logging.info(str(('created new public key', new_public_key, 'for object to log:', obj, 'resource', resource_name)))
+##                            full_path = matchObject.group(1) + new_public_key # + '/'
+##                            key = new_public_key
+##                        else:
+##                            logger.info(str(('id',obj.id,'doesnt equal match obj', key, full_path, resource_name, matchObject.group())))
+##                    else:
+##                        new_public_key = "/".join([data[x] for x in resource['id_attribute']])
+##                        logging.info(str(('created new public key', new_public_key, 'for data to log:', data, 'resource', resource_name)))
+##                        full_path = matchObject.group(1) + new_public_key #+ '/'
+##                        key = new_public_key
+##                        
+##                else: # found the resource, but id was not given
+##                    if obj:
+##                        new_public_key = "/".join([getattr(obj,x) for x in resource['id_attribute']])
+##                        logging.info(str(('created new public key', new_public_key, 'for object to log:', obj, 'resource', resource_name)))
+##                        full_path = matchObject.group(1) + new_public_key #+ '/'
+##                        key = new_public_key
+##                    else: # no object, probably means this is a create
+##                        new_public_key = "/".join([data[x] for x in resource['id_attribute']])
+##                        logging.info(str(('created new public key', new_public_key, 'for data to log:', data, 'resource', resource_name)))
+##                        full_path = matchObject.group(1) + new_public_key #+ '/'
+##                        key = new_public_key
+##                        
+##            else:
+##                logger.warn(str(('non-standard resource, does not contain resource_name:', resource_name, full_path)))
+#        except Exception, e:
+#            exc_type, exc_obj, exc_tb = sys.exc_info()
+#            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+#            logger.error(str((exc_type, fname, exc_tb.tb_lineno)))
+#            logger.error(str(('on trying to extract public key information from the object and data', full_path, resource_name, obj, data, resource, e)))
+#            logger.error(str(('using uri,key:', full_path, key)))
+#        logger.debug(str(('got uri,key:', full_path, key)))
+#        return (full_path, key)
               
     
     def obj_update(self, bundle, skip_errors=False, **kwargs):
         logger.info('--- log obj_update')
         original_bundle = Bundle(data=deepcopy(bundle.data))
+        i=0;
+
         if hasattr(bundle,'obj'): original_bundle.obj = bundle.obj
         original_bundle = self._locate_obj(original_bundle, **kwargs)
+
+        i +=1
+        logger.info('--- log obj_update fd' + str(i))
         
         original_bundle = super(LoggingMixin, self).full_dehydrate(original_bundle)
         
+        i +=1
+        logger.info('--- log obj_update u' + str(i))
+        
         updated_bundle = super(LoggingMixin, self).obj_update(bundle=bundle, **kwargs)
+        
+        i +=1
+        logger.info('--- log obj_update fd' + str(i))
+        
         updated_bundle = super(LoggingMixin, self).full_dehydrate(updated_bundle)
+        
+        i +=1
+        logger.info('--- log obj_update ' + str(i))
         
         # TODO: diff updated_bundle.data
         original_keys = set(original_bundle.data.keys())
@@ -237,7 +242,9 @@ class LoggingMixin(Resource):
         log.date_time = timezone.now()
         log.ref_resource_name = self._meta.resource_name
         log.api_action = str((bundle.request.method)).upper()
-        log.uri,log.key = self.get_uri(bundle.request.get_full_path(), self._meta.resource_name, bundle.obj, bundle.data)
+#        log.uri,log.key = self.get_uri(bundle.request.get_full_path(), self._meta.resource_name, bundle.obj, bundle.data)
+        log.uri = self.get_resource_uri(bundle)
+        log.key = '/'.join([str(x) for x in self.detail_uri_kwargs(bundle).values()])
         
         added_keys = list(updated_keys - intersect_keys)
         if len(added_keys)>0: 
@@ -256,12 +263,17 @@ class LoggingMixin(Resource):
         if 'apilog_json_field' in bundle.data:
             log.json_field = json.dumps(bundle.data['apilog_json_field'])
             
+        i +=1
+        logger.info('--- log obj_update apilog.save ' + str(i))
         log.save()
         logger.info(str(('update, api log', log)) )
         
         return updated_bundle
                   
 
+# NOTE if using this class, must implement the "not implemented error" methods on Resource 
+# (Are implemented with ModelResource)
+# for instance, "detail_uri_kwargs" which returns the kwargs needed to construct the uri
 class ManagedResource(LoggingMixin):
     '''
     Uses the field and resource definitions in the Metahash store to determine the fields to expose for a Resource
@@ -295,7 +307,7 @@ class ManagedResource(LoggingMixin):
         
     # local method  
     def reset_field_defs(self, scope):
-        logger.debug(str(('----------reset_field_defs, ' , scope, 'registry', ManagedResource.resource_registry )))
+        logger.info(str(('----------reset_field_defs, ' , scope, 'registry', ManagedResource.resource_registry )))
         resource = ManagedResource.resource_registry[scope]
         logger.info(str(('----------reset_field_defs, resource_name' , resource._meta.resource_name, 'scope', scope, 'resource', resource )))
         resource.create_fields();
@@ -398,7 +410,7 @@ class ManagedResource(LoggingMixin):
     # implementation hook method, override to augment bundle, post dehydrate by the superclass
     # used here to do the "hydrate_json_field"
     def dehydrate(self, bundle):
-        logger.debug(str(('------dehydrate: ', self.scope,bundle.obj.json_field)) )
+        logger.debug(str(('------dehydrate: ', self.scope)) )
 
         if len(bundle.data) == 0 : return bundle
         
@@ -411,7 +423,7 @@ class ManagedResource(LoggingMixin):
         bundle.data.pop('json_field') # json_field will not be part of the public API, it is for internal use only
 #        logger.info(str(('bundle.data', bundle.data)))
         # override the resource_uri, since we want to export the permanent composite key
-        bundle.data['resource_uri'] = self.build_resource_uri(self.resource, bundle.data) or bundle.data['resource_uri']
+#        bundle.data['resource_uri'] = self.build_resource_uri(self.resource, bundle.data) or bundle.data['resource_uri']
         
         return bundle
     
@@ -473,44 +485,85 @@ class ManagedResource(LoggingMixin):
         bundle = super(ManagedResource, self).obj_update(bundle, **kwargs);
         return bundle
 
-    # local method
-    def build_key(self, resource_name, data):
+#    # local method
+#    def build_key(self, resource_name, data):
+#        try:
+#            resource_def = MetaHash.objects.get(scope='resource', key=resource_name)
+#            resource = resource_def.model_to_dict(scope='fields:resource')
+##            logger.info(str(('found resource', resource)))
+#            
+#            key_bits = []
+#            for x in resource['id_attribute']:
+#                if hasattr(data,x ):
+#                    key_bits.append(getattr(data,x))
+#                else:
+#                    key_bits.append(data[x])
+#            return  "/".join([str(x) for x in key_bits])
+#        except Exception, e:
+#            logger.warn(str(('unable to locate resource information[id_attribute]; has it been loaded yet for this resource?', resource_name, e)))
+#    
+#    URL_BASE = '/reports/api'
+#
+#    # local method
+#    # TODO: REDO this using resources.Resource.get_resource_uri and resource_uri_kwargs methods
+#    def build_resource_uri(self, resource_name, data):
+#        new_key = self.build_key(resource_name, data)
+#        if new_key:
+##            base_uri = self.get_resource_uri()
+##            if base_uri[len(base_uri)-1] != '/':
+##                base_uri += '/'
+##            return base_uri + new_key
+#            return self.URL_BASE + '/' + self._meta.api_name + '/'  + resource_name + '/' + new_key
+#
+#    # local method
+#    def obj_resource_uri(self, resource_name, obj):
+#        new_key = self.build_key(resource_name, obj)
+#        if new_key:
+#            return self.URL_BASE + '/' + self._meta.api_name + '/'  + resource_name + '/' + new_key
+##            base_uri = self.get_resource_uri()
+##            if base_uri[len(base_uri)-1] != '/':
+##                base_uri += '/'
+##            return base_uri + new_key
+
+    def detail_uri_kwargs(self, bundle_or_obj):
+        resource_name = self._meta.resource_name
         try:
             resource_def = MetaHash.objects.get(scope='resource', key=resource_name)
             resource = resource_def.model_to_dict(scope='fields:resource')
 #            logger.info(str(('found resource', resource)))
             
-            key_bits = []
+            # TODO: memoize
+            kwargs = OrderedDict() # note use an ordered dict here so that the args can be returned as a positional array for 
             for x in resource['id_attribute']:
-                if hasattr(data,x ):
-                    key_bits.append(getattr(data,x))
+                val = ''
+                if isinstance(bundle_or_obj, Bundle):
+                    val = getattr(bundle_or_obj.obj,x)
                 else:
-                    key_bits.append(data[x])
-            return  "/".join(key_bits)
+                    val = getattr(bundle_or_obj,x)
+                kwargs[x] = str(val)
+            return kwargs
         except Exception, e:
             logger.warn(str(('unable to locate resource information[id_attribute]; has it been loaded yet for this resource?', resource_name, e)))
+        # Fall back to base class implementation (using the declared primary key only, for ModelResource)
+        # This is useful in order to bootstrap the ResourceResource
+        return super(ManagedResource,self).detail_uri_kwargs(bundle_or_obj)
 
-    URL_BASE = '/reports/api'
 
-    # local method
-    def build_resource_uri(self, resource_name, data):
-        new_key = self.build_key(resource_name, data)
-        if new_key:
-#            base_uri = self.get_resource_uri()
-#            if base_uri[len(base_uri)-1] != '/':
-#                base_uri += '/'
-#            return base_uri + new_key
-            return self.URL_BASE + '/' + self._meta.api_name + '/'  + resource_name + '/' + new_key
-
-    # local method
-    def obj_resource_uri(self, resource_name, obj):
-        new_key = self.build_key(resource_name, obj)
-        if new_key:
-            return self.URL_BASE + '/' + self._meta.api_name + '/'  + resource_name + '/' + new_key
-#            base_uri = self.get_resource_uri()
-#            if base_uri[len(base_uri)-1] != '/':
-#                base_uri += '/'
-#            return base_uri + new_key
+#    def detail_uri_kwargs(self, bundle_or_obj):
+#        """
+#        Given a ``Bundle`` or an object (typically a ``Model`` instance),
+#        it returns the extra kwargs needed to generate a detail URI.
+#
+#        By default, it uses the model's ``pk`` in order to create the URI.
+#        """
+#        kwargs = {}
+#
+#        if isinstance(bundle_or_obj, Bundle):
+#            kwargs[self._meta.detail_uri_name] = getattr(bundle_or_obj.obj, self._meta.detail_uri_name)
+#        else:
+#            kwargs[self._meta.detail_uri_name] = getattr(bundle_or_obj, self._meta.detail_uri_name)
+#
+#        return kwargs
 
     # implementation hook - URLS to match _before_ the default URLS
     # used here to allow the natural keys [scope, key] to be used
@@ -554,7 +607,8 @@ class MetaHashResource(ManagedModelResource):
     # or in case ordering,filtering groups are updated
     def obj_create(self, bundle, **kwargs):
         bundle = super(MetaHashResource, self).obj_create(bundle, **kwargs);
-        self.reset_field_defs(getattr(bundle.obj,'scope'))
+        if getattr(bundle.obj,'scope').find('fields') == 0: #'fields:metahash':
+            self.reset_field_defs(getattr(bundle.obj,'scope'))
 #        if getattr(bundle.obj,'scope') == self.scope: #'fields:metahash':
 #            logger.info(str(('post-obj_create, bundle.obj', bundle.obj, 'reset the hash')))
 #            self.reset_field_defs();
@@ -683,18 +737,22 @@ class ApiLogResource(ManagedModelResource):
             url(r"^(?P<resource_name>%s)/(?P<ref_resource_name>[\w\d_.\-:]+)/(?P<date_time>[\w\d_.\-\+:]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
 
-#
-# Note: Users are in the db model for historical reasons (chose not to migrate at genesis)
-
+# Resource to access the django auth_user model.
+# Utilizes the local user model in db.screensaveruser as well.
+# Note: screensaverusers are in the db model for historical reasons (chose not to migrate at genesis)
 class UserResource(ManagedModelResource):
-    permissions = fields.CharField()
-
-    groups = fields.ToManyField('reports.api.UserGroupResource', 'groups', related_name='users', blank=True, null=True)
     
+    # force the pk to be read only so that it doesn't try to create
+    # TODO: store readonly attribute in the hash
+    screensaver_user_id = fields.IntegerField('screensaver_user_id', readonly=True) 
+    usergroups = fields.ToManyField('reports.api.UserGroupResource', 'usergroup_set', related_name='users', blank=True, null=True)
+#    django_user = fields.OneToOneField('db.api.ScreensaverUserResource', 'screensaveruser', blank=True, null=True )
+    permissions = fields.ToManyField('reports.api.PermissionResource', 'permissions', null=True) #, related_name='users', blank=True, null=True)
     
     class Meta:
         scope = 'fields:user'
-        queryset = User.objects.all()
+        queryset = ScreensaverUser.objects.all()
+        
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
         resource_name='user' 
         authorization= Authorization()        
@@ -706,47 +764,172 @@ class UserResource(ManagedModelResource):
 
     def __init__(self, **kwargs):
         super(UserResource,self).__init__(**kwargs)
-    
-    # permissions is a nested property - not exposing it as a resource - 
-    # so hydrate/dehydrate will be done custom
-    def dehydrate_permissions(self, bundle):
-        logger.info('dehydrate permissions')
-        try:
-            screensaverUser = bundle.obj.screensaveruser
-            if screensaverUser:
-                permissions = [ model_to_dict(x, exclude='id') for x in screensaverUser.permissions.all()]
-                logger.info(str(('created permissions', permissions)))
-                return permissions
-        except Exception, e:
-            logger.warn(str(('error accessing the screensaver user element', e)))
-            
-    
-    def hydrate_permissions(self, bundle):
-        logger.info(str(('hydrate_permissions')))
-        try:
-            screensaverUser = bundle.obj.screensaveruser
-            
-            permission_array = bundle.data['permissions']
-            for p in permission_array:
-                try:
-                    permission = Permission.objects.get(**p)
-                except ObjectDoesNotExist, e:
-                    # create the permission on the fly, if the resource it refers to exists
-                    # todo: make sure that the Resource can also be found
-                    resource = MetaHash.objects.get(scope=p['scope'], key=p['key'])
-                    permission = Permission(**p)
-                    permission.save()
-                screensaverUser.permissions.add(permission)
-                screensaverUser.save();
-                logger.info(str(('permission saved', permission)))
-        except Exception, e:
-            logger.warn(str(('error accessing the screensaver user element on hydrate', e)))
+
+    def hydrate(self, bundle):
+        bundle = super(UserResource, self).hydrate(bundle);
         return bundle
+    
+    def obj_create(self, bundle, **kwargs):
+        """
+        A iccbl user specific implementation of ``obj_create``.
+        """
+        bundle.obj = self._meta.object_class()
+
+        for key, value in kwargs.items():
+            setattr(bundle.obj, key, value)
+
+        self.authorized_create_detail(self.get_object_list(bundle.request), bundle)
+        bundle = self.full_hydrate(bundle)
+        return self.save(bundle)
+
+    def is_valid(self, bundle):
+        """
+        Should return a dictionary of error messages. If the dictionary has
+        zero items, the data is considered valid. If there are errors, keys
+        in the dictionary should be field names and the values should be a list
+        of errors, even if there is only one.
+        """
+        
+        # cribbed from tastypie.validation.py - mesh data and obj values, then validate
+        data = {}
+        if bundle.obj.pk:
+            data = model_to_dict(bundle.obj)
+        if data is None:
+            data = {}
+        data.update(bundle.data)
+        
+        # do validations
+        errors = defaultdict(list)
+        
+        # TODO: rework this to be driven by the metahash
+        
+        # TODO: clean up model, use only login_id
+        if data.get('login_id') and data.get('ecommons_id'):
+            errors['login_id'] = ['specify either ecommons or login_id']
+        if not ( data.get('login_id') or data.get('ecommons_id') ):
+            errors['login_id'] = ['specify either ecommons or login_id']
+        
+        if not data.get('first_name'):
+            errors['first_name'] = ['first_name must be specified']
+        
+        if not data.get('last_name'):
+            errors['last_name'] = ['last_name must be specified']
+        
+        if not data.get('email'):
+            errors['email'] = ['email must be specified']
+        
+        username = data.get('ecommons_id')
+        if not username:
+            username = data.get('login_id')
+
+        # Special validations, because there are two user objects, the ScreensaverUser, django auth.User
+        try:
+            extant_user = User.objects.get(username=username)
+            errors['login_id'].append('login_id is already in use: ' + username)
+            errors['ecommons_id'].append('ecommons_id is already in use: ' + username)
+            extant_user = User.objects.get(email=data['email'])
+            errors['email'].append('email is already in use: ' + username)
+        except ObjectDoesNotExist:
+            pass
+        
+        if errors:
+            logger.warn(str(('bundle errors', bundle.errors)))
+            bundle.errors[self._meta.resource_name] = errors
+            return False
+        return True
+        
+    
+    def save(self, bundle, skip_errors=False):
+        self.is_valid(bundle)
+
+        if bundle.errors and not skip_errors:
+            raise ImmediateHttpResponse(response=self.error_response(bundle.request, bundle.errors))
+
+        # Check if they're authorized.
+        if bundle.obj.pk:
+            self.authorized_update_detail(self.get_object_list(bundle.request), bundle)
+        else:
+            self.authorized_create_detail(self.get_object_list(bundle.request), bundle)
+        
+#        raise NotImplementedError('create new user not implemented')  
+
+        # create a new screensaver_user_id
+        if not bundle.obj.screensaver_user_id:
+            max_result = ScreensaverUser.objects.all().aggregate(Max('screensaver_user_id'))
+            new_id = max_result.get('screensaver_user_id__max', 0) or 0
+            new_id +=1
+            logger.info(str(('creating new screensaver_user_id',new_id)))
+            bundle.obj.screensaver_user_id = new_id
+            
+            bundle.obj.date_created = timezone.now()
+
+        logger.info('saving')
+        bundle.obj.save();
+        
+        # create a Django user
+        username = bundle.obj.ecommons_id
+        if bundle.obj.login_id:
+            username = bundle.obj.login_id
+        
+        if not bundle.obj.user:
+            logger.info('==========create a django user for username: ' + username )
+            django_user = User.objects.create_user(username, 
+                email=bundle.obj.email, 
+                first_name=bundle.obj.first_name, 
+                last_name=bundle.obj.last_name)
+            django_user.screensaveruser = bundle.obj
+            logger.info('save django user')
+            django_user.save();
+        
+        bundle.objects_saved.add(self.create_identifier(bundle.obj))
+
+        #TODO: set password as a separate step
+        logger.info('user save done')
+        return bundle
+
+
+    def obj_update(self, bundle, skip_errors=False, **kwargs):
+        """
+        A iccbl user-specific implementation of ``obj_update``.
+        """
+        if not bundle.obj or not self.get_bundle_detail_data(bundle):
+            try:
+                lookup_kwargs = self.lookup_kwargs_with_identifiers(bundle, kwargs)
+            except:
+                # if there is trouble hydrating the data, fall back to just
+                # using kwargs by itself (usually it only contains a "pk" key
+                # and this will work fine.
+                lookup_kwargs = kwargs
+
+            try:
+                bundle.obj = self.obj_get(bundle=bundle, **lookup_kwargs)
+            except ObjectDoesNotExist:
+                raise NotFound("A model instance matching the provided arguments could not be found.")
+
+        bundle = self.full_hydrate(bundle)
+        return self.save(bundle, skip_errors=skip_errors)
+    
+    # not tested
+    def obj_delete(self, bundle, **kwargs):
+        
+        django_user = bundle.obj.user
+        
+        super(UserResource, self).obj_delete(bundle,**kwargs)
+        
+        if django_user:
+            django_user.delete()
+        
+    def dehydrate_group_list(self,bundle):
+        return [x.name for x in bundle.obj.usergroup_set.all()]
+
+# TODO: require a custom list-o-objects viewer 
+#    def dehydrate_permission_list(self, bundle):
+#        return  [ [x.scope, x.key, x.type] for x in bundle.obj.permissions.all()]
 
     def prepend_urls(self):
         return [
-            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<username>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+#            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             ]    
 
 # see http://www.maykinmedia.nl/blog/2012/oct/2/nested-resources-tastypie/
@@ -760,9 +943,9 @@ class UserResource(ManagedModelResource):
 
 class UserGroupResource(ManagedModelResource):
     
-    permissions = fields.CharField() # virtual field, see hydrate and dehydrate methods
-    user_list = fields.CharField(readonly=True)
-    
+    permissions = fields.ToManyField('reports.api.PermissionResource', 'permissions', null=True) #, related_name='users', blank=True, null=True)
+ 
+    # relational fields must be defined   
     users = fields.ToManyField('reports.api.UserResource', 'users', related_name='groups', blank=True, null=True)
     
     class Meta:
@@ -786,10 +969,21 @@ class UserGroupResource(ManagedModelResource):
 #        schema['extraSelectorOptions'] = { 'label': 'Resource', 'searchColumn': 'ref_resource_name', 'options': temp }
         return schema
     
+    def dehydrate_permission_list(self, bundle):
+        logger.info('dehydrate permissions')
+        try:
+            screensaverUser = bundle.obj.screensaveruser
+            if screensaverUser:
+#                permissions = [ model_to_dict(x, exclude='id') for x in screensaverUser.permissions.all()]
+                permissions = [ [x.scope, x.key, x.type] for x in screensaverUser.permissions.all()]
+                return permissions
+        except Exception, e:
+            logger.warn(str(('error accessing the screensaver user element', e)))
+        
     def dehydrate_user_list(self,bundle):
         users = []
         for user in bundle.obj.users.all():
-             users.append(str(user))
+             users.append( '[ %d - %s %s ]' % (user.screensaver_user_id, user.first_name, user.last_name))
         return users
     
     def dehydrate_users(self, bundle):
@@ -798,48 +992,9 @@ class UserGroupResource(ManagedModelResource):
              uri_list.append(self.obj_resource_uri('user', user))
         
         return uri_list;
-    
-    def dehydrate_permissions(self, bundle):
-        logger.info('dehydrate permissions')
-        try:
-            permissions = [ model_to_dict(x, exclude='id') for x in bundle.obj.permissions.all()]
-            logger.info(str(('created permissions', permissions)))
-            return permissions
-        except Exception, e:
-            logger.warn(str(('error accessing the permissions attribute on dehydrate', e)))
-    
+        
     def dehydrate(self,bundle):
         bundle.data['id'] = bundle.obj.id
-        return bundle
-        
-    # Unfortunately, we cannot custom manage our m2m reln' using the provided "hydrate_foo" pattern;
-    # this is because tastypie is calling hydrate_permissions before saving the main object - 
-    # see: tastypie.resources.ModelResource.obj_update and obj_create.
-    # With this methodology, the actual hydration of the m2m uri's occurs _after_
-    # the main save() located at the end of ModelResource.obj_create; 
-    # therefore, we'll have to do the same thing.
-    # So, not this: def hydrate_permissions(self, bundle):
-    # but rather, this:
-    def obj_create(self, bundle, **kwargs):
-        bundle = super(UserGroupResource, self).obj_create(bundle, **kwargs)
-        
-        logger.info(str(('hydrate_permissions')))
-        if 'permissions' in bundle.data:
-            try:
-                permission_array = bundle.data['permissions']
-                for p in permission_array:
-                    try:
-                        permission = Permission.objects.get(**p)
-                    except ObjectDoesNotExist, e:
-                        # create the permission on the fly, if the resource it refers to exists
-                        # todo: make sure that the Resource can also be found
-                        resource = MetaHash.objects.get(scope=p['scope'], key=p['key'])
-                        permission = Permission(**p)
-                        permission.save()
-                    bundle.obj.permissions.add(permission)
-                    logger.info(str(('permission added to group', bundle.obj, permission)))
-            except Exception, e:
-                logger.warn(str(('error accessing the permission attribute on hydrate', e)))
         return bundle
 
     def prepend_urls(self):
@@ -849,15 +1004,14 @@ class UserGroupResource(ManagedModelResource):
             ]
 
 from django.db.models import Q
-class PermissionResource(ManagedResource):
+class PermissionResource(ManagedModelResource):
     
     users = fields.CharField()
     groups = fields.CharField()
-    type = fields.CharField()
     
     class Meta:
         # note: the queryset for this resource is actually the permissions
-        queryset = MetaHash.objects.all().filter(Q(scope='resource')|Q(scope__contains='fields:'))
+        queryset = Permission.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
         authorization= Authorization()        
         object_class = object
@@ -873,108 +1027,201 @@ class PermissionResource(ManagedResource):
     def __init__(self, **kwargs):
         super(PermissionResource,self).__init__(**kwargs)
         
+        # create all of the permissions on startup
+        
+        resources = MetaHash.objects.filter(Q(scope='resource')|Q(scope__contains='fields:')).order_by('key', 'ordinal', 'scope')
+        query = self._meta.queryset._clone()
+        permissionTypes = Vocabularies.objects.all().filter(scope='permission:type')
+        for r in resources:
+            found = False
+            for perm in query:
+                if perm.scope==r.scope and perm.key==r.key:
+                    found = True
+            if not found:
+                logger.info(str(('permission not found: ', r.scope, r.key)))
+                for ptype in permissionTypes:
+                    p = Permission.objects.create(scope=r.scope, key=r.key, type=ptype.key)
+                    logger.info(str(('bootstrap create permission', p)))
     
+    def build_schema(self):
+        schema = super(PermissionResource,self).build_schema()
+        temp = [ x.scope for x in self.Meta.queryset.distinct('scope')]
+        schema['extraSelectorOptions'] = { 'label': 'Resource', 'searchColumn': 'scope', 'options': temp }
+        return schema
+        
+    def prepend_urls(self):
+        return [
+            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<scope>[\w\d_.\-:]+)/(?P<key>[\w\d_.\-\+:]+)/(?P<type>[\w\d_.\-\+:]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            ]
+        
+
+
+## graveyard
+
+# create-on-the-fly concept for permissions.
+# (discarded in favor of creating all permissions ahead of time        
+#    # Unfortunately, we cannot custom manage our m2m reln' using the provided "hydrate_foo" pattern;
+#    # this is because tastypie is calling hydrate_permissions before saving the main object - 
+#    # see: tastypie.resources.ModelResource.obj_update and obj_create.
+#    # With this methodology, the actual hydration of the m2m uri's occurs _after_
+#    # the main save() located at the end of ModelResource.obj_create; 
+#    # therefore, we'll have to do the same thing.
+#    # So, not this: def hydrate_permissions(self, bundle):
+#    # but rather, this:
+#    def obj_create(self, bundle, **kwargs):
+#        bundle = super(UserGroupResource, self).obj_create(bundle, **kwargs)
+#        
+#        logger.info(str(('hydrate_permissions')))
+#        if 'permissions' in bundle.data:
+#            try:
+#                permission_array = bundle.data['permissions']
+#                for p in permission_array:
+#                    try:
+#                        permission = Permission.objects.get(**p)
+#                    except ObjectDoesNotExist, e:
+#                        # create the permission on the fly, if the resource it refers to exists
+#                        # todo: make sure that the Resource can also be found
+#                        resource = MetaHash.objects.get(scope=p['scope'], key=p['key'])
+#                        permission = Permission(**p)
+#                        permission.save()
+#                    bundle.obj.permissions.add(permission)
+#                    logger.info(str(('permission added to group', bundle.obj, permission)))
+#            except Exception, e:
+#                logger.warn(str(('error accessing the permission attribute on hydrate', e)))
+#        return bundle
 #    def _fill_in_missing(self):
 #        queryset = MetaHash.objects.all().filter(Q(scope='resource')|Q(scope__contains='fields:'))
 #        
 
-    def get_object_list(self, request):
-        query = self._meta.queryset._clone()
-        objs = []
-        i=0
-        for r in query:
-            perms = Permission.objects.filter(scope=r.scope, key=r.key )
-            if len(perms) < 1:
-                objs.append({ 'ordinal': i, 'users':[], 'groups':[], 'scope':r.scope, 'key':r.key, 'type': 'read' })
-                objs.append({  'ordinal': i, 'users':[], 'groups':[], 'scope':r.scope, 'key':r.key, 'type': 'write' })
-            else:
-                for p in perms:
-                    objs.append(model_to_dict(p))
-        logger.info(str(('objs', objs)))
-        return objs
+#    def get_object_list(self, request):
+#        query = self._meta.queryset._clone()
+#        objs = []
+#        i=0
+#        for r in query:
+#            perms = Permission.objects.filter(scope=r.scope, key=r.key )
+#            if len(perms) < 1:
+#                objs.append({ 'ordinal': i, 'users':[], 'groups':[], 'scope':r.scope, 'key':r.key, 'type': 'read' })
+#                objs.append({  'ordinal': i, 'users':[], 'groups':[], 'scope':r.scope, 'key':r.key, 'type': 'write' })
+#            else:
+#                for p in perms:
+#                    objs.append(model_to_dict(p))
+#        logger.info(str(('objs', objs)))
+#        return objs
 
-    def obj_get_list(self, request=None, **kwargs):
-        # Filtering disabled for brevity...
-        return self.get_object_list(request)
-    
-    def obj_get(self, request=None, **kwargs):
+#    def obj_get_list(self, request=None, **kwargs):
+#        # Filtering disabled for brevity...
+#        return self.get_object_list(request)
+#    
+#    def obj_get(self, request=None, **kwargs):
+#        return Permission.objects.get(**kwargs)
+#    
+#    def apply_sorting(self, obj_list, options):
+#        return obj_list
+#    
+#    def dehydrate(self,bundle):
+#        bundle.data =s bundle.obj
+#        return bundle
+
+
         
-        return Permission.objects.get(**kwargs)
-    
-    def apply_sorting(self, obj_list, options):
-        return obj_list
-    
-    def dehydrate(self,bundle):
-        bundle.data = bundle.obj
-        return bundle
+#    # permissions is a nested property - not exposing it as a resource - 
+#    # so hydrate/dehydrate will be done custom
+#    def dehydrate_permissions(self, bundle):
+#        logger.info('dehydrate permissions')
+#        try:
+#            screensaverUser = bundle.obj.screensaveruser
+#            if screensaverUser:
+#                permissions = [ model_to_dict(x, exclude='id') for x in screensaverUser.permissions.all()]
+#                logger.info(str(('created permissions', permissions)))
+#                return permissions
+#        except Exception, e:
+#            logger.warn(str(('error accessing the screensaver user element', e)))
+#            
+#    
+#    def hydrate_permissions(self, bundle):
+#        logger.info(str(('hydrate_permissions')))
+#        try:
+#            screensaverUser = bundle.obj.screensaveruser
+#            
+#            permission_array = bundle.data['permissions']
+#            for p in permission_array:
+#                try:
+#                    permission = Permission.objects.get(**p)
+#                except ObjectDoesNotExist, e:
+#                    # create the permission on the fly, if the resource it refers to exists
+#                    # todo: make sure that the Resource can also be found
+#                    resource = MetaHash.objects.get(scope=p['scope'], key=p['key'])
+#                    permission = Permission(**p)
+#                    permission.save()
+#                screensaverUser.permissions.add(permission)
+#                screensaverUser.save();
+#                logger.info(str(('permission saved', permission)))
+#        except Exception, e:
+#            logger.warn(str(('error accessing the screensaver user element on hydrate', e)))
+#        return bundle
 
-    def prepend_urls(self):
-        return [
-            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<scope>((?=(schema))__|(?!(schema))[\w\d_.-]+))/(?P<key>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            ]
-
-from django.db.models import Q
-class PermissionResource1(ManagedResource):
-    
-    users = fields.CharField()
-    groups = fields.CharField()
-    type = fields.CharField()
-    
-    class Meta:
-        # note: the queryset for this resource is actually the permissions
-        queryset = MetaHash.objects.all().filter(Q(scope='resource')|Q(scope__contains='fields:'))
-        authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
-        authorization= Authorization()        
-        object_class = object
-        
-        ordering = []
-        filtering = {}
-        serializer = LimsSerializer()
-        excludes = [] #['json_field']
-        includes = [] # note, use this so that the queryset fields are not all added by default
-        always_return_data = True # this makes Backbone happy
-        resource_name='permission' 
-    
-    def __init__(self, **kwargs):
-        super(PermissionResource1,self).__init__(**kwargs)
-
-
-    def get_object_list(self, request):
-        query = self._meta.queryset._clone()
-        objs = []
-        i=0
-        for r in query:
-            perms = Permission.objects.filter(scope=r.scope, key=r.key )
-            if len(perms) < 1:
-                objs.append({ 'ordinal': i, 'users':[], 'groups':[], 'scope':r.scope, 'key':r.key, 'type': 'read' })
-                objs.append({  'ordinal': i, 'users':[], 'groups':[], 'scope':r.scope, 'key':r.key, 'type': 'write' })
-            else:
-                for p in perms:
-                    objs.append(model_to_dict(p))
-        logger.info(str(('objs', objs)))
-        return objs
-
-    def obj_get_list(self, request=None, **kwargs):
-        # Filtering disabled for brevity...
-        return self.get_object_list(request)
-    
-    def obj_get(self, request=None, **kwargs):
-        
-        return Permission.objects.get(**kwargs)
-    
-    def apply_sorting(self, obj_list, options):
-        return obj_list
-    
-    def dehydrate(self,bundle):
-        bundle.data = bundle.obj
-        return bundle
-
-    def prepend_urls(self):
-        return [
-            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<scope>((?=(schema))__|(?!(schema))[\w\d_.-]+))/(?P<key>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            ]
+#from django.db.models import Q
+#class PermissionResource1(ManagedResource):
+#    
+#    users = fields.CharField()
+#    groups = fields.CharField()
+#    type = fields.CharField()
+#    
+#    class Meta:
+#        # note: the queryset for this resource is actually the permissions
+#        queryset = MetaHash.objects.all().filter(Q(scope='resource')|Q(scope__contains='fields:'))
+#        authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
+#        authorization= Authorization()        
+#        object_class = object
+#        
+#        ordering = []
+#        filtering = {}
+#        serializer = LimsSerializer()
+#        excludes = [] #['json_field']
+#        includes = [] # note, use this so that the queryset fields are not all added by default
+#        always_return_data = True # this makes Backbone happy
+#        resource_name='permission' 
+#    
+#    def __init__(self, **kwargs):
+#        super(PermissionResource1,self).__init__(**kwargs)
+#
+#
+#    def get_object_list(self, request):
+#        query = self._meta.queryset._clone()
+#        objs = []
+#        i=0
+#        for r in query:
+#            perms = Permission.objects.filter(scope=r.scope, key=r.key )
+#            if len(perms) < 1:
+#                objs.append({ 'ordinal': i, 'users':[], 'groups':[], 'scope':r.scope, 'key':r.key, 'type': 'read' })
+#                objs.append({  'ordinal': i, 'users':[], 'groups':[], 'scope':r.scope, 'key':r.key, 'type': 'write' })
+#            else:
+#                for p in perms:
+#                    objs.append(model_to_dict(p))
+#        logger.info(str(('objs', objs)))
+#        return objs
+#
+#    def obj_get_list(self, request=None, **kwargs):
+#        # Filtering disabled for brevity...
+#        return self.get_object_list(request)
+#    
+#    def obj_get(self, request=None, **kwargs):
+#        
+#        return Permission.objects.get(**kwargs)
+#    
+#    def apply_sorting(self, obj_list, options):
+#        return obj_list
+#    
+#    def dehydrate(self,bundle):
+#        bundle.data = bundle.obj
+#        return bundle
+#
+#    def prepend_urls(self):
+#        return [
+#            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+#            url(r"^(?P<resource_name>%s)/(?P<scope>((?=(schema))__|(?!(schema))[\w\d_.-]+))/(?P<key>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+#            ]
 #
 #class PermissionResource(MetahashManagedResource, PostgresSortingResource):
 #

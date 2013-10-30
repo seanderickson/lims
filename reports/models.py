@@ -234,7 +234,6 @@ class Vocabularies(models.Model):
 class Permission(models.Model):
     scope                   = models.CharField(max_length=35, blank=True)  # scope of the permission
     key                     = models.CharField(max_length=35, blank=True)  # key of the permission
-    # TODO: define types in resources: vocabularies:permission_type
     type = models.CharField(max_length=15)
     class Meta:
         unique_together = (('scope', 'key', 'type'))    
@@ -246,7 +245,8 @@ class Permission(models.Model):
     
 class UserGroup(models.Model):
     name = models.TextField(unique=True, blank=False)
-    users = models.ManyToManyField('auth.User')
+#    users = models.ManyToManyField('auth.User')
+    users = models.ManyToManyField('db.ScreensaverUser')
     permissions = models.ManyToManyField('reports.Permission')
 
     def __unicode__(self):

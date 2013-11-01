@@ -71,10 +71,10 @@ def assert_obj1_to_obj2(obj1, obj2, keys=['key', 'scope', 'ordinal', 'username',
         if key not in obj1:
             continue
         if key not in obj2:
-            return False, None  # don't report for this section
+            return False, ('key not found',key)  
         result, msgs =  equivocal(obj1[key], obj2[key])
         if not result:
-            return False, None # don't report for this section, just move along to the next items to test
+            return False, () # don't report for this section, just move along to the next items to test
 #        if str(obj1[key]) != str(obj2[key]):
 #            return False, None  # don't report for this section
 #    logger.info(str(('equal so far, keys to search', keys_to_search)))
@@ -85,14 +85,16 @@ def assert_obj1_to_obj2(obj1, obj2, keys=['key', 'scope', 'ordinal', 'username',
         if fkey in obj1:
             if fkey not in obj2:
                 return False, ('no resource uri in obj2', obj1, obj2)
-            val1 = obj1[fkey]
-            val2 = obj2[fkey]
+            val1 = str(obj1[fkey])
+            val2 = str(obj2[fkey])
             
             if val1 != val2:
                 if val1.endswith('/'): val1 = val1[0:len(val1)-1]
                 if val2.endswith('/'): val2 = val2[0:len(val2)-1]
                 if val1 != val2:
-                    return False, ('resource uri', val1, val2)
+                    if val1 not in val2:
+                        return False, ('resource uri', val1, val2)
+                    logger.warn(str(('using imprecise uri matching, equivocating: ', val1, val2)))
     
     keys_to_search = set(obj1.keys()) - set(keys) - set(excludes)
 
@@ -103,26 +105,6 @@ def assert_obj1_to_obj2(obj1, obj2, keys=['key', 'scope', 'ordinal', 'username',
         if not result:
             return False, ('key not equal', key, 'obj1', obj1, 'obj2', obj2, 'msgs', msgs)
             
-#        if isinstance(obj1[key], basestring):
-#            val1 = str(obj1[key])
-#            if val1 != str(obj2[key]):
-#                if is_boolean(val1) and csvBooleanField.convert(val1) == csvBooleanField.convert(obj2[key]):
-#                    continue
-#                return False, ('key not equal', key, obj1, obj2, 'val obj1', str(obj1[key]), 'val 2', str(obj2[key]))
-#                    
-#        else: # better be a list
-#            for v in obj1[key]:
-#                if not v: 
-#                    continue
-#                if key not in obj2 or not obj2[key]:
-#                    return False, ('list obj not filled in obj2', obj1[key], obj2)
-#                found = False
-#                for v2 in obj2[key]:
-#                    if str(v2) == str(v): # have to do this because return values are being unicoded
-#                        found = True
-#                if not found:
-#                    return False, ('list key not equal', key, obj1, obj2, 'val obj1', str(obj1[key]), 'val 2', str(obj2[key]))
-    
     return True, ('obj1:', obj1, 'obj2:', obj2)
 
 
@@ -131,15 +113,14 @@ def find_obj_in_list(obj, item_list, **kwargs):
     for item in item_list:
         result, msgs = assert_obj1_to_obj2(obj, item, **kwargs)
         if result:
-            logger.debug(str(('found', obj)))
+            logger.debug(str(('found', obj, item)))
             return True, (item)
         else:
             list_msgs.append(msgs)
-#        elif msgs:
-#            return result, msgs
     return False, ('obj not found in list', obj, list_msgs)
 
 def find_all_obj_in_list(list1, list2, **kwargs):
+    msgs = ['not run yet']
     for item in list1:
         result, msgs = find_obj_in_list(item, list2, **kwargs)
         if not result:
@@ -155,16 +136,19 @@ class BaselineTest(TestCase):
         
         test_true = [
             ['',''],
+            ['', None],
             ['1','1'],
             ['1',1],        # integer strings can come back as integers (if integerfield is defined)
             ['sal','sal'],
             ['True','TRUE'],
             ['true','True'],
-            ['TRUE',True],
+            ['TRUE',True], # boolean strings can come back as booleans (if booleanfield is defined)
             ['false','False'],
             ['FALSE','false'],
             ['False',False],
             ]
+            ## TODO: test date strings 
+        
         for [a,b] in test_true:
             logger.info(str(('csv serialization equivocal truthy test', a, b)))
             result, msgs = equivocal(a,b)
@@ -280,3 +264,16 @@ class BaselineTest(TestCase):
         self.assertTrue(obj['email'] == 'joe.tester@limstest.com')
         
         logger.info(str(('====== test_4user_example done ===='))) # if this passes, then why does line 431 fail in reports.tests.py?
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        

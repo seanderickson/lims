@@ -11,7 +11,7 @@ from django.utils.encoding import smart_str, smart_text
 from django.utils import timezone
 from django.forms.models import model_to_dict
 from django.core.exceptions import ObjectDoesNotExist
-from tastypie.exceptions import NotFound, ImmediateHttpResponse
+from tastypie.exceptions import NotFound, ImmediateHttpResponse, TastypieError
 from tastypie.bundle import Bundle
 import traceback
 #from django.contrib.auth.models import Group, User, Permission
@@ -539,7 +539,10 @@ class ManagedResource(LoggingMixin):
                 if isinstance(bundle_or_obj, Bundle):
                     val = getattr(bundle_or_obj.obj,x)
                 else:
-                    val = getattr(bundle_or_obj,x)
+                    if hasattr(bundle_or_obj, x):
+                        val = getattr(bundle_or_obj,x) # it may be an object- 
+                    else:
+                        val = bundle_or_obj[x] # allows simple dicts
                 kwargs[x] = str(val)
             return kwargs
         except Exception, e:
@@ -548,23 +551,36 @@ class ManagedResource(LoggingMixin):
         # This is useful in order to bootstrap the ResourceResource
         return super(ManagedResource,self).detail_uri_kwargs(bundle_or_obj)
 
+    def get_via_uri(self, uri, request=None):
+        '''
+        Override the stock method to allow lookup of relative uri's:
+        - a 'relative uri' - or 'local uri' is one that doesn't include the api name ("v1" for instance)
+        '''
+        if self._meta.resource_name not in uri:
+            raise Exception(str(('invalid URI', uri, 'must contain at least the resource name', self._meta.resource_name)))
+        
+        if request and request.path:
+            path = request.path
+            # remove the parts after the api_name ("v1") because that part is the resource name, 
+            # and may not be for this resource
+            path = path[:path.find(self._meta.api_name)+len(self._meta.api_name)+1] 
+            local_uri = uri
+            if path not in local_uri:
+                uri = path + local_uri
+                #            uri = '/reports/api/v1/'+ uri  # TODO: poc, not permanent
+                logger.info(str(('converted local URI', local_uri, ' to tastypie URI', uri)))
+        
+        return super(ManagedResource, self).get_via_uri(uri, request);
 
-#    def detail_uri_kwargs(self, bundle_or_obj):
-#        """
-#        Given a ``Bundle`` or an object (typically a ``Model`` instance),
-#        it returns the extra kwargs needed to generate a detail URI.
-#
-#        By default, it uses the model's ``pk`` in order to create the URI.
-#        """
-#        kwargs = {}
-#
-#        if isinstance(bundle_or_obj, Bundle):
-#            kwargs[self._meta.detail_uri_name] = getattr(bundle_or_obj.obj, self._meta.detail_uri_name)
-#        else:
-#            kwargs[self._meta.detail_uri_name] = getattr(bundle_or_obj, self._meta.detail_uri_name)
-#
-#        return kwargs
-
+    def get_local_resource_uri(self, bundle_or_obj=None, url_name='api_dispatch_list'):
+        '''
+        special 'local' version of the uri - 
+        when creating the uri for containment lists (user.permissionss, for example),
+        convert "reports/api/v1/permission/resource/read" to "permission/resource/read"
+        '''
+        uri = super(ManagedResource, self).get_resource_uri(bundle_or_obj=bundle_or_obj, url_name=url_name)
+        return uri[uri.find(self._meta.resource_name):]
+    
     # implementation hook - URLS to match _before_ the default URLS
     # used here to allow the natural keys [scope, key] to be used
     def prepend_urls(self):
@@ -579,7 +595,6 @@ class ManagedResource(LoggingMixin):
             # TODO: is this needed here on metahash? we aren't using just "key" as a key, which is what causes the conflict with "schema", so probably not
             url(r"^(?P<resource_name>%s)/(?P<key>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
-              
  
  
 class ManagedModelResource(ManagedResource, PostgresSortingResource):
@@ -939,11 +954,11 @@ class UserResource(ManagedModelResource):
 #        logger.info(str(('kwargs', kwargs)))
 #        return PermissionResource().dispatch('list', request, **kwargs)    
 #    
-    
+
 
 class UserGroupResource(ManagedModelResource):
     
-    permissions = fields.ToManyField('reports.api.PermissionResource', 'permissions', null=True) #, related_name='users', blank=True, null=True)
+    permissions = fields.ToManyField('reports.api.PermissionResource', 'permissions',related_name='groups', null=True) #, related_name='users', blank=True, null=True)
  
     # relational fields must be defined   
     users = fields.ToManyField('reports.api.UserResource', 'users', related_name='groups', blank=True, null=True)
@@ -962,6 +977,11 @@ class UserGroupResource(ManagedModelResource):
     
     def __init__(self, **kwargs):
         super(UserGroupResource,self).__init__(**kwargs)
+
+    def obj_create(self, bundle, **kwargs):
+        logger.info(str(('----log obj_create', bundle.data)))
+        bundle = super(UserGroupResource, self).obj_create(bundle=bundle, **kwargs)
+        logger.info(str(('----log obj_created', model_to_dict(bundle.obj))))
 
     def build_schema(self):
         schema = super(UserGroupResource,self).build_schema()
@@ -988,9 +1008,16 @@ class UserGroupResource(ManagedModelResource):
     
     def dehydrate_users(self, bundle):
         uri_list = []
+        U = UserResource()
         for user in bundle.obj.users.all():
-             uri_list.append(self.obj_resource_uri('user', user))
+             uri_list.append(U.get_local_resource_uri({ 'screensaver_user_id':user.screensaver_user_id }))
+        return uri_list;
         
+    def dehydrate_permissions(self, bundle):
+        uri_list = []
+        P = PermissionResource()
+        for p in bundle.obj.permissions.all():
+             uri_list.append(P.get_local_resource_uri(p))
         return uri_list;
         
     def dehydrate(self,bundle):
@@ -1032,16 +1059,29 @@ class PermissionResource(ManagedModelResource):
         resources = MetaHash.objects.filter(Q(scope='resource')|Q(scope__contains='fields:')).order_by('key', 'ordinal', 'scope')
         query = self._meta.queryset._clone()
         permissionTypes = Vocabularies.objects.all().filter(scope='permission:type')
+#        if(len(permissionTypes)==0):
+#            raise TastypieError(str(('permission types have not been loaded (are vocabularies loaded into the database?)')))
         for r in resources:
             found = False
             for perm in query:
                 if perm.scope==r.scope and perm.key==r.key:
                     found = True
             if not found:
-                logger.info(str(('permission not found: ', r.scope, r.key)))
+                logger.info(str(('initialize permission not found: ', r.scope, r.key)))
                 for ptype in permissionTypes:
                     p = Permission.objects.create(scope=r.scope, key=r.key, type=ptype.key)
-                    logger.info(str(('bootstrap create permission', p)))
+                    logger.info(str(('bootstrap created permission', p)))
+
+    def obj_get(self, bundle, **kwargs):
+        ''' basically, if a permission is requested that does not exist, it is created
+        '''
+        try:
+            return super(PermissionResource, self).obj_get(bundle, **kwargs)
+        except ObjectDoesNotExist:
+            logger.info(str(('create permission on the fly', kwargs)))
+            p = Permission(**kwargs)
+            p.save()
+            return p
     
     def build_schema(self):
         schema = super(PermissionResource,self).build_schema()

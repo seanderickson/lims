@@ -61,7 +61,7 @@ try:
 except:
     APP_ROOT_DIR = os.path.abspath(os.path.dirname(reports.__path__))
     
-class ASerializerTest(TestCase):
+class SerializerTest(TestCase):
 
     def test_csv(self):
         directory = APP_ROOT_DIR
@@ -150,6 +150,8 @@ class MetaHashResourceBootstrap():
         self.resource_uri = BASE_URI + '/metahash'
         self.directory = os.path.join(APP_ROOT_DIR, 'reports/static/api_init')
         self.csv_serializer=CSVSerializer() 
+        # todo: doesn't work for post, see TestApiClient.post() method, it is incorrectly "serializing" the data before posting
+        self.testApiClient = TestApiClient(serializer=self.csv_serializer) 
                 
     
     
@@ -182,7 +184,8 @@ class MetaHashResourceBootstrap():
             self.assertEqual(len(new_obj['objects']), len(input_data['objects']), 'input length != output length: ' + str((new_obj)))
             
             for inputobj in input_data['objects']:
-                self.assertTrue(find_obj_in_list(inputobj,new_obj['objects']), str(('not found', inputobj, new_obj['objects'])) )
+                result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
+                self.assertTrue(result, str(('not found', outputobj )) )
 
         filename = os.path.join(self.directory, 'metahash_fields_initial_patch.csv')
         with open(filename) as bootstrap_file:
@@ -201,27 +204,31 @@ class MetaHashResourceBootstrap():
             self.assertEqual(len(new_obj['objects']), len(input_data['objects']), 'input length != output length: ' + str((new_obj)))
             
             for inputobj in input_data['objects']:
-                self.assertTrue(find_obj_in_list(inputobj,new_obj['objects']), str(('not found', inputobj, new_obj['objects'])) )
+                result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
+                self.assertTrue(result, str(('not found', outputobj )) )
 
         filename = os.path.join(self.directory, 'metahash_fields_resource.csv')
         with open(filename) as bootstrap_file:
             input_data = serializer.from_csv(bootstrap_file.read())
 
             print 'Submitting...', bootstrap_file
-            resp = testApiClient.patch(resource_uri, format='csv', data=input_data, authentication=self.get_credentials() )
+            resp = testApiClient.patch(resource_uri, data=input_data, authentication=self.get_credentials() )
             print 'Response: ' , resp.status_code
             self.assertHttpAccepted(resp)
-        
+
             logger.info('===== get1:'+ resource_uri)
-            resp = self.api_client.get(resource_uri, format='json', authentication=self.get_credentials())
-            logger.info(str(('--------resp to get:', resp, resp.status_code)))
-            new_obj = self.deserialize(resp)
+            resp = self.api_client.get(resource_uri, format='json', authentication=self.get_credentials(), data={ 'scope': 'fields:resource', 'limit': 999 })
+            logger.info(str(('--------resp to get:', resp.status_code)))
+#            print '========= resp', resp
             self.assertValidJSONResponse(resp)
-            
+            new_obj = self.deserialize(resp)
+#            print '===========new obj', json.dumps(new_obj['objects'])
             for inputobj in input_data['objects']:
-                self.assertTrue(find_obj_in_list(inputobj,new_obj['objects']), str(('not found', inputobj, new_obj['objects'])) )
+                result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
+                self.assertTrue(result, str(('not found', outputobj )) )
             
         filename = os.path.join(self.directory, 'metahash_resource_data.csv')
+        resource_uri = BASE_URI + '/resource'
         with open(filename) as bootstrap_file:
             input_data = serializer.from_csv(bootstrap_file.read())
 
@@ -231,14 +238,59 @@ class MetaHashResourceBootstrap():
             self.assertHttpAccepted(resp)
         
             logger.info('===== get1:'+ resource_uri)
-            resp = self.api_client.get(resource_uri, format='json', authentication=self.get_credentials())
-            logger.info(str(('--------resp to get:', resp, resp.status_code)))
+            resp = self.api_client.get(resource_uri, format='json', authentication=self.get_credentials(), data={ 'limit': 999 })
+            logger.info(str(('--------resp to get:', resp.status_code)))
             new_obj = self.deserialize(resp)
             self.assertValidJSONResponse(resp)
             
             for inputobj in input_data['objects']:
-                self.assertTrue(find_obj_in_list(inputobj,new_obj['objects']), str(('not found', inputobj, new_obj['objects'])) )
+                result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
+                self.assertTrue(result, str(('not found', outputobj )) )
+                self.assertTrue(inputobj['key'] in outputobj['resource_uri'], 
+                    str(('resource_uri not set properly', inputobj, ', output', outputobj)) )
+                        
+        filename = os.path.join(self.directory,'metahash_fields_vocabularies.csv')
+        with open(filename) as bootstrap_file:
+            input_data = self.csv_serializer.from_csv(bootstrap_file.read())
+            logger.info(str(('Submitting...', bootstrap_file)))
+            resp = testApiClient.patch(BASE_URI + '/metahash', format='csv', data=input_data, authentication=self.get_credentials() )
+            logger.info(str(( 'Response: ' , resp.status_code)))
+            self.assertHttpAccepted(resp)
+        
+            logger.info('===== get1:'+ self.resource_uri)
+            resp = self.api_client.get(BASE_URI + '/metahash', format='json', authentication=self.get_credentials(), data={ 'scope':'fields:vocabularies', 'limit': 999 })
+            logger.info(str(('--------resp to get:', resp, resp.status_code)))
+            new_obj = self.deserialize(resp)
+            self.assertValidJSONResponse(resp)
+            self.assertEqual(len(new_obj['objects']), len(input_data['objects']), 'input length != output length: ' + str((new_obj)))
             
+            for inputobj in input_data['objects']:
+                result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
+                self.assertTrue(result, str((inputobj, 'not found', outputobj, '--returned--', new_obj['objects'] )) )
+                self.assertTrue('vocabularies' in outputobj['resource_uri'], str(('wrong resource_uri returned:', outputobj)))
+ 
+            
+        filename = os.path.join(self.directory, 'vocabularies_data.csv')
+        resource_uri = BASE_URI + '/vocabularies'
+        with open(filename) as bootstrap_file:
+            input_data = serializer.from_csv(bootstrap_file.read())
+
+            print 'Submitting...', bootstrap_file
+            resp = testApiClient.put(resource_uri, format='csv', data=input_data, authentication=self.get_credentials() )
+            print 'Response: ' , resp.status_code
+            self.assertHttpAccepted(resp)
+        
+            logger.info('===== get1:'+ resource_uri)
+            resp = self.api_client.get(resource_uri, format='json', authentication=self.get_credentials(), data={ 'limit': 999 })
+            logger.info(str(('--------resp to get:', resp.status_code)))
+            new_obj = self.deserialize(resp)
+            self.assertValidJSONResponse(resp)
+            
+            for inputobj in input_data['objects']:
+                result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
+                self.assertTrue(result, str(('not found', outputobj )) )
+                self.assertTrue(inputobj['key'] in outputobj['resource_uri'], 
+                    str(('resource_uri not set properly', inputobj, ', output', outputobj)) )            
         print '------------- done _bootstrap_init_files -----------------'
 
         
@@ -250,7 +302,7 @@ class TestApiInit(MetaHashResourceBootstrap,ResourceTestCase):
 
     def test_0bootstrap_metahash(self):
         
-        print '================ test_bootstrap_metahash =============== '
+        print '================ test_0bootstrap_metahash =============== '
         # in order for the metahash resource to work, the metahash itself must be "bootstrapped":
         # the metahash must be filled with the fields that describe itself
         # these are the "bootstrap" fields
@@ -290,19 +342,20 @@ class TestApiInit(MetaHashResourceBootstrap,ResourceTestCase):
         self.assertValidJSONResponse(resp)
         self.assertEqual(len(new_obj['objects']), 4, str((new_obj)))
         
-        for item in bootstrap_items:
-            self.assertTrue(find_obj_in_list(item, new_obj['objects']), str(('bootstrap item not found', item, new_obj['objects'])))
+        for inputobj in bootstrap_items:
+            result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
+            self.assertTrue(result, str(('not found', outputobj )) )
         
-        print '================ test_bootstrap_metahash done ========== '
+        print '================ test_0bootstrap_metahash done ========== '
     
     def test_1bootstrap_init(self):
-        print '================ test_bootstrap_init ================'
+        print '================ test_1bootstrap_init ================'
         self._bootstrap_init_files()
-        print '================ test_bootstrap_init done ================'
+        print '================ test_1bootstrap_init done ================'
         
     def test_2api_init(self):
         
-        print '***================ test_api_init =============== '
+        print '***================ test_2api_init =============== '
         serializer=CSVSerializer() 
         testApiClient = TestApiClient(serializer=serializer) # todo: doesn't work for post, see TestApiClient.post() method, it is incorrectly "serializing" the data before posting
         
@@ -310,7 +363,13 @@ class TestApiInit(MetaHashResourceBootstrap,ResourceTestCase):
         with open(filename) as input_file:
             api_init_actions = serializer.from_csv(input_file.read(), root=None)
             
-            bootstrap_files = ['metahash_fields_initial.csv','metahash_fields_initial_patch.csv','metahash_fields_resource.csv','metahash_resource_data.csv']
+            bootstrap_files = [
+                'metahash_fields_initial.csv',
+                'metahash_fields_initial_patch.csv',
+                'metahash_fields_resource.csv',
+                'metahash_resource_data.csv',
+                'metahash_fields_vocabularies.csv',
+                'vocabularies_data.csv']
             excludes = ['resource_uri']
             for action in api_init_actions:
                 
@@ -370,34 +429,42 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
         print '============== User setup ============'
         super(UserResource, self).setUp()
         super(UserResource, self)._setUp()
+        # load the bootstrap files, which will load the metahash fields, and the resource definitions
         super(UserResource, self)._bootstrap_init_files()
         print '============== User setup: begin ============'
-        meta_resource_uri = BASE_URI + '/metahash'
-
+        
+        # Create the User resource field entries
         testApiClient = TestApiClient(serializer=self.csv_serializer) # todo: doesn't work for post, see TestApiClient.post() method, it is incorrectly "serializing" the data before posting
         filename = os.path.join(self.directory,'metahash_fields_user.csv')
         with open(filename) as bootstrap_file:
             input_data = self.csv_serializer.from_csv(bootstrap_file.read())
             print 'Submitting...', bootstrap_file
-            resp = testApiClient.patch(self.resource_uri, format='csv', data=input_data, authentication=self.get_credentials() )
+            resp = testApiClient.patch(BASE_URI + '/metahash', format='csv', data=input_data, authentication=self.get_credentials() )
             print 'Response: ' , resp.status_code
             self.assertHttpAccepted(resp)
         
             logger.info('===== get1:'+ self.resource_uri)
-            resp = self.api_client.get(self.resource_uri, format='json', authentication=self.get_credentials(), data={ 'scope':'fields:user', 'limit': 999 })
+            resp = self.api_client.get(BASE_URI + '/metahash', format='json', authentication=self.get_credentials(), data={ 'scope':'fields:user', 'limit': 999 })
             logger.info(str(('--------resp to get:', resp, resp.status_code)))
             new_obj = self.deserialize(resp)
             self.assertValidJSONResponse(resp)
             self.assertEqual(len(new_obj['objects']), len(input_data['objects']), 'input length != output length: ' + str((new_obj)))
             
             for inputobj in input_data['objects']:
-                self.assertTrue(find_obj_in_list(inputobj,new_obj['objects']), str(('not found', inputobj, new_obj['objects'])) )
+                result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
+                self.assertTrue(result, str(('not found', outputobj )) )
+                self.assertTrue('user' in outputobj['resource_uri'], str(('wrong resource_uri returned:', outputobj)))
+
         self.resource_uri = BASE_URI + '/user'
+
+        
         print '============== User setup: done ============'
     
-    def test_create_user(self):
-        print '==== test_create_user ====='
-        bootstrap_items = [   
+    def _test0_create_user(self):
+        logger.info(str(('==== test_create_user =====')))
+        
+        # the simplest of tests, create some simple users
+        self.bootstrap_items = [   
             {
                 'ecommons_id': 'st1',
                 'first_name': 'Sally',
@@ -417,31 +484,139 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
                 'email': 'bad.fester@slimstest.com',    
             },
         ]
-        
-        
-        for i,item in enumerate(bootstrap_items):         
+
+        for i,item in enumerate(self.bootstrap_items):         
             resp = self.api_client.post(self.resource_uri, format='json', data=item, authentication=self.get_credentials())
-            print resp
+#            print resp
             self.assertHttpCreated(resp)
             
         logger.info('created items, now get them')
         resp = self.api_client.get(self.resource_uri, format='json', authentication=self.get_credentials(), data={ 'limit': 999 })
-        logger.info(str(('--------resp to get:', resp, resp.status_code)))
+        logger.info(str(('--------resp to get:', resp.status_code)))
         new_obj = self.deserialize(resp)
-        logger.info(str(('deserialized object:', json.dumps(new_obj))))
         self.assertValidJSONResponse(resp)
         self.assertEqual(len(new_obj['objects']), 3, str((new_obj)))
         
-        for i,item in enumerate(bootstrap_items):
-            logger.info(str(('looking for item', item)))
+        for i,item in enumerate(self.bootstrap_items):
             result, obj = find_obj_in_list(item, new_obj['objects'])
-            logger.info(str((result, obj)))
             self.assertTrue(result, str(('bootstrap item not found', item, new_obj['objects'])))
             self.assertTrue('screensaver_user_id' in obj, 'the primary key was not created')
             self.assertEqual(i+1, obj['screensaver_user_id'], str(('expected the screensaver_user_id returned to be incremented to ', i+1, obj)) )
             logger.info(str(('item found', obj)))
 
+        logger.info(str(('==== test_create_user done =====')))
+
+    def _test1_user_test_data(self):
+        logger.info(str(('==== test1_user_test_data =====')))
         
+        filename = os.path.join(self.directory,'test_data/users1.csv')
+        logger.info(str(('+++++++++++processing file', filename)))
+        resource_uri = BASE_URI + '/user'
+        testApiClient = TestApiClient(serializer=self.csv_serializer) # todo: doesn't work for post, see TestApiClient.post() method, it is incorrectly "serializing" the data before posting
+        with open(filename) as data_file:
+            input_data = self.csv_serializer.from_csv(data_file.read())
+            
+            resp = testApiClient.put(resource_uri, data=input_data, authentication=self.get_credentials() )
+            logger.info(str(('action: ', 'put', filename, 'response: ' , resp.status_code)))
+            self.assertHttpAccepted(resp)
+
+            # now see if we can get these objects back
+            resp = self.testApiClient.get(resource_uri, 
+                format='json', authentication=self.get_credentials(), data={ 'limit': 999 })
+#            print '----- response', resp
+            self.assertValidJSONResponse(resp)
+            new_obj = self.deserialize(resp)
+            result, msgs = find_all_obj_in_list(input_data['objects'], new_obj['objects']) #, excludes=search_excludes)
+            self.assertTrue(result, str(( 'put', 'input file', filename, msgs, new_obj['objects'])) )
+            
+            for user in new_obj['objects']:
+                logger.info(str(('created user', user)))
+
+        
+        logger.info(str(('==== test1_user_test_data done =====')))
+
+class UserGroupResource(UserResource):
+    
+    def setUp(self):
+        logger.info(str(( '============== UserGroup setup ============')))
+        super(UserGroupResource, self).setUp()
+        
+        logger.info(str(( '============== UserGroup setup: begin ============')))
+        meta_resource_uri = BASE_URI + '/metahash'
+        
+        # Create the User resource field entries
+        testApiClient = TestApiClient(serializer=self.csv_serializer) # todo: doesn't work for post, see TestApiClient.post() method, it is incorrectly "serializing" the data before posting
+        filename = os.path.join(self.directory,'metahash_fields_usergroup.csv')
+        with open(filename) as bootstrap_file:
+            input_data = self.csv_serializer.from_csv(bootstrap_file.read())
+            logger.info(str(('Submitting...', bootstrap_file)))
+            resp = testApiClient.patch(BASE_URI + '/metahash', format='csv', data=input_data, authentication=self.get_credentials() )
+            logger.info(str(( 'Response: ' , resp.status_code)))
+            self.assertHttpAccepted(resp)
+        
+            logger.info('===== get1:'+ self.resource_uri)
+            resp = self.api_client.get(BASE_URI + '/metahash', format='json', authentication=self.get_credentials(), data={ 'scope':'fields:usergroup', 'limit': 999 })
+            logger.info(str(('--------resp to get:', resp, resp.status_code)))
+            new_obj = self.deserialize(resp)
+            self.assertValidJSONResponse(resp)
+            self.assertEqual(len(new_obj['objects']), len(input_data['objects']), 'input length != output length: ' + str((new_obj)))
+            
+            for inputobj in input_data['objects']:
+                result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
+                self.assertTrue(result, str(('not found', outputobj )) )
+                self.assertTrue('usergroup' in outputobj['resource_uri'], str(('wrong resource_uri returned:', outputobj)))
+        
+        filename = os.path.join(self.directory,'metahash_fields_permission.csv')
+        with open(filename) as bootstrap_file:
+            input_data = self.csv_serializer.from_csv(bootstrap_file.read())
+            logger.info(str(('Submitting...', bootstrap_file)))
+            resp = testApiClient.patch(BASE_URI + '/metahash', format='csv', data=input_data, authentication=self.get_credentials() )
+            logger.info(str(( 'Response: ' , resp.status_code)))
+            self.assertHttpAccepted(resp)
+        
+            logger.info('===== get1:'+ self.resource_uri)
+            resp = self.api_client.get(BASE_URI + '/metahash', format='json', authentication=self.get_credentials(), data={ 'scope':'fields:permission', 'limit': 999 })
+            logger.info(str(('--------resp to get:', resp, resp.status_code)))
+            new_obj = self.deserialize(resp)
+            self.assertValidJSONResponse(resp)
+            self.assertEqual(len(new_obj['objects']), len(input_data['objects']), 'input length != output length: ' + str((new_obj)))
+            
+            for inputobj in input_data['objects']:
+                result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
+                self.assertTrue(result, str(('not found', outputobj )) )
+                self.assertTrue('permission' in outputobj['resource_uri'], str(('wrong resource_uri returned:', outputobj)))
+        
+        logger.info(str(( '============== UserGroup setup done ============')))
+
+    def test2_usergroup(self):
+        logger.info(str(('==== test2_usergroup =====')))
+        #create users
+        self._test1_user_test_data()
+        
+        logger.info(str(('----- test2_usergroup =====')))
+        filename = os.path.join(self.directory,'test_data/usergroups1.csv')
+        logger.info(str(('+++++++++++processing file', filename)))
+        resource_uri = BASE_URI + '/usergroup'
+        testApiClient = TestApiClient(serializer=self.csv_serializer) # todo: doesn't work for post, see TestApiClient.post() method, it is incorrectly "serializing" the data before posting
+        with open(filename) as data_file:
+            input_data = self.csv_serializer.from_csv(data_file.read())
+            
+            resp = testApiClient.put(resource_uri, data=input_data, authentication=self.get_credentials() )
+            logger.info(str(('action: ', 'put', filename, 'response: ' , resp.status_code)))
+            self.assertHttpAccepted(resp)
+
+            # now see if we can get these objects back
+            resp = self.testApiClient.get(resource_uri, 
+                format='json', authentication=self.get_credentials(), data={ 'limit': 999 })
+#            print '----- response', resp
+            self.assertValidJSONResponse(resp)
+            new_obj = self.deserialize(resp)
+            result, msgs = find_all_obj_in_list(input_data['objects'], new_obj['objects']) #, excludes=search_excludes)
+            self.assertTrue(result, str(( 'put', 'input file', filename, msgs, new_obj['objects'])) )
+
+        logger.info(str(('==== test2_usergroup done =====')))
+
+
 #class UserGroupResource(ResourceResourceTest):
 #    
 #    def xsetUp(self):

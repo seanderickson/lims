@@ -22,27 +22,25 @@ define([
 
         initialize : function(attributes, options) {
             var self = this;
-            Iccbl.assert( !_.isUndefined(options.schemaResult), 'detail view requires a schemaResult struct');
+            Iccbl.requireOptions(options, ['schemaResult', 'router']);
             Iccbl.assert( !_.isUndefined(options.schemaResult['resource_definition']), 'detail view schemaResult requires a resource_definition');
-            Iccbl.assert( !_.isUndefined(options.router), 'detail view requires a router');
 
             this._schemaResult = options['schemaResult'];
             this._resource_definition = this._schemaResult['resource_definition'];
             this._router = options.router;
             this._options = options;
 
-            this._id = this.model.get('id');
-            if(_.has(this._schemaResult['resource_definition'], 'title_attribute')){
-                console.log('create title_attribute from ' + this._schemaResult['resource_definition']['title_attribute']);
-                this._id = _.reduce(this._schemaResult['resource_definition']['title_attribute'],
-                    function(memo, item){
-                        if( self.model.has(item) ) memo += self.model.get(item)
-                        else memo += item
-                        return memo ;
-                    }, '');
-            }else{
-                console.log('Warn: schema for this type has no resource_definition,id_attribute; type: ' + JSON.stringify(this._schemaResult));
-            }
+            this._id = Iccbl.getTitleFromTitleAttribute(self.model, this._schemaResult);
+            // this._id = this.model.get('id');
+            // if(_.has(this._schemaResult['resource_definition'], 'title_attribute')){
+                // console.log('create title_attribute from ' + this._schemaResult['resource_definition']['title_attribute']);
+                // this._id = _.reduce(this._schemaResult['resource_definition']['title_attribute'],
+                    // function(memo, item){
+                        // if( self.model.has(item) ) memo += self.model.get(item)
+                        // else memo += item
+                        // return memo ;
+                    // }, '');
+            // }
             console.log('id: ' + this._id);
 
             this._keys = Iccbl.sortOnOrdinal(_.keys(this.model.attributes), self._schemaResult.fields);
@@ -85,6 +83,7 @@ define([
             _.each(editKeys, function(key){
                 if( _(self._schemaResult.fields).has(key)){
                     option = self._schemaResult.fields[key];
+                    console.log('option: ' + JSON.stringify(option));
                     if(option.ui_type == 'choice' || option.ui_type == 'multiselect' ){
                         var _optionsCollection = [];
                         if(_.has(option, 'choices')){
@@ -97,7 +96,7 @@ define([
                         }
 
                         if(option.ui_type == 'choice' ){ // radio type choice
-                            // Note: stickit uses the radio button element class, not the id
+                            // Note: stickit uses the radio button element _class_, not the id
                             bindings['.radio_' + key] = {
                                 observe: key,
                                 selectOptions: { collection: _optionsCollection } };
@@ -125,10 +124,15 @@ define([
                                 selectOptions: { collection: [{label: 'select', value: "True" }] }
                             };
                     }else{
-                        bindings['#' + key] = key;
+                        bindings['#' + key] = {
+                            observe: key,
+                            events: ['blur'] };
                     }
                 }else{
-                    bindings['#' + key] = key;
+                    bindings['#' + key] = {
+                            observe: key,
+                            events: ['blur'] };
+
                 }
             });
             // console.log('bindings: ' + JSON.stringify(bindings));
@@ -251,7 +255,7 @@ define([
         render : function() {
             console.log('render detail_stickit');
 
-            if(this.options.isEditMode){
+            if(this._options.isEditMode){
                 // template = genericFormTemplate;
                 this.edit(null);
             }else{

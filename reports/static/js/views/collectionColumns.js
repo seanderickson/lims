@@ -24,12 +24,13 @@ define([
             console.log('attribute keys: ' + JSON.stringify(this.attributeKeys));
             var resource_definition = self.options.schemaResult['resource_definition'];
             options.collection.each(function(model){
-                var header = _.reduce(resource_definition['title_attribute'],
-                    function(memo, item){
-                        if( model.has(item) ) memo += model.get(item)
-                        else memo += item
-                        return memo ;
-                    }, '');
+                var header = Iccbl.getTitleFromTitleAttribute(model, self.options.schemaResult);
+                 // _.reduce(resource_definition['title_attribute'],
+                    // function(memo, item){
+                        // if( model.has(item) ) memo += model.get(item)
+                        // else memo += item
+                        // return memo ;
+                    // }, '');
 
                 headers.push(header);
             });

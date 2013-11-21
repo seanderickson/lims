@@ -6,10 +6,11 @@ define([
     'iccbl_backgrid',
     'views/list',
     'views/home',
-    'views/detail_stickit',
+    'views/generic_detail',
+    'views/generic_edit_stickit',
     'views/screen',
     'views/user'
-], function($, _, Backbone, Bootstrap, Iccbl, ListView, HomeView, DetailView, ScreenView, UserView) {
+], function($, _, Backbone, Bootstrap, Iccbl, ListView, HomeView, DetailView, EditView, ScreenView, UserView) {
 
     var ContentView = Backbone.View.extend({
         el: '#container',
@@ -52,13 +53,13 @@ define([
                 console.log('todo: "menu" view!');
 
             }else if (current_view === 'list'){
-                var options = _.extend( {}, this.model.get('list_defaults'), current_ui_resource, current_options ); // TODO: move the nested options up into the model
+                // TODO: move the nested options up into the model
+                var options = _.extend( {}, this.model.get('list_defaults'), current_ui_resource, current_options );
                 if(!_.isUndefined(current_ui_resource['options'])){
                     var resource_defined_options = current_ui_resource['options'];
                     _.each(_.keys(resource_defined_options), function(key){
                         current_options[key] = _.extend({}, current_options[key], resource_defined_options[key]);
                     });
-                    console.log('========== current_options: ' + JSON.stringify(current_options));
                     self.model.set({'current_options': current_options });
                 }
 
@@ -75,6 +76,36 @@ define([
                 };
                 Iccbl.getSchema(options.url_schema, createList);
 
+            }else if (current_view == 'edit' ){
+                var createEdit = function(schemaResult, model){
+                    var editView =
+                        new EditView({ model: model},
+                            {
+                                schemaResult:schemaResult,
+                                router:self.router,
+                                isEditMode: true
+                            });
+                    self.currentView = editView;
+                    self.render();
+                };
+
+                if(_.isUndefined(current_scratch.schemaResult) ||_.isUndefined(current_scratch.model)){  // allow reloading
+                    var resource_url = current_ui_resource.url_root + '/' + current_ui_resource.api_resource;
+                    var schema_url =  resource_url + '/schema';
+                    var _key = Iccbl.getKey(current_options);
+                    var url = resource_url  + '/' + _key;
+
+                    Iccbl.getSchema(schema_url, function(schemaResult) {
+                        console.log('schemaResult callback: ' + schemaResult + ', ' + url);
+                        if(_.isUndefined(current_scratch.model)){
+                            Iccbl.getModel(schemaResult, url, createEdit);
+                        }else{
+                            createEdit(schemaResult,current_scratch.model);
+                        }
+                    });
+                }else{
+                    createEdit(current_scratch.schemaResult,current_scratch.model);
+                }
             }else if (current_view === 'detail'){
 
                 if(current_resource_id == 'screen' ||
@@ -91,8 +122,8 @@ define([
                     this.currentView = new ScreenView({ model: this.model }, options);
                     this.render();
                 }else if(current_resource_id == 'users'){
-                    // TODO: deal with the hoisting mess here & elsewhere
-                    (function() {
+
+                    (function() { // TODO: deal with the hoisting mess here & elsewhere
                         console.log('setup user detail view');
                         var options = {
                             url_root: current_ui_resource.url_root,

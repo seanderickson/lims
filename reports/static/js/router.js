@@ -274,6 +274,25 @@ define([
         return orderHash;
     },
 
+    toEdit: function(ui_resource_id, key, key2){
+        console.log('to edit page, ui_resource_id: ' + ui_resource_id + ', ' + key + ', ' + key2 );
+
+        //TODO: support arbitrarily composite keys
+        var _current_options = { 'key': key };
+        if(!_.isUndefined(key2) && !_.isNull(key2) ){
+            _current_options['key'] = [key,key2]; // allow for composite ids
+        }
+
+
+        this.model.set({
+            current_view: 'edit',
+            current_resource_id: ui_resource_id,
+            current_options: _current_options,
+            current_detail: _current_options,
+            routing_options: { trigger: false, replace: true } // TODO: necessary?
+        });
+    },
+
 
     toDetail: function(ui_resource_id, key, key2, _tab, rpp, page, orderBy, searchBy){
         console.log('to detail page, ui_resource_id: ' + ui_resource_id + ', ' + key + ', ' + key2 + ', ' + rpp + ', ' + page + ', ' + orderBy + ', ' + searchBy);

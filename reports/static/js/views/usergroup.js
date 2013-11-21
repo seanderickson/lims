@@ -14,7 +14,7 @@ define([
     // see https://github.com/wyuenho/backbone-pageable/issues/62
     Backbone.PageableCollection = BackbonePageableCollection;
 
-    var UserView = Backbone.View.extend({
+    var UserGroupView = Backbone.View.extend({
         events: {
             'click li': 'click_tab',
         },
@@ -22,20 +22,17 @@ define([
         initialize : function(attributes, options) {
             this.options = options;
             var self = this;
-            Iccbl.assert( !_.isUndefined(options.url_root), 'UserView: options.url_root must be defined');
-            Iccbl.assert( !_.isUndefined(options.current_options), 'UserView: options.current_options must be defined');
-            Iccbl.assert( !_.isUndefined(options.user_model), 'UserView: options.user_model must be defined');
-            Iccbl.assert( !_.isUndefined(options.user_schema), 'UserView: options.user_schema must be defined');
-            Iccbl.assert( !_.isUndefined(options.router), 'UserView options: router is required');
 
-            console.log('initialize UserView: current options: ' + JSON.stringify(options.current_options));
+            Iccbl.requireOptions(options, ['url_root', 'current_options', 'model', 'schema', 'router' ]);
 
-            _.bindAll(this, 'setDetail', 'setGroups', 'setPermissions');
+            console.log('initialize UserGroupView: current options: ' + JSON.stringify(options.current_options));
+
+            _.bindAll(this, 'setDetail', 'setUsers', 'setPermissions');
 
             this._tabbed_resources = {
-                detail: { description: 'User Details', title: 'User Details', invoke : this.setDetail },
-                groups: { description: 'User Groups', title: 'User Groups', invoke : this.setGroups },
-                permissions: { description: 'User Permissions', title: 'User Permissions', invoke : this.setPermissions },
+                detail: { description: 'UserGroup Details', title: 'UserGroup Details', invoke : this.setDetail },
+                groups: { description: 'Users', title: 'Users', invoke : this.setUsers },
+                permissions: { description: 'UserGroup Permissions', title: 'UserGroup Permissions', invoke : this.setPermissions },
             };
 
             var compiledTemplate = _.template( tabbedTemplate, { tab_resources: this._tabbed_resources, });
@@ -47,12 +44,12 @@ define([
 
             this.listenTo(this.model, 'change:current_detail', this.change_current_detail);
 
-            self.user = self.options.user_model;
-            self.userSchema = self.options.user_schema;
+            self.objectModel = self.options.model;
+            self.objectSchema = self.options.schema;
 
             // set the id specifically on the model: backbone requires this to determine whether a "POST" or "PATCH" will be used
-            self.user.id = Iccbl.getIdFromIdAttribute(self.user, self.userSchema);
-            self.title = Iccbl.getTitleFromTitleAttribute(self.user, self.userSchema);
+            self.objectModel.id = Iccbl.getIdFromIdAttribute(self.objectModel, self.objectSchema);
+            self.title = Iccbl.getTitleFromTitleAttribute(self.objectModel, self.objectSchema);
 
             self._tabbed_resources[tab].invoke();
             self.$('#' + tab).addClass('active');
@@ -74,9 +71,9 @@ define([
             var self = this;
 
             var detailView =
-                new DetailView({ model: self.user },
+                new DetailView({ model: self.objectModel },
                     {
-                        schemaResult:self.userSchema,
+                        schemaResult:self.objectSchema,
                         router:self.options.router,
                         isEditMode: false
                     });
@@ -85,21 +82,21 @@ define([
             self.$('#detail').addClass('active'); // first time not clicked so set manually
         },
 
-        setGroups: function(){
+        setUsers: function(){
             var self = this;
-            var resource_url = this.options.url_root + '/usergroup';
+            var resource_url = this.options.url_root + '/user';
             var schema_url =  resource_url + '/schema';
             var url = resource_url;
 
-            if(_.isUndefined(this.groups)){
-                var createGroups = function(schemaResult){
+            if(_.isUndefined(self.users)){
+                var createUsers = function(schemaResult){
                     var columns = Iccbl.createBackgridColModel(schemaResult.fields, Iccbl.MyHeaderCell);//, col_options );
 
                     // make a checkbox column that will be used to manage the group->user relationship
                     columns.unshift({
-                        column: "isForUser",
-                        name: "isForUser",
-                        label: "Select groups for " + self.title,
+                        column: "isInGroup",
+                        name: "isInGroup",
+                        label: "Select users for " + self.title,
                         cell: "boolean"
                     });
 
@@ -112,7 +109,6 @@ define([
                         });
                     var listModel = new ListModel();
 
-
                     var collection  = new Iccbl.MyCollection({
                             'url': url,
                             currentPage: parseInt(listModel.get('page')),
@@ -122,30 +118,27 @@ define([
 
                     // collection.bind("change reset add remove", function(){
                     collection.bind("sync", function(){
-                        collection.each(function(model){
-                            var currentUsers = model.get('users');
-                            var currentUserUri = self.user.get('resource_uri');
-                            console.log('evaluate group with users: ' + model.get('name') + ': ' + JSON.stringify(currentUsers) + ', for user: ' + currentUserUri)
-                            // Note; the resource_uri for the current user may be full, and the
-                            // uri's from the server may be relative (so not including "api/v1")
-                            // model.set('isForUser', _.find(currentUsers, function(user_uri) {
-                              // return  currentUserUri.indexOf(user_uri) != -1;
-                            // }));
+                        collection.each(function(model){  // each model is a user
+                            var currentGroups = model.get('groups');
+                            var currentGroupUri = self.objectModel.get('resource_uri');
+                            console.log('evaluate user with groups: ' + Iccbl.getIdFromIdAttribute(model, schemaResult)
+                              + ': ' + JSON.stringify(currentGroups) + ', for : ' + currentGroupUri)
 
-                            model.set('isForUser', Iccbl.containsByMatch(currentUsers, currentUserUri) );
+                            model.set('isInGroup', Iccbl.containsByMatch(currentGroups, currentGroupUri) );
 
                             // when the checkbox is selected, use a custom model event to update the group model relationship and refetch the user model
                             // reln is group->users, so update it that way
-                            model.on('change:isForUser', function(model){
+                            model.on('change:isInGroup', function(model){
                                 console.log('model change: ' + JSON.stringify(model));
-                                var currentUsers = model.get('users');
-                                var currentUserUri = self.user.get('resource_uri');
+                                var currentGroups = model.get('usergroups');
+
+                                !!!! >< TODO start work here
                                 var changed = false;
-                                var alreadyContained = Iccbl.containsByMatch(currentUsers, currentUserUri);
-                                if(model.get('isForUser') && ! alreadyContained) { //_.contains(currentUsers, currentUserUri) ){
+                                var alreadyContained = Iccbl.containsByMatch(currentGroups, currentGroupUri);
+                                if(model.get('isInGroup') && ! alreadyContained) {
                                     currentUsers.unshift(currentUserUri);
                                     changed = true;
-                                }else if(!model.get('isForUser') && alreadyContained ){
+                                }else if(!model.get('isInGroup') && alreadyContained ){
                                     currentUsers = _.without(currentUsers, currentUserUri);
                                     changed = true;
                                 }
@@ -161,15 +154,15 @@ define([
                         });
                     });
 
-                    self.groups = new SimpleListView({ model: listModel },{ columns: columns,collection: collection, schemaResult: schemaResult });
+                    self.users = new SimpleListView({ model: listModel },{ columns: columns,collection: collection, schemaResult: schemaResult });
                     $('#tab_container').html(self.groups.render().el);
                 };
 
-                Iccbl.getSchema(schema_url, createGroups);
+                Iccbl.getSchema(schema_url, createUsers);
             }else{
-                self.groups.setElement(self.$('#tab_container')).render();
+                self.users.setElement(self.$('#tab_container')).render();
             }
-            self.$('#groups').addClass('active'); // first time not clicked so set manually
+            self.$('#users').addClass('active'); // first time not clicked so set manually
         },
 
         setPermissions: function(){
@@ -187,7 +180,7 @@ define([
                     columns.unshift({
                         column: "isForUser",
                         name: "isForUser",
-                        label: "Select permissions for " + self.title,
+                        label: self.user.get('first_name') + self.user.get('last_name'),
                         cell: "boolean"
                     });
 
@@ -296,5 +289,5 @@ define([
         }
     });
 
-    return UserView;
+    return UserGroupView;
 });

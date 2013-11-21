@@ -554,7 +554,10 @@ class ManagedResource(LoggingMixin):
     def get_via_uri(self, uri, request=None):
         '''
         Override the stock method to allow lookup of relative uri's:
-        - a 'relative uri' - or 'local uri' is one that doesn't include the api name ("v1" for instance)
+        - a 'relative uri' - or 'local uri' is one that doesn't include the api name ("v1" for instance), 
+        but rather, is truncated on the left, so that "api/vi/resource_name/key1" becomes
+        "resource_name/key1".  This is useful because input file records can have a
+        shorter "resource_uri" field.
         '''
         if self._meta.resource_name not in uri:
             raise Exception(str(('invalid URI', uri, 'must contain at least the resource name', self._meta.resource_name)))
@@ -562,7 +565,7 @@ class ManagedResource(LoggingMixin):
         if request and request.path:
             path = request.path
             # remove the parts after the api_name ("v1") because that part is the resource name, 
-            # and may not be for this resource
+            # calling context may not be for this resource
             path = path[:path.find(self._meta.api_name)+len(self._meta.api_name)+1] 
             local_uri = uri
             if path not in local_uri:
@@ -579,6 +582,7 @@ class ManagedResource(LoggingMixin):
         convert "reports/api/v1/permission/resource/read" to "permission/resource/read"
         '''
         uri = super(ManagedResource, self).get_resource_uri(bundle_or_obj=bundle_or_obj, url_name=url_name)
+#        return uri
         return uri[uri.find(self._meta.resource_name):]
     
     # implementation hook - URLS to match _before_ the default URLS
@@ -762,7 +766,7 @@ class UserResource(ManagedModelResource):
     screensaver_user_id = fields.IntegerField('screensaver_user_id', readonly=True) 
     usergroups = fields.ToManyField('reports.api.UserGroupResource', 'usergroup_set', related_name='users', blank=True, null=True)
 #    django_user = fields.OneToOneField('db.api.ScreensaverUserResource', 'screensaveruser', blank=True, null=True )
-    permissions = fields.ToManyField('reports.api.PermissionResource', 'permissions', null=True) #, related_name='users', blank=True, null=True)
+    permissions = fields.ToManyField('reports.api.PermissionResource', 'permissions', related_name='users', null=True) #, related_name='users', blank=True, null=True)
     
     class Meta:
         scope = 'fields:user'
@@ -780,14 +784,30 @@ class UserResource(ManagedModelResource):
     def __init__(self, **kwargs):
         super(UserResource,self).__init__(**kwargs)
 
+    # TODO: either have to generate localized resource uri, or, in client, equate localized uri with non-localized uri's 
+    # (* see user.js, where _.without() is used) 
+    # this modification represents the first choice
+    def get_resource_uri(self, bundle_or_obj=None, url_name='api_dispatch_list'):
+        return self.get_local_resource_uri(bundle_or_obj=bundle_or_obj, url_name=url_name)
+
     def hydrate(self, bundle):
         bundle = super(UserResource, self).hydrate(bundle);
         return bundle
+
+    def dehydrate_permissions(self, bundle):
+        uri_list = []
+        P = PermissionResource()
+        for p in bundle.obj.permissions.all():
+            uri_list.append(P.get_local_resource_uri(p))
+        logger.info(str(('-- deydrate_permissions', uri_list)))
+        return uri_list;
     
     def obj_create(self, bundle, **kwargs):
         """
         A iccbl user specific implementation of ``obj_create``.
+        Override so that we can call our own save?
         """
+        logger.info(str(('++obj_create', bundle.data)))
         bundle.obj = self._meta.object_class()
 
         for key, value in kwargs.items():
@@ -837,24 +857,34 @@ class UserResource(ManagedModelResource):
         if not username:
             username = data.get('login_id')
 
-        # Special validations, because there are two user objects, the ScreensaverUser, django auth.User
-        try:
-            extant_user = User.objects.get(username=username)
-            errors['login_id'].append('login_id is already in use: ' + username)
-            errors['ecommons_id'].append('ecommons_id is already in use: ' + username)
-            extant_user = User.objects.get(email=data['email'])
-            errors['email'].append('email is already in use: ' + username)
-        except ObjectDoesNotExist:
-            pass
+        # TODO: verify that we should not check for extant here
+#        # Special validations, because there are two user objects, the ScreensaverUser, django auth.User
+#        try:
+#            extant_user = User.objects.get(username=username)
+#            errors['login_id'].append('login_id is already in use: ' + username)
+#            errors['ecommons_id'].append('ecommons_id is already in use: ' + username)
+#            
+#            # TODO: email is not unique, should it be?
+#            #            extant_user = User.objects.get(email=data['email'])
+#            #            errors['email'].append('email is already in use: ' + username)
+#        except ObjectDoesNotExist:
+#            pass
         
         if errors:
-            logger.warn(str(('bundle errors', bundle.errors)))
             bundle.errors[self._meta.resource_name] = errors
+            logger.warn(str(('bundle errors', bundle.errors, len(bundle.errors.keys()))))
             return False
         return True
         
     
     def save(self, bundle, skip_errors=False):
+        ''' 
+        overriding base save - so that we can create the django auth_user if needed.
+        - everything else should be the same (todo: update if not)
+        TODO: document: login_id overrides ecommons_id for assignment to the auth_user.login_id
+        when creating the auth_user object
+        '''
+        logger.info(str(('+save', bundle.obj, bundle.obj.user)))
         self.is_valid(bundle)
 
         if bundle.errors and not skip_errors:
@@ -866,8 +896,6 @@ class UserResource(ManagedModelResource):
         else:
             self.authorized_create_detail(self.get_object_list(bundle.request), bundle)
         
-#        raise NotImplementedError('create new user not implemented')  
-
         # create a new screensaver_user_id
         if not bundle.obj.screensaver_user_id:
             max_result = ScreensaverUser.objects.all().aggregate(Max('screensaver_user_id'))
@@ -877,13 +905,16 @@ class UserResource(ManagedModelResource):
             bundle.obj.screensaver_user_id = new_id
             
             bundle.obj.date_created = timezone.now()
+        
+        # Save FKs just in case.
+        self.save_related(bundle)
 
-        logger.info('saving')
+        logger.info(str(('saving', bundle.obj, bundle.obj.user)))
         bundle.obj.save();
         
         # create a Django user
         username = bundle.obj.ecommons_id
-        if bundle.obj.login_id:
+        if bundle.obj.login_id:  # TODO: document: login_id overrides ecommons_id
             username = bundle.obj.login_id
         
         if not bundle.obj.user:
@@ -894,9 +925,16 @@ class UserResource(ManagedModelResource):
                 last_name=bundle.obj.last_name)
             django_user.screensaveruser = bundle.obj
             logger.info('save django user')
-            django_user.save();
-        
+            django_user.save()
+            # this has to be done to set the FK on obj; since we're the only side maintaining this rel' with auth_user
+            bundle.obj.user=django_user 
+            bundle.obj.save()
+            
         bundle.objects_saved.add(self.create_identifier(bundle.obj))
+
+        # Now pick up the M2M bits.
+        m2m_bundle = self.hydrate_m2m(bundle)
+        self.save_m2m(m2m_bundle)
 
         #TODO: set password as a separate step
         logger.info('user save done')
@@ -905,8 +943,9 @@ class UserResource(ManagedModelResource):
 
     def obj_update(self, bundle, skip_errors=False, **kwargs):
         """
-        A iccbl user-specific implementation of ``obj_update``.
+        A iccbl user-specific implementation of ``obj_update``. NOTE: this is the same as superclass right now
         """
+        logger.info(str(('++obj_update', bundle.data)))
         if not bundle.obj or not self.get_bundle_detail_data(bundle):
             try:
                 lookup_kwargs = self.lookup_kwargs_with_identifiers(bundle, kwargs)
@@ -978,6 +1017,9 @@ class UserGroupResource(ManagedModelResource):
     def __init__(self, **kwargs):
         super(UserGroupResource,self).__init__(**kwargs)
 
+    def get_resource_uri(self, bundle_or_obj=None, url_name='api_dispatch_list'):
+        return self.get_local_resource_uri(bundle_or_obj=bundle_or_obj, url_name=url_name)
+    
     def obj_create(self, bundle, **kwargs):
         logger.info(str(('----log obj_create', bundle.data)))
         bundle = super(UserGroupResource, self).obj_create(bundle=bundle, **kwargs)
@@ -1072,6 +1114,9 @@ class PermissionResource(ManagedModelResource):
                     p = Permission.objects.create(scope=r.scope, key=r.key, type=ptype.key)
                     logger.info(str(('bootstrap created permission', p)))
 
+    def get_resource_uri(self, bundle_or_obj=None, url_name='api_dispatch_list'):
+        return self.get_local_resource_uri(bundle_or_obj=bundle_or_obj, url_name=url_name)
+    
     def obj_get(self, bundle, **kwargs):
         ''' basically, if a permission is requested that does not exist, it is created
         '''

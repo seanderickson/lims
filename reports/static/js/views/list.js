@@ -5,12 +5,10 @@ define([
   'backbone_pageable',
   'backgrid',
   'iccbl_backgrid',
-  'views/detail_stickit',
   'text!templates/rows-per-page.html',
   'text!templates/list.html',
   'text!templates/modal_ok_cancel.html',
-  'text!templates/generic-selector.html',
-], function($, _, Backbone, BackbonePageableCollection, Backgrid,  Iccbl, DetailView, rowsPerPageTemplate, listTemplate, modalTemplate, genericSelectorTemplate ){
+], function($, _, Backbone, BackbonePageableCollection, Backgrid,  Iccbl, rowsPerPageTemplate, listTemplate, modalTemplate ){
 
     // for compatibility with require.js, attach PageableCollection in the right place on the Backbone object
     // see https://github.com/wyuenho/backbone-pageable/issues/62
@@ -31,20 +29,31 @@ define([
         initialize : function(attributes, options) {
             console.log('initialize ListView: ');
             var self = this;
-            Iccbl.assert( !_.isUndefined(options.ui_resource_id), 'listView options: ui_resource_id is required');
+            Iccbl.assert( !_.isUndefined(options.schemaResult), 'listView options: schemaResult is required');
+            // Iccbl.assert( !_.isUndefined(options.collection), 'listView options: collection is required');
+
             Iccbl.assert( !_.isUndefined(options.router), 'listView options: router is required');
             Iccbl.assert( !_.isUndefined(options.url), 'listView options: url is required');
-            Iccbl.assert( !_.isUndefined(options.schemaResult), 'listView options: schemaResult is required');
             Iccbl.assert( !_.isUndefined(options.header_message), 'listView options: header_message is required');
             Iccbl.assert( !_.isUndefined(options.title), 'listView options: title is required');
 
             this.router = options.router;
             this._options = options;
 
-            var ListModel = Backbone.Model.extend({ defaults: { rpp: 25, page: 1, order: {}, search: {}} });
+            var ListModel = Backbone.Model.extend({
+                defaults: {
+                    rpp: 25,
+                    page: 1,
+                    order: {},
+                    search: {}}
+                });
             var current_options = _.clone(this.model.get('current_options'));
-            var listModel = this.listModel = new ListModel({ rpp: current_options.rpp, page: current_options.page,
-                order: _.clone(current_options.order), search: _.clone(current_options.search) });
+            var listModel = this.listModel = new ListModel({
+                rpp: current_options.rpp,
+                page: current_options.page,
+                order: _.clone(current_options.order),
+                search: _.clone(current_options.search)
+            });
 
             this.objects_to_destroy = _([]);
 
@@ -55,6 +64,8 @@ define([
                     listModel: listModel
                 });
             this.objects_to_destroy.push(collection);
+
+            // var collection = this.collection = options.collection;
 
             this.listenTo(this.listModel, 'change:search', function(){
                 var searchHash = self.listModel.get('search')
@@ -126,7 +137,6 @@ define([
             });
 
             self.listenTo(self.collection, "MyCollection:edit", function (model) {
-                console.log('---- create detail view for '+ this._options.ui_resource_id);
                 // Note: some links must use composite keys - because the composite key is the public key
                 // (don't want to expose the private, possibly transient key)
                 var id = '/' + model.get('id');
@@ -138,7 +148,29 @@ define([
                                 return memo += model.get(item);
                             }, '');
                 }else{
-                    console.log('Warn: schema for this type has no resource_definition,id_attribute; type: ' + this._options.ui_resource_id);
+                    console.log('Warn: schema for this type has no resource_definition,id_attribute; type: ' + schemaResult['resource_definition']['title']);
+                }
+                console.log('id: ' + id);
+                this.model.set({    current_scratch: { schemaResult: schemaResult, model: model} ,
+                                    current_view: 'edit',
+                                    current_options: { key: id },
+                                    routing_options: {trigger: false, replace: false}
+                               }); // signal to the app_model that the current view has changed // todo: separate out app_model from list_model
+            });
+
+            self.listenTo(self.collection, "MyCollection:detail", function (model) {
+                // Note: some links must use composite keys - because the composite key is the public key
+                // (don't want to expose the private, possibly transient key)
+                var id = '/' + model.get('id');
+                if(_.has(schemaResult['resource_definition'], 'id_attribute')){
+                    console.log('create id from ' + schemaResult['resource_definition']['id_attribute']);
+                    id = _.reduce(schemaResult['resource_definition']['id_attribute'],
+                            function(memo, item){
+                                if(!_.isEmpty(memo)) memo += '/';
+                                return memo += model.get(item);
+                            }, '');
+                }else{
+                    console.log('Warn: schema for this type has no resource_definition,id_attribute; type: ' + schemaResult['resource_definition']['title']);
                 }
                 console.log('id: ' + id);
                 this.model.set({    current_scratch: { schemaResult: schemaResult, model: model} ,
@@ -247,29 +279,41 @@ define([
                         event.preventDefault();
                         // TODO: set the defaults, also determine if should be set on create, from the Meta Hash
                         var defaults = {};
+
+                        id_attributes = self._options.schemaResult['resource_definition']['id_attribute']
                         _.each(schemaResult.fields, function(value, key){
                             if (key == 'resource_uri') {
                                 defaults[key] = self._options.url;
-                            } else if (key == 'id'){ // nop // TODO: using the meta-hash, always exclude the primary key from create
+                            } else if (key == 'id'){
+                                // nop // TODO: using the meta-hash, always exclude the primary key from create
+                            // } else if (_.contains(id_attributes,key)){
+                                // // nop // TODO: using the meta-hash, always exclude the primary key from create
+//
                             } else {
                                  defaults[key] = '';
                             }
                         });
                         var NewModel = Backbone.Model.extend({urlRoot: self._options.url, defaults: defaults });
-                        var detailView = new DetailView({ model: new NewModel}, { isEditMode: true, title: "Add new record", fields:schemaResult.fields}); // TODO: get the model "edit title" from the metainformation_hash
 
-                        $('#list-container').hide();
-                        // NOTE: having self bind to the detailView like this:
-                        // self.listenTo(detailView, 'remove', function(){
-                        // causes the detailView to hang around in memory until self is closed
-                        // detailView.on('remove', function(){
-                        self.listenToOnce(detailView, 'remove', function(){
-                            console.log('... remove detailView event');
-                            self.collection.fetch({reset:true});
-                            $('#list-container').show();
-                            detailView.close();
-                        });
-                        $('#detail-container').append(detailView.render().$el);
+                        self.collection.trigger('MyCollection:edit', new NewModel());
+
+                        // // TODO: get the model "edit title" from the metainformation_hash
+                        // var detailView = new DetailView(
+                            // { model: new NewModel},
+                            // { isEditMode: true, title: "Add new record", schemaResult:schemaResult, router:self._options.router});
+//
+                        // $('#list-container').hide();
+                        // // NOTE: having self bind to the detailView like this:
+                        // // self.listenTo(detailView, 'remove', function(){
+                        // // causes the detailView to hang around in memory until self is closed
+                        // // detailView.on('remove', function(){
+                        // self.listenToOnce(detailView, 'remove', function(){
+                            // console.log('... remove detailView event');
+                            // self.collection.fetch({reset:true});
+                            // $('#list-container').show();
+                            // detailView.close();
+                        // });
+                        // $('#detail-container').append(detailView.render().$el);
 
                     },
                 },
@@ -320,7 +364,9 @@ define([
             if(!_.isUndefined(self.extraSelectorInstance)){
                 self.$("#extra-selector-div").append(self.extraSelectorInstance.render().$el);
             }
-            self.$("#table-footer-div").append(footer.$el);
+
+            console.log('========append footer: ' + self.footer);
+            self.$("#table-footer-div").append(self.footer.$el);
 
             this.delegateEvents();
 

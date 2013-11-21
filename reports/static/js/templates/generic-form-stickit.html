@@ -3,6 +3,7 @@
 <h4><%= title %></h4>
 <form id='generic-form' class="form-horizontal" >
     <%
+    var tabIndex = 1;
     _(keys).each(function(key) { %>
         <div class="control-group">
             <label class="control-label" for="<%= key %>" ><%= (_(fieldDefinitions[key]).has('title') && ! _.isNull(fieldDefinitions[key]['title']) ? fieldDefinitions[key]['title'] : key) %></label>
@@ -20,7 +21,7 @@
 
                         <% _(options.choices).each(function(option) { %>
                             <label class="radio">
-                              <input type="radio" name="<%= key %>" class="<%= 'radio_' + key %>" id="<%= key %>" value="<%= option %>">
+                              <input type="radio" name="<%= key %>" class="<%= 'radio_' + key %>" id="<%= key %>" value="<%= option %>" tabindex="<%= tabIndex++ %>">
                               <%= option %>
                             </label>
                         <% }); %>
@@ -39,29 +40,29 @@
                         %>
                         <% _(options.choices).each(function(option) { %>
                             <label class="checkbox">
-                                <input type="checkbox" name="<%= key %>" class="<%= 'checkbox_' + key %>" id="<%= key %>" value="<%= option %>">
+                                <input type="checkbox" name="<%= key %>" class="<%= 'checkbox_' + key %>" id="<%= key %>" value="<%= option %>" tabindex="<%= tabIndex++ %>">
                               <%= option %>
                             </label>
                         <% }); %>
                     <% } else if(options.ui_type == 'multiselect2'){ %>
-                        <select class="multiselect input-medium" multiple="multiple" name="<%= key %>" id="<%= key %>" >
+                        <select class="multiselect input-medium" multiple="multiple" name="<%= key %>" id="<%= key %>"  tabindex="<%= tabIndex++ %>">
                         </select>
                     <% } else if(options.ui_type == 'boolean'){ %>
                         <label class="checkbox">
-                            <input type="checkbox" name="<%= key %>" class="<%= 'checkbox_' + key %>" id="<%= key %>" value=True ">
+                            <input type="checkbox" name="<%= key %>" class="<%= 'checkbox_' + key %>" id="<%= key %>" value=True  tabindex="<%= tabIndex++ %>">
                           <%= key %>
                         </label>
                     <% } else if(options.ui_type == 'string'){ %>
-                        <input type="text" name="<%= key %>" id="<%= key %>" class="input-block-level"/>
+                        <input type="text" name="<%= key %>" id="<%= key %>" class="input-block-level" tabindex="<%= tabIndex++ %>"/>
                     <% } else if(options.ui_type == 'integer'){ %>
-                        <input type="text" name="<%= key %>" id="<%= key %>" class="input-medium"/>
+                        <input type="text" name="<%= key %>" id="<%= key %>" class="input-medium" tabindex="<%= tabIndex++ %>"/>
                     <% } else if(options.ui_type == 'date'){ %>
-                        <input type="text" name="<%= key %>" id="<%= key %>" class="input-medium"/>
+                        <input type="text" name="<%= key %>" id="<%= key %>" class="input-medium" tabindex="<%= tabIndex++ %>" />
                     <% } else { %>
-                        <input type="text" name="<%= key %>" id="<%= key %>" class="input-block-level"/>
+                        <input type="text" name="<%= key %>" id="<%= key %>" class="input-block-level" tabindex="<%= tabIndex++ %>"/>
                     <% } %>
                 <% } else { %>
-                    <input type="text" name="<%= key %>" id="<%= key %>" class="input-medium"/>
+                    <input type="text" name="<%= key %>" id="<%= key %>" class="input-medium" tabindex="<%= tabIndex++ %>"/>
                 <% } %>
             </div>
         </div>
@@ -69,7 +70,6 @@
     <div class="controls">
         <button type="button" class="btn" id="save" >Save</button>
         <button type="button" class="btn" id="cancel" >Cancel</button>
-        <button type="button" class="btn" id="history" >History</button>
     </div>
 </form>
 

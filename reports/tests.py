@@ -447,6 +447,16 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
         
         logger.info(str(('==== test1_user_test_data done =====')))
 
+    def test3_user_permissions(self):
+        logger.info(str(('==== test2_user_permissions =====')))
+        self._test1_user_test_data()
+        
+        logger.info(str(('==== test2_user_permissions start =====')))
+        filename = os.path.join(self.directory,'test_data/users2_patch.csv')
+        self._patch_test('user', filename)
+        
+        logger.info(str(('==== test2_user_permissions done =====')))
+
 class UserGroupResource(UserResource):
     
     def setUp(self):

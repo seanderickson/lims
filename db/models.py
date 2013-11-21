@@ -829,7 +829,7 @@ class ScreenerCherryPick(models.Model):
 
 
 from django.contrib.auth.models import User
-
+from django.conf import settings
 class ScreensaverUser(models.Model):
 #    objects = PostgresManager()
 
@@ -853,14 +853,15 @@ class ScreensaverUser(models.Model):
     date_publicly_available = models.DateTimeField(null=True, blank=True)
 
     # TODO: it would be nice to move user out of db
-    user = models.OneToOneField(User, null=True, blank=True)
+#    user = models.OneToOneField(User, null=True, blank=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True)
     permissions = models.ManyToManyField('reports.Permission')
 #    usergroups = models.ManyToManyField('reports.UserGroup')
     class Meta:
         db_table = 'screensaver_user'
         
     def __unicode__(self):
-        return unicode(str((self.first_name, self.last_name, self.email, self.login_id, self.ecommons_id)))
+        return unicode(str((self.screensaver_user_id, self.first_name, self.last_name, self.email, self.login_id, self.ecommons_id)))
 
 class ScreeningRoomUser(models.Model):
     screensaver_user = models.OneToOneField('ScreensaverUser', primary_key=True)

@@ -1,7 +1,10 @@
 key,scope,resource_uri,ordinal,comment,ui_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,backgrid_cell_type,backgrid_cell_options
 screensaver_user_id,fields:user,/reports/api/v1/metahash/fields:user/screensaver_user_id/,0,,string,TRUE,"The user id assigned","Screensaver User ID",TRUE,,,"[list,detail]",,Iccbl.EditCell,
+permissions,fields:user,/reports/api/v1/metahash/fields:user/permissions/,7,,uri_list,TRUE,"URIs for the permissions assigned directly to this user","Permission URI list",TRUE,,,,,,
 usergroups,fields:user,/reports/api/v1/metahash/fields:user/usergroups/,8,,uri_list,TRUE,"URIs for groups that the user is in","Group URI list",TRUE,,,,,,
+group_permissions,fields:user,/reports/api/v1/metahash/fields:user/group_permissions/,9,,string,TRUE,"Permissions for the groups that the user is in","Group permissions",TRUE,,,[detail],,,
 group_list,fields:user,/reports/api/v1/metahash/fields:user/group_list/,11,,string,TRUE,"Group names for the groups that the user is in",Groups,TRUE,,,"[list,detail]",,,
+permission_list,fields:user,/reports/api/v1/metahash/fields:user/permission_list/,10,,nested_object,TRUE,"Permissions assigned directly to the user","User Permissions",TRUE,,,[detail],,,
 first_name,fields:user,/reports/api/v1/metahash/fields:user/first_name/,1,,string,TRUE,"First Name","First Name",TRUE,,,"[list,detail,edit]",,,
 last_name,fields:user,/reports/api/v1/metahash/fields:user/last_name/,2,,string,TRUE,"Last Name","Last Name",TRUE,,,"[list,detail,edit]",,,
 ecommons_id,fields:user,/reports/api/v1/metahash/fields:user/ecommons_id/,3,,string,TRUE,Ecommons,Ecommons,TRUE,,,"[list,detail,edit]",,,

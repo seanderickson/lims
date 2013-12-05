@@ -16,3 +16,4 @@ id,fields:metahash,/reports/api/v1/metahash/fields:metahash/id/,99,,string,,"Int
 resource_uri,fields:metahash,/reports/api/v1/metahash/fields:metahash/resource_uri/,99,,string,,"Internal use only resource_uri",URI,,,[],,
 alias,fields:metahash,/reports/api/v1/metahash/fields:metahash/alias/,99,,string,,Unused,Alias,,,[],,
 backgrid_cell_options,fields:metahash,/reports/api/v1/metahash/fields:metahash/backgrid_cell_options/,24,"options that the backgrid cell type used will be able to parse",string,FALSE,"Options that the backgrid_cell_type specified will be able to parse.","Backgrid Cell Options",FALSE,,"[detail,edit]",,
+default,fields:metahash,/reports/api/v1/metahash/fields:metahash/default/,25,default,string,FALSE,"Default value for new instances",Default,FALSE,,"[detail,edit]",,

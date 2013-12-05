@@ -1,3 +1,5 @@
 name,users,permissions
 testGroup1,"[user/1,user/2]","[permission/resource/metahash/read,permission/fields:user/username/read]"
 testGroup2,"[user/2,user/3]","[permission/resource/user/read,permission/resource/screen/read]"
+testGroup3,,"[permission/resource/user/read,permission/resource/screen/read]"
+testGroup4,[user/1],

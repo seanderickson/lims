@@ -13,6 +13,14 @@ import os.path
 
 print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
 
+
+# make tests faster
+# use from the command line with testing like
+# ./manage.py test --settings=lims.test_settings
+SOUTH_TESTS_MIGRATE = False
+DATABASES['default'] = {'ENGINE': 'django.db.backends.sqlite3',
+                        'NAME': ':memory'}
+
 # A sample logging configuration. The only tangible logging
 # performed by this configuration is to send an email to
 # the site admins on every HTTP 500 error when DEBUG=False.
@@ -39,7 +47,7 @@ LOGGING = {
             'level':'DEBUG',
             'class':'logging.handlers.RotatingFileHandler',
             'filename': os.path.join(PROJECT_ROOT, '..') +  "/logs/iccbl-testing.log",
-            'maxBytes': 50000000,
+            'maxBytes': 5000000,
             'backupCount': 2,
             'formatter': 'simple',
         },
@@ -85,10 +93,10 @@ LOGGING = {
             'propagate': False,
             'level': 'INFO',
         },        
-        'django.db': {  # set a default handler
+        'django': {  # set a default handler
             'handlers': ['logfile'],
             'propagate': False,
-            'level': 'INFO',
+            'level': 'DEBUG',
         },        
         'utils': {  # for SQL
             'handlers': ['logfile'],

@@ -357,7 +357,7 @@ class PostgresSortingResource(ModelResource):
         #        obj_list.query.add_ordering('comments_null')
         
         temp = obj_list.query.order_by;
-        obj_list.query.clear_ordering()
+        obj_list.query.clear_ordering(force_empty=True)
         for xfield in extra_ordering:
             temp.insert(0,xfield)
         logger.debug(str(('ordering', temp)))

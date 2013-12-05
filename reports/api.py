@@ -22,7 +22,7 @@ from tastypie.constants import ALL, ALL_WITH_RELATIONS
 from tastypie import fields # NOTE: required for dynamic resource field definitions using eval
 from tastypie.resources import Resource
 
-from lims.api import PostgresSortingResource, LimsSerializer
+from lims.api import PostgresSortingResource, LimsSerializer, CsvBooleanField
 from reports.models import MetaHash, Vocabularies, ApiLog, Permission, UserGroup
 
 import logging
@@ -31,8 +31,9 @@ from django.contrib.auth.models import User
 from collections import OrderedDict
 from db.models import ScreensaverUser
 from django.db.models.aggregates import Max
-#from reports import dump_obj
-from lims.api import CsvBooleanField
+from django.db.models import Q
+
+import lims.settings 
         
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ class LoggingMixin(Resource):
     ** note: "detail_uri_kwargs" returns the set of lookup keys for the resource URI construction.
     '''
     def obj_create(self, bundle, **kwargs):
-        logger.info('----log obj_create')
+        logger.info(str(('----log obj_create')))
         
         bundle = super(LoggingMixin, self).obj_create(bundle=bundle, **kwargs)
         logger.info(str(('object created', bundle.obj )))
@@ -69,10 +70,11 @@ class LoggingMixin(Resource):
         
         return bundle    
     
+    # TODO: not tested
     def obj_delete(self, bundle, **kwargs):
         logger.info('---log obj_delete')
         
-        bundle = super(LoggingMixin, self).obj_create(bundle=bundle, **kwargs)
+        super(LoggingMixin, self).obj_delete(bundle=bundle, **kwargs)
         
         log = ApiLog()
         log.username = bundle.request.user.username #self._meta.authentication.get_identifier(bundle.request) # see tastypie.authentication.Authentication
@@ -295,7 +297,7 @@ class ManagedResource(LoggingMixin):
                                                   field_definition_scope=field_definition_scope)
         for key,hash in metahash.items():
             if 'filtering' in hash and hash['filtering']:
-                self.Meta.filtering[key] = ALL
+                self.Meta.filtering[key] = ALL_WITH_RELATIONS
         
         for key,hash in metahash.items():
             if 'ordering' in hash and hash['ordering']:
@@ -331,15 +333,22 @@ class ManagedResource(LoggingMixin):
                 self._meta.ordering.append(key)
         logger.debug(str(('meta filtering', self._meta.filtering)))
     
+    # locally defined
+    def get_field_def(self, name):
+        return self.local_field_defs[name]
+    
     # local method
     def create_fields(self):
         
-        logger.debug(str(('--create_fields', self._meta.resource_name, self.scope, 'original fields', self.original_fields.keys() )))
+        logger.debug(str(('--create_fields', self._meta.resource_name, 
+            self.scope, 'original fields', self.original_fields.keys() )))
         if hasattr(self._meta, 'bootstrap_fields'):
             logger.debug(str(( 'bootstrap fields', self._meta.bootstrap_fields )))
         
         
-        local_field_defs = MetaHash.objects.get_and_parse(scope=self.scope, field_definition_scope='fields:metahash', clear=True)
+        self.local_field_defs = local_field_defs = \
+            MetaHash.objects.get_and_parse(scope=self.scope, 
+                field_definition_scope='fields:metahash', clear=True)
         logger.debug(str(('managed fields to create', local_field_defs.keys())))
         new_fields = {}
         for field_name, field_obj in self.original_fields.items():
@@ -582,6 +591,7 @@ class ManagedResource(LoggingMixin):
         convert "reports/api/v1/permission/resource/read" to "permission/resource/read"
         '''
         uri = super(ManagedResource, self).get_resource_uri(bundle_or_obj=bundle_or_obj, url_name=url_name)
+        logger.warn(str(('++++get_resource_uri', uri)))
 #        return uri
         return uri[uri.find(self._meta.resource_name):]
     
@@ -768,10 +778,28 @@ class UserResource(ManagedModelResource):
 #    django_user = fields.OneToOneField('db.api.ScreensaverUserResource', 'screensaveruser', blank=True, null=True )
     permissions = fields.ToManyField('reports.api.PermissionResource', 'permissions', related_name='users', null=True) #, related_name='users', blank=True, null=True)
     
+    groups = fields.CharField(attribute='groups', blank=True, null=True)
+    
+    is_for_group = fields.BooleanField(attribute='is_for_group', blank=True, null=True)
+    
     class Meta:
         scope = 'fields:user'
-        queryset = ScreensaverUser.objects.all()
-        
+        queryset = ScreensaverUser.objects.all().order_by('last_name', 'first_name')
+        key = 'groups'
+        if 'postgres' in lims.settings.DATABASES['default']['ENGINE'].lower():
+            queryset = queryset.extra( select = {
+              key: "( select array_to_string(array_agg(ug.name), ', ') " 
+              + " from reports_usergroup ug join reports_usergroup_users ruu on(ug.id=ruu.usergroup_id) "
+              + " where ruu.screensaveruser_id=screensaver_user.screensaver_user_id)"
+            } ) 
+        else:
+            logger.warn(str(('=========using the special sqllite lims.settings.DATABASES', lims.settings.DATABASES)))
+            queryset = queryset.extra( select = {
+              key: "( select group_concat(ug.name, ', ') " 
+              + " from reports_usergroup ug join reports_usergroup_users ruu on(ug.id=ruu.usergroup_id) "
+              + " where ruu.screensaveruser_id=screensaver_user.screensaver_user_id)"
+            } ) 
+            
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
         resource_name='user' 
         authorization= Authorization()        
@@ -783,6 +811,63 @@ class UserResource(ManagedModelResource):
 
     def __init__(self, **kwargs):
         super(UserResource,self).__init__(**kwargs)
+        
+    def obj_get_list(self,bundle, **kwargs):
+        ''' calls 1. apply_filters, 2.authorized_read_list
+        '''
+        return super(UserResource, self).obj_get_list(bundle, **kwargs)
+    
+    def get_object_list(self, request, is_for_group=None):
+        ''' 
+        Called immediately before filtering, actually grabs the (ModelResource) query - 
+        
+        Override this and apply_filters, so that we can control the extra column "is_for_group"
+        This extra column is present when navigating to users from a usergroup; see prepend_urls.
+        TODO: we could programmatically create the "is_for_group" column by grabbing the entire queryset,
+        converting to an array of dicts, and adding this field    
+        '''
+        query = super(UserResource, self).get_object_list(request);
+        logger.info(str(('get_obj_list', is_for_group)))
+        if is_for_group:
+            query = query.extra( 
+              select = {
+                  'is_for_group': '( select count(*)>0 from ' 
+                  + ' reports_usergroup ug join reports_usergroup_users ruu on(ug.id=ruu.usergroup_id) '
+                  + ' where ruu.screensaveruser_id=screensaver_user.screensaver_user_id and ug.name like %s )',
+              },
+              select_params = [is_for_group] )
+            query = query.order_by('-is_for_group', 'last_name', 'first_name')
+        return query
+    
+    def apply_filters(self, request, applicable_filters):
+        logger.info(str(('apply_filters', applicable_filters)))
+        # Special logic to filter on the aggregate groups column
+        groups_filter = None
+        val = None
+        # grab the groups filter out of the dict
+        for f in applicable_filters.keys():
+            if 'groups' in f:
+                groups_filter = f
+                val = applicable_filters.pop(f)
+        # perform the query without the groups filter
+
+        # also: 1. override before filtering - pull out the instruction to include extra column
+        is_for_group = applicable_filters.pop('is_for_group__exact',None)
+        query = self.get_object_list(request, is_for_group=is_for_group).filter(**applicable_filters)
+        # normally:        query = super(UserResource, self).apply_filters(request, applicable_filters)
+
+        # then add the groups filter back in
+        if groups_filter:
+            ids = [x.screensaver_user_id for x in ScreensaverUser.objects.filter(usergroup__name__contains=val)]
+            logger.info(str(('filter for ids', ids)))
+            query = query.filter(screensaver_user_id__in=ids)
+        return query
+
+    def apply_sorting(self, obj_list, options):
+        options = options.copy()
+        options['non_null_fields'] = ['groups','is_for_group'] # Override to exclude this field in the PostgresSortingResource 
+        obj_list = super(UserResource, self).apply_sorting(obj_list, options)
+        return obj_list
 
     # TODO: either have to generate localized resource uri, or, in client, equate localized uri with non-localized uri's 
     # (* see user.js, where _.without() is used) 
@@ -790,32 +875,19 @@ class UserResource(ManagedModelResource):
     def get_resource_uri(self, bundle_or_obj=None, url_name='api_dispatch_list'):
         return self.get_local_resource_uri(bundle_or_obj=bundle_or_obj, url_name=url_name)
 
-    def hydrate(self, bundle):
-        bundle = super(UserResource, self).hydrate(bundle);
-        return bundle
-
     def dehydrate_permissions(self, bundle):
         uri_list = []
         P = PermissionResource()
         for p in bundle.obj.permissions.all():
             uri_list.append(P.get_local_resource_uri(p))
-        logger.info(str(('-- deydrate_permissions', uri_list)))
         return uri_list;
-    
-    def obj_create(self, bundle, **kwargs):
-        """
-        A iccbl user specific implementation of ``obj_create``.
-        Override so that we can call our own save?
-        """
-        logger.info(str(('++obj_create', bundle.data)))
-        bundle.obj = self._meta.object_class()
-
-        for key, value in kwargs.items():
-            setattr(bundle.obj, key, value)
-
-        self.authorized_create_detail(self.get_object_list(bundle.request), bundle)
-        bundle = self.full_hydrate(bundle)
-        return self.save(bundle)
+      
+    def dehydrate_usergroups(self, bundle):
+        uri_list = []
+        UR = UserGroupResource()
+        for g in bundle.obj.usergroup_set.all():
+            uri_list.append(UR.get_local_resource_uri(g))
+        return uri_list;
 
     def is_valid(self, bundle):
         """
@@ -857,18 +929,18 @@ class UserResource(ManagedModelResource):
         if not username:
             username = data.get('login_id')
 
-        # TODO: verify that we should not check for extant here
-#        # Special validations, because there are two user objects, the ScreensaverUser, django auth.User
-#        try:
-#            extant_user = User.objects.get(username=username)
-#            errors['login_id'].append('login_id is already in use: ' + username)
-#            errors['ecommons_id'].append('ecommons_id is already in use: ' + username)
-#            
-#            # TODO: email is not unique, should it be?
-#            #            extant_user = User.objects.get(email=data['email'])
-#            #            errors['email'].append('email is already in use: ' + username)
-#        except ObjectDoesNotExist:
-#            pass
+                # TODO: verify that we should not check for extant here
+        #        # Special validations, because there are two user objects, the ScreensaverUser, django auth.User
+        #        try:
+        #            extant_user = User.objects.get(username=username)
+        #            errors['login_id'].append('login_id is already in use: ' + username)
+        #            errors['ecommons_id'].append('ecommons_id is already in use: ' + username)
+        #            
+        #            # TODO: email is not unique, should it be?
+        #            #            extant_user = User.objects.get(email=data['email'])
+        #            #            errors['email'].append('email is already in use: ' + username)
+        #        except ObjectDoesNotExist:
+        #            pass
         
         if errors:
             bundle.errors[self._meta.resource_name] = errors
@@ -876,6 +948,27 @@ class UserResource(ManagedModelResource):
             return False
         return True
         
+    def obj_create(self, bundle, **kwargs):
+        bundle = super(UserResource, self).obj_create(bundle);
+        return bundle
+
+#         """
+#         A iccbl user specific implementation of ``obj_create``.
+#         Override so that we can call our own save?
+#         """
+#         logger.info(str(('++obj_create', bundle.data)))
+#         bundle.obj = self._meta.object_class()
+# 
+#         for key, value in kwargs.items():
+#             setattr(bundle.obj, key, value)
+# 
+#         self.authorized_create_detail(self.get_object_list(bundle.request), bundle)
+#         bundle = self.full_hydrate(bundle)
+#         return self.save(bundle)
+
+    def hydrate(self, bundle):
+        bundle = super(UserResource, self).hydrate(bundle);
+        return bundle
     
     def save(self, bundle, skip_errors=False):
         ''' 
@@ -909,7 +1002,7 @@ class UserResource(ManagedModelResource):
         # Save FKs just in case.
         self.save_related(bundle)
 
-        logger.info(str(('saving', bundle.obj, bundle.obj.user)))
+        logger.info(str(('saving', bundle.obj, bundle.obj.user, [str(x) for x in bundle.obj.usergroup_set.all()] )))
         bundle.obj.save();
         
         # create a Django user
@@ -973,9 +1066,6 @@ class UserResource(ManagedModelResource):
         if django_user:
             django_user.delete()
         
-    def dehydrate_group_list(self,bundle):
-        return [x.name for x in bundle.obj.usergroup_set.all()]
-
 # TODO: require a custom list-o-objects viewer 
 #    def dehydrate_permission_list(self, bundle):
 #        return  [ [x.scope, x.key, x.type] for x in bundle.obj.permissions.all()]
@@ -983,7 +1073,10 @@ class UserResource(ManagedModelResource):
     def prepend_urls(self):
         return [
 #            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>[\d]+)%s$" % (
+                self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<ecommons_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (
+                self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             ]    
 
 # see http://www.maykinmedia.nl/blog/2012/oct/2/nested-resources-tastypie/
@@ -1001,7 +1094,7 @@ class UserGroupResource(ManagedModelResource):
  
     # relational fields must be defined   
     users = fields.ToManyField('reports.api.UserResource', 'users', related_name='groups', blank=True, null=True)
-    
+
     class Meta:
         queryset = UserGroup.objects.all();
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
@@ -1068,19 +1161,53 @@ class UserGroupResource(ManagedModelResource):
 
     def prepend_urls(self):
         return [
-            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" % (
+                self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (
+                self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[\w\d_.-]+))/users%s$" % (
+                self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_group_userview'), name="api_dispatch_group_userview"),
+            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[\w\d_.-]+))/permissions%s$" % (
+                self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_group_permissionview'), name="api_dispatch_group_permissionview"),
             ]
 
-from django.db.models import Q
+    def dispatch_group_userview(self, request, **kwargs):
+        kwargs['is_for_group'] = kwargs.pop('name')  # signal to include extra column
+        return UserResource().dispatch('list', request, **kwargs)    
+    
+    def dispatch_group_permissionview(self, request, **kwargs):
+        kwargs['is_for_group'] = kwargs.pop('name')  # signal to include extra column
+        return PermissionResource().dispatch('list', request, **kwargs)    
+    
+
 class PermissionResource(ManagedModelResource):
     
-    users = fields.CharField()
-    groups = fields.CharField()
+    usergroups = fields.ToManyField('reports.api.UserGroupResource', 'usergroup_set', related_name='permissions', blank=True, null=True)
+    users = fields.ToManyField('reports.api.UserGroupResource', 'user_set', related_name='permissions', blank=True, null=True)
     
+    groups = fields.CharField(attribute='groups', blank=True, null=True)
+
+    is_for_group = fields.BooleanField(attribute='is_for_group', blank=True, null=True)
+
     class Meta:
         # note: the queryset for this resource is actually the permissions
-        queryset = Permission.objects.all()
+        queryset = Permission.objects.all().order_by('scope', 'key')
+        key = 'groups'
+        
+        if 'postgres' in lims.settings.DATABASES['default']['ENGINE'].lower():
+            queryset = queryset.extra( select = {
+              key: "( select array_to_string(array_agg(ug.name), ', ') " 
+              + " from reports_usergroup ug join reports_usergroup_permissions ugp on(ug.id=ugp.usergroup_id) "
+              + " where ugp.permission_id=reports_permission.id)"
+            } ) 
+        else:
+            logger.warn(str(('=========using the special sqllite lims.settings.DATABASES', lims.settings.DATABASES)))
+            queryset = queryset.extra( select = {
+              key: "( select group_concat(ug.name, ', ') " 
+              + " from reports_usergroup ug join reports_usergroup_permissions ugp on(ug.id=ugp.usergroup_id) "
+              + " where ugp.permission_id=reports_permission.id)"
+            } ) 
+
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
         authorization= Authorization()        
         object_class = object
@@ -1098,11 +1225,9 @@ class PermissionResource(ManagedModelResource):
         
         # create all of the permissions on startup
         
-        resources = MetaHash.objects.filter(Q(scope='resource')|Q(scope__contains='fields:')).order_by('key', 'ordinal', 'scope')
+        resources = MetaHash.objects.filter(Q(scope='resource')|Q(scope__contains='fields:'))
         query = self._meta.queryset._clone()
         permissionTypes = Vocabularies.objects.all().filter(scope='permission:type')
-#        if(len(permissionTypes)==0):
-#            raise TastypieError(str(('permission types have not been loaded (are vocabularies loaded into the database?)')))
         for r in resources:
             found = False
             for perm in query:
@@ -1114,6 +1239,66 @@ class PermissionResource(ManagedModelResource):
                     p = Permission.objects.create(scope=r.scope, key=r.key, type=ptype.key)
                     logger.info(str(('bootstrap created permission', p)))
 
+        
+    def obj_get_list(self,bundle, **kwargs):
+        ''' calls 1. apply_filters, 2.authorized_read_list
+        '''
+        return super(PermissionResource, self).obj_get_list(bundle, **kwargs)
+    
+    def get_object_list(self, request, is_for_group=None):
+        ''' 
+        Called immediately before filtering, actually grabs the (ModelResource) query - 
+        
+        Override this and apply_filters, so that we can control the extra column "is_for_group":
+        This extra column is present when navigating to permissions from a usergroup; see prepend_urls.
+        TODO: we could programmatically create the "is_for_group" column by grabbing the entire queryset,
+        converting to an array of dicts, and adding this field    
+        '''
+        query = super(PermissionResource, self).get_object_list(request);
+        logger.info(str(('get_obj_list', is_for_group)))
+        if is_for_group:
+            query = query.extra( 
+              select = {
+                  'is_for_group': '( select count(*)>0 from ' 
+                  + ' reports_usergroup ug join reports_usergroup_permissions rup on(ug.id=rup.usergroup_id) '
+                  + ' where rup.permission_id=reports_permission.id and ug.name like %s )',
+              },
+              select_params = [is_for_group] )
+            query = query.order_by('-is_for_group')
+        return query
+    
+    def apply_filters(self, request, applicable_filters):
+        logger.info(str(('apply_filters', applicable_filters)))
+        # Special logic to filter on the aggregate groups column
+        groups_filter = None
+        val = None
+        # grab the groups filter out of the dict
+        for f in applicable_filters.keys():
+            if 'groups' in f:
+                groups_filter = f
+                val = applicable_filters.pop(f)
+        # perform the query without the groups filter
+
+        # also: 1. override before filtering - pull out the instruction to include extra column
+        is_for_group = applicable_filters.pop('is_for_group__exact',None)
+        query = self.get_object_list(request, is_for_group=is_for_group).filter(**applicable_filters)
+        # normally:        query = super(PermissionResource, self).apply_filters(request, applicable_filters)
+
+        # then add the groups filter back in
+        if groups_filter:
+            ids = [x.screensaver_user_id for x in Permission.objects.filter(usergroup__name__contains=val)]
+            logger.info(str(('filter for ids', ids)))
+            query = query.filter(screensaver_user_id__in=ids)
+        return query
+
+    def apply_sorting(self, obj_list, options):
+        options = options.copy()
+        options['non_null_fields'] = ['groups','is_for_group'] # Override to exclude this field in the PostgresSortingResource 
+        obj_list = super(PermissionResource, self).apply_sorting(obj_list, options)
+        return obj_list
+
+
+    
     def get_resource_uri(self, bundle_or_obj=None, url_name='api_dispatch_list'):
         return self.get_local_resource_uri(bundle_or_obj=bundle_or_obj, url_name=url_name)
     

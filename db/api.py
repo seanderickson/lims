@@ -1,6 +1,6 @@
 from django.conf.urls import url
 from django.forms.models import model_to_dict
-from django.http import Http404, HttpResponse
+from django.http import Http404
 from django.db import connection
 from django.contrib.auth.models import User
 
@@ -14,7 +14,7 @@ from tastypie import fields, utils
 
 from db.models import ScreensaverUser,Screen, LabHead, LabAffiliation, ScreeningRoomUser,\
     ScreenStatusItem, ScreenResult, DataColumn, Library
-from lims.api import CursorSerializer, LimsSerializer, PostgresSortingResource
+from lims.api import CursorSerializer, LimsSerializer, PostgresSortingResource, CsvBooleanField
 from reports.models import MetaHash, Vocabularies
 from reports.api import ManagedModelResource, ManagedResource
 
@@ -22,6 +22,7 @@ import time
 import re
 
 import logging
+from tastypie.utils import timezone
         
 logger = logging.getLogger(__name__)
 
@@ -30,48 +31,45 @@ class ScreensaverUserResource(ManagedModelResource):
 #    screens = fields.ToManyField('db.api.ScreenResource', 'screens', related_name='lab_head_id', blank=True, null=True)
 
     version = fields.IntegerField(attribute='version', null=True)
-    administratoruser = fields.ToOneField('db.api.ScreensaverUserResource', 'administratoruser', null=True)
-    screeningroomuser = fields.ToOneField('db.api.ScreensaverUserResource', 'screeningroomuser', null=True)
-    
-#    user = fields.ToOneField('reports.api.UserResource', 'screensaveruser', null=True, blank=True)
+    administratoruser = fields.ToOneField('db.api.ScreensaverUserResource', attribute='administratoruser', null=True, blank=True)
+    screeningroomuser = fields.ToOneField('db.api.ScreensaverUserResource', 'screeningroomuser', null=True, blank=True)
     permissions = fields.ToManyField('reports.api.PermissionResource', 'permissions', null=True)
     
     class Meta:
         queryset = ScreensaverUser.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
         ordering = []
-        filtering = { 'administratoruser': ALL_WITH_RELATIONS, 'screeningroomuser': ALL_WITH_RELATIONS }
+#        filtering = { 'administratoruser': ALL_WITH_RELATIONS, 'screeningroomuser': ALL_WITH_RELATIONS }
+        filtering = {}
         serializer = LimsSerializer()
         excludes = ['digested_password']
         detail_uri_name = 'screensaver_user_id'
         resource_name = 'screensaveruser'
         
     def __init__(self, **kwargs):
-#        self.scope = 'fields:screensaveruser'
         super(ScreensaverUserResource,self).__init__( **kwargs)
   
     def dehydrate(self, bundle):
         bundle = super(ScreensaverUserResource, self).dehydrate(bundle);
-#        _time = time.time();
         bundle.data['screens'] = [x.facility_id for x in Screen.objects.filter(lab_head_id=bundle.obj.screensaver_user_id)]
-#        logger.info(str(('dehydrate time', time.time()-_time )))
         return bundle        
       
-    #    def full_dehydrate(self, bundle, for_list=False):
-    #        _time = time.time();
-    #        bundle = super(ScreensaverUserResource, self).full_dehydrate(bundle, for_list=for_list);
-    #        logger.info(str(('full dehydrate time', time.time()-_time )))
-    #        return bundle        
-    
     def apply_sorting(self, obj_list, options):
         options = options.copy()
         options['non_null_fields'] = ['screensaver_user_id']
         obj_list = super(ScreensaverUserResource, self).apply_sorting(obj_list, options)
-#        for key,value in obj_list.query.extra.items():
-#            obj_list.query.extra[key] = 
-#            field = 'screensaver_user.'+ field; # have to override the field name here, because this query is a join query, and otherwise the "is null" extra clause fails
         return obj_list
+    
+    def apply_filters(self, request, applicable_filters):
+        logger.info(str(('apply_filters', applicable_filters)))
         
+        return super(ScreensaverUserResource, self).apply_filters(request, applicable_filters)
+
+    def build_filters(self, filters=None):
+        logger.info(str(('build_filters', filters)))
+        
+        return super(ScreensaverUserResource, self).build_filters(filters)
+              
     def build_schema(self):
         schema = super(ScreensaverUserResource,self).build_schema()
         schema['idAttribute'] = ['screensaver_user_id']
@@ -81,7 +79,6 @@ class ScreensaverUserResource(ManagedModelResource):
         return [
             url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>[\d]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
-    
 
 class ScreeningRoomUserResource(ManagedModelResource):
     screensaver_user = fields.ToOneField('db.api.ScreensaverUserResource', attribute='screensaver_user', full=True, full_detail=True, full_list=False)
@@ -135,17 +132,6 @@ class ScreenResultResource(ManagedResource):
     def __init__(self, **kwargs):
         self.scope = 'fields:screenresult'
         super(ScreenResultResource,self).__init__(**kwargs)
-
-#    def detail_uri_kwargs(self, bundle_or_obj):
-#        kwargs = {}
-#
-#        if isinstance(bundle_or_obj, Bundle):
-#            kwargs['pk'] = bundle_or_obj.obj.uuid
-#        else:
-#            kwargs['pk'] = bundle_or_obj.uuid
-#
-#        return kwargs
-
 
     def prepend_urls(self):
         # NOTE: this match "((?=(schema))__|(?!(schema))[\w\d_.-]+)" allows us to match any word, except "schema", and use it as the key value to search for.
@@ -291,7 +277,6 @@ class ScreenResultResource(ManagedResource):
             screenresult = ScreenResult.objects.get(screen__facility_id=facility_id)
             logger.info(str(('screenresult resource', facility_id,screenresult.screen)))
             
-
             # TODO: Not sure what to return for get_obj_list ? since in the CursorSerializer, you can see that we have to either look 
             # at the passed arg as a cursor, or as a bundle with the cursor as the obj.  how does TP want this done?
             # see also: http://django-tastypie.readthedocs.org/en/latest/non_orm_data_sources.html        
@@ -302,7 +287,6 @@ class ScreenResultResource(ManagedResource):
         except Screen.DoesNotExist, e:
             raise Http404(unicode(('no screen found for facility id', facility_id)))
             
-
     def build_schema(self, screenresult):
         logger.info(unicode(('==========build schema for ', screenresult)))
         data = super(ScreenResultResource,self).build_schema()
@@ -333,7 +317,7 @@ class ScreenResultResource(ManagedResource):
         return data
     
 
-class ScreenSummaryResource(ManagedResource):
+class ScreenSummaryResource(ManagedModelResource):
         
     class Meta:
         queryset = Screen.objects.all() #.order_by('facility_id')
@@ -366,7 +350,6 @@ class ScreenSummaryResource(ManagedResource):
         except ScreenResult.DoesNotExist, e:
             logger.info(unicode(('no screenresult for ', bundle.obj)))
         return bundle
-
 
 
 class DataColumnResource(ManagedModelResource):
@@ -406,6 +389,7 @@ class ScreenResource(ManagedModelResource):
     class Meta:
         queryset = Screen.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
+        authorization= Authorization()        
         resource_name = 'screen'
         
         ordering = []
@@ -426,10 +410,12 @@ class ScreenResource(ManagedModelResource):
         ]    
                     
     def dehydrate(self, bundle):
-        sru = bundle.obj.lead_screener.screensaver_user
-        bundle.data['lead_screener'] =  sru.first_name + ' ' + sru.last_name
-        lh = bundle.obj.lab_head.screensaver_user.screensaver_user
-        bundle.data['lab_head'] =  lh.first_name + ' ' + lh.last_name
+        if bundle.obj.lead_screener:
+            sru = bundle.obj.lead_screener.screensaver_user
+            bundle.data['lead_screener'] =  sru.first_name + ' ' + sru.last_name
+        if bundle.obj.lab_head:
+            lh = bundle.obj.lab_head.screensaver_user.screensaver_user
+            bundle.data['lab_head'] =  lh.first_name + ' ' + lh.last_name
         # TODO: the status table does not utilize a primary key, thus it is incompatible with the standard manager
         #        status_item = ScreenStatusItem.objects.filter(screen=bundle.obj).order_by('status_date')[0]
         #        bundle.data['status'] = status_item.status
@@ -494,6 +480,26 @@ class ScreenResource(ManagedModelResource):
             obj_list = obj_list.order_by(*extra_order_by)
         return obj_list
     
+    def hydrate(self, bundle):
+        bundle = super(ScreenResource, self).hydrate(bundle);
+        return bundle
+
+    def obj_create(self, bundle, **kwargs):
+        logger.info(str(('===creating screen', bundle.data)))
+        bundle.data['date_created'] = timezone.now()
+        
+        key = 'total_plated_lab_cherry_picks'
+        if key not in bundle.data:
+            field_def = self.get_field_def(key)
+            bundle.data['total_plated_lab_cherry_picks'] = int(field_def['default'])
+        bundle.data['version'] = 1
+            
+        return super(ScreenResource, self).obj_create(bundle, **kwargs)
+    
+    def save(self, bundle, skip_errors=False):
+        ''' returns bundle
+        '''
+        return super(ScreenResource, self).save(bundle, skip_errors=skip_errors)
 
 class LibraryResource(ManagedModelResource):
 

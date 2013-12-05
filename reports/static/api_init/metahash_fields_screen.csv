@@ -1,12 +1,15 @@
-key,scope,resource_uri,ordinal,comment,ui_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,backgrid_cell_type,backgrid_cell_options
-facility_id,fields:screen,/reports/api/v1/metahash/fields:screen/facility_id/,0,"Assigned by the facility",string,TRUE,"The facility specific ID for this screen","Screen ID",TRUE,,,"[list,detail]",,Iccbl.EditCell,
-screen_type,fields:screen,/reports/api/v1/metahash/fields:screen/screen_type/,1,,string,TRUE,,"Screen Type",TRUE,,fields:screen_type,"[list,detail]",,,
-project_phase,fields:screen,/reports/api/v1/metahash/fields:screen/project_phase/,2,,string,TRUE,,"Project Phase",TRUE,,fields:project_phase,"[list,detail]",,,
-project_id,fields:screen,/reports/api/v1/metahash/fields:screen/project_id/,3,,string,TRUE,"The project ID of the screen","Project ID",TRUE,,,"[list,detail]",,,
-title,fields:screen,/reports/api/v1/metahash/fields:screen/title/,4,,string,TRUE,"The title of the screen",Title,TRUE,,,"[list,detail]",,,
-lab_head,fields:screen,/reports/api/v1/metahash/fields:screen/lab_head/,5,"This is a virtual field combining first and last name",string,TRUE,"The Lab Head (PI)","Lab Head",TRUE,,,"[list,detail]",,Iccbl.LinkCell,detail/screensaveruser/{lab_head_id}
-lead_screener,fields:screen,/reports/api/v1/metahash/fields:screen/lead_screener/,6,"This is a virtual field combining first and last name",string,TRUE,"The lead screener","Lead Screener",TRUE,,,"[list,detail]",,Iccbl.LinkCell,detail/screensaveruser/{lead_screener_id}
-date_created,fields:screen,/reports/api/v1/metahash/fields:screen/date_created/,7,,date,TRUE,"The date the screen was first recorded in the Screensaver database","Date Recorded",TRUE,,,"[list,detail]",,date,
-status,fields:screen,/reports/api/v1/metahash/fields:screen/status/,8,,string,TRUE,"The current status of the screen",Status,TRUE,,fields:screen:status,"[list,detail]",,,
-status_date,fields:screen,/reports/api/v1/metahash/fields:screen/status_date/,9,,date,TRUE,"The date of the most recent change of status for the screen","Status Date",TRUE,,,"[list,detail]",,,
-has_screen_result,fields:screen,/reports/api/v1/metahash/fields:screen/has_screen_result/,9,,boolean,TRUE,"Whether the screen has a screen result","Screen Result Available",TRUE,,,"[list,detail]",,,
+key,scope,resource_uri,ordinal,comment,ui_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,backgrid_cell_type,backgrid_cell_options,default
+facility_id,fields:screen,/reports/api/v1/metahash/fields:screen/facility_id/,0,"Assigned by the facility",string,TRUE,"The facility specific ID for this screen","Screen ID",TRUE,,,"[list,detail]",,Iccbl.EditCell,,
+screen_type,fields:screen,/reports/api/v1/metahash/fields:screen/screen_type/,1,,string,TRUE,,"Screen Type",TRUE,,fields:screen_type,"[list,detail]",,,,
+project_phase,fields:screen,/reports/api/v1/metahash/fields:screen/project_phase/,2,,string,TRUE,,"Project Phase",TRUE,,fields:project_phase,"[list,detail]",,,,
+project_id,fields:screen,/reports/api/v1/metahash/fields:screen/project_id/,3,,string,TRUE,"The project ID of the screen","Project ID",TRUE,,,"[list,detail]",,,,
+title,fields:screen,/reports/api/v1/metahash/fields:screen/title/,4,,string,TRUE,"The title of the screen",Title,TRUE,,,"[list,detail]",,,,
+lab_head,fields:screen,/reports/api/v1/metahash/fields:screen/lab_head/,5,"This is a virtual field combining first and last name",string,TRUE,"The Lab Head (PI)","Lab Head",TRUE,,,"[list,detail]",,Iccbl.LinkCell,detail/screensaveruser/{lab_head_id},
+lead_screener,fields:screen,/reports/api/v1/metahash/fields:screen/lead_screener/,6,"This is a virtual field combining first and last name",string,TRUE,"The lead screener","Lead Screener",TRUE,,,"[list,detail]",,Iccbl.LinkCell,detail/screensaveruser/{lead_screener_id},
+date_created,fields:screen,/reports/api/v1/metahash/fields:screen/date_created/,7,,date,TRUE,"The date the screen was first recorded in the Screensaver database","Date Recorded",TRUE,,,"[list,detail]",,date,,
+status,fields:screen,/reports/api/v1/metahash/fields:screen/status/,8,,string,TRUE,"The current status of the screen",Status,TRUE,,fields:screen:status,"[list,detail]",,,,
+status_date,fields:screen,/reports/api/v1/metahash/fields:screen/status_date/,9,,date,TRUE,"The date of the most recent change of status for the screen","Status Date",TRUE,,,"[list,detail]",,,,
+has_screen_result,fields:screen,/reports/api/v1/metahash/fields:screen/has_screen_result/,9,,boolean,TRUE,"Whether the screen has a screen result","Screen Result Available",TRUE,,,"[list,detail]",,,,
+version,fields:screen,/reports/api/v1/metahash/fields:screen/version/,20,,integer,TRUE,Version,Version,TRUE,,,"[detail,edit]",,,,
+data_sharing_level,fields:screen,/reports/api/v1/metahash/fields:screen/data_sharing_level/,10,,integer,TRUE,"Data Sharing Level","Data Sharing Level",TRUE,,,"[list,detail,edit]",,,,
+total_plated_lab_cherry_picks,fields:screen,/reports/api/v1/metahash/fields:screen/total_plated_lab_cherry_picks,21,,integer,TRUE,"Number of plated lab cherry picks","Total Plated Lab Cherry Picks",TRUE,,,"[list,detail,edit]",,,,0

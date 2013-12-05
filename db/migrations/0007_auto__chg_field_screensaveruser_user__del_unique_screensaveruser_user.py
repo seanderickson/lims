@@ -8,61 +8,20 @@ from django.db import models
 class Migration(SchemaMigration):
 
     def forwards(self, orm):
+        # Removing unique constraint on 'ScreensaverUser', fields ['user']
+        db.delete_unique(u'screensaver_user', ['user_id'])
 
-        # Changing field 'AdministratorUser.screensaver_user'
-        db.alter_column(u'administrator_user', 'screensaver_user_id', self.gf('django.db.models.fields.related.OneToOneField')(to=orm['db.ScreensaverUser'], unique=True, primary_key=True))
 
-
-        # Changing field 'LabHead.screensaver_user'
-        db.alter_column(u'lab_head', 'screensaver_user_id', self.gf('django.db.models.fields.related.OneToOneField')(to=orm['db.ScreeningRoomUser'], unique=True, primary_key=True))
-
-        # Changing field 'ScreenResult.screen'
-        db.alter_column(u'screen_result', 'screen_id', self.gf('django.db.models.fields.related.OneToOneField')(to=orm['db.Screen'], unique=True))
-        # Adding unique constraint on 'ScreenResult', fields ['screen']
-        db.create_unique(u'screen_result', ['screen_id'])
-
-        # Adding field 'ScreensaverUser.user'
-        db.add_column(u'screensaver_user', 'user',
-                      self.gf('django.db.models.fields.related.OneToOneField')(to=orm['auth.User'], unique=True, null=True),
-                      keep_default=False)
-
-# 
-#         # Changing field 'Screen.status'
-#         db.alter_column(u'screen', 'status', self.gf('django.db.models.fields.TextField')(null=True))
-# 
-#         # Changing field 'Screen.status_date'
-#         db.alter_column(u'screen', 'status_date', self.gf('django.db.models.fields.DateField')(null=True))
-
-        # Changing field 'ScreeningRoomUser.screensaver_user'
-        db.alter_column(u'screening_room_user', 'screensaver_user_id', self.gf('django.db.models.fields.related.OneToOneField')(to=orm['db.ScreensaverUser'], unique=True, primary_key=True))
+        # Changing field 'ScreensaverUser.user'
+        db.alter_column(u'screensaver_user', 'user_id', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['auth.User'], null=True))
 
     def backwards(self, orm):
-        # Removing unique constraint on 'ScreenResult', fields ['screen']
-        db.delete_unique(u'screen_result', ['screen_id'])
 
-        # Changing field 'AdministratorUser.screensaver_user'
-        db.alter_column(u'administrator_user', 'screensaver_user_id', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreensaverUser'], primary_key=True))
+        # Changing field 'ScreensaverUser.user'
+        db.alter_column(u'screensaver_user', 'user_id', self.gf('django.db.models.fields.related.OneToOneField')(to=orm['auth.User'], unique=True, null=True))
+        # Adding unique constraint on 'ScreensaverUser', fields ['user']
+        db.create_unique(u'screensaver_user', ['user_id'])
 
-        # Changing field 'LabHead.lab_affiliation'
-        db.alter_column(u'lab_head', 'lab_affiliation_id', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.LabAffiliation'], null=True))
-
-        # Changing field 'LabHead.screensaver_user'
-        db.alter_column(u'lab_head', 'screensaver_user_id', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreeningRoomUser'], primary_key=True))
-
-        # Changing field 'ScreenResult.screen'
-        db.alter_column(u'screen_result', 'screen_id', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Screen']))
-        # Deleting field 'ScreensaverUser.user'
-        db.delete_column(u'screensaver_user', 'user_id')
-
-
-        # User chose to not deal with backwards NULL issues for 'Screen.status'
-        raise RuntimeError("Cannot reverse this migration. 'Screen.status' and its values cannot be restored.")
-
-        # User chose to not deal with backwards NULL issues for 'Screen.status_date'
-        raise RuntimeError("Cannot reverse this migration. 'Screen.status_date' and its values cannot be restored.")
-
-        # Changing field 'ScreeningRoomUser.screensaver_user'
-        db.alter_column(u'screening_room_user', 'screensaver_user_id', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreensaverUser'], primary_key=True))
 
     models = {
         u'auth.group': {
@@ -688,7 +647,7 @@ class Migration(SchemaMigration):
             'abase_protocol_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'abase_study_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'amount_to_be_charged_for_screen': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '9', 'decimal_places': '2', 'blank': 'True'}),
-            'assay_plates_screened_count': ('django.db.models.fields.IntegerField', [], {}),
+            'assay_plates_screened_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
             'billing_comments': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'billing_info_return_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'cell_line': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.CellLine']", 'null': 'True', 'blank': 'True'}),
@@ -718,9 +677,9 @@ class Migration(SchemaMigration):
             'lab_head': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.LabHead']", 'null': 'True', 'blank': 'True'}),
             'lead_screener': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreeningRoomUser']", 'null': 'True', 'blank': 'True'}),
             'libraries_screened_count': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
-            'library_plates_data_analyzed_count': ('django.db.models.fields.IntegerField', [], {}),
-            'library_plates_data_loaded_count': ('django.db.models.fields.IntegerField', [], {}),
-            'library_plates_screened_count': ('django.db.models.fields.IntegerField', [], {}),
+            'library_plates_data_analyzed_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
+            'library_plates_data_loaded_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
+            'library_plates_screened_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
             'max_allowed_data_privacy_expiration_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'max_data_loaded_replicate_count': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'max_screened_replicate_count': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
@@ -740,7 +699,7 @@ class Migration(SchemaMigration):
             'publishable_protocol_entered_by': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'screen_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
             'screen_type': ('django.db.models.fields.TextField', [], {}),
-            'screened_experimental_well_count': ('django.db.models.fields.IntegerField', [], {}),
+            'screened_experimental_well_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
             'see_comments': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
             'species': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'status': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
@@ -751,7 +710,7 @@ class Migration(SchemaMigration):
             'to_be_requested': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
             'total_plated_lab_cherry_picks': ('django.db.models.fields.IntegerField', [], {}),
             'transfection_agent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.TransfectionAgent']", 'null': 'True', 'blank': 'True'}),
-            'unique_screened_experimental_well_count': ('django.db.models.fields.IntegerField', [], {}),
+            'unique_screened_experimental_well_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
             'url': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'version': ('django.db.models.fields.IntegerField', [], {}),
             'well_studied': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']", 'null': 'True', 'blank': 'True'})
@@ -852,10 +811,11 @@ class Migration(SchemaMigration):
             'last_name': ('django.db.models.fields.TextField', [], {}),
             'login_id': ('django.db.models.fields.TextField', [], {'unique': 'True', 'blank': 'True'}),
             'mailing_address': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
+            'permissions': ('django.db.models.fields.related.ManyToManyField', [], {'to': u"orm['reports.Permission']", 'symmetrical': 'False'}),
             'phone': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'screensaver_user_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
-            'user': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['auth.User']", 'unique': 'True', 'null': 'True'}),
-            'version': ('django.db.models.fields.IntegerField', [], {'blank': 'True'})
+            'user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['auth.User']", 'null': 'True'}),
+            'version': ('django.db.models.fields.IntegerField', [], {'default': '1', 'blank': 'True'})
         },
         u'db.screensaveruserrole': {
             'Meta': {'object_name': 'ScreensaverUserRole', 'db_table': "u'screensaver_user_role'"},
@@ -984,6 +944,13 @@ class Migration(SchemaMigration):
         u'db.wellvolumecorrectionactivity': {
             'Meta': {'object_name': 'WellVolumeCorrectionActivity', 'db_table': "u'well_volume_correction_activity'"},
             'activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AdministrativeActivity']", 'primary_key': 'True'})
+        },
+        u'reports.permission': {
+            'Meta': {'unique_together': "(('scope', 'key', 'type'),)", 'object_name': 'Permission'},
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'key': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
+            'scope': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
+            'type': ('django.db.models.fields.CharField', [], {'max_length': '15'})
         }
     }
 

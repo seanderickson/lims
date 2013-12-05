@@ -1,0 +1,5 @@
+resource_uri,usergroups
+/reports/api/v1/user/1/,"[usergroup/testGroup1,usergroup/testGroup2]"
+/reports/api/v1/user/2/,[usergroup/testGroup1]
+/reports/api/v1/user/3/,[usergroup/testGroup4]
+/reports/api/v1/user/4/,"[usergroup/testGroup3,usergroup/testGroup4]"

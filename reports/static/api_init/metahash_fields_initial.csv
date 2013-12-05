@@ -16,3 +16,4 @@ ordinal,json_field_type,key,scope
 99,,resource_uri,fields:metahash
 99,,alias,fields:metahash
 24,fields.CharField,backgrid_cell_options,fields:metahash
+25,fields.CharField,default,fields:metahash

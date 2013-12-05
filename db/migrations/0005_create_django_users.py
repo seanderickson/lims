@@ -20,18 +20,35 @@ class Migration(DataMigration):
         print 'class', userKlass
         for screensaverUser in orm.ScreensaverUser.objects.all():
             if screensaverUser.ecommons_id and screensaverUser.email: 
-                newUser = userKlass(username=screensaverUser.ecommons_id, 
+                newUser = None
+                try:
+                    newUser = userKlass.objects.get(username=screensaverUser.ecommons_id)
+                except Exception, e:
+                    print "===_Exception", e
+                
+                
+                if not newUser:
+                    print '+++create user', newUser
+                    newUser = userKlass(username=screensaverUser.ecommons_id, 
                                     email=screensaverUser.email, 
                                     first_name=screensaverUser.first_name, 
                                     last_name=screensaverUser.last_name,
                                     date_joined=datetime.datetime.utcnow().replace(tzinfo=utc))
-                print 'create user', newUser
+                print '_created user', newUser
                 newUser.save()
                 screensaverUser.user = newUser
                 screensaverUser.save()
                 i += 1
             elif screensaverUser.login_id and screensaverUser.email:
-                newUser = userKlass(username=screensaverUser.login_id, 
+                try:
+                    newUser = userKlass.objects.get(username=screensaverUser.ecommons_id)
+                except Exception, e:
+                    print "===_Exception", e
+                
+                
+                if not newUser:
+                    print '+++create user', newUser
+                    newUser = userKlass(username=screensaverUser.login_id, 
                                     email=screensaverUser.email, 
                                     first_name=screensaverUser.first_name, 
                                     last_name=screensaverUser.last_name, 
@@ -48,6 +65,7 @@ class Migration(DataMigration):
         
     def backwards(self, orm):
         "Write your backwards methods here."
+        # TODO: could delete all of the auth_users created
 
     models = {
         u'auth.group': {

@@ -29,6 +29,9 @@ class Migration(SchemaMigration):
 
     def forwards(self, orm):
 
+        # Creating primary key "AutoFields" for the old java/hibernate 
+        # "GenericGenerator" class
+        
         # Changing field 'Screen.screen_id' to auto field
         # *NOTE: This does not work with Postgres, for an already existing field
         #         db.alter_column(u'screen', 'screen_id', self.gf('django.db.models.fields.AutoField')(primary_key=True))
@@ -45,14 +48,15 @@ class Migration(SchemaMigration):
         db.execute("ALTER TABLE {table} ALTER COLUMN {column} SET DEFAULT nextval('{column}_seq'::regclass)".format(table='screen', column='screen_id'))
         db.execute("ALTER SEQUENCE {column}_seq OWNED BY {table}.{column}".format(table='screen', column='screen_id'))
 
+        db.execute("ALTER TABLE {table} ALTER COLUMN {column} SET DEFAULT nextval('{column}_seq'::regclass)".format(table='library', column='library_id'))
+        db.execute("ALTER SEQUENCE {column}_seq OWNED BY {table}.{column}".format(table='library', column='library_id'))
+
+
     def backwards(self, orm):
 
         db.execute("DROP SEQUENCE {column}_seq cascade".format(column='screen_id'))
+        db.execute("DROP SEQUENCE {column}_seq cascade".format(column='library_id'))
         
-        
-        
-        pass;
-    
     models = {
         u'db.abasetestset': {
             'Meta': {'object_name': 'AbaseTestset', 'db_table': "u'abase_testset'"},

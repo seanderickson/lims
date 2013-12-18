@@ -19,12 +19,12 @@ class MetaManager(GetOrNoneManager):
     def get_query_set(self):
         return super(MetaManager, self).get_query_set()
 
-    def get_and_parse(self, scope='', field_definition_scope='fields:metahash', clear=False):
+    def get_and_parse(self, scope='', field_definition_scope='fields.metahash', clear=False):
         '''
         Query the metahash table for data identified by "scope", and fields defined by "field_definition_scope"
-            e.g. "fields:screensaveruser", or "fields:screen"
+            e.g. "fields.screensaveruser", or "fields.screen"
         field_definition_scope - also defines what is in the the json_field for this hash;
-            e.g. "fields:metahash", or "fields:resource, or fields:vocabularies"
+            e.g. "fields.metahash", or "fields.resource, or fields.vocabularies"
         '''
         metahash = {}
         if not clear:
@@ -41,12 +41,12 @@ class MetaManager(GetOrNoneManager):
         return metahash
 
 
-    def get_and_parse_int(self, scope='', field_definition_scope='fields:metahash'):
+    def get_and_parse_int(self, scope='', field_definition_scope='fields.metahash'):
         '''
         non-cached Query the metahash table for data identified by "scope", and fields defined by "field_definition_scope"
-            e.g. "fields:screensaveruser", or "fields:screen"
+            e.g. "fields.screensaveruser", or "fields.screen"
         field_definition_scope - also defines what is in the the json_field for this hash;
-            e.g. "fields:metahash", or "fields:resource, or fields:vocabularies"
+            e.g. "fields.metahash", or "fields.resource, or fields.vocabularies"
         '''
         logger.debug('get_and_parse table field definitions for ' + scope)
         # try to make clear that the field definitions, though stored in the metahash as well, could be in a separate table
@@ -173,7 +173,7 @@ class MetaHash(models.Model):
     def model_to_dict(self, scope=None):
         '''
         Specialized model_to_dict for JSON containing tables defined using the Metahash Manager.
-        - scope = "fields:<model_name>" - the scope of the field definitions in the metahash table for this object.
+        - scope = "fields.<model_name>" - the scope of the field definitions in the metahash table for this object.
         - the scope is used to query the "fields" definitions in the metahash - the construct we are using to define all 
         publicly available fields; json or 'real'
         '''

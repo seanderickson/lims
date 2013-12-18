@@ -30,26 +30,23 @@ $ ./manage.py test --settings=lims.test_settings
 
 """
 
-from django.test import TestCase
-
-import datetime
-import csv
-import StringIO
+# import datetime
+# import csv
+# import StringIO
 import os
-from django.contrib.auth.models import User
-from django.test.client import Client
-from tastypie.test import ResourceTestCase, TestApiClient
-from reports.models import MetaHash, Vocabularies
-from lims.api import CSVSerializer
-
 import logging
 import json
+
+from django.test import TestCase
+from django.contrib.auth.models import User
+# from django.test.client import Client
+from tastypie.test import ResourceTestCase, TestApiClient
+from reports.models import Vocabularies
 from tastypie.fields import BooleanField
 
+from lims.api import CSVSerializer
 from lims.api import CsvBooleanField
 from lims.tests import assert_obj1_to_obj2, find_all_obj_in_list, find_obj_in_list
-
-import lims
 
 
 logger = logging.getLogger(__name__)
@@ -168,7 +165,7 @@ class MetaHashResourceBootstrap():
             
             for inputobj in input_data['objects']:
                 result, outputobj = find_obj_in_list(inputobj,new_obj['objects'], excludes=keys_not_to_check )
-                self.assertTrue(result, str(('not found', outputobj, new_obj['objects'] )) ) 
+                self.assertTrue(result, str(('not found', outputobj,'=== objects returned ===', new_obj['objects'] )) ) 
                 self.assertTrue(resource_name in outputobj['resource_uri'], str(('wrong resource_uri returned:', outputobj,'should contain', resource_name)))
                 for id_key in id_keys_to_check:
                     self.assertTrue(inputobj[id_key] in outputobj['resource_uri'], 
@@ -234,10 +231,10 @@ class MetaHashResourceBootstrap():
         self._patch_test('metahash', filename, keys_not_to_check=['resource_uri'])
 
         filename = os.path.join(self.directory, 'metahash_fields_resource.csv')
-        self._patch_test('metahash', filename, keys_not_to_check=['resource_uri'], data_for_get={ 'scope':'fields:resource' })
+        self._patch_test('metahash', filename, keys_not_to_check=['resource_uri'], data_for_get={ 'scope':'fields.resource' })
                         
         filename = os.path.join(self.directory,'metahash_fields_vocabularies.csv')
-        self._patch_test('metahash', filename, keys_not_to_check=['resource_uri'], data_for_get={ 'scope':'fields:vocabularies' })
+        self._patch_test('metahash', filename, keys_not_to_check=['resource_uri'], data_for_get={ 'scope':'fields.vocabularies' })
 
         # Note, once the resources are loaded, can start checking the resource_uri that is returned
         filename = os.path.join(self.directory, 'metahash_resource_data.csv')
@@ -269,22 +266,22 @@ class TestApiInit(MetaHashResourceBootstrap,ResourceTestCase):
         bootstrap_items = [   
             {
                 'key': 'scope',
-                'scope': 'fields:metahash',
+                'scope': 'fields.metahash',
                 'ordinal': 0    
             },
             {
                 'key': 'key',
-                'scope': 'fields:metahash',
+                'scope': 'fields.metahash',
                 'ordinal': 1   
             },
             {
                 'key': 'ordinal',
-                'scope': 'fields:metahash',
+                'scope': 'fields.metahash',
                 'ordinal': 2   
             },
             {
                 'key': 'json_field_type',
-                'scope': 'fields:metahash',
+                'scope': 'fields.metahash',
                 'ordinal': 3    
             }
         ]
@@ -292,7 +289,7 @@ class TestApiInit(MetaHashResourceBootstrap,ResourceTestCase):
         for item in bootstrap_items:         
             resp = self.api_client.post(self.resource_uri, format='json', data=item, authentication=self.get_credentials())
             self.assertTrue(resp.status_code in [201], str((resp.status_code, resp)))
-#             self.assertHttpCreated(resp)
+            #             self.assertHttpCreated(resp)
             
         logger.info('created items, now get them')
         resp = self.api_client.get(self.resource_uri, format='json', authentication=self.get_credentials(), data={ 'limit': 999 })
@@ -355,12 +352,13 @@ class TestApiInit(MetaHashResourceBootstrap,ResourceTestCase):
                         if command == 'put':
                             resp = testApiClient.put(resource_uri, format='csv', data=input_data, authentication=self.get_credentials() )
                             logger.debug(str(('action: ', json.dumps(action), 'response: ' , resp.status_code)))
-                            self.assertHttpAccepted(resp)
+                            self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+#                             self.assertHttpAccepted(resp)
                             
                             # now see if we can get these objects back
                             resp = testApiClient.get(resource_uri, format='json', authentication=self.get_credentials(), data={ 'limit': 999 })
                             self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
-#                             self.assertValidJSONResponse(resp)
+                            #                             self.assertValidJSONResponse(resp)
                             new_obj = self.deserialize(resp)
                             result, msgs = find_all_obj_in_list(input_data['objects'], new_obj['objects'], excludes=search_excludes)
                             self.assertTrue(result, str(( command, 'input file', filename, msgs, new_obj['objects'])) )
@@ -370,7 +368,7 @@ class TestApiInit(MetaHashResourceBootstrap,ResourceTestCase):
                             self.assertHttpAccepted(resp)
                             resp = testApiClient.get(resource_uri, format='json', authentication=self.get_credentials(), data={ 'limit': 999 } )
                             self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
-#                             self.assertValidJSONResponse(resp)
+                            #                             self.assertValidJSONResponse(resp)
                             new_obj = self.deserialize(resp)
                             with open(filename) as f2:
                                 input_data2 = serializer.from_csv(f2.read())
@@ -398,7 +396,7 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
         testApiClient = TestApiClient(serializer=self.csv_serializer) 
 
         filename = os.path.join(self.directory,'metahash_fields_user.csv')
-        self._patch_test('metahash', filename, data_for_get={ 'scope':'fields:user'})
+        self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.user'})
 
         print '============== User setup: done ============'
     
@@ -430,7 +428,6 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
         for i,item in enumerate(self.bootstrap_items):         
             resp = self.api_client.post(self.resource_uri, 
                 format='json', data=item, authentication=self.get_credentials())
-#            print resp
             self.assertHttpCreated(resp)
             
         logger.info('created items, now get them')
@@ -481,10 +478,10 @@ class UserGroupResource(UserResource):
         testApiClient = TestApiClient(serializer=self.csv_serializer) # todo: doesn't work for post, see TestApiClient.post() method, it is incorrectly "serializing" the data before posting
         
         filename = os.path.join(self.directory,'metahash_fields_usergroup.csv')
-        self._patch_test('metahash', filename, data_for_get={ 'scope':'fields:usergroup'})
+        self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.usergroup'})
         
         filename = os.path.join(self.directory,'metahash_fields_permission.csv')
-        self._patch_test('metahash', filename, data_for_get={ 'scope':'fields:permission'})
+        self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.permission'})
 
         logger.info(str(( '============== UserGroup setup done ============')))
 
@@ -537,22 +534,22 @@ class UserGroupResource(UserResource):
 #        bootstrap_items = [   
 #            {
 #                'key': 'name',
-#                'scope': 'fields:usergroup',
+#                'scope': 'fields.usergroup',
 #                'ordinal': 0    
 #            },
 #            {
 #                'key': 'users',
-#                'scope': 'fields:usergroup',
+#                'scope': 'fields.usergroup',
 #                'ordinal': 1   
 #            },
 #            {
 #                'key': 'permissions',
-#                'scope': 'fields:usergroup',
+#                'scope': 'fields.usergroup',
 #                'ordinal': 2   
 #            },
 #            {
 #                'key': 'user_list',
-#                'scope': 'fields:usergroup',
+#                'scope': 'fields.usergroup',
 #                'ordinal': 3    
 #            }
 #        ]
@@ -562,7 +559,7 @@ class UserGroupResource(UserResource):
 #
 #        self._do_test_resource_create();
 #        
-#        for field in MetaHash.objects.all().filter(scope='fields:resource'):
+#        for field in MetaHash.objects.all().filter(scope='fields.resource'):
 #            print '===== metahash field', field
 #
 #
@@ -628,7 +625,7 @@ class UserGroupResource(UserResource):
 #        # (if this weren't specified, it would throw an error, since there is no "real" field for this (todo: test))
 #        initializer = {
 #               'key': 'test_field',
-#               'scope': 'fields:metahash',
+#               'scope': 'fields.metahash',
 #               'ordinal': 0, 
 #               'json_field_type': 'fields.CharField'    }
 #
@@ -651,7 +648,7 @@ class UserGroupResource(UserResource):
 #        # now update with some field instance data
 #        initializer = {
 #               'key': 'test_field',
-#               'scope': 'fields:metahash',
+#               'scope': 'fields.metahash',
 #               'ordinal': 0, 
 #               'json_field_type': 'fields.CharField', 
 #               'test_field': 'foo and bar!'    }
@@ -689,7 +686,7 @@ class UserGroupResource(UserResource):
 #        posting_client = Client()
 #        
 #        header = ['key', 'scope', 'ordinal', 'json_field_type']
-#        vals = ['test_field', 'fields:metahash', 0, 'fields.CharField']
+#        vals = ['test_field', 'fields.metahash', 0, 'fields.CharField']
 #        
 #        raw_data = StringIO.StringIO()
 #        writer = csv.writer(raw_data)
@@ -709,7 +706,7 @@ class UserGroupResource(UserResource):
 #        print '-------------------  test put_json modification ==================='
 #        # now create an some field instance data
 #        header = ['key', 'scope', 'test_field']
-#        vals = ['test_field', 'fields:metahash', 'foo and bar!']
+#        vals = ['test_field', 'fields.metahash', 'foo and bar!']
 #        
 #        raw_data = StringIO.StringIO()
 #        writer = csv.writer(raw_data)

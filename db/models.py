@@ -982,7 +982,9 @@ class TransfectionAgent(models.Model):
 
 
 class Library(models.Model):
-    library_id = models.IntegerField(primary_key=True)
+    # Note: migration scripts have converted this to use a sequence (essentially AutoField)
+    #     library_id = models.IntegerField(primary_key=True) 
+    library_id = models.AutoField(primary_key=True) 
     version = models.IntegerField()
     library_name = models.TextField(unique=True)
     short_name = models.TextField(unique=True)

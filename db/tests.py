@@ -24,20 +24,70 @@ logger = logging.getLogger(__name__)
 
 BASE_URI_DB = '/db/api/v1'
 
-# class ScreenFactory(factory.Factory):
-#     FACTORY_FOR=db.models.Screen
-#     data_sharing_level = 1
-#     facility_id = factory.Sequence(lambda n: str(n))
-#     project_phase = "Primary Screen"
-#     screen_type = "Small Molecule"
-#     title = "Test screen 1"
 
-class SimpleTest(TestCase):
-    def test_basic_addition(self):
-        """
-        Tests that 1 + 1 always equals 2.
-        """
-        self.assertEqual(1 + 1, 2)
+class LibraryContentLoadTest(MetaHashResourceBootstrap,ResourceTestCase):
+
+    def setUp(self):
+        print '============== LibraryContentLoadTest setup ============'
+        super(LibraryTest, self).setUp()
+        super(LibraryTest, self)._setUp()
+        # load the bootstrap files, which will load the metahash fields, and the resource definitions
+        super(LibraryTest, self)._bootstrap_init_files()
+        print '============== LibraryContentLoadTest setup: begin ============'
+        
+    def test_load_sdf(self):
+        pass;
+        
+
+class LibraryTest(MetaHashResourceBootstrap,ResourceTestCase):
+
+    def setUp(self):
+        print '============== LibraryTest setup ============'
+        super(LibraryTest, self).setUp()
+        super(LibraryTest, self)._setUp()
+        # load the bootstrap files, which will load the metahash fields, and the resource definitions
+        super(LibraryTest, self)._bootstrap_init_files()
+        print '============== LibraryTest setup: begin ============'
+        
+        testApiClient = TestApiClient(serializer=self.csv_serializer) 
+
+        filename = os.path.join(self.directory,'metahash_fields_library.csv')
+        self._patch_test('metahash', filename, data_for_get={ 'scope':'fields:library'})
+
+        print '============== LibraryTest setup: done ============'
+        
+
+    def test1_create_library(self):
+        logger.info(str(('==== test1_create_library =====')))
+        
+        resource_uri = BASE_URI_DB + '/library'
+        
+        library_item = LibraryFactory.attributes()
+        
+        logger.info(str((library_item)))
+        resp = self.api_client.post(resource_uri, 
+            format='json', data=library_item, authentication=self.get_credentials())
+        self.assertTrue(resp.status_code in [201], str((resp.status_code, resp)))
+        
+        # create a second library
+        library_item = LibraryFactory.attributes()
+        
+        logger.info(str(('item', library_item)))
+        resp = self.api_client.post(resource_uri, 
+            format='json', data=library_item, authentication=self.get_credentials())
+        self.assertTrue(resp.status_code in [201], str((resp.status_code, resp)))
+        
+        resp = self.api_client.get( resource_uri, 
+            format='json', authentication=self.get_credentials(), data={ 'limit': 999 })
+        logger.info(str(('--------resp to get:', resp.status_code)))
+        new_obj = self.deserialize(resp)
+        self.assertValidJSONResponse(resp)
+        self.assertEqual(len(new_obj['objects']), 2, str((new_obj)))
+        
+        result, obj = find_obj_in_list(library_item, new_obj['objects'])
+        self.assertTrue(result, str(('bootstrap item not found', obj, library_item, new_obj['objects'])))
+        logger.info(str(('item found', obj)))
+
 
 class ScreensTest(MetaHashResourceBootstrap,ResourceTestCase):
     
@@ -84,7 +134,7 @@ class ScreensTest(MetaHashResourceBootstrap,ResourceTestCase):
         self.assertEqual(len(new_obj['objects']), 2, str((new_obj)))
         
         result, obj = find_obj_in_list(screen_item, new_obj['objects'])
-        self.assertTrue(result, str(('bootstrap item not found', screen_item, new_obj['objects'])))
+        self.assertTrue(result, str(('bootstrap item not found', obj, screen_item, new_obj['objects'])))
         self.assertTrue('facility_id' in obj, 'the facility_id was not created')
         logger.info(str(('item found', obj)))
 

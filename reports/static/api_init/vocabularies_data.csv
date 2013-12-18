@@ -1,31 +1,50 @@
 key,scope,resource_uri,ordinal,comment,description,title
-list,field:visibility,/reports/api/v1/vocabularies/field:visibility/list/,0,,"Allow visibility in list views","Visible in list views"
-edit,field:visibility,/reports/api/v1/vocabularies/field:visibility/edit/,4,,"Allow visibility in the edit form","Visible in edit forms"
-detail,field:visibility,/reports/api/v1/vocabularies/field:visibility/detail/,0,,"Allow visibility in detail views","Visible in detail views"
-choice,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/choice/,0,"The field referred to by this record is a single choice vocabulary term","Single choice field",Choice
-integer,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/integer/,0,,"This is an integer type",Integer
-multiselect,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/multiselect/,0,"The field referred to by this record is a single choice vocabulary term","Multiple choice vocabulary term",Multiselect
-string,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/string/,0,,"Field contains text",Text
-date,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/date/,5,"Date field type shows the date only (not the time)","Date field type",Date
-boolean,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/boolean/,0,,"Field is a boolean",Boolean
-uri,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/uri/,0,"URI (local to the system) for a related endpoint","URI that references another REST entity",URI
-uri_list,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/uri_list/,0,"URIs (local to the system) for related endpoints","URIs that reference other REST entities","URI list"
-embedded,field:ui_type,/reports/api/v1/vocabularies/field:ui_type/nested/,0,"An embedded object","An embedded object","Embedded Object"
-Iccbl.EditCell,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/Iccbl.EditCell/,20,,"Custom cell - creates a drilldown to the view/edit screen",EditCell
-Iccbl.LinkCell,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/Iccbl.LinkCell/,21,"Create a link using data from the record from this cell.  Use braces and the name of other properties to construct the link, as in ""relative/url/{property_name}""","Custom cell - create a relative link to some other URI","Iccbl Link Cell"
-string,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/string/,1,"StringCell displays HTML escaped strings and accepts anything typed in.","This is the default Backgrid cell type - 'stringCell'",StringCell
-date,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/date/,2,"A Backgrid.DatetimeCell without the time part","The Backgrid date cell type",DateCell
-time,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/time/,3,"A Backgrid.DatetimeCell without the date part","The Backgrid date cell type",TimeCell
-datetime,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/datetime/,4,"DatetimeCell is a basic cell that accepts datetime string values in RFC-2822 or W3C's subset of ISO-8601 and displays them in ISO-8601 format.","The Backgrid datetime cell type",DateTimeCell
-integer,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/integer/,5,"An IntegerCell is just a Backgrid.NumberCell with 0 decimals. If a floating point number is supplied, the number is simply rounded the usual way when displayed.","The Backgrid integer cell type",IntegerCell
-number,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/number/,6,"NumberCell is a generic cell that renders all numbers. Numbers are formatted using a Backgrid.NumberFormatter.","The Backgrid number cell type",NumberCell
-boolean,field:backgrid_cell_type,/reports/api/v1/vocabularies/field:backgrid_cell_type/boolean/,7,"BooleanCell renders a checkbox both during display mode and edit mode. The checkbox is checked if the model value is true, unchecked otherwise.","The Backgrid boolean cell type",BooleanCell
-fields.CharField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.CharField/,0,,"A tastypie fields.CharField type",CharField
-fields.ListField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.ListField/,5,,"A tastypie fields.ListField type",ListField
-fields.BooleanField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.BooleanField/,2,,"A tastypie fields.BooleanField type",BooleanField
-fields.DateField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.DateField/,3,,"A tastypie fields.DateField",DateField
-fields.DecimalField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.DecimalField/,7,,"A tastypie fields.DecimalField",DecimalField
-fields.FloatField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.FloatField/,6,,"A tastypie fields.FloatField",FloatField
-fields.IntegerField,field:json_field_type,/reports/api/v1/vocabularies/field:json_field_type/fields.IntegerField/,4,,"A tastypie fields.IntegerField",IntegerField
-read,permission:type,/reports/api/v1/vocabularies/permission:type/read/,1,,"permission to read the resource",Read
-write,permission:type,/reports/api/v1/vocabularies/permission:type/write/,2,,"permission to write the resource",Write
+list,field.visibility,/reports/api/v1/vocabularies/field.visibility/list/,0,,"Allow visibility in list views","Visible in list views"
+edit,field.visibility,/reports/api/v1/vocabularies/field.visibility/edit/,4,,"Allow visibility in the edit form","Visible in edit forms"
+detail,field.visibility,/reports/api/v1/vocabularies/field.visibility/detail/,0,,"Allow visibility in detail views","Visible in detail views"
+choice,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/choice/,0,"The field referred to by this record is a single choice vocabulary term","Single choice field",Choice
+integer,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/integer/,0,,"This is an integer type",Integer
+multiselect,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/multiselect/,0,"The field referred to by this record is a single choice vocabulary term","Multiple choice vocabulary term",Multiselect
+string,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/string/,0,,"Field contains text",Text
+date,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/date/,5,"Date field type shows the date only (not the time)","Date field type",Date
+boolean,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/boolean/,0,,"Field is a boolean",Boolean
+uri,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/uri/,0,"URI (local to the system) for a related endpoint","URI that references another REST entity",URI
+uri_list,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/uri_list/,0,"URIs (local to the system) for related endpoints","URIs that reference other REST entities","URI list"
+embedded,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/nested/,0,"An embedded object","An embedded object","Embedded Object"
+Iccbl.EditCell,field.backgrid_cell_type,/reports/api/v1/vocabularies/field.backgrid_cell_type/Iccbl.EditCell/,20,,"Custom cell - creates a drilldown to the view/edit screen",EditCell
+Iccbl.LinkCell,field.backgrid_cell_type,/reports/api/v1/vocabularies/field.backgrid_cell_type/Iccbl.LinkCell/,21,"Create a link using data from the record from this cell.  Use braces and the name of other properties to construct the link, as in ""relative/url/{property_name}""","Custom cell - create a relative link to some other URI","Iccbl Link Cell"
+string,field.backgrid_cell_type,/reports/api/v1/vocabularies/field.backgrid_cell_type/string/,1,"StringCell displays HTML escaped strings and accepts anything typed in.","This is the default Backgrid cell type - 'stringCell'",StringCell
+date,field.backgrid_cell_type,/reports/api/v1/vocabularies/field.backgrid_cell_type/date/,2,"A Backgrid.DatetimeCell without the time part","The Backgrid date cell type",DateCell
+time,field.backgrid_cell_type,/reports/api/v1/vocabularies/field.backgrid_cell_type/time/,3,"A Backgrid.DatetimeCell without the date part","The Backgrid date cell type",TimeCell
+datetime,field.backgrid_cell_type,/reports/api/v1/vocabularies/field.backgrid_cell_type/datetime/,4,"DatetimeCell is a basic cell that accepts datetime string values in RFC-2822 or W3C's subset of ISO-8601 and displays them in ISO-8601 format.","The Backgrid datetime cell type",DateTimeCell
+integer,field.backgrid_cell_type,/reports/api/v1/vocabularies/field.backgrid_cell_type/integer/,5,"An IntegerCell is just a Backgrid.NumberCell with 0 decimals. If a floating point number is supplied, the number is simply rounded the usual way when displayed.","The Backgrid integer cell type",IntegerCell
+number,field.backgrid_cell_type,/reports/api/v1/vocabularies/field.backgrid_cell_type/number/,6,"NumberCell is a generic cell that renders all numbers. Numbers are formatted using a Backgrid.NumberFormatter.","The Backgrid number cell type",NumberCell
+boolean,field.backgrid_cell_type,/reports/api/v1/vocabularies/field.backgrid_cell_type/boolean/,7,"BooleanCell renders a checkbox both during display mode and edit mode. The checkbox is checked if the model value is true, unchecked otherwise.","The Backgrid boolean cell type",BooleanCell
+fields.CharField,field.json_field_type,/reports/api/v1/vocabularies/field.json_field_type/fields.CharField/,0,,"A tastypie fields.CharField type",CharField
+fields.ListField,field.json_field_type,/reports/api/v1/vocabularies/field.json_field_type/fields.ListField/,5,,"A tastypie fields.ListField type",ListField
+fields.BooleanField,field.json_field_type,/reports/api/v1/vocabularies/field.json_field_type/fields.BooleanField/,2,,"A tastypie fields.BooleanField type",BooleanField
+fields.DateField,field.json_field_type,/reports/api/v1/vocabularies/field.json_field_type/fields.DateField/,3,,"A tastypie fields.DateField",DateField
+fields.DecimalField,field.json_field_type,/reports/api/v1/vocabularies/field.json_field_type/fields.DecimalField/,7,,"A tastypie fields.DecimalField",DecimalField
+fields.FloatField,field.json_field_type,/reports/api/v1/vocabularies/field.json_field_type/fields.FloatField/,6,,"A tastypie fields.FloatField",FloatField
+fields.IntegerField,field.json_field_type,/reports/api/v1/vocabularies/field.json_field_type/fields.IntegerField/,4,,"A tastypie fields.IntegerField",IntegerField
+read,permission.type,/reports/api/v1/vocabularies/permission.type/read/,1,,"permission to read the resource",Read
+write,permission.type,/reports/api/v1/vocabularies/permission.type/write/,2,,"permission to write the resource",Write
+smallmolecule,screen.type,/reports/api/v1/vocabularies/screen.type/smallmolecule/,1,,"A small molecule screen","Small Molecule"
+rnai,screen.type,/reports/api/v1/vocabularies/screen.type/rnai/,2,,"An RNAi Screen",RNAi
+commercial,library.type,/reports/api/v1/vocabularies/library.type/commercial/,0,,"A commercial llibrary",Commercial
+dos,library.type,/reports/api/v1/vocabularies/library.type/dos/,1,,DOS,DOS
+annotation,library.type,/reports/api/v1/vocabularies/library.type/annotation/,2,,Annotation,Annotation
+academic_collection,library.type,/reports/api/v1/vocabularies/library.type/academic_collection/,3,,"Academic Collection","Academic Collection"
+nih-mlp,library.type,/reports/api/v1/vocabularies/library.type/nih-mlp/,4,,NIH-MLP,NIH-MLP
+known_bioactives,library.type,/reports/api/v1/vocabularies/library.type/known_bioactives/,5,,"Known Bioactives","Known Bioactives"
+nci,library.type,/reports/api/v1/vocabularies/library.type/nci/,6,,NCI,NCI
+natural_products,library.type,/reports/api/v1/vocabularies/library.type/natural_products/,7,,"Natural Products","Natural Products"
+sirna,library.type,/reports/api/v1/vocabularies/library.type/sirna/,8,,siRNA,siRNA
+shrna,library.type,/reports/api/v1/vocabularies/library.type/shrna/,9,,shRNA,shRNA
+mirna_inhibitor,library.type,/reports/api/v1/vocabularies/library.type/mirna_inhibitor/,10,,"miRNA Inhibitor","miRNA Inhibitor"
+mirna_mimic,library.type,/reports/api/v1/vocabularies/library.type/mirna_mimic/,11,,"miRNA Mimic","miRNA Mimic"
+Other,library.type,/reports/api/v1/vocabularies/library.type/other/,12,,Other,Other
+1,plate.size,/reports/api/v1/vocabularies/plate.size/1/,0,,Vial,1
+96,plate.size,/reports/api/v1/vocabularies/plate.size/96/,1,,"96 Well",96
+384,plate.size,/reports/api/v1/vocabularies/plate.size/384/,2,,"384 Well",384
+1536,plate.size,/reports/api/v1/vocabularies/plate.size/1536/,3,,"1536 Well",1536

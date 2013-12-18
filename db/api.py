@@ -1,10 +1,11 @@
+import logging
+
 from django.conf.urls import url
 from django.forms.models import model_to_dict
 from django.http import Http404
 from django.db import connection
-from django.contrib.auth.models import User
 
-from tastypie.resources import Resource
+from tastypie.utils import timezone
 from tastypie.exceptions import BadRequest
 from tastypie.utils.urls import trailing_slash
 from tastypie.authorization import Authorization
@@ -18,11 +19,6 @@ from lims.api import CursorSerializer, LimsSerializer, PostgresSortingResource, 
 from reports.models import MetaHash, Vocabularies
 from reports.api import ManagedModelResource, ManagedResource
 
-import time
-import re
-
-import logging
-from tastypie.utils import timezone
         
 logger = logging.getLogger(__name__)
 
@@ -130,7 +126,7 @@ class ScreenResultResource(ManagedResource):
         object_class = dict
         
     def __init__(self, **kwargs):
-        self.scope = 'fields:screenresult'
+        self.scope = 'fields.screenresult'
         super(ScreenResultResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
@@ -506,6 +502,7 @@ class LibraryResource(ManagedModelResource):
     class Meta:
         queryset = Library.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
+        authorization= Authorization()        
         resource_name = 'library'
         
         ordering = []
@@ -514,7 +511,6 @@ class LibraryResource(ManagedModelResource):
 
         
     def __init__(self, **kwargs):
-#        self.
         super(LibraryResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
@@ -534,3 +530,14 @@ class LibraryResource(ManagedModelResource):
         schema['extraSelectorOptions'] = { 'label': 'Type', 'searchColumn': 'library_type', 'options': temp }
         return schema
     
+    def obj_create(self, bundle, **kwargs):
+        bundle.data['date_created'] = timezone.now()
+        
+        bundle.data['version'] = 1
+        logger.info(str(('===creating library', bundle.data)))
+
+        return super(LibraryResource, self).obj_create(bundle, **kwargs)
+
+
+
+            

@@ -114,7 +114,7 @@ define([
                     detail_view: 'DetailView',
                     api_resource: 'metahash',
                     url_root: '/reports/api/v1',
-                    options: { search: {'scope': 'fields:metahash'}},
+                    options: { search: {'scope': 'fields.metahash'}},
                     description: 'Control field settings'
                 },
 
@@ -223,7 +223,8 @@ define([
                     detail_view: 'DetailView',
                     api_resource: 'screen',
                     url_root: '/db/api/v1',
-                    description: 'View screen information'
+                    description: 'View screen information',
+                    options: { order_by: { facility_id:'-'} }  //TODO: instructions like this don't work
                 },
                 small_molecule_screens: {
                     header_message: 'Small Molecule Screens',

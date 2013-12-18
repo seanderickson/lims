@@ -190,7 +190,10 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid', 'ba
      */
     var containsByMatch = Iccbl.containsByMatch = function(collection, matchstring){
       return _.find(collection, function(item) {
-          return  ( matchstring.indexOf(item) != -1 ) || ( item.indexOf(matchstring) != -1 );
+          var result =  ( matchstring.indexOf(item) != -1 ) || ( item.indexOf(matchstring) != -1 );
+
+          console.log('containsByMatch: ' + result + ', ' + matchstring + ', ' + JSON.stringify(collection));
+          return result;
       });
     };
 
@@ -286,6 +289,18 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid', 'ba
             }
         });
     };
+
+    var formatResponseError = Iccbl.formatResponseError = function(response){
+        var msg = '';
+        var sep = '\n';
+        if (!_.isUndefined(response.status))
+            msg += response.status;
+        if (!_.isUndefined(response.statusText))
+            msg += sep + response.statusText;
+        if (!_.isEmpty(response.responseText))
+            msg += sep + response.responseText;
+        return msg;
+    }
 
     var getCollection = Iccbl.getCollection = function(schemaResult, url, callback) {
         var CollectionClass = Iccbl.MyCollection.extend({
@@ -655,16 +670,10 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     initialize : function(options) {
         var self = this;
         this.options = options;
-        if ( typeof (options) !== 'undefined') {
-            //console.log('options: ' + JSON.stringify(options));
-        } else {
-            window.alert('no options defined');
-        }
-        // TODO: require these options
+
+        Iccbl.requireOptions(options, ['url','listModel']);
+
         this.url = options.url;
-
-        Iccbl.assert(!_.isUndefined(options.listModel), 'Iccbl.Collection requires options.listModel');
-
         this.listModel = options.listModel;
 
         this.listenTo(this.listModel, 'change:search', function() {
@@ -689,12 +698,9 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
             console.log('===--- listModel change:page');
             var page = parseInt(self.listModel.get('page'));
             self.setPage(page);
-            // self.state.currentPage = page;
-            // self.fetch();
         });
 
         Backbone.PageableCollection.prototype.initialize.apply(this, options);
-        // call super constructor
     },
 
     url : function() {
@@ -731,7 +737,6 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
             "-1" : "asc",
             "1" : "desc"
         }
-
     },
 
     /**
@@ -884,9 +889,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
                 'order' : {}
             });
         }
-
         //this.trigger("MyServerSideFilter:removeOrder", orderKeys, this);
-
         // this.state.currentPage=1;  // if filtering, always set the page to 1
         // this.fetch();
     },

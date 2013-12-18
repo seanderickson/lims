@@ -1,2 +1,2 @@
 key,scope,resource_uri,ordinal,comment,ui_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,backgrid_cell_type,backgrid_cell_options
-well_id,fields:screenresult,/reports/api/v1/metahash/fields:screenresult/well_id/,0,,string,TRUE,"The HTS well id","Well ID",TRUE,,,"[list,detail]",,Iccbl.EditCell,
+well_id,fields.screenresult,/reports/api/v1/metahash/fields.screenresult/well_id/,0,,string,TRUE,"The HTS well id","Well ID",TRUE,,,"[list,detail]",,Iccbl.EditCell,

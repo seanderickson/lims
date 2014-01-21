@@ -65,12 +65,14 @@ class MetaManager(GetOrNoneManager):
             # NOTE: choices for the "vocabulary_scope_ref" are being stored here for convenience
             # now check if the field uses controlled vocabulary, look that up now.  TODO: "vocabulary_scope_ref" should be a constant
             # TODO: "vocabulary_scope_ref" needs to be created by default as a metahash:field; this argues for making it a "real" field
+            
             if parsed_object.get(u'vocabulary_scope_ref'):
                 vocab_ref = parsed_object['vocabulary_scope_ref']
+                logger.debug(str(('vocab_ref', vocab_ref)))
                 parsed_object['choices'] = [x.key for x in Vocabularies.objects.all().filter(scope=vocab_ref)]
             
             parsed_objects[unparsed_object.key] = parsed_object
-        #logger.debug(str(('got metahash, for ', scope, 'hash found', parsed_objects)))
+        logger.debug(str(('got metahash, for ', scope, 'hash found', parsed_objects)))
         return parsed_objects
 
 
@@ -198,6 +200,7 @@ class Vocabularies(models.Model):
     key                     = models.CharField(max_length=35, blank=True)
     alias                   = models.CharField(max_length=35, blank=True)
     ordinal                 = models.IntegerField();
+    title                   = models.CharField(max_length=100, blank=True)
 #    json_field_type         = models.CharField(max_length=128, blank=True, null=True); # required if the field is a JSON field; choices are from the TastyPie field types
     
     # All other fields are "virtual" JSON stored fields, (unless we decide to migrate them out to real fields for rel db use cases)

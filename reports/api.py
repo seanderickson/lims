@@ -431,7 +431,7 @@ class ManagedResource(LoggingMixin):
                         val = bundle_or_obj[x] # allows simple dicts
                 kwargs[x] = str(val)
             
-            logger.info(str(('detail_uri_kwargs:', kwargs)))    
+#             logger.info(str(('detail_uri_kwargs:', kwargs)))    
             
             return kwargs
         except Exception, e:
@@ -477,7 +477,7 @@ class ManagedResource(LoggingMixin):
     
     def get_resource_uri(self,bundle_or_obj=None, url_name='api_dispatch_list'):
         uri = super(ManagedResource, self).get_resource_uri(bundle_or_obj=bundle_or_obj, url_name=url_name)
-        logger.warn(str(('++++get_resource_uri', uri)))
+#         logger.warn(str(('++++get_resource_uri', uri)))
         return uri
         
     # implementation hook - URLS to match _before_ the default URLS

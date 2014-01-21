@@ -274,6 +274,7 @@ define([
         return orderHash;
     },
 
+    // TODO: not active now - shall we make edit a routable path?
     toEdit: function(ui_resource_id, key, key2){
         console.log('to edit page, ui_resource_id: ' + ui_resource_id + ', ' + key + ', ' + key2 );
 

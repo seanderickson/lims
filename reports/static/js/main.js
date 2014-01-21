@@ -11,6 +11,7 @@ require.config({
     backgrid_select_all: 'libs/backgrid-select-all',
 //    backbone_modelbinder: 'libs/Backbone.ModelBinder',
     backbone_stickit: 'libs/backbone.stickit',
+    backbone_forms: 'libs/backbone-forms', // TODO: evaluating vs. backbone.stickit
     'backbone-associations': 'libs/backbone-associations',
     bootstrap: 'libs/bootstrap',
     lunr: 'libs/lunr',
@@ -55,6 +56,9 @@ require.config({
         // exports: '$.fn.modal'
     },
     backbone_stickit: { deps: ["backbone"] },
+    
+    backbone_forms: { deps: ["backbone"] }, // TODO: evaluating vs. backbone_stickit
+    
     'backbone-associations': { deps: ["backbone"] },
 
     iccbl_backgrid: {

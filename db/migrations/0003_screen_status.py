@@ -7,21 +7,44 @@ import json
 from reports.models import ApiLog
 from django.utils import timezone
 
+import re
+
 class Migration(DataMigration):
+
+    def default_converter(self, original_text):
+        temp = re.sub(r'[\W]+', ' ', original_text)
+        return '_'.join(temp.lower().split())
     
-    # migrate the screen_status_item table to the "status" field of the screen object and create the needed ApiLog entries to record the history
+    # migrate the screen_status_item table to the "status" field of the screen
+    # object and create the needed ApiLog entries to record the history
     def forwards(self, orm):
         "Write your forwards methods here."
         # Note: Don't use "from appname.models import ModelName". 
         # Use orm.ModelName to refer to models in this application,
         # and orm['appname.ModelName'] for models in other applications.
+        
+        # first, clean up the vocabulary used in the status_item table
+        
+        for obj in orm.ScreenStatusItem.objects.all():
+            attr = 'status'
+            temp = getattr(obj, attr)
+            if temp:
+                temp2 = self.default_converter(temp)
+                setattr(obj, attr, temp2)
+                print 'screen', attr, temp,temp2 
+            obj.save()
+            
+        # Now create a history log for all of the status's for each screen, 
+        # and store the _current/latest_ status on the new screen.status field
         j=0
     	for screen in orm.Screen.objects.all():
             i=0
             prev_item = None
             for status in orm.ScreenStatusItem.objects.filter(screen=screen):
                 log = ApiLog()
-                log.date_time = timezone.now() #status.status_date + datetime.timedelta(0,i) # hack add 1 sec to avoid duplicate key error #timezone.now() 
+                log.date_time = timezone.now() 
+                #status.status_date + datetime.timedelta(0,i) 
+                # hack add 1 sec to avoid duplicate key error #timezone.now() 
                 log.user_id = 1
                 log.username = 'sde4'
                 log.ref_resource_name = 'screen'
@@ -639,7 +662,7 @@ class Migration(DataMigration):
             'assay_plates_screened_count': ('django.db.models.fields.IntegerField', [], {}),
             'billing_comments': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'billing_info_return_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
-            'cell_line': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.CellLine']", 'null': 'True', 'blank': 'True'}),
+#             'cell_line': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.CellLine']", 'null': 'True', 'blank': 'True'}),
             'comments': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'coms_approval_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'coms_registration_number': ('django.db.models.fields.TextField', [], {'blank': 'True'}),

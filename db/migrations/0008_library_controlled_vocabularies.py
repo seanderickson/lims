@@ -1,63 +1,92 @@
 # -*- coding: utf-8 -*-
-import datetime
+from south.utils import datetime_utils as datetime
 from south.db import db
-from south.v2 import SchemaMigration
+from south.v2 import DataMigration
 from django.db import models
 
+import re
 
-class Migration(SchemaMigration):
-    '''
-    NOTE: strategy will be to collect all of the migrations that were developed in the prototype, and 
-    collect them here.
-    The stock "initial" should be re-created at release time and will not need this script.
-    
-    NOTE: to clean dev migrations: see: 
-    https://groups.google.com/forum/#!topic/south-users/iIQT8ZWs2cI
-    
-    As long as you take care to do it on all deployments simultaneously, there shouldn't be any problem with this. Personally, I'd do:
 
-    rm -r appname/migrations/ 
-    ./manage.py reset south appname
-    ./manage.py convert_to_south appname 
-
-    The convert_to_south call at the end makes a new migration and fake-applies it 
-    (since your database already has the corresponding tables). 
-    There's no need to drop all the app tables during the process.
-    
-    **also, consider http://balzerg.blogspot.co.il/2012/09/django-app-reset-with-south.html
-    '''
+class Migration(DataMigration):
 
     def forwards(self, orm):
-
-        # Creating primary key "AutoFields" for the old java/hibernate 
-        # "GenericGenerator" class
+        '''
+        Performs the vocabulary conversion for the library and screen entities.
+        - we are converting from the stored, display values, to a key value;
+        this key will reference the entry for the respective vocab in the 
+        reports_vocabularies table.  (Referencing by scope, key).
+        Note: there will be a conversion script for all vocabularies, eventually.
+        '''
+        # note, this is idempotent!!! -sde4
         
-        # Changing field 'Screen.screen_id' to auto field
-        # *NOTE: This does not work with Postgres, for an already existing field
-        #         db.alter_column(u'screen', 'screen_id', self.gf('django.db.models.fields.AutoField')(primary_key=True))
-
-        # Postgres can create a field of type 'serial', but its not a real type, so postgres will not 
-        # convert a field to 'serial'
-        # see: http://www.postgresql.org/docs/8.3/interactive/datatype-numeric.html#DATATYPE-SERIAL
-        # see: http://south.aeracode.org/ticket/407, 
-        # Fix is as follows:
+        library_vocabs = ['library_type', 'solvent', 'screen_type', 'screening_status']
         
-        # Note: we don't need to create the sequence; just re-associate the old one
-        #         db.execute("CREATE SEQUENCE {column}_seq".format(column='screen_id'))
-        #         db.execute("SELECT setval('{table}_{column}_seq', (SELECT MAX({column}) FROM {table}))".format(table='screen', column='screen_id'))
-        db.execute("ALTER TABLE {table} ALTER COLUMN {column} SET DEFAULT nextval('{column}_seq'::regclass)".format(table='screen', column='screen_id'))
-        db.execute("ALTER SEQUENCE {column}_seq OWNED BY {table}.{column}".format(table='screen', column='screen_id'))
+        for obj in orm.Library.objects.all():
+            for attr in library_vocabs:
+                temp = getattr(obj, attr)
+                if temp:
+                    temp2 = self.default_converter(temp)
+                    setattr(obj, attr, temp2)
+                    print 'convert library vocab', attr, temp,'to',temp2 
 
-        db.execute("ALTER TABLE {table} ALTER COLUMN {column} SET DEFAULT nextval('{column}_seq'::regclass)".format(table='library', column='library_id'))
-        db.execute("ALTER SEQUENCE {column}_seq OWNED BY {table}.{column}".format(table='library', column='library_id'))
+            obj.save()
 
+        screen_vocabs = ['screen_type', 'project_phase', 'species' ] 
+        # Note: data_sharing_levels: using int values instead of names
+        
+        for obj in orm.Screen.objects.all():
+            for attr in screen_vocabs:
+                temp = getattr(obj, attr)
+                if temp:
+                    temp2 = self.default_converter(temp)
+                    setattr(obj, attr, temp2)
+                    print 'convert screen vocab ', attr, temp,'to', temp2 
+            obj.save()
+            
+    def default_converter(self, original_text):
+        temp = re.sub(r'[\W]+', ' ', original_text)
+        return '_'.join(temp.lower().split())
 
     def backwards(self, orm):
+        "Write your backwards methods here."
 
-        db.execute("DROP SEQUENCE {column}_seq cascade".format(column='screen_id'))
-        db.execute("DROP SEQUENCE {column}_seq cascade".format(column='library_id'))
-        
     models = {
+        u'auth.group': {
+            'Meta': {'object_name': 'Group'},
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'name': ('django.db.models.fields.CharField', [], {'unique': 'True', 'max_length': '80'}),
+            'permissions': ('django.db.models.fields.related.ManyToManyField', [], {'to': u"orm['auth.Permission']", 'symmetrical': 'False', 'blank': 'True'})
+        },
+        u'auth.permission': {
+            'Meta': {'ordering': "(u'content_type__app_label', u'content_type__model', u'codename')", 'unique_together': "((u'content_type', u'codename'),)", 'object_name': 'Permission'},
+            'codename': ('django.db.models.fields.CharField', [], {'max_length': '100'}),
+            'content_type': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['contenttypes.ContentType']"}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'name': ('django.db.models.fields.CharField', [], {'max_length': '50'})
+        },
+        u'auth.user': {
+            'Meta': {'object_name': 'User'},
+            'date_joined': ('django.db.models.fields.DateTimeField', [], {'default': 'datetime.datetime.now'}),
+            'email': ('django.db.models.fields.EmailField', [], {'max_length': '75', 'blank': 'True'}),
+            'first_name': ('django.db.models.fields.CharField', [], {'max_length': '30', 'blank': 'True'}),
+            'groups': ('django.db.models.fields.related.ManyToManyField', [], {'symmetrical': 'False', 'related_name': "u'user_set'", 'blank': 'True', 'to': u"orm['auth.Group']"}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'is_active': ('django.db.models.fields.BooleanField', [], {'default': 'True'}),
+            'is_staff': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_superuser': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'last_login': ('django.db.models.fields.DateTimeField', [], {'default': 'datetime.datetime.now'}),
+            'last_name': ('django.db.models.fields.CharField', [], {'max_length': '30', 'blank': 'True'}),
+            'password': ('django.db.models.fields.CharField', [], {'max_length': '128'}),
+            'user_permissions': ('django.db.models.fields.related.ManyToManyField', [], {'symmetrical': 'False', 'related_name': "u'user_set'", 'blank': 'True', 'to': u"orm['auth.Permission']"}),
+            'username': ('django.db.models.fields.CharField', [], {'unique': 'True', 'max_length': '30'})
+        },
+        u'contenttypes.contenttype': {
+            'Meta': {'ordering': "('name',)", 'unique_together': "(('app_label', 'model'),)", 'object_name': 'ContentType', 'db_table': "'django_content_type'"},
+            'app_label': ('django.db.models.fields.CharField', [], {'max_length': '100'}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'model': ('django.db.models.fields.CharField', [], {'max_length': '100'}),
+            'name': ('django.db.models.fields.CharField', [], {'max_length': '100'})
+        },
         u'db.abasetestset': {
             'Meta': {'object_name': 'AbaseTestset', 'db_table': "u'abase_testset'"},
             'abase_testset_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
@@ -92,13 +121,13 @@ class Migration(SchemaMigration):
         },
         u'db.administratoruser': {
             'Meta': {'object_name': 'AdministratorUser', 'db_table': "u'administrator_user'"},
-            'screensaver_user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreensaverUser']", 'primary_key': 'True'})
+            'screensaver_user': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.ScreensaverUser']", 'unique': 'True', 'primary_key': 'True'})
         },
         u'db.annotationtype': {
             'Meta': {'object_name': 'AnnotationType', 'db_table': "u'annotation_type'"},
             'annotation_type_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
             'description': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'is_numeric': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_numeric': ('django.db.models.fields.BooleanField', [], {}),
             'name': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'ordinal': ('django.db.models.fields.IntegerField', [], {}),
             'study': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Screen']"}),
@@ -129,7 +158,7 @@ class Migration(SchemaMigration):
             'assay_well_control_type': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'assay_well_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
             'confirmed_positive_value': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'is_positive': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_positive': ('django.db.models.fields.BooleanField', [], {}),
             'screen_result': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreenResult']"}),
             'version': ('django.db.models.fields.IntegerField', [], {}),
             'well': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']"})
@@ -232,7 +261,7 @@ class Migration(SchemaMigration):
             'Meta': {'object_name': 'ChecklistItem', 'db_table': "u'checklist_item'"},
             'checklist_item_group': ('django.db.models.fields.TextField', [], {}),
             'checklist_item_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
-            'is_expirable': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_expirable': ('django.db.models.fields.BooleanField', [], {}),
             'item_name': ('django.db.models.fields.TextField', [], {'unique': 'True'}),
             'order_statistic': ('django.db.models.fields.IntegerField', [], {}),
             'version': ('django.db.models.fields.IntegerField', [], {})
@@ -246,8 +275,8 @@ class Migration(SchemaMigration):
             'date_loaded': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
             'date_performed': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'date_publicly_available': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
-            'is_expiration': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
-            'is_not_applicable': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_expiration': ('django.db.models.fields.BooleanField', [], {}),
+            'is_not_applicable': ('django.db.models.fields.BooleanField', [], {}),
             'screening_room_user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreeningRoomUser']"})
         },
         u'db.checklistitemeventupdateactivity': {
@@ -293,8 +322,8 @@ class Migration(SchemaMigration):
             'date_publicly_available': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
             'date_requested': ('django.db.models.fields.DateField', [], {}),
             'date_volume_approved': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
-            'is_randomized_assay_plate_layout': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
-            'keep_source_plate_cherry_picks_together': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_randomized_assay_plate_layout': ('django.db.models.fields.BooleanField', [], {}),
+            'keep_source_plate_cherry_picks_together': ('django.db.models.fields.BooleanField', [], {}),
             'legacy_cherry_pick_request_number': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'max_skipped_wells_per_plate': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'number_unfulfilled_lab_cherry_picks': ('django.db.models.fields.IntegerField', [], {}),
@@ -370,8 +399,8 @@ class Migration(SchemaMigration):
             'decimal_places': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'description': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'how_derived': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'is_derived': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
-            'is_follow_up_data': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_derived': ('django.db.models.fields.BooleanField', [], {}),
+            'is_follow_up_data': ('django.db.models.fields.BooleanField', [], {}),
             'medium_positives_count': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'name': ('django.db.models.fields.TextField', [], {}),
             'ordinal': ('django.db.models.fields.IntegerField', [], {}),
@@ -471,7 +500,7 @@ class Migration(SchemaMigration):
         u'db.labhead': {
             'Meta': {'object_name': 'LabHead', 'db_table': "u'lab_head'"},
             'lab_affiliation': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.LabAffiliation']", 'null': 'True', 'blank': 'True'}),
-            'screensaver_user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreeningRoomUser']", 'primary_key': 'True'})
+            'screensaver_user': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.ScreeningRoomUser']", 'unique': 'True', 'primary_key': 'True'})
         },
         u'db.legacysmallmoleculecasnumber': {
             'Meta': {'object_name': 'LegacySmallMoleculeCasNumber', 'db_table': "u'_legacy_small_molecule_cas_number'"},
@@ -492,7 +521,7 @@ class Migration(SchemaMigration):
             'experimental_well_count': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'is_pool': ('django.db.models.fields.NullBooleanField', [], {'null': 'True', 'blank': 'True'}),
             'latest_released_contents_version_id': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
-            'library_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
+            'library_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'library_name': ('django.db.models.fields.TextField', [], {'unique': 'True'}),
             'library_type': ('django.db.models.fields.TextField', [], {}),
             'owner_screener': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreeningRoomUser']", 'null': 'True', 'blank': 'True'}),
@@ -518,7 +547,7 @@ class Migration(SchemaMigration):
             'Meta': {'object_name': 'LibraryScreening', 'db_table': "u'library_screening'"},
             'abase_testset_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Screening']", 'primary_key': 'True'}),
-            'is_for_external_library_plates': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_for_external_library_plates': ('django.db.models.fields.BooleanField', [], {}),
             'libraries_screened_count': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'library_plates_screened_count': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'screened_experimental_well_count': ('django.db.models.fields.IntegerField', [], {})
@@ -645,10 +674,10 @@ class Migration(SchemaMigration):
             'abase_protocol_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'abase_study_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'amount_to_be_charged_for_screen': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '9', 'decimal_places': '2', 'blank': 'True'}),
-            'assay_plates_screened_count': ('django.db.models.fields.IntegerField', [], {}),
+            'assay_plates_screened_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
             'billing_comments': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'billing_info_return_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
-            'cell_line': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.CellLine']", 'null': 'True', 'blank': 'True'}),
+#             'cell_line': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.CellLine']", 'null': 'True', 'blank': 'True'}),
             'comments': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'coms_approval_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'coms_registration_number': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -670,14 +699,14 @@ class Migration(SchemaMigration):
             'fee_form_requested_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'fee_form_requested_initials': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'image_url': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'is_billing_for_supplies_only': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
-            'is_fee_form_on_file': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_billing_for_supplies_only': ('django.db.models.fields.BooleanField', [], {}),
+            'is_fee_form_on_file': ('django.db.models.fields.BooleanField', [], {}),
             'lab_head': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.LabHead']", 'null': 'True', 'blank': 'True'}),
             'lead_screener': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreeningRoomUser']", 'null': 'True', 'blank': 'True'}),
             'libraries_screened_count': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
-            'library_plates_data_analyzed_count': ('django.db.models.fields.IntegerField', [], {}),
-            'library_plates_data_loaded_count': ('django.db.models.fields.IntegerField', [], {}),
-            'library_plates_screened_count': ('django.db.models.fields.IntegerField', [], {}),
+            'library_plates_data_analyzed_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
+            'library_plates_data_loaded_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
+            'library_plates_screened_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
             'max_allowed_data_privacy_expiration_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'max_data_loaded_replicate_count': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'max_screened_replicate_count': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
@@ -695,18 +724,20 @@ class Migration(SchemaMigration):
             'publishable_protocol_comments': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'publishable_protocol_date_entered': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'publishable_protocol_entered_by': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'screen_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
+            'screen_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'screen_type': ('django.db.models.fields.TextField', [], {}),
-            'screened_experimental_well_count': ('django.db.models.fields.IntegerField', [], {}),
-            'see_comments': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'screened_experimental_well_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
+            'see_comments': ('django.db.models.fields.BooleanField', [], {}),
             'species': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
+            'status': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
+            'status_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'study_type': ('django.db.models.fields.TextField', [], {}),
             'summary': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'title': ('django.db.models.fields.TextField', [], {}),
-            'to_be_requested': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'to_be_requested': ('django.db.models.fields.BooleanField', [], {}),
             'total_plated_lab_cherry_picks': ('django.db.models.fields.IntegerField', [], {}),
             'transfection_agent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.TransfectionAgent']", 'null': 'True', 'blank': 'True'}),
-            'unique_screened_experimental_well_count': ('django.db.models.fields.IntegerField', [], {}),
+            'unique_screened_experimental_well_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
             'url': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'version': ('django.db.models.fields.IntegerField', [], {}),
             'well_studied': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']", 'null': 'True', 'blank': 'True'})
@@ -750,7 +781,7 @@ class Migration(SchemaMigration):
             'lab_head': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.LabHead']", 'null': 'True', 'blank': 'True'}),
             'last_notified_rnaiua_checklist_item_event': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "u'rnai_ua_user'", 'null': 'True', 'to': u"orm['db.ChecklistItemEvent']"}),
             'last_notified_smua_checklist_item_event': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "u'smua_user'", 'null': 'True', 'to': u"orm['db.ChecklistItemEvent']"}),
-            'screensaver_user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreensaverUser']", 'primary_key': 'True'}),
+            'screensaver_user': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.ScreensaverUser']", 'unique': 'True', 'primary_key': 'True'}),
             'user_classification': ('django.db.models.fields.TextField', [], {})
         },
         u'db.screeningroomuserfacilityusagerole': {
@@ -780,7 +811,7 @@ class Migration(SchemaMigration):
             'date_publicly_available': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
             'experimental_well_count': ('django.db.models.fields.IntegerField', [], {}),
             'replicate_count': ('django.db.models.fields.IntegerField', [], {}),
-            'screen': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Screen']"}),
+            'screen': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.Screen']", 'unique': 'True'}),
             'screen_result_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
             'version': ('django.db.models.fields.IntegerField', [], {})
         },
@@ -807,9 +838,11 @@ class Migration(SchemaMigration):
             'last_name': ('django.db.models.fields.TextField', [], {}),
             'login_id': ('django.db.models.fields.TextField', [], {'unique': 'True', 'blank': 'True'}),
             'mailing_address': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
+            'permissions': ('django.db.models.fields.related.ManyToManyField', [], {'to': u"orm['reports.Permission']", 'symmetrical': 'False'}),
             'phone': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'screensaver_user_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
-            'version': ('django.db.models.fields.IntegerField', [], {'blank': 'True'})
+            'user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['auth.User']", 'null': 'True'}),
+            'version': ('django.db.models.fields.IntegerField', [], {'default': '1', 'blank': 'True'})
         },
         u'db.screensaveruserrole': {
             'Meta': {'object_name': 'ScreensaverUserRole', 'db_table': "u'screensaver_user_role'"},
@@ -846,7 +879,7 @@ class Migration(SchemaMigration):
         u'db.silencingreagent': {
             'Meta': {'object_name': 'SilencingReagent', 'db_table': "u'silencing_reagent'"},
             'facility_gene': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "u'facility_reagent'", 'unique': 'True', 'null': 'True', 'to': u"orm['db.Gene']"}),
-            'is_restricted_sequence': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_restricted_sequence': ('django.db.models.fields.BooleanField', [], {}),
             'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Reagent']", 'primary_key': 'True'}),
             'sequence': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'silencing_reagent_type': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -890,7 +923,7 @@ class Migration(SchemaMigration):
         u'db.smallmoleculereagent': {
             'Meta': {'object_name': 'SmallMoleculeReagent', 'db_table': "u'small_molecule_reagent'"},
             'inchi': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'is_restricted_structure': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_restricted_structure': ('django.db.models.fields.BooleanField', [], {}),
             'molecular_formula': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'molecular_mass': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '15', 'decimal_places': '9', 'blank': 'True'}),
             'molecular_weight': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '15', 'decimal_places': '9', 'blank': 'True'}),
@@ -914,7 +947,7 @@ class Migration(SchemaMigration):
             'Meta': {'object_name': 'Well', 'db_table': "u'well'"},
             'deprecation_admin_activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AdministrativeActivity']", 'null': 'True', 'blank': 'True'}),
             'facility_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'is_deprecated': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_deprecated': ('django.db.models.fields.BooleanField', [], {}),
             'latest_released_reagent': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "u'reagent_well'", 'null': 'True', 'to': u"orm['db.Reagent']"}),
             'library': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Library']"}),
             'library_well_type': ('django.db.models.fields.TextField', [], {}),
@@ -938,7 +971,15 @@ class Migration(SchemaMigration):
         u'db.wellvolumecorrectionactivity': {
             'Meta': {'object_name': 'WellVolumeCorrectionActivity', 'db_table': "u'well_volume_correction_activity'"},
             'activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AdministrativeActivity']", 'primary_key': 'True'})
+        },
+        u'reports.permission': {
+            'Meta': {'unique_together': "(('scope', 'key', 'type'),)", 'object_name': 'Permission'},
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'key': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
+            'scope': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
+            'type': ('django.db.models.fields.CharField', [], {'max_length': '15'})
         }
     }
 
     complete_apps = ['db']
+    symmetrical = True

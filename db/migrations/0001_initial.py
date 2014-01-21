@@ -518,7 +518,8 @@ class Migration(SchemaMigration):
 
         # Adding model 'Library'
         db.create_table(u'library', (
-            ('library_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
+#             ('library_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
+            ('library_id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
             ('version', self.gf('django.db.models.fields.IntegerField')()),
             ('library_name', self.gf('django.db.models.fields.TextField')(unique=True)),
             ('short_name', self.gf('django.db.models.fields.TextField')(unique=True)),
@@ -711,7 +712,8 @@ class Migration(SchemaMigration):
 
         # Adding model 'Screen'
         db.create_table(u'screen', (
-            ('screen_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
+#             ('screen_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
+            ('screen_id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
             ('version', self.gf('django.db.models.fields.IntegerField')()),
             ('date_created', self.gf('django.db.models.fields.DateTimeField')()),
             ('screen_type', self.gf('django.db.models.fields.TextField')()),
@@ -781,6 +783,28 @@ class Migration(SchemaMigration):
             ('perturbagen_ug_ml_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=5, decimal_places=3, blank=True)),
         ))
         db.send_create_signal(u'db', ['Screen'])
+
+
+#         # Changing field 'Screen.screen_id' to auto field
+#         # *NOTE: This does not work with Postgres, for an already existing field
+#         #         db.alter_column(u'screen', 'screen_id', self.gf('django.db.models.fields.AutoField')(primary_key=True))
+# 
+#         # Postgres can create a field of type 'serial', but its not a real type, so postgres will not 
+#         # convert a field to 'serial'
+#         # see: http://www.postgresql.org/docs/8.3/interactive/datatype-numeric.html#DATATYPE-SERIAL
+#         # see: http://south.aeracode.org/ticket/407, 
+#         # Fix is as follows:
+#         
+#         print 'creating screen_id sequence'
+#         # Note: we don't need to create the sequence; just re-associate the old one
+#         db.execute("CREATE SEQUENCE {column}_seq".format(column='screen_id'))
+#         #         db.execute("SELECT setval('{table}_{column}_seq', (SELECT MAX({column}) FROM {table}))".format(table='screen', column='screen_id'))
+#         db.execute("ALTER TABLE {table} ALTER COLUMN {column} SET DEFAULT nextval('{column}_seq'::regclass)".format(table='screen', column='screen_id'))
+#         db.execute("ALTER SEQUENCE {column}_seq OWNED BY {table}.{column}".format(table='screen', column='screen_id'))
+
+
+
+
 
         # Adding model 'ScreenBillingItem'
         db.create_table(u'screen_billing_item', (
@@ -1798,7 +1822,8 @@ class Migration(SchemaMigration):
             'experimental_well_count': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'is_pool': ('django.db.models.fields.NullBooleanField', [], {'null': 'True', 'blank': 'True'}),
             'latest_released_contents_version_id': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
-            'library_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
+#             'library_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
+            'library_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'library_name': ('django.db.models.fields.TextField', [], {'unique': 'True'}),
             'library_type': ('django.db.models.fields.TextField', [], {}),
             'owner_screener': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreeningRoomUser']", 'null': 'True', 'blank': 'True'}),
@@ -2001,7 +2026,8 @@ class Migration(SchemaMigration):
             'publishable_protocol_comments': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'publishable_protocol_date_entered': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'publishable_protocol_entered_by': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'screen_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
+#             'screen_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
+            'screen_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'screen_type': ('django.db.models.fields.TextField', [], {}),
             'screened_experimental_well_count': ('django.db.models.fields.IntegerField', [], {}),
             'see_comments': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),

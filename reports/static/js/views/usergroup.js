@@ -31,7 +31,7 @@ define([
 
             this._tabbed_resources = {
                 detail: { description: 'UserGroup Details', title: 'UserGroup Details', invoke : this.setDetail },
-                groups: { description: 'Users', title: 'Users', invoke : this.setUsers },
+                users: { description: 'Users', title: 'Users', invoke : this.setUsers },
                 permissions: { description: 'UserGroup Permissions', title: 'UserGroup Permissions', invoke : this.setPermissions },
             };
 
@@ -84,8 +84,8 @@ define([
 
         setUsers: function(){
             var self = this;
-            var resource_url = this.options.url_root + '/user';
-            var schema_url =  resource_url + '/schema';
+            var resource_url = this.options.url_root + '/usergroup/' + self.objectModel.id + '/users';
+            var schema_url =  this.options.url_root + '/user/schema';
             var url = resource_url;
 
             if(_.isUndefined(self.users)){
@@ -94,8 +94,8 @@ define([
 
                     // make a checkbox column that will be used to manage the group->user relationship
                     columns.unshift({
-                        column: "isInGroup",
-                        name: "isInGroup",
+                        column: "is_for_group",
+                        name: "is_for_group",
                         label: "Select users for " + self.title,
                         cell: "boolean"
                     });
@@ -117,45 +117,37 @@ define([
                         });
 
                     // collection.bind("change reset add remove", function(){
+                    var currentUsers = self.objectModel.get('users');
                     collection.bind("sync", function(){
                         collection.each(function(model){  // each model is a user
-                            var currentGroups = model.get('groups');
-                            var currentGroupUri = self.objectModel.get('resource_uri');
-                            console.log('evaluate user with groups: ' + Iccbl.getIdFromIdAttribute(model, schemaResult)
-                              + ': ' + JSON.stringify(currentGroups) + ', for : ' + currentGroupUri)
+                            var currentUserUri = model.get('resource_uri');
+                            // model.set('is_for_group', Iccbl.containsByMatch(currentUsers, currentUserUri) );
+                            model.set('is_for_group', _.contains(currentUsers, currentUserUri) );
 
-                            model.set('isInGroup', Iccbl.containsByMatch(currentGroups, currentGroupUri) );
-
-                            // when the checkbox is selected, use a custom model event to update the group model relationship and refetch the user model
-                            // reln is group->users, so update it that way
-                            model.on('change:isInGroup', function(model){
-                                console.log('model change: ' + JSON.stringify(model));
-                                var currentGroups = model.get('usergroups');
-
-                                !!!! >< TODO start work here
-                                var changed = false;
-                                var alreadyContained = Iccbl.containsByMatch(currentGroups, currentGroupUri);
-                                if(model.get('isInGroup') && ! alreadyContained) {
-                                    currentUsers.unshift(currentUserUri);
-                                    changed = true;
-                                }else if(!model.get('isInGroup') && alreadyContained ){
-                                    currentUsers = _.without(currentUsers, currentUserUri);
-                                    changed = true;
+                            model.on('change:is_for_group', function(model){
+                                var checked = model.get('is_for_group');
+                                var userUri = model.get('resource_uri');
+                                if(checked){
+                                  currentUsers.unshift(userUri);
+                                }else{
+                                  // NOTE: this will fail if userUri is a _localized_ URI and currentUsers is not, or vice versa.
+                                  // See get_local_resource_uri in api.py
+                                  currentUsers = _.without(currentUsers, userUri);
                                 }
-                                if(changed){
-                                    model.save({'users':currentUsers},{
-                                        patch: true,
-                                        success: function(){
-                                            self.user.fetch();
-                                        }
-                                    });
-                                }
+                                self.objectModel.save({'users':currentUsers}, {
+                                  patch: true,
+                                  success: function(){
+                                    collection.fetch();
+                                    // TODO: should not need this
+                                    //self.objectModel.fetch();
+                                  }
+                                });
                             });
                         });
                     });
 
                     self.users = new SimpleListView({ model: listModel },{ columns: columns,collection: collection, schemaResult: schemaResult });
-                    $('#tab_container').html(self.groups.render().el);
+                    $('#tab_container').html(self.users.render().el);
                 };
 
                 Iccbl.getSchema(schema_url, createUsers);
@@ -168,8 +160,8 @@ define([
         setPermissions: function(){
             var self = this;
             // get all of the permissions first, then checkoff the ones that are for this user
-            var resource_url = this.options.url_root + '/permission';
-            var schema_url =  resource_url + '/schema';
+            var resource_url = this.options.url_root + '/usergroup/' + self.objectModel.id + '/permissions';
+            var schema_url =  this.options.url_root + '/permission/schema';
             var url = resource_url;
 
             if(_.isUndefined(this.permissions)){
@@ -178,9 +170,9 @@ define([
 
                     // make a checkbox column that will be used to manage the user->permission relationship
                     columns.unshift({
-                        column: "isForUser",
-                        name: "isForUser",
-                        label: self.user.get('first_name') + self.user.get('last_name'),
+                        column: "is_for_group",
+                        name: "is_for_group",
+                        label: "Select permissions for " + self.title,
                         cell: "boolean"
                     });
 
@@ -201,31 +193,33 @@ define([
                         });
 
                     collection.bind("sync", function(){
-                        // update the collection models with a new attribute tied to the checkbox column
-                        collection.each(function(model){
-                            var currentPerms = self.user.get('permissions');
+                        collection.each(function(model){ // each model is a permission
+                            var currentPerms = self.objectModel.get('permissions');
                             var currentPermissionUri = model.get('resource_uri');
-                            model.set('isForUser', Iccbl.containsByMatch(currentPerms, currentPermissionUri));
+                            model.set('is_for_group', _.contains(currentPerms, currentPermissionUri));
+                            // model.set('is_for_group', Iccbl.containsByMatch(currentPerms, currentPermissionUri));
 
                             // when the checkbox is selected, use a custom model event to update the group model relationship and refetch the user model
-                            model.on('change:isForUser', function(model){
-                                var currentPerms = self.user.get('permissions');
+                            model.on('change:is_for_group', function(model){
+                                var currentPerms = self.objectModel.get('permissions');
                                 var permissionUri = model.get('resource_uri');
-                                var containsByMatch = Iccbl.containsByMatch(currentPerms, permissionUri);
+                                // var containsByMatch = Iccbl.containsByMatch(currentPerms, permissionUri);
+                                var containsByMatch = _.contains(currentPerms, permissionUri);
                                 var changed = false;
-                                if(model.get('isForUser') && ! containsByMatch ){
+                                if(model.get('is_for_group') && ! containsByMatch ){
                                     currentPerms.push(permissionUri);
                                     changed = true;
-                                }else if(!model.get('isForUser')  && containsByMatch ) {
+                                }else if(!model.get('is_for_group')  && containsByMatch ) {
                                     currentPerms = _.without(currentPerms, permissionUri);
                                     changed = true
                                 }
                                 if(changed){
-                                    self.user.save({'permissions': currentPerms },{
+                                    self.objectModel.save({'permissions': currentPerms },{
                                         patch: true,
                                         success: function(){
                                             console.log('refetch the permission model');
-                                            model.fetch();
+                                            // model.fetch();
+                                            collection.fetch(); // TODO: _this_ is why actions should be batch processed
                                         }
                                     });
                                 }

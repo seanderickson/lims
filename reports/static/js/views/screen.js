@@ -1,3 +1,7 @@
+/**
+ * Screen form/view
+ *
+ */
 define([
     'jquery',
     'underscore',
@@ -63,6 +67,7 @@ define([
                     self.screen = model;
                     if(! self.screen.get('has_screen_result' )){
                         self.$('#results').hide();
+                        self.$('#datacolumns').hide();
                         console.log('no results');
                     }
                     var detailView =
@@ -122,25 +127,50 @@ define([
             var self = this;
             if(_.isUndefined(this.datacolumns)){
                 var _id = Iccbl.getKey(self.options.current_options);
-                var createDataColumns = function(schemaResult, collection){
-                    console.log('create datacolumns, schemaResult: ' + schemaResult);
-                    var datacolumnView =
-                        new CollectionColumnView({ model: self.model},
-                            {
-                                schemaResult:schemaResult,
-                                router:self.options.router,
-                                isEditMode: false,
-                                collection: collection
-                            });
-                    self.datacolumns = datacolumnView;
-                    $('#tab_container').html(self.datacolumns.render().el);
-
-                };
                 var resource_url = this.options.url_root + '/datacolumn'; // to test
                 var schema_url =  resource_url + '/schema';
                 var url = resource_url + '/?facility_id=' + _id;
 
-                Iccbl.getSchemaAndCollection(schema_url, url, createDataColumns);
+                var createDataColumns = function(schemaResult){
+
+                    var columns = Iccbl.createBackgridColModel(schemaResult.fields, Iccbl.MyHeaderCell);//, col_options );
+                    var ListModel = Backbone.Model.extend({
+                        defaults: {
+                            rpp: 25,
+                            page: 1,
+                            order: {},
+                            search: {}}
+                        });
+                    var listModel = new ListModel();
+
+                    var collection  = new Iccbl.MyCollection({
+                            'url': url,
+                            currentPage: parseInt(listModel.get('page')),
+                            pageSize: parseInt(listModel.get('rpp')),
+                            listModel: listModel
+                        });
+
+                    collection.fetch({
+                        success: function(){
+                            console.log('create datacolumns, schemaResult: ' + schemaResult);
+                            var datacolumnView =
+                                new CollectionColumnView({ model: self.model},
+                                    {
+                                        schemaResult:schemaResult,
+                                        router:self.options.router,
+                                        isEditMode: false,
+                                        collection: collection
+                                    });
+                            self.datacolumns = datacolumnView;
+                            $('#tab_container').html(self.datacolumns.render().el);
+                        },
+                        error: function(model, response, options){
+                            window.alert('Could not get: ' + usr + '\n' + Iccbl.formatResponseError(response));
+                        }
+                    });
+                };
+
+                Iccbl.getSchema(schema_url, createDataColumns);
             }else{
                 self.datacolumns.setElement(self.$('#tab_container')).render();
             }

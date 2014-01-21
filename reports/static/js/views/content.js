@@ -6,11 +6,13 @@ define([
     'iccbl_backgrid',
     'views/list',
     'views/home',
-    'views/generic_detail',
+    'views/detail_stickit',
     'views/generic_edit_stickit',
+    'views/detail_stickit_backbone_forms',
     'views/screen',
-    'views/user'
-], function($, _, Backbone, Bootstrap, Iccbl, ListView, HomeView, DetailView, EditView, ScreenView, UserView) {
+    'views/user',
+    'views/usergroup'
+], function($, _, Backbone, Bootstrap, Iccbl, ListView, HomeView, DetailView, EditView, EditViewForms, ScreenView, UserView, UserGroupView) {
 
     var ContentView = Backbone.View.extend({
         el: '#container',
@@ -77,6 +79,36 @@ define([
                 Iccbl.getSchema(options.url_schema, createList);
 
             }else if (current_view == 'edit' ){
+                var createEdit = function(schemaResult, model){
+                    var editView =
+                        new EditViewForms({ model: model},
+                            {
+                                schemaResult:schemaResult,
+                                router:self.router,
+                                isEditMode: true
+                            });
+                    self.currentView = editView;
+                    self.render();
+                };
+
+                if(_.isUndefined(current_scratch.schemaResult) ||_.isUndefined(current_scratch.model)){  // allow reloading
+                    var resource_url = current_ui_resource.url_root + '/' + current_ui_resource.api_resource;
+                    var schema_url =  resource_url + '/schema';
+                    var _key = Iccbl.getKey(current_options);
+                    var url = resource_url  + '/' + _key;
+
+                    Iccbl.getSchema(schema_url, function(schemaResult) {
+                        console.log('schemaResult callback: ' + schemaResult + ', ' + url);
+                        if(_.isUndefined(current_scratch.model)){
+                            Iccbl.getModel(schemaResult, url, createEdit);
+                        }else{
+                            createEdit(schemaResult,current_scratch.model);
+                        }
+                    });
+                }else{
+                    createEdit(current_scratch.schemaResult,current_scratch.model);
+                }
+            }else if (current_view == 'edit_original_stickit' ){
                 var createEdit = function(schemaResult, model){
                     var editView =
                         new EditView({ model: model},
@@ -151,10 +183,40 @@ define([
                             setView();
                         }
                     })();
+                }else if(current_resource_id == 'groups'){
+
+                    (function() { // TODO: deal with the hoisting mess here & elsewhere
+                        console.log('setup usergroup detail view');
+                        var options = {
+                            url_root: current_ui_resource.url_root,
+                            current_options: current_options,
+                            model: current_scratch.model,
+                            schema: current_scratch.schemaResult,
+                            router: self.router,
+                        };
+
+                        var setView = function(){
+                            self.currentView = new UserGroupView({ model: self.model }, options);
+                            self.render();
+                        };
+
+                        if(_.isUndefined(options.schema ) ||_.isUndefined(options.model)){
+                            var resource_url = options.url_root + '/usergroup';
+                            var id = Iccbl.getKey(options.current_options);
+
+                            Iccbl.getSchemaAndModel2(resource_url, id, function(schemaResult, model){
+                                options.model = model;
+                                options.schema = schemaResult;
+                                setView();
+                            });
+                        }else{
+                            setView();
+                        }
+                    })();
                 }else{
                     var createDetail = function(schemaResult, model){
                         var detailView =
-                            new DetailView({ model: model},
+                            new EditViewForms({ model: model},
                                 {
                                     schemaResult:schemaResult,
                                     router:self.router,

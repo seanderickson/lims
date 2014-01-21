@@ -52,7 +52,7 @@ class LibraryTest(MetaHashResourceBootstrap,ResourceTestCase):
         testApiClient = TestApiClient(serializer=self.csv_serializer) 
 
         filename = os.path.join(self.directory,'metahash_fields_library.csv')
-        self._patch_test('metahash', filename, data_for_get={ 'scope':'fields:library'})
+        self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.library'})
 
         print '============== LibraryTest setup: done ============'
         
@@ -89,6 +89,28 @@ class LibraryTest(MetaHashResourceBootstrap,ResourceTestCase):
         logger.info(str(('item found', obj)))
 
 
+    def test2_create_library_invalid_library_type(self):
+        logger.info(str(('==== test2_create_library_invalid_library_type =====')))
+        
+        resource_uri = BASE_URI_DB + '/library'
+        
+        library_item = LibraryFactory.attributes()
+        library_item['library_type'] = 'invalid_type'
+        
+        logger.info(str(('try to create an invalid library_type:', library_item)))
+        resp = self.api_client.post(resource_uri, 
+            format='json', data=library_item, authentication=self.get_credentials())
+        
+        from reports.dump_obj import dumpObj
+        logger.info(str(('response', dumpObj(resp))))
+        
+        self.assertTrue(resp.status_code in [400], str((resp.status_code, resp)))
+        
+        logger.info(str(('response.content.library message', getattr(resp, 'content'))))
+        
+        obj = json.loads(getattr(resp, 'content'))
+        logger.info(str(('dump', dumpObj(obj))))
+
 class ScreensTest(MetaHashResourceBootstrap,ResourceTestCase):
     
     def setUp(self):
@@ -102,7 +124,7 @@ class ScreensTest(MetaHashResourceBootstrap,ResourceTestCase):
         testApiClient = TestApiClient(serializer=self.csv_serializer) 
 
         filename = os.path.join(self.directory,'metahash_fields_screen.csv')
-        self._patch_test('metahash', filename, data_for_get={ 'scope':'fields:screen'})
+        self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.screen'})
 
         print '============== ScreensTest setup: done ============'
         

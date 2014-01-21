@@ -753,7 +753,8 @@ class Screen(models.Model):
     image_url = models.TextField(blank=True)
     well_studied = models.ForeignKey('Well', null=True, blank=True)
     species = models.TextField(blank=True)
-    cell_line = models.ForeignKey(CellLine, null=True, blank=True)
+# Note: this is not in production
+#     cell_line = models.ForeignKey(CellLine, null=True, blank=True) 
     transfection_agent = models.ForeignKey('TransfectionAgent', null=True, blank=True)
     date_loaded = models.DateTimeField(null=True, blank=True)
     date_publicly_available = models.DateTimeField(null=True, blank=True)
@@ -807,6 +808,7 @@ class ScreenResult(models.Model):
     class Meta:
         db_table = 'screen_result'
 
+# TODO: this will be obsoleted by migration scripts 0002,0003
 class ScreenStatusItem(models.Model):
     screen = models.ForeignKey(Screen)
     status = models.TextField()
@@ -982,7 +984,8 @@ class TransfectionAgent(models.Model):
 
 
 class Library(models.Model):
-    # Note: migration scripts have converted this to use a sequence (essentially AutoField)
+    # Note: migration scripts have converted this to use a sequence
+    # (the original db-discovery only knew that it was the pk)
     #     library_id = models.IntegerField(primary_key=True) 
     library_id = models.AutoField(primary_key=True) 
     version = models.IntegerField()

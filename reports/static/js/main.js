@@ -12,7 +12,7 @@ require.config({
 //    backbone_modelbinder: 'libs/Backbone.ModelBinder',
     backbone_stickit: 'libs/backbone.stickit',
     backbone_forms: 'libs/backbone-forms', // TODO: evaluating vs. backbone.stickit
-    'backbone-associations': 'libs/backbone-associations',
+//    'backbone-associations': 'libs/backbone-associations',
     bootstrap: 'libs/bootstrap',
     lunr: 'libs/lunr',
     text: 'libs/text',
@@ -88,6 +88,9 @@ require([
           }
         };
 
+        if(_.isUndefined(window.logged_in) || window.logged_in != 'True' ){
+        	window.location='/accounts/login/'
+        }
         var appModel = new AppModel();
         var appRouter = new AppRouter({ model: appModel });
         var appView = new AppView({ model: appModel },{ router: appRouter});

@@ -146,6 +146,8 @@ INSTALLED_APPS = (
 APPEND_SLASH=True
 TASTYPIE_ALLOW_MISSING_SLASH=True
 
+LOGIN_REDIRECT_URL='/reports'
+
 # A sample logging configuration. The only tangible logging
 # performed by this configuration is to send an email to
 # the site admins on every HTTP 500 error when DEBUG=False.

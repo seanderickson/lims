@@ -9,7 +9,10 @@ urlpatterns = patterns('',
     url(r'^admin/', include(admin.site.urls)),
 
     # Login / logout.
-    # Note: the name "login_url" name is set to the request by the registered hmslincs.context_procesor.login_url_with_redirect
+    # Note: the name "login_url" name is set to the request by the registered 
+    # hmslincs.context_procesor.login_url_with_redirect
+    # Note: login.html is served by the reports/templates/login.html version; 
+    # this is done because the javascript libaries is only present there.
     (r'^accounts/login/$', 'django.contrib.auth.views.login', {'template_name': 'login.html'}),
     url(r'^accounts/logout/$', logout_page, name='logout'),
 

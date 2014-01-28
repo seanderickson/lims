@@ -46,7 +46,7 @@ Login page to authenticate users.
     <div class="container">
 	  {% if user.is_authenticated %}
 	    logged in as: {{ user }}<br/>
-	    <a href="{% url logout %}">Log out</a>
+	    <a href="{% url "logout" %}">Log out</a>
 	  {% else %}
 		{% if form.errors %}
 			<p>Login failed. Please try again or contact the administrator of this site.</p>

@@ -89,7 +89,7 @@ require([
         };
 
         if(_.isUndefined(window.logged_in) || window.logged_in != 'True' ){
-        	window.location='/accounts/login/'
+        	window.location='/accounts/login/?next=' + window.location.pathname + window.location.hash;
         }
         var appModel = new AppModel();
         var appRouter = new AppRouter({ model: appModel });

@@ -105,7 +105,7 @@ TEMPLATE_CONTEXT_PROCESSORS = (
     "django.core.context_processors.static",
     "django.contrib.messages.context_processors.messages",
     "django.core.context_processors.request",
-    "lims.context_processors.login_url_with_redirect",
+#     "lims.context_processors.login_url_with_redirect",
 )
 
 MIDDLEWARE_CLASSES = (
@@ -146,6 +146,7 @@ INSTALLED_APPS = (
 APPEND_SLASH=True
 TASTYPIE_ALLOW_MISSING_SLASH=True
 
+# Default if "next" is not given as a request param
 LOGIN_REDIRECT_URL='/reports'
 
 # A sample logging configuration. The only tangible logging

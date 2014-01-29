@@ -17,6 +17,7 @@ define([
             routing_options: {},
             current_scratch: {},
             current_details: {},
+            login_information: {},
 
             // menu's can only be two levels deep (todo: recursive cool menu thing)
             // - the menu tree here is composed of ui_resources, defined below.
@@ -235,7 +236,7 @@ define([
                     api_resource: 'screen',
                     url_root: '/db/api/v1',
                     description: 'View small molecule screen information',
-                    options: { search: { screen_type: 'Small Molecule'} }
+                    options: { search: { screen_type: 'small_molecule'} }
                 },
                 rnai_screens: {
                     header_message: 'All screens (Small Molecule and RNAi)',
@@ -246,7 +247,7 @@ define([
                     api_resource: 'screen',
                     url_root: '/db/api/v1',
                     description: 'View rnai screen information',
-                    options: { search: { screen_type: 'RNAi'} }
+                    options: { search: { screen_type: 'rnai'} }
                 },
                 library: {
                     header_message: 'All libraries (Small Molecule and RNAi)',
@@ -267,7 +268,7 @@ define([
                     api_resource: 'library',
                     url_root: '/db/api/v1',
                     description: 'View Small Molecule Library information',
-                    options: { search: { screen_type: 'Small Molecule'} }
+                    options: { search: { screen_type: 'small_molecule'} }
                 },
                 rnalibrary: {
                     header_message: 'RNAi Libraries',
@@ -278,7 +279,7 @@ define([
                     api_resource: 'library',
                     url_root: '/db/api/v1',
                     description: 'View RNAi library information',
-                    options: { search: { screen_type: 'RNAi'} }
+                    options: { search: { screen_type: 'rnai'} }
                 }
             },
             list_defaults: {

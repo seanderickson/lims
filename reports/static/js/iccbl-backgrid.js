@@ -20,21 +20,24 @@
  * For details please refer to: https://github.com/hmsiccbl/lims
  *
  **/
+define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid', 
+        'backgrid_filter', 'backgrid_paginator', 'backgrid_select_all', 'lunr',
+        // TODO: lunr should not be a requirement - it is for client side filtering,
+        // and backgrid_filter is requiring it.
+        'text!templates/generic-selector.html'], 
+    function($, _, Backbone, BackbonePageableCollection, Backgrid, 
+		BackgridFilter, BackgridPaginator, BackgridSelectAll, lunr, 
+		genericSelectorTemplate) {
 
-define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid', 'backgrid_filter', 'backgrid_paginator', 'backgrid_select_all', 'lunr',
-// //TODO: lunr should not be a requirement - it is for client side filtering,
-// and backgrid_filter is requiring it.
-'text!templates/generic-selector.html'], function($, _, Backbone, BackbonePageableCollection, Backgrid, BackgridFilter, BackgridPaginator, BackgridSelectAll, lunr, genericSelectorTemplate) {
-
-    // for compatibility with require.js, attach PageableCollection in the right
-    // place on the Backbone object
-    // see https://github.com/wyuenho/backbone-pageable/issues/62
+    // Attach PageableCollection to the right place on the Backbone object
+    // for compatibility with require.js
+	// see https://github.com/wyuenho/backbone-pageable/issues/62
     Backbone.PageableCollection = BackbonePageableCollection;
 
     var root = window;
+    
     // create a root namespace (note: copying this strategy from Backgrid source
     var Iccbl = root.Iccbl = {
-
         VERSION : "0.0.1",
 
         // Extension: {},
@@ -70,7 +73,6 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid', 'ba
         }
     };
 
-
     requireOptions = Iccbl.requireOptions = function (options, requireOptionKeys) {
         for (var i = 0; i < requireOptionKeys.length; i++) {
           var key = requireOptionKeys[i];
@@ -80,7 +82,6 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid', 'ba
         }
     };
 
-
     var stringToFunction = Iccbl.stringToFunction = function(str) {
         var arr = str.split(".");
 
@@ -88,11 +89,9 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid', 'ba
         for (var i = 0, len = arr.length; i < len; i++) {
             fn = fn[arr[i]];
         }
-
         if ( typeof fn !== "function") {
             throw new ReferenceError("function not found: " + str);
         }
-
         return fn;
     };
 

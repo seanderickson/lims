@@ -8,9 +8,11 @@ define([
   'text!templates/rows-per-page.html',
   'text!templates/list.html',
   'text!templates/modal_ok_cancel.html',
-], function($, _, Backbone, BackbonePageableCollection, Backgrid,  Iccbl, rowsPerPageTemplate, listTemplate, modalTemplate ){
+], function($, _, Backbone, BackbonePageableCollection, Backgrid,  Iccbl, 
+		rowsPerPageTemplate, listTemplate, modalTemplate ){
 
-    // for compatibility with require.js, attach PageableCollection in the right place on the Backbone object
+    // for compatibility with require.js, attach PageableCollection in the right 
+	// place on the Backbone object
     // see https://github.com/wyuenho/backbone-pageable/issues/62
     Backbone.PageableCollection = BackbonePageableCollection;
 
@@ -29,13 +31,17 @@ define([
         initialize : function(attributes, options) {
             console.log('initialize ListView: ');
             var self = this;
-            Iccbl.assert( !_.isUndefined(options.schemaResult), 'listView options: schemaResult is required');
-            // Iccbl.assert( !_.isUndefined(options.collection), 'listView options: collection is required');
+            Iccbl.assert( !_.isUndefined(options.schemaResult), 
+            		'listView options: schemaResult is required');
 
-            Iccbl.assert( !_.isUndefined(options.router), 'listView options: router is required');
-            Iccbl.assert( !_.isUndefined(options.url), 'listView options: url is required');
-            Iccbl.assert( !_.isUndefined(options.header_message), 'listView options: header_message is required');
-            Iccbl.assert( !_.isUndefined(options.title), 'listView options: title is required');
+            Iccbl.assert( !_.isUndefined(options.router), 
+            		'listView options: router is required');
+            Iccbl.assert( !_.isUndefined(options.url), 
+            		'listView options: url is required');
+            Iccbl.assert( !_.isUndefined(options.header_message), 
+            		'listView options: header_message is required');
+            Iccbl.assert( !_.isUndefined(options.title), 
+            		'listView options: title is required');
 
             this.router = options.router;
             this._options = options;
@@ -57,27 +63,53 @@ define([
 
             this.objects_to_destroy = _([]);
 
-            var collection  = this.collection = new Iccbl.MyCollection({
-                    'url': this._options.url,
-                    currentPage: parseInt(self.listModel.get('page')),
-                    pageSize: parseInt(self.listModel.get('rpp')),
-                    listModel: listModel
-                });
-            this.objects_to_destroy.push(collection);
+            var _state = {
+                currentPage: parseInt(self.listModel.get('page')),
+                pageSize: parseInt(self.listModel.get('rpp'))
+                }
 
-            // var collection = this.collection = options.collection;
+          var orderHash = self.listModel.get('order');
+          if(!_.isEmpty(orderHash)){
+//              self.collection.setOrder(orderHash);
+              _.each(_.keys(orderHash), function(key) {
+                  var dir = orderHash[key];
+                  var direction = 'ascending';
+                  var order = -1;
+                  // according to the docs, -1 == ascending
+                  if (dir === '-') {
+                      // according to the docs, 1 == descending
+                      direction = 'descending';
+                      order = 1;
+                  }
+                  _state['sortKey'] = key;
+                  _state['order'] = order;
+              });
+          }
+
+            var Collection = Iccbl.MyCollection.extend({
+            	state: _state
+                });
+            var collection = self.collection = new Collection({
+                    'url': this._options.url,
+                    listModel: listModel
+            	
+            });
+            this.objects_to_destroy.push(collection);
 
             this.listenTo(this.listModel, 'change:search', function(){
                 var searchHash = self.listModel.get('search')
                 var current_options = _.clone(self.model.get('current_options'));
-                console.log('===--- list detect: listModel change:search old: ' + JSON.stringify(current_options.search) + ', ' + JSON.stringify(searchHash));
+                console.log('===--- list detect: listModel change:search old: ' 
+                		+ JSON.stringify(current_options.search) 
+                		+ ', ' + JSON.stringify(searchHash));
                 current_options.search = searchHash;
                 self.model.set({current_options: current_options });
             });
 
             this.listenTo(this.listModel, 'change:order', function(){
-                console.log('===--- list detect: listModel change:order');
                 var orderHash = self.listModel.get('order');
+                console.log('===--- list detect: listModel change:order:' +
+                		JSON.stringify(orderHash));
                 var current_options = _.clone(self.model.get('current_options'));
                 current_options.order = orderHash;
                 self.model.set({current_options: current_options });
@@ -114,7 +146,8 @@ define([
             console.log('buildGrid...');
             var self = this;
 
-            self.listenTo(self.collection, "MyCollection:link", function (model, column) {
+            self.listenTo(self.collection, "MyCollection:link", 
+        		function (model, column) {
                 console.log('---- process link for '+ column);
 
                 var fieldDef = schemaResult.fields[column];
@@ -123,12 +156,15 @@ define([
                     backgrid_cell_options = fieldDef['backgrid_cell_options'];
                     console.log('backgrid_cell_options: ' + backgrid_cell_options);
 
-                    _route = backgrid_cell_options.replace(/{([^}]+)}/g, function (match) {
-                        console.log('matched: ' + match + ', model: ' + model);
-                        match = match.replace(/[{}]/g,'');
-                        console.log('matched: ' + match + ', model: ' + model.get(match));
-                        return typeof model.get(match) != "undefined" ? model.get(match) : match;
-                    });
+                    _route = backgrid_cell_options.replace(/{([^}]+)}/g, 
+                		function (match) {
+                        	console.log('matched: ' + match + ', model: ' + model);
+                        	match = match.replace(/[{}]/g,'');
+                        	console.log('matched: ' + match + ', model: ' 
+                        			+ model.get(match));
+                        	return !_.isUndefined(model.get(match)) ? model.get(match) : match;
+//                        	return typeof model.get(match) != "undefined" ? model.get(match) : match;
+                    	});
                     console.log('route: ' + _route);
                     this.router.navigate(_route, {trigger:true});
                 }else{
@@ -137,25 +173,31 @@ define([
             });
 
             self.listenTo(self.collection, "MyCollection:edit", function (model) {
-                // Note: some links must use composite keys - because the composite key is the public key
+                // Note: some links must use composite keys 
+            	// - because the composite key is the public key
                 // (don't want to expose the private, possibly transient key)
                 var id = '/' + model.get('id');
                 if(_.has(schemaResult['resource_definition'], 'id_attribute')){
-                    console.log('create id from ' + schemaResult['resource_definition']['id_attribute']);
+                    console.log('create id from ' 
+                    		+ schemaResult['resource_definition']['id_attribute']);
                     id = _.reduce(schemaResult['resource_definition']['id_attribute'],
                             function(memo, item){
                                 if(!_.isEmpty(memo)) memo += '/';
                                 return memo += model.get(item);
                             }, '');
                 }else{
-                    console.log('Warn: schema for this type has no resource_definition,id_attribute; type: ' + schemaResult['resource_definition']['title']);
+                    console.log('Warn: schema for this type has no '+
+                    		'resource_definition,id_attribute; type: ' + 
+                    		schemaResult['resource_definition']['title']);
                 }
                 console.log('id: ' + id);
+                // signal to the app_model that the current view has changed 
+                // todo: separate out app_model from list_model
                 this.model.set({    current_scratch: { schemaResult: schemaResult, model: model} ,
                                     current_view: 'edit',
                                     current_options: { key: id },
                                     routing_options: {trigger: false, replace: false}
-                               }); // signal to the app_model that the current view has changed // todo: separate out app_model from list_model
+                               }); 
             });
 
             self.listenTo(self.collection, "MyCollection:detail", function (model) {
@@ -218,11 +260,30 @@ define([
                 console.log('===--- rppModel change');
                 self.listModel.set('rpp', String(rppModel.get('selection')));
             });
-
-            // Paginator
+//
+//            // Paginator
+//            var paginator = self.paginator = new Backgrid.Extension.Paginator({
+//              collection: self.collection
+//            });
+            
             var paginator = self.paginator = new Backgrid.Extension.Paginator({
-              collection: self.collection
-            });
+
+            	  // If you anticipate a large number of pages, you can adjust
+            	  // the number of page handles to show. The sliding window
+            	  // will automatically show the next set of page handles when
+            	  // you click next at the end of a window.
+            	  // windowSize: 20, // Default is 10
+
+            	  // Used to multiple windowSize to yield a number of pages to slide,
+            	  // in the case the number is 5
+            	  //slideScale: 0.25, // Default is 0.5
+
+            	  // Whether sorting should go back to the first page
+            	  // from https://github.com/wyuenho/backgrid/issues/432
+            	  goBackFirstOnSort: false, // Default is true
+
+            	  collection: self.collection
+            	});            
             this.objects_to_destroy.push(paginator);
 
             // Extraselector
@@ -261,8 +322,10 @@ define([
                 });
             }
 
-            var columns = Iccbl.createBackgridColModel(this._options.schemaResult.fields, Iccbl.MyHeaderCell);//, col_options );
-            //columns.unshift({ name: 'deletor', label: 'Delete', text:'X', description: 'delete record', cell: Iccbl.DeleteCell, sortable: false });
+//            var orderHash = self.listModel.get('order');
+            var columns = Iccbl.createBackgridColModel(
+        		this._options.schemaResult.fields, Iccbl.MyHeaderCell);
+
             var grid = this.grid = new Backgrid.Grid({
               columns: columns,
               collection: self.collection,
@@ -275,9 +338,10 @@ define([
                 el: $("<form><button type='button' id='addRecord'>Add</button></form>"),
                 events: {
                     'click button':function(event) {
-                        console.log('button click event, '); // + JSON.stringify(fieldDefinitions));
+                        console.log('button click event, '); 
                         event.preventDefault();
-                        // TODO: set the defaults, also determine if should be set on create, from the Meta Hash
+                        // TODO: set the defaults, also determine if should be 
+                        // set on create, from the Meta Hash
                         var defaults = {};
 
                         id_attributes = self._options.schemaResult['resource_definition']['id_attribute']
@@ -288,7 +352,6 @@ define([
                                 // nop // TODO: using the meta-hash, always exclude the primary key from create
                             // } else if (_.contains(id_attributes,key)){
                                 // // nop // TODO: using the meta-hash, always exclude the primary key from create
-//
                             } else {
                                  defaults[key] = '';
                             }
@@ -322,14 +385,15 @@ define([
             this.objects_to_destroy.push(footer);
 
 
-            // Note on event subscriptions: prefer listenTo over "on" (alias for _.bind/model.bind) as this
+            // Note: prefer listenTo over "on" (alias for _.bind/model.bind) as this
             // will allow the object to unbind all observers at once.
             //collection.on('request', ajaxStart); // NOTE: can use bind or on
             //collection.bind('sync', ajaxComplete, this);
 
             this.listenTo(self.collection, 'request', ajaxStart);
 
-            // TODO: work out the specifics of communication complete event.  the following are superceded by the global handler for "ajaxComplete"
+            // TODO: work out the specifics of communication complete event.  
+            // the following are superceded by the global handler for "ajaxComplete"
             this.listenTo(self.collection, 'error', ajaxComplete);
             this.listenTo(self.collection, 'complete', ajaxComplete);
             console.log('list view initialized');
@@ -357,7 +421,9 @@ define([
             var self = this;
 
             this.$el.html(this.compiledTemplate);
-            self.$("#example-table").append(this.grid.render().$el);
+
+            var finalGrid = self.finalGrid = this.grid.render();
+            self.$("#example-table").append(finalGrid.$el);
             self.$("#paginator-div").append(self.paginator.render().$el);
             self.$("#rows-selector-div").append(self.rppSelectorInstance.render().$el);
 
@@ -372,6 +438,16 @@ define([
 
             console.log('--doms appended--');
 
+//            var rpp = self.listModel.get('rpp');
+//            if(!_.isUndefined(rpp)){
+//                self.collection.setPageSize(rpp);
+//            }
+//
+//            var page = self.listModel.get('page');
+//            if(!_.isUndefined(page)){
+//                self.collection.setPage(page);
+//            }
+            
             var searchHash = self.listModel.get('search');
             if(!_.isEmpty(searchHash)){
                 console.log('render: collection.setSearch: ' + JSON.stringify(searchHash));
@@ -380,30 +456,62 @@ define([
 
             var orderHash = self.listModel.get('order');
             if(!_.isEmpty(orderHash)){
-                self.collection.setOrder(orderHash);
+//                self.collection.setOrder(orderHash);
+                _.each(_.keys(orderHash), function(key) {
+                    var dir = orderHash[key];
+                    var direction = 'ascending';
+                    var order = -1;
+                    // according to the docs, -1 == ascending
+                    if (dir === '-') {
+                        // according to the docs, 1 == descending
+                        direction = 'descending';
+                        order = 1;
+                    }
+//                    self.collection.setSorting(key,order,{full: false});
+                    finalGrid.sort(key, direction);
+                });
             }
 
-            var page = self.listModel.get('page');
-            if(!_.isUndefined(page)){
-                self.collection.setPage(page);
-            }
+            self.listenTo(self.collection, "add", self.reportState);
+            self.listenTo(self.collection, "remove", self.reportState);
+            self.listenTo(self.collection, "reset", self.reportState);
 
-            var rpp = self.listModel.get('rpp');
-            if(!_.isUndefined(rpp)){
-                self.collection.setPageSize(rpp);
-            }
 
             this.listenTo(self.collection, 'sync', function(event){
-                console.log('== collection sync event: ' + event );
-                self.$('#header_message').html(self._options.header_message + ", total records: " + self.collection.state.totalRecords);
+//                console.log('== collection sync event: ' + event );
+                self.$('#header_message').html(self._options.header_message + 
+                		", total records: " + self.collection.state.totalRecords);
             });
 
-            console.log('collection fetch trigger');
+            // 2014-02-09 // test commented out --- 
+//            console.log('collection fetch trigger');
             var fetchOptions = { reset: true };
             self.collection.fetch(fetchOptions);
 
             console.log('rendered');
             return this;
+        },
+        
+        reportState: function(){
+        	var self = this;
+        	var state = self.collection.state;
+            var currentPage = Math.max(state.currentPage, state.firstPage);
+
+            // Order: note, single sort only at this time
+            var orderHash = {};
+            if(state.order && state.order != 0 && state.sortKey ){
+                // Note: 
+            	// backbone-pageable: state.order: ascending=-1, descending=1
+            	// tastypie: "-"=descending, ""=ascending (not specified==ascending)
+            	orderHash[state.sortKey] = state.order == -1 ? '' : '-';
+            }
+            
+            console.log("==== reportState: " + currentPage 
+            			+ ", " + state.pageSize 
+            			+ ", " + JSON.stringify(orderHash));
+        	self.listModel.set({ 'rpp': state.pageSize, 
+        						 'page': currentPage,
+        						 'order': orderHash });
         }
 
     });

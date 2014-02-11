@@ -36,7 +36,6 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
 
     var root = window;
     
-    // create a root namespace (note: copying this strategy from Backgrid source
     var Iccbl = root.Iccbl = {
         VERSION : "0.0.1",
 
@@ -65,7 +64,6 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
         // return name;
         // }
     };
-    //var Iccbl = {};
 
     var assertIccbl = Iccbl.assert = function(condition, message) {
         if (!condition) {
@@ -401,8 +399,10 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
      * @param {Object} options - a hash of { fieldKey: [custom cell: extend
      * Backgrid.Cell] } to map custom cell implementations to fields
      */
-    var createBackgridColModel = Iccbl.createBackgridColModel = function(restFields, optionalHeaderCell) {
-        console.log('--createBackgridColModel');
+    var createBackgridColModel = Iccbl.createBackgridColModel = 
+    	function(restFields, optionalHeaderCell, orderHash) {
+        
+    	console.log('--createBackgridColModel');
         //: restFields: ' + JSON.stringify(restFields));
         var colModel = [];
         var i = 0;
@@ -432,6 +432,7 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
                         console.log(msg + ': ' + JSON.stringify(ex));
                     }
                 }
+                
                 colModel[i] = {
                     'name' : key,
                     'label' : prop['title'],
@@ -440,6 +441,9 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
                     order : prop['ordinal'],
                     editable : false,
                 };
+                if(orderHash && _.has(orderHash, key)){
+                	colModel[i]['direction'] = 'ascending';
+                }
                 if (optionalHeaderCell) {
                     colModel[i]['headerCell'] = optionalHeaderCell;
                 }
@@ -675,32 +679,33 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
         this.url = options.url;
         this.listModel = options.listModel;
 
-        this.listenTo(this.listModel, 'change:search', function() {
-            console.log('===--- collection detect: listModel change:search');
-            var searchHash = self.listModel.get('search');
-            self.setSearch(searchHash);
-        });
-
-        this.listenTo(this.listModel, 'change:order', function() {
-            console.log('===--- listModel change:order');
-            var orderHash = self.listModel.get('order');
-            this.setOrder(orderHash);
-        });
-
-        this.listenTo(this.listModel, 'change:rpp', function() {
-            var pageSize = parseInt(self.listModel.get('rpp'));
-            console.log('===--- listModel change:rpp: ' + pageSize);
-            self.setPageSize(pageSize);
-        });
-
-        this.listenTo(this.listModel, 'change:page', function() {
-            console.log('===--- listModel change:page');
-            var page = parseInt(self.listModel.get('page'));
-            self.setPage(page);
-        });
+//        this.listenTo(this.listModel, 'change:search', function() {
+//            console.log('===--- collection detect: listModel change:search');
+//            var searchHash = self.listModel.get('search');
+//            self.setSearch(searchHash);
+//        });
+//
+//        this.listenTo(this.listModel, 'change:order', function() {
+//            var orderHash = self.listModel.get('order');
+//            console.log('===--- listModel change:order' + JSON.stringify(orderHash));
+//            this.setOrder(orderHash);
+//        });
+//
+//        this.listenTo(this.listModel, 'change:rpp', function() {
+//            var pageSize = parseInt(self.listModel.get('rpp'));
+//            console.log('===--- listModel change:rpp: ' + pageSize);
+//            self.setPageSize(pageSize);
+//        });
+//
+//        this.listenTo(this.listModel, 'change:page', function() {
+//            console.log('===--- listModel change:page');
+//            var page = parseInt(self.listModel.get('page'));
+//            self.setPage(page);
+//        });
 
         Backbone.PageableCollection.prototype.initialize.apply(this, options);
     },
+    mode: 'server',
 
     url : function() {
         return this.url;
@@ -742,17 +747,17 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
      *  Override pageable collection parse method:
      *      Parse server response data.
      */
-    parse : function(response) {
+    parseState : function(response, queryParams, state, options) {
         // hack the response for tastypie:
         // note, this is because the pageable collection doesn't work with the
         // backbone-tastypie.js fix
-        var state = _.clone(this.state);
+        var state = _.clone(state);
         state.totalRecords = response.meta.total_count;
         if (Math.ceil(state.totalRecords / state.pageSize) < state.currentPage) {
             console.log('adjust currentPage');
             state.currentPage = 1;
         }
-        this.state = this._checkState(state);
+//        this.state = this._checkState(state);
         // recalculate the state and do sanity checks.
         // //if(! _(state).isEqual(this.state)){
         // // TODO: call setOptions explicitly where needed, i.e. when setting
@@ -762,59 +767,14 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
         // in place w/out creating browser history
         // this.setOptions({trigger: false, replace: true });
         // //}
-        return response.objects;
+//        return response.objects;
+        return state;
     },
-
-    // Override
-    // called from HeaderCells
-    setSorting : function(sortKey, order, options) {// override and hack in
-        // sorting URL support
-        console.log('setSorting called: ' + sortKey + ', order_by: ' + order + ', ' + typeof (order) + ', options: ' + options);
-        var dir = '-';
-        // desc
-        if ( typeof order !== 'undefined' && order < 0) {
-            dir = '';
-            // asc
-        }
-        var obj = Backbone.PageableCollection.prototype.setSorting.call(this, sortKey, order);
-
-        if (!_.isEmpty(sortKey)) {
-            var orderHash = {};
-            orderHash[sortKey] = dir;
-            this.addOrder(orderHash);
-        } else {
-            this.clearOrder();
-        }
-        return obj;
+    
+    parseRecords: function (resp, options) {
+        return resp.objects;
     },
-
-    // Custom - called from external
-    setOrder : function(orderHash) {
-        console.log('setOrder called: ' + JSON.stringify(orderHash));
-        var self = this;
-
-        // TODO: only one order supported on the Pageable collection!!
-        _.each(_.keys(orderHash), function(key) {
-            var dir = orderHash[key];
-
-            var direction = 'ascending';
-            var order = -1;
-            // according to the docs, -1 == ascending
-
-            if (dir === '-') {
-                order = 1;
-                // according to the docs, 1 == descending
-                direction = 'descending';
-            }
-
-            console.log('setting order: ' + key);
-            self.state.sortKey = key;
-            self.state.order = order;
-            // Notify header cells
-            self.trigger("backgrid:sort", key, direction, null, self);
-        });
-    },
-
+      
     // Custom search method
     setSearch : function(searchHash) {
         var self = this;
@@ -871,47 +831,120 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
         //this.fetch();
     },
 
-    // Custom
-    clearOrder : function(orderKeys) {
-        var self = this;
-        if (!_.isUndefined(orderKeys)) {
-            var orderHash = _.clone(self.listModel.get('order'));
-            _.each(orderKeys, function(orderKey) {
-                delete orderHash[orderKey];
-                // self.sort(columnName, null);
-            });
-            self.listModel.set({
-                'order' : orderHash
-            });
-        } else {
-            self.listModel.set({
-                'order' : {}
-            });
-        }
-        //this.trigger("MyServerSideFilter:removeOrder", orderKeys, this);
-        // this.state.currentPage=1;  // if filtering, always set the page to 1
-        // this.fetch();
-    },
+//    // Custom
+//    clearOrder : function(orderKeys) {
+//        var self = this;
+//        if (!_.isUndefined(orderKeys)) {
+//            var orderHash = _.clone(self.listModel.get('order'));
+//            _.each(orderKeys, function(orderKey) {
+//                delete orderHash[orderKey];
+//                // self.sort(columnName, null);
+//            });
+//            self.listModel.set({
+//                'order' : orderHash
+//            });
+//        } else {
+//            self.listModel.set({
+//                'order' : {}
+//            });
+//        }
+//        //this.trigger("MyServerSideFilter:removeOrder", orderKeys, this);
+//        // this.state.currentPage=1;  // if filtering, always set the page to 1
+//        // this.fetch();
+//    },
 
-    // Custom
-    addOrder : function(orderHash) {
-        var self = this;
-        self.listModel.set({
-            'order' : _.clone(orderHash)
-        });
-        // TODO: multisort: for the time being, hash only contains one item.  so
-        // no need for extend
-        // var oldorderHash = _.clone(self.listModel.get('order'));
-        // oldorderHash = _.extend(oldorderHash, orderHash);
+//  // Override
+//  // called from HeaderCells
+  setSorting : function(sortKey, order, options) {
+	  Backbone.PageableCollection.prototype.setSorting.call(this, sortKey, order);
+	  // TODO: investigate why backgrid.sort is not forcing a fullcollection.sort,
+	  // (and indeed, has no fullCollection set)
+	  // which would cause a 'sort' event,
+	  // and it is not allowing backbone.set to trigger a 'sort' event (options.silent)
+	  // seems to me that line 2540 in backgrid.sort should have reset: false, 
+	  //       else collection.fetch({reset: true, success: function () {
+	  // so that collection.set will be called, (with options.silent=undefined) so 
+	  // that set() will trigger a sort event.
+	  // Last note: it may be because we are not getting the sortKey from the 
+	  // queryParams on parseState.
+	  this.trigger('sort',this); 
+  },
 
-        //console.log('trigger listModel:change:order: ' +
-        // JSON.stringify(oldorderHash) );
-        // self.listModel.set({'order': oldorderHash });
+//    // Override
+//    // called from HeaderCells
+//    setSorting : function(sortKey, order, options) {// override and hack in
+//        // sorting URL support
+//        console.log('setSorting called: ' + sortKey + ', order_by: ' + order + ', ' + typeof (order) + ', options: ' + options);
+//        var dir = '-';
+//        // desc
+//        if ( typeof order !== 'undefined' && order < 0) {
+//            dir = '';
+//            // asc
+//        }
+//        var obj = Backbone.PageableCollection.prototype.setSorting.call(this, sortKey, order);
+//
+//        if (!_.isEmpty(sortKey)) {
+//            var orderHash = {};
+//            orderHash[sortKey] = dir;
+//            this.addOrder(orderHash);
+//        } else {
+//            this.clearOrder();
+//        }
+//        return obj;
+//    },
 
-        //this.trigger("MyServerSideFilter:addOrder", orderHash, this);
+//    // Custom - called from external
+//    setOrder : function(orderHash) {
+//        console.log('setOrder called: ' + JSON.stringify(orderHash));
+//        var self = this;
+//
+//        // TODO: only one order supported on the Pageable collection!!
+//        _.each(_.keys(orderHash), function(key) {
+//            var dir = orderHash[key];
+//
+//            var direction = 'ascending';
+//            var order = -1;
+//            // according to the docs, -1 == ascending
+//
+//            if (dir === '-') {
+//                order = 1;
+//                // according to the docs, 1 == descending
+//                direction = 'descending';
+//            }
+//            Backbone.PageableCollection.prototype.setSorting.call(this, key, direction);
+//
+////            console.log('setting order: ' + key);
+////            self.state.sortKey = key;
+////            self.state.order = order;
+////            // Notify header cells
+//////            self.setSorting(key,order);
+//////            self.trigger('sort', self);
+////            self.trigger("backgrid:sort", key, direction, null);
+//////            self.trigger("backgrid:sorted");
+////        
+//        
+//        });
+//    },
 
-        //self.fetch();
-    },
+//    // Custom
+//    addOrder : function(orderHash) {
+//        var self = this;
+//        self.listModel.set({
+//            'order' : _.clone(orderHash)
+//        });
+//        // TODO: multisort: for the time being, hash only contains one item.  so
+//        // no need for extend
+//        // var oldorderHash = _.clone(self.listModel.get('order'));
+//        // oldorderHash = _.extend(oldorderHash, orderHash);
+//
+//        //console.log('trigger listModel:change:order: ' +
+//        // JSON.stringify(oldorderHash) );
+//        // self.listModel.set({'order': oldorderHash });
+//
+//        //this.trigger("MyServerSideFilter:addOrder", orderHash, this);
+//
+//        //self.fetch();
+//    },
 
     // Custom
     addSearch : function(searchHash) {
@@ -932,22 +965,47 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
         // self.fetch();
     },
 
-    // Override
-    getPage : function(page) {// override and hack in paging URL support
-        console.log('getPage: ' + page);
-        this.listModel.set({
-            'page' : page
-        });
+//    // Override
+//    getPage : function(page, options) {// override and hack in paging URL support
+//        console.log('getPage: ' + page);
+//
+//        // TODO: grabbed from BPC
+//        var state = this.state,
+//        firstPage = state.firstPage,
+//        currentPage = state.currentPage,
+//        lastPage = state.lastPage,
+//        pageSize = state.pageSize;
+//
+//        var index = page;
+//        var pageNum = index;
+//        switch (index) {
+//          case "first": pageNum = firstPage; break;
+//          case "prev": pageNum = currentPage - 1; break;
+//          case "next": pageNum = currentPage + 1; break;
+//          case "last": pageNum = lastPage; break;
+//          default: pageNum = index;
+//        }
+//        // END: from BPC
+//        
+//        this.listModel.set({
+//            'page' : pageNum
+//        });
+//
+//        var obj = Backbone.PageableCollection.prototype.getPage.call(this, pageNum, options);
+//        return obj;
+//    },
 
-        var obj = Backbone.PageableCollection.prototype.getPage.call(this, page);
-        return obj;
-    },
-
-    setPage : function(page) {
-        var page = parseInt(page);
-        this.state.currentPage = page;
-        this.fetch();
-    },
+//    setPage : function(page) {
+//        var page = parseInt(page);
+//        // NOTE: todo: probably don't need to set the listmodel because we 
+//        // to listen to collection add/remove/reset events in list.js
+//        this.listModel.set({
+//            'page' : page
+//        });
+//        Backbone.PageableCollection.prototype.getPage.call(this, page, {reset: true});
+////        this.state.currentPage = page;
+////        this.fetch();
+//    },
 });
 // end definition of Collection extension
 

@@ -384,7 +384,6 @@ define([
             });
             this.objects_to_destroy.push(footer);
 
-
             // Note: prefer listenTo over "on" (alias for _.bind/model.bind) as this
             // will allow the object to unbind all observers at once.
             //collection.on('request', ajaxStart); // NOTE: can use bind or on
@@ -417,46 +416,33 @@ define([
         },
 
         render: function(){
-            console.log('render start');
+            console.log('--render start');
             var self = this;
+            self.listenTo(self.collection, "add", self.reportState);
+            self.listenTo(self.collection, "remove", self.reportState);
+            self.listenTo(self.collection, "reset", self.reportState);
+
 
             this.$el.html(this.compiledTemplate);
-
             var finalGrid = self.finalGrid = this.grid.render();
             self.$("#example-table").append(finalGrid.$el);
             self.$("#paginator-div").append(self.paginator.render().$el);
-            self.$("#rows-selector-div").append(self.rppSelectorInstance.render().$el);
-
+            self.$("#rows-selector-div").append(
+            		self.rppSelectorInstance.render().$el);
             if(!_.isUndefined(self.extraSelectorInstance)){
-                self.$("#extra-selector-div").append(self.extraSelectorInstance.render().$el);
+                self.$("#extra-selector-div").append(
+                		self.extraSelectorInstance.render().$el);
             }
-
-            console.log('========append footer: ' + self.footer);
             self.$("#table-footer-div").append(self.footer.$el);
-
             this.delegateEvents();
-
-            console.log('--doms appended--');
-
-//            var rpp = self.listModel.get('rpp');
-//            if(!_.isUndefined(rpp)){
-//                self.collection.setPageSize(rpp);
-//            }
-//
-//            var page = self.listModel.get('page');
-//            if(!_.isUndefined(page)){
-//                self.collection.setPage(page);
-//            }
             
             var searchHash = self.listModel.get('search');
             if(!_.isEmpty(searchHash)){
-                console.log('render: collection.setSearch: ' + JSON.stringify(searchHash));
                 self.collection.setSearch(searchHash);
             }
 
             var orderHash = self.listModel.get('order');
             if(!_.isEmpty(orderHash)){
-//                self.collection.setOrder(orderHash);
                 _.each(_.keys(orderHash), function(key) {
                     var dir = orderHash[key];
                     var direction = 'ascending';
@@ -467,24 +453,16 @@ define([
                         direction = 'descending';
                         order = 1;
                     }
-//                    self.collection.setSorting(key,order,{full: false});
                     finalGrid.sort(key, direction);
                 });
             }
 
-            self.listenTo(self.collection, "add", self.reportState);
-            self.listenTo(self.collection, "remove", self.reportState);
-            self.listenTo(self.collection, "reset", self.reportState);
-
 
             this.listenTo(self.collection, 'sync', function(event){
-//                console.log('== collection sync event: ' + event );
                 self.$('#header_message').html(self._options.header_message + 
                 		", total records: " + self.collection.state.totalRecords);
             });
 
-            // 2014-02-09 // test commented out --- 
-//            console.log('collection fetch trigger');
             var fetchOptions = { reset: true };
             self.collection.fetch(fetchOptions);
 

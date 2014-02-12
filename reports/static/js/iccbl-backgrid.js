@@ -684,24 +684,6 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
 //            var searchHash = self.listModel.get('search');
 //            self.setSearch(searchHash);
 //        });
-//
-//        this.listenTo(this.listModel, 'change:order', function() {
-//            var orderHash = self.listModel.get('order');
-//            console.log('===--- listModel change:order' + JSON.stringify(orderHash));
-//            this.setOrder(orderHash);
-//        });
-//
-//        this.listenTo(this.listModel, 'change:rpp', function() {
-//            var pageSize = parseInt(self.listModel.get('rpp'));
-//            console.log('===--- listModel change:rpp: ' + pageSize);
-//            self.setPageSize(pageSize);
-//        });
-//
-//        this.listenTo(this.listModel, 'change:page', function() {
-//            console.log('===--- listModel change:page');
-//            var page = parseInt(self.listModel.get('page'));
-//            self.setPage(page);
-//        });
 
         Backbone.PageableCollection.prototype.initialize.apply(this, options);
     },
@@ -710,13 +692,13 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     url : function() {
         return this.url;
     },
-
-    // searchBy: null,
     searchHash : {},
     model : MyModel,
     state : {
         pageSize : 25,  // TODO: probably not necessary
     },
+    // PageableCollection.fetch() uses the queryParams attribute to interpret 
+    // the server response.
     queryParams : {
         // adjust the query params for tastypie
         pageSize : 'limit',
@@ -744,8 +726,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     },
 
     /**
-     *  Override pageable collection parse method:
-     *      Parse server response data.
+     *  Override 
      */
     parseState : function(response, queryParams, state, options) {
         // hack the response for tastypie:
@@ -757,32 +738,25 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
             console.log('adjust currentPage');
             state.currentPage = 1;
         }
-//        this.state = this._checkState(state);
-        // recalculate the state and do sanity checks.
-        // //if(! _(state).isEqual(this.state)){
-        // // TODO: call setOptions explicitly where needed, i.e. when setting
-        // searchBy
-        // console.log('parse: new state: ' + JSON.stringify(this.state));
-        // // trigger so our app knows about the route change, replace to modify
-        // in place w/out creating browser history
-        // this.setOptions({trigger: false, replace: true });
-        // //}
-//        return response.objects;
         return state;
     },
     
+    /**
+     *  Override 
+     */
     parseRecords: function (resp, options) {
         return resp.objects;
     },
       
-    // Custom search method
+    /**
+     *  Method for external callers to set the search
+     */
     setSearch : function(searchHash) {
         var self = this;
-        // this.searchBy = search_full_string_encoded;
         var searchHash = _.clone(searchHash);
-        console.log('collection.setSearch: trigger search to headers:' + JSON.stringify(searchHash));
+        console.log('collection.setSearch: trigger search to headers:' + 
+        		JSON.stringify(searchHash));
         this.trigger("MyServerSideFilter:search", searchHash, this);
-        // console.log('done: trigger search');
 
         // if the search key is not in the queryParams, then it is not a column
         // search.
@@ -799,18 +773,34 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
                 // defined params are function calls to get the current value in the
                 // searchbox
                 if (!_.has(self.queryParams, key) || !_.isFunction(self.queryParams[key])) {
+                	var _data = {};
+                	_data[key]=val;
+                	collection.getFirstPage({data:_data, reset: true, fetch: true});
 
-                    self.queryParams[key] = val;
-                    // NOTE: setting the key on the queryParams means that it will be
-                    // sent to the server on the next fetch
+//                    self.queryParams[key] = val;
+//                    // NOTE: setting the key on the queryParams means that it will be
+//                    // sent to the server on the next fetch
                 }
             }
         });
-        this.fetch();
+
     },
 
-    // Custom
-    clearSearch : function(searchKeys) {
+    // Proxy for the search elements to add search terms to the listModel
+    addSearch: function(searchHash) {
+        var self = this;
+        var oldsearchHash = _.clone(self.listModel.get('search'));
+        console.log('collection addSearch: current: ' + 
+        		JSON.stringify(oldsearchHash) + 
+        		', adding: ' + JSON.stringify(searchHash));
+        oldsearchHash = _.extend(oldsearchHash, searchHash);
+        self.listModel.set({
+            'search' : oldsearchHash
+        });
+    },
+
+    // Proxy for the search elements to clear search terms from the listModel
+    clearSearch: function(searchKeys) {
         console.log('clearsearch: ' + JSON.stringify(searchKeys));
         var self = this;
         var searchHash = {};
@@ -824,210 +814,107 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
             'search' : searchHash
         });
 
-        // this.trigger("MyServerSideFilter:removeSearch", searchKeys, this);
-        this.state.currentPage = 1;
-        // if filtering, always set the page to 1
-
-        //this.fetch();
     },
 
-//    // Custom
-//    clearOrder : function(orderKeys) {
-//        var self = this;
-//        if (!_.isUndefined(orderKeys)) {
-//            var orderHash = _.clone(self.listModel.get('order'));
-//            _.each(orderKeys, function(orderKey) {
-//                delete orderHash[orderKey];
-//                // self.sort(columnName, null);
-//            });
-//            self.listModel.set({
-//                'order' : orderHash
-//            });
-//        } else {
-//            self.listModel.set({
-//                'order' : {}
-//            });
-//        }
-//        //this.trigger("MyServerSideFilter:removeOrder", orderKeys, this);
-//        // this.state.currentPage=1;  // if filtering, always set the page to 1
-//        // this.fetch();
-//    },
-
-//  // Override
-//  // called from HeaderCells
-  setSorting : function(sortKey, order, options) {
-	  Backbone.PageableCollection.prototype.setSorting.call(this, sortKey, order);
-	  // TODO: investigate why backgrid.sort is not forcing a fullcollection.sort,
-	  // (and indeed, has no fullCollection set)
-	  // which would cause a 'sort' event,
-	  // and it is not allowing backbone.set to trigger a 'sort' event (options.silent)
-	  // seems to me that line 2540 in backgrid.sort should have reset: false, 
-	  //       else collection.fetch({reset: true, success: function () {
-	  // so that collection.set will be called, (with options.silent=undefined) so 
-	  // that set() will trigger a sort event.
-	  // Last note: it may be because we are not getting the sortKey from the 
+    /**
+     *  Override - called from HeaderCells
+     */
+    setSorting : function(sortKey, order, options) {
+    	Backbone.PageableCollection.prototype.setSorting.call(
+			  this, sortKey, order);
+	  // TODO: Investigate why PageableCollection.setSorting is not triggering 
+	  // a 'sort' event (needed to clear old sort indicators).
+	  // Sequence of a sort:
+	  // Backgrid.HeaderCell.onClick-> collection.trigger('backgrid:sort')
+	  // 	-> 'backgrid:sort' -> Backgrid.Body.sort()
+	  //    	-> PageableCollection.setSorting(): sets state.sortKey
+	  //		-> if(fullCollection) (client mode) collection.sort()
+	  //		-> else
+	  //		-> Collection.fetch(reset:true) 
+	  //			*so in this case, no sort(), if reset:false, then a "set" 
+	  //				would be called, and a 'sort' triggered
+  	  //		* also calls column.set to put the new indicator 
+  	  //		column.set('direction')
+  	  // without a sort, there is no erasing of the old sort indicators:
+  	  // Collection.sort() -> trigger('sort') ->
+  	  //		-> Backgrid.HeaderCell.removeCellDirection
+	  // Last note: this may be caused by not getting the sortKey from the 
 	  // queryParams on parseState.
-	  this.trigger('sort',this); 
-  },
-
-//    // Override
-//    // called from HeaderCells
-//    setSorting : function(sortKey, order, options) {// override and hack in
-//        // sorting URL support
-//        console.log('setSorting called: ' + sortKey + ', order_by: ' + order + ', ' + typeof (order) + ', options: ' + options);
-//        var dir = '-';
-//        // desc
-//        if ( typeof order !== 'undefined' && order < 0) {
-//            dir = '';
-//            // asc
-//        }
-//        var obj = Backbone.PageableCollection.prototype.setSorting.call(this, sortKey, order);
-//
-//        if (!_.isEmpty(sortKey)) {
-//            var orderHash = {};
-//            orderHash[sortKey] = dir;
-//            this.addOrder(orderHash);
-//        } else {
-//            this.clearOrder();
-//        }
-//        return obj;
-//    },
-
-//    // Custom - called from external
-//    setOrder : function(orderHash) {
-//        console.log('setOrder called: ' + JSON.stringify(orderHash));
-//        var self = this;
-//
-//        // TODO: only one order supported on the Pageable collection!!
-//        _.each(_.keys(orderHash), function(key) {
-//            var dir = orderHash[key];
-//
-//            var direction = 'ascending';
-//            var order = -1;
-//            // according to the docs, -1 == ascending
-//
-//            if (dir === '-') {
-//                order = 1;
-//                // according to the docs, 1 == descending
-//                direction = 'descending';
-//            }
-//            Backbone.PageableCollection.prototype.setSorting.call(this, key, direction);
-//
-////            console.log('setting order: ' + key);
-////            self.state.sortKey = key;
-////            self.state.order = order;
-////            // Notify header cells
-//////            self.setSorting(key,order);
-//////            self.trigger('sort', self);
-////            self.trigger("backgrid:sort", key, direction, null);
-//////            self.trigger("backgrid:sorted");
-////        
-//        
-//        });
-//    },
-
-//    // Custom
-//    addOrder : function(orderHash) {
-//        var self = this;
-//        self.listModel.set({
-//            'order' : _.clone(orderHash)
-//        });
-//        // TODO: multisort: for the time being, hash only contains one item.  so
-//        // no need for extend
-//        // var oldorderHash = _.clone(self.listModel.get('order'));
-//        // oldorderHash = _.extend(oldorderHash, orderHash);
-//
-//        //console.log('trigger listModel:change:order: ' +
-//        // JSON.stringify(oldorderHash) );
-//        // self.listModel.set({'order': oldorderHash });
-//
-//        //this.trigger("MyServerSideFilter:addOrder", orderHash, this);
-//
-//        //self.fetch();
-//    },
-
-    // Custom
-    addSearch : function(searchHash) {
-        var self = this;
-        var oldsearchHash = _.clone(self.listModel.get('search'));
-        console.log('collection addSearch: current: ' + JSON.stringify(oldsearchHash) + ', adding: ' + JSON.stringify(searchHash));
-        oldsearchHash = _.extend(oldsearchHash, searchHash);
-        self.listModel.set({
-            'search' : oldsearchHash
-        });
-
-        //this.trigger("MyServerSideFilter:addSearch", searchHash, this);
-
-        self.state.currentPage = 1;
-        // if filtering, always set the page to 1
-        // not needed because already called with backgrid-filter from header
-        // cells
-        // self.fetch();
+    	this.trigger('sort',this); 
     },
 
-//    // Override
-//    getPage : function(page, options) {// override and hack in paging URL support
-//        console.log('getPage: ' + page);
-//
-//        // TODO: grabbed from BPC
-//        var state = this.state,
-//        firstPage = state.firstPage,
-//        currentPage = state.currentPage,
-//        lastPage = state.lastPage,
-//        pageSize = state.pageSize;
-//
-//        var index = page;
-//        var pageNum = index;
-//        switch (index) {
-//          case "first": pageNum = firstPage; break;
-//          case "prev": pageNum = currentPage - 1; break;
-//          case "next": pageNum = currentPage + 1; break;
-//          case "last": pageNum = lastPage; break;
-//          default: pageNum = index;
-//        }
-//        // END: from BPC
-//        
-//        this.listModel.set({
-//            'page' : pageNum
-//        });
-//
-//        var obj = Backbone.PageableCollection.prototype.getPage.call(this, pageNum, options);
-//        return obj;
-//    },
 
-//    setPage : function(page) {
-//        var page = parseInt(page);
-//        // NOTE: todo: probably don't need to set the listmodel because we 
-//        // to listen to collection add/remove/reset events in list.js
-//        this.listModel.set({
-//            'page' : page
-//        });
-//        Backbone.PageableCollection.prototype.getPage.call(this, page, {reset: true});
-////        this.state.currentPage = page;
-////        this.fetch();
-//    },
 });
-// end definition of Collection extension
 
-// NOTE: Backgrid instantiates the HeaderCell, so we don't have the listModel
-// here explicitly.
-// Rather, we delegate up to the collection for actions, and the collection can
-// set the listModel accordingly
-var MyServerSideFilter = Iccbl.MyServerSideFilter = Backgrid.Extension.ServerSideFilter.extend({
-    // override so that we can keep a handle to the containing column name.
-    // TODO: can handle this with events instead (so that the filter notifies the
-    // containing headercell?)
+
+/**
+ * Override so that we can keep a handle to the containing column name.
+ * TODO: can handle this with events instead (so that the filter notifies the
+ * containing headercell?)
+ * 
+ * TODO: probably going to have to implement full, instead of extending.  Too 
+ * many side effects of extending ServerSideFilter
+ **/
+var MyServerSideFilter = 
+		Iccbl.MyServerSideFilter = 
+		Backgrid.Extension.ServerSideFilter.extend({
     columnName : null, // TODO: use "name"
+    className: "form-search",    
+    template: _.template('<input type="search" <% if (placeholder) { %> placeholder="<%- placeholder %>" <% } %> name="<%- name %>" /><a class="backgrid-filter clear" data-backgrid-action="clear" href="#">&times;</a>', null, {variable: null}),
 
     initialize : function(options) {
         this.columnName = options.columnName;
-        Backgrid.Extension.ServerSideFilter.prototype.initialize.apply(this, [options])
-
+        Backgrid.Extension.ServerSideFilter.prototype.initialize.apply(
+        		this, [options]);
     },
+    
+    /**
+     * Override
+     */
+    search: function(e){
+        if (e) e.preventDefault();    	
+    	var searchHash = {};
+    	searchHash[this.name] = this.searchBox().val();
+    	console.log('server side filter add search: ' + 
+    			JSON.stringify(searchHash));
+    	this.collection.addSearch(searchHash);
+    	
+    	
+    	// Note: not calling super, because it will force first page.
+    	//    	Backgrid.Extension.ServerSideFilter.prototype.search.apply(this,e);
+        if (e) e.preventDefault();
+
+        var data = {};
+        var query = this.searchBox().val();
+        if (query) data[this.name] = query;
+
+        var collection = this.collection;
+//        // go back to the first page on search
+//        if (Backbone.PageableCollection &&
+//            collection instanceof Backbone.PageableCollection) {
+//          collection.getFirstPage({data: data, reset: true, fetch: true});
+//        }
+        collection.fetch({data: data, reset: true});
+        
+        this.showClearButtonMaybe();
+    },
+    
+    /**
+     * Override
+     */
+    clear: function(e){
+        if (e) e.preventDefault();
+        this.remove();
+        this.collection.clearSearch([this.name]); 
+        Backgrid.Extension.ServerSideFilter.prototype.clear.apply(this,e);
+    },    
 });
 
-// TODO: this should be named "contains" header cell, because it searches using
-// "__contains"
+/**
+ * Override to add Search capability.
+ * TODO: this should be named "contains" header cell, because it searches using
+ * "__contains"
+ **/
 var MyHeaderCell = Iccbl.MyHeaderCell = Backgrid.HeaderCell.extend({
 
     _serverSideFilter : null,
@@ -1037,37 +924,38 @@ var MyHeaderCell = Iccbl.MyHeaderCell = Backgrid.HeaderCell.extend({
         Backgrid.HeaderCell.prototype.initialize.apply(this, [options]);
 
         this._serverSideFilter = new MyServerSideFilter({
-            collection : this.collection, // TODO: Try to remove this: the
-            // collection should be passed as an option
-            name : this.column.get("name") + "__contains", // the name of the URL
-            // query parameter for tastypie/django TODO: support other filters
-            placeholder : "Search " + this.column.get("label"), // HTML5
-            // placeholder for the search box
+            // TODO: collection should be passed as an option
+            collection : this.collection, 
+            // Name of the URL query parameter for tastypie/django 
+            // TODO: support other filters
+            name : this.column.get("name") + "__contains", 
+            // HTML5 placeholder for the search box
+            placeholder : "Search " + this.column.get("label"), 
             columnName : this.column.get("name"),
         });
 
-        this.listenTo(this.collection, "MyServerSideFilter:search", this._search);
+        this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
 
-        this._serverSideFilter['events']['click .close'] = function(e) {
-            if (e)
-                e.preventDefault();
+//        this._serverSideFilter['events']['click .close'] = function(e) {
+//            if(e) e.preventDefault();
+//
+//            this.remove();
+//            this.clear();
+//            this.collection.clearSearch([this.name]);
+//        };
 
-            this.remove();
-            // this is the filter
-            this.clear();
-            this.collection.clearSearch([this.name]);
-            this.collection.fetch();
-        };
-
-        this._serverSideFilter['events']['submit'] = function(e) {
-            var searchHash = {};
-            searchHash[this.name] = this.$el.find("input[type=text]").val();
-            console.log('server side filter add search: ' + JSON.stringify(searchHash));
-            this.collection.addSearch(searchHash);
-            this.search(e);
-        };
+//        this._serverSideFilter['events']['submit'] = function(e) {
+//            var searchHash = {};
+//            searchHash[this.name] = this.searchBox().val();
+//            console.log('server side filter add search: ' + 
+//            		JSON.stringify(searchHash));
+//            this.collection.addSearch(searchHash);
+//            this.search(e);
+//        };
     },
 
+
+    
     remove : function() {
         console.log('headercell remove called');
         this._serverSideFilter.remove();
@@ -1078,38 +966,44 @@ var MyHeaderCell = Iccbl.MyHeaderCell = Backgrid.HeaderCell.extend({
         Backgrid.HeaderCell.prototype.remove.apply(this);
     },
 
-    // function to listen for router generated custom search event
-    // MyServerSideFilter:search
-    _search : function(searchHash, collection) {
+    /**
+     * Function to listen for router generated custom search event
+     * "MyServerSideFilter:search"
+     * - add search term and show box
+     * - clear old search terms
+     **/
+    _search: function(searchHash, collection){
         var self = this;
-        // console.log('Header cell respond to MyServerSideFilter:search trigger:
-        // ' + self._serverSideFilter.name + ', ' + JSON.stringify(searchHash));
-        if (collection == this.collection) {
+        if (collection == this.collection){
             var found = false;
-            _.each(_(searchHash).pairs(), function(pair) {
+            _.each(_(searchHash).pairs(), function(pair){
                 var key = pair[0];
                 var val = pair[1];
-                if (self._serverSideFilter.name == key) {
-                    console.log('--found search: ' + key + '=' + val + ', on: ' + self.column.get('name'));
+                if (self._serverSideFilter.name == key){
+                    console.log('--found search: ' + key + '=' + val + 
+                    		', on: ' + self.column.get('name'));
                     found = true;
-                    self.$el.append(self._serverSideFilter.render().el);
                     // create the DOM element
-                    self._serverSideFilter.$el.find("input[type=text]").val(val)
-                    // // set the search term
+                    self.$el.append(self._serverSideFilter.render().el);
+                    // set the search term
+//                    self._serverSideFilter.$el.find("input[type=text]").val(val);
+                    self._serverSideFilter.searchBox().val(val);
+                    // the filter search method will call collection.fetch()
+                    self._serverSideFilter.search(); 
                 }
             });
 
             if (!found) {
                 if (!_.isEmpty(this.$el.find("input[type=text]").val())) {
                     this._serverSideFilter.remove();
-                    // this.collection.clearSearch([self._serverSideFilter.name])
+                    this.collection.clearSearch([self._serverSideFilter.name]);
                 }
             }
         }
     },
 
     /**
-     Renders a header cell with a sorter and a label.
+     * Renders a header cell with a sorter and a label.
      */
     render : function() {
         Backgrid.HeaderCell.prototype.render.apply(this);
@@ -1118,9 +1012,10 @@ var MyHeaderCell = Iccbl.MyHeaderCell = Backgrid.HeaderCell.extend({
         filterIcon.click(function(e) {
             _handle.$el.append(_handle._serverSideFilter.render().el);
         });
-        this.$el.prepend(filterIcon);
+        this.$el.append(filterIcon);
 
-        this.$el.prop('title', this.options['column']['attributes']["description"]);
+        this.$el.prop('title', 
+        			  this.options['column']['attributes']["description"]);
         return this;
     }
 });

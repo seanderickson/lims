@@ -66,32 +66,44 @@ define([
                 var optionValue = current_options[option]
                 if(!_.isUndefined(optionValue) && !_.isNull(optionValue)){
                     if(route_fragment.length > 0) route_fragment += '/';
-                    route_fragment += option + '/';
                     if(option == 'rpp' || option == 'page' ){
+                        route_fragment += option + '/';
                         route_fragment += optionValue;
 
                     }else if(option == 'order' ){
                         // TODO: use the type of search comparator as well
                         var frag = _.reduce(_.pairs(optionValue), function(frag, pair){
-                            if(frag.length > 0 ) frag += ',';
-                            if(pair[1] == '-' ) frag += '-';
-                            return frag + pair[0];
+                            if(pair[0] && pair[1]){
+	                            if(frag.length > 0 ) frag += ',';
+	                            if(pair[1] == '-' ) frag += '-';
+	                            return frag + pair[0];
+                            }
+                            return frag;
                         }, '' );
-                        route_fragment += frag;
+                        if(frag.length>0){
+                            route_fragment += option + '/';
+                            route_fragment += frag;
+                        }
                     }else if(option == 'search'){
                         // TODO: use the type of search comparator as well
                         var frag = _.reduce(_.pairs(optionValue), function(frag, pair){
-                            if(frag.length > 0 ) frag += ',';
+                            if(pair[0] && pair[1]){
+                            	if(frag.length > 0 ) frag += ',';
 
-                            // // // TODO: discuss whether full encoding of the search fragment is necessary.
-                            // // // to-date, we know that the forward slash messes up the backbone router parsing, but other URL chars do not,
-                            // // // and full encoding reduces the usability of the URL for the end user
-                            // // //_history_search = encodeURIComponent(_history_search);
-                            // // new_options['search'] = this.searchBy.replace('\/','%2F');
-                            var value = pair[1].replace('\/','%2F');
-                            return frag + pair[0] + '=' + value;
+                                // // // TODO: discuss whether full encoding of the search fragment is necessary.
+                                // // // to-date, we know that the forward slash messes up the backbone router parsing, but other URL chars do not,
+                                // // // and full encoding reduces the usability of the URL for the end user
+                                // // //_history_search = encodeURIComponent(_history_search);
+                                // // new_options['search'] = this.searchBy.replace('\/','%2F');
+                                var value = pair[1].replace('\/','%2F');
+                                return frag + pair[0] + '=' + value;
+                            }
+                            return frag;
                         }, '' );
-                        route_fragment += frag;
+                        if(frag.length>0){
+                            route_fragment += option + '/';
+                            route_fragment += frag;
+                        }
                     }
                 }
             }
@@ -99,6 +111,9 @@ define([
         return route_fragment;
     },
 
+    /**
+     * Generate a route that can be used by navigate, from the current state.
+     */
     get_route: function(){
         var current_view = this.model.get('current_view');
         Iccbl.assert( !_.isUndefined(current_view), 'router: current_view is not defined');
@@ -155,7 +170,8 @@ define([
 
     model_set_route: function(){
         console.log('model_set_route');
-        // trigger false to suppress further parsing, replace false (default) to create browser history
+        // trigger false to suppress further parsing, 
+        // replace false (default) to create browser history
         var options = { trigger: false }; // , replace:false
         var routing_options = this.model.get('routing_options');
         this.model.set({ routing_options: {} });

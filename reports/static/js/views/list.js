@@ -172,25 +172,27 @@ define([
                 }
             });
 
-            self.listenTo(self.collection, "MyCollection:edit", function (model) {
-                // Note: some links must use composite keys 
-            	// - because the composite key is the public key
-                // (don't want to expose the private, possibly transient key)
-                var id = '/' + model.get('id');
-                if(_.has(schemaResult['resource_definition'], 'id_attribute')){
-                    console.log('create id from ' 
-                    		+ schemaResult['resource_definition']['id_attribute']);
-                    id = _.reduce(schemaResult['resource_definition']['id_attribute'],
-                            function(memo, item){
-                                if(!_.isEmpty(memo)) memo += '/';
-                                return memo += model.get(item);
-                            }, '');
-                }else{
-                    console.log('Warn: schema for this type has no '+
-                    		'resource_definition,id_attribute; type: ' + 
-                    		schemaResult['resource_definition']['title']);
-                }
-                console.log('id: ' + id);
+            self.listenTo(
+              self.collection, "MyCollection:edit", 
+          		function (model) {
+                var id = Iccbl.getIdFromIdAttribute( model, schemaResult );
+                
+//                
+//                var id = '/' + model.get('id');
+//                if(_.has(schemaResult['resource_definition'], 'id_attribute')){
+//                    console.log('create id from ' 
+//                    		+ schemaResult['resource_definition']['id_attribute']);
+//                    id = _.reduce(schemaResult['resource_definition']['id_attribute'],
+//                            function(memo, item){
+//                                if(!_.isEmpty(memo)) memo += '/';
+//                                return memo += model.get(item);
+//                            }, '');
+//                }else{
+//                    console.log('Warn: schema for this type has no '+
+//                    		'resource_definition,id_attribute; type: ' + 
+//                    		schemaResult['resource_definition']['title']);
+//                }
+//                console.log('id: ' + id);
                 // signal to the app_model that the current view has changed 
                 // todo: separate out app_model from list_model
                 this.model.set({    current_scratch: { schemaResult: schemaResult, model: model} ,
@@ -201,20 +203,23 @@ define([
             });
 
             self.listenTo(self.collection, "MyCollection:detail", function (model) {
-                // Note: some links must use composite keys - because the composite key is the public key
-                // (don't want to expose the private, possibly transient key)
-                var id = '/' + model.get('id');
-                if(_.has(schemaResult['resource_definition'], 'id_attribute')){
-                    console.log('create id from ' + schemaResult['resource_definition']['id_attribute']);
-                    id = _.reduce(schemaResult['resource_definition']['id_attribute'],
-                            function(memo, item){
-                                if(!_.isEmpty(memo)) memo += '/';
-                                return memo += model.get(item);
-                            }, '');
-                }else{
-                    console.log('Warn: schema for this type has no resource_definition,id_attribute; type: ' + schemaResult['resource_definition']['title']);
-                }
-                console.log('id: ' + id);
+              var id = Iccbl.getIdFromIdAttribute( model, schemaResult );
+
+              
+//              // Note: some links must use composite keys - because the composite key is the public key
+//                // (don't want to expose the private, possibly transient key)
+//                var id = '/' + model.get('id');
+//                if(_.has(schemaResult['resource_definition'], 'id_attribute')){
+//                    console.log('create id from ' + schemaResult['resource_definition']['id_attribute']);
+//                    id = _.reduce(schemaResult['resource_definition']['id_attribute'],
+//                            function(memo, item){
+//                                if(!_.isEmpty(memo)) memo += '/';
+//                                return memo += model.get(item);
+//                            }, '');
+//                }else{
+//                    console.log('Warn: schema for this type has no resource_definition,id_attribute; type: ' + schemaResult['resource_definition']['title']);
+//                }
+//                console.log('id: ' + id);
                 this.model.set({    current_scratch: { schemaResult: schemaResult, model: model} ,
                                     current_view: 'detail',
                                     current_options: { key: id },

@@ -22,7 +22,7 @@
  **/
 define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid', 
         'backgrid_filter', 'backgrid_paginator', 'backgrid_select_all', 'lunr',
-        // TODO: lunr should not be a requirement - it is for client side filtering,
+        // TODO: lunr should not be a requirement - for client side filtering,
         // and backgrid_filter is requiring it.
         'text!templates/generic-selector.html'], 
     function($, _, Backbone, BackbonePageableCollection, Backgrid, 
@@ -71,7 +71,7 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
         }
     };
 
-    requireOptions = Iccbl.requireOptions = function (options, requireOptionKeys) {
+    requireOptions = Iccbl.requireOptions = function(options,requireOptionKeys){
         for (var i = 0; i < requireOptionKeys.length; i++) {
           var key = requireOptionKeys[i];
           if (_.isUndefined(options[key])) {
@@ -121,18 +121,20 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
 
     var getKey = Iccbl.getKey = function(options) {
         var route_fragment = '';
+        
         if (_.isString(options)) {
             route_fragment += options;
-        } else if (_.isArray(options)) {// an array is just a set of keys, to be
-            // separated by slashes
+            
+        // an array is just a set of keys, to be separated by slashes
+        } else if (_.isArray(options)) {
             route_fragment = _.reduce(options, function(route, option) {
-                if (!_.isNull(option)) {
-                    if (!_.isEmpty(route))
-                        route += '/';
-                    route += option;
-                }
-                return route;
-            }, route_fragment);
+                    if (!_.isNull(option)) {
+                        if (!_.isEmpty(route))
+                            route += '/';
+                        route += option;
+                    }
+                    return route;
+                }, route_fragment);
         } else if (_.isObject(options)) {// generic, option order not defined
             if (_.has(options, 'key')) {
                 return Iccbl.getKey(options.key);
@@ -142,114 +144,118 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
         return route_fragment;
     };
 
-    var getIdFromIdAttribute = Iccbl.getIdFromIdAttribute = function(model, schema){
-      // Used to set the id specifically on the model:
-      // backbone requires this to determine whether a "POST" or "PATCH" will be used
+  /**
+   * Create an string ID from the 'id_attribute' of a schema resource definition.
+   * - the id_attribute is an array of field specifiers
+   * - the 'ID' will be each of these fields, concatenated with a forward slash.
+   * Note: the composite key is the public key; although there is often an
+   * 'ID' field, it should not be used for URL's, as it is a internal, possibly
+   * transient implementation detail.
+   */
+  var getIdFromIdAttribute = Iccbl.getIdFromIdAttribute = 
+      function(model, schema){
+    
+    if (_.has(schema['resource_definition'], 'id_attribute')) {
+        var id_attribute = schema['resource_definition']['id_attribute'];
+        console.log('create id from ' + id_attribute);
+        var id = _.reduce(id_attribute, function(memo, item){
+          if(!_.isEmpty(memo)) memo += '/';
+          return memo += model.get(item);
+        }, '');
+        return id;
+    } else {
+      throw new TypeError("'id_attribute' not found on the schema: " 
+              + JSON.stringify(schema)
+              + ', for the model: ' + JSON.stringify(model.attributes));
+    }
+  };
 
-      if(_.has(schema['resource_definition'], 'id_attribute')){
-          var id_attribute = schema['resource_definition']['id_attribute'];
-          console.log('create id from ' + id_attribute);
-          var id = _.reduce(id_attribute, function(memo, item){
-            if(!_.isEmpty(memo)) memo += '/';
-            return memo += model.get(item);
-          }, '');
-          return id;
-      }else{
-        throw new TypeError("'id_attribute' not found on the schema: " + JSON.stringify(schema)
+  /**
+   * Create an string 'title' from the 'id_attribute' of a schema resource 
+   * definition.
+   * - the title_attribute is an array of field specifiers and strings.
+   * - if an array item is a field, the field value will be used,
+   * - if an array item is not a field, then it will be concatenated directly.
+   */
+  var getTitleFromTitleAttribute = Iccbl.getTitleFromTitleAttribute = 
+      function(model, schema){
+  
+    if(_.has(schema['resource_definition'], 'title_attribute')){
+      var title_attribute = schema['resource_definition']['title_attribute'];
+      console.log('create title from ' + title_attribute);
+      var title = _.reduce(
+        schema['resource_definition']['title_attribute'],
+        function(memo, item){
+          if( model.has(item) ) memo += model.get(item)
+          else memo += item
+          return memo ;
+        }, '');
+      console.log('extracted title: ' + title + ' from ' + model);
+      return title;
+    }else{
+      throw new TypeError("'title_attribute' not found on the schema: " + 
+          JSON.stringify(schema)
           + ', for the model: ' + JSON.stringify(model.attributes));
+    }
+  };
+
+  /**
+   * Similar the the contains function, 
+   * but using item.indexOf(matchString) || matchString.indexOf(item)
+   * for the truth test.
+   */
+  var containsByMatch = Iccbl.containsByMatch = function(collection, matchstring){
+    return _.find(collection, function(item) {
+      var result = (( matchstring.indexOf(item) != -1 ) || 
+                    ( item.indexOf(matchstring) != -1 ));
+      console.log('containsByMatch: ' + result + ', ' + matchstring + ', ' + 
+          JSON.stringify(collection));
+      return result;
+    });
+  };
+
+  var getSchema = Iccbl.getSchema = function(schema_url, callback) {
+    $.ajax({
+      type : "GET",
+      url : schema_url, //options.url_schema,
+      data : "",
+      dataType : "json",
+      success : function(schemaResult) {
+          callback(schemaResult);
+      }, // end success outer ajax call
+      error : function(x, e) {
+          alert(x.readyState + " " + x.status + " " + e.msg);
+          // TODO: use error div in Bootstrap
       }
-    };
+    });
+  };
 
-    var getTitleFromTitleAttribute = Iccbl.getTitleFromTitleAttribute = function(model, schema){
-      // Used to set the id specifically on the model:
-      // backbone requires this to determine whether a "POST" or "PATCH" will be used
-
-      if(_.has(schema['resource_definition'], 'title_attribute')){
-          var title_attribute = schema['resource_definition']['title_attribute'];
-          console.log('create title from ' + title_attribute);
-          var title = _.reduce(schema['resource_definition']['title_attribute'],
-              function(memo, item){
-                  if( model.has(item) ) memo += model.get(item)
-                  else memo += item
-                  return memo ;
-              }, '');
-          console.log('extracted title: ' + title + ' from ' + model);
-          return title;
-      }else{
-        throw new TypeError("'title_attribute' not found on the schema: " + JSON.stringify(schema)
-          + ', for the model: ' + JSON.stringify(model.attributes));
-      }
-    };
-
-    /**
-     * Similar the the contains function, but using item.indexOf(matchString) || matchString.indexOf(item)
-     * for the truth test.
-     */
-    var containsByMatch = Iccbl.containsByMatch = function(collection, matchstring){
-      return _.find(collection, function(item) {
-          var result =  ( matchstring.indexOf(item) != -1 ) || ( item.indexOf(matchstring) != -1 );
-
-          console.log('containsByMatch: ' + result + ', ' + matchstring + ', ' + JSON.stringify(collection));
-          return result;
-      });
-    };
-
-    // var getKey = Iccbl.getKey = function( key_array ){
-    // var _key = key_array;
-    // Iccbl.assert( !_.isEmpty(_key), 'content:detail: current_options must be
-    // defined (as the key), if not schemaResult, model supplied');
-    // // handle composite keys
-    // if(_.isArray(_key)){
-    // _key = _.reduce(_key, function(memo, item){
-    // if(!_.isNull(item)) memo += item + '/';
-    // return memo;
-    // }, '');
-    // }
-    // return _key;
-    // };
-
-    var getSchema = Iccbl.getSchema = function(schema_url, callback) {
-        $.ajax({
-            type : "GET",
-            url : schema_url, //options.url_schema,
-            data : "",
-            dataType : "json",
-            success : function(schemaResult) {
-                callback(schemaResult);
-            }, // end success outer ajax call
-            error : function(x, e) {
-                alert(x.readyState + " " + x.status + " " + e.msg);
-                // TODO: use error div in Bootstrap
-            }
-        });
-    };
-
-    var getModel = Iccbl.getModel = function(schemaResult, url, callback) {
-        var ModelClass = Backbone.Model.extend({
-            url : url,
-            defaults : {}
-        });
-        var instance = new ModelClass();
-        instance.fetch({
-            success : function(model) {
-                callback(schemaResult, model);
-            },
-            error : function(model, response, options) {
-                //console.log('error fetching the model: '+ model + ', response:
-                // ' + JSON.stringify(response));
-                var msg = 'Error locating resource: ' + url;
-                var sep = '\n';
-                if (!_.isUndefined(response.status))
-                    msg += sep + response.status;
-                if (!_.isUndefined(response.statusText))
-                    msg += sep + response.statusText;
-                if (!_.isEmpty(response.responseText))
-                    msg += sep + response.responseText;
-                window.alert(msg);
-                // TODO: use Bootstrap inscreen alert classed message div
-            }
-        });
-    };
+  var getModel = Iccbl.getModel = function(schemaResult, url, callback) {
+    var ModelClass = Backbone.Model.extend({
+        url : url,
+        defaults : {}
+    });
+    var instance = new ModelClass();
+    instance.fetch({
+        success : function(model) {
+            callback(schemaResult, model);
+        },
+        error : function(model, response, options) {
+            //console.log('error fetching the model: '+ model + ', response:
+            // ' + JSON.stringify(response));
+            var msg = 'Error locating resource: ' + url;
+            var sep = '\n';
+            if (!_.isUndefined(response.status))
+                msg += sep + response.status;
+            if (!_.isUndefined(response.statusText))
+                msg += sep + response.statusText;
+            if (!_.isEmpty(response.responseText))
+                msg += sep + response.responseText;
+            window.alert(msg);
+            // TODO: use Bootstrap inscreen alert classed message div
+        }
+    });
+  };
 
     /**
      * Note use this version if the model will be updated.
@@ -519,7 +525,6 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
 
         changeNotified : function() {
             var selection = this.model.get('selection');
-            console.log('change notified for ' + this._options.label + ', selection: ' + selection + ', options: ' + JSON.stringify(this._options.options));
             this.$('#generic_selector').val(String(selection));
         },
 
@@ -679,12 +684,6 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
         this.url = options.url;
         this.listModel = options.listModel;
 
-//        this.listenTo(this.listModel, 'change:search', function() {
-//            console.log('===--- collection detect: listModel change:search');
-//            var searchHash = self.listModel.get('search');
-//            self.setSearch(searchHash);
-//        });
-
         Backbone.PageableCollection.prototype.initialize.apply(this, options);
     },
     mode: 'server',
@@ -758,8 +757,9 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
         		JSON.stringify(searchHash));
         this.trigger("MyServerSideFilter:search", searchHash, this);
 
+        // Allow searches that aren't for a visible column:
         // if the search key is not in the queryParams, then it is not a column
-        // search.
+        // search (TODO: verify).
         // this will add it manually to the queryParams (which are serialized in
         // the fetch to the server)
         _.each(_.keys(searchHash), function(key) {
@@ -775,7 +775,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
                 if (!_.has(self.queryParams, key) || !_.isFunction(self.queryParams[key])) {
                 	var _data = {};
                 	_data[key]=val;
-                	collection.getFirstPage({data:_data, reset: true, fetch: true});
+                	self.fetch({data:_data, reset: true});
 
 //                    self.queryParams[key] = val;
 //                    // NOTE: setting the key on the queryParams means that it will be
@@ -889,11 +889,12 @@ var MyServerSideFilter =
         if (query) data[this.name] = query;
 
         var collection = this.collection;
-//        // go back to the first page on search
-//        if (Backbone.PageableCollection &&
-//            collection instanceof Backbone.PageableCollection) {
-//          collection.getFirstPage({data: data, reset: true, fetch: true});
-//        }
+        // We're overriding this behaviour:
+		//        // go back to the first page on search
+		//        if (Backbone.PageableCollection &&
+		//            collection instanceof Backbone.PageableCollection) {
+		//          collection.getFirstPage({data: data, reset: true, fetch: true});
+		//        }
         collection.fetch({data: data, reset: true});
         
         this.showClearButtonMaybe();

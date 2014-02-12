@@ -16,8 +16,17 @@ define([
             this.contentView = new ContentView({ model: this.model }, options);
 
             Backbone.history.on('route', function(router, route, params) {
-                // console.log('route changed, set title: ' + JSON.stringify(params));
-                document.title = route + ':' + JSON.stringify(params);
+              var title = _.reduce(
+                  params,
+                  function(memo, item){
+                    if(item){
+                      if (memo !== ' ') memo += ', ';
+                      memo += item;
+                    }
+                    return memo ;
+                  }, ' ');              
+              
+                document.title = route + ':' + title;
              }, this);
 
         },

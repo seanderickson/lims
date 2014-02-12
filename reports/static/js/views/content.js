@@ -12,7 +12,8 @@ define([
     'views/screen',
     'views/user',
     'views/usergroup'
-], function($, _, Backbone, Bootstrap, Iccbl, ListView, HomeView, DetailView, EditView, EditViewForms, ScreenView, UserView, UserGroupView) {
+], function($, _, Backbone, Bootstrap, Iccbl, ListView, HomeView, DetailView, 
+        EditView, EditViewForms, ScreenView, UserView, UserGroupView) {
 
     var ContentView = Backbone.View.extend({
         el: '#container',
@@ -33,16 +34,21 @@ define([
             var self = this;
 
             var current_resource_id = this.model.get('current_resource_id');
-            Iccbl.assert( !_.isUndefined(current_resource_id), 'list: current_resource_id is not defined');
+            Iccbl.assert( !_.isUndefined(current_resource_id), 
+                    'list: current_resource_id is not defined');
 
             var current_view = this.model.get('current_view');
-            Iccbl.assert( !_.isUndefined(current_view), 'list: current_view is not defined');
+            Iccbl.assert(!_.isUndefined(current_view), 
+                    'list: current_view is not defined');
 
             var current_options = _.clone(this.model.get('current_options'));
-            Iccbl.assert( !_.isUndefined(current_options), 'list: current_options is not defined');
+            Iccbl.assert(!_.isUndefined(current_options), 
+                         'list: current_options is not defined');
 
             var current_ui_resource = this.model.get('ui_resources')[current_resource_id];
-            Iccbl.assert( !_.isUndefined(current_ui_resource), 'list: current_ui_resource is not defined for current_resource_id: ' + current_resource_id );
+            Iccbl.assert(!_.isUndefined(current_ui_resource), 
+                         'list: current_ui_resource is not defined for current_resource_id: ' + 
+                         current_resource_id );
 
             var current_scratch = this.model.get('current_scratch');
             this.model.set({ current_scratch: {} });
@@ -56,11 +62,15 @@ define([
 
             }else if (current_view === 'list'){
                 // TODO: move the nested options up into the model
-                var options = _.extend( {}, this.model.get('list_defaults'), current_ui_resource, current_options );
+                var options = _.extend( 
+                        {}, this.model.get('list_defaults'), 
+                        current_ui_resource, current_options );
                 if(!_.isUndefined(current_ui_resource['options'])){
                     var resource_defined_options = current_ui_resource['options'];
                     _.each(_.keys(resource_defined_options), function(key){
-                        current_options[key] = _.extend({}, current_options[key], resource_defined_options[key]);
+                        current_options[key] = _.extend(
+                                {}, current_options[key], 
+                                resource_defined_options[key]);
                     });
                     self.model.set({'current_options': current_options });
                 }
@@ -79,6 +89,7 @@ define([
                 Iccbl.getSchema(options.url_schema, createList);
 
             }else if (current_view == 'edit' ){
+            	console.log('-- edit view --');
                 var createEdit = function(schemaResult, model){
                     var editView =
                         new EditViewForms({ model: model},
@@ -91,8 +102,10 @@ define([
                     self.render();
                 };
 
-                if(_.isUndefined(current_scratch.schemaResult) ||_.isUndefined(current_scratch.model)){  // allow reloading
-                    var resource_url = current_ui_resource.url_root + '/' + current_ui_resource.api_resource;
+                if(_.isUndefined(current_scratch.schemaResult) 
+                        ||_.isUndefined(current_scratch.model)){  // allow reloading
+                    var resource_url = current_ui_resource.url_root + 
+                            '/' + current_ui_resource.api_resource;
                     var schema_url =  resource_url + '/schema';
                     var _key = Iccbl.getKey(current_options);
                     var url = resource_url  + '/' + _key;
@@ -121,8 +134,10 @@ define([
                     self.render();
                 };
 
-                if(_.isUndefined(current_scratch.schemaResult) ||_.isUndefined(current_scratch.model)){  // allow reloading
-                    var resource_url = current_ui_resource.url_root + '/' + current_ui_resource.api_resource;
+                if(_.isUndefined(current_scratch.schemaResult) 
+                        ||_.isUndefined(current_scratch.model)){  // allow reloading
+                    var resource_url = current_ui_resource.url_root + 
+                            '/' + current_ui_resource.api_resource;
                     var schema_url =  resource_url + '/schema';
                     var _key = Iccbl.getKey(current_options);
                     var url = resource_url  + '/' + _key;
@@ -170,11 +185,14 @@ define([
                             self.render();
                         };
 
-                        if(_.isUndefined(options.user_schema ) ||_.isUndefined(options.user_model)){
+                        if(_.isUndefined(options.user_schema ) 
+                                ||_.isUndefined(options.user_model)){
                             var resource_url = options.url_root + '/user';
                             var id = Iccbl.getKey(options.current_options);
 
-                            Iccbl.getSchemaAndModel2(resource_url, id, function(schemaResult, model){
+                            Iccbl.getSchemaAndModel2(
+                                    resource_url, id, 
+                                    function(schemaResult, model){
                                 options.user_model = model;
                                 options.user_schema = schemaResult;
                                 setView();
@@ -184,8 +202,8 @@ define([
                         }
                     })();
                 }else if(current_resource_id == 'groups'){
-
-                    (function() { // TODO: deal with the hoisting mess here & elsewhere
+                    // TODO: deal with the hoisting mess here & elsewhere
+                    (function() { 
                         console.log('setup usergroup detail view');
                         var options = {
                             url_root: current_ui_resource.url_root,
@@ -226,8 +244,10 @@ define([
                         self.render();
                     };
 
-                    if(_.isUndefined(current_scratch.schemaResult) ||_.isUndefined(current_scratch.model)){  // allow reloading
-                        var resource_url = current_ui_resource.url_root + '/' + current_ui_resource.api_resource;
+                    if(_.isUndefined(current_scratch.schemaResult) 
+                            ||_.isUndefined(current_scratch.model)){  // allow reloading
+                        var resource_url = current_ui_resource.url_root + 
+                                '/' + current_ui_resource.api_resource;
                         var schema_url =  resource_url + '/schema';
                         var _key = Iccbl.getKey(current_options);
                         var url = resource_url  + '/' + _key;

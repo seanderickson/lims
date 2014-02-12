@@ -17,9 +17,11 @@ from django.db.models import Q
 from tastypie.exceptions import NotFound, ImmediateHttpResponse, TastypieError
 from tastypie.bundle import Bundle
 from tastypie.authorization import Authorization
-from tastypie.authentication import BasicAuthentication, SessionAuthentication, MultiAuthentication
+from tastypie.authentication import BasicAuthentication, SessionAuthentication,\
+    MultiAuthentication
 from tastypie.constants import ALL, ALL_WITH_RELATIONS
-from tastypie import fields # NOTE: required for dynamic resource field definitions using eval
+# NOTE: required for dynamic resource field definitions using eval
+from tastypie import fields 
 from tastypie.resources import Resource
 from tastypie.utils.urls import trailing_slash
 
@@ -35,8 +37,10 @@ class LoggingMixin(Resource):
     '''
     intercepts obj_create, obj_update and creates an ApiLog entry for the action
     Note: whatever is being extended with the LoggingMixin must also define a
-    "detail_uri_kwargs" method that returns an _ordered_dict_, since we log the kwargs as ordered args.
-    ** note: "detail_uri_kwargs" returns the set of lookup keys for the resource URI construction.
+    "detail_uri_kwargs" method that returns an _ordered_dict_, since we log the 
+    kwargs as ordered args.
+    ** note: "detail_uri_kwargs" returns the set of lookup keys for the resource 
+    URI construction.
     '''
     def obj_create(self, bundle, **kwargs):
         logger.info(str(('----log obj_create')))
@@ -44,8 +48,8 @@ class LoggingMixin(Resource):
         bundle = super(LoggingMixin, self).obj_create(bundle=bundle, **kwargs)
         logger.info(str(('object created', bundle.obj )))
         log = ApiLog()
-        log.username = bundle.request.user.username #self._meta.authentication.get_identifier(bundle.request) # see tastypie.authentication.Authentication
-        log.user_id = bundle.request.user.id #self._meta.authentication.get_identifier(bundle.request) # see tastypie.authentication.Authentication
+        log.username = bundle.request.user.username 
+        log.user_id = bundle.request.user.id 
         log.date_time = timezone.now()
         log.ref_resource_name = self._meta.resource_name
         log.api_action = str((bundle.request.method)).upper()
@@ -69,8 +73,8 @@ class LoggingMixin(Resource):
         super(LoggingMixin, self).obj_delete(bundle=bundle, **kwargs)
         
         log = ApiLog()
-        log.username = bundle.request.user.username #self._meta.authentication.get_identifier(bundle.request) # see tastypie.authentication.Authentication
-        log.user_id = bundle.request.user.id #self._meta.authentication.get_identifier(bundle.request) # see tastypie.authentication.Authentication
+        log.username = bundle.request.user.username 
+        log.user_id = bundle.request.user.id 
         log.date_time = timezone.now()
         log.ref_resource_name = self._meta.resource_name
         log.api_action = str((bundle.request.method)).upper()
@@ -88,7 +92,8 @@ class LoggingMixin(Resource):
     
     
     def _locate_obj(self, bundle, **kwargs):
-        # lookup the object, the same way that it would be looked up in ModelResource.obj_update
+        # lookup the object, the same way that it would be looked up in 
+        # ModelResource.obj_update
         if not bundle.obj or not self.get_bundle_detail_data(bundle):
             try:
                 lookup_kwargs = self.lookup_kwargs_with_identifiers(bundle, kwargs)
@@ -123,11 +128,11 @@ class LoggingMixin(Resource):
         intersect_keys = original_keys.intersection(updated_keys)
         
         log = ApiLog()
-        log.username = bundle.request.user.username #self._meta.authentication.get_identifier(bundle.request) # see tastypie.authentication.Authentication
-        log.user_id = bundle.request.user.id #self._meta.authentication.get_identifier(bundle.request) # see tastypie.authentication.Authentication
+        log.username = bundle.request.user.username 
+        log.user_id = bundle.request.user.id 
         log.date_time = timezone.now()
         log.ref_resource_name = self._meta.resource_name
-        log.api_action = str((bundle.request.method)).upper()#        log.uri,log.key = self.get_uri(bundle.request.get_full_path(), self._meta.resource_name, bundle.obj, bundle.data)
+        log.api_action = str((bundle.request.method)).upper()
         log.uri = self.get_resource_uri(bundle)
         log.key = '/'.join([str(x) for x in self.detail_uri_kwargs(bundle).values()])
         
@@ -139,10 +144,15 @@ class LoggingMixin(Resource):
         if len(removed_keys)>0: 
             log.removed_keys = json.dumps(removed_keys)
         
-        diff_keys = list(key for key in intersect_keys if original_bundle.data[key] != updated_bundle.data[key])
+        diff_keys = list(
+            key for key in intersect_keys 
+                if original_bundle.data[key] != updated_bundle.data[key])
         if len(diff_keys)>0: 
             log.diff_keys = json.dumps(diff_keys)
-            log.diffs = json.dumps(dict(zip(diff_keys, ([original_bundle.data[key],updated_bundle.data[key]] for key in diff_keys)  )) )
+            log.diffs = json.dumps(dict(
+                zip(diff_keys, 
+                    ([original_bundle.data[key],updated_bundle.data[key]] 
+                        for key in diff_keys )  )))
             
         # user can specify any valid, escaped json for this field
         if 'apilog_json_field' in bundle.data:
@@ -171,13 +181,15 @@ class ManagedResource(LoggingMixin):
         self.field_definition_scope = field_definition_scope
         self.meta_bootstrap_fields = ['resource_uri']
         
-        logger.debug(str(('---init resource', self.resource, self.scope, field_definition_scope)))
+        logger.debug(str(('---init resource', 
+                          self.resource, self.scope, field_definition_scope)))
         
         ManagedResource.resource_registry[self.scope] = self;
 
         # TODO: research why calling reset_filtering_and_ordering, as below, fails        
-        metahash = MetaHash.objects.get_and_parse(scope=self.scope, 
-                                                  field_definition_scope=field_definition_scope)
+        metahash = MetaHash.objects.get_and_parse(
+            scope=self.scope, 
+            field_definition_scope=field_definition_scope)
         for key,fieldhash in metahash.items():
             if 'filtering' in fieldhash and fieldhash['filtering']:
                 self.Meta.filtering[key] = ALL_WITH_RELATIONS
@@ -192,9 +204,13 @@ class ManagedResource(LoggingMixin):
         
     # local method  
     def reset_field_defs(self, scope):
-        logger.info(str(('----------reset_field_defs, ' , scope, 'registry', ManagedResource.resource_registry )))
+        logger.info(str((
+            '----------reset_field_defs, ' , scope, 'registry', 
+            ManagedResource.resource_registry )))
         resource = ManagedResource.resource_registry[scope]
-        logger.info(str(('----------reset_field_defs, resource_name' , resource._meta.resource_name, 'scope', scope, 'resource', resource )))
+        logger.info(str((
+            '----------reset_field_defs, resource_name' , 
+            resource._meta.resource_name, 'scope', scope, 'resource', resource )))
         resource.create_fields();
         resource.reset_filtering_and_ordering();
     
@@ -234,7 +250,8 @@ class ManagedResource(LoggingMixin):
         for field_name, field_obj in self.original_fields.items():
             if field_name in local_field_defs:
                 new_fields[field_name] = deepcopy(field_obj)
-            elif hasattr(self._meta, 'bootstrap_fields') and field_name in self._meta.bootstrap_fields:
+            elif ( hasattr(self._meta, 'bootstrap_fields') 
+                    and field_name in self._meta.bootstrap_fields ):
                 logger.debug('====== bootstrapping field: ' + field_name)
                 new_fields[field_name] = deepcopy(field_obj)
             elif field_name in self.meta_bootstrap_fields:
@@ -248,7 +265,8 @@ class ManagedResource(LoggingMixin):
             logger.debug(str(('virtual managed field:', field_name, field_def)))
             if 'json_field_type' in field_def and field_def['json_field_type']:
                 # TODO: use type to create class instances
-                # JSON fields are read only because they are hydrated in the hydrate_json_field method
+                # JSON fields are read only because they are hydrated in the 
+                # hydrate_json_field method
                 if field_def['json_field_type'] == 'fields.BooleanField':
                     new_fields[field_name] = eval(field_def['json_field_type'])(
                         attribute=field_name,
@@ -258,9 +276,12 @@ class ManagedResource(LoggingMixin):
                         attribute=field_name,readonly=True, blank=True, null=True) 
             else:
                 logger.debug('creating unknown field as a char: ' + field_name)
-                new_fields[field_name] = fields.CharField(attribute=field_name, readonly=True, blank=True, null=True)
+                new_fields[field_name] = fields.CharField(
+                    attribute=field_name, readonly=True, blank=True, null=True)
                 
-        logger.debug(str(('resource', self._meta.resource_name, self.scope, 'create_fields done: fields created', new_fields.keys() )))
+        logger.debug(str((
+            'resource', self._meta.resource_name, self.scope, 
+            'create_fields done: fields created', new_fields.keys() )))
         self.fields = new_fields
         return self.fields
 
@@ -269,17 +290,23 @@ class ManagedResource(LoggingMixin):
         logger.debug('------build_schema: ' + self.scope)
         try:
             schema = {}
-            schema['fields'] = deepcopy(MetaHash.objects.get_and_parse(scope=self.scope, field_definition_scope='fields.metahash'))
+            schema['fields'] = deepcopy(
+                MetaHash.objects.get_and_parse(
+                    scope=self.scope, field_definition_scope='fields.metahash'))
             
             if 'json_field' in schema['fields']: 
-                schema['fields'].pop('json_field')  # because we don't want this serialized directly (see dehydrate)
+                # because we don't want this serialized directly (see dehydrate)
+                schema['fields'].pop('json_field')  
             if not 'resource_uri' in schema['fields']:
                 schema['fields']['resource_uri'] = { 'visibility':[] }
             if not 'id' in schema['fields']:
                 schema['fields']['id'] = { 'visibility':[] }
             
-            logger.debug(str(('trying to locate resource information', self._meta.resource_name, self.scope)))
-            resource_def = MetaHash.objects.get(scope='resource', key=self._meta.resource_name)
+            logger.debug(str((
+                'trying to locate resource information', 
+                self._meta.resource_name, self.scope)))
+            resource_def = MetaHash.objects.get(
+                scope='resource', key=self._meta.resource_name)
         
             schema['resource_definition'] = resource_def.model_to_dict(scope='fields.resource')
         except Exception, e:
@@ -292,23 +319,26 @@ class ManagedResource(LoggingMixin):
         logger.debug('------build_schema,done: ' + self.scope)
         return schema
     
-    # implementation hook method, override to augment bundle, post dehydrate by the superclass
-    # used here to do the "hydrate_json_field"
     def dehydrate(self, bundle):
-        logger.debug(str(('------dehydrate: ', self.scope)) )
-
+        ''' 
+        Implementation hook method, override to augment bundle, post dehydrate
+        by the superclass used here to do the "hydrate_json_field"
+        '''
         if len(bundle.data) == 0 : return bundle
         
-        local_field_defs = MetaHash.objects.get_and_parse(scope=self.scope, field_definition_scope='fields.metahash')
-        for key in [ x for x,y in local_field_defs.items() if y.get('json_field_type') ]:
+        local_field_defs = MetaHash.objects.get_and_parse(
+            scope=self.scope, field_definition_scope='fields.metahash')
+        for key in [ 
+                x for x,y in local_field_defs.items() if y.get('json_field_type') ]:
             bundle.data[key] = bundle.obj.get_field(key);
-#            logger.info(str((key, bundle.data[key])))
         
         bundle.data['json_field'] = ''
-        bundle.data.pop('json_field') # json_field will not be part of the public API, it is for internal use only
-#        logger.info(str(('bundle.data', bundle.data)))
+        # json_field will not be part of the public API, it is for internal use
+        bundle.data.pop('json_field') 
         # override the resource_uri, since we want to export the permanent composite key
-#        bundle.data['resource_uri'] = self.build_resource_uri(self.resource, bundle.data) or bundle.data['resource_uri']
+#        bundle.data['resource_uri'] = 
+#             self.build_resource_uri(self.resource, bundle.data) or 
+#             bundle.data['resource_uri']
         
         return bundle
     
@@ -316,44 +346,57 @@ class ManagedResource(LoggingMixin):
     def hydrate_json_field(self, bundle):
         '''
         hydrate bundle data values that will be stuffed into the json_field
-        -Note: as mentioned elsewhere, for the initial load of the Metahash:fields, fields that
-        are JSON fields (to be stuffed into json_field) must be first defined as a scope='metahash:field',
-        then they can be set as attribute values on other fields in the second step.
+        -Note: as mentioned elsewhere, for the initial load of the 
+        Metahash:fields, fields that are JSON fields (to be stuffed into 
+        json_field) must be first defined as a record with a 
+        scope='metahash:field'; then they can be set as attribute values on 
+        other fields in the second step.
         '''
 #        bundle = super(JsonAndDatabaseResource, self).hydrate(bundle);
         
         logger.debug(str(('hydrate_json_field', bundle)))
         
         json_obj = {}
-        local_field_defs = MetaHash.objects.get_and_parse(scope=self.scope, field_definition_scope='fields.metahash', clear=True)
+        local_field_defs = MetaHash.objects.get_and_parse(
+            scope=self.scope, field_definition_scope='fields.metahash', clear=True)
         logger.debug(str(('local_field_defs',local_field_defs)))
         
-        # Use the tastypie field type that has been designated to convert each field in the json stuffed field just like it were a real db field
-        for key in [ str(x) for x,y in local_field_defs.items() if 'json_field_type' in y and y['json_field_type'] ]:
+        # Use the tastypie field type that has been designated to convert each
+        # field in the json stuffed field just like it were a real db field
+        for key in [ 
+            str(x) for x,y in local_field_defs.items() 
+                if 'json_field_type' in y and y['json_field_type'] ]:
             if key not in self.fields:
-                raise RuntimeError(str(('for the resource', self._meta.resource_name, 
-                    'the key to deserialize', key, 'was not defined as a resource field: fields.', self.fields.keys() )))
+                raise RuntimeError(str((
+                    'for the resource', self._meta.resource_name, 
+                    'the key to deserialize', key, 
+                    'was not defined as a resource field: fields.', 
+                    self.fields.keys() )))
             val = bundle.data.get(key,None)
             if val:
                 try:
-#                    logger.info(str(('get value for key: ', key, val )))
                     if hasattr(val, "strip"): # test if it is a string
-                        val = self.fields[key].convert(smart_text(val,'utf-8', errors='ignore'))
-#                        logger.info(str(('got value for key: ', key, val)))
-                    elif hasattr(val, "__getitem__") or hasattr(val, "__iter__"): # test if it is a sequence
+                        val = self.fields[key].convert(
+                            smart_text(val,'utf-8', errors='ignore'))
+                    # test if it is a sequence
+                    elif hasattr(val, "__getitem__") or hasattr(val, "__iter__"): 
                         val = [smart_text(x,'utf-8', errors='ignore') for x in val]
-#                    logger.info(str(('got',key, val)))
                     json_obj.update({ key:val })
                 except Exception, e:
                     # TODO: my my this is complicated, couldn't we just rethrow?
                     logger.error('ex', e)
                     extype, ex, tb = sys.exc_info()
                     formatted = traceback.format_exception_only(extype, ex)[-1]
-                    msg = str(('failed to convert', key, 'with value', val, 'message', formatted)).replace("'","")
+                    msg = str((
+                        'failed to convert', key, 'with value', val, 'message', 
+                        formatted)).replace("'","")
                     if key in self.fields:
-                        msg += str(('with tastypie field type', type(self.fields[key]) ))
+                        msg += str(('with tastypie field type', 
+                                    type(self.fields[key]) ))
                     e =  RuntimeError, msg
-                    logger.warn(str(('throw', e, tb.tb_frame.f_code.co_filename, 'error line', tb.tb_lineno)))
+                    logger.warn(str((
+                        'throw', e, tb.tb_frame.f_code.co_filename, 
+                        'error line', tb.tb_lineno)))
                     raise e
         bundle.data['json_field'] = json.dumps(json_obj);
         logger.debug(str(('--- hydrated:', bundle.data['json_field'])))
@@ -411,6 +454,13 @@ class ManagedResource(LoggingMixin):
 ##            return base_uri + new_key
 
     def detail_uri_kwargs(self, bundle_or_obj):
+        """
+        Override resources.ModelResource
+        Given a ``Bundle`` or an object (typically a ``Model`` instance),
+        it returns the extra kwargs needed to generate a detail URI.
+
+        By default, it uses the model's ``pk`` in order to create the URI.
+        """
         
         resource_name = self._meta.resource_name
         try:
@@ -502,9 +552,12 @@ class ManagedModelResource(ManagedResource, PostgresSortingResource):
 class MetaHashResource(ManagedModelResource):
     
     class Meta:
-        bootstrap_fields = ['scope', 'key', 'ordinal', 'json_field_type', 'json_field']
-        queryset = MetaHash.objects.filter(scope__startswith="fields.").order_by('scope','ordinal','key')
-        authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
+        bootstrap_fields = ['scope', 'key', 'ordinal', 'json_field_type', 
+                            'json_field']
+        queryset = MetaHash.objects.filter(
+            scope__startswith="fields.").order_by('scope','ordinal','key')
+        authentication = MultiAuthentication(
+            BasicAuthentication(), SessionAuthentication())
         authorization= Authorization()        
         ordering = []
         filtering = {} #{'scope':ALL, 'key':ALL}
@@ -516,9 +569,9 @@ class MetaHashResource(ManagedModelResource):
     def __init__(self, **kwargs):
         super(MetaHashResource,self).__init__(**kwargs)
     
-    # because the metahash resource is both a resource and the definer of json fields, 
-    # reset_field_defs after each create/update, in case, new json fields are defined,
-    # or in case ordering,filtering groups are updated
+    # because the metahash resource is both a resource and the definer of json 
+    # fields, reset_field_defs after each create/update, in case, new json 
+    # fields are defined,or in case ordering,filtering groups are updated
     def obj_create(self, bundle, **kwargs):
         bundle = super(MetaHashResource, self).obj_create(bundle, **kwargs);
         if getattr(bundle.obj,'scope').find('fields') == 0: #'fields.metahash':
@@ -975,14 +1028,18 @@ class UserResource(ManagedModelResource):
 
 class UserGroupResource(ManagedModelResource):
     
-    permissions = fields.ToManyField('reports.api.PermissionResource', 'permissions',related_name='groups', null=True) #, related_name='users', blank=True, null=True)
+    permissions = fields.ToManyField(
+        'reports.api.PermissionResource', 'permissions',related_name='groups', 
+        null=True) #, related_name='users', blank=True, null=True)
  
     # relational fields must be defined   
-    users = fields.ToManyField('reports.api.UserResource', 'users', related_name='groups', blank=True, null=True)
+    users = fields.ToManyField('reports.api.UserResource', 'users', 
+        related_name='groups', blank=True, null=True)
 
     class Meta:
         queryset = UserGroup.objects.all();
-        authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
+        authentication = MultiAuthentication(
+            BasicAuthentication(), SessionAuthentication())
         authorization= Authorization()        
 
         ordering = []
@@ -1005,8 +1062,6 @@ class UserGroupResource(ManagedModelResource):
 
     def build_schema(self):
         schema = super(UserGroupResource,self).build_schema()
-#        temp = [ x.ref_resource_name for x in self.Meta.queryset.distinct('ref_resource_name')]
-#        schema['extraSelectorOptions'] = { 'label': 'Resource', 'searchColumn': 'ref_resource_name', 'options': temp }
         return schema
     
     def dehydrate_permission_list(self, bundle):

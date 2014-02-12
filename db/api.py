@@ -10,14 +10,15 @@ from tastypie.utils import timezone
 from tastypie.exceptions import BadRequest
 from tastypie.utils.urls import trailing_slash
 from tastypie.authorization import Authorization
-from tastypie.authentication import BasicAuthentication, SessionAuthentication, MultiAuthentication
+from tastypie.authentication import BasicAuthentication, SessionAuthentication,\
+    MultiAuthentication
 from tastypie.constants import ALL, ALL_WITH_RELATIONS
 from tastypie import fields, utils
 
-from db.models import ScreensaverUser,Screen, LabHead, LabAffiliation, ScreeningRoomUser,\
-    ScreenStatusItem, ScreenResult, DataColumn, Library
-from lims.api import CursorSerializer, LimsSerializer, PostgresSortingResource, CsvBooleanField
-from reports.models import MetaHash, Vocabularies
+from db.models import ScreensaverUser,Screen, LabHead, LabAffiliation, \
+    ScreeningRoomUser, ScreenResult, DataColumn, Library
+from lims.api import CursorSerializer, LimsSerializer
+from reports.models import MetaHash
 from reports.api import ManagedModelResource, ManagedResource
 
         
@@ -403,7 +404,9 @@ class ScreenResource(ManagedModelResource):
         # also note the double underscore "__" is because we also don't want to match in the first clause.
         # We don't want "schema" since that reserved word is used by tastypie for the schema definition for the resource (used by the UI)
         return [
-            url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                   self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
                     
     def dehydrate(self, bundle):
@@ -502,7 +505,8 @@ class LibraryResource(ManagedModelResource):
 
     class Meta:
         queryset = Library.objects.all() #.order_by('facility_id')
-        authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
         authorization= Authorization()        
         resource_name = 'library'
         
@@ -515,11 +519,17 @@ class LibraryResource(ManagedModelResource):
         super(LibraryResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
-        # NOTE: this match "((?=(schema))__|(?!(schema))[\w\d_.-]+)" allows us to match any word, except "schema", and use it as the key value to search for.
-        # also note the double underscore "__" is because we also don't want to match in the first clause.
-        # We don't want "schema" since that reserved word is used by tastypie for the schema definition for the resource (used by the UI)
+        # NOTE: this match "((?=(schema))__|(?!(schema))[^/]+)" 
+        # allows us to match any word (any char except forward slash), 
+        # except "schema", and use it as the key value to search for.
+        # also note the double underscore "__" is because we also don't want to 
+        # match in the first clause.
+        # We don't want "schema" since that reserved word is used by tastypie 
+        # for the schema definition for the resource (used by the UI)
         return [
-            url(r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                       self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
                     
     def dehydrate(self, bundle):
@@ -528,7 +538,8 @@ class LibraryResource(ManagedModelResource):
     def build_schema(self):
         schema = super(LibraryResource,self).build_schema()
         temp = [ x.library_type for x in self.Meta.queryset.distinct('library_type')]
-        schema['extraSelectorOptions'] = { 'label': 'Type', 'searchColumn': 'library_type', 'options': temp }
+        schema['extraSelectorOptions'] = { 
+            'label': 'Type', 'searchColumn': 'library_type', 'options': temp }
         return schema
     
     def obj_create(self, bundle, **kwargs):
@@ -548,7 +559,8 @@ class LibraryResource(ManagedModelResource):
         of errors, even if there is only one.
         """
         
-        fields = MetaHash.objects.get_and_parse(scope='fields.library', field_definition_scope='fields.metahash')
+        fields = MetaHash.objects.get_and_parse(
+            scope='fields.library', field_definition_scope='fields.metahash')
         
         # cribbed from tastypie.validation.py - mesh data and obj values, then validate
         data = {}

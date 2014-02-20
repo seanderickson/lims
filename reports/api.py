@@ -1,20 +1,20 @@
+import datetime
 import json
 import logging
-import re
 import sys
 import os
 import traceback
 from collections import defaultdict, OrderedDict
 from copy import deepcopy
 from django.conf.urls import url
-from django.utils.encoding import smart_str, smart_text
+from django.utils.encoding import smart_text
 from django.utils import timezone
 from django.forms.models import model_to_dict
 from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.auth.models import User
 from django.db.models.aggregates import Max
 from django.db.models import Q
-from tastypie.exceptions import NotFound, ImmediateHttpResponse, TastypieError
+from tastypie.exceptions import NotFound, ImmediateHttpResponse
 from tastypie.bundle import Bundle
 from tastypie.authorization import Authorization
 from tastypie.authentication import BasicAuthentication, SessionAuthentication,\
@@ -29,6 +29,7 @@ from db.models import ScreensaverUser
 from lims.api import PostgresSortingResource, LimsSerializer, CsvBooleanField
 from reports.models import MetaHash, Vocabularies, ApiLog, Permission, UserGroup
 import lims.settings 
+from tastypie.utils.timezone import make_naive
         
 logger = logging.getLogger(__name__)
 
@@ -117,7 +118,10 @@ class LoggingMixin(Resource):
 
         if hasattr(bundle,'obj'): original_bundle.obj = bundle.obj
         original_bundle = self._locate_obj(original_bundle, **kwargs)
-
+        
+        # store and compare dehydrated outputs: 
+        # the api logger is concerned with what's sent out of the system, i.e.
+        # the dehydrated output, not the internal representations.
         original_bundle = super(LoggingMixin, self).full_dehydrate(original_bundle)
         updated_bundle = super(LoggingMixin, self).obj_update(bundle=bundle, **kwargs)
         updated_bundle = super(LoggingMixin, self).full_dehydrate(updated_bundle)
@@ -144,9 +148,27 @@ class LoggingMixin(Resource):
         if len(removed_keys)>0: 
             log.removed_keys = json.dumps(removed_keys)
         
-        diff_keys = list(
-            key for key in intersect_keys 
-                if original_bundle.data[key] != updated_bundle.data[key])
+        diff_keys = list()
+        
+        s = self._meta.serializer
+        for key in intersect_keys:
+            val1 = original_bundle.data[key]
+            val2 = updated_bundle.data[key]
+            # NOTE: Tastypie converts to tz naive on serialization; then it 
+            # forces it to the default tz upon deserialization (in the the 
+            # DateTimeField convert method); for the purpose of this comparison,
+            # then, make both naive.
+            if isinstance(val2, datetime.datetime):
+                val2 = make_naive(val2)
+            if val1 != val2: 
+                diff_keys.append(key)
+        # Note, simple equality not used, since the serialization isn't 
+        # symmetric, e.g. see datetimes, where tz naive dates look like UTC 
+        # upon serialization to the ISO 8601 format.
+        #         diff_keys = \
+        #             list( key for key in intersect_keys 
+        #                     if original_bundle.data[key] != updated_bundle.data[key])
+
         if len(diff_keys)>0: 
             log.diff_keys = json.dumps(diff_keys)
             log.diffs = json.dumps(dict(

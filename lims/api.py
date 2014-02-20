@@ -60,20 +60,19 @@ class BackboneSerializer(Serializer):
         return json.loads(content)
 
 
-class TimeZoneAwareDateSerializer(Serializer):
-    """
-    Our own serializer to format datetimes in ISO 8601 but with timezone
-    offset.
-    credit: http://www.tryolabs.com/Blog/2013/03/16/displaying-timezone-aware-dates-tastypie/
-    """
-    def format_datetime(self, data):
-#        logger.info(str(('formatting date', data)))
-        # If naive or rfc-2822, default behavior...
-        if is_naive(data) or self.datetime_formatting == 'rfc-2822':
-            return super(TimeZoneAwareDateSerializer, self).format_datetime(data)
- 
-        return data.isoformat()
- 
+# class TimeZoneAwareDateSerializer(Serializer):
+#     """
+#     Tastypie converts all datetimes to timezone-naive (UTC); this serializer 
+#     uses the full ISO 8601 format if the value isn't already naive.
+#     Note: even when the date is stripped of timezone information (tz naive), 
+#     when it is formatted for ISO 8601, it becomes a UTC time: as in:
+#     2010-12-16T00:00:00
+#     """
+#     def format_datetime(self, data): 
+#         if is_naive(data) or self.datetime_formatting == 'rfc-2822':
+#             return super(TimeZoneAwareDateSerializer, self).format_datetime(data)
+#  
+#         return data.isoformat()
 
 class CSVSerializer(Serializer):
     formats = ['json', 'jsonp', 'xml', 'yaml', 'html', 'plist', 'csv']
@@ -308,7 +307,7 @@ class CursorSerializer(Serializer):
         logger.info('done, wrote: %d' % i)
 
 
-class LimsSerializer(BackboneSerializer,TimeZoneAwareDateSerializer,CSVSerializer):
+class LimsSerializer(BackboneSerializer,CSVSerializer):
     ''' Combine all of the Serializers used by the API
     '''
 

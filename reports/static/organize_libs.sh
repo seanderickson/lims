@@ -3,6 +3,8 @@
 if [[ $# -lt 1 ]]
 then 
   echo "Usage: $0 [bower_dir] [dest_dir]"
+  echo "bower_dir - directory containing /bower_components dir"
+  echo "dest_dir - directory containing /js and /css dirs"
   exit $WRONG_ARGS
 fi
 
@@ -25,6 +27,7 @@ PACKAGES=(  'requirejs/require.js'
             'backgrid-select-all/backgrid-select-all.js'
             'backbone.stickit/backbone.stickit.js'
             'backbone-forms/distribution/backbone-forms.js'
+            'layoutmanager/backbone.layoutmanager.js'
             'lunr.js/lunr.js'
             'requirejs-text/text.js' 
             'bootstrap/dist/js/bootstrap.js'         

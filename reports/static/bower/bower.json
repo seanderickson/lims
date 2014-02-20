@@ -22,6 +22,7 @@
     "backbone.stickit": "~0.7.0",
     "backbone-forms": "~0.14.0",
     "backbone-pageable": "~1.4.5",
+    "layoutmanager": "~0.9.4"   
     "requirejs-text": "~2.0.10",
     "text": "~2.0.10",
     "requirejs": "~2.1.10",

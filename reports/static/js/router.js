@@ -1,10 +1,8 @@
 define([
   'jquery',
   'underscore',
-  'backbone',
-  'views/menu',
-  'views/list',
-], function($, _, Backbone, MenuView, ListView){
+  'backbone'
+], function($, _, Backbone) { //, MenuView, ListView){
 
   var AppRouter = Backbone.Router.extend({
 
@@ -116,49 +114,53 @@ define([
      */
     get_route: function(){
         var current_view = this.model.get('current_view');
-        Iccbl.assert( !_.isUndefined(current_view), 'router: current_view is not defined');
+        Iccbl.assert( !_.isUndefined(current_view), 
+                'router: current_view is not defined');
 
         var current_resource_id = this.model.get('current_resource_id');
-        Iccbl.assert( !_.isUndefined(current_resource_id), 'router: current_resource_id is not defined');
+        Iccbl.assert( !_.isUndefined(current_resource_id), 
+                'router: current_resource_id is not defined');
 
         var current_options = this.model.get('current_options');
-        Iccbl.assert( !_.isUndefined(current_options), 'router.get_route: current_options');
+        Iccbl.assert( !_.isUndefined(current_options), 
+                'router.get_route: current_options');
 
         var _route = current_view + '/' + current_resource_id;
 
-        console.log('getting route: ' + current_resource_id + ', ' + JSON.stringify(current_options));
         var route_fragment = '';
 
         if( ! _.isEmpty(current_options) ) {
-            if( current_view == 'list' ) { // in this case, parse the set of list options in the order needed for the route parsing
+            if( current_view == 'list' ) { 
                 route_fragment += '/' + this.get_list_route(current_options);
 
             }else if( current_view == 'detail' ){
                 route_fragment = '/';
                 var key = Iccbl.getKey(current_options);
                 if(!_.isEmpty(key)) route_fragment += key;
-                if(key.charAt(key.length-1) != '/' ) route_fragment += '/'; // TODO: cleanup code so no trailing slashes
-                if(!_.isEmpty(current_options['tab'])) route_fragment += 'tab/' + current_options.tab;
+
+                // TODO: cleanup code so no trailing slashes
+                if(key.charAt(key.length-1) != '/' ) route_fragment += '/'; 
+                if(!_.isEmpty(current_options['tab'])) 
+                    route_fragment += 'tab/' + current_options.tab;
 
 
                 var list_route = this.get_list_route(current_options);
                 if(!_.isEmpty(list_route)) route_fragment += '/';
                 route_fragment += list_route;
-                // _.each(this.LIST_ROUTE_ORDER, function(option){
-                    // if(_.has(current_options, option)){
-                        // route_fragment += '/' + option + '/' + current_options[option];
-                    // }
-                // });
             }else{
                 if(_.isString(current_options)){
                     route_fragment += '/' + current_options;
-                }else if(_.isArray(current_options)){ // an array is just a set of keys, to be separated by slashes
+                // an array is just a set of keys, to be separated by slashes
+                }else if(_.isArray(current_options)){ 
                     route_fragment = '/' + Iccbl.getKey(current_options);
-                }else if(_.isObject(current_options)){  // generic, option order not defined
-                    route_fragment = _.reduce(_.pairs(current_options), function(route, pair){
-
-                        return route + '/' + pair[0] + '/' + pair[1];
-                    }, route_fragment );
+                // generic, option order not defined
+                }else if(_.isObject(current_options)){  
+                    route_fragment = _.reduce(
+                            _.pairs(current_options), 
+                            function(route, pair){
+                                return route + '/' + pair[0] + '/' + pair[1];
+                            }, 
+                            route_fragment );
                 }
             }
         }

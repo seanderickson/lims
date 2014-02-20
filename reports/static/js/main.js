@@ -9,10 +9,9 @@ require.config({
     backgrid_filter: 'libs/backgrid-filter',
     backgrid_paginator: 'libs/backgrid-paginator',
     backgrid_select_all: 'libs/backgrid-select-all',
-//    backbone_modelbinder: 'libs/Backbone.ModelBinder',
     backbone_stickit: 'libs/backbone.stickit',
     backbone_forms: 'libs/backbone-forms', // TODO: evaluating vs. backbone.stickit
-//    'backbone-associations': 'libs/backbone-associations',
+    layoutmanager: 'libs/backbone.layoutmanager',
     bootstrap: 'libs/bootstrap',
     lunr: 'libs/lunr',
     text: 'libs/text',
@@ -75,9 +74,10 @@ require([
     'router',
     'bootstrap' // Note: Bootstrap does not return an object; it modifies the Jquery object with new methods
   ],
-    function($, _, Backbone, AppModel, AppView, AppRouter ) {
+    function($, _, Backbone, appModel, AppView, AppRouter ) {
 
-        // Augment the view prototype with this close utility function to prevent memory leaks
+        // Augment the view prototype with this close utility function to 
+        // prevent memory leaks
         // See: http://lostechies.com/derickbailey/2011/09/15/zombies-run-managing-page-transitions-in-backbone-apps/
         // Also, consider using the Marionette extension
         Backbone.View.prototype.close = function(){
@@ -91,8 +91,9 @@ require([
         if(_.isUndefined(window.logged_in) || window.logged_in != 'True' ){
         	window.location='/accounts/login/?next=' + window.location.pathname + window.location.hash;
         }
-        var appModel = new AppModel();
-        var appRouter = new AppRouter({ model: appModel });
+//        var appModel = new AppModel();
+        var appRouter = appModel.router = new AppRouter({ model: appModel });
+        
         var appView = new AppView({ model: appModel },{ router: appRouter});
         appView.render();
         Backbone.history = Backbone.history || new Backbone.History({});

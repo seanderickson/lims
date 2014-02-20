@@ -15,6 +15,7 @@ define([
             this.menuView = new MenuView({ model: this.model }, options);
             this.contentView = new ContentView({ model: this.model }, options);
 
+            // Set the document title
             Backbone.history.on('route', function(router, route, params) {
               var title = _.reduce(
                   params,

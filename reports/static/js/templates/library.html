@@ -1,0 +1,20 @@
+<div class="tabbable">
+    <ul class="nav nav-tabs">
+    <%
+        _.each(_.keys(tab_resources), function(key){
+            var tab_resource = tab_resources[key];
+            if(_.isUndefined(tab_resource)){
+                console.log('error, undefined ui_resource:' + JSON.stringify(key) );
+            }else{
+    %>
+                 <li id="<%= key %>" title="<%=tab_resource.description %>"><a href="#"><%= tab_resource.title %></a></li>
+    <%
+            }
+        });
+    %>
+    </ul>
+    <div class="tab-content">
+        <div class="tab-pane active" id="tab_container">
+        </div>
+    </div>
+</div>

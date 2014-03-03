@@ -1,12 +1,14 @@
 define([
   'jquery',
   'underscore',
-  'backbone'
-], function($, _, Backbone) { //, MenuView, ListView){
+  'backbone',
+  'models/app_state'
+], 
+function($, _, Backbone, appModel) { //, MenuView, ListView){
 
   var AppRouter = Backbone.Router.extend({
 
-    routes: {
+/*    routes: {
         '': 'index',
         'home(/home)': 'toHome',
         'list/:ui_resource_id(/rpp/:rpp)(/page/:page)(/order/:orderBy)(/search/:searchBy)(/)': 'toList', // note: can tolerate missing routes, but not out of order
@@ -14,30 +16,44 @@ define([
         'menu/:action' : 'toMenu',
         '*unknownAction': 'unknownAction',
     },
+*/
+    
     LIST_ROUTE_ORDER: ['rpp', 'page','order','search'],
+    
+    initialize : function() {
+      this.route(/(.*)/, "toPath", this.toPath);
 
-    initialize: function(attributes, options){
-        console.log('initialize router...' );
-        // since the router isn't a view, it doesn't have a model, creating one here
-        this.model = attributes.model;
-        this.routesHit = 0;
+      this.routesHit = 0;
 
         // _.bindAll(this,'change_route'); // make this available to change_route
-        // this.model.bind('change:route', this.change_route );
-        // this.listenTo(this.model, 'change:route', this.change_route);
+        // appModel.bind('change:route', this.change_route );
+        // this.listenTo(appModel, 'change:route', this.change_route);
 
         Backbone.history.on('route', function(router, route, params) {
                 this.routesHit++;
                 //console.log('detected route: ' + route + ', params: ' + JSON.stringify(params) + ', routesHit:' + this.routesHit);
              }, this);
 
-        this.listenTo(this.model, 'change:current_view', this.model_set_route);
-        this.listenTo(this.model, 'change:current_resource_id', this.model_set_route);
-        this.listenTo(this.model, 'change:current_options', this.model_set_route);
+        this.listenTo(appModel, 'change:uriStack', this.uriStackChange);
+        
+        // TODO: 2014-02-10, removed; just use resource_id & options
+//        this.listenTo(appModel, 'change:current_view', this.model_set_route);
+//        this.listenTo(appModel, 'change:current_resource_id', this.model_set_route);
+//        this.listenTo(appModel, 'change:current_options', this.model_set_route);
 
         console.log('router initialized...');
     },
 
+    
+    toPath: function(path){
+      console.log('toPath: ' + path);
+      var uriStack = [];
+      if (path) uriStack = path.split('/');
+      appModel.set({ uriStack: uriStack }, { source: this });
+//      appModel.set({ path: path });
+    },
+
+    
     back: function() {  // TODO: not used yet, from example, how to have a safe back action
         if(this.routesHit > 1) {
           console.log('back, routesHit: ' + this.routesHit);
@@ -112,16 +128,51 @@ define([
     /**
      * Generate a route that can be used by navigate, from the current state.
      */
-    get_route: function(){
-        var current_view = this.model.get('current_view');
+    get_route: function(stack){
+      return stack.join('/');
+    },
+    
+    
+    uriStackChange: function(model, vals, options){
+      if(options.source === this){
+        console.log('self generated uristack change');
+        return;
+      }else{
+        this.model_set_route();
+      }
+    },
+    
+    model_set_route: function() {
+      var uriStack = appModel.get('uriStack');
+      console.log('model_set_route: ' + JSON.stringify(uriStack));
+      var route = this.get_route(uriStack);
+
+      // trigger false to suppress further parsing, 
+      // replace false (default) to create browser history
+      var options = { trigger: false }; // , replace:false
+      var routing_options = appModel.get('routing_options');
+      appModel.set({ routing_options: {} });
+      if(!_.isUndefined(routing_options)){
+          options = _.extend(options, routing_options);
+      }
+
+      this.navigate( route, options );
+      
+    },
+
+    /**
+     * Generate a route that can be used by navigate, from the current state.
+     */
+    get_route_bak: function(){
+        var current_view = appModel.get('current_view');
         Iccbl.assert( !_.isUndefined(current_view), 
                 'router: current_view is not defined');
 
-        var current_resource_id = this.model.get('current_resource_id');
+        var current_resource_id = appModel.get('current_resource_id');
         Iccbl.assert( !_.isUndefined(current_resource_id), 
                 'router: current_resource_id is not defined');
 
-        var current_options = this.model.get('current_options');
+        var current_options = appModel.get('current_options');
         Iccbl.assert( !_.isUndefined(current_options), 
                 'router.get_route: current_options');
 
@@ -169,14 +220,16 @@ define([
         //console.log('get_route: ' + _route);
         return _route;
     },
+    
+    
 
-    model_set_route: function(){
+    model_set_route_bak: function(){
         console.log('model_set_route');
         // trigger false to suppress further parsing, 
         // replace false (default) to create browser history
         var options = { trigger: false }; // , replace:false
-        var routing_options = this.model.get('routing_options');
-        this.model.set({ routing_options: {} });
+        var routing_options = appModel.get('routing_options');
+        appModel.set({ routing_options: {} });
         if(!_.isUndefined(routing_options)){
             options = _.extend(options, routing_options);
         }
@@ -188,7 +241,7 @@ define([
 
     index: function(){
         console.log("Index route has been called..");
-        this.model.set({ menu_item:'home', view: 'home' });
+        appModel.set({ menu_item:'home', view: 'home' });
     },
 
     toList: function(ui_resource_id, rpp, page, orderBy, searchBy ){
@@ -223,10 +276,10 @@ define([
             });
         }
 
-        this.model.set({ current_view: {}, current_options: {} }, {silent:true});
+        appModel.set({ current_view: {}, current_options: {} }, {silent:true});
 
         // console.log('toList model.set: ' + ui_resource_id + ', ' + JSON.stringify(_content_options));
-        this.model.set({
+        appModel.set({
             current_options: _content_options,
             current_view: 'list',
             current_resource_id: ui_resource_id,
@@ -303,7 +356,7 @@ define([
         }
 
 
-        this.model.set({
+        appModel.set({
             current_view: 'edit',
             current_resource_id: ui_resource_id,
             current_options: _current_options,
@@ -330,7 +383,6 @@ define([
             _current_options.rpp = parseInt(rpp);
         }
 
-
         if( _.isString(orderBy) ){
             _current_options.order = this.parseOrder(orderBy);
         }
@@ -346,7 +398,7 @@ define([
             });
         }
 
-        this.model.set({
+        appModel.set({
             current_view: 'detail',
             current_resource_id: ui_resource_id,
             current_options: _current_options,
@@ -356,7 +408,7 @@ define([
     },
 
     toHome: function(){
-        this.model.set({
+        appModel.set({
             current_view: 'home',
             current_resource_id: 'home',
             current_options: {}
@@ -364,7 +416,7 @@ define([
     },
 
     toMenu: function(action){
-        this.model.set({
+        appModel.set({
             current_view: 'menu',
             current_resource_id: action,
             current_options: {}

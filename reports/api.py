@@ -491,7 +491,9 @@ class ManagedResource(LoggingMixin):
 #            logger.info(str(('found resource', resource)))
             
             # TODO: memoize
-            kwargs = OrderedDict() # note use an ordered dict here so that the args can be returned as a positional array for 
+            # note use an ordered dict here so that the args can be returned as
+            # a positional array for 
+            kwargs = OrderedDict() 
             for x in resource['id_attribute']:
                 val = ''
                 if isinstance(bundle_or_obj, Bundle):
@@ -507,7 +509,9 @@ class ManagedResource(LoggingMixin):
             
             return kwargs
         except Exception, e:
-            logger.warn(str(('unable to locate resource information[id_attribute]; has it been loaded yet for this resource?', resource_name, e)))
+            logger.warn(str((
+                'unable to locate resource information[id_attribute];'
+                ' has it been loaded yet for this resource?', resource_name, e)))
         # Fall back to base class implementation (using the declared primary key only, for ModelResource)
         # This is useful in order to bootstrap the ResourceResource
         return super(ManagedResource,self).detail_uri_kwargs(bundle_or_obj)
@@ -691,6 +695,9 @@ class ResourceResource(ManagedModelResource):
         schema = super(ResourceResource,self).build_schema()
         temp = [ x.scope for x in self.Meta.queryset.distinct('key')]
         schema['extraSelectorOptions'] = { 'label': 'Resource', 'searchColumn': 'key', 'options': temp }
+        
+        # TODO: get the resourceSchema and plug it in here as well
+        
         return schema
 
 class ApiLogResource(ManagedModelResource):

@@ -17,3 +17,4 @@ patch,metahash,metahash_fields_apilog.csv
 patch,metahash,metahash_fields_user.csv
 patch,metahash,metahash_fields_usergroup.csv
 patch,metahash,metahash_fields_permission.csv
+patch,metahash,metahash_fields_librarycopy.csv

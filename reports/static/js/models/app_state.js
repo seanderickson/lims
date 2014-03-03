@@ -2,14 +2,26 @@ define([
   'jquery',
   'underscore',
   'backbone',
-], function($, _, Backbone ){
+  'iccbl_backgrid'
+], function($, _, Backbone, Iccbl ){
+  
+  var API_VERSION = 'api/v1';
+  var REPORTS_API_URI = '/reports/' + API_VERSION;
+  var DB_API_URI = '/db/' + API_VERSION;
+  
   // TODO: feed AppState from the server
   var AppState = Backbone.Model.extend({
 
     defaults: {
+
+      // TODO: deprecate these variables
+      // use the REPORTS_API_URI, and DB_API_URI defined below
       root_url: '/reports',  // used for the backbone history
       api_root_url: '/reports/api/v1',
 
+      path: '',
+      actualStack: [],
+      
       // NOTE: in backbone, change notifications are only detected for the 
       // object identity.  For this reason, each of the following state items is
       // kept at the top level.
@@ -94,8 +106,10 @@ define([
           },
         }
       },
-
-      ui_resources: {   /* TODO: *all* of this will come from the resourceResource */
+      
+      // will search ui_resources for each of the items identified as resources on the stack
+      // TODO: this should also come from the API?
+      ui_resources: {   
           admin: {
               title: 'Admin',
               route: '',
@@ -105,7 +119,7 @@ define([
           },
           home: {
               title: 'Screensaver Reporting',
-              route: '',
+              route: '/',
               view: 'HomeView',
               content_header: 'Welcome',
               description: 'Menu starting point'
@@ -116,7 +130,7 @@ define([
               title: 'Field Information',
               route: 'list/metahash',
               list_view: 'ListView',
-              detail_view: 'DetailView',
+              detailView: 'DetailView',
               api_resource: 'metahash',
               url_root: '/reports/api/v1',
               options: { search: {'scope__exact': 'fields.metahash'}},
@@ -128,7 +142,7 @@ define([
               title: 'Resource Information',
               route: 'list/resource',
               list_view: 'ListView',
-              detail_view: 'DetailView',
+              detailView: 'DetailView',
               api_resource: 'resource',
               url_root: '/reports/api/v1',
               description: 'Control resource information'
@@ -139,7 +153,7 @@ define([
               title: 'Application Vocabularies',
               route: 'list/vocabularies',
               list_view: 'ListView',
-              detail_view: 'DetailView',
+              detailView: 'DetailView',
               api_resource: 'vocabularies',
               url_root: '/reports/api/v1',
               description: 'Enter controlled vocabularies'
@@ -150,7 +164,7 @@ define([
               title: 'Change logs',
               route: 'list/apilog',
               list_view: 'ListView',
-              detail_view: 'DetailView',
+              detailView: 'DetailView',
               api_resource: 'apilog',
               url_root: '/reports/api/v1',
               description: 'Change logs'
@@ -160,7 +174,7 @@ define([
               title: 'Users',
               route: 'list/users',
               list_view: 'ListView',
-              detail_view: 'DetailView',
+              detailView: 'DetailView',
               api_resource: 'user',
               url_root: '/reports/api/v1',
               description: 'Django user'
@@ -170,7 +184,7 @@ define([
               title: 'User Groups',
               route: 'list/groups',
               list_view: 'ListView',
-              detail_view: 'DetailView',
+              detailView: 'DetailView',
               api_resource: 'usergroup',
               url_root: '/reports/api/v1',
               description: 'User Groups'
@@ -180,7 +194,7 @@ define([
               title: 'Permissions',
               route: 'list/permissions',
               list_view: 'ListView',
-              detail_view: 'DetailView',
+              detailView: 'DetailView',
               api_resource: 'permission',
               url_root: '/reports/api/v1',
               description: 'Permissions'
@@ -191,7 +205,7 @@ define([
               title: 'Screensaver Users',
               route: 'list/screensaveruser',
               list_view: 'ListView',
-              detail_view: 'DetailView',
+              detailView: 'DetailView',
               api_resource: 'screensaveruser',
               url_root: '/db/api/v1',
               description: 'View user information'
@@ -202,7 +216,7 @@ define([
               title: 'Screeners',
               route: 'list/screeners',
               list_view: 'ListView',
-              detail_view: 'DetailView',
+              detailView: 'DetailView',
               api_resource: 'screensaveruser',
               url_root: '/db/api/v1',
               description: 'View user information',
@@ -214,7 +228,7 @@ define([
               title: 'Staff Users',
               route: 'list/staff',
               list_view: 'ListView',
-              detail_view: 'DetailView',
+              detailView: 'DetailView',
               api_resource: 'screensaveruser',
               url_root: '/db/api/v1',
               description: 'View user information',
@@ -225,7 +239,7 @@ define([
               title: 'Screens',
               route: 'list/screen',
               list_view: 'ListView',
-              detail_view: 'DetailView',
+              detailView: 'DetailView',
               api_resource: 'screen',
               url_root: '/db/api/v1',
               description: 'View screen information',
@@ -236,7 +250,7 @@ define([
               title: 'Small Molecule',
               route: 'list/small_molecule_screens',
               list_view: 'ListView',
-              detail_view: 'DetailView',
+              detailView: 'DetailView',
               api_resource: 'screen',
               url_root: '/db/api/v1',
               description: 'View small molecule screen information',
@@ -247,7 +261,7 @@ define([
               title: 'RNAi',
               route: 'list/rnai_screens',
               list_view: 'ListView',
-              detail_view: 'DetailView',
+              detailView: 'DetailView',
               api_resource: 'screen',
               url_root: '/db/api/v1',
               description: 'View rnai screen information',
@@ -258,7 +272,7 @@ define([
               title: 'Libraries',
               route: 'list/library',
               list_view: 'ListView',
-              detail_view: 'DetailView',
+              detailView: 'LibraryView',
               api_resource: 'library',
               url_root: '/db/api/v1',
               description: 'View library information'
@@ -268,7 +282,7 @@ define([
               title: 'Small Molecule',
               route: 'list/smallmoleculelibrary',
               list_view: 'ListView',
-              detail_view: 'DetailView',
+              detailView: 'LibraryView',
               api_resource: 'library',
               url_root: '/db/api/v1',
               description: 'View Small Molecule Library information',
@@ -279,7 +293,7 @@ define([
               title: 'RNAi',
               route: 'list/rnalibrary',
               list_view: 'ListView',
-              detail_view: 'DetailView',
+              detailView: 'LibraryView',
               api_resource: 'library',
               url_root: '/db/api/v1',
               description: 'View RNAi library information',
@@ -298,11 +312,167 @@ define([
     },
 
     initialize : function() {
-        console.log('AppState initialized');
+      this.set('schemas', {});
+      console.log('AppState initialized');
     },
+        
+    start: function(callBack){
+      
+      this.getResources(callBack);
+    },
+
+    getResources: function(callBack){
+      var self = this;
+      // Retrieve the resource definitions from the server
+      var resourceUrl = self.reportsApiUri + '/resource'
+      Iccbl.getCollectionOnClient(resourceUrl, function(collection){
+        console.log('got resources: ' + resources);
+        
+        // TODO: store the apiUri on the resource in the server
+        var resourcesCollection = collection.toJSON();
+        _.each(resourcesCollection,function(resource){
+          resource.apiUri = '/' + resource.api_name + '/' + 
+            self.apiVersion + '/' + resource.key;
+        });
+
+        // make a hash out of the resources, keyed by the resource id key
+        var ui_resources = self.get('ui_resources');
+        var resources = {};
+        _.each(resourcesCollection, function(resource){
+          resources[resource.key] = resource;
+          if (_.has(ui_resources, resource.key)) {
+            ui_resources[resource.key] = _.extend(
+                {}, ui_resources[resource.key], resource);
+          } else {
+            ui_resources[resource.key] = _.extend({},resource);
+          }
+        });
+
+        // now combine that with the ui_resources hash
+        _.each(_.keys(ui_resources), function(key){
+          var ui_resource = ui_resources[key];
+          // then augment the ui resources with their api_resource, if different
+          if ( key !== ui_resource.api_resource ) {
+            ui_resources[key] = _.extend(
+                {}, resources[ui_resource.api_resource], ui_resource);
+          }
+        });
+                
+        self.set('resources', resources);
+        self.set('resources', ui_resources);
+        callBack();
+      });
+    },
+
+    getSchema: function(resourceId, callBack) {
+      var self = this;
+      var schemas = this.get('schemas');
+      if(_.has(schemas, resourceId)){
+        callBack(schemas[resourceId]);
+      }
+      
+      var resource = self.getResource(resourceId);
+      
+      var schema_url = resource.apiUri + '/schema'
+      Iccbl.getSchema(schema_url, function(schema){
+        schemas[resourceId] = schema;
+        callBack(schema);
+      });
+    },
+    
+    /**
+     * Update a model with the member attributes needed for the system:
+     * - resource
+     * - resourceSchema
+     * - key
+     */
+    updateModel: function(resourceId, key, model, callBack) {
+      var resource = this.getResource(resourceId);
+      this.getSchema(resourceId, function(schema){
+        model.key = key;
+        model.resource = resource;
+        model.resourceSchema = schema;
+        callBack(model);
+      });      
+    },
+    
+    /**
+     * Get a model from the server
+     */
+    getModel: function(resourceId, key, callBack) {
+      
+      var resource = this.getResource(resourceId);
+      this.getSchema(resourceId, function(schema){
+        var url = resource.apiUri + '/' + key;
+
+        var ModelClass = Backbone.Model.extend({
+          url : url,
+          defaults : {}
+        });
+        var instance = new ModelClass();
+        instance.fetch({
+            success : function(model) {
+              model.resourceSchema = schema;
+              model.resource = resource;
+              model.key = key;
+              callBack(model);
+            },
+            error : function(model, response, options) {
+                //console.log('error fetching the model: '+ model + ', response:
+                // ' + JSON.stringify(response));
+                var msg = 'Error locating resource: ' + url;
+                var sep = '\n';
+                if (!_.isUndefined(response.status))
+                    msg += sep + response.status;
+                if (!_.isUndefined(response.statusText))
+                    msg += sep + response.statusText;
+                if (!_.isEmpty(response.responseText))
+                    msg += sep + response.responseText;
+                window.alert(msg);
+                // TODO: use Bootstrap inscreen alert classed message div
+            }
+        });
+      });
+    },
+    
+    
+    getResource: function(resourceId){
+      var uiResources = this.get('ui_resources');
+      var resources = this.get('resources');
+      if(!_.has(uiResources, resourceId)) {
+        if(!_.has(resources, resourceId)) {
+          window.alert('Unknown resource: ' + resourceId);
+          throw "Unknown resource: " + resourceId;
+        }
+        return resources[resourceId];
+      }
+      var uiResource = uiResources[resourceId];
+      return uiResource;
+//      // test for nested resource
+//      if (_.has(uiResource, 'api_resource') 
+//          && resourceId !=== uiResource.api_resource ){
+//        
+//      }
+//      return this.getResource(uiResources[resourceId].api_resource);
+//      if (!_.has(resources, resourceId)){
+//      }
+//      return ;
+    }
   });
 
 //  return AppState;
   var appState = new AppState();
+  
+  
+  
+
+  appState.resources = {};   // TO be retrieved from the server  
+  
+  appState.apiVersion = API_VERSION;
+  appState.reportsApiUri = REPORTS_API_URI;
+  appState.dbApiUri = DB_API_URI;
+  appState.LIST_ARGS = ['page','rpp','order','search'];      
+  
+  
   return appState;
 });

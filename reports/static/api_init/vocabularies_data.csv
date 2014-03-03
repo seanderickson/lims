@@ -1,7 +1,8 @@
 key,scope,resource_uri,ordinal,comment,description,title
-list,field.visibility,/reports/api/v1/vocabularies/field.visibility/list/,0,,"Allow visibility in list views","Visible in list views"
-edit,field.visibility,/reports/api/v1/vocabularies/field.visibility/edit/,4,,"Allow visibility in the edit form","Visible in edit forms"
-detail,field.visibility,/reports/api/v1/vocabularies/field.visibility/detail/,0,,"Allow visibility in detail views","Visible in detail views"
+list,field.visibility,/reports/api/v1/vocabularies/field.visibility/list/,1,,"Allow visibility in list views","Visible in list views"
+edit,field.visibility,/reports/api/v1/vocabularies/field.visibility/edit/,2,,"Allow visibility in the edit form","Visible in edit forms"
+detail,field.visibility,/reports/api/v1/vocabularies/field.visibility/detail/,3,,"Allow visibility in detail views","Visible in detail views"
+create,field.visibility,/reports/api/v1/vocabularies/field.visibility/create/,4,,"Allow visibility in the edit form when creating.","Visible when creating"
 Select,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/choice/,0,"The field referred to by this record is a single choice vocabulary term","Single choice field",Select
 Radio,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/Radio/,0,,"Radio selector",Radio
 integer,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/integer/,0,,"This is an integer type",Integer
@@ -88,3 +89,7 @@ never_initiated,screen.status,/reports/api/v1/vocabularies/screen.status/never_i
 dropped_technical,screen.status,/reports/api/v1/vocabularies/screen.status/dropped_technical/,4,,"Dropped - Technical","Dropped - Technical"
 dropped_resources,screen.status,/reports/api/v1/vocabularies/screen.status/dropped_resources/,4,,"Dropped - Resources","Dropped - Resources"
 transferred_to_broad_institute,screen.status,/reports/api/v1/vocabularies/screen.status/transferred_to_broad_institute/,5,,"Transferred to Broad Institute","Transferred to Broad Institute"
+cherry_pick_source_plates,librarycopy.usage_type,/reports/api/v1/vocabularies/librarycopy.usage_type/cherry_pick_source_plates/,1,,"Cherry Pick Source Plates","Cherry Pick Source Plates"
+library_screening_plates,librarycopy.usage_type,/reports/api/v1/vocabularies/librarycopy.usage_type/library_screening_plates/,2,,"Library Screening Plates","Library Screening Plates"
+stock_plates,librarycopy.usage_type,/reports/api/v1/vocabularies/librarycopy.usage_type/stock_plates/,3,,"Stock Plates","Stock Plates"
+96_stock_plates,librarycopy.usage_type,/reports/api/v1/vocabularies/librarycopy.usage_type/96_stock_plates/,4,,"96 Stock Plates","96 Stock Plates"

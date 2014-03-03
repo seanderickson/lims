@@ -28,8 +28,6 @@ define([
 
         initialize : function(attributes, options) {
             var self = this;
-            Backgrid.requireOptions(options, ["columns", "collection", "schemaResult"]);
-
             this.options = options;
             var schemaResult = this.schemaResult = options.schemaResult;
 
@@ -123,10 +121,6 @@ define([
                 self.$("#extra-selector-div").append(self.extraSelectorInstance.render().$el);
             }
 
-            var page = this.model.get('page');
-            if(!_.isUndefined(page)){
-                this.grid.collection.setPage(page);
-            }
             this.delegateEvents();
             return this;
         }

@@ -458,32 +458,6 @@ class CollaboratorLink(models.Model):
     class Meta:
         db_table = 'collaborator_link'
 
-class Copy(models.Model):
-    version = models.IntegerField()
-    usage_type = models.TextField()
-    library = models.ForeignKey('Library')
-    name = models.TextField()
-    copy_id = models.IntegerField(primary_key=True)
-    comments = models.TextField(blank=True)
-    date_created = models.DateTimeField()
-    created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
-    date_plated = models.DateField(null=True, blank=True)
-    primary_plate_status = models.TextField()
-    primary_plate_location_id = models.IntegerField(null=True, blank=True)
-    plates_available = models.IntegerField(null=True, blank=True)
-    plate_locations_count = models.IntegerField(null=True, blank=True)
-    primary_well_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
-    primary_well_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
-    min_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
-    max_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
-    min_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
-    max_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
-    well_concentration_dilution_factor = models.DecimalField(null=True, max_digits=8, decimal_places=2, blank=True)
-    date_loaded = models.DateTimeField(null=True, blank=True)
-    date_publicly_available = models.DateTimeField(null=True, blank=True)
-    class Meta:
-        db_table = 'copy'
-
 class DataColumn(models.Model):
     data_column_id = models.IntegerField(primary_key=True)
     version = models.IntegerField()
@@ -1022,6 +996,32 @@ class LibraryContentsVersion(models.Model):
     library_contents_release_activity = models.ForeignKey(AdministrativeActivity, null=True, blank=True, related_name='lcv_release')
     class Meta:
         db_table = 'library_contents_version'
+
+class Copy(models.Model):
+    version = models.IntegerField()
+    usage_type = models.TextField()
+    library = models.ForeignKey('Library')
+    name = models.TextField()
+    copy_id = models.IntegerField(primary_key=True)
+    comments = models.TextField(blank=True)
+    date_created = models.DateTimeField()
+    created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
+    date_plated = models.DateField(null=True, blank=True)
+    primary_plate_status = models.TextField()
+    primary_plate_location_id = models.IntegerField(null=True, blank=True)
+    plates_available = models.IntegerField(null=True, blank=True)
+    plate_locations_count = models.IntegerField(null=True, blank=True)
+    primary_well_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
+    primary_well_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
+    min_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
+    max_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
+    min_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
+    max_mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
+    well_concentration_dilution_factor = models.DecimalField(null=True, max_digits=8, decimal_places=2, blank=True)
+    date_loaded = models.DateTimeField(null=True, blank=True)
+    date_publicly_available = models.DateTimeField(null=True, blank=True)
+    class Meta:
+        db_table = 'copy'
 
 class Plate(models.Model):
     plate_id = models.IntegerField(primary_key=True)

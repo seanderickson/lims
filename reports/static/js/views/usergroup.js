@@ -4,7 +4,7 @@ define([
     'backbone',
     'backbone_pageable',
     'iccbl_backgrid',
-    'views/detail_stickit',
+    'views/detail_stickit_backbone_forms',
     'views/list',
     'views/simple-list',
     'text!templates/generic-tabbed.html',

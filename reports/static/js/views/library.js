@@ -10,19 +10,23 @@ define([
   'layoutmanager',
   'models/app_state',
   'views/generic_detail_layout',
+  'views/list2',
   'text!templates/library.html'
-], function($, _, Backbone, Iccbl, layoutmanager, appModel, DetailLayout, libraryTemplate) {
+], function($, _, Backbone, Iccbl, layoutmanager, appModel, DetailLayout, ListView, libraryTemplate) {
   
   var LibraryView = Backbone.Layout.extend({
     
-    initialize: function() {
+    initialize: function(args) {
       this.views = {}; // view cache
+      this.uriStack = args.uriStack;
+      this.consumedStack = [];
+      console.log('uriStack: ' + JSON.stringify(this.uriStack));
+      _.bindAll(this, 'click_tab');
     },
     
     tabbed_resources: {
       detail: { description: 'Library Details', title: 'Library Details', invoke: 'setDetail' },
-      copies: { description: 'Copies', title: 'Copies', invoke: 'setCopies' },
-      plates: { description: 'Plates', title: 'Plates', invoke: 'setPlates' },
+      copy: { description: 'Copies', title: 'Copies', invoke: 'setCopies' },
       contents: { description: 'Library Contents', title: 'Library Contents', invoke: 'setContents' },
     },      
     
@@ -43,15 +47,13 @@ define([
       if(_.isEmpty(key)) return;
 
       this.change_to_tab(key);
-
-      // signal to the app_model that the current view has changed 
-      var current_options = {'tab': key, 'key':Iccbl.getKey(appModel.get('current_options') ) };
-      appModel.set({ current_options: {}, current_detail: {} },{ silent: true });
-      appModel.set({
-          current_options: current_options,
-          routing_options: {trigger: false, replace: false}
-      }); 
     },
+
+    reportUriStack: function(reportedUriStack) {
+      var actualStack = this.consumedStack.concat(reportedUriStack);
+      this.trigger('uriStack:change', actualStack );
+    },
+    
     
     change_to_tab: function(key){
       this.$('li').removeClass('active');
@@ -59,6 +61,8 @@ define([
 
       if( _.has(this.tabbed_resources, key)){
         _.result(this, this.tabbed_resources[key]['invoke']);
+        this.consumedStack = [key];
+        this.trigger('uriStack:change', [key] );
       }else{
         window.alert('Unknown tab: ' + key);
       }
@@ -73,39 +77,43 @@ define([
         view = new DetailLayout({ model: this.model});
         this.views[key] = view;
       }
-      
       this.setView("#tab_container", view ).render();
-      
     },
     
-    setPlates: function() {
-      // for testing: 
-      var key = 'plates';
-      var view = this.views[key];
-      if ( !view ) {
-        view = new DetailLayout({ model: this.model});
-        this.views[key] = view;
-      }
-      // testing only
-      this.model.set({'library_name': this.model.get('library_name') + ", tab: " + key }, {silent: true});
-      
-      this.setView("#tab_container", view ).render();
-      
-    },    
-    
     setCopies: function() {
-      // for testing: 
-      var key = 'copies';
+      var self = this;
+      var key = 'copy';
+      this.consumedStack.push(key);
+      
       var view = this.views[key];
       if ( !view ) {
-        view = new DetailLayout({ model: this.model});
-        this.views[key] = view;
+        var libraryKey = self.model.key;
+        var _url = self.model.resource.apiUri +'/' + libraryKey + '/copy/'
+        var apiResourceId = 'librarycopy';
+        var libraryResource = appModel.getResource(apiResourceId);
+        
+        appModel.getSchema(apiResourceId, function(schema) {
+          
+          var view = new ListView({ 
+            model: appModel, 
+            options: {
+              resource: libraryResource,
+              url: _url , 
+              schemaResult: schema,
+              uriStack: _.clone(self.uriStack) 
+            } 
+          });
+          self.listenTo(view , 'uriStack:change', self.reportUriStack)
+          Backbone.Layout.setupView(view);
+          
+          self.views[key] = view;
+          Backbone.Layout.setupView(view);
+          
+          self.setView("#tab_container", view ).render();
+        });
+      } else {
+        this.setView("#tab_container", view ).render();
       }
-      // testing only
-      this.model.set({'library_name': this.model.get('library_name') + ", tab: " + key }, {silent: true});
-      
-      this.setView("#tab_container", view ).render();
-      
     },
     
     setContents: function() {
@@ -124,17 +132,28 @@ define([
     // layoutmanager hook
     serialize: function() {
       return {
+        'title': Iccbl.getTitleFromTitleAttribute(this.model, this.model.resourceSchema),
         'tab_resources': this.tabbed_resources
       }      
     }, 
     
     // layoutmanager hook
     afterRender: function(){
-      this.change_to_tab('detail');
+      var viewId = 'detail';
+      if (!_.isEmpty(this.uriStack)){
+        viewId = this.uriStack.shift();
+        this.consumedStack = [viewId];
+        
+        if (!_.has(this.tabbed_resources, viewId)){
+          window.alert('could not find the tabbed resource: ' + viewId);
+          return;
+        }
+      }
+      this.change_to_tab(viewId);
     },
     
     onClose: function() {
-      console.log('-------------- onclose ---------------------');
+      // TODO: is this necessary when using Backbone LayoutManager
       this.views = {};
       this.remove();
     },

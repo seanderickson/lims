@@ -17,7 +17,7 @@ require.config({
     text: 'libs/text',
     router: 'router',
     app_state: 'models/app_state',
-    iccbl_backgrid: 'iccbl-backgrid',
+    iccbl_backgrid: 'iccbl-backgrid'
 
   },
   shim: {
@@ -66,38 +66,59 @@ require.config({
   }
 });
 require([
-    'jquery',
-    'underscore',
-    'backbone',
-    'models/app_state',
-    'views/app_view',
-    'router',
-    'bootstrap' // Note: Bootstrap does not return an object; it modifies the Jquery object with new methods
-  ],
-    function($, _, Backbone, appModel, AppView, AppRouter ) {
+  'jquery',
+  'underscore',
+  'backbone',
+  'iccbl_backgrid',
+  'models/app_state',
+  'views/app_view',
+  'router',
+  'bootstrap' // Note: Bootstrap does not return an object; it modifies the Jquery object with new methods
+],
+function($, _, Backbone, Iccbl, appModel, AppView, AppRouter ) {
 
-        // Augment the view prototype with this close utility function to 
-        // prevent memory leaks
-        // See: http://lostechies.com/derickbailey/2011/09/15/zombies-run-managing-page-transitions-in-backbone-apps/
-        // Also, consider using the Marionette extension
-        Backbone.View.prototype.close = function(){
-          this.remove();
-          this.unbind();
-          if (this.onClose){
-            this.onClose();
-          }
-        };
+  // Augment the view prototype with this close utility function to 
+  // prevent memory leaks
+  // See: http://lostechies.com/derickbailey/2011/09/15/zombies-run-managing-page-transitions-in-backbone-apps/
+  // Also, consider using the Marionette extension
+  Backbone.View.prototype.close = function(){
+    this.remove();
+    this.unbind();
+    if (this.onClose){
+      this.onClose();
+    }
+  };
 
-        if(_.isUndefined(window.logged_in) || window.logged_in != 'True' ){
-        	window.location='/accounts/login/?next=' + window.location.pathname + window.location.hash;
-        }
-//        var appModel = new AppModel();
-        var appRouter = appModel.router = new AppRouter({ model: appModel });
+  if(_.isUndefined(window.logged_in) || window.logged_in != 'True' ){
+  	window.location='/accounts/login/?next=' + window.location.pathname + window.location.hash;
+  }
+
+  var appRouter = appModel.router = new AppRouter({ model: appModel });
+  var appView = new AppView({ model: appModel },{ router: appRouter});
+
+  appModel.start(function(){
+      
+    appView.$el.appendTo("#application_div")
+    appView.render();
         
-        var appView = new AppView({ model: appModel },{ router: appRouter});
-        appView.render();
-        Backbone.history = Backbone.history || new Backbone.History({});
-        Backbone.history.start({ pushState: false, root: appModel.get('root_url') });
+    Backbone.history = Backbone.history || new Backbone.History({});
+    Backbone.history.start({ pushState: false, root: appModel.get('root_url') });
 
-        //Backbone.history.start({ pushState: false, root: appModel.get('root_url') });  // TODO: root should not be necessary if not using pushState
-    });
+  });
+  
+  // Set the document title
+  Backbone.history.on('route', function(router, route, params) {
+    var title = _.reduce(
+        params,
+        function(memo, item){
+          if(item){
+            if (memo !== ' ') memo += ', ';
+            memo += item;
+          }
+          return memo ;
+        }, ' ');              
+    
+      document.title = route + ':' + title;
+   }, this);    
+ 
+});

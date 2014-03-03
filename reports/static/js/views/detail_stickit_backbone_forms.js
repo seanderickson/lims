@@ -211,9 +211,14 @@ define([
       // page, and has the url used to fetch it, rather than the collection url.
       var key = Iccbl.getIdFromIdAttribute( self.model,self._schemaResult );
       var url = _.result(this.model, 'url');
-      if ( url && url.indexOf(key) != -1 ) {
-        url = url.substring( 0,url.indexOf(key) );
-      }
+//      if ( url && url.indexOf(key) != -1 ) {
+//        url = url.substring( 0,url.indexOf(key) );
+//      }
+      
+      // TODO: check if creating new or updating here
+      // set the id specifically on the model: backbone requires this to 
+      // determine whether a "POST" or "PATCH" will be used
+      this.model.id = key;
 
       this.model.save( null, {
         success: function(model, resp){
@@ -239,7 +244,7 @@ define([
                          xhr.statusText );
           }
         },
-        url: url
+        url: url // set the url property explicitly
       });
     },
 
@@ -333,7 +338,7 @@ define([
     },
 
     render : function() {
-        console.log('render detail_stickit');
+        console.log('render detail_stickit_backbone_forms');
 
         if(this._options.isEditMode){
             // template = genericFormTemplate;

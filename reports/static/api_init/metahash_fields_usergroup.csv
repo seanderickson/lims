@@ -1,5 +1,5 @@
-key,scope,resource_uri,ordinal,comment,ui_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,backgrid_cell_type,backgrid_cell_options
-name,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/name/,0,,string,TRUE,"The group name",Name,TRUE,,,"[list,detail,edit]",,Iccbl.EditCell,
-users,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/users/,1,,Checkboxes,TRUE,"Users in the group","User URI List",TRUE,,,,,,
-permissions,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/permissions/,2,,embedded,TRUE,"Permissions for the group",Permissions,TRUE,,,[detail],,,
-user_list,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/user_list/,4,,string,TRUE,"User usernames assigned to this group",Usernames,TRUE,,,"[list,detail]",,,
+key,scope,resource_uri,ordinal,comment,ui_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,backgrid_cell_type,backgrid_cell_options,is_restricted
+name,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/name/,0,,string,TRUE,"The group name",Name,TRUE,,,"[list,detail,edit]",,Iccbl.EditCell,,
+users,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/users/,1,,Checkboxes,TRUE,"Users in the group","User URI List",TRUE,,,,,,,
+permissions,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/permissions/,2,,embedded,TRUE,"Permissions for the group",Permissions,TRUE,,,[detail],,,,
+user_list,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/user_list/,4,,string,TRUE,"User usernames assigned to this group",Usernames,TRUE,,,"[list,detail]",,,,

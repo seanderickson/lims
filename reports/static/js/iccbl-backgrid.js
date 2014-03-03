@@ -19,15 +19,13 @@
  *
  * For details please refer to: https://github.com/hmsiccbl/lims
  *
+// TODO: lunr should not be a requirement - for client side filtering,
+// and backgrid_filter is requiring it.
  **/
 define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid', 
-        'backgrid_filter', 'backgrid_paginator', 'backgrid_select_all', 'lunr',
-        // TODO: lunr should not be a requirement - for client side filtering,
-        // and backgrid_filter is requiring it.
-        'text!templates/generic-selector.html'], 
+        'backgrid_filter', 'backgrid_paginator', 'backgrid_select_all', 'lunr'],
     function($, _, Backbone, BackbonePageableCollection, Backgrid, 
-             BackgridFilter, BackgridPaginator, BackgridSelectAll, lunr, 
-             genericSelectorTemplate) {
+             BackgridFilter, BackgridPaginator, BackgridSelectAll, lunr) {
 
   // Attach PageableCollection to the right place on the Backbone object
   // for compatibility with require.js
@@ -65,12 +63,14 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
       // }
   };
 
+  // TODO: remove this
   var assertIccbl = Iccbl.assert = function(condition, message) {
       if (!condition) {
           throw message || "Assertion failed";
       }
   };
 
+  // TODO: remove this
   requireOptions = Iccbl.requireOptions = function(options,requireOptionKeys){
       for (var i = 0; i < requireOptionKeys.length; i++) {
         var key = requireOptionKeys[i];
@@ -93,6 +93,36 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
       return fn;
   };
 
+  var UrlStack = Iccbl.UrlStack = Backbone.Model.extend({
+    defaults: {
+      // current app uri
+      path: '',
+      // current app uri, as array
+      actualStack: [],
+      // unprocessed uri elements
+      currentStack: [],
+      
+      level: 0,
+      // resources pop'd, one per level
+      resources: [],
+      // keys pop'd, one per level
+      keys: []  
+    },
+    
+    initialize: function(options) {
+      this.path = options.path;
+      this.actualStack = options.path.split('/');
+      
+    },
+    
+    pop: function() {
+      
+    },
+    
+    
+    
+  });
+  
   var sortOnOrdinal = Iccbl.sortOnOrdinal = function(keys, fieldHash) {
       var sorted = _(keys).sort(function(a, b) {
           if (!_.has(fieldHash, a) || !_.has(fieldHash, b)) {
@@ -147,6 +177,36 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
       return route_fragment;
   };
 
+  /**
+   * Get the key off the URI stack:
+   * - we don't know if the key is composite or not; so we don't know how many 
+   * items to pop off the stack; So look at the resource definition 
+   * id_attribute; which lists the keys.
+   * @param resource - a resource definition as defined by the API
+   * @param urlStack - array representation of the current unprocessed URI 
+   * elements.
+   * @param consumedStack - holds the items popped off the stack
+   */
+  var popKeyFromStack = Iccbl.popKeyFromStack = function(resource, urlStack, consumedStack){
+    var id  = '';
+    _.each(resource.id_attribute, function(attribute){
+      if (_.isEmpty(urlStack)){
+        window.alert('not enough items on the URL to create the key for resource: ' + 
+            resource.title );
+      }
+      // don't care what the id is, just pop one for each
+      var item = urlStack.shift();
+      consumedStack.push(item);
+      if ( id !== '' ){
+        id += '/' + item;
+      }
+      else {
+        id += item;
+      }
+    });
+    return id;
+  };
+  
   /**
    * Create an string ID from the 'id_attribute' of a schema resource definition.
    * - the id_attribute is an array of field specifiers
@@ -241,7 +301,8 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
     var instance = new ModelClass();
     instance.fetch({
         success : function(model) {
-            callback(schemaResult, model);
+          model.resourceSchema = schemaResult;
+          callback(schemaResult, model);
         },
         error : function(model, response, options) {
             //console.log('error fetching the model: '+ model + ', response:
@@ -308,6 +369,33 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
       return msg;
   }
 
+  var getCollectionOnClient = Iccbl.getCollectionOnClient = function(url, callback){
+    var CollectionClass = Iccbl.CollectionOnClient.extend({
+      url: url 
+    });
+    var instance = new CollectionClass();
+    instance.fetch({
+      success : function(collection) {
+        callback(collection);
+      },
+      error : function(model, response, options) {
+          //console.log('error fetching the model: '+ model + ', response:
+          // ' + JSON.stringify(response));
+          var msg = 'Error locating resource: ' + url;
+          var sep = '\n';
+          if (!_.isUndefined(response.status))
+              msg += sep + response.status;
+          if (!_.isUndefined(response.statusText))
+              msg += sep + response.statusText;
+          if (!_.isEmpty(response.responseText))
+              msg += sep + response.responseText;
+          window.alert(msg);
+          // TODO: use Bootstrap inscreen alert classed message div
+      }
+      
+    });
+  };
+  
   var getCollection = Iccbl.getCollection = function(schemaResult, url, callback) {
       var CollectionClass = Iccbl.MyCollection.extend({
           url : url,
@@ -505,50 +593,6 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
       },
   });
 
-  var GenericSelector = Iccbl.GenericSelector = Backbone.View.extend({
-
-      initialize : function(attributes, options) {
-
-          this.listenTo(this.model, 'change', this.changeNotified);
-          this._options = options;
-          _.bindAll(this, 'changeNotified');
-      },
-
-      events : {
-          "change #generic_selector" : "selectorChanged"
-      },
-
-      selectorChanged : function(e) {
-          e.preventDefault();
-          var option = e.currentTarget.value;
-          this.model.set({
-              'selection' : option
-          });
-      },
-
-      changeNotified : function() {
-          var selection = this.model.get('selection');
-          this.$('#generic_selector').val(String(selection));
-      },
-
-      render : function() {
-          this.$el.empty();
-          if (!_.contains(this._options.options, '')) {
-              this._options.options.unshift('');
-              // create a blank entry
-          }
-          this.$el.append(_.template(genericSelectorTemplate, {
-              label : this._options.label,
-              'options' : _(this._options.options)
-          }));
-          if (!_.isUndefined(this._options.selectorClass)) {
-              this.$('#generic_selector').removeClass().addClass(this._options.selectorClass);
-          };
-          this.changeNotified();
-          this.delegateEvents();
-          return this;
-      },
-  });
 
   var LinkCell = Iccbl.LinkCell = Backgrid.Cell.extend({
       className : "link-cell",
@@ -641,7 +685,7 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
     }
   });
 
-var CollectionOnClient = Iccbl.CollectionOnClient = Backbone.PageableCollection.extend({
+var CollectionOnClient = Iccbl.CollectionOnClient = Backbone.Collection.extend({
     /**
      *  Override collection parse method:
      *      Parse server response data.
@@ -652,6 +696,8 @@ var CollectionOnClient = Iccbl.CollectionOnClient = Backbone.PageableCollection.
         return response.objects;
     },
 });
+
+
 var CollectionInColumns = Iccbl.CollectionInColumns = Backbone.Collection.extend({
     /**
      *  Override collection parse method:
@@ -765,6 +811,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     // search (TODO: verify).
     // this will add it manually to the queryParams (which are serialized in
     // the fetch to the server)
+    var _data = {};
     _.each(_.keys(searchHash), function(key) {
       var val = searchHash[key]
 
@@ -776,13 +823,17 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
         // defined params are function calls to get the current value in the
         // searchbox
         if (!_.has(self.queryParams, key) || !_.isFunction(self.queryParams[key])) {
-        	var _data = {};
         	_data[key]=val;
-        	self.fetch({data:_data, reset: true});
         }
       }
     });
-
+    if(!_.isEmpty(_data)){
+      self.fetch({data:_data, reset: true});
+      // Notify: todo:test
+      self.listModel.set({
+        'search': _data
+      });
+    }
   },
 
   // Proxy for the search elements to add search terms to the listModel

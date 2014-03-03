@@ -2,268 +2,120 @@ define([
   'jquery',
   'underscore',
   'backbone',
-  'bootstrap',
+  'layoutmanager',
   'iccbl_backgrid',
-  'views/list',
-  'views/home',
-  'views/detail_stickit_backbone_forms',
-  'views/detail_stickit_backbone_forms',
-  'views/screen',
-  'views/user',
-  'views/usergroup',
-  'views/library'
-], function($, _, Backbone, Bootstrap, Iccbl, ListView, HomeView, DetailView, 
-            EditViewForms, ScreenView, UserView, UserGroupView, LibraryView) {
-
-  var ContentView = Backbone.View.extend({
-    
-    el: '#container',
-
-    initialize: function(attributes, options) {
-      console.log('ContentView initialize');
-      this._options = options;
-      this.router = options.router;
-      this.listenTo(this.model, 'change:current_view', this.current_view);
-      this.currentView = new HomeView({ model: this.model });
-      this.render();
-    },
-
-    current_view : function(type) {
-      console.log('current_view called');
-      var self = this;
-
-      var current_resource_id = this.model.get('current_resource_id');
-      Iccbl.assert( !_.isUndefined(current_resource_id), 
-              'list: current_resource_id is not defined');
-      var current_view = this.model.get('current_view');
-      Iccbl.assert(!_.isUndefined(current_view), 
-              'list: current_view is not defined');
-      var current_options = _.clone(this.model.get('current_options'));
-      Iccbl.assert(!_.isUndefined(current_options), 
-                   'list: current_options is not defined');
-      var current_ui_resource = this.model.get('ui_resources')[current_resource_id];
-      Iccbl.assert(!_.isUndefined(current_ui_resource), 
-                   'list: current_ui_resource is not defined for current_resource_id: ' + 
-                   current_resource_id );
-      // The "scratch" variable holds the some of the prior state; for instance,
-      // if "edit" view is called, it may contain the model to edit
-      var current_scratch = this.model.get('current_scratch');
-      this.model.set({ current_scratch: {} });
-
-      if( !_.isUndefined(this.currentView)) this.currentView.close();
-
-      if (current_view === 'home'){  // TODO: make into a "menu view"
-          this.currentView = new HomeView({ model: this.model });
-      }else if (current_view == 'menu'){
-          console.log('todo: "menu" view!');
-
-      }else if (current_view === 'list'){
-        // TODO: move the nested options up into the model
-        var options = _.extend( {}, this.model.get('list_defaults'), 
-                                current_ui_resource, current_options );
-        if(!_.isUndefined(current_ui_resource['options'])){
-            var resource_defined_options = current_ui_resource['options'];
-            _.each(_.keys(resource_defined_options), function(key){
-                current_options[key] = _.extend(
-                        {}, current_options[key], 
-                        resource_defined_options[key]);
-            });
-            self.model.set({'current_options': current_options });
-        }
-
-        options.ui_resource_id = current_resource_id;
-        options.router = this.router;
-        options.url = options.url_root + '/' + options.api_resource;
-        options.url_schema = options.url + '/schema';
-
-        var createList = function(schemaResult){
-            options.schemaResult = schemaResult;
-            self.listView = new ListView({ model: self.model }, options);
-            self.currentView = self.listView;
-            self.render();
-        };
-        Iccbl.getSchema(options.url_schema, createList);
-
-      }else if ( current_view == 'edit' ) {
-      	console.log('-- edit view --');
-        var createEdit = function(schemaResult, model) {
-          var editView =
-            new EditViewForms({ model: model},
-              {
-                schemaResult:schemaResult,
-                router:self.router,
-                isEditMode: true
-              });
-          self.currentView = editView;
-          self.render();
-        };
-
-        if ( _.isUndefined(current_scratch.schemaResult ) 
-                || _.isUndefined(current_scratch.model) ) {  // allow reloading
-          var resource_url = current_ui_resource.url_root + 
-                  '/' + current_ui_resource.api_resource;
-          var schema_url =  resource_url + '/schema';
-          var _key = Iccbl.getKey(current_options);
-          var url = resource_url  + '/' + _key;
-
-          Iccbl.getSchema(schema_url, function(schemaResult) {
-            console.log('schemaResult callback: ' + schemaResult + ', ' + url);
-            if(_.isUndefined(current_scratch.model)){
-              Iccbl.getModel(schemaResult, url, createEdit);
-            }else{
-              createEdit(schemaResult,current_scratch.model);
-            }
-          });
-        }else{
-          createEdit(current_scratch.schemaResult,current_scratch.model);
-        }
-//      }else if (current_view == 'edit_original_stickit' ){
-//          var createEdit = function(schemaResult, model){
-//              var editView =
-//                  new EditView({ model: model},
-//                      {
-//                          schemaResult:schemaResult,
-//                          router:self.router,
-//                          isEditMode: true
-//                      });
-//              self.currentView = editView;
-//              self.render();
-//          };
-//
-//          if(_.isUndefined(current_scratch.schemaResult) 
-//                  ||_.isUndefined(current_scratch.model)){  // allow reloading
-//              var resource_url = current_ui_resource.url_root + 
-//                      '/' + current_ui_resource.api_resource;
-//              var schema_url =  resource_url + '/schema';
-//              var _key = Iccbl.getKey(current_options);
-//              var url = resource_url  + '/' + _key;
-//
-//              Iccbl.getSchema(schema_url, function(schemaResult) {
-//                  console.log('schemaResult callback: ' + schemaResult + ', ' + url);
-//                  if(_.isUndefined(current_scratch.model)){
-//                      Iccbl.getModel(schemaResult, url, createEdit);
-//                  }else{
-//                      createEdit(schemaResult,current_scratch.model);
-//                  }
-//              });
-//          }else{
-//              createEdit(current_scratch.schemaResult,current_scratch.model);
-//          }
-      }else if (current_view === 'detail'){
-
-          if ( current_resource_id == 'screen' ||
-               current_resource_id == 'small_molecule_screens' ||
-               current_resource_id == 'rnai_screens'){
-            var options = {
-                url_root: current_ui_resource.url_root,
-                current_options: current_options,
-                screen_model: current_scratch.model,
-                screen_schema: current_scratch.schemaResult,
-                router: this.router,
-            };
-
-            this.currentView = new ScreenView({ model: this.model }, options);
-            this.render();
-          } 
-          else if ( current_resource_id === 'library' ) {
-            (function() { 
-              var createDetail = function(schemaResult, model){
-                // add extra info to the model
-                model.resourceSchema = schemaResult;
-                self.currentView = new LibraryView({model: model});
-                self.render();
-              };
-              if(_.isUndefined(current_scratch.schemaResult) 
-                  ||_.isUndefined(current_scratch.model)){  // allow reloading
-                var resource_url = current_ui_resource.url_root + 
-                        '/' + current_ui_resource.api_resource;
-                var schema_url =  resource_url + '/schema';
-                var _key = Iccbl.getKey(current_options);
-                var url = resource_url  + '/' + _key;
+  'models/app_state',
+  'views/list2',
+  'views/generic_detail_layout',
+  'views/library',
+  'text!templates/content.html'
+], 
+function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
+         LibraryView, layout) {
   
-                Iccbl.getSchema(schema_url, function(schemaResult) {
-                  console.log('schemaResult callback: ' + schemaResult + ', ' + url);
-                  if(_.isUndefined(current_scratch.model)){
-                    Iccbl.getModel(schemaResult, url, createDetail);
-                  }else{
-                    createDetail(schemaResult,current_scratch.model);
-                  }
-                });
-              }else{
-                  createDetail(current_scratch.schemaResult,current_scratch.model);
-              }
-            })();
-          }else if(current_resource_id == 'groups'){
-            // TODO: deal with the hoisting mess here & elsewhere
-            (function() { 
-              console.log('setup usergroup detail view');
-              var options = {
-                  url_root: current_ui_resource.url_root,
-                  current_options: current_options,
-                  model: current_scratch.model,
-                  schema: current_scratch.schemaResult,
-                  router: self.router,
-              };
-
-              var setView = function(){
-                  self.currentView = new UserGroupView({ model: self.model }, options);
-                  self.render();
-              };
-
-              if(_.isUndefined(options.schema ) ||_.isUndefined(options.model)){
-                  var resource_url = options.url_root + '/usergroup';
-                  var id = Iccbl.getKey(options.current_options);
-
-                  Iccbl.getSchemaAndModel2(resource_url, id, function(schemaResult, model){
-                      options.model = model;
-                      options.schema = schemaResult;
-                      setView();
-                  });
-              }else{
-                  setView();
-              }
-            })();
-          }else{
-            var createDetail = function(schemaResult, model){
-              var detailView =
-                new EditViewForms({ model: model},
-                  {
-                    schemaResult:schemaResult,
-                    router:self.router,
-                    isEditMode: false
-                  });
-              self.currentView = detailView;
-              self.render();
-            };
-
-            if(_.isUndefined(current_scratch.schemaResult) 
-                    ||_.isUndefined(current_scratch.model)){  // allow reloading
-              var resource_url = current_ui_resource.url_root + 
-                      '/' + current_ui_resource.api_resource;
-              var schema_url =  resource_url + '/schema';
-              var _key = Iccbl.getKey(current_options);
-              var url = resource_url  + '/' + _key;
-
-              Iccbl.getSchema(schema_url, function(schemaResult) {
-                console.log('schemaResult callback: ' + schemaResult + ', ' + url);
-                if(_.isUndefined(current_scratch.model)){
-                  Iccbl.getModel(schemaResult, url, createDetail);
-                }else{
-                  createDetail(schemaResult,current_scratch.model);
-                }
-              });
-            }else{
-                createDetail(current_scratch.schemaResult,current_scratch.model);
-            }
-        }
+  // put the view args in a keyed hash for lookup by name
+  var VIEWS = {
+    'ListView': ListView, 
+    'DetailView': DetailLayout, 
+    'LibraryView': LibraryView
+  };
+    
+  var ContentView = Backbone.Layout.extend({
+    
+    template: _.template(layout),
+    
+    initialize: function() {
+      console.log('ContentView initialize');
+      this.listenTo(appModel, 'change:uriStack', this.uriStackChange );
+    },
+    
+    reportUriStack: function(reportedUriStack) {
+      var actualStack = this.consumedStack.concat(reportedUriStack);
+      appModel.set({'uriStack': actualStack}, {source: this});     
+    },
+    
+    uriStackChange: function(model, val, options) {
+      if(options.source === this){
+        console.log('self generated uristack change');
+        return;
       }else{
-          window.alert('unknown view: ' + current_view);
+        this.changeUri();
       }
     },
+    
+    changeUri: function() {
+    
+      var self = this;
 
-    render: function() {
-        this.$el.append(this.currentView.render().el);
-    },
+      var uriStack = _.clone(appModel.get('uriStack'));
+      console.log('got uristack: ' + JSON.stringify(uriStack));
+      var consumedStack = this.consumedStack = [];
+      
+      if (_.isEmpty(uriStack)){
+        // TODO: go to home
+        return;
+      }
+      
+      // Test for a view ID
+      var uiResourceId = uriStack.shift();
+      this.consumedStack.push(uiResourceId);
+      var resource = appModel.getResource(uiResourceId);
+      
+      if (!_.isEmpty(uriStack) && 
+          ( !_.contains(appModel.LIST_ARGS, uriStack[uriStack.length-1]) || 
+            uriStack[uriStack.length-1] === 'key' ) ) {
+          
+        // DETAIL VIEW
+        // The "scratch" variable holds the some of the prior state; for instance,
+        // if "edit" view is called, it may contain the model to edit
+        var current_scratch = appModel.get('current_scratch');
+        appModel.set({ current_scratch: {} });
+          
+        // get the view class
+        var viewClass = DetailLayout;
+        if (_.has(resource, 'detailView')){
+          if (_.has(VIEWS, resource['detailView'])) {
+            viewClass = VIEWS[resource['detailView']];
+            console.log('found view ' + resource['detailView']);
+          }else{
+            window.alert('detailView class specified could not be found: ' + 
+                resource['detailView']);
+          }
+        }
+        var createDetail = function(model){
+          var view = new viewClass({ model: model, uriStack: uriStack });
+          self.listenTo(view , 'uriStack:change', self.reportUriStack);
+          self.setView('#content', view).render();
+        }
+  
+        var _key = Iccbl.popKeyFromStack(resource, uriStack, consumedStack );
+        if(_.isUndefined(current_scratch.schemaResult) || 
+            _.isUndefined(current_scratch.model)){  
+          appModel.getModel(uiResourceId, _key, createDetail );
+
+        }else{
+          appModel.updateModel(uiResourceId, _key, current_scratch.model, createDetail );
+        }
+      } else {
+        // LIST VIEW
+        this.$('#title').html(resource.title);
+        
+        var createList = function(schemaResult) {
+            var view = new ListView({ model: appModel, 
+              options: { 
+                uriStack: uriStack,
+                schemaResult: schemaResult, 
+                resource: resource
+              }
+            });
+            self.listenTo(view , 'uriStack:change', self.reportUriStack);
+            Backbone.Layout.setupView(view);
+            self.setView('#content', view ).render();
+        };
+        appModel.getSchema(uiResourceId, createList);
+        
+      }
+    }
 
   });
 

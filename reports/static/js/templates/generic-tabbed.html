@@ -3,7 +3,6 @@
     <%
         _.each(_.keys(tab_resources), function(key){
             var tab_resource = tab_resources[key];
-            console.log('tab_resource:' + JSON.stringify(tab_resource));
             if(_.isUndefined(tab_resource)){
                 console.log('error, undefined ui_resource:' + JSON.stringify(key) );
             }else{

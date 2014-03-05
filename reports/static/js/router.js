@@ -31,7 +31,7 @@ function($, _, Backbone, appModel) { //, MenuView, ListView){
 
         Backbone.history.on('route', function(router, route, params) {
                 this.routesHit++;
-                //console.log('detected route: ' + route + ', params: ' + JSON.stringify(params) + ', routesHit:' + this.routesHit);
+                console.log('detected route: ' + route + ', params: ' + JSON.stringify(params) + ', routesHit:' + this.routesHit);
              }, this);
 
         this.listenTo(appModel, 'change:uriStack', this.uriStackChange);
@@ -47,6 +47,7 @@ function($, _, Backbone, appModel) { //, MenuView, ListView){
     
     toPath: function(path){
       console.log('toPath: ' + path);
+//      this.routesHit++; 
       var uriStack = [];
       if (path) uriStack = path.split('/');
       appModel.set({ uriStack: uriStack }, { source: this });
@@ -54,8 +55,9 @@ function($, _, Backbone, appModel) { //, MenuView, ListView){
     },
 
     
-    back: function() {  // TODO: not used yet, from example, how to have a safe back action
-        if(this.routesHit > 1) {
+    // TODO: not used yet, from example, how to have a safe back action
+    back: function() {  
+        if(this.routesHit >= 1) {
           console.log('back, routesHit: ' + this.routesHit);
           //more than one route hit -> user did not land to current page directly
           this.routesHit--;
@@ -69,7 +71,7 @@ function($, _, Backbone, appModel) { //, MenuView, ListView){
       },
 
     unknownAction: function(unknownAction){
-        alert('Unknown action entered: ' + unknownAction);
+        window.alert('Unknown action entered: ' + unknownAction);
     },
     get_list_route: function(current_options){
         console.log('get list route: ' + JSON.stringify(current_options));

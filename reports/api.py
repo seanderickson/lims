@@ -566,9 +566,9 @@ class ManagedResource(LoggingMixin):
         # for the schema definition for the resource (used by the UI)
         return [
             url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<scope>[\w\d_.-:]+)/(?P<key>[\w\d_.-]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<scope>[\w\d_.-:]+)/(?P<key>[^/]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             # TODO: is this needed here on metahash? we aren't using just "key" as a key, which is what causes the conflict with "schema", so probably not
-            url(r"^(?P<resource_name>%s)/(?P<key>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<key>((?=(schema))__|(?!(schema))[^/]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
  
  
@@ -1042,7 +1042,7 @@ class UserResource(ManagedModelResource):
 #            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>[\d]+)%s$" % (
                 self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<ecommons_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (
+            url(r"^(?P<resource_name>%s)/(?P<ecommons_id>((?=(schema))__|(?!(schema))[^/]+))%s$" % (
                 self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             ]    
 
@@ -1132,11 +1132,11 @@ class UserGroupResource(ManagedModelResource):
         return [
             url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" % (
                 self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (
+            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[^/]+))%s$" % (
                 self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[\w\d_.-]+))/users%s$" % (
+            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[^/]+))/users%s$" % (
                 self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_group_userview'), name="api_dispatch_group_userview"),
-            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[\w\d_.-]+))/permissions%s$" % (
+            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[^/]+))/permissions%s$" % (
                 self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_group_permissionview'), name="api_dispatch_group_permissionview"),
             ]
 
@@ -1459,7 +1459,7 @@ class PermissionResource(ManagedModelResource):
 #    def prepend_urls(self):
 #        return [
 #            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-#            url(r"^(?P<resource_name>%s)/(?P<scope>((?=(schema))__|(?!(schema))[\w\d_.-]+))/(?P<key>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+#            url(r"^(?P<resource_name>%s)/(?P<scope>((?=(schema))__|(?!(schema))[\w\d_.-]+))/(?P<key>((?=(schema))__|(?!(schema))[^/]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
 #            ]
 #
 #class PermissionResource(MetahashManagedResource, PostgresSortingResource):
@@ -1508,7 +1508,7 @@ class PermissionResource(ManagedModelResource):
 #    def prepend_urls(self):
 #        return [
 #            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-#            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+#            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[^/]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
 #            ]
 
 
@@ -1634,7 +1634,7 @@ class PermissionResource(ManagedModelResource):
 #    def prepend_urls(self):
 #        return [
 #            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-#            url(r"^(?P<resource_name>%s)/(?P<username>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+#            url(r"^(?P<resource_name>%s)/(?P<username>((?=(schema))__|(?!(schema))[^/]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
 #            ]
     
 #        

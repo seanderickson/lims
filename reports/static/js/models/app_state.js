@@ -369,15 +369,15 @@ define([
       var schemas = this.get('schemas');
       if(_.has(schemas, resourceId)){
         callBack(schemas[resourceId]);
+      } else {
+        var resource = self.getResource(resourceId);
+        
+        var schema_url = resource.apiUri + '/schema'
+        Iccbl.getSchema(schema_url, function(schema){
+          schemas[resourceId] = schema;
+          callBack(schema);
+        });
       }
-      
-      var resource = self.getResource(resourceId);
-      
-      var schema_url = resource.apiUri + '/schema'
-      Iccbl.getSchema(schema_url, function(schema){
-        schemas[resourceId] = schema;
-        callBack(schema);
-      });
     },
     
     /**

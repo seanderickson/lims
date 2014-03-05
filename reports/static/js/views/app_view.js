@@ -15,7 +15,7 @@ define([
       
       views: {
         "#menu": new MenuView(),
-        "#container": new ContentView()
+        "#container": new ContentView({model: appModel, property: 'uriStack'})
       },
       
       

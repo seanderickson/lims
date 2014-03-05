@@ -74,7 +74,20 @@ define([
                 }
               });
               listInitial[key] = searchHash;
-            } else {
+            } else if (key === 'order') {
+              var orderings = value.split(',');
+              var orderHash = {};
+              _.each(orderings, function(order){
+                var dir = '';
+                if (order.charAt(0)==='-'){
+                  dir = '-';
+                  order = order.substring(1);
+                }
+                orderHash[order] = dir;
+              });
+              listInitial[key] = orderHash;
+              
+            }else {
               listInitial[key] = value;
             }
           }
@@ -91,6 +104,7 @@ define([
 
       var orderHash = self.listModel.get('order');
       if(!_.isEmpty(orderHash)){
+        // TODO: this only allows one ordering - here it happens to be the last
         _.each(_.keys(orderHash), function(key) {
             var dir = orderHash[key];
             var direction = 'ascending';
@@ -122,45 +136,46 @@ define([
       });
       this.objects_to_destroy.push(collection);
 
-      this.listenTo(this.listModel, 'change', function(){
-        var newStack = [];
-        
-        _.each(self.LIST_ROUTE_ORDER, function(route){
-          var value = self.listModel.get(route);
-          if ( (!_.isObject(value) && value ) || 
-               ( _.isObject(value) && !_.isEmpty(value))) {
-            newStack.push(route);
-            
-            if (route === 'search') {
-              var val = '';
-              _.each(value, function(v,k){
-                if (val !== '' ) val += ',';
-                
-                val += k + "=" + v;
-              });
-              newStack.push(val);
-            }else if (route === 'order') {
-                var val = '';
-              _.each(value, function(v,k){
-                if (val !== '' ) val += ',';
-                
-                val += v + k;
-              });
-              newStack.push(val);
-            } else {
-              newStack.push(value);
-            }
-            
-          }
-        });
-        
-        self.trigger('uriStack:change', newStack );
-      });
-      
+      this.listenTo(this.listModel, 'change', this.reportState );
 
       var compiledTemplate = this.compiledTemplate = _.template(listTemplate);
 
       this.buildGrid( self.options.schemaResult );
+    },
+    
+    reportState: function() {
+      var self = this;
+      var newStack = [];
+      
+      _.each(self.LIST_ROUTE_ORDER, function(route){
+        var value = self.listModel.get(route);
+        if ( (!_.isObject(value) && value ) || 
+             ( _.isObject(value) && !_.isEmpty(value))) {
+          newStack.push(route);
+          
+          if (route === 'search') {
+            var val = '';
+            _.each(value, function(v,k){
+              if (val !== '' ) val += ',';
+              
+              val += k + "=" + v;
+            });
+            newStack.push(val);
+          }else if (route === 'order') {
+              var val = '';
+            _.each(value, function(v,k){
+              if (val !== '' ) val += ',';
+              
+              val += v + k;
+            });
+            newStack.push(val);
+          } else {
+            newStack.push(value);
+          }
+        }
+      });
+      
+      self.trigger('uriStack:change', newStack );
     },
 
     buildGrid: function( schemaResult ) {
@@ -208,20 +223,33 @@ define([
       });
 
       self.listenTo(self.collection, "MyCollection:detail", function (model) {
-        var id = Iccbl.getIdFromIdAttribute( model, schemaResult );
-        
-        model.resourceSchema = schemaResult;
-        
-        var path = schemaResult.resource_definition.key;
-        path += '/' + id;
-        var actualStack = [schemaResult.resource_definition.key, id];  
-        
-        console.log('actualStack:' + JSON.stringify(actualStack));
-        
+        var idList = Iccbl.getIdKeys(model,schemaResult);
         appModel.set({
           current_scratch: { schemaResult: schemaResult, model: model},
         });
-        appModel.router.navigate(path, {trigger: true});
+        // NOTE: prefer to send custom signal, rather than uriStack:change for 
+        // detail/edit; this allows the parent to decide URI signalling
+        self.trigger('detail', model);
+//        // NOTE: by setting the source to self, signal to parent to process this change
+//        self.trigger('uriStack:change', idList, {'source': self}); 
+        
+//        
+//        var id = Iccbl.getIdFromIdAttribute( model, schemaResult );
+//        
+//        model.resourceSchema = schemaResult;
+//        
+//        var path = schemaResult.resource_definition.key;
+//        path += '/' + id;
+//        var actualStack = [schemaResult.resource_definition.key, id];  
+//        
+//        console.log('actualStack:' + JSON.stringify(actualStack));
+//        
+//        appModel.set({
+//          current_scratch: { schemaResult: schemaResult, model: model},
+//        });
+//        // NOTE: by setting the source to self, signal to parent to process this change
+//        self.trigger('uriStack:change', [id], {'source': self}); 
+////        appModel.router.navigate(path, {trigger: true});
       });
 
       self.listenTo(self.collection, "MyCollection:delete", function (model) {
@@ -419,9 +447,9 @@ define([
     beforeRender: function(){
       console.log('--render start');
       var self = this;
-      self.listenTo(self.collection, "add", self.reportState);
-      self.listenTo(self.collection, "remove", self.reportState);
-      self.listenTo(self.collection, "reset", self.reportState);
+      self.listenTo(self.collection, "add", self.checkState);
+      self.listenTo(self.collection, "remove", self.checkState);
+      self.listenTo(self.collection, "reset", self.checkState);
 
 
       this.$el.html(this.compiledTemplate);
@@ -464,20 +492,26 @@ define([
       }
 
       this.listenTo(self.collection, 'sync', function(event){
-        self.$('#header_message').html(self.options.header_message + 
-        		", total records: " + self.collection.state.totalRecords);
+        var msg = ''; 
+        if (self.options.header_message) {
+          if (msg) msg += ', ';
+          msg += self.options.header_message;
+        }
+        if (msg) msg += ', ';
+        msg += 'total records: ' + self.collection.state.totalRecords;
+        self.$('#header_message').html(msg);
       });
       
       if ( !fetched ) {
         var fetchOptions = { reset: false };
         self.collection.fetch(fetchOptions);
+        self.reportState();
       }
-
       console.log('rendered');
       return this;
     },
     
-    reportState: function(){
+    checkState: function(){
     	var self = this;
     	var state = self.collection.state;
       var currentPage = Math.max(state.currentPage, state.firstPage);

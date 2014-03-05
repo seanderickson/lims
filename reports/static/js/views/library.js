@@ -9,19 +9,21 @@ define([
   'iccbl_backgrid',
   'layoutmanager',
   'models/app_state',
+  'views/libraryCopy', 
   'views/generic_detail_layout',
   'views/list2',
   'text!templates/library.html'
-], function($, _, Backbone, Iccbl, layoutmanager, appModel, DetailLayout, ListView, libraryTemplate) {
+], function($, _, Backbone, Iccbl, layoutmanager, appModel, LibraryCopyView, 
+            DetailLayout, ListView, libraryTemplate) {
   
   var LibraryView = Backbone.Layout.extend({
     
     initialize: function(args) {
-      this.views = {}; // view cache
+      this.tabViews = {}; // view cache
       this.uriStack = args.uriStack;
       this.consumedStack = [];
-      console.log('uriStack: ' + JSON.stringify(this.uriStack));
       _.bindAll(this, 'click_tab');
+      _.bindAll(this, 'setDetail');
     },
     
     tabbed_resources: {
@@ -49,80 +51,127 @@ define([
       this.change_to_tab(key);
     },
 
+    /**
+     * Child view bubble up URI stack change event
+     */
     reportUriStack: function(reportedUriStack) {
-      var actualStack = this.consumedStack.concat(reportedUriStack);
+      var consumedStack = this.consumedStack || [];
+      var actualStack = consumedStack.concat(reportedUriStack);
       this.trigger('uriStack:change', actualStack );
     },
     
     
     change_to_tab: function(key){
-      this.$('li').removeClass('active');
-      this.$('#' + key).addClass('active');
-
       if( _.has(this.tabbed_resources, key)){
-        _.result(this, this.tabbed_resources[key]['invoke']);
+        this.$('li').removeClass('active');
+        this.$('#' + key).addClass('active');
         this.consumedStack = [key];
-        this.trigger('uriStack:change', [key] );
+        _.result(this, this.tabbed_resources[key]['invoke']);
+        //this.trigger('uriStack:change', [key] );
       }else{
-        window.alert('Unknown tab: ' + key);
+        var msg = 'Unknown tab: ' + key;
+        window.alert(msg);
+        throw msg;
       }
     },
     
     setDetail: function() {
-      // for testing: 
       var key = 'detail';
       
-      var view = this.views[key];
+      var view = this.tabViews[key];
       if ( !view ) {
         view = new DetailLayout({ model: this.model});
-        this.views[key] = view;
+        this.tabViews[key] = view;
       }
+      // NOTE: have to re-listen after removing a view
+      this.listenTo(view , 'uriStack:change', this.reportUriStack);
+      // NOTE: since subview doesn't report stack, report it here
+//      this.reportUriStack([]);
       this.setView("#tab_container", view ).render();
     },
     
     setCopies: function() {
       var self = this;
       var key = 'copy';
-      this.consumedStack.push(key);
-      
-      var view = this.views[key];
+      var view = this.tabViews[key];
       if ( !view ) {
-        var libraryKey = self.model.key;
-        var _url = self.model.resource.apiUri +'/' + libraryKey + '/copy/'
-        var apiResourceId = 'librarycopy';
-        var libraryResource = appModel.getResource(apiResourceId);
-        
-        appModel.getSchema(apiResourceId, function(schema) {
-          
-          var view = new ListView({ 
-            model: appModel, 
-            options: {
-              resource: libraryResource,
-              url: _url , 
-              schemaResult: schema,
-              uriStack: _.clone(self.uriStack) 
-            } 
-          });
-          self.listenTo(view , 'uriStack:change', self.reportUriStack)
-          Backbone.Layout.setupView(view);
-          
-          self.views[key] = view;
-          Backbone.Layout.setupView(view);
-          
-          self.setView("#tab_container", view ).render();
+        var view = new LibraryCopyView({
+          library: self.model,
+          uriStack: _.clone(self.uriStack)
         });
-      } else {
-        this.setView("#tab_container", view ).render();
+        self.tabViews[key] = view;
+        Backbone.Layout.setupView(view);
+//        var apiResourceId = 'librarycopy';
+//        appModel.getSchema(apiResourceId, function(schema) {
+//          
+//          var lcUrl = this.model.resource.apiUri +'/' + this.model.key + '/copy/'
+//          var lcResource = appModel.getResource(libraryCopyResourceId);
+//          var view = new ListView({ 
+//            options: {
+//              resource: lcResource,
+//              url: lcUrl , 
+//              schemaResult: schema,
+//              uriStack: _.clone(self.uriStack) 
+//            } 
+//          });
+//          self.listenTo(view , 'uriStack:change', self.reportUriStack);
+//          self.listenTo(view, 'detail', function(model){
+//
+//            var key = Iccbl.getIdFromIdAttribute(model,schema);
+//            var keysToReport = Iccbl.getIdKeys(model,schema);
+//            if(keysToReport[0] = this.model.key){
+//              keysToReport.shift(); // get rid of the library key part
+//            }
+//            
+//            appModel.updateModel(apiResourceId,key,model,function(model){
+//              // TODO: this will be a "LibraryCopy" view
+//              var newView = new DetailLayout({model: model, uriStack:[] });
+//              self.reportUriStack(keysToReport);
+//              self.listenTo(newView , 'uriStack:change', function(uriStack) {
+//                // This is proof, despite previous failures at LibraryCopyView
+//                // of the need to nest this section in a view
+//                self.reportUriStack(keysToReport.concat(uriStack));
+//              });
+//
+//              self.setView("#tab_container", newView).render();
+//            });
+//          });
+          
+
+
+//          var libraryKey = self.model.key;
+//          var _url = self.model.resource.apiUri +'/' + libraryKey + '/copy/'
+//          var libraryCopyResource = appModel.getResource(apiResourceId);
+//          
+//          
+//          var copyModel = new Backbone.Model({
+//            resource: libraryCopyResource,
+//            listUri: _url,
+//            schemaResult: schema,
+//            library: self.model,
+//            uriStack: _.clone(self.uriStack)
+//          });
+//          var view = new LibraryCopyView({ 
+//            model: copyModel
+//          });
+//          
+//          copyModel.on('change:uriStack', function(model, val, options){
+//            self.reportUriStack(model.get('uriStack'));
+//          });
+//        });
       }
+      // NOTE: have to re-listen after removing a view
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      this.setView("#tab_container", view ).render();
     },
     
     setContents: function() {
       // for testing: 
       var key = 'contents';
-      var view = this.views[key];
+      var view = this.tabViews[key];
       if ( !view ) {
         view = new DetailLayout({ model: this.model});
-        this.views[key] = view;
+        this.tabViews[key] = view;
       }
       // testing only
       this.model.set({'library_name': this.model.get('library_name') + ", tab: " + key }, {silent: true});
@@ -142,11 +191,12 @@ define([
       var viewId = 'detail';
       if (!_.isEmpty(this.uriStack)){
         viewId = this.uriStack.shift();
-        this.consumedStack = [viewId];
+//        this.consumedStack = [viewId];
         
         if (!_.has(this.tabbed_resources, viewId)){
-          window.alert('could not find the tabbed resource: ' + viewId);
-          return;
+          var msg = 'could not find the tabbed resource: ' + viewId;
+          window.alert(msg);
+          throw msg;
         }
       }
       this.change_to_tab(viewId);
@@ -154,7 +204,7 @@ define([
     
     onClose: function() {
       // TODO: is this necessary when using Backbone LayoutManager
-      this.views = {};
+      this.tabViews = {};
       this.remove();
     },
   

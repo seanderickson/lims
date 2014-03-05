@@ -23,9 +23,11 @@
 // and backgrid_filter is requiring it.
  **/
 define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid', 
-        'backgrid_filter', 'backgrid_paginator', 'backgrid_select_all', 'lunr'],
+        'backgrid_filter', 'backgrid_paginator', 'backgrid_select_all', 'lunr',
+        'layoutmanager'],
     function($, _, Backbone, BackbonePageableCollection, Backgrid, 
-             BackgridFilter, BackgridPaginator, BackgridSelectAll, lunr) {
+             BackgridFilter, BackgridPaginator, BackgridSelectAll, lunr,
+             layoutmanager ) {
 
   // Attach PageableCollection to the right place on the Backbone object
   // for compatibility with require.js
@@ -191,8 +193,10 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
     var id  = '';
     _.each(resource.id_attribute, function(attribute){
       if (_.isEmpty(urlStack)){
-        window.alert('not enough items on the URL to create the key for resource: ' + 
-            resource.title );
+        var msg = 'not enough items on the URL to create the key for resource: ' + 
+            resource.title;
+        window.alert(msg);
+        throw msg;
       }
       // don't care what the id is, just pop one for each
       var item = urlStack.shift();
@@ -205,6 +209,23 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
       }
     });
     return id;
+  };
+  
+  var getIdKeys = Iccbl.getIdKeys = function(model,schema) {
+    if (_.has(schema['resource_definition'], 'id_attribute')) {
+      var id_attribute = schema['resource_definition']['id_attribute'];
+      console.log('create id from ' + id_attribute);
+      var idList = [];
+      _.each(id_attribute, function(item){
+        idList.push(model.get(item));
+      });
+      return idList;
+    } else {
+      throw new TypeError("'id_attribute' not found on the schema: " 
+              + JSON.stringify(schema)
+              + ', for the model: ' + JSON.stringify(model.attributes));
+    }
+    
   };
   
   /**
@@ -720,6 +741,55 @@ var CollectionInColumns = Iccbl.CollectionInColumns = Backbone.Collection.extend
         });
         return _.values(pivoted);
     },
+});
+
+
+
+//var UriContainerView = Iccbl.UriContainerView = function(options) {
+//  this.initialize.apply(this, arguments);
+//};
+//
+//_.extend(UriContainerView.prototype, {   
+  
+var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
+  initialize: function(args) {
+    console.log('UriContainerView initialize');
+    var model = this.model = args.model;
+    var targetProperty = args.property || 'uriStack';
+    this.listenTo(model, 'change:'+targetProperty , this.uriStackChange );
+    
+    Backbone.View.prototype.initialize.apply(this,arguments);
+  },
+  
+  /**
+   * Child view bubble up URI stack change event
+   */
+  reportUriStack: function(reportedUriStack, options) {
+    var options = options || {source: this};
+    var consumedStack = this.consumedStack || [];
+    var actualStack = consumedStack.concat(reportedUriStack);
+    this.model.set({'uriStack': actualStack}, options);     
+  },
+  
+  /**
+   * Backbone.Model change event handler
+   * @param options.source = the event source triggering view
+   */
+  uriStackChange: function(model, val, options) {
+    if(options.source === this){
+      console.log('self generated uristack change');
+      return;
+    }else{
+      var uriStack = _.clone(this.model.get('uriStack'));
+      this.changeUri(uriStack);
+    }
+  },
+  
+  changeUri: function(uriStack) {
+    window.alert('ContentView changeUri function must be implemented. uriStack: ' +
+        JSON.stringify(uriStack));
+  }
+
 });
 
 var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({

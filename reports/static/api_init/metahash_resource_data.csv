@@ -12,4 +12,4 @@ library,resource,[short_name],[short_name],/reports/api/v1/resource/library/,0,,
 user,resource,[screensaver_user_id],"[first_name, ,last_name]",/reports/api/v1/resource/user/,0,,"The admin user view",User,"[list,detail]",,,reports
 usergroup,resource,[name],[name],/reports/api/v1/resource/usergroup/,0,,"The Django group",Group,"[list,detail]",,,reports
 permission,resource,"[scope,key,type]","[scope,key,type]",/reports/api/v1/resource/permission/,0,,"The Django permission",Permission,"[list,detail]",,,reports
-librarycopy,resource,"[library_short_name,name]","[library_short_name,name]",/reports/api/v1/resource/librarycopy/,0,,"The Library Copy","Library Copy","[list,detail]",,,db
+librarycopy,resource,"[library_short_name,name]","[library_short_name,,  ,name]",/reports/api/v1/resource/librarycopy/,0,,"The Library Copy","Library Copy","[list,detail]",,,db

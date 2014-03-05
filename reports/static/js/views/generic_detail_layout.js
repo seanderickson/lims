@@ -18,10 +18,10 @@ define([
 	  initialize: function() {
 	    console.log('---- initialize detail layout');
 	    this.subviews = {};
-	    this.listenTo(this.model, 'change:show_detail');
+//??	    this.listenTo(this.model, 'change:show_detail');
+      _.bindAll(this, 'showDetail');
+      
 	  },
-	  
-	  
     events: {
       'click button#save': 'save',
       'click button#delete': 'delete',
@@ -47,6 +47,8 @@ define([
         view = new DetailView({ model: this.model});
         this.subviews['detail'] = view;
       }
+      // NOTE: no subviews, so can notify on render
+      this.trigger('uriStack:change',[]);
       this.setView("#detail_content", view ).render();
     },
     
@@ -59,6 +61,8 @@ define([
         
         this.subviews['edit'] = view;
       }
+      // NOTE: no subviews, so can notify on render
+      this.trigger('uriStack:change',[]);
       this.setView("#detail_content", view ).render();
     },
     
@@ -91,10 +95,7 @@ define([
         // set the id specifically on the model: backbone requires this to 
         // determine whether a "POST" or "PATCH" will be used
         this.model.id = key;
-        
-//        // clear out the 'resourceSchema' field - it's not part of the real object
-//        this.model.unset('resourceSchema', {silent: true});
-        
+
         this.model.save( null, {
           url: url // set the url property explicitly
         })
@@ -126,7 +127,6 @@ define([
         })
         .always(function() {
           // always replaces complete as of jquery 1.8
-//          self.model.set({ 'resourceSchema': resourceSchema }, { silent: true });
           self.showDetail();
         });
       }

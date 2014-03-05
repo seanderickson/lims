@@ -29,17 +29,21 @@ define([
           };          
         },
         
+        /**
+         * Backbone.Model change event handler
+         * @param options.source = the event source triggering view
+         */
         uriStackChange: function(model, val, options) {
           if(options.source === this){
             console.log('self generated uristack change');
             return;
           }else{
-            this.change_ui_resource();
+            this.changeUri();
           }
         },
    
 
-        change_ui_resource : function() {
+        changeUri: function() {
           
           var uriStack = appModel.get('uriStack');
           var ui_resource_id = uriStack[0];
@@ -48,6 +52,8 @@ define([
 //            var ui_resource_id = appModel.get('current_resource_id');
 
             this.$('li').removeClass('active');
+            
+            if(_.isEmpty(uriStack)) return;
 
             var menus = appModel.get('menu');
             var found_menus = this.find_submenu_path(menus, ui_resource_id);

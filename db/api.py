@@ -165,8 +165,8 @@ class ScreenResultResource(ManagedResource):
         # also note the double underscore "__" is because we also don't want to match in the first clause.
         # We don't want "schema" since that reserved word is used by tastypie for the schema definition for the resource (used by the UI)
         return [
-            url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))/schema%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('get_schema'), name="api_get_schema"),
+            url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[^/]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[^/]+))/schema%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('get_schema'), name="api_get_schema"),
         ]
 #         
 #     def prepend_urls(self):
@@ -428,7 +428,7 @@ class ScreenSummaryResource(ManagedModelResource):
         # We don't want "schema" since that reserved word is used by tastypie 
         # for the schema definition for the resource (used by the UI)
         return [
-            url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[^/]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
 
     def dehydrate(self, bundle):
@@ -466,7 +466,7 @@ class DataColumnResource(ManagedModelResource):
         # We don't want "schema" since that reserved word is used by tastypie for the schema definition for the resource (used by the UI)
         return [
             url(
-                r"^(?P<resource_name>%s)/(?P<data_column_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" % 
+                r"^(?P<resource_name>%s)/(?P<data_column_id>((?=(schema))__|(?!(schema))[^/]+))%s$" % 
                 (self._meta.resource_name, trailing_slash()), 
                  self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
@@ -504,7 +504,7 @@ class ScreenResource(ManagedModelResource):
         # also note the double underscore "__" is because we also don't want to match in the first clause.
         # We don't want "schema" since that reserved word is used by tastypie for the schema definition for the resource (used by the UI)
         return [
-            url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[\w\d_.-]+))%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[^/]+))%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                    self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
@@ -633,7 +633,7 @@ class LibraryResource(ManagedModelResource):
             url(r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[\w\d_.-]+))"
+            url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
                  r"/copy%s$" )
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_librarycopyview'), 
@@ -731,9 +731,10 @@ class LibraryCopyResource(ManagedModelResource):
         # We don't want "schema" since that reserved word is used by tastypie 
         # for the schema definition for the resource (used by the UI)
         return [
-            url(r"^(?P<resource_name>%s)/(?P<library_short_name>((?=(schema))__|(?!(schema))[^/]+))%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
-                       self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url((r"^(?P<resource_name>%s)/(?P<library__short_name>((?=(schema))__|(?!(schema))[^/]+))"
+                 r"/(?P<name>[^/]+)%s$"
+                )  % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
         
     def get_object_list(self, request, library_short_name=None):

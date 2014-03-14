@@ -1,0 +1,6 @@
+key,scope,resource_uri,ordinal,comment,ui_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,backgrid_cell_type,backgrid_cell_options,is_restricted,nested_resource
+well_id,fields.well,/reports/api/v1/metahash/fields.well/well_id/,1,,string,TRUE,"Well ID","Well ID",TRUE,,,"[list,detail]",,Iccbl.EditCell,,,
+plate_number,fields.well,/reports/api/v1/metahash/fields.well/plate_number/,2,,integer,TRUE,"Plate number",Plate,TRUE,,,"[list,detail]",,,,,
+library_short_name,fields.well,/reports/api/v1/metahash/fields.well/library_short_name/,3,,string,TRUE,"Library short name",Library,TRUE,,,"[list,detail]",,,,,
+library_well_type,fields.well,/reports/api/v1/metahash/fields.well/library_well_type/,4,,string,TRUE,"Library well type","Library Well Type",TRUE,,library.well_type,"[list,detail]",,,,,
+reagent,fields.well,/reports/api/v1/metahash/fields.well/reagent/,5,,nested,TRUE,Reagent,Reagent,TRUE,,,"[list,detail]",,,,,reagent

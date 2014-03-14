@@ -251,6 +251,9 @@ td.facility_salt_batch {
   padding: 0px;
 }
 
+.nested dt,dl{
+	text-align: left;
+}
 /*
 .basictab li a {
     background-color: #FFCE87;

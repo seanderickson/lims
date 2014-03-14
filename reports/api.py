@@ -177,8 +177,14 @@ class LoggingMixin(Resource):
                         for key in diff_keys )  )))
             
         # user can specify any valid, escaped json for this field
+        # FIXME: untested
         if 'apilog_json_field' in bundle.data:
-            log.json_field = json.dumps(bundle.data['apilog_json_field'])
+#             log.json_field = json.dumps(bundle.data['apilog_json_field'])
+            log.json_field = bundle.data['apilog_json_field']
+        
+        # FIXME: untested
+        if 'apilog_comment' in bundle.data:
+            log.comment = bundle.data['apilog_comment']
             
         i +=1
         logger.info('--- log obj_update apilog.save ' + str(i))
@@ -226,9 +232,16 @@ class ManagedResource(LoggingMixin):
         
     # local method  
     def reset_field_defs(self, scope):
-        logger.info(str((
-            '----------reset_field_defs, ' , scope, 'registry', 
-            ManagedResource.resource_registry )))
+        #         logger.info(str((
+        #             '----------reset_field_defs, ' , scope, 'registry', 
+        #             ManagedResource.resource_registry )))
+        if scope not in ManagedResource.resource_registry:
+            msg = str((
+                'resource for scope not found: ', scope, 
+                'in resource registry',ManagedResource.resource_registry.keys(),
+                'possible cause: resource not entered in urls.py' ))
+            logger.warn(msg)
+            raise Exception(msg)
         resource = ManagedResource.resource_registry[scope]
         logger.info(str((
             '----------reset_field_defs, resource_name' , 
@@ -324,13 +337,14 @@ class ManagedResource(LoggingMixin):
             if not 'id' in schema['fields']:
                 schema['fields']['id'] = { 'visibility':[] }
             
+            # FIXME: schema.resource_definition <=> resource.schema, which one?
             logger.debug(str((
                 'trying to locate resource information', 
                 self._meta.resource_name, self.scope)))
             resource_def = MetaHash.objects.get(
                 scope='resource', key=self._meta.resource_name)
-        
             schema['resource_definition'] = resource_def.model_to_dict(scope='fields.resource')
+
         except Exception, e:
             logger.warn(str(('on building schema', e, self._meta.resource_name)))
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -676,10 +690,13 @@ class ResourceResource(ManagedModelResource):
     fields defined in the Metahash table.
     '''
     def __init__(self, **kwargs):
+#         self.scope = 'fields.resource'
+#         super(ResourceResource,self).__init__(**kwargs)
         super(ResourceResource,self).__init__(field_definition_scope='fields.resource', **kwargs)
 
     class Meta:
-        bootstrap_fields = ['scope', 'key', 'ordinal', 'json_field'] # note, does not need the 'json_field_type' since MetahashResource is managing the fields
+        # note, does not need the 'json_field_type' since MetahashResource is managing the fields
+        bootstrap_fields = ['scope', 'key', 'ordinal', 'json_field'] 
         queryset = MetaHash.objects.filter(scope='resource').order_by('key', 'ordinal', 'scope')
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
         authorization= Authorization()        
@@ -689,16 +706,27 @@ class ResourceResource(ManagedModelResource):
         serializer = LimsSerializer()
         excludes = [] #['json_field']
         always_return_data = True # this makes Backbone happy
-        resource_name='resource' # appears that tastypie needs this with a resource named "resource"!
+        resource_name='resource' 
     
     def build_schema(self):
         schema = super(ResourceResource,self).build_schema()
         temp = [ x.scope for x in self.Meta.queryset.distinct('key')]
         schema['extraSelectorOptions'] = { 'label': 'Resource', 'searchColumn': 'key', 'options': temp }
-        
-        # TODO: get the resourceSchema and plug it in here as well
-        
         return schema
+
+    def dehydrate(self, bundle):
+        bundle = super(ResourceResource,self).dehydrate(bundle)
+        # Get the schema
+        # FIXME: why is the resource registry keyed off of "field."+key ?
+        resource = ManagedResource.resource_registry['fields.'+bundle.obj.key]
+        if resource:
+            bundle.data['schema'] = resource.build_schema();
+        else:
+            logger.error('no API resource found in the registry for ' + bundle.data['key'] +
+                '.  Cannot build the schema for this resource.')
+    
+        return bundle
+
 
 class ApiLogResource(ManagedModelResource):
     '''
@@ -1196,7 +1224,7 @@ class PermissionResource(ManagedModelResource):
         
         resources = MetaHash.objects.filter(Q(scope='resource')|Q(scope__contains='fields.'))
         query = self._meta.queryset._clone()
-        permissionTypes = Vocabularies.objects.all().filter(scope='permission:type')
+        permissionTypes = Vocabularies.objects.all().filter(scope='permission.type')
         for r in resources:
             found = False
             for perm in query:

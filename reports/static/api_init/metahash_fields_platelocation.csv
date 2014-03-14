@@ -1,0 +1,5 @@
+key,scope,resource_uri,ordinal,comment,ui_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,backgrid_cell_type,backgrid_cell_options,is_restricted
+room,fields.platelocation,/reports/api/v1/metahash/fields.platelocation/room/,1,,string,TRUE,Room,Room,TRUE,,,"[list,detail]",,Iccbl.EditCell,,
+freezer,fields.platelocation,/reports/api/v1/metahash/fields.platelocation/freezer/,2,,string,TRUE,Freezer,Freezer,TRUE,,,"[list,detail]",,,,
+shelf,fields.platelocation,/reports/api/v1/metahash/fields.platelocation/shelf/,3,,string,TRUE,Shelf,Shelf,TRUE,,,"[list,detail]",,,,
+bin,fields.platelocation,/reports/api/v1/metahash/fields.platelocation/bin/,4,,string,TRUE,Bin,Bin,TRUE,,,"[list,detail]",,,,

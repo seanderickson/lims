@@ -6,21 +6,19 @@ define([
     'backbone_forms',
     'iccbl_backgrid',
     'models/app_state',
-    'views/generic_detail',
+    'views/generic_detail_stickit',
     'views/generic_edit',
     'text!templates/generic-detail-layout.html',
 
-], function( $, _, Backbone, stickit, backbone_forms, Iccbl, appModel,
-    DetailView, EditView, layoutTemplate ) {
+], function($, _, Backbone, stickit, backbone_forms, Iccbl, appModel,
+            DetailView, EditView, layoutTemplate ) {
 	
 	var DetailLayout = Backbone.Layout.extend({
 	  
 	  initialize: function() {
 	    console.log('---- initialize detail layout');
 	    this.subviews = {};
-//??	    this.listenTo(this.model, 'change:show_detail');
       _.bindAll(this, 'showDetail');
-      
 	  },
     events: {
       'click button#save': 'save',
@@ -32,10 +30,10 @@ define([
     },
     
     serialize: function() {
-      var schema = this.model.resourceSchema;
-    
       return {
-        'title': Iccbl.getTitleFromTitleAttribute(this.model, schema),
+        'title': Iccbl.getTitleFromTitleAttribute(
+            this.model,
+            this.model.resource.schema),
       }      
     },    
   
@@ -43,7 +41,7 @@ define([
     
     showDetail: function() {
       var view = this.subviews['detail'];
-      if ( ! view ) {
+      if (!view) {
         view = new DetailView({ model: this.model});
         this.subviews['detail'] = view;
       }
@@ -54,11 +52,9 @@ define([
     
     showEdit: function() {
       var view = this.subviews['edit'];
-      if ( ! view ) {
+      if (!view) {
         view = new EditView({ model: this.model});
-        
         Backbone.Layout.setupView(view);
-        
         this.subviews['edit'] = view;
       }
       // NOTE: no subviews, so can notify on render
@@ -80,12 +76,12 @@ define([
       }else{
         view.commit();
         
-        var resourceSchema = self.model.resourceSchema;
+//        var resourceSchema = self.model.resourceSchema;
         // Fixup the URL - if it points to the model instance, make it point to 
         // the API resource only: tastypie wants this
         // Note: this is happening if the model was fetched specifically for this
         // page, and has the url used to fetch it, rather than the collection url.
-        var key = Iccbl.getIdFromIdAttribute( self.model,resourceSchema );
+        var key = Iccbl.getIdFromIdAttribute( self.model,self.model.resource.schema );
         var url = _.result(this.model, 'url');
         ////    if ( url && url.indexOf(key) != -1 ) {
         ////    url = url.substring( 0,url.indexOf(key) );
@@ -96,7 +92,7 @@ define([
         // determine whether a "POST" or "PATCH" will be used
         this.model.id = key;
 
-        this.model.save( null, {
+        this.model.save(null, {
           url: url // set the url property explicitly
         })
         .done(function(model, resp){
@@ -147,7 +143,28 @@ define([
       this.remove();
       appModel.router.back();
     },
-    
+
+    history: function(event) {
+      event.preventDefault();
+      var self = this;
+      
+      var newUriStack = ['apilog','search'];
+      var search = {};
+      search['ref_resource_name'] = this.model.resource.key;
+      search['key'] = this.model.key;
+      newUriStack.push(
+          _.map(
+            _.pairs(search), 
+            function(keyval) {
+              return keyval.join('=');
+            }).join(','));
+      
+      var route = newUriStack.join('/');
+      console.log('history route: ' + route);
+      appModel.router.navigate(route, {trigger: true});
+      this.remove();
+    },
+
     onClose: function() {
       this.subviews = {};
     },
@@ -191,62 +208,6 @@ define([
 //      $('#modal').empty();
 //      $('#modal').html(modalDialog.$el);
 //      $('#modal').modal();
-//    },
-//
-//    cancel: function(event){
-//      event.preventDefault();
-//      // TODO: do we have to do anything to abort form changes?
-//      // this.close(); // can we do this
-//      // this.$el.remove();
-//      if(this._options.isEditMode){
-//        this.detail(null);
-//      }else{
-//        this.$el.empty();
-//        this.trigger('remove');
-//        this._router.back();
-//      }
-//    },
-//
-//    history: function( event ) {
-//      console.log('history click');
-//      event.preventDefault();
-//      this.$el.empty();
-//      this.trigger('remove');
-//      var self = this;
-//
-//      // construct the route to the history
-//      // TODO: consider changing the app state to get to the records
-//      // (future benefit of not reloading models if cached?)
-//      var _history_search = "ref_resource_name=" + this._resource_definition['key'];
-//      var id = this.model.get('id');
-//      if(_.has(this._resource_definition, 'id_attribute')){
-//          // console.log('create id from ' +
-//          // this._resource_definition['id_attribute']);
-//          id = _.reduce(this._resource_definition['id_attribute'],
-//                  function(memo, item){
-//                      if(!_.isEmpty(memo)) memo += '/';
-//                      return memo += self.model.get(item);}, '');
-//      }else{
-//        console.log(
-//          'Warn: schema for this type has no resource_definition,id_attribute; type: ' +
-//          this._options.type);
-//      }
-//      _history_search += ',key='+id;
-//      // TODO: discuss whether full encoding of the search fragment is
-//      // necessary.
-//      // to-date, we know that the forward slash messes up the backbone
-//      // router parsing, but other URL chars do not,
-//      // and full encoding reduces the usability of the URL for the end
-//      // user
-//      // _history_search = encodeURIComponent(_history_search);
-//      _history_search = _history_search.replace('\/','%2F');
-//      var _route = 'list/apilog/search/' + _history_search; 
-//      console.log('-- set route: ' + _route);
-//      this._router.navigate(_route, {trigger: true});
-//    },
-//
-//    error: function(options){
-//        console.log('A model save error reported: ' + JSON.stringify(options));
 //    },
 //
 //    render : function() {

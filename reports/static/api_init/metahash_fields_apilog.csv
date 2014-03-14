@@ -10,4 +10,5 @@ added_keys,fields.apilog,/reports/api/v1/metahash/fields.apilog/added_keys/,7,,s
 removed_keys,fields.apilog,/reports/api/v1/metahash/fields.apilog/removed_keys/,8,,string,TRUE,"Attribute keys that were removed by this change (set to null)",Removed,TRUE,,,[detail],,,,
 diff_keys,fields.apilog,/reports/api/v1/metahash/fields.apilog/diff_keys/,9,,string,TRUE,"Attribute keys for values that have changed",Changed,TRUE,,,"[list,detail]",,,,
 diffs,fields.apilog,/reports/api/v1/metahash/fields.apilog/diffs/,10,"This is a dictionary, where the keys are the attribute keys that have changed, and the value of each key is an array, length two, containing the old value in position 1 and the new value in position 2.",string,TRUE,"A dictionary of attribute key to [old,new] values",Changes,TRUE,,,"[list,detail]",,,,
-json_field,fields.apilog,/reports/api/v1/metahash/fields.apilog/json_field/,11,,string,FALSE,"User defined field","User Field",FALSE,,,[detail],,,,
+json_field,fields.apilog,/reports/api/v1/metahash/fields.apilog/json_field/,12,,string,FALSE,"User defined field","User Field",FALSE,,,[detail],,,,
+comment,fields.apilog,/reports/api/v1/metahash/fields.apilog/comment/,11,,string,TRUE,"User entered comment",Comment,TRUE,,,"[list,detail]",,,,

@@ -633,23 +633,6 @@ class Publication(models.Model):
     class Meta:
         db_table = 'publication'
 
-class Reagent(models.Model):
-    reagent_id = models.IntegerField(primary_key=True)
-    vendor_identifier = models.TextField(blank=True)
-    vendor_name = models.TextField(blank=True)
-    library_contents_version = models.ForeignKey('LibraryContentsVersion')
-    well = models.ForeignKey('Well')
-    facility_batch_id = models.IntegerField(null=True, blank=True)
-    vendor_batch_id = models.TextField(blank=True)
-    class Meta:
-        db_table = 'reagent'
-
-class ReagentPublicationLink(models.Model):
-    reagent = models.ForeignKey(Reagent)
-    publication_id = models.IntegerField(unique=True)
-    class Meta:
-        db_table = 'reagent_publication_link'
-
 class RnaiCherryPickRequest(models.Model):
     cherry_pick_request = models.ForeignKey(CherryPickRequest, primary_key=True)
     class Meta:
@@ -687,17 +670,17 @@ class Screen(models.Model):
     publishable_protocol_date_entered = models.DateField(null=True, blank=True)
     amount_to_be_charged_for_screen = models.DecimalField(null=True, max_digits=9, decimal_places=2, blank=True)
     billing_comments = models.TextField(blank=True)
-    is_billing_for_supplies_only = models.BooleanField() # TODO: obsolete? still used?
+    is_billing_for_supplies_only = models.BooleanField(default=False) # TODO: obsolete? still used?
     billing_info_return_date = models.DateField(null=True, blank=True)
     date_charged = models.DateField(null=True, blank=True)
     date_completed5kcompounds = models.DateField(null=True, blank=True)
     date_faxed_to_billing_department = models.DateField(null=True, blank=True)
     facilities_and_administration_charge = models.DecimalField(null=True, max_digits=9, decimal_places=2, blank=True)
-    is_fee_form_on_file = models.BooleanField()
+    is_fee_form_on_file = models.BooleanField(null=False, default=False)
     fee_form_requested_date = models.DateField(null=True, blank=True)
     fee_form_requested_initials = models.TextField(blank=True)
-    see_comments = models.BooleanField()
-    to_be_requested = models.BooleanField()  #  TODO: obsolete? still used?
+    see_comments = models.BooleanField(default=False)
+    to_be_requested = models.BooleanField(default=False)  #  TODO: obsolete? still used?
     coms_registration_number = models.TextField(blank=True)
     coms_approval_date = models.DateField(null=True, blank=True)
     pin_transfer_admin_activity = models.ForeignKey(AdministrativeActivity, null=True, blank=True)
@@ -709,7 +692,7 @@ class Screen(models.Model):
     data_privacy_expiration_notified_date = models.DateField(null=True, blank=True)
     screened_experimental_well_count = models.IntegerField(null=False, default=0)
     unique_screened_experimental_well_count = models.IntegerField(null=False, default=0)
-    total_plated_lab_cherry_picks = models.IntegerField(null=False)
+    total_plated_lab_cherry_picks = models.IntegerField(null=False, default=0)
     assay_plates_screened_count = models.IntegerField(null=False, default=0)
     library_plates_screened_count = models.IntegerField(null=False, default=0)
     library_plates_data_loaded_count = models.IntegerField(null=False, default=0)
@@ -877,6 +860,26 @@ class ScreensaverUserRole(models.Model):
     class Meta:
         db_table = 'screensaver_user_role'
 
+
+
+
+class Reagent(models.Model):
+    reagent_id = models.IntegerField(primary_key=True)
+    vendor_identifier = models.TextField(blank=True)
+    vendor_name = models.TextField(blank=True)
+    library_contents_version = models.ForeignKey('LibraryContentsVersion')
+    well = models.ForeignKey('Well')
+    facility_batch_id = models.IntegerField(null=True, blank=True)
+    vendor_batch_id = models.TextField(blank=True)
+    class Meta:
+        db_table = 'reagent'
+
+class ReagentPublicationLink(models.Model):
+    reagent = models.ForeignKey(Reagent)
+    publication_id = models.IntegerField(unique=True)
+    class Meta:
+        db_table = 'reagent_publication_link'
+
 class SilencingReagent(models.Model):
     reagent = models.ForeignKey(Reagent, primary_key=True)
     sequence = models.TextField(blank=True)
@@ -892,6 +895,24 @@ class SilencingReagentDuplexWells(models.Model):
     well = models.ForeignKey('Well')
     class Meta:
         db_table = 'silencing_reagent_duplex_wells'
+
+class SmallMoleculeReagent(models.Model):
+    reagent = models.ForeignKey(Reagent, primary_key=True)
+    inchi = models.TextField(blank=True)
+    molecular_formula = models.TextField(blank=True)
+    molecular_mass = models.DecimalField(null=True, max_digits=15, decimal_places=9, blank=True)
+    molecular_weight = models.DecimalField(null=True, max_digits=15, decimal_places=9, blank=True)
+    smiles = models.TextField(blank=True)
+    salt_form_id = models.IntegerField(null=True, blank=True)
+    is_restricted_structure = models.BooleanField()
+    class Meta:
+        db_table = 'small_molecule_reagent'
+
+class StudyReagentLink(models.Model):
+    study = models.ForeignKey(Screen)
+    reagent = models.ForeignKey(Reagent)
+    class Meta:
+        db_table = 'study_reagent_link'
 
 #class SilencingReagentNonTargettedGenbankAccessionNumber(models.Model):
 #    silencing_reagent_id = models.TextField()
@@ -929,23 +950,9 @@ class SmallMoleculePubchemCid(models.Model):
     class Meta:
         db_table = 'small_molecule_pubchem_cid'
 
-class SmallMoleculeReagent(models.Model):
-    reagent = models.ForeignKey(Reagent, primary_key=True)
-    inchi = models.TextField(blank=True)
-    molecular_formula = models.TextField(blank=True)
-    molecular_mass = models.DecimalField(null=True, max_digits=15, decimal_places=9, blank=True)
-    molecular_weight = models.DecimalField(null=True, max_digits=15, decimal_places=9, blank=True)
-    smiles = models.TextField(blank=True)
-    salt_form_id = models.IntegerField(null=True, blank=True)
-    is_restricted_structure = models.BooleanField()
-    class Meta:
-        db_table = 'small_molecule_reagent'
 
-class StudyReagentLink(models.Model):
-    study = models.ForeignKey(Screen)
-    reagent = models.ForeignKey(Reagent)
-    class Meta:
-        db_table = 'study_reagent_link'
+
+
 
 class TransfectionAgent(models.Model):
     transfection_agent_id = models.IntegerField(primary_key=True)

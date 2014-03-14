@@ -13,7 +13,7 @@ define([
     
     serialize: function() {
     
-      var schema = this.model.resourceSchema;
+      var schema = this.model.resource.schema;
       var keys = Iccbl.sortOnOrdinal(
           _.keys(this.model.attributes), schema.fields)
       var detailKeys = _(keys).filter(function(key){
@@ -30,6 +30,8 @@ define([
     },    
     
     afterRender: function() { 
+      // stickit is not populating the page, but it is binding to the created
+      // elements
       this.stickit(this.model);
     },
   

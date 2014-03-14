@@ -16,10 +16,12 @@ from tastypie.constants import ALL, ALL_WITH_RELATIONS
 from tastypie import fields, utils
 
 from db.models import ScreensaverUser,Screen, LabHead, LabAffiliation, \
-    ScreeningRoomUser, ScreenResult, DataColumn, Library, Plate, Copy
+    ScreeningRoomUser, ScreenResult, DataColumn, Library, Plate, Copy,\
+    PlateLocation, Reagent, Well, LibraryContentsVersion, Activity,\
+    AdministrativeActivity
 from lims.api import CursorSerializer, LimsSerializer
-from reports.models import MetaHash
-from reports.api import ManagedModelResource, ManagedResource
+from reports.models import MetaHash, Vocabularies, ApiLog
+from reports.api import ManagedModelResource, ManagedResource, ApiLogResource
 
         
 logger = logging.getLogger(__name__)
@@ -344,11 +346,11 @@ class ScreenResultResource(ManagedResource):
     def get_schema(self, request, **kwargs):
 #        bundle = self.build_bundle(request=request)
 #        self.authorized_read_detail(self.get_object_list(bundle.request), bundle)
-        facility_id = kwargs.pop('facility_id')
-        if not facility_id:
+        if not 'facility_id' in kwargs:
             raise Http404(unicode((
                 'The screenresult schema requires a screen facility ID'
                 ' in the URI, as in /screenresult/[facility_id]/schema/')))
+        facility_id = kwargs.pop('facility_id')
         try:
             screenresult = ScreenResult.objects.get(
                 screen__facility_id=facility_id)
@@ -371,35 +373,35 @@ class ScreenResultResource(ManagedResource):
             raise Http404(unicode((
                 'no screen found for facility id', facility_id)))
             
-    def build_schema(self, screenresult):
+    def build_schema(self, screenresult=None):
         logger.info(unicode(('==========build schema for ', screenresult)))
         data = super(ScreenResultResource,self).build_schema()
         
-        # now the datacolumn fields
-        field_defaults = {
-            'visibility': ['list','detail'],
-            'ui_type': 'string',
-            'type': 'string',
-            'filtering': True,
-            }
-        for i,dc in enumerate(
-                DataColumn.objects.filter(screen_result=screenresult)):
-            alias = "dp_"+str(dc.data_column_id)
-            columnName = "col_"+str(dc.data_column_id)
-            _dict = field_defaults.copy()
-            _dict.update(model_to_dict(dc))
-            
-            _dict['title'] = dc.name
-            _dict['comment'] = dc.comments
-            _dict['key'] = columnName
-            # so that the value columns come last
-            _dict['ordinal'] += len(self.fields) + dc.ordinal 
-#            if dc.data_type == 'Numeric':
-#                _dict['ui_type'] = 'numeric'
-            
-            data['fields'][columnName] = _dict
-        # TODO: get the data columns; convert column aliases to real names
-#        logger.info(unicode(('schema ', data)))
+        if screenresult:
+            # now the datacolumn fields
+            field_defaults = {
+                'visibility': ['list','detail'],
+                'ui_type': 'string',
+                'type': 'string',
+                'filtering': True,
+                }
+            for i,dc in enumerate(
+                    DataColumn.objects.filter(screen_result=screenresult)):
+                alias = "dp_"+str(dc.data_column_id)
+                columnName = "col_"+str(dc.data_column_id)
+                _dict = field_defaults.copy()
+                _dict.update(model_to_dict(dc))
+                
+                _dict['title'] = dc.name
+                _dict['comment'] = dc.comments
+                _dict['key'] = columnName
+                # so that the value columns come last
+                _dict['ordinal'] += len(self.fields) + dc.ordinal 
+    #            if dc.data_type == 'Numeric':
+    #                _dict['ui_type'] = 'numeric'
+                
+                data['fields'][columnName] = _dict
+            # TODO: get the data columns; convert column aliases to real names
         return data
     
 
@@ -588,13 +590,12 @@ class ScreenResource(ManagedModelResource):
         return bundle
 
     def obj_create(self, bundle, **kwargs):
-        logger.info(str(('===creating screen', bundle.data)))
         bundle.data['date_created'] = timezone.now()
         
-        key = 'total_plated_lab_cherry_picks'
-        if key not in bundle.data:
-            field_def = self.get_field_def(key)
-            bundle.data['total_plated_lab_cherry_picks'] = int(field_def['default'])
+#         key = 'total_plated_lab_cherry_picks'
+#         if key not in bundle.data:
+#             field_def = self.get_field_def(key)
+#             bundle.data['total_plated_lab_cherry_picks'] = int(field_def['default'])
         bundle.data['version'] = 1
             
         return super(ScreenResource, self).obj_create(bundle, **kwargs)
@@ -619,6 +620,7 @@ class LibraryResource(ManagedModelResource):
 
         
     def __init__(self, **kwargs):
+        self.apiLog = ApiLogResource()
         super(LibraryResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
@@ -634,20 +636,63 @@ class LibraryResource(ManagedModelResource):
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
-                 r"/copy%s$" )
-                    % (self._meta.resource_name, trailing_slash()), 
+                 r"/copy%s$" ) % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_librarycopyview'), 
                 name="api_dispatch_librarycopyview"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
+                 r"/plate%s$" ) % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_libraryplateview'), 
+                name="api_dispatch_libraryplateview"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
+                 r"/well%s$" ) % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_library_wellview'), 
+                name="api_dispatch_library_wellview"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
+                 r"/copy/(?P<copy_name>[^/]+)"
+                 r"/plate%s$") % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_librarycopyplateview'), 
+                name="api_dispatch_library_copy_plateview"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
+                 r"/version%s$" ) % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_libraryversionview'), 
+                name="api_dispatch_libraryversionview"),
         ]    
 
  
     def dispatch_librarycopyview(self, request, **kwargs):
         kwargs['library_short_name'] = kwargs.pop('short_name')  # signal to include extra column
         return LibraryCopyResource().dispatch('list', request, **kwargs)    
-        
-        
+ 
+    def dispatch_libraryplateview(self, request, **kwargs):
+        kwargs['library_short_name'] = kwargs.pop('short_name')  # signal to include extra column
+        return LibraryCopyPlateResource().dispatch('list', request, **kwargs)    
+
+    def dispatch_library_wellview(self, request, **kwargs):
+        kwargs['library_short_name'] = kwargs.pop('short_name')  # signal to include extra column
+        return WellResource().dispatch('list', request, **kwargs)    
                     
+    def dispatch_library_copyplateview(self, request, **kwargs):
+        kwargs['library_short_name'] = kwargs.pop('short_name')  # signal to include extra column
+        return LibraryCopyPlateResource().dispatch('list', request, **kwargs)    
+        
+    def dispatch_libraryversionview(self, request, **kwargs):
+        kwargs['library_short_name'] = kwargs.pop('short_name')  # signal to include extra column
+        return LibraryContentsVersionResource().dispatch('list', request, **kwargs)    
+        
     def dehydrate(self, bundle):
+        # get the api comments
+        
+        #! untested
+        comments = self.apiLog.obj_get_list(
+            bundle, ref_resource_name='library', key=bundle.obj.short_name,
+            comment__isnull=False)
+        comment_list = []
+        if len(comments) > 0:
+            for comment in comments:
+                comment_bundle = self.apiLog.build_bundle(obj=comment)
+                comment_bundle = self.apiLog.full_dehydrate(comment_bundle);
+                comment_list.append(comment_bundle.data);
+        bundle.data['comments'] = comment_list;
         return bundle
     
     def build_schema(self):
@@ -735,7 +780,17 @@ class LibraryCopyResource(ManagedModelResource):
                  r"/(?P<name>[^/]+)%s$"
                 )  % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url((r"^(?P<resource_name>%s)/(?P<library__short_name>((?=(schema))__|(?!(schema))[^/]+))"
+                 r"/(?P<name>[^/]+)"
+                 r"/plate%s$" ) % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_librarycopyplateview'), 
+                name="api_dispatch_librarycopy_plateview"),
         ]    
+
+    def dispatch_librarycopyplateview(self, request, **kwargs):
+        kwargs['library_short_name'] = kwargs.pop('library__short_name')  # signal to include extra column
+        kwargs['copy_name'] = kwargs.pop('name')  # signal to include extra column
+        return LibraryCopyPlateResource().dispatch('list', request, **kwargs)    
         
     def get_object_list(self, request, library_short_name=None):
         ''' 
@@ -747,7 +802,7 @@ class LibraryCopyResource(ManagedModelResource):
         query = super(LibraryCopyResource, self).get_object_list(request);
         logger.info(str(('get_obj_list', len(query))))
         if library_short_name:
-            query = query.filter(library__short_name=library_short_name)
+            query = query.filter(library_short_name=library_short_name)
         return query
     
         
@@ -840,3 +895,388 @@ class LibraryCopyResource(ManagedModelResource):
             return False
         return True
 
+
+class PlateLocationResource(ManagedModelResource):
+
+    class Meta:
+        queryset = PlateLocation.objects.all() #.order_by('facility_id')
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= Authorization()        
+        resource_name = 'platelocation'
+        
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+
+        
+    def __init__(self, **kwargs):
+        super(PlateLocationResource,self).__init__(**kwargs)
+
+    def prepend_urls(self):
+        # NOTE: this match "((?=(schema))__|(?!(schema))[^/]+)" 
+        # allows us to match any word (any char except forward slash), 
+        # except "schema", and use it as the key value to search for.
+        # also note the double underscore "__" is because we also don't want to 
+        # match in the first clause.
+        # We don't want "schema" since that reserved word is used by tastypie 
+        # for the schema definition for the resource (used by the UI)
+        return [
+            url((r"^(?P<resource_name>%s)/(?P<plate_id>((?=(schema))__|(?!(schema))[^/]+))%s$"
+                )  % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),]    
+        
+class LibraryCopyPlateResource(ManagedModelResource):
+
+    library_short_name = fields.CharField('copy__library__short_name',  null=True)
+    copy_name = fields.CharField('copy__name',  null=True)
+    plate_location = fields.ToOneField('db.api.PlateLocationResource', 
+                                        attribute='plate_location', 
+                                        full=True, full_detail=True, full_list=True,
+                                        null=True)
+    
+    # TODO:
+    # status_date
+    
+    # plate_location = 
+    
+    class Meta:
+        queryset = Plate.objects.all() #.order_by('facility_id')
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= Authorization()        
+        resource_name = 'librarycopyplate'
+        
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+
+        
+    def __init__(self, **kwargs):
+        super(LibraryCopyPlateResource,self).__init__(**kwargs)
+
+    def prepend_urls(self):
+        # NOTE: this match "((?=(schema))__|(?!(schema))[^/]+)" 
+        # allows us to match any word (any char except forward slash), 
+        # except "schema", and use it as the key value to search for.
+        # also note the double underscore "__" is because we also don't want to 
+        # match in the first clause.
+        # We don't want "schema" since that reserved word is used by tastypie 
+        # for the schema definition for the resource (used by the UI)
+        return [
+            url((r"^(?P<resource_name>%s)/(?P<copy__library__short_name>((?=(schema))__|(?!(schema))[^/]+))"
+                 r"/(?P<copy__name>[^/]+)"
+                 r"/(?P<plate_number>[^/]+)%s$"
+                )  % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),]    
+
+    def get_object_list(self, request, library_short_name=None, copy_name=None):
+        ''' 
+        Called immediately before filtering, actually grabs the (ModelResource) query - 
+
+        Note: any extra kwargs are there because we are injecting them into the 
+        global TP kwargs in one of the various "dispatch_" handlers assigned 
+        through prepend_urls.  Here we can explicitly add them to the query. 
+        
+        '''
+        query = super(LibraryCopyPlateResource, self).get_object_list(request);
+        if library_short_name:
+            query = query.filter(library_short_name=library_short_name)
+        if copy_name:
+            query = query.filter(copy_name=copy_name)
+        return query
+                    
+    def apply_sorting(self, obj_list, options):
+        options = options.copy()
+        logger.info(str(('options', options)))
+        
+        extra_order_by = []
+        
+        # handle joined table sorts
+        order_by = options.getlist('order_by',None)
+        if order_by:
+            for field in order_by:
+                if field == 'copy_name':
+                    temp = field
+                    _dir=''
+                    if field.startswith('-'):
+                        _dir = '-'
+                        field = field[1:]
+                    order_by.remove(temp)
+                    extra_order_by.append(_dir+'copy__name')
+            if len(order_by) > 0:
+                options.setlist('order_by', order_by)
+            else:
+                del options['order_by'] 
+        obj_list = super(LibraryCopyPlateResource, self).apply_sorting(obj_list, options)
+        
+        if len(extra_order_by)>0:
+            logger.info(str(('extra_order_by', extra_order_by)))
+            obj_list = obj_list.order_by(*extra_order_by)
+        return obj_list
+
+    def dehydrate(self, bundle):
+        if bundle.obj.created_by:
+            user = bundle.obj.created_by
+            bundle.data['created_by'] =  user.first_name + ' ' + user.last_name
+        return bundle
+    
+    def build_schema(self):
+        schema = super(LibraryCopyPlateResource,self).build_schema()
+        temp = [ x.status for x in self.Meta.queryset.distinct('status')]
+        schema['extraSelectorOptions'] = { 
+            'label': 'Type', 'searchColumn': 'status', 'options': temp }
+        return schema
+    
+    def obj_create(self, bundle, **kwargs):
+        bundle.data['date_created'] = timezone.now()
+        
+        bundle.data['version'] = 1
+        logger.info(str(('===creating library copy plate', bundle.data)))
+
+        return super(LibraryCopyPlateResource, self).obj_create(bundle, **kwargs)
+
+
+class ReagentResource(ManagedModelResource):
+
+#     compound_names = 
+    
+    class Meta:
+        queryset = Reagent.objects.all() #.order_by('facility_id')
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= Authorization()        
+        resource_name = 'reagent'
+        
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+
+        
+    def __init__(self, **kwargs):
+        super(ReagentResource,self).__init__(**kwargs)
+
+#     def prepend_urls(self):
+#         # NOTE: this match "((?=(schema))__|(?!(schema))[^/]+)" 
+#         # allows us to match any word (any char except forward slash), 
+#         # except "schema", and use it as the key value to search for.
+#         # also note the double underscore "__" is because we also don't want to 
+#         # match in the first clause.
+#         # We don't want "schema" since that reserved word is used by tastypie 
+#         # for the schema definition for the resource (used by the UI)
+#         return [
+#             url((r"^(?P<resource_name>%s)/(?P<plate_id>((?=(schema))__|(?!(schema))[^/]+))%s$"
+#                 )  % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),]
+
+
+
+class WellResource(ManagedModelResource):
+
+    library_short_name = fields.CharField('library__short_name',  null=True)
+    reagent = fields.ToOneField('db.api.ReagentResource', 
+                                        attribute='latest_released_reagent', 
+                                        full=True, full_detail=True, full_list=True,
+                                        null=True)
+    
+    # TODO:
+    # status_date
+    
+    # plate_location = 
+    
+    class Meta:
+        queryset = Well.objects.all() #.order_by('facility_id')
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= Authorization()        
+        resource_name = 'well'
+        
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+
+        
+    def __init__(self, **kwargs):
+        super(WellResource,self).__init__(**kwargs)
+
+    def prepend_urls(self):
+        # NOTE: this match "((?=(schema))__|(?!(schema))[^/]+)" 
+        # allows us to match any word (any char except forward slash), 
+        # except "schema", and use it as the key value to search for.
+        # also note the double underscore "__" is because we also don't want to 
+        # match in the first clause.
+        # We don't want "schema" since that reserved word is used by tastypie 
+        # for the schema definition for the resource (used by the UI)
+        return [
+            url((r"^(?P<resource_name>%s)/(?P<well_id>((?=(schema))__|(?!(schema))[^/]+))%s$"
+                )  % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),]    
+
+    
+    def get_object_list(self, request, library_short_name=None):
+        ''' 
+        Called immediately before filtering, actually grabs the (ModelResource) query - 
+        
+        Note: any extra kwargs are there because we are injecting them into the 
+        global tastypie kwargs in one of the various "dispatch_" handlers assigned 
+        through prepend_urls.  Here we can explicitly add them to the query. 
+        
+        '''
+        query = super(WellResource, self).get_object_list(request);
+        if library_short_name:
+            query = query.filter(library_short_name=library_short_name)
+        return query
+                    
+
+    def dehydrate(self, bundle):
+        return bundle
+    
+    def build_schema(self):
+        schema = super(WellResource,self).build_schema()
+        # todo; the following query is inefficient!
+        temp = [ x.title.lower() 
+            for x in Vocabularies.objects.all().filter(scope='library.well_type')]
+        schema['extraSelectorOptions'] = { 
+            'label': 'Type', 'searchColumn': 'library_well_type', 'options': temp }
+        return schema
+    
+    def obj_create(self, bundle, **kwargs):
+        bundle.data['date_created'] = timezone.now()
+        
+        bundle.data['version'] = 1
+        logger.info(str(('===creating well', bundle.data)))
+
+        return super(WellResource, self).obj_create(bundle, **kwargs)
+
+# FIXME: will replace this with the ApiLog resource?
+class ActivityResource(ManagedModelResource):
+
+    performed_by = fields.ToOneField(
+        'db.api.ScreensaverUserResource', 
+        attribute='performed_by', 
+        full=True, full_detail=True, full_list=True,
+        null=True)
+    performed_by_id = fields.IntegerField(attribute='performed_by_id');
+
+    class Meta:
+        queryset = AdministrativeActivity.objects.all() #.order_by('facility_id')
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= Authorization()        
+        resource_name = 'activity'
+        
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+
+        
+    def __init__(self, **kwargs):
+        super(ActivityResource,self).__init__(**kwargs)
+
+    def dehydrate(self, bundle):
+        bundle.data['activity_type'] = 'library_contents_update' # FIXME: hack for demo
+        return bundle
+    
+#     def prepend_urls(self):
+#         # NOTE: this match "((?=(schema))__|(?!(schema))[^/]+)" 
+#         # allows us to match any word (any char except forward slash), 
+#         # except "schema", and use it as the key value to search for.
+#         # also note the double underscore "__" is because we also don't want to 
+#         # match in the first clause.
+#         # We don't want "schema" since that reserved word is used by tastypie 
+#         # for the schema definition for the resource (used by the UI)
+#         return [
+#             url((r"^(?P<resource_name>%s)/(?P<plate_id>((?=(schema))__|(?!(schema))[^/]+))%s$"
+#                 )  % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),]
+
+
+
+class LibraryContentsVersionResource(ManagedModelResource):
+
+    library_short_name = fields.CharField('library__short_name',  null=True)
+    loading_activity = fields.ToOneField(
+        'db.api.ActivityResource', 
+        attribute='library_contents_loading_activity__activity', 
+        full=True, full_detail=True, full_list=True,
+        null=True)
+    release_activity = fields.ToOneField(
+        'db.api.ActivityResource', 
+        attribute='library_contents_release_activity__activity', 
+        full=True, full_detail=True, full_list=True,
+        null=True)
+     
+    date_loaded = fields.DateField(
+        'library_contents_loading_activity__activity__date_of_activity', null=True)
+    date_released = fields.DateField(
+        'library_contents_release_activity__activity__date_of_activity', null=True)
+    load_commments = fields.CharField(
+        'library_contents_loading_activity__activity__comments', null=True)
+    loaded_by_id = fields.IntegerField('library_contents_loading_activity__activity__performed_by__screensaver_user_id')
+    
+        
+    class Meta:
+        queryset = LibraryContentsVersion.objects.all() #.order_by('facility_id')
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= Authorization()        
+        resource_name = 'librarycontentsversion'
+        
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+
+        
+    def __init__(self, **kwargs):
+        super(LibraryContentsVersionResource,self).__init__(**kwargs)
+
+    def prepend_urls(self):
+        # NOTE: this match "((?=(schema))__|(?!(schema))[^/]+)" 
+        # allows us to match any word (any char except forward slash), 
+        # except "schema", and use it as the key value to search for.
+        # also note the double underscore "__" is because we also don't want to 
+        # match in the first clause.
+        # We don't want "schema" since that reserved word is used by tastypie 
+        # for the schema definition for the resource (used by the UI)
+        return [
+            url((r"^(?P<resource_name>%s)/(?P<library__short_name>((?=(schema))__|(?!(schema))[^/]+))"
+                 r"/(?P<version_number>[^/]+)%s$"
+                )  % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),]    
+
+    
+    def get_object_list(self, request, library_short_name=None):
+        ''' 
+        Called immediately before filtering, actually grabs the (ModelResource) query - 
+        
+        Note: any extra kwargs are there because we are injecting them into the 
+        global tastypie kwargs in one of the various "dispatch_" handlers assigned 
+        through prepend_urls.  Here we can explicitly add them to the query. 
+        
+        '''
+        query = super(LibraryContentsVersionResource, self).get_object_list(request);
+        if library_short_name:
+            query = query.filter(library_short_name=library_short_name)
+        return query
+                    
+
+    def dehydrate(self, bundle):
+        if bundle.obj.library_contents_loading_activity:
+            sru = bundle.obj.library_contents_loading_activity.activity.performed_by
+            bundle.data['loaded_by'] =  sru.first_name + ' ' + sru.last_name
+        if bundle.obj.library_contents_loading_activity:
+            sru = bundle.obj.library_contents_release_activity.activity.performed_by
+            bundle.data['released_by'] =  sru.first_name + ' ' + sru.last_name
+        return bundle
+        
+    def build_schema(self):
+        schema = super(LibraryContentsVersionResource,self).build_schema()
+        return schema
+    
+    def obj_create(self, bundle, **kwargs):
+        bundle.data['date_created'] = timezone.now()
+        
+        bundle.data['version'] = 1
+        logger.info(str(('===creating activity', bundle.data)))
+
+        return super(LibraryContentsVersionResource, self).obj_create(bundle, **kwargs)

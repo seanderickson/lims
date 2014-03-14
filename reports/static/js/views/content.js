@@ -8,17 +8,18 @@ define([
   'views/list2',
   'views/generic_detail_layout',
   'views/library',
+  'views/user',
   'text!templates/content.html',
   'text!templates/welcome.html'
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
-         LibraryView, layout, welcomeLayout) {
+         LibraryView, UserAdminView, layout, welcomeLayout) {
   
-  // put the view args in a keyed hash for lookup by name
   var VIEWS = {
     'ListView': ListView, 
     'DetailView': DetailLayout, 
-    'LibraryView': LibraryView
+    'LibraryView': LibraryView,
+    'UserAdminView': UserAdminView
   };
     
   var ContentView = Iccbl.UriContainerView.extend({
@@ -26,7 +27,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     template: _.template(layout),
     
     initialize: function() {
-      console.log('ContentView initialize');
+      console.log('initialize content.js');
       Iccbl.UriContainerView.prototype.initialize.apply(this,arguments);
     },
     
@@ -55,7 +56,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     showDetail: function(resource, uriStack, model){
       var self = this;
       var uriStack = _.clone(uriStack);
-      // get the view class
       var viewClass = DetailLayout;
       if (_.has(resource, 'detailView')){
         if (_.has(VIEWS, resource['detailView'])) {
@@ -73,12 +73,40 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView('#content', view).render();
     },
+    
+    showList: function(resource, uriStack, schemaResult) {
+      var self = this;
+      var uriStack = _.clone(uriStack);
+      var view = new ListView({ model: appModel, 
+        options: { 
+          uriStack: uriStack,
+          schemaResult: schemaResult, 
+          resource: resource
+        }
+      });
+
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.listenTo(view, 'detail', function(model){
+        var key = Iccbl.getIdFromIdAttribute(model,schemaResult);
+        var keysToReport = Iccbl.getIdKeys(model,schemaResult);
+        
+        // NOTE: TODO: have to call this explicitly because this is the
+        // top level of the view hierarchy.  Could/would delegate, but then
+        // need to have the child view consume the keys from the stack
+        self.reportUriStack(keysToReport, {source: view});
+        var newUriStack = [];
+        model.resource = resource;
+        model.key = key;
+//        appModel.updateModel(resource.key,key,model,function(model) {
+          self.showDetail(resource, newUriStack, model);          
+//        });
+      });
+      Backbone.Layout.setupView(view);
+      self.setView('#content', view ).render();
+    },
 
     changeUri: function(uriStack) {
-    
       var self = this;
-
-      console.log('got uristack: ' + JSON.stringify(uriStack));
       var consumedStack = this.consumedStack = [];
       
       if (_.isEmpty(uriStack)){
@@ -94,71 +122,25 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var uiResourceId = uriStack.shift();
       this.consumedStack.push(uiResourceId);
       var resource = appModel.getResource(uiResourceId);
+
       // Test for list args, if not found, then it's a detail view
       if (!_.isEmpty(uriStack) && 
-          !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
-          
-        // DETAIL VIEW
-        // The "scratch" variable holds the some of the prior state; for instance,
-        // if "edit" view is called, it may contain the model to edit
-//        var current_scratch = appModel.get('current_scratch');
-//        appModel.set({ current_scratch: {} });
-          
-  
+            !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
         var _key = Iccbl.popKeyFromStack(resource, uriStack, consumedStack );
         appModel.getModel(uiResourceId, _key, function(model){
           self.showDetail(resource, uriStack, model);
         });
-        
-//        if(_.isUndefined(current_scratch.schemaResult) || 
-//            _.isUndefined(current_scratch.model)){  
-//          appModel.getModel(uiResourceId, _key, self.showDetail );
-//
-//        }else{
-//          appModel.updateModel(uiResourceId, _key, current_scratch.model, createDetail );
-//        }
       } else {
-        // LIST VIEW
-        this.$('#title').html(resource.title);
         
-        var createList = function(schemaResult) {
-            var view = new ListView({ model: appModel, 
-              options: { 
-                uriStack: uriStack,
-                schemaResult: schemaResult, 
-                resource: resource
-              }
-            });
-            self.listenTo(view , 'uriStack:change', self.reportUriStack);
-            self.listenTo(view, 'detail', function(model){
-              var key = Iccbl.getIdFromIdAttribute(model,schemaResult);
-              var keysToReport = Iccbl.getIdKeys(model,schemaResult);
-              
-              // NOTE: TODO: have to call this explicitly because this is the
-              // top level of the view hierarchy.  Could/would delegate, but then
-              // need to have the child view consume the keys from the stack
-              self.reportUriStack(keysToReport, {source: view});
-//              self.consumedStack = keysToReport;
-              var newUriStack = [];
-              appModel.updateModel(uiResourceId,key,model,function(model) {
-                self.showDetail(resource, newUriStack, model);          
-              });
-
-//              appModel.updateModel(resourceId, key, model, self.showDetail);
-//              var idList = Iccbl.getIdKeys(model,schemaResult);
-//              // this is the standard action, will re-evaluate to the detail view
-//              // NOTE: by setting the source to the view, signal to self to process
-////              self.trigger('uriStack:change', idList, {source: view}); 
-//              self.reportUriStack(idList, {source: view});
-            });
-            Backbone.Layout.setupView(view);
-            self.setView('#content', view ).render();
-        };
-        appModel.getSchema(uiResourceId, createList);
-        
+        self.showList(
+            resource, uriStack, 
+            resource.schema);
+//        appModel.getSchema(uiResourceId, function(schemaResult) {
+//          self.showList(resource, uriStack, schemaResult);
+//        });
       }
     }
-
+    
   });
 
   return ContentView;

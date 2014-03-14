@@ -69,6 +69,8 @@ define([
                 var parts = search.split('=');
                 if (!parts || parts.length!=2) {
                   window.alert('invalid search parts: ' + search);
+                } else if (_.isEmpty(parts[1])) {
+                  // pass, TODO: prevent empty searches from notifying
                 } else {
                   searchHash[parts[0]] = parts[1];
                 }
@@ -184,31 +186,22 @@ define([
       var self = this;
 
       self.listenTo(self.collection, "MyCollection:link", 
-  		function(model, column) {
+    		function(model, column) {
           console.log('---- process link for '+ column);
-
+  
           var fieldDef = schemaResult.fields[column];
           if( _.has(fieldDef,'backgrid_cell_options')) {
-              // NOTE: format for backgrid cell options is "/{attribute_key}/"
-              backgrid_cell_options = fieldDef['backgrid_cell_options'];
-              console.log('backgrid_cell_options: ' + backgrid_cell_options);
-
-              _route = backgrid_cell_options.replace(/{([^}]+)}/g, 
-          		function (match) {
-                  	console.log('matched: ' + match + ', model: ' + model);
-                  	match = match.replace(/[{}]/g,'');
-                  	console.log('matched: ' + match + ', model: ' 
-                  			+ model.get(match));
-                  	return !_.isUndefined(model.get(match)) ? model.get(match) : match;
-//                        	return typeof model.get(match) != "undefined" ? model.get(match) : match;
-              	});
-              console.log('route: ' + _route);
-              this.router.navigate(_route, {trigger:true});
+            // NOTE: format for backgrid cell options is "/{attribute_key}/"
+            var backgrid_cell_options = fieldDef['backgrid_cell_options'];
+            var _route = Iccbl.replaceTokens(model,backgrid_cell_options);
+            console.log('route: ' + _route);
+            appModel.router.navigate(_route, {trigger:true});
           }else{
-              console.log('no options defined for link cell');
+            console.log('no options defined for link cell');
           }
-      });
+        });
 
+      // FIXME: old code - won't work
       self.listenTo(
         self.collection, "MyCollection:edit", 
     		function (model) {
@@ -220,37 +213,19 @@ define([
                               current_options: { key: id },
                               routing_options: {trigger: false, replace: false}
                          }); 
-      });
-
-      self.listenTo(self.collection, "MyCollection:detail", function (model) {
-        var idList = Iccbl.getIdKeys(model,schemaResult);
-        appModel.set({
-          current_scratch: { schemaResult: schemaResult, model: model},
         });
-        // NOTE: prefer to send custom signal, rather than uriStack:change for 
-        // detail/edit; this allows the parent to decide URI signalling
-        self.trigger('detail', model);
-//        // NOTE: by setting the source to self, signal to parent to process this change
-//        self.trigger('uriStack:change', idList, {'source': self}); 
-        
-//        
-//        var id = Iccbl.getIdFromIdAttribute( model, schemaResult );
-//        
-//        model.resourceSchema = schemaResult;
-//        
-//        var path = schemaResult.resource_definition.key;
-//        path += '/' + id;
-//        var actualStack = [schemaResult.resource_definition.key, id];  
-//        
-//        console.log('actualStack:' + JSON.stringify(actualStack));
-//        
-//        appModel.set({
-//          current_scratch: { schemaResult: schemaResult, model: model},
-//        });
-//        // NOTE: by setting the source to self, signal to parent to process this change
-//        self.trigger('uriStack:change', [id], {'source': self}); 
-////        appModel.router.navigate(path, {trigger: true});
-      });
+
+      self.listenTo(
+        self.collection, "MyCollection:detail", 
+        function (model) {
+          var idList = Iccbl.getIdKeys(model,schemaResult);
+          appModel.set({
+            current_scratch: { schemaResult: schemaResult, model: model},
+          });
+          // NOTE: prefer to send custom signal, rather than uriStack:change for 
+          // detail/edit; this allows the parent to decide URI signalling
+          self.trigger('detail', model);
+        });
 
       self.listenTo(self.collection, "MyCollection:delete", function (model) {
           var modalDialog = new Backbone.View({
@@ -279,9 +254,14 @@ define([
       });
 
       // Rows-per-page selector
-      var rppModel = self.rppModel = new Backbone.Model({ selection: String(self.listModel.get('rpp')) });
+      var rppModel = self.rppModel = new Backbone.Model({ 
+          selection: String(self.listModel.get('rpp')) 
+        });
       var rppSelectorInstance = self.rppSelectorInstance = new genericSelector(
-          { model: rppModel }, {label: 'Rows per page:', options: ['', '25','50','200','1000'], selectorClass: 'input-small' } );
+          { model: rppModel }, 
+          { label: 'Rows per page:', 
+            options: ['', '25','50','200','1000'], 
+            selectorClass: 'input-small' });
       this.objects_to_destroy.push(rppSelectorInstance);
       this.listenTo(this.listModel, 'change: rpp', function(){
           rppModel.set({ selection: String(self.listModel.get('rpp')) });
@@ -292,64 +272,67 @@ define([
       });
 
       var paginator = self.paginator = new Backgrid.Extension.Paginator({
+    	  // If you anticipate a large number of pages, you can adjust
+    	  // the number of page handles to show. The sliding window
+    	  // will automatically show the next set of page handles when
+    	  // you click next at the end of a window.
+    	  // windowSize: 20, // Default is 10
 
-      	  // If you anticipate a large number of pages, you can adjust
-      	  // the number of page handles to show. The sliding window
-      	  // will automatically show the next set of page handles when
-      	  // you click next at the end of a window.
-      	  // windowSize: 20, // Default is 10
+    	  // Used to multiple windowSize to yield a number of pages to slide,
+    	  // in the case the number is 5
+    	  //slideScale: 0.25, // Default is 0.5
 
-      	  // Used to multiple windowSize to yield a number of pages to slide,
-      	  // in the case the number is 5
-      	  //slideScale: 0.25, // Default is 0.5
+    	  // Whether sorting should go back to the first page
+    	  // from https://github.com/wyuenho/backgrid/issues/432
+    	  goBackFirstOnSort: false, // Default is true
 
-      	  // Whether sorting should go back to the first page
-      	  // from https://github.com/wyuenho/backgrid/issues/432
-      	  goBackFirstOnSort: false, // Default is true
-
-      	  collection: self.collection
-      	});            
+    	  collection: self.collection
+    	});            
       this.objects_to_destroy.push(paginator);
 
       // Extraselector
       if( _.has(schemaResult, 'extraSelectorOptions')){
-          var searchHash = self.listModel.get('search');
-          console.log('extraselector init: searchTerms: ' + JSON.stringify(searchHash));
+        var searchHash = self.listModel.get('search');
+        console.log('extraselector init: searchTerms: ' + JSON.stringify(searchHash));
 
-          var extraSelectorModel = new Backbone.Model({ selection: '' });
-          var extraSelectorKey = schemaResult.extraSelectorOptions.searchColumn;
-          
-          if ( !_.isEmpty(searchHash)){
+        var extraSelectorModel = new Backbone.Model({ selection: '' });
+        var extraSelectorKey = schemaResult.extraSelectorOptions.searchColumn;
+        
+        if ( !_.isEmpty(searchHash)){
+          _.each(_.keys(searchHash), function(key){
+              console.log('key: ' + key + ', extrSelectorKey: ' + extraSelectorKey);
+              if( key == extraSelectorKey || key  === extraSelectorKey+ '__exact'){
+                  extraSelectorModel.set({ selection: searchHash[key] });
+              }
+          });
+        }
+        var extraSelectorInstance = self.extraSelectorInstance =
+            new genericSelector({ model: extraSelectorModel }, 
+                                        schemaResult.extraSelectorOptions );
+        this.objects_to_destroy.push(extraSelectorInstance);
+
+        this.listenTo(this.listModel, 'change: search', function(){
+            var searchHash = self.listModel.get('search');
+            console.log('extraselector, search changed: ' + JSON.stringify(searchHash));
             _.each(_.keys(searchHash), function(key){
                 console.log('key: ' + key + ', extrSelectorKey: ' + extraSelectorKey);
-                if( key == extraSelectorKey || key  === extraSelectorKey+ '__exact'){
+                if( key === extraSelectorKey || key  === extraSelectorKey+ '__exact'){
                     extraSelectorModel.set({ selection: searchHash[key] });
                 }
             });
-          }
-          var extraSelectorInstance = self.extraSelectorInstance =
-              new genericSelector({ model: extraSelectorModel }, 
-                                          schemaResult.extraSelectorOptions );
-          this.objects_to_destroy.push(extraSelectorInstance);
-
-          this.listenTo(this.listModel, 'change: search', function(){
-              var searchHash = self.listModel.get('search');
-              console.log('extraselector, search changed: ' + JSON.stringify(searchHash));
-              _.each(_.keys(searchHash), function(key){
-                  console.log('key: ' + key + ', extrSelectorKey: ' + extraSelectorKey);
-                  if( key === extraSelectorKey || key  === extraSelectorKey+ '__exact'){
-                      extraSelectorModel.set({ selection: searchHash[key] });
-                  }
-              });
-          });
-          this.listenTo(extraSelectorModel, 'change', function() {
-              console.log('===--- extraSelectorModel change');
-              var searchHash = _.clone(self.listModel.get('search'));
-              var value = extraSelectorModel.get('selection');
+        });
+        this.listenTo(extraSelectorModel, 'change', function() {
+            console.log('===--- extraSelectorModel change');
+            var searchHash = _.clone(self.listModel.get('search'));
+            var value = extraSelectorModel.get('selection');
+            if(_.isEmpty(value) || _.isEmpty(value.trim())){
+              delete searchHash[extraSelectorKey + '__exact']
+            } else {
               searchHash[extraSelectorKey + '__exact'] = value;
-              self.listModel.set('search', searchHash);
-              self.collection.setSearch(searchHash);
-          });
+            }
+            self.listModel.set('search', searchHash);
+            self.collection.setSearch(searchHash);
+        });
       }
 
       var columns = Iccbl.createBackgridColModel(
@@ -450,6 +433,7 @@ define([
       self.listenTo(self.collection, "add", self.checkState);
       self.listenTo(self.collection, "remove", self.checkState);
       self.listenTo(self.collection, "reset", self.checkState);
+      self.listenTo(self.collection, "sort", self.checkState);
 
 
       this.$el.html(this.compiledTemplate);

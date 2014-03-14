@@ -67,7 +67,7 @@ define([
     schema: function() {
       var self = this;
       console.log('-----schema called -----');
-      var schema = this.model.resourceSchema;
+      var schema = this.model.resource.schema;
       var keys = Iccbl.sortOnOrdinal(
           _.keys(this.model.attributes), schema.fields)
       
@@ -143,7 +143,7 @@ define([
      */    
     templateData: function() {
       console.log('-----templateData called -----');
-      var schema = this.model.resourceSchema;
+      var schema = this.model.resource.schema;
       var keys = Iccbl.sortOnOrdinal(
           _.keys(this.model.attributes), schema.fields)
       

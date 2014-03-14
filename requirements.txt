@@ -4,6 +4,7 @@ argparse==1.2.1
 distribute>=0.6.24
 django-tables2>=0.13.0
 django-tastypie #==0.9.15
+factory-boy #==2.3.1
 docutils==0.10
 ipython==0.13.1
 mimeparse==0.1.3

@@ -1,0 +1,21 @@
+<dl class="dl-horizontal">
+        <% 
+        keys.each(function(key) {
+         %>
+            <dt id="title-<%=key %>" title='' />
+            <dd id="<%=key %>" />
+     <% }); %>
+</dl>
+<form id='generic-form' class="form-horizontal" >
+    <div class="controls">
+        <% 
+        if (buttons) {
+          buttons.each(function(key) {
+        %>
+          <button type="button" class="btn" id="<%=key %>" name="<%=key %>" ></button>
+       <% 
+          }); 
+        }  
+        %>
+    </div>
+</form>

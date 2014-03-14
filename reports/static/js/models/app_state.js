@@ -9,9 +9,41 @@ define([
   var REPORTS_API_URI = '/reports/' + API_VERSION;
   var DB_API_URI = '/db/' + API_VERSION;
   
-  // TODO: feed AppState from the server
-  var AppState = Backbone.Model.extend({
 
+  var SchemaClass = function() {};
+  SchemaClass.prototype.detailKeys = function()
+  {
+    var self = this;
+    
+    var keys = Iccbl.sortOnOrdinal(
+      _.keys(self.fields), self.fields)
+    var detailKeys = _(keys).filter(function(key){
+      return _.has(self.fields, key) && 
+          _.has(self.fields[key], 'visibility') && 
+          _.contains(self.fields[key]['visibility'], 'detail');
+    });
+    return detailKeys;
+//    // expand nested fields
+//    var newKeys = [];
+//    while(detailKeys.length > 0 ){
+//      var key = detailKeys.shift();
+//      var fi = self.fields[key];
+//      if (fi.ui_type == "nested"){
+//        var nestedSchema = appState.get('schemas')[fi.nested_resource];
+//        
+//        var nestedKeys = nestedSchema.detailKeys();
+//        _.each(nestedKeys, function(key) {
+//          newKeys.push(fi.nested_resource + '.' + key);
+//        });
+//      }else{
+//        newKeys.push(key);
+//      }
+//    }
+//    return newKeys;
+  };  
+
+  var AppState = Backbone.Model.extend({
+    
     defaults: {
 
       // TODO: deprecate these variables
@@ -174,7 +206,7 @@ define([
               title: 'Users',
               route: 'list/users',
               list_view: 'ListView',
-              detailView: 'DetailView',
+              detailView: 'UserAdminView',
               api_resource: 'user',
               url_root: '/reports/api/v1',
               description: 'Django user'
@@ -312,30 +344,32 @@ define([
     },
 
     initialize : function() {
-      this.set('schemas', {});
-      console.log('AppState initialized');
     },
         
     start: function(callBack){
-      
+      console.log('start app_state.js');
       this.getResources(callBack);
     },
 
     getResources: function(callBack){
+      console.log('- getResources from the server...')
       var self = this;
       // Retrieve the resource definitions from the server
       var resourceUrl = self.reportsApiUri + '/resource'
       Iccbl.getCollectionOnClient(resourceUrl, function(collection){
-        console.log('got resources: ' + resources);
         
+        // Store the URI for each resource.
         // TODO: store the apiUri on the resource in the server
+        var schemaClass = new SchemaClass();
         var resourcesCollection = collection.toJSON();
         _.each(resourcesCollection,function(resource){
           resource.apiUri = '/' + resource.api_name + '/' + 
             self.apiVersion + '/' + resource.key;
+          resource.schema = _.extend(resource.schema, schemaClass);
         });
 
-        // make a hash out of the resources, keyed by the resource id key
+        // 1. Create a resource hash, keyed by the resource id key
+        // 2. Augment uiResources with the (api)resources
         var ui_resources = self.get('ui_resources');
         var resources = {};
         _.each(resourcesCollection, function(resource){
@@ -348,7 +382,8 @@ define([
           }
         });
 
-        // now combine that with the ui_resources hash
+        // 3. for "virtual" uiResources, find the underlying apiResource, 
+        // and augment the uiResource with it
         _.each(_.keys(ui_resources), function(key){
           var ui_resource = ui_resources[key];
           // then augment the ui resources with their api_resource, if different
@@ -357,27 +392,66 @@ define([
                 {}, resources[ui_resource.api_resource], ui_resource);
           }
         });
-                
-        self.set('resources', resources);
-        self.set('resources', ui_resources);
-        callBack();
+        callBack();                
       });
+      
+      console.log('finished getResources')
     },
 
-    getSchema: function(resourceId, callBack) {
-      var self = this;
-      var schemas = this.get('schemas');
-      if(_.has(schemas, resourceId)){
-        callBack(schemas[resourceId]);
-      } else {
-        var resource = self.getResource(resourceId);
-        
-        var schema_url = resource.apiUri + '/schema'
-        Iccbl.getSchema(schema_url, function(schema){
-          schemas[resourceId] = schema;
-          callBack(schema);
-        });
-      }
+    
+    /**
+     * Note that schema now comes from resource.schema
+     * 
+     * A schema: (for ResourceResource)
+     * 
+     * schema: {
+        extraSelectorOptions: {},
+        fields: {
+          api_name,
+          comment,
+          description,
+          id,
+          id_attribute,
+          is_restricted,
+          key,
+          ordinal,
+          resource_uri,
+          scope,
+          title,
+          title_attribute,
+          visibility
+        },
+        resource_definition: {}
+        },
+     * 
+     */
+    getSchema: function(resourceId) {
+      return this.getResource(resourceId).schema;
+
+//      var self = this;
+//      var schemas = this.get('schemas');
+//      if(_.has(schemas, resourceId)) {
+//        callBack(schemas[resourceId]);
+//      } else {
+//        var resource = self.getResource(resourceId);
+//
+//        
+//        var schema_url = resource.apiUri + '/schema'
+//        Iccbl.getSchema(schema_url, function(schema) {
+//          var schemaObj = _.extend(schema, new SchemaClass());
+//          schemaObj.resource = resource; // update with local modifications
+//          
+//          // also get nested schema's
+//          _.each(schema.fields, function(fi) {
+//            if (fi.ui_type == "nested") {
+//              // TODO: find the nested schema
+//            }
+//          });
+//          
+//          schemas[resourceId] = schemaObj;
+//          callBack(schemaObj);
+//        });
+//      }
     },
     
     /**
@@ -386,15 +460,17 @@ define([
      * - resourceSchema
      * - key
      */
-    updateModel: function(resourceId, key, model, callBack) {
-      var resource = this.getResource(resourceId);
-      this.getSchema(resourceId, function(schema){
-        model.key = key;
-        model.resource = resource;
-        model.resourceSchema = schema;
-        callBack(model);
-      });      
-    },
+//    updateModel: function(resourceId, key, model, callBack) {
+//      var resource = this.getResource(resourceId);
+//      model.key = key;
+//      model.resource = resource;
+////      this.getSchema(resourceId, function(schema){
+////        model.key = key;
+////        model.resource = resource;
+////        model.resourceSchema = schema;
+////        callBack(model);
+////      });      
+//    },
     
     /**
      * Get a model from the server
@@ -402,40 +478,64 @@ define([
     getModel: function(resourceId, key, callBack) {
       
       var resource = this.getResource(resourceId);
-      this.getSchema(resourceId, function(schema){
-        var url = resource.apiUri + '/' + key;
+      var url = resource.apiUri + '/' + key;
 
-        var ModelClass = Backbone.Model.extend({
-          url : url,
-          defaults : {}
-        });
-        var instance = new ModelClass();
-        instance.fetch({
-            success : function(model) {
-              model.resourceSchema = schema;
-              model.resource = resource;
-              model.key = key;
-              callBack(model);
-            },
-            error : function(model, response, options) {
-                //console.log('error fetching the model: '+ model + ', response:
-                // ' + JSON.stringify(response));
-                var msg = 'Error locating resource: ' + url;
-                var sep = '\n';
-                if (!_.isUndefined(response.status))
-                    msg += sep + response.status;
-                if (!_.isUndefined(response.statusText))
-                    msg += sep + response.statusText;
-                if (!_.isEmpty(response.responseText))
-                    msg += sep + response.responseText;
-                window.alert(msg);
-                // TODO: use Bootstrap inscreen alert classed message div
-            }
-        });
+      var ModelClass = Backbone.Model.extend({
+        url : url,
+        defaults : {}
+      });
+      var instance = new ModelClass();
+      instance.fetch({
+          success : function(model) {
+            model.resource = resource;
+            model.key = key;
+            callBack(model);
+          },
+          error : function(model, response, options) {
+              //console.log('error fetching the model: '+ model + ', response:
+              // ' + JSON.stringify(response));
+              var msg = 'Error locating resource: ' + url;
+              var sep = '\n';
+              if (!_.isUndefined(response.status))
+                  msg += sep + response.status;
+              if (!_.isUndefined(response.statusText))
+                  msg += sep + response.statusText;
+              if (!_.isEmpty(response.responseText))
+                  msg += sep + response.responseText;
+              window.alert(msg);
+              // TODO: use Bootstrap inscreen alert classed message div
+          }
       });
     },
     
-    
+    /**
+     * A resource (ResourceResource):
+     * {
+          alias: "",
+          api_name: "reports",
+          comment: null,
+          description: "Resource describes tables, queries that are available through the API",
+          id: 680,
+          id_attribute: [
+            "key"
+          ],
+          is_restricted: null,
+          key: "resource",
+          ordinal: 0,
+          resource_uri: "/reports/api/v1/resource/resource",
+          schema: {},
+          scope: "resource",
+          title: "Resources",
+          title_attribute: [
+            "title"
+          ],
+          visibility: [
+            "list",
+            "detail"
+          ]
+        }
+     *    
+     */
     getResource: function(resourceId){
       var uiResources = this.get('ui_resources');
       var resources = this.get('resources');
@@ -446,26 +546,12 @@ define([
         }
         return resources[resourceId];
       }
-      var uiResource = uiResources[resourceId];
-      return uiResource;
-//      // test for nested resource
-//      if (_.has(uiResource, 'api_resource') 
-//          && resourceId !=== uiResource.api_resource ){
-//        
-//      }
-//      return this.getResource(uiResources[resourceId].api_resource);
-//      if (!_.has(resources, resourceId)){
-//      }
-//      return ;
+      return uiResources[resourceId];
     }
   });
 
-//  return AppState;
   var appState = new AppState();
   
-  
-  
-
   appState.resources = {};   // TO be retrieved from the server  
   
   appState.apiVersion = API_VERSION;

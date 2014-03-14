@@ -8,11 +8,12 @@ Radio,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/Radio/,0,,"Radio 
 integer,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/integer/,0,,"This is an integer type",Integer
 Checkboxes,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/multiselect/,0,"The field referred to by this record is a single choice vocabulary term","Multiple choice vocabulary term",Checkboxes
 string,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/string/,0,,"Field contains text",Text
-date,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/date/,5,"Date field type shows the date only (not the time)","Date field type",Date
+date,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/date/,0,"Date field type shows the date only (not the time)","Date field type",Date
 boolean,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/boolean/,0,,"Field is a boolean",Boolean
 uri,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/uri/,0,"URI (local to the system) for a related endpoint","URI that references another REST entity",URI
 uri_list,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/uri_list/,0,"URIs (local to the system) for related endpoints","URIs that reference other REST entities","URI list"
-embedded,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/nested/,0,"An embedded object","An embedded object","Embedded Object"
+nested,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/nested/,0,"An embedded object","An embedded (nested) object","Embedded Object"
+nested_list,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/nested_list/,0,,"An embedded (nested) list of objects","Embedded List"
 Iccbl.EditCell,field.backgrid_cell_type,/reports/api/v1/vocabularies/field.backgrid_cell_type/Iccbl.EditCell/,20,,"Custom cell - creates a drilldown to the view/edit screen",EditCell
 Iccbl.LinkCell,field.backgrid_cell_type,/reports/api/v1/vocabularies/field.backgrid_cell_type/Iccbl.LinkCell/,21,"Create a link using data from the record from this cell.  Use braces and the name of other properties to construct the link, as in ""relative/url/{property_name}""","Custom cell - create a relative link to some other URI","Iccbl Link Cell"
 string,field.backgrid_cell_type,/reports/api/v1/vocabularies/field.backgrid_cell_type/string/,1,"StringCell displays HTML escaped strings and accepts anything typed in.","This is the default Backgrid cell type - 'stringCell'",StringCell
@@ -93,3 +94,9 @@ cherry_pick_source_plates,librarycopy.usage_type,/reports/api/v1/vocabularies/li
 library_screening_plates,librarycopy.usage_type,/reports/api/v1/vocabularies/librarycopy.usage_type/library_screening_plates/,2,,"Library Screening Plates","Library Screening Plates"
 stock_plates,librarycopy.usage_type,/reports/api/v1/vocabularies/librarycopy.usage_type/stock_plates/,3,,"Stock Plates","Stock Plates"
 96_stock_plates,librarycopy.usage_type,/reports/api/v1/vocabularies/librarycopy.usage_type/96_stock_plates/,4,,"96 Stock Plates","96 Stock Plates"
+undefined,library.well_type,/reports/api/v1/vocabularies/library.well_type/undefined/,1,"for cases where library has been created, but library contents have not yet been loaded (or have been unloaded)","Library contents not yet loaded, have been unloaded",<undefined>
+experimental,library.well_type,/reports/api/v1/vocabularies/library.well_type/experimental/,2,,"Experiment assay wells",Experimental
+empty,library.well_type,/reports/api/v1/vocabularies/library.well_type/empty/,3,"for RNAi libraries, on assay, can become Assay Control, Assay Positive Control, Other (see AssayWellControlType)","Empty wells ",Empty
+dmso,library.well_type,/reports/api/v1/vocabularies/library.well_type/dmso/,4,"Small molecule libraries only",DMSO,DMSO
+library_control,library.well_type,/reports/api/v1/vocabularies/library.well_type/library_control/,5,"RNAi libraries only","Library Control","Library Control"
+rnai_buffer,library.well_type,/reports/api/v1/vocabularies/library.well_type/rnai_buffer/,6,,"RNAi Buffer","RNAi Buffer"

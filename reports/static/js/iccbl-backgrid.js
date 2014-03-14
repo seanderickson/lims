@@ -82,17 +82,31 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
       }
   };
 
+  /**
+   * Replace all {tokens} in the string with model attributes.
+   * - fallback to "token" if model attribute is not set.
+   */
+  var replaceTokens = Iccbl.replaceTokens = function(model,stringWithTokens) {
+    var interpolatedString = stringWithTokens.replace(/{([^}]+)}/g, 
+      function (match) 
+      {
+        match = match.replace(/[{}]/g,'');
+        return !_.isUndefined(model.get(match)) ? model.get(match) : match;
+      });
+    return interpolatedString;
+  }
+  
   var stringToFunction = Iccbl.stringToFunction = function(str) {
-      var arr = str.split(".");
+    var arr = str.split(".");
 
-      var fn = (window || this);
-      for (var i = 0, len = arr.length; i < len; i++) {
-          fn = fn[arr[i]];
-      }
-      if ( typeof fn !== "function") {
-          throw new ReferenceError("function not found: " + str);
-      }
-      return fn;
+    var fn = (window || this);
+    for (var i = 0, len = arr.length; i < len; i++) {
+      fn = fn[arr[i]];
+    }
+    if ( typeof fn !== "function") {
+      throw new ReferenceError("function not found: " + str);
+    }
+    return fn;
   };
 
   var UrlStack = Iccbl.UrlStack = Backbone.Model.extend({
@@ -314,6 +328,9 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
     });
   };
 
+  /**
+   * @deprecated see app_state.getModel
+   */
   var getModel = Iccbl.getModel = function(schemaResult, url, callback) {
     var ModelClass = Backbone.Model.extend({
         url : url,
@@ -396,7 +413,9 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
     });
     var instance = new CollectionClass();
     instance.fetch({
+      data: { limit: 999 },
       success : function(collection) {
+        console.log('success callback...');
         callback(collection);
       },
       error : function(model, response, options) {
@@ -413,7 +432,6 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
           window.alert(msg);
           // TODO: use Bootstrap inscreen alert classed message div
       }
-      
     });
   };
   
@@ -898,11 +916,13 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
       }
     });
     if(!_.isEmpty(_data)){
-      self.fetch({data:_data, reset: true});
+      self.fetch({data:_.clone(_data), reset: true});
       // Notify: todo:test
       self.listModel.set({
         'search': _data
       });
+    }else{
+      self.fetch();
     }
   },
 

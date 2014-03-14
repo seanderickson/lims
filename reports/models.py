@@ -99,13 +99,15 @@ class ApiLog(models.Model):
     date_time = models.DateTimeField(null=False)
     api_action = models.CharField(max_length=10, null=False, choices=API_ACTION_CHOICES)
     
-    added_keys = models.TextField(blank=True)
-    removed_keys = models.TextField(blank=True)
-    diff_keys = models.TextField(blank=True)
-    diffs = models.TextField(blank=True)
+    added_keys = models.TextField(blank=True, null=True)
+    removed_keys = models.TextField(blank=True, null=True)
+    diff_keys = models.TextField(blank=True, null=True)
+    diffs = models.TextField(blank=True, null=True)
+    comment = models.TextField(blank=True, null=True)
     
     
-    json_field = models.TextField(blank=True) # This is the "meta" field, it contains "virtual" json fields, defined in the metahash
+    # This is the "meta" field, it contains "virtual" json fields, defined in the metahash
+    json_field = models.TextField(blank=True, null=True)
 
     
 #    @property

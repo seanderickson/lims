@@ -105,6 +105,11 @@ define([
         event.preventDefault();
         var ui_resource_id = event.currentTarget.id;
         console.log('menu click: ' + ui_resource_id);
+        
+        if (ui_resource_id==='home') {
+          appModel.set({uriStack: []});
+          return;
+        }
 
         var menus = appModel.get('menu');
 

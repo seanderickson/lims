@@ -91,35 +91,27 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var uriStack = _.clone(this.uriStack);
       var resource = appModel.getResource(uiResourceId);
       
-//      var createList = function(schemaResult) {
-        var view = new ListView({ options: {
-          uriStack: uriStack,
-          schemaResult: resource.schema,
-          resource: resource,
-          url: url
-        }});
-        self.listenTo(view, 'detail', function(model) {
-          var key = Iccbl.getIdFromIdAttribute(model,resource.schema);
-          model.resource = resource;
-          model.key = key;
-          var keysToReport = Iccbl.getIdKeys(model,resource.schema);
-          if(keysToReport[0] = self.library.key){
-            keysToReport.shift(); // get rid of the library key part
-          }
-          self.consumedStack = keysToReport;
-          self.showDetail(model);
-
-//          appModel.updateModel(uiResourceId,key,model,function(model){
-//            self.showDetail(model);
-//          });          
-        });
+      var view = new ListView({ options: {
+        uriStack: uriStack,
+        schemaResult: resource.schema,
+        resource: resource,
+        url: url
+      }});
+      self.listenTo(view, 'detail', function(model) {
+        var key = Iccbl.getIdFromIdAttribute(model,resource.schema);
+        model.resource = resource;
+        model.key = key;
+        var keysToReport = Iccbl.getIdKeys(model,resource.schema);
+        if(keysToReport[0] = self.library.key){
+          keysToReport.shift(); // get rid of the library key part
+        }
+        self.consumedStack = keysToReport;
+        self.showDetail(model);
+      });
       
-        self.listenTo(view , 'uriStack:change', self.reportUriStack);
-        Backbone.Layout.setupView(view);
-        self.setView('#content', view ).render();
-//      };
-//      
-//      appModel.getSchema(uiResourceId, createList);      
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      Backbone.Layout.setupView(view);
+      self.setView('#content', view ).render();
     },
   });
 

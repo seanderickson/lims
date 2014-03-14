@@ -76,7 +76,6 @@ define([
       }else{
         view.commit();
         
-//        var resourceSchema = self.model.resourceSchema;
         // Fixup the URL - if it points to the model instance, make it point to 
         // the API resource only: tastypie wants this
         // Note: this is happening if the model was fetched specifically for this
@@ -209,26 +208,3 @@ define([
 //      $('#modal').html(modalDialog.$el);
 //      $('#modal').modal();
 //    },
-//
-//    render : function() {
-//        console.log('render detail_stickit_backbone_forms');
-//
-//        if(this._options.isEditMode){
-//            // template = genericFormTemplate;
-//            this.edit(null);
-//        }else{
-//            this.detail(null);
-//        }
-//
-//        return this;
-//    },
-//
-//    onClose: function(){
-//        console.log('...detail view close method');
-//        // this.$el.remove();
-//        // this.modelBinder.unbind();
-//    }
-//});
-//
-//	return DetailView;
-//});

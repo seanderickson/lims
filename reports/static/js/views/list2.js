@@ -487,7 +487,7 @@ define([
       });
       
       if ( !fetched ) {
-        var fetchOptions = { reset: false };
+        var fetchOptions = { reset: false, error: appModel.jqXHRerror };
         self.collection.fetch(fetchOptions);
         self.reportState();
       }

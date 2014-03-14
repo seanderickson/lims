@@ -97,9 +97,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         var newUriStack = [];
         model.resource = resource;
         model.key = key;
-//        appModel.updateModel(resource.key,key,model,function(model) {
-          self.showDetail(resource, newUriStack, model);          
-//        });
+        self.showDetail(resource, newUriStack, model);          
       });
       Backbone.Layout.setupView(view);
       self.setView('#content', view ).render();
@@ -131,16 +129,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           self.showDetail(resource, uriStack, model);
         });
       } else {
-        
-        self.showList(
-            resource, uriStack, 
-            resource.schema);
-//        appModel.getSchema(uiResourceId, function(schemaResult) {
-//          self.showList(resource, uriStack, schemaResult);
-//        });
+        self.showList(resource, uriStack,resource.schema);
       }
     }
-    
   });
 
   return ContentView;

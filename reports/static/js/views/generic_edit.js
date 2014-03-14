@@ -14,6 +14,7 @@ define([
   // like 'Select' editor, but will always return a boolean (true or
   // false)
   Backbone.Form.editors.BooleanSelect = Backbone.Form.editors.Select.extend({
+    
     initialize: function(options) {
       options.schema.options = [{ val: 'true', label: 'Yes' },
                                 { val: 'false', label: 'No' }
@@ -59,11 +60,6 @@ define([
         </div>\
       '),
       
-    /** 
-     * Override the Backbone Forms templateData: this will take the place of
-     * the serialize function, since we're overriding the 
-     * Backbone Layoutmanager renderTemplate as well.
-     */  
     schema: function() {
       var self = this;
       console.log('-----schema called -----');
@@ -142,7 +138,6 @@ define([
      * Backbone Layoutmanager renderTemplate as well.
      */    
     templateData: function() {
-      console.log('-----templateData called -----');
       var schema = this.model.resource.schema;
       var keys = Iccbl.sortOnOrdinal(
           _.keys(this.model.attributes), schema.fields)

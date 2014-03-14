@@ -104,22 +104,19 @@ define([
                 return new Backbone.Model(item);
               }));
           var resource = appModel.getResource(self.nestedLists[key].resourceId)
-//          
-//          appModel.getSchema(self.nestedLists[key].resourceId, function(schema){
-            var commentFields = _.pick(resource.schema.fields, ['username','date_time','comment']);
-            var columns = Iccbl.createBackgridColModel(commentFields);
-            var view = new Backgrid.Grid({
-              columns: columns,
-              collection: collection,
-            });
-            // FIXME: this should work
-            //            Backbone.Layout.setupView(view);
-            //            view = self.setView("#"+key, view ).render();
-            // FIXME: memory leak if left this way
-            self.$('#'+key).html(view.render().$el);
-            view.$el.addClass('well');
-            view.$el.addClass('nested');
-//          });
+          var commentFields = _.pick(resource.schema.fields, ['username','date_time','comment']);
+          var columns = Iccbl.createBackgridColModel(commentFields);
+          var view = new Backgrid.Grid({
+            columns: columns,
+            collection: collection,
+          });
+          // FIXME: this should work
+          //            Backbone.Layout.setupView(view);
+          //            view = self.setView("#"+key, view ).render();
+          // FIXME: memory leak if left this way
+          self.$('#'+key).html(view.render().$el);
+          view.$el.addClass('well');
+          view.$el.addClass('nested');
         });
       }
       return this;

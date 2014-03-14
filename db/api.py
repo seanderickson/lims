@@ -170,27 +170,6 @@ class ScreenResultResource(ManagedResource):
             url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[^/]+))%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[^/]+))/schema%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('get_schema'), name="api_get_schema"),
         ]
-#         
-#     def prepend_urls(self):
-#         # NOTE: this match "((?=(schema))__|(?!(schema))[\w\d_.-]+)" 
-#         # allows us to match any word, except "schema", and use it as the 
-#         # key value to search for.
-#         # also note the double underscore "__" is because we also don't want to
-#         # match in the first clause.
-#         # We don't want "schema" since that reserved word is used by tastypie 
-#         # for the schema definition for the resource (used by the UI)
-#         urls =  [
-#             url(
-#             (r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|"
-#              r"(?!(schema))[\w\d_.-]+))%s$") % 
-#             (self._meta.resource_name, trailing_slash()), 
-#              self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-#             url( 
-#             (r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|"
-#              r"(?!(schema))[\w\d_.-]+))/schema%s$") % 
-#             (self._meta.resource_name, trailing_slash()), 
-#              self.wrap_view('get_schema'), name="api_get_schema"),
-#         ]    
         
     def get_object_list(self, request):
         logger.warn('Screen result listing not implemented')
@@ -753,7 +732,7 @@ class LibraryCopyResource(ManagedModelResource):
     library_short_name = fields.CharField('library__short_name',  null=True)
     
     class Meta:
-        queryset = Copy.objects.all() #.order_by('facility_id')
+        queryset = Copy.objects.all().order_by('name')
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
         authorization= Authorization()        
@@ -829,6 +808,7 @@ class LibraryCopyResource(ManagedModelResource):
                 options.setlist('order_by', order_by)
             else:
                 del options['order_by'] 
+
         obj_list = super(LibraryCopyResource, self).apply_sorting(obj_list, options)
         
         if len(extra_order_by)>0:
@@ -844,9 +824,9 @@ class LibraryCopyResource(ManagedModelResource):
     
     def build_schema(self):
         schema = super(LibraryCopyResource,self).build_schema()
-        temp = [ x.usage_type for x in self.Meta.queryset.distinct('usage_type')]
-        schema['extraSelectorOptions'] = { 
-            'label': 'Type', 'searchColumn': 'usage_type', 'options': temp }
+#         temp = [ x.usage_type for x in self.Meta.queryset.distinct('usage_type')]
+#         schema['extraSelectorOptions'] = { 
+#             'label': 'Type', 'searchColumn': 'usage_type', 'options': temp }
         return schema
     
     def obj_create(self, bundle, **kwargs):

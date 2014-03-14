@@ -8,6 +8,7 @@ define([
   var API_VERSION = 'api/v1';
   var REPORTS_API_URI = '/reports/' + API_VERSION;
   var DB_API_URI = '/db/' + API_VERSION;
+  var DEBUG = true;
   
 
   var SchemaClass = function() {};
@@ -344,6 +345,7 @@ define([
     },
 
     initialize : function() {
+      _.bindAll(this,'jqXHRerror', 'error');
     },
         
     start: function(callBack){
@@ -476,7 +478,7 @@ define([
      * Get a model from the server
      */
     getModel: function(resourceId, key, callBack) {
-      
+      var self = this;
       var resource = this.getResource(resourceId);
       var url = resource.apiUri + '/' + key;
 
@@ -491,20 +493,22 @@ define([
             model.key = key;
             callBack(model);
           },
-          error : function(model, response, options) {
-              //console.log('error fetching the model: '+ model + ', response:
-              // ' + JSON.stringify(response));
-              var msg = 'Error locating resource: ' + url;
-              var sep = '\n';
-              if (!_.isUndefined(response.status))
-                  msg += sep + response.status;
-              if (!_.isUndefined(response.statusText))
-                  msg += sep + response.statusText;
-              if (!_.isEmpty(response.responseText))
-                  msg += sep + response.responseText;
-              window.alert(msg);
-              // TODO: use Bootstrap inscreen alert classed message div
-          }
+          error: this.jqXHRerror
+            
+//            function(model, response, options) {
+//              //console.log('error fetching the model: '+ model + ', response:
+//              // ' + JSON.stringify(response));
+//              var msg = 'Error locating resource: ' + url;
+//              var sep = '\n';
+//              if (!_.isUndefined(response.status))
+//                  msg += sep + response.status;
+//              if (!_.isUndefined(response.statusText))
+//                  msg += sep + response.statusText;
+//              if (!_.isEmpty(response.responseText))
+//                  msg += sep + response.responseText;
+//              window.alert(msg);
+//              // TODO: use Bootstrap inscreen alert classed message div
+//          }
       });
     },
     
@@ -541,12 +545,42 @@ define([
       var resources = this.get('resources');
       if(!_.has(uiResources, resourceId)) {
         if(!_.has(resources, resourceId)) {
-          window.alert('Unknown resource: ' + resourceId);
+          this.error('Unknown resource: ' + resourceId);
           throw "Unknown resource: " + resourceId;
         }
         return resources[resourceId];
       }
       return uiResources[resourceId];
+    },
+    
+    jqXHRerror: function(model, response, options) {
+      //console.log('error fetching the model: '+ model + ', response:
+      // ' + JSON.stringify(response));
+      var url = options.url || model.url || '';
+      var msg = 'Error locating resource: ' + url;
+      this.error(msg);
+      
+      var sep = '\n';
+      if (!_.isUndefined(response.status))
+          msg += sep + response.status;
+      if (!_.isUndefined(response.statusText))
+          msg += sep + response.statusText;
+      if (!_.isEmpty(response.responseText))
+          msg += sep + response.responseText;
+      
+      if(DEBUG) window.alert(msg);
+      else console.log(msg);
+      // TODO: use Bootstrap inscreen alert classed message div
+    },
+    
+    error: function(msg){
+      var msgs = this.get('messages');
+      if (msgs && msgs.length > 0) {
+        msgs.push(msg);
+        this.set('messages', msgs);
+      }else{
+        this.set('messages', [msg]);
+      }
     }
   });
 

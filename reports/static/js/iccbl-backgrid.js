@@ -414,11 +414,11 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
     var instance = new CollectionClass();
     instance.fetch({
       data: { limit: 999 },
-      success : function(collection) {
-        console.log('success callback...');
+      success: function(collection, response) {
+        console.log('success callback...' + JSON.stringify(response));
         callback(collection);
       },
-      error : function(model, response, options) {
+      error: function(model, response, options) {
           //console.log('error fetching the model: '+ model + ', response:
           // ' + JSON.stringify(response));
           var msg = 'Error locating resource: ' + url;
@@ -431,6 +431,9 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
               msg += sep + response.responseText;
           window.alert(msg);
           // TODO: use Bootstrap inscreen alert classed message div
+      },
+      always: function(){
+        console.log('done: ');
       }
     });
   };

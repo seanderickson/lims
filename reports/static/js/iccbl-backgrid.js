@@ -415,7 +415,7 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
     instance.fetch({
       data: { limit: 999 },
       success: function(collection, response) {
-        console.log('success callback...' + JSON.stringify(response));
+        console.log('success callback...');
         callback(collection);
       },
       error: function(model, response, options) {

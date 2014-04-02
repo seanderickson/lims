@@ -287,7 +287,9 @@ class UserGroup(models.Model):
     name = models.TextField(unique=True, blank=False)
     #    users = models.ManyToManyField('auth.User')
     
-    users = models.ManyToManyField('db.ScreensaverUser')
+    #FIXME: removed 2014-03-02 so that the reports project doesn't have 
+    # dependencies on the db project
+    # users = models.ManyToManyField('db.ScreensaverUser')
     
     permissions = models.ManyToManyField('reports.Permission')
 

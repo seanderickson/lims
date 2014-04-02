@@ -1,11 +1,7 @@
-import os
 import logging
 import requests
-import sys
-import os
-import traceback
+import sys, os
 
-from subprocess import Popen, PIPE
 from lims.api import CSVSerializer
 import json
 from django.core.management.base import BaseCommand, CommandError
@@ -24,9 +20,11 @@ class ApiError(Exception):
         except ValueError,e:
             logger.info('There is no json in the response')
             logger.debug(str(('-----raw response text-------', result.text)) )
-        self.message = str((url,'action',action, result.reason, result.status_code, err_msg ))
+        self.message = str((
+            url,'action',action, result.reason, result.status_code, err_msg ))
         if(logger.isEnabledFor(logging.DEBUG)):
-            self.message = str((url,'action',action, result.reason, result.status_code, result ))
+            self.message = str((url,'action',action, result.reason, 
+                                result.status_code, result ))
 
     def __str__(self):
         return repr(self.message)
@@ -39,7 +37,7 @@ class Command(BaseCommand):
     '''
     help = '''Initialize the reports/lims database:
             - with metahash (field, resource) information
-            - data load files 
+            - data load files ,
             '''
     option_list = BaseCommand.option_list + (
         make_option('-d', '--inputDirectory', action='store', dest='inputDirectory',
@@ -94,14 +92,7 @@ class Command(BaseCommand):
             } 
                     
         serializer=CSVSerializer() 
-    
-    #    # Identify some files to treat specially during verification
-    #    # TODO: make verification optional
-    #    bootstrap_files = ['metahash_fields_initial.csv','metahash_fields_initial_patch.csv','metahash_fields_resource.csv','metahash_resource_data.csv']
-    #    # spefically, what not to verify for these files (Note: the resource table has to be filled before uri's will be correct)
-    #    excludes = ['resource_uri']
-    
-#        filename = os.path.join(inputDir,inputActionsFile)
+        
         with open(inputActionsFile) as input_file:
             api_init_actions = serializer.from_csv(input_file.read(), root=None)
     
@@ -120,52 +111,26 @@ class Command(BaseCommand):
                     data_file = os.path.join(inputDir,action['file'])
                     extension = os.path.splitext(data_file)[1].strip('.')
                     header = headers[extension]
-    
-    #                search_excludes = excludes
-    #                if filename in bootstrap_files:
-    #                    search_excludes = []
-                    logger.info(str(('+++++++++++processing file', data_file)))
-    #                with open(filename) as data_file:
-    #                    input_data = serializer.deserialize(data_file.read(), header['content-type'])
-                        
+                            
                     if command == 'put':
                         put(data_file, resource_uri, header, authentication)
                             
-    #                    # now see if we can get these objects back
-    #                    resp = testApiClient.get(resource_uri, format='json', authentication=self.get_credentials(), data={ 'limit': 999 })
-    #                    self.assertValidJSONResponse(resp)
-    #                    new_obj = self.deserialize(resp)
-    #                    result, msgs = find_all_obj_in_list(input_data['objects'], new_obj['objects'], excludes=search_excludes)
-    #                    self.assertTrue(result, str(( command, 'input file', filename, msgs, new_obj['objects'])) )
-                        
                     elif command == 'patch':
                         patch(data_file, resource_uri, header, authentication)
       
-    #                    resp = testApiClient.patch(resource_uri, format='csv', data=input_data, authentication=self.get_credentials() )
-    ##                            print 'action: ', json.dumps(action), 'response: ' , resp.status_code, resp
-    #                    self.assertHttpAccepted(resp)
-    #                    resp = testApiClient.get(resource_uri, format='json', authentication=self.get_credentials(), data={ 'limit': 999 } )
-    ##                            print '----- response', resp
-    #                    self.assertValidJSONResponse(resp)
-    #                    new_obj = self.deserialize(resp)
-    #                    with open(filename) as f2:
-    #                        input_data2 = serializer.from_csv(f2.read())
-    #                        result, msgs = find_all_obj_in_list(input_data2['objects'], new_obj['objects'], excludes=search_excludes)
-    #                        self.assertTrue(result, str(( command, 'input file', filename, msgs )) )
-                        
                     else:
-                        raise Exception(
-                            str((   'Only [ PUT, PATCH, DELETE ] are supported.',
-                                    '- cannot POST multiple objects to tastypie; therefore the "post" command is invalid with the initialization scripts',
-                                    'resource entry: ',json.dumps(action),
-                                    )) )
+                        raise Exception(str((
+                            'Only [ PUT, PATCH, DELETE ] are supported.',
+                            '- cannot POST multiple objects to tastypie; ',
+                            'therefore the "post" command is invalid with the initialization scripts',
+                            'resource entry: ',json.dumps(action) )) )
 
 
 def delete(obj_url, headers, authentication):
     try:
         r = requests.delete(obj_url, auth=authentication, headers=headers)
         if(r.status_code != 204):
-            print "ERROR", r
+            print "ERROR", r, r.text
             raise ApiError(obj_url,'DELETE',r)
         print 'DELETE: ', obj_url, ' ,response:', r.status_code
         logger.info(str(('DELETE', obj_url)))
@@ -176,10 +141,12 @@ def delete(obj_url, headers, authentication):
 def put(input_file, obj_url,headers,authentication):
     try:
         with open(input_file) as f:
-            r = requests.put(obj_url, auth=authentication, headers=headers, data=f.read() )
+            r = requests.put(
+                obj_url, auth=authentication, headers=headers, data=f.read() )
             if(r.status_code != 200):
                 raise ApiError(obj_url,'PUT',r)
-            print 'PUT: ' , input_file, 'to ', obj_url,' ,response:', r.status_code, ', count: ',len(r.json()['objects'])
+            print ('PUT: ' , input_file, 'to ', obj_url,' ,response:', 
+                   r.status_code, ', count: ',len(r.json()['objects']))
             if(logger.isEnabledFor(logging.DEBUG)):
                 logger.debug('--- PUT objects:')
                 try:
@@ -190,7 +157,9 @@ def put(input_file, obj_url,headers,authentication):
                     logger.debug(str(('text response', r.text)))
     except Exception, e:
         extype, ex, tb = sys.exc_info()
-        logger.warn(str(('throw', e, tb.tb_frame.f_code.co_filename, 'error line', tb.tb_lineno, extype, ex)))
+        logger.warn(str((
+            'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
+            tb.tb_lineno, extype, ex)))
         logger.error(str(('exception recorded while contacting server', e)))
         raise e
     
@@ -198,10 +167,12 @@ def patch(patch_file, obj_url,headers,authentication):
     try:
         print 'PATCH: ' , patch_file, 'to ', obj_url
         with open(patch_file) as f:
-            r = requests.patch(obj_url, auth=authentication, headers=headers, data=f.read() )
+            r = requests.patch(
+                obj_url, auth=authentication, headers=headers, data=f.read() )
             if(r.status_code not in [200,202,204]):
                 raise ApiError(obj_url,'PATCH',r)
-            print 'PATCH: ', patch_file, ', to: ',obj_url,' ,response:', r.status_code,', count: ',len(r.json()['objects'])
+            print ('PATCH: ', patch_file, ', to: ',obj_url,' ,response:', 
+                    r.status_code,', count: ',len(r.json()['objects']))
             if(logger.isEnabledFor(logging.DEBUG)):
                 logger.debug('--- PATCHED objects:')
                 try:

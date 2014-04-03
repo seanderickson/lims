@@ -28,7 +28,7 @@ from tastypie.utils.urls import trailing_slash
 # from db.models import ScreensaverUser
 from lims.api import PostgresSortingResource, LimsSerializer, CsvBooleanField
 from reports.models import MetaHash, Vocabularies, ApiLog, Permission, UserGroup
-import lims.settings 
+# import lims.settings 
 from tastypie.utils.timezone import make_naive
         
 logger = logging.getLogger(__name__)
@@ -542,18 +542,22 @@ class ManagedResource(LoggingMixin):
         except Exception, e:
             logger.warn(str(('cannot grab id_attribute for', resource_name, e)))
             
-            if logger.isEnabledFor(logging.INFO):
-                logger.info(str((
-                    'unable to locate resource information[id_attribute];'
-                    ' has it been loaded yet for this resource?',
-                    'also note that this may not work with south, since model methods',
-                    'are not available: ', resource_name, e, 
-                    'type', type(bundle_or_obj), 'attr', resource['id_attribute'],
-                    'bundle', bundle_or_obj,
-                     )))
+            try:
+                if logger.isEnabledFor(logging.INFO):
+                    logger.info(str((
+                        'unable to locate resource information[id_attribute];'
+                        ' has it been loaded yet for this resource?',
+                        'also note that this may not work with south, since model methods',
+                        'are not available: ', resource_name, e, 
+                        'type', type(bundle_or_obj), 'attr', resource['id_attribute'],
+                        'bundle', bundle_or_obj,
+                         )))
+            except Exception, e:
+                logger.info(str(('reporting exception', e)))
         # Fall back to base class implementation 
         # (using the declared primary key only, for ModelResource)
         # This is useful in order to bootstrap the ResourceResource
+        print 'use base class method for ', bundle_or_obj
         return super(ManagedResource,self).detail_uri_kwargs(bundle_or_obj)
 
     def get_via_uri(self, uri, request=None):
@@ -831,25 +835,25 @@ class UserResource(ManagedModelResource):
         
 
         # FIX?: separate sections for databases
-        if 'postgres' in lims.settings.DATABASES['default']['ENGINE'].lower():
-            queryset = queryset.extra( select = {
-              key: (
-              "( select array_to_string(array_agg(ug.name), ', ') " 
-              "  from reports_usergroup ug "
-              "  join reports_usergroup_users ruu on(ug.id=ruu.usergroup_id) "
-              "  where ruu.screensaveruser_id=screensaver_user.screensaver_user_id)")
-            } ) 
-        else:
-            logger.warn(str((
-                '=========using the special sqllite lims.settings.DATABASES', 
-                lims.settings.DATABASES)))
-            queryset = queryset.extra( select = {
-              key: (
-              "( select group_concat(ug.name, ', ') " 
-              "  from reports_usergroup ug "
-              "  join reports_usergroup_users ruu on(ug.id=ruu.usergroup_id) "
-              "  where ruu.screensaveruser_id=screensaver_user.screensaver_user_id)")
-            }) 
+#         if 'postgres' in lims.settings.DATABASES['default']['ENGINE'].lower():
+#             queryset = queryset.extra( select = {
+#               key: (
+#               "( select array_to_string(array_agg(ug.name), ', ') " 
+#               "  from reports_usergroup ug "
+#               "  join reports_usergroup_users ruu on(ug.id=ruu.usergroup_id) "
+#               "  where ruu.screensaveruser_id=screensaver_user.screensaver_user_id)")
+#             } ) 
+#         else:
+#             logger.warn(str((
+#                 '=========using the special sqllite lims.settings.DATABASES', 
+#                 lims.settings.DATABASES)))
+#             queryset = queryset.extra( select = {
+#               key: (
+#               "( select group_concat(ug.name, ', ') " 
+#               "  from reports_usergroup ug "
+#               "  join reports_usergroup_users ruu on(ug.id=ruu.usergroup_id) "
+#               "  where ruu.screensaveruser_id=screensaver_user.screensaver_user_id)")
+#             }) 
             
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
@@ -1284,25 +1288,25 @@ class PermissionResource(ManagedModelResource):
         queryset = Permission.objects.all().order_by('scope', 'key')
         key = 'groups'
         
-        if 'postgres' in lims.settings.DATABASES['default']['ENGINE'].lower():
-            queryset = queryset.extra( select = {
-              key: ( "( select array_to_string(array_agg(ug.name), ', ') " 
-                     "  from reports_usergroup ug "
-                     "  join reports_usergroup_permissions ugp "
-                        " on(ug.id=ugp.usergroup_id) "
-                     "  where ugp.permission_id=reports_permission.id)" )
-            } ) 
-        else:
-            logger.warn(str((
-                '=========using the special sqllite lims.settings.DATABASES', 
-                lims.settings.DATABASES)))
-            queryset = queryset.extra( select = {
-              key: ( "( select group_concat(ug.name, ', ') " 
-                     "  from reports_usergroup ug "
-                     "  join reports_usergroup_permissions ugp "
-                        " on(ug.id=ugp.usergroup_id) "
-                     "  where ugp.permission_id=reports_permission.id)" )
-            } ) 
+#         if 'postgres' in lims.settings.DATABASES['default']['ENGINE'].lower():
+#             queryset = queryset.extra( select = {
+#               key: ( "( select array_to_string(array_agg(ug.name), ', ') " 
+#                      "  from reports_usergroup ug "
+#                      "  join reports_usergroup_permissions ugp "
+#                         " on(ug.id=ugp.usergroup_id) "
+#                      "  where ugp.permission_id=reports_permission.id)" )
+#             } ) 
+#         else:
+#             logger.warn(str((
+#                 '=========using the special sqllite lims.settings.DATABASES', 
+#                 lims.settings.DATABASES)))
+        queryset = queryset.extra( select = {
+          key: ( "( select group_concat(ug.name, ', ') " 
+                 "  from reports_usergroup ug "
+                 "  join reports_usergroup_permissions ugp "
+                    " on(ug.id=ugp.usergroup_id) "
+                 "  where ugp.permission_id=reports_permission.id)" )
+        } ) 
 
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())

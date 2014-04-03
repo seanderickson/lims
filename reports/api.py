@@ -1300,13 +1300,13 @@ class PermissionResource(ManagedModelResource):
 #             logger.warn(str((
 #                 '=========using the special sqllite lims.settings.DATABASES', 
 #                 lims.settings.DATABASES)))
-        queryset = queryset.extra( select = {
-          key: ( "( select group_concat(ug.name, ', ') " 
-                 "  from reports_usergroup ug "
-                 "  join reports_usergroup_permissions ugp "
-                    " on(ug.id=ugp.usergroup_id) "
-                 "  where ugp.permission_id=reports_permission.id)" )
-        } ) 
+#         queryset = queryset.extra( select = {
+#           key: ( "( select group_concat(ug.name, ', ') " 
+#                  "  from reports_usergroup ug "
+#                  "  join reports_usergroup_permissions ugp "
+#                     " on(ug.id=ugp.usergroup_id) "
+#                  "  where ugp.permission_id=reports_permission.id)" )
+#         } ) 
 
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())

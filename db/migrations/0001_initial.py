@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import datetime
+from south.utils import datetime_utils as datetime
 from south.db import db
 from south.v2 import SchemaMigration
 from django.db import models
@@ -56,11 +56,157 @@ class Migration(SchemaMigration):
         ))
         db.send_create_signal(u'db', ['AdministrativeActivity'])
 
-        # Adding model 'AdministratorUser'
-        db.create_table(u'administrator_user', (
-            ('screensaver_user', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreensaverUser'], primary_key=True)),
+        # Adding model 'AttachedFileUpdateActivity'
+        db.create_table(u'attached_file_update_activity', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('attached_file', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.AttachedFile'])),
+            ('update_activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.AdministrativeActivity'])),
         ))
-        db.send_create_signal(u'db', ['AdministratorUser'])
+        db.send_create_signal(u'db', ['AttachedFileUpdateActivity'])
+
+        # Adding model 'CellUpdateActivity'
+        db.create_table(u'cell_update_activity', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('cell', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Cell'])),
+            ('update_activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.AdministrativeActivity'], unique=True)),
+        ))
+        db.send_create_signal(u'db', ['CellUpdateActivity'])
+
+        # Adding model 'ChecklistItemEventUpdateActivity'
+        db.create_table(u'checklist_item_event_update_activity', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('checklist_item_event', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ChecklistItemEvent'])),
+            ('update_activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.AdministrativeActivity'])),
+        ))
+        db.send_create_signal(u'db', ['ChecklistItemEventUpdateActivity'])
+
+        # Adding model 'CherryPickLiquidTransfer'
+        db.create_table(u'cherry_pick_liquid_transfer', (
+            ('status', self.gf('django.db.models.fields.TextField')()),
+            ('activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.LabActivity'], primary_key=True)),
+        ))
+        db.send_create_signal(u'db', ['CherryPickLiquidTransfer'])
+
+        # Adding model 'CherryPickRequestUpdateActivity'
+        db.create_table(u'cherry_pick_request_update_activity', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('cherry_pick_request', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.CherryPickRequest'])),
+            ('update_activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.AdministrativeActivity'], unique=True)),
+        ))
+        db.send_create_signal(u'db', ['CherryPickRequestUpdateActivity'])
+
+        # Adding model 'CherryPickScreening'
+        db.create_table(u'cherry_pick_screening', (
+            ('activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Screening'], primary_key=True)),
+            ('cherry_pick_request', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.CherryPickRequest'])),
+        ))
+        db.send_create_signal(u'db', ['CherryPickScreening'])
+
+        # Adding model 'CopyUpdateActivity'
+        db.create_table(u'copy_update_activity', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('copy_id', self.gf('django.db.models.fields.IntegerField')()),
+            ('update_activity_id', self.gf('django.db.models.fields.IntegerField')(unique=True)),
+        ))
+        db.send_create_signal(u'db', ['CopyUpdateActivity'])
+
+        # Adding model 'LabActivity'
+        db.create_table(u'lab_activity', (
+            ('screen', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Screen'])),
+            ('activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Activity'], primary_key=True)),
+            ('volume_transferred_per_well_from_library_plates', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=10, decimal_places=9, blank=True)),
+            ('molar_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=13, decimal_places=12, blank=True)),
+        ))
+        db.send_create_signal(u'db', ['LabActivity'])
+
+        # Adding model 'LibraryScreening'
+        db.create_table(u'library_screening', (
+            ('abase_testset_id', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('is_for_external_library_plates', self.gf('django.db.models.fields.BooleanField')()),
+            ('activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Screening'], primary_key=True)),
+            ('screened_experimental_well_count', self.gf('django.db.models.fields.IntegerField')()),
+            ('libraries_screened_count', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
+            ('library_plates_screened_count', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
+        ))
+        db.send_create_signal(u'db', ['LibraryScreening'])
+
+        # Adding model 'Screening'
+        db.create_table(u'screening', (
+            ('assay_protocol', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('number_of_replicates', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
+            ('assay_protocol_type', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.LabActivity'], primary_key=True)),
+            ('assay_protocol_last_modified_date', self.gf('django.db.models.fields.DateField')(null=True, blank=True)),
+            ('assay_well_volume', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=10, decimal_places=9, blank=True)),
+            ('volume_transferred_per_well_to_assay_plates', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=10, decimal_places=9, blank=True)),
+        ))
+        db.send_create_signal(u'db', ['Screening'])
+
+        # Adding model 'EquipmentUsed'
+        db.create_table(u'equipment_used', (
+            ('equipment_used_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
+            ('version', self.gf('django.db.models.fields.IntegerField')()),
+            ('protocol', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('description', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('equipment', self.gf('django.db.models.fields.TextField')()),
+            ('lab_activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.LabActivity'])),
+        ))
+        db.send_create_signal(u'db', ['EquipmentUsed'])
+
+        # Adding model 'LibraryUpdateActivity'
+        db.create_table(u'library_update_activity', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('library', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Library'])),
+            ('update_activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.AdministrativeActivity'])),
+        ))
+        db.send_create_signal(u'db', ['LibraryUpdateActivity'])
+
+        # Adding model 'PlateUpdateActivity'
+        db.create_table(u'plate_update_activity', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('plate_id', self.gf('django.db.models.fields.IntegerField')()),
+            ('update_activity_id', self.gf('django.db.models.fields.IntegerField')(unique=True)),
+        ))
+        db.send_create_signal(u'db', ['PlateUpdateActivity'])
+
+        # Adding model 'ScreenResultUpdateActivity'
+        db.create_table(u'screen_result_update_activity', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('screen_result', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreenResult'])),
+            ('update_activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.AdministrativeActivity'])),
+        ))
+        db.send_create_signal(u'db', ['ScreenResultUpdateActivity'])
+
+        # Adding model 'ScreenUpdateActivity'
+        db.create_table(u'screen_update_activity', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('screen', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Screen'])),
+            ('update_activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.AdministrativeActivity'])),
+        ))
+        db.send_create_signal(u'db', ['ScreenUpdateActivity'])
+
+        # Adding model 'ScreensaverUserUpdateActivity'
+        db.create_table(u'screensaver_user_update_activity', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('screensaver_user', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreensaverUser'])),
+            ('update_activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.AdministrativeActivity'])),
+        ))
+        db.send_create_signal(u'db', ['ScreensaverUserUpdateActivity'])
+
+        # Adding model 'ServiceActivity'
+        db.create_table(u'service_activity', (
+            ('service_activity_type', self.gf('django.db.models.fields.TextField')()),
+            ('activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Activity'], primary_key=True)),
+            ('serviced_screen', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Screen'], null=True, blank=True)),
+            ('serviced_user', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreeningRoomUser'])),
+        ))
+        db.send_create_signal(u'db', ['ServiceActivity'])
+
+        # Adding model 'WellVolumeCorrectionActivity'
+        db.create_table(u'well_volume_correction_activity', (
+            ('activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.AdministrativeActivity'], primary_key=True)),
+        ))
+        db.send_create_signal(u'db', ['WellVolumeCorrectionActivity'])
 
         # Adding model 'AnnotationType'
         db.create_table(u'annotation_type', (
@@ -70,7 +216,7 @@ class Migration(SchemaMigration):
             ('name', self.gf('django.db.models.fields.TextField')(blank=True)),
             ('description', self.gf('django.db.models.fields.TextField')(blank=True)),
             ('ordinal', self.gf('django.db.models.fields.IntegerField')()),
-            ('is_numeric', self.gf('django.db.models.fields.BooleanField')(default=False)),
+            ('is_numeric', self.gf('django.db.models.fields.BooleanField')()),
         ))
         db.send_create_signal(u'db', ['AnnotationType'])
 
@@ -103,7 +249,7 @@ class Migration(SchemaMigration):
             ('assay_well_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
             ('version', self.gf('django.db.models.fields.IntegerField')()),
             ('assay_well_control_type', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('is_positive', self.gf('django.db.models.fields.BooleanField')(default=False)),
+            ('is_positive', self.gf('django.db.models.fields.BooleanField')()),
             ('screen_result', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreenResult'])),
             ('well', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Well'])),
             ('confirmed_positive_value', self.gf('django.db.models.fields.TextField')(blank=True)),
@@ -135,14 +281,6 @@ class Migration(SchemaMigration):
             ('value', self.gf('django.db.models.fields.TextField')()),
         ))
         db.send_create_signal(u'db', ['AttachedFileType'])
-
-        # Adding model 'AttachedFileUpdateActivity'
-        db.create_table(u'attached_file_update_activity', (
-            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('attached_file', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.AttachedFile'])),
-            ('update_activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.AdministrativeActivity'])),
-        ))
-        db.send_create_signal(u'db', ['AttachedFileUpdateActivity'])
 
         # Adding model 'Cell'
         db.create_table(u'cell', (
@@ -216,19 +354,11 @@ class Migration(SchemaMigration):
         ))
         db.send_create_signal(u'db', ['CellRelatedProjects'])
 
-        # Adding model 'CellUpdateActivity'
-        db.create_table(u'cell_update_activity', (
-            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('cell', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Cell'])),
-            ('update_activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.AdministrativeActivity'], unique=True)),
-        ))
-        db.send_create_signal(u'db', ['CellUpdateActivity'])
-
         # Adding model 'ChecklistItem'
         db.create_table(u'checklist_item', (
             ('checklist_item_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
             ('checklist_item_group', self.gf('django.db.models.fields.TextField')()),
-            ('is_expirable', self.gf('django.db.models.fields.BooleanField')(default=False)),
+            ('is_expirable', self.gf('django.db.models.fields.BooleanField')()),
             ('item_name', self.gf('django.db.models.fields.TextField')(unique=True)),
             ('order_statistic', self.gf('django.db.models.fields.IntegerField')()),
             ('version', self.gf('django.db.models.fields.IntegerField')()),
@@ -239,24 +369,16 @@ class Migration(SchemaMigration):
         db.create_table(u'checklist_item_event', (
             ('checklist_item_event_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
             ('date_performed', self.gf('django.db.models.fields.DateField')(null=True, blank=True)),
-            ('is_expiration', self.gf('django.db.models.fields.BooleanField')(default=False)),
+            ('is_expiration', self.gf('django.db.models.fields.BooleanField')()),
             ('checklist_item_id', self.gf('django.db.models.fields.IntegerField')()),
             ('screening_room_user', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreeningRoomUser'])),
-            ('is_not_applicable', self.gf('django.db.models.fields.BooleanField')(default=False)),
+            ('is_not_applicable', self.gf('django.db.models.fields.BooleanField')()),
             ('date_created', self.gf('django.db.models.fields.DateTimeField')()),
             ('created_by', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreensaverUser'], null=True, blank=True)),
             ('date_loaded', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
             ('date_publicly_available', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
         ))
         db.send_create_signal(u'db', ['ChecklistItemEvent'])
-
-        # Adding model 'ChecklistItemEventUpdateActivity'
-        db.create_table(u'checklist_item_event_update_activity', (
-            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('checklist_item_event', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ChecklistItemEvent'])),
-            ('update_activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.AdministrativeActivity'])),
-        ))
-        db.send_create_signal(u'db', ['ChecklistItemEventUpdateActivity'])
 
         # Adding model 'CherryPickAssayPlate'
         db.create_table(u'cherry_pick_assay_plate', (
@@ -280,13 +402,6 @@ class Migration(SchemaMigration):
         ))
         db.send_create_signal(u'db', ['CherryPickAssayPlateScreeningLink'])
 
-        # Adding model 'CherryPickLiquidTransfer'
-        db.create_table(u'cherry_pick_liquid_transfer', (
-            ('status', self.gf('django.db.models.fields.TextField')()),
-            ('activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.LabActivity'], primary_key=True)),
-        ))
-        db.send_create_signal(u'db', ['CherryPickLiquidTransfer'])
-
         # Adding model 'CherryPickRequest'
         db.create_table(u'cherry_pick_request', (
             ('cherry_pick_request_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
@@ -294,7 +409,7 @@ class Migration(SchemaMigration):
             ('screen', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Screen'])),
             ('comments', self.gf('django.db.models.fields.TextField')(blank=True)),
             ('requested_by', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreeningRoomUser'])),
-            ('is_randomized_assay_plate_layout', self.gf('django.db.models.fields.BooleanField')(default=False)),
+            ('is_randomized_assay_plate_layout', self.gf('django.db.models.fields.BooleanField')()),
             ('legacy_cherry_pick_request_number', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
             ('volume_approved_by', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.AdministratorUser'], null=True, blank=True)),
             ('number_unfulfilled_lab_cherry_picks', self.gf('django.db.models.fields.IntegerField')()),
@@ -308,7 +423,7 @@ class Migration(SchemaMigration):
             ('cherry_pick_followup_results_status', self.gf('django.db.models.fields.TextField')(blank=True)),
             ('date_created', self.gf('django.db.models.fields.DateTimeField')()),
             ('created_by', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreensaverUser'], null=True, blank=True)),
-            ('keep_source_plate_cherry_picks_together', self.gf('django.db.models.fields.BooleanField')(default=False)),
+            ('keep_source_plate_cherry_picks_together', self.gf('django.db.models.fields.BooleanField')()),
             ('date_loaded', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
             ('date_publicly_available', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
             ('max_skipped_wells_per_plate', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
@@ -323,21 +438,6 @@ class Migration(SchemaMigration):
         ))
         db.send_create_signal(u'db', ['CherryPickRequestEmptyWell'])
 
-        # Adding model 'CherryPickRequestUpdateActivity'
-        db.create_table(u'cherry_pick_request_update_activity', (
-            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('cherry_pick_request', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.CherryPickRequest'])),
-            ('update_activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.AdministrativeActivity'], unique=True)),
-        ))
-        db.send_create_signal(u'db', ['CherryPickRequestUpdateActivity'])
-
-        # Adding model 'CherryPickScreening'
-        db.create_table(u'cherry_pick_screening', (
-            ('activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Screening'], primary_key=True)),
-            ('cherry_pick_request', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.CherryPickRequest'])),
-        ))
-        db.send_create_signal(u'db', ['CherryPickScreening'])
-
         # Adding model 'CollaboratorLink'
         db.create_table(u'collaborator_link', (
             (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
@@ -345,41 +445,6 @@ class Migration(SchemaMigration):
             ('screen', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Screen'])),
         ))
         db.send_create_signal(u'db', ['CollaboratorLink'])
-
-        # Adding model 'Copy'
-        db.create_table(u'copy', (
-            ('version', self.gf('django.db.models.fields.IntegerField')()),
-            ('usage_type', self.gf('django.db.models.fields.TextField')()),
-            ('library', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Library'])),
-            ('name', self.gf('django.db.models.fields.TextField')()),
-            ('copy_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
-            ('comments', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('date_created', self.gf('django.db.models.fields.DateTimeField')()),
-            ('created_by', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreensaverUser'], null=True, blank=True)),
-            ('date_plated', self.gf('django.db.models.fields.DateField')(null=True, blank=True)),
-            ('primary_plate_status', self.gf('django.db.models.fields.TextField')()),
-            ('primary_plate_location_id', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
-            ('plates_available', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
-            ('plate_locations_count', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
-            ('primary_well_mg_ml_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=5, decimal_places=3, blank=True)),
-            ('primary_well_molar_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=13, decimal_places=12, blank=True)),
-            ('min_molar_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=13, decimal_places=12, blank=True)),
-            ('max_molar_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=13, decimal_places=12, blank=True)),
-            ('min_mg_ml_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=5, decimal_places=3, blank=True)),
-            ('max_mg_ml_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=5, decimal_places=3, blank=True)),
-            ('well_concentration_dilution_factor', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=8, decimal_places=2, blank=True)),
-            ('date_loaded', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
-            ('date_publicly_available', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
-        ))
-        db.send_create_signal(u'db', ['Copy'])
-
-        # Adding model 'CopyUpdateActivity'
-        db.create_table(u'copy_update_activity', (
-            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('copy_id', self.gf('django.db.models.fields.IntegerField')()),
-            ('update_activity_id', self.gf('django.db.models.fields.IntegerField')(unique=True)),
-        ))
-        db.send_create_signal(u'db', ['CopyUpdateActivity'])
 
         # Adding model 'DataColumn'
         db.create_table(u'data_column', (
@@ -392,10 +457,10 @@ class Migration(SchemaMigration):
             ('comments', self.gf('django.db.models.fields.TextField')(blank=True)),
             ('description', self.gf('django.db.models.fields.TextField')(blank=True)),
             ('how_derived', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('is_follow_up_data', self.gf('django.db.models.fields.BooleanField')(default=False)),
+            ('is_follow_up_data', self.gf('django.db.models.fields.BooleanField')()),
             ('name', self.gf('django.db.models.fields.TextField')()),
             ('time_point', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('is_derived', self.gf('django.db.models.fields.BooleanField')(default=False)),
+            ('is_derived', self.gf('django.db.models.fields.BooleanField')()),
             ('positives_count', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
             ('screen_result', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreenResult'])),
             ('channel', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
@@ -416,17 +481,6 @@ class Migration(SchemaMigration):
             ('derived_from_data_column', self.gf('django.db.models.fields.related.ForeignKey')(related_name=u'derived_from', to=orm['db.DataColumn'])),
         ))
         db.send_create_signal(u'db', ['DataColumnDerivedFromLink'])
-
-        # Adding model 'EquipmentUsed'
-        db.create_table(u'equipment_used', (
-            ('equipment_used_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
-            ('version', self.gf('django.db.models.fields.IntegerField')()),
-            ('protocol', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('description', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('equipment', self.gf('django.db.models.fields.TextField')()),
-            ('lab_activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.LabActivity'])),
-        ))
-        db.send_create_signal(u'db', ['EquipmentUsed'])
 
         # Adding model 'ExperimentalCellInformation'
         db.create_table(u'experimental_cell_information', (
@@ -485,15 +539,6 @@ class Migration(SchemaMigration):
         ))
         db.send_create_signal(u'db', ['GeneSymbol'])
 
-        # Adding model 'LabActivity'
-        db.create_table(u'lab_activity', (
-            ('screen', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Screen'])),
-            ('activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Activity'], primary_key=True)),
-            ('volume_transferred_per_well_from_library_plates', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=10, decimal_places=9, blank=True)),
-            ('molar_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=13, decimal_places=12, blank=True)),
-        ))
-        db.send_create_signal(u'db', ['LabActivity'])
-
         # Adding model 'LabAffiliation'
         db.create_table(u'lab_affiliation', (
             ('version', self.gf('django.db.models.fields.IntegerField')()),
@@ -516,65 +561,6 @@ class Migration(SchemaMigration):
         ))
         db.send_create_signal(u'db', ['LabCherryPick'])
 
-        # Adding model 'Library'
-        db.create_table(u'library', (
-#             ('library_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
-            ('library_id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('version', self.gf('django.db.models.fields.IntegerField')()),
-            ('library_name', self.gf('django.db.models.fields.TextField')(unique=True)),
-            ('short_name', self.gf('django.db.models.fields.TextField')(unique=True)),
-            ('description', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('provider', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('screen_type', self.gf('django.db.models.fields.TextField')()),
-            ('library_type', self.gf('django.db.models.fields.TextField')()),
-            ('start_plate', self.gf('django.db.models.fields.IntegerField')(unique=True)),
-            ('end_plate', self.gf('django.db.models.fields.IntegerField')(unique=True)),
-            ('screening_status', self.gf('django.db.models.fields.TextField')()),
-            ('date_received', self.gf('django.db.models.fields.DateField')(null=True, blank=True)),
-            ('date_screenable', self.gf('django.db.models.fields.DateField')(null=True, blank=True)),
-            ('date_created', self.gf('django.db.models.fields.DateTimeField')()),
-            ('plate_size', self.gf('django.db.models.fields.TextField')()),
-            ('latest_released_contents_version_id', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
-            ('experimental_well_count', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
-            ('is_pool', self.gf('django.db.models.fields.NullBooleanField')(null=True, blank=True)),
-            ('created_by', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreensaverUser'], null=True, blank=True)),
-            ('owner_screener', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreeningRoomUser'], null=True, blank=True)),
-            ('solvent', self.gf('django.db.models.fields.TextField')()),
-            ('date_loaded', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
-            ('date_publicly_available', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
-        ))
-        db.send_create_signal(u'db', ['Library'])
-
-        # Adding model 'LibraryContentsVersion'
-        db.create_table(u'library_contents_version', (
-            ('library_contents_version_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
-            ('version', self.gf('django.db.models.fields.IntegerField')()),
-            ('version_number', self.gf('django.db.models.fields.IntegerField')()),
-            ('library', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Library'])),
-            ('library_contents_loading_activity', self.gf('django.db.models.fields.related.ForeignKey')(related_name=u'lcv_load', to=orm['db.AdministrativeActivity'])),
-            ('library_contents_release_activity', self.gf('django.db.models.fields.related.ForeignKey')(blank=True, related_name=u'lcv_release', null=True, to=orm['db.AdministrativeActivity'])),
-        ))
-        db.send_create_signal(u'db', ['LibraryContentsVersion'])
-
-        # Adding model 'LibraryScreening'
-        db.create_table(u'library_screening', (
-            ('abase_testset_id', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('is_for_external_library_plates', self.gf('django.db.models.fields.BooleanField')(default=False)),
-            ('activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Screening'], primary_key=True)),
-            ('screened_experimental_well_count', self.gf('django.db.models.fields.IntegerField')()),
-            ('libraries_screened_count', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
-            ('library_plates_screened_count', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
-        ))
-        db.send_create_signal(u'db', ['LibraryScreening'])
-
-        # Adding model 'LibraryUpdateActivity'
-        db.create_table(u'library_update_activity', (
-            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('library', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Library'])),
-            ('update_activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.AdministrativeActivity'])),
-        ))
-        db.send_create_signal(u'db', ['LibraryUpdateActivity'])
-
         # Adding model 'Molfile'
         db.create_table(u'molfile', (
             (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
@@ -589,52 +575,6 @@ class Migration(SchemaMigration):
             ('reagent', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Reagent'], primary_key=True)),
         ))
         db.send_create_signal(u'db', ['NaturalProductReagent'])
-
-        # Adding model 'Plate'
-        db.create_table(u'plate', (
-            ('plate_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
-            ('version', self.gf('django.db.models.fields.IntegerField')()),
-            ('plate_type', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('plate_number', self.gf('django.db.models.fields.IntegerField')()),
-            ('well_volume', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=10, decimal_places=9, blank=True)),
-            ('copy', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Copy'])),
-            ('facility_id', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('date_created', self.gf('django.db.models.fields.DateTimeField')()),
-            ('created_by', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreensaverUser'], null=True, blank=True)),
-            ('plate_location', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.PlateLocation'], null=True, blank=True)),
-            ('status', self.gf('django.db.models.fields.TextField')()),
-            ('retired_activity_id', self.gf('django.db.models.fields.IntegerField')(unique=True, null=True, blank=True)),
-            ('plated_activity_id', self.gf('django.db.models.fields.IntegerField')(unique=True, null=True, blank=True)),
-            ('stock_plate_number', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
-            ('quadrant', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
-            ('min_molar_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=13, decimal_places=12, blank=True)),
-            ('max_molar_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=13, decimal_places=12, blank=True)),
-            ('min_mg_ml_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=5, decimal_places=3, blank=True)),
-            ('max_mg_ml_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=5, decimal_places=3, blank=True)),
-            ('primary_well_molar_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=13, decimal_places=12, blank=True)),
-            ('primary_well_mg_ml_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=5, decimal_places=3, blank=True)),
-            ('date_loaded', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
-            ('date_publicly_available', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
-        ))
-        db.send_create_signal(u'db', ['Plate'])
-
-        # Adding model 'PlateLocation'
-        db.create_table(u'plate_location', (
-            ('plate_location_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
-            ('bin', self.gf('django.db.models.fields.TextField')()),
-            ('freezer', self.gf('django.db.models.fields.TextField')()),
-            ('room', self.gf('django.db.models.fields.TextField')()),
-            ('shelf', self.gf('django.db.models.fields.TextField')()),
-        ))
-        db.send_create_signal(u'db', ['PlateLocation'])
-
-        # Adding model 'PlateUpdateActivity'
-        db.create_table(u'plate_update_activity', (
-            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('plate_id', self.gf('django.db.models.fields.IntegerField')()),
-            ('update_activity_id', self.gf('django.db.models.fields.IntegerField')(unique=True)),
-        ))
-        db.send_create_signal(u'db', ['PlateUpdateActivity'])
 
         # Adding model 'PrimaryCell'
         db.create_table(u'primary_cell', (
@@ -662,40 +602,6 @@ class Migration(SchemaMigration):
         ))
         db.send_create_signal(u'db', ['Publication'])
 
-        # Adding model 'Reagent'
-        db.create_table(u'reagent', (
-            ('reagent_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
-            ('vendor_identifier', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('vendor_name', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('library_contents_version', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.LibraryContentsVersion'])),
-            ('well', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Well'])),
-            ('facility_batch_id', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
-            ('vendor_batch_id', self.gf('django.db.models.fields.TextField')(blank=True)),
-        ))
-        db.send_create_signal(u'db', ['Reagent'])
-
-        # Adding model 'ReagentPublicationLink'
-        db.create_table(u'reagent_publication_link', (
-            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('reagent', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Reagent'])),
-            ('publication_id', self.gf('django.db.models.fields.IntegerField')(unique=True)),
-        ))
-        db.send_create_signal(u'db', ['ReagentPublicationLink'])
-
-        # Adding model 'ResultValue'
-        db.create_table(u'result_value', (
-            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('result_value_id', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
-            ('assay_well_control_type', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('is_exclude', self.gf('django.db.models.fields.NullBooleanField')(null=True, blank=True)),
-            ('numeric_value', self.gf('django.db.models.fields.FloatField')(null=True, blank=True)),
-            ('is_positive', self.gf('django.db.models.fields.NullBooleanField')(null=True, blank=True)),
-            ('value', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('data_column', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.DataColumn'], null=True, blank=True)),
-            ('well', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Well'], null=True, blank=True)),
-        ))
-        db.send_create_signal(u'db', ['ResultValue'])
-
         # Adding model 'RnaiCherryPickRequest'
         db.create_table(u'rnai_cherry_pick_request', (
             ('cherry_pick_request', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.CherryPickRequest'], primary_key=True)),
@@ -712,7 +618,6 @@ class Migration(SchemaMigration):
 
         # Adding model 'Screen'
         db.create_table(u'screen', (
-#             ('screen_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
             ('screen_id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
             ('version', self.gf('django.db.models.fields.IntegerField')()),
             ('date_created', self.gf('django.db.models.fields.DateTimeField')()),
@@ -755,13 +660,13 @@ class Migration(SchemaMigration):
             ('max_allowed_data_privacy_expiration_date', self.gf('django.db.models.fields.DateField')(null=True, blank=True)),
             ('min_allowed_data_privacy_expiration_date', self.gf('django.db.models.fields.DateField')(null=True, blank=True)),
             ('data_privacy_expiration_notified_date', self.gf('django.db.models.fields.DateField')(null=True, blank=True)),
-            ('screened_experimental_well_count', self.gf('django.db.models.fields.IntegerField')()),
-            ('unique_screened_experimental_well_count', self.gf('django.db.models.fields.IntegerField')()),
-            ('total_plated_lab_cherry_picks', self.gf('django.db.models.fields.IntegerField')()),
-            ('assay_plates_screened_count', self.gf('django.db.models.fields.IntegerField')()),
-            ('library_plates_screened_count', self.gf('django.db.models.fields.IntegerField')()),
-            ('library_plates_data_loaded_count', self.gf('django.db.models.fields.IntegerField')()),
-            ('library_plates_data_analyzed_count', self.gf('django.db.models.fields.IntegerField')()),
+            ('screened_experimental_well_count', self.gf('django.db.models.fields.IntegerField')(default=0)),
+            ('unique_screened_experimental_well_count', self.gf('django.db.models.fields.IntegerField')(default=0)),
+            ('total_plated_lab_cherry_picks', self.gf('django.db.models.fields.IntegerField')(default=0)),
+            ('assay_plates_screened_count', self.gf('django.db.models.fields.IntegerField')(default=0)),
+            ('library_plates_screened_count', self.gf('django.db.models.fields.IntegerField')(default=0)),
+            ('library_plates_data_loaded_count', self.gf('django.db.models.fields.IntegerField')(default=0)),
+            ('library_plates_data_analyzed_count', self.gf('django.db.models.fields.IntegerField')(default=0)),
             ('min_screened_replicate_count', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
             ('max_screened_replicate_count', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
             ('min_data_loaded_replicate_count', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
@@ -775,36 +680,15 @@ class Migration(SchemaMigration):
             ('image_url', self.gf('django.db.models.fields.TextField')(blank=True)),
             ('well_studied', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Well'], null=True, blank=True)),
             ('species', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('cell_line', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.CellLine'], null=True, blank=True)),
             ('transfection_agent', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.TransfectionAgent'], null=True, blank=True)),
             ('date_loaded', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
             ('date_publicly_available', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
             ('perturbagen_molar_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=13, decimal_places=12, blank=True)),
             ('perturbagen_ug_ml_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=5, decimal_places=3, blank=True)),
+            ('status', self.gf('django.db.models.fields.TextField')(null=True, blank=True)),
+            ('status_date', self.gf('django.db.models.fields.DateField')(null=True, blank=True)),
         ))
         db.send_create_signal(u'db', ['Screen'])
-
-
-#         # Changing field 'Screen.screen_id' to auto field
-#         # *NOTE: This does not work with Postgres, for an already existing field
-#         #         db.alter_column(u'screen', 'screen_id', self.gf('django.db.models.fields.AutoField')(primary_key=True))
-# 
-#         # Postgres can create a field of type 'serial', but its not a real type, so postgres will not 
-#         # convert a field to 'serial'
-#         # see: http://www.postgresql.org/docs/8.3/interactive/datatype-numeric.html#DATATYPE-SERIAL
-#         # see: http://south.aeracode.org/ticket/407, 
-#         # Fix is as follows:
-#         
-#         print 'creating screen_id sequence'
-#         # Note: we don't need to create the sequence; just re-associate the old one
-#         db.execute("CREATE SEQUENCE {column}_seq".format(column='screen_id'))
-#         #         db.execute("SELECT setval('{table}_{column}_seq', (SELECT MAX({column}) FROM {table}))".format(table='screen', column='screen_id'))
-#         db.execute("ALTER TABLE {table} ALTER COLUMN {column} SET DEFAULT nextval('{column}_seq'::regclass)".format(table='screen', column='screen_id'))
-#         db.execute("ALTER SEQUENCE {column}_seq OWNED BY {table}.{column}".format(table='screen', column='screen_id'))
-
-
-
-
 
         # Adding model 'ScreenBillingItem'
         db.create_table(u'screen_billing_item', (
@@ -847,7 +731,7 @@ class Migration(SchemaMigration):
             ('version', self.gf('django.db.models.fields.IntegerField')()),
             ('replicate_count', self.gf('django.db.models.fields.IntegerField')()),
             ('experimental_well_count', self.gf('django.db.models.fields.IntegerField')()),
-            ('screen', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Screen'])),
+            ('screen', self.gf('django.db.models.fields.related.OneToOneField')(to=orm['db.Screen'], unique=True)),
             ('date_created', self.gf('django.db.models.fields.DateTimeField')()),
             ('created_by', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreensaverUser'], null=True, blank=True)),
             ('channel_count', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
@@ -855,14 +739,6 @@ class Migration(SchemaMigration):
             ('date_publicly_available', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
         ))
         db.send_create_signal(u'db', ['ScreenResult'])
-
-        # Adding model 'ScreenResultUpdateActivity'
-        db.create_table(u'screen_result_update_activity', (
-            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('screen_result', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreenResult'])),
-            ('update_activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.AdministrativeActivity'])),
-        ))
-        db.send_create_signal(u'db', ['ScreenResultUpdateActivity'])
 
         # Adding model 'ScreenStatusItem'
         db.create_table(u'screen_status_item', (
@@ -876,14 +752,6 @@ class Migration(SchemaMigration):
         # Adding index on 'ScreenStatusItem', fields ['screen', 'status', 'status_date']
         db.create_index(u'screen_status_item', ['screen_id', 'status', 'status_date'])
 
-        # Adding model 'ScreenUpdateActivity'
-        db.create_table(u'screen_update_activity', (
-            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('screen', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Screen'])),
-            ('update_activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.AdministrativeActivity'])),
-        ))
-        db.send_create_signal(u'db', ['ScreenUpdateActivity'])
-
         # Adding model 'ScreenerCherryPick'
         db.create_table(u'screener_cherry_pick', (
             ('screener_cherry_pick_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
@@ -893,49 +761,10 @@ class Migration(SchemaMigration):
         ))
         db.send_create_signal(u'db', ['ScreenerCherryPick'])
 
-        # Adding model 'Screening'
-        db.create_table(u'screening', (
-            ('assay_protocol', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('number_of_replicates', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
-            ('assay_protocol_type', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.LabActivity'], primary_key=True)),
-            ('assay_protocol_last_modified_date', self.gf('django.db.models.fields.DateField')(null=True, blank=True)),
-            ('assay_well_volume', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=10, decimal_places=9, blank=True)),
-            ('volume_transferred_per_well_to_assay_plates', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=10, decimal_places=9, blank=True)),
-        ))
-        db.send_create_signal(u'db', ['Screening'])
-
-        # Adding model 'ScreeningRoomUser'
-        db.create_table(u'screening_room_user', (
-            ('screensaver_user', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreensaverUser'], primary_key=True)),
-            ('user_classification', self.gf('django.db.models.fields.TextField')()),
-            ('lab_head', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.LabHead'], null=True, blank=True)),
-            ('coms_crhba_permit_number', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('coms_crhba_permit_principal_investigator', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('last_notified_smua_checklist_item_event', self.gf('django.db.models.fields.related.ForeignKey')(blank=True, related_name=u'smua_user', null=True, to=orm['db.ChecklistItemEvent'])),
-            ('last_notified_rnaiua_checklist_item_event', self.gf('django.db.models.fields.related.ForeignKey')(blank=True, related_name=u'rnai_ua_user', null=True, to=orm['db.ChecklistItemEvent'])),
-        ))
-        db.send_create_signal(u'db', ['ScreeningRoomUser'])
-
-        # Adding model 'LabHead'
-        db.create_table(u'lab_head', (
-            ('screensaver_user', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreeningRoomUser'], primary_key=True)),
-            ('lab_affiliation', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.LabAffiliation'], null=True, blank=True)),
-        ))
-        db.send_create_signal(u'db', ['LabHead'])
-
-        # Adding model 'ScreeningRoomUserFacilityUsageRole'
-        db.create_table(u'screening_room_user_facility_usage_role', (
-            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('screening_room_user', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreeningRoomUser'])),
-            ('facility_usage_role', self.gf('django.db.models.fields.TextField')()),
-        ))
-        db.send_create_signal(u'db', ['ScreeningRoomUserFacilityUsageRole'])
-
         # Adding model 'ScreensaverUser'
         db.create_table(u'screensaver_user', (
             ('screensaver_user_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
-            ('version', self.gf('django.db.models.fields.IntegerField')(blank=True)),
+            ('version', self.gf('django.db.models.fields.IntegerField')(default=1, blank=True)),
             ('date_created', self.gf('django.db.models.fields.DateTimeField')()),
             ('first_name', self.gf('django.db.models.fields.TextField')()),
             ('last_name', self.gf('django.db.models.fields.TextField')()),
@@ -952,8 +781,51 @@ class Migration(SchemaMigration):
             ('created_by', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreensaverUser'], null=True, blank=True)),
             ('date_loaded', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
             ('date_publicly_available', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
+            ('user', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['auth.User'], null=True)),
         ))
         db.send_create_signal(u'db', ['ScreensaverUser'])
+
+        # Adding M2M table for field permissions on 'ScreensaverUser'
+        m2m_table_name = db.shorten_name(u'screensaver_user_permissions')
+        db.create_table(m2m_table_name, (
+            ('id', models.AutoField(verbose_name='ID', primary_key=True, auto_created=True)),
+            ('screensaveruser', models.ForeignKey(orm[u'db.screensaveruser'], null=False)),
+            ('permission', models.ForeignKey(orm[u'reports.permission'], null=False))
+        ))
+        db.create_unique(m2m_table_name, ['screensaveruser_id', 'permission_id'])
+
+        # Adding model 'ScreeningRoomUser'
+        db.create_table(u'screening_room_user', (
+            ('screensaver_user', self.gf('django.db.models.fields.related.OneToOneField')(to=orm['db.ScreensaverUser'], unique=True, primary_key=True)),
+            ('user_classification', self.gf('django.db.models.fields.TextField')()),
+            ('lab_head', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.LabHead'], null=True, blank=True)),
+            ('coms_crhba_permit_number', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('coms_crhba_permit_principal_investigator', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('last_notified_smua_checklist_item_event', self.gf('django.db.models.fields.related.ForeignKey')(blank=True, related_name=u'smua_user', null=True, to=orm['db.ChecklistItemEvent'])),
+            ('last_notified_rnaiua_checklist_item_event', self.gf('django.db.models.fields.related.ForeignKey')(blank=True, related_name=u'rnai_ua_user', null=True, to=orm['db.ChecklistItemEvent'])),
+        ))
+        db.send_create_signal(u'db', ['ScreeningRoomUser'])
+
+        # Adding model 'AdministratorUser'
+        db.create_table(u'administrator_user', (
+            ('screensaver_user', self.gf('django.db.models.fields.related.OneToOneField')(to=orm['db.ScreensaverUser'], unique=True, primary_key=True)),
+        ))
+        db.send_create_signal(u'db', ['AdministratorUser'])
+
+        # Adding model 'LabHead'
+        db.create_table(u'lab_head', (
+            ('screensaver_user', self.gf('django.db.models.fields.related.OneToOneField')(to=orm['db.ScreeningRoomUser'], unique=True, primary_key=True)),
+            ('lab_affiliation', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.LabAffiliation'], null=True, blank=True)),
+        ))
+        db.send_create_signal(u'db', ['LabHead'])
+
+        # Adding model 'ScreeningRoomUserFacilityUsageRole'
+        db.create_table(u'screening_room_user_facility_usage_role', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('screening_room_user', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreeningRoomUser'])),
+            ('facility_usage_role', self.gf('django.db.models.fields.TextField')()),
+        ))
+        db.send_create_signal(u'db', ['ScreeningRoomUserFacilityUsageRole'])
 
         # Adding model 'ScreensaverUserRole'
         db.create_table(u'screensaver_user_role', (
@@ -963,31 +835,33 @@ class Migration(SchemaMigration):
         ))
         db.send_create_signal(u'db', ['ScreensaverUserRole'])
 
-        # Adding model 'ScreensaverUserUpdateActivity'
-        db.create_table(u'screensaver_user_update_activity', (
-            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('screensaver_user', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreensaverUser'])),
-            ('update_activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.AdministrativeActivity'])),
+        # Adding model 'Reagent'
+        db.create_table(u'reagent', (
+            ('reagent_id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('substance_id', self.gf('django.db.models.fields.CharField')(default='UY2UH7Q', unique=True, max_length=8)),
+            ('vendor_identifier', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('vendor_name', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('library_contents_version', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.LibraryContentsVersion'], null=True)),
+            ('well', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Well'], null=True)),
+            ('facility_batch_id', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
+            ('vendor_batch_id', self.gf('django.db.models.fields.TextField')(blank=True)),
         ))
-        db.send_create_signal(u'db', ['ScreensaverUserUpdateActivity'])
+        db.send_create_signal(u'db', ['Reagent'])
 
-        # Adding model 'ServiceActivity'
-        db.create_table(u'service_activity', (
-            ('service_activity_type', self.gf('django.db.models.fields.TextField')()),
-            ('activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Activity'], primary_key=True)),
-            ('serviced_screen', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Screen'], null=True, blank=True)),
-            ('serviced_user', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreeningRoomUser'])),
+        # Adding model 'ReagentPublicationLink'
+        db.create_table(u'reagent_publication_link', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('reagent', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Reagent'])),
+            ('publication_id', self.gf('django.db.models.fields.IntegerField')(unique=True)),
         ))
-        db.send_create_signal(u'db', ['ServiceActivity'])
+        db.send_create_signal(u'db', ['ReagentPublicationLink'])
 
         # Adding model 'SilencingReagent'
         db.create_table(u'silencing_reagent', (
             ('reagent', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Reagent'], primary_key=True)),
             ('sequence', self.gf('django.db.models.fields.TextField')(blank=True)),
             ('silencing_reagent_type', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('vendor_gene', self.gf('django.db.models.fields.related.ForeignKey')(blank=True, related_name=u'vendor_reagent', unique=True, null=True, to=orm['db.Gene'])),
-            ('facility_gene', self.gf('django.db.models.fields.related.ForeignKey')(blank=True, related_name=u'facility_reagent', unique=True, null=True, to=orm['db.Gene'])),
-            ('is_restricted_sequence', self.gf('django.db.models.fields.BooleanField')(default=False)),
+            ('is_restricted_sequence', self.gf('django.db.models.fields.BooleanField')()),
         ))
         db.send_create_signal(u'db', ['SilencingReagent'])
 
@@ -998,6 +872,27 @@ class Migration(SchemaMigration):
             ('well', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Well'])),
         ))
         db.send_create_signal(u'db', ['SilencingReagentDuplexWells'])
+
+        # Adding model 'SmallMoleculeReagent'
+        db.create_table(u'small_molecule_reagent', (
+            ('reagent', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Reagent'], primary_key=True)),
+            ('inchi', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('molecular_formula', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('molecular_mass', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=15, decimal_places=9, blank=True)),
+            ('molecular_weight', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=15, decimal_places=9, blank=True)),
+            ('smiles', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('salt_form_id', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
+            ('is_restricted_structure', self.gf('django.db.models.fields.BooleanField')()),
+        ))
+        db.send_create_signal(u'db', ['SmallMoleculeReagent'])
+
+        # Adding model 'StudyReagentLink'
+        db.create_table(u'study_reagent_link', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('study', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Screen'])),
+            ('reagent', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Reagent'])),
+        ))
+        db.send_create_signal(u'db', ['StudyReagentLink'])
 
         # Adding model 'SmallMoleculeChembankId'
         db.create_table(u'small_molecule_chembank_id', (
@@ -1038,27 +933,6 @@ class Migration(SchemaMigration):
         ))
         db.send_create_signal(u'db', ['SmallMoleculePubchemCid'])
 
-        # Adding model 'SmallMoleculeReagent'
-        db.create_table(u'small_molecule_reagent', (
-            ('reagent', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Reagent'], primary_key=True)),
-            ('inchi', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('molecular_formula', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('molecular_mass', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=15, decimal_places=9, blank=True)),
-            ('molecular_weight', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=15, decimal_places=9, blank=True)),
-            ('smiles', self.gf('django.db.models.fields.TextField')(blank=True)),
-            ('salt_form_id', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
-            ('is_restricted_structure', self.gf('django.db.models.fields.BooleanField')(default=False)),
-        ))
-        db.send_create_signal(u'db', ['SmallMoleculeReagent'])
-
-        # Adding model 'StudyReagentLink'
-        db.create_table(u'study_reagent_link', (
-            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('study', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Screen'])),
-            ('reagent', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Reagent'])),
-        ))
-        db.send_create_signal(u'db', ['StudyReagentLink'])
-
         # Adding model 'TransfectionAgent'
         db.create_table(u'transfection_agent', (
             ('transfection_agent_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
@@ -1066,6 +940,124 @@ class Migration(SchemaMigration):
             ('version', self.gf('django.db.models.fields.IntegerField')()),
         ))
         db.send_create_signal(u'db', ['TransfectionAgent'])
+
+        # Adding model 'Library'
+        db.create_table(u'library', (
+            ('library_id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('version', self.gf('django.db.models.fields.IntegerField')()),
+            ('library_name', self.gf('django.db.models.fields.TextField')(unique=True)),
+            ('short_name', self.gf('django.db.models.fields.TextField')(unique=True)),
+            ('description', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('provider', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('screen_type', self.gf('django.db.models.fields.TextField')()),
+            ('library_type', self.gf('django.db.models.fields.TextField')()),
+            ('start_plate', self.gf('django.db.models.fields.IntegerField')(unique=True)),
+            ('end_plate', self.gf('django.db.models.fields.IntegerField')(unique=True)),
+            ('screening_status', self.gf('django.db.models.fields.TextField')()),
+            ('date_received', self.gf('django.db.models.fields.DateField')(null=True, blank=True)),
+            ('date_screenable', self.gf('django.db.models.fields.DateField')(null=True, blank=True)),
+            ('date_created', self.gf('django.db.models.fields.DateTimeField')()),
+            ('plate_size', self.gf('django.db.models.fields.TextField')()),
+            ('latest_released_contents_version_id', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
+            ('experimental_well_count', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
+            ('is_pool', self.gf('django.db.models.fields.NullBooleanField')(null=True, blank=True)),
+            ('created_by', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreensaverUser'], null=True, blank=True)),
+            ('owner_screener', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreeningRoomUser'], null=True, blank=True)),
+            ('solvent', self.gf('django.db.models.fields.TextField')()),
+            ('date_loaded', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
+            ('date_publicly_available', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
+        ))
+        db.send_create_signal(u'db', ['Library'])
+
+        # Adding model 'LibraryContentsVersion'
+        db.create_table(u'library_contents_version', (
+            ('library_contents_version_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
+            ('version', self.gf('django.db.models.fields.IntegerField')()),
+            ('version_number', self.gf('django.db.models.fields.IntegerField')()),
+            ('library', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Library'])),
+            ('library_contents_loading_activity', self.gf('django.db.models.fields.related.ForeignKey')(related_name=u'lcv_load', to=orm['db.AdministrativeActivity'])),
+            ('library_contents_release_activity', self.gf('django.db.models.fields.related.ForeignKey')(blank=True, related_name=u'lcv_release', null=True, to=orm['db.AdministrativeActivity'])),
+        ))
+        db.send_create_signal(u'db', ['LibraryContentsVersion'])
+
+        # Adding model 'Copy'
+        db.create_table(u'copy', (
+            ('version', self.gf('django.db.models.fields.IntegerField')()),
+            ('usage_type', self.gf('django.db.models.fields.TextField')()),
+            ('library', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Library'])),
+            ('name', self.gf('django.db.models.fields.TextField')()),
+            ('copy_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
+            ('comments', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('date_created', self.gf('django.db.models.fields.DateTimeField')()),
+            ('created_by', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreensaverUser'], null=True, blank=True)),
+            ('date_plated', self.gf('django.db.models.fields.DateField')(null=True, blank=True)),
+            ('primary_plate_status', self.gf('django.db.models.fields.TextField')()),
+            ('primary_plate_location_id', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
+            ('plates_available', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
+            ('plate_locations_count', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
+            ('primary_well_mg_ml_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=5, decimal_places=3, blank=True)),
+            ('primary_well_molar_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=13, decimal_places=12, blank=True)),
+            ('min_molar_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=13, decimal_places=12, blank=True)),
+            ('max_molar_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=13, decimal_places=12, blank=True)),
+            ('min_mg_ml_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=5, decimal_places=3, blank=True)),
+            ('max_mg_ml_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=5, decimal_places=3, blank=True)),
+            ('well_concentration_dilution_factor', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=8, decimal_places=2, blank=True)),
+            ('date_loaded', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
+            ('date_publicly_available', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
+        ))
+        db.send_create_signal(u'db', ['Copy'])
+
+        # Adding model 'Plate'
+        db.create_table(u'plate', (
+            ('plate_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
+            ('version', self.gf('django.db.models.fields.IntegerField')()),
+            ('plate_type', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('plate_number', self.gf('django.db.models.fields.IntegerField')()),
+            ('well_volume', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=10, decimal_places=9, blank=True)),
+            ('copy', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Copy'])),
+            ('facility_id', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('date_created', self.gf('django.db.models.fields.DateTimeField')()),
+            ('created_by', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.ScreensaverUser'], null=True, blank=True)),
+            ('plate_location', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.PlateLocation'], null=True, blank=True)),
+            ('status', self.gf('django.db.models.fields.TextField')()),
+            ('retired_activity_id', self.gf('django.db.models.fields.IntegerField')(unique=True, null=True, blank=True)),
+            ('plated_activity_id', self.gf('django.db.models.fields.IntegerField')(unique=True, null=True, blank=True)),
+            ('stock_plate_number', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
+            ('quadrant', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
+            ('min_molar_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=13, decimal_places=12, blank=True)),
+            ('max_molar_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=13, decimal_places=12, blank=True)),
+            ('min_mg_ml_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=5, decimal_places=3, blank=True)),
+            ('max_mg_ml_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=5, decimal_places=3, blank=True)),
+            ('primary_well_molar_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=13, decimal_places=12, blank=True)),
+            ('primary_well_mg_ml_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=5, decimal_places=3, blank=True)),
+            ('date_loaded', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
+            ('date_publicly_available', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
+        ))
+        db.send_create_signal(u'db', ['Plate'])
+
+        # Adding model 'PlateLocation'
+        db.create_table(u'plate_location', (
+            ('plate_location_id', self.gf('django.db.models.fields.IntegerField')(primary_key=True)),
+            ('bin', self.gf('django.db.models.fields.TextField')()),
+            ('freezer', self.gf('django.db.models.fields.TextField')()),
+            ('room', self.gf('django.db.models.fields.TextField')()),
+            ('shelf', self.gf('django.db.models.fields.TextField')()),
+        ))
+        db.send_create_signal(u'db', ['PlateLocation'])
+
+        # Adding model 'ResultValue'
+        db.create_table(u'result_value', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('result_value_id', self.gf('django.db.models.fields.IntegerField')(null=True, blank=True)),
+            ('assay_well_control_type', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('is_exclude', self.gf('django.db.models.fields.NullBooleanField')(null=True, blank=True)),
+            ('numeric_value', self.gf('django.db.models.fields.FloatField')(null=True, blank=True)),
+            ('is_positive', self.gf('django.db.models.fields.NullBooleanField')(null=True, blank=True)),
+            ('value', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('data_column', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.DataColumn'], null=True, blank=True)),
+            ('well', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Well'], null=True, blank=True)),
+        ))
+        db.send_create_signal(u'db', ['ResultValue'])
 
         # Adding model 'Well'
         db.create_table(u'well', (
@@ -1077,7 +1069,7 @@ class Migration(SchemaMigration):
             ('library_well_type', self.gf('django.db.models.fields.TextField')()),
             ('library', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Library'])),
             ('deprecation_admin_activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.AdministrativeActivity'], null=True, blank=True)),
-            ('is_deprecated', self.gf('django.db.models.fields.BooleanField')(default=False)),
+            ('is_deprecated', self.gf('django.db.models.fields.BooleanField')()),
             ('latest_released_reagent', self.gf('django.db.models.fields.related.ForeignKey')(blank=True, related_name=u'reagent_well', null=True, to=orm['db.Reagent'])),
             ('molar_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=13, decimal_places=12, blank=True)),
             ('mg_ml_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=5, decimal_places=3, blank=True)),
@@ -1095,12 +1087,6 @@ class Migration(SchemaMigration):
             ('copy', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Copy'])),
         ))
         db.send_create_signal(u'db', ['WellVolumeAdjustment'])
-
-        # Adding model 'WellVolumeCorrectionActivity'
-        db.create_table(u'well_volume_correction_activity', (
-            ('activity', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.AdministrativeActivity'], primary_key=True)),
-        ))
-        db.send_create_signal(u'db', ['WellVolumeCorrectionActivity'])
 
 
     def backwards(self, orm):
@@ -1122,8 +1108,59 @@ class Migration(SchemaMigration):
         # Deleting model 'AdministrativeActivity'
         db.delete_table(u'administrative_activity')
 
-        # Deleting model 'AdministratorUser'
-        db.delete_table(u'administrator_user')
+        # Deleting model 'AttachedFileUpdateActivity'
+        db.delete_table(u'attached_file_update_activity')
+
+        # Deleting model 'CellUpdateActivity'
+        db.delete_table(u'cell_update_activity')
+
+        # Deleting model 'ChecklistItemEventUpdateActivity'
+        db.delete_table(u'checklist_item_event_update_activity')
+
+        # Deleting model 'CherryPickLiquidTransfer'
+        db.delete_table(u'cherry_pick_liquid_transfer')
+
+        # Deleting model 'CherryPickRequestUpdateActivity'
+        db.delete_table(u'cherry_pick_request_update_activity')
+
+        # Deleting model 'CherryPickScreening'
+        db.delete_table(u'cherry_pick_screening')
+
+        # Deleting model 'CopyUpdateActivity'
+        db.delete_table(u'copy_update_activity')
+
+        # Deleting model 'LabActivity'
+        db.delete_table(u'lab_activity')
+
+        # Deleting model 'LibraryScreening'
+        db.delete_table(u'library_screening')
+
+        # Deleting model 'Screening'
+        db.delete_table(u'screening')
+
+        # Deleting model 'EquipmentUsed'
+        db.delete_table(u'equipment_used')
+
+        # Deleting model 'LibraryUpdateActivity'
+        db.delete_table(u'library_update_activity')
+
+        # Deleting model 'PlateUpdateActivity'
+        db.delete_table(u'plate_update_activity')
+
+        # Deleting model 'ScreenResultUpdateActivity'
+        db.delete_table(u'screen_result_update_activity')
+
+        # Deleting model 'ScreenUpdateActivity'
+        db.delete_table(u'screen_update_activity')
+
+        # Deleting model 'ScreensaverUserUpdateActivity'
+        db.delete_table(u'screensaver_user_update_activity')
+
+        # Deleting model 'ServiceActivity'
+        db.delete_table(u'service_activity')
+
+        # Deleting model 'WellVolumeCorrectionActivity'
+        db.delete_table(u'well_volume_correction_activity')
 
         # Deleting model 'AnnotationType'
         db.delete_table(u'annotation_type')
@@ -1143,9 +1180,6 @@ class Migration(SchemaMigration):
         # Deleting model 'AttachedFileType'
         db.delete_table(u'attached_file_type')
 
-        # Deleting model 'AttachedFileUpdateActivity'
-        db.delete_table(u'attached_file_update_activity')
-
         # Deleting model 'Cell'
         db.delete_table(u'cell')
 
@@ -1164,17 +1198,11 @@ class Migration(SchemaMigration):
         # Deleting model 'CellRelatedProjects'
         db.delete_table(u'cell_related_projects')
 
-        # Deleting model 'CellUpdateActivity'
-        db.delete_table(u'cell_update_activity')
-
         # Deleting model 'ChecklistItem'
         db.delete_table(u'checklist_item')
 
         # Deleting model 'ChecklistItemEvent'
         db.delete_table(u'checklist_item_event')
-
-        # Deleting model 'ChecklistItemEventUpdateActivity'
-        db.delete_table(u'checklist_item_event_update_activity')
 
         # Deleting model 'CherryPickAssayPlate'
         db.delete_table(u'cherry_pick_assay_plate')
@@ -1182,38 +1210,20 @@ class Migration(SchemaMigration):
         # Deleting model 'CherryPickAssayPlateScreeningLink'
         db.delete_table(u'cherry_pick_assay_plate_screening_link')
 
-        # Deleting model 'CherryPickLiquidTransfer'
-        db.delete_table(u'cherry_pick_liquid_transfer')
-
         # Deleting model 'CherryPickRequest'
         db.delete_table(u'cherry_pick_request')
 
         # Deleting model 'CherryPickRequestEmptyWell'
         db.delete_table(u'cherry_pick_request_empty_well')
 
-        # Deleting model 'CherryPickRequestUpdateActivity'
-        db.delete_table(u'cherry_pick_request_update_activity')
-
-        # Deleting model 'CherryPickScreening'
-        db.delete_table(u'cherry_pick_screening')
-
         # Deleting model 'CollaboratorLink'
         db.delete_table(u'collaborator_link')
-
-        # Deleting model 'Copy'
-        db.delete_table(u'copy')
-
-        # Deleting model 'CopyUpdateActivity'
-        db.delete_table(u'copy_update_activity')
 
         # Deleting model 'DataColumn'
         db.delete_table(u'data_column')
 
         # Deleting model 'DataColumnDerivedFromLink'
         db.delete_table(u'data_column_derived_from_link')
-
-        # Deleting model 'EquipmentUsed'
-        db.delete_table(u'equipment_used')
 
         # Deleting model 'ExperimentalCellInformation'
         db.delete_table(u'experimental_cell_information')
@@ -1236,26 +1246,11 @@ class Migration(SchemaMigration):
         # Deleting model 'GeneSymbol'
         db.delete_table(u'gene_symbol')
 
-        # Deleting model 'LabActivity'
-        db.delete_table(u'lab_activity')
-
         # Deleting model 'LabAffiliation'
         db.delete_table(u'lab_affiliation')
 
         # Deleting model 'LabCherryPick'
         db.delete_table(u'lab_cherry_pick')
-
-        # Deleting model 'Library'
-        db.delete_table(u'library')
-
-        # Deleting model 'LibraryContentsVersion'
-        db.delete_table(u'library_contents_version')
-
-        # Deleting model 'LibraryScreening'
-        db.delete_table(u'library_screening')
-
-        # Deleting model 'LibraryUpdateActivity'
-        db.delete_table(u'library_update_activity')
 
         # Deleting model 'Molfile'
         db.delete_table(u'molfile')
@@ -1263,29 +1258,11 @@ class Migration(SchemaMigration):
         # Deleting model 'NaturalProductReagent'
         db.delete_table(u'natural_product_reagent')
 
-        # Deleting model 'Plate'
-        db.delete_table(u'plate')
-
-        # Deleting model 'PlateLocation'
-        db.delete_table(u'plate_location')
-
-        # Deleting model 'PlateUpdateActivity'
-        db.delete_table(u'plate_update_activity')
-
         # Deleting model 'PrimaryCell'
         db.delete_table(u'primary_cell')
 
         # Deleting model 'Publication'
         db.delete_table(u'publication')
-
-        # Deleting model 'Reagent'
-        db.delete_table(u'reagent')
-
-        # Deleting model 'ReagentPublicationLink'
-        db.delete_table(u'reagent_publication_link')
-
-        # Deleting model 'ResultValue'
-        db.delete_table(u'result_value')
 
         # Deleting model 'RnaiCherryPickRequest'
         db.delete_table(u'rnai_cherry_pick_request')
@@ -1311,23 +1288,23 @@ class Migration(SchemaMigration):
         # Deleting model 'ScreenResult'
         db.delete_table(u'screen_result')
 
-        # Deleting model 'ScreenResultUpdateActivity'
-        db.delete_table(u'screen_result_update_activity')
-
         # Deleting model 'ScreenStatusItem'
         db.delete_table(u'screen_status_item')
-
-        # Deleting model 'ScreenUpdateActivity'
-        db.delete_table(u'screen_update_activity')
 
         # Deleting model 'ScreenerCherryPick'
         db.delete_table(u'screener_cherry_pick')
 
-        # Deleting model 'Screening'
-        db.delete_table(u'screening')
+        # Deleting model 'ScreensaverUser'
+        db.delete_table(u'screensaver_user')
+
+        # Removing M2M table for field permissions on 'ScreensaverUser'
+        db.delete_table(db.shorten_name(u'screensaver_user_permissions'))
 
         # Deleting model 'ScreeningRoomUser'
         db.delete_table(u'screening_room_user')
+
+        # Deleting model 'AdministratorUser'
+        db.delete_table(u'administrator_user')
 
         # Deleting model 'LabHead'
         db.delete_table(u'lab_head')
@@ -1335,23 +1312,26 @@ class Migration(SchemaMigration):
         # Deleting model 'ScreeningRoomUserFacilityUsageRole'
         db.delete_table(u'screening_room_user_facility_usage_role')
 
-        # Deleting model 'ScreensaverUser'
-        db.delete_table(u'screensaver_user')
-
         # Deleting model 'ScreensaverUserRole'
         db.delete_table(u'screensaver_user_role')
 
-        # Deleting model 'ScreensaverUserUpdateActivity'
-        db.delete_table(u'screensaver_user_update_activity')
+        # Deleting model 'Reagent'
+        db.delete_table(u'reagent')
 
-        # Deleting model 'ServiceActivity'
-        db.delete_table(u'service_activity')
+        # Deleting model 'ReagentPublicationLink'
+        db.delete_table(u'reagent_publication_link')
 
         # Deleting model 'SilencingReagent'
         db.delete_table(u'silencing_reagent')
 
         # Deleting model 'SilencingReagentDuplexWells'
         db.delete_table(u'silencing_reagent_duplex_wells')
+
+        # Deleting model 'SmallMoleculeReagent'
+        db.delete_table(u'small_molecule_reagent')
+
+        # Deleting model 'StudyReagentLink'
+        db.delete_table(u'study_reagent_link')
 
         # Deleting model 'SmallMoleculeChembankId'
         db.delete_table(u'small_molecule_chembank_id')
@@ -1368,14 +1348,26 @@ class Migration(SchemaMigration):
         # Deleting model 'SmallMoleculePubchemCid'
         db.delete_table(u'small_molecule_pubchem_cid')
 
-        # Deleting model 'SmallMoleculeReagent'
-        db.delete_table(u'small_molecule_reagent')
-
-        # Deleting model 'StudyReagentLink'
-        db.delete_table(u'study_reagent_link')
-
         # Deleting model 'TransfectionAgent'
         db.delete_table(u'transfection_agent')
+
+        # Deleting model 'Library'
+        db.delete_table(u'library')
+
+        # Deleting model 'LibraryContentsVersion'
+        db.delete_table(u'library_contents_version')
+
+        # Deleting model 'Copy'
+        db.delete_table(u'copy')
+
+        # Deleting model 'Plate'
+        db.delete_table(u'plate')
+
+        # Deleting model 'PlateLocation'
+        db.delete_table(u'plate_location')
+
+        # Deleting model 'ResultValue'
+        db.delete_table(u'result_value')
 
         # Deleting model 'Well'
         db.delete_table(u'well')
@@ -1383,11 +1375,44 @@ class Migration(SchemaMigration):
         # Deleting model 'WellVolumeAdjustment'
         db.delete_table(u'well_volume_adjustment')
 
-        # Deleting model 'WellVolumeCorrectionActivity'
-        db.delete_table(u'well_volume_correction_activity')
-
 
     models = {
+        u'auth.group': {
+            'Meta': {'object_name': 'Group'},
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'name': ('django.db.models.fields.CharField', [], {'unique': 'True', 'max_length': '80'}),
+            'permissions': ('django.db.models.fields.related.ManyToManyField', [], {'to': u"orm['auth.Permission']", 'symmetrical': 'False', 'blank': 'True'})
+        },
+        u'auth.permission': {
+            'Meta': {'ordering': "(u'content_type__app_label', u'content_type__model', u'codename')", 'unique_together': "((u'content_type', u'codename'),)", 'object_name': 'Permission'},
+            'codename': ('django.db.models.fields.CharField', [], {'max_length': '100'}),
+            'content_type': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['contenttypes.ContentType']"}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'name': ('django.db.models.fields.CharField', [], {'max_length': '50'})
+        },
+        u'auth.user': {
+            'Meta': {'object_name': 'User'},
+            'date_joined': ('django.db.models.fields.DateTimeField', [], {'default': 'datetime.datetime.now'}),
+            'email': ('django.db.models.fields.EmailField', [], {'max_length': '75', 'blank': 'True'}),
+            'first_name': ('django.db.models.fields.CharField', [], {'max_length': '30', 'blank': 'True'}),
+            'groups': ('django.db.models.fields.related.ManyToManyField', [], {'symmetrical': 'False', 'related_name': "u'user_set'", 'blank': 'True', 'to': u"orm['auth.Group']"}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'is_active': ('django.db.models.fields.BooleanField', [], {'default': 'True'}),
+            'is_staff': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_superuser': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'last_login': ('django.db.models.fields.DateTimeField', [], {'default': 'datetime.datetime.now'}),
+            'last_name': ('django.db.models.fields.CharField', [], {'max_length': '30', 'blank': 'True'}),
+            'password': ('django.db.models.fields.CharField', [], {'max_length': '128'}),
+            'user_permissions': ('django.db.models.fields.related.ManyToManyField', [], {'symmetrical': 'False', 'related_name': "u'user_set'", 'blank': 'True', 'to': u"orm['auth.Permission']"}),
+            'username': ('django.db.models.fields.CharField', [], {'unique': 'True', 'max_length': '30'})
+        },
+        u'contenttypes.contenttype': {
+            'Meta': {'ordering': "('name',)", 'unique_together': "(('app_label', 'model'),)", 'object_name': 'ContentType', 'db_table': "'django_content_type'"},
+            'app_label': ('django.db.models.fields.CharField', [], {'max_length': '100'}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'model': ('django.db.models.fields.CharField', [], {'max_length': '100'}),
+            'name': ('django.db.models.fields.CharField', [], {'max_length': '100'})
+        },
         u'db.abasetestset': {
             'Meta': {'object_name': 'AbaseTestset', 'db_table': "u'abase_testset'"},
             'abase_testset_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
@@ -1422,13 +1447,13 @@ class Migration(SchemaMigration):
         },
         u'db.administratoruser': {
             'Meta': {'object_name': 'AdministratorUser', 'db_table': "u'administrator_user'"},
-            'screensaver_user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreensaverUser']", 'primary_key': 'True'})
+            'screensaver_user': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.ScreensaverUser']", 'unique': 'True', 'primary_key': 'True'})
         },
         u'db.annotationtype': {
             'Meta': {'object_name': 'AnnotationType', 'db_table': "u'annotation_type'"},
             'annotation_type_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
             'description': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'is_numeric': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_numeric': ('django.db.models.fields.BooleanField', [], {}),
             'name': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'ordinal': ('django.db.models.fields.IntegerField', [], {}),
             'study': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Screen']"}),
@@ -1459,7 +1484,7 @@ class Migration(SchemaMigration):
             'assay_well_control_type': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'assay_well_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
             'confirmed_positive_value': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'is_positive': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_positive': ('django.db.models.fields.BooleanField', [], {}),
             'screen_result': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreenResult']"}),
             'version': ('django.db.models.fields.IntegerField', [], {}),
             'well': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']"})
@@ -1562,7 +1587,7 @@ class Migration(SchemaMigration):
             'Meta': {'object_name': 'ChecklistItem', 'db_table': "u'checklist_item'"},
             'checklist_item_group': ('django.db.models.fields.TextField', [], {}),
             'checklist_item_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
-            'is_expirable': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_expirable': ('django.db.models.fields.BooleanField', [], {}),
             'item_name': ('django.db.models.fields.TextField', [], {'unique': 'True'}),
             'order_statistic': ('django.db.models.fields.IntegerField', [], {}),
             'version': ('django.db.models.fields.IntegerField', [], {})
@@ -1576,8 +1601,8 @@ class Migration(SchemaMigration):
             'date_loaded': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
             'date_performed': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'date_publicly_available': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
-            'is_expiration': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
-            'is_not_applicable': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_expiration': ('django.db.models.fields.BooleanField', [], {}),
+            'is_not_applicable': ('django.db.models.fields.BooleanField', [], {}),
             'screening_room_user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreeningRoomUser']"})
         },
         u'db.checklistitemeventupdateactivity': {
@@ -1623,8 +1648,8 @@ class Migration(SchemaMigration):
             'date_publicly_available': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
             'date_requested': ('django.db.models.fields.DateField', [], {}),
             'date_volume_approved': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
-            'is_randomized_assay_plate_layout': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
-            'keep_source_plate_cherry_picks_together': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_randomized_assay_plate_layout': ('django.db.models.fields.BooleanField', [], {}),
+            'keep_source_plate_cherry_picks_together': ('django.db.models.fields.BooleanField', [], {}),
             'legacy_cherry_pick_request_number': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'max_skipped_wells_per_plate': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'number_unfulfilled_lab_cherry_picks': ('django.db.models.fields.IntegerField', [], {}),
@@ -1700,8 +1725,8 @@ class Migration(SchemaMigration):
             'decimal_places': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'description': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'how_derived': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'is_derived': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
-            'is_follow_up_data': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_derived': ('django.db.models.fields.BooleanField', [], {}),
+            'is_follow_up_data': ('django.db.models.fields.BooleanField', [], {}),
             'medium_positives_count': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'name': ('django.db.models.fields.TextField', [], {}),
             'ordinal': ('django.db.models.fields.IntegerField', [], {}),
@@ -1801,7 +1826,7 @@ class Migration(SchemaMigration):
         u'db.labhead': {
             'Meta': {'object_name': 'LabHead', 'db_table': "u'lab_head'"},
             'lab_affiliation': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.LabAffiliation']", 'null': 'True', 'blank': 'True'}),
-            'screensaver_user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreeningRoomUser']", 'primary_key': 'True'})
+            'screensaver_user': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.ScreeningRoomUser']", 'unique': 'True', 'primary_key': 'True'})
         },
         u'db.legacysmallmoleculecasnumber': {
             'Meta': {'object_name': 'LegacySmallMoleculeCasNumber', 'db_table': "u'_legacy_small_molecule_cas_number'"},
@@ -1822,7 +1847,6 @@ class Migration(SchemaMigration):
             'experimental_well_count': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'is_pool': ('django.db.models.fields.NullBooleanField', [], {'null': 'True', 'blank': 'True'}),
             'latest_released_contents_version_id': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
-#             'library_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
             'library_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'library_name': ('django.db.models.fields.TextField', [], {'unique': 'True'}),
             'library_type': ('django.db.models.fields.TextField', [], {}),
@@ -1849,7 +1873,7 @@ class Migration(SchemaMigration):
             'Meta': {'object_name': 'LibraryScreening', 'db_table': "u'library_screening'"},
             'abase_testset_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Screening']", 'primary_key': 'True'}),
-            'is_for_external_library_plates': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_for_external_library_plates': ('django.db.models.fields.BooleanField', [], {}),
             'libraries_screened_count': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'library_plates_screened_count': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'screened_experimental_well_count': ('django.db.models.fields.IntegerField', [], {})
@@ -1936,18 +1960,33 @@ class Migration(SchemaMigration):
         u'db.reagent': {
             'Meta': {'object_name': 'Reagent', 'db_table': "u'reagent'"},
             'facility_batch_id': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
-            'library_contents_version': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.LibraryContentsVersion']"}),
-            'reagent_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
+            'library_contents_version': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.LibraryContentsVersion']", 'null': 'True'}),
+            'reagent_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UY2UH7Q'", 'unique': 'True', 'max_length': '8'}),
             'vendor_batch_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_identifier': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_name': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'well': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']"})
+            'well': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']", 'null': 'True'})
+        },
+        u'db.reagentfacilitygenes': {
+            'Meta': {'object_name': 'ReagentFacilityGenes', 'db_table': "u'reagent_facility_genes'", 'managed': 'False'},
+            'gene': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Gene']", 'unique': 'True'}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'ordinal': ('django.db.models.fields.IntegerField', [], {}),
+            'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SilencingReagent']"})
         },
         u'db.reagentpublicationlink': {
             'Meta': {'object_name': 'ReagentPublicationLink', 'db_table': "u'reagent_publication_link'"},
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'publication_id': ('django.db.models.fields.IntegerField', [], {'unique': 'True'}),
             'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Reagent']"})
+        },
+        u'db.reagentvendorgenes': {
+            'Meta': {'object_name': 'ReagentVendorGenes', 'db_table': "u'reagent_vendor_genes'", 'managed': 'False'},
+            'gene': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Gene']", 'unique': 'True'}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'ordinal': ('django.db.models.fields.IntegerField', [], {}),
+            'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SilencingReagent']"})
         },
         u'db.resultvalue': {
             'Meta': {'object_name': 'ResultValue', 'db_table': "u'result_value'"},
@@ -1976,10 +2015,9 @@ class Migration(SchemaMigration):
             'abase_protocol_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'abase_study_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'amount_to_be_charged_for_screen': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '9', 'decimal_places': '2', 'blank': 'True'}),
-            'assay_plates_screened_count': ('django.db.models.fields.IntegerField', [], {}),
+            'assay_plates_screened_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
             'billing_comments': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'billing_info_return_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
-            'cell_line': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.CellLine']", 'null': 'True', 'blank': 'True'}),
             'comments': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'coms_approval_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'coms_registration_number': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -2006,9 +2044,9 @@ class Migration(SchemaMigration):
             'lab_head': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.LabHead']", 'null': 'True', 'blank': 'True'}),
             'lead_screener': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreeningRoomUser']", 'null': 'True', 'blank': 'True'}),
             'libraries_screened_count': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
-            'library_plates_data_analyzed_count': ('django.db.models.fields.IntegerField', [], {}),
-            'library_plates_data_loaded_count': ('django.db.models.fields.IntegerField', [], {}),
-            'library_plates_screened_count': ('django.db.models.fields.IntegerField', [], {}),
+            'library_plates_data_analyzed_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
+            'library_plates_data_loaded_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
+            'library_plates_screened_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
             'max_allowed_data_privacy_expiration_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'max_data_loaded_replicate_count': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'max_screened_replicate_count': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
@@ -2026,19 +2064,20 @@ class Migration(SchemaMigration):
             'publishable_protocol_comments': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'publishable_protocol_date_entered': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'publishable_protocol_entered_by': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-#             'screen_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
             'screen_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'screen_type': ('django.db.models.fields.TextField', [], {}),
-            'screened_experimental_well_count': ('django.db.models.fields.IntegerField', [], {}),
+            'screened_experimental_well_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
             'see_comments': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
             'species': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
+            'status': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
+            'status_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'study_type': ('django.db.models.fields.TextField', [], {}),
             'summary': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'title': ('django.db.models.fields.TextField', [], {}),
             'to_be_requested': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
-            'total_plated_lab_cherry_picks': ('django.db.models.fields.IntegerField', [], {}),
+            'total_plated_lab_cherry_picks': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
             'transfection_agent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.TransfectionAgent']", 'null': 'True', 'blank': 'True'}),
-            'unique_screened_experimental_well_count': ('django.db.models.fields.IntegerField', [], {}),
+            'unique_screened_experimental_well_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
             'url': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'version': ('django.db.models.fields.IntegerField', [], {}),
             'well_studied': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']", 'null': 'True', 'blank': 'True'})
@@ -2082,7 +2121,7 @@ class Migration(SchemaMigration):
             'lab_head': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.LabHead']", 'null': 'True', 'blank': 'True'}),
             'last_notified_rnaiua_checklist_item_event': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "u'rnai_ua_user'", 'null': 'True', 'to': u"orm['db.ChecklistItemEvent']"}),
             'last_notified_smua_checklist_item_event': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "u'smua_user'", 'null': 'True', 'to': u"orm['db.ChecklistItemEvent']"}),
-            'screensaver_user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreensaverUser']", 'primary_key': 'True'}),
+            'screensaver_user': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.ScreensaverUser']", 'unique': 'True', 'primary_key': 'True'}),
             'user_classification': ('django.db.models.fields.TextField', [], {})
         },
         u'db.screeningroomuserfacilityusagerole': {
@@ -2112,7 +2151,7 @@ class Migration(SchemaMigration):
             'date_publicly_available': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
             'experimental_well_count': ('django.db.models.fields.IntegerField', [], {}),
             'replicate_count': ('django.db.models.fields.IntegerField', [], {}),
-            'screen': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Screen']"}),
+            'screen': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.Screen']", 'unique': 'True'}),
             'screen_result_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
             'version': ('django.db.models.fields.IntegerField', [], {})
         },
@@ -2139,9 +2178,11 @@ class Migration(SchemaMigration):
             'last_name': ('django.db.models.fields.TextField', [], {}),
             'login_id': ('django.db.models.fields.TextField', [], {'unique': 'True', 'blank': 'True'}),
             'mailing_address': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
+            'permissions': ('django.db.models.fields.related.ManyToManyField', [], {'to': u"orm['reports.Permission']", 'symmetrical': 'False'}),
             'phone': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'screensaver_user_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
-            'version': ('django.db.models.fields.IntegerField', [], {'blank': 'True'})
+            'user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['auth.User']", 'null': 'True'}),
+            'version': ('django.db.models.fields.IntegerField', [], {'default': '1', 'blank': 'True'})
         },
         u'db.screensaveruserrole': {
             'Meta': {'object_name': 'ScreensaverUserRole', 'db_table': "u'screensaver_user_role'"},
@@ -2177,12 +2218,10 @@ class Migration(SchemaMigration):
         },
         u'db.silencingreagent': {
             'Meta': {'object_name': 'SilencingReagent', 'db_table': "u'silencing_reagent'"},
-            'facility_gene': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "u'facility_reagent'", 'unique': 'True', 'null': 'True', 'to': u"orm['db.Gene']"}),
-            'is_restricted_sequence': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_restricted_sequence': ('django.db.models.fields.BooleanField', [], {}),
             'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Reagent']", 'primary_key': 'True'}),
             'sequence': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'silencing_reagent_type': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'vendor_gene': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "u'vendor_reagent'", 'unique': 'True', 'null': 'True', 'to': u"orm['db.Gene']"})
+            'silencing_reagent_type': ('django.db.models.fields.TextField', [], {'blank': 'True'})
         },
         u'db.silencingreagentduplexwells': {
             'Meta': {'object_name': 'SilencingReagentDuplexWells', 'db_table': "u'silencing_reagent_duplex_wells'"},
@@ -2222,7 +2261,7 @@ class Migration(SchemaMigration):
         u'db.smallmoleculereagent': {
             'Meta': {'object_name': 'SmallMoleculeReagent', 'db_table': "u'small_molecule_reagent'"},
             'inchi': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'is_restricted_structure': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_restricted_structure': ('django.db.models.fields.BooleanField', [], {}),
             'molecular_formula': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'molecular_mass': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '15', 'decimal_places': '9', 'blank': 'True'}),
             'molecular_weight': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '15', 'decimal_places': '9', 'blank': 'True'}),
@@ -2246,7 +2285,7 @@ class Migration(SchemaMigration):
             'Meta': {'object_name': 'Well', 'db_table': "u'well'"},
             'deprecation_admin_activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AdministrativeActivity']", 'null': 'True', 'blank': 'True'}),
             'facility_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'is_deprecated': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
+            'is_deprecated': ('django.db.models.fields.BooleanField', [], {}),
             'latest_released_reagent': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "u'reagent_well'", 'null': 'True', 'to': u"orm['db.Reagent']"}),
             'library': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Library']"}),
             'library_well_type': ('django.db.models.fields.TextField', [], {}),
@@ -2270,6 +2309,13 @@ class Migration(SchemaMigration):
         u'db.wellvolumecorrectionactivity': {
             'Meta': {'object_name': 'WellVolumeCorrectionActivity', 'db_table': "u'well_volume_correction_activity'"},
             'activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AdministrativeActivity']", 'primary_key': 'True'})
+        },
+        u'reports.permission': {
+            'Meta': {'unique_together': "(('scope', 'key', 'type'),)", 'object_name': 'Permission'},
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'key': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
+            'scope': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
+            'type': ('django.db.models.fields.CharField', [], {'max_length': '15'})
         }
     }
 

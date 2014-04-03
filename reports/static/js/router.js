@@ -4,13 +4,14 @@ define([
   'backbone',
   'models/app_state'
 ], 
-function($, _, Backbone, appModel) { //, MenuView, ListView){
+function($, _, Backbone, appModel) { 
 
   var AppRouter = Backbone.Router.extend({
 
     LIST_ROUTE_ORDER: ['rpp', 'page','order','search'],
     
     initialize : function() {
+      // send all routes to URIstack processing function
       this.route(/(.*)/, "toPath", this.toPath);
       this.routesHit = 0;
       Backbone.history.on('route', function(router, route, params) {

@@ -9,6 +9,9 @@ define([
 
 ], function( $, _, Backbone, modelbinder, Iccbl, appModel, detailTemplate) {
 	
+  //FIXME: 20140402 - convert this to backbone-stickit:
+  // prefer it's binding mechanism: xpath->to->model, 
+  // rather than model->to->xpath like backbone_modelbinder
 	var DetailView = Backbone.Layout.extend({
     
 	  initialize: function(args) {

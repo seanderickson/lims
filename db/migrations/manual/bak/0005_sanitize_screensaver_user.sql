@@ -1,3 +1,7 @@
+/*** TODO: this script is provisional ** may not be necessary ** 
+*** keep as an example **
+***/
+
 /** ecommons id's must be null or unique **/
 /** identify duplicates: select count(*), ecommons_id, array_agg(screensaver_user_id) from screensaver_user where ecommons_id is not null group by ecommons_id order by count desc; **/
 

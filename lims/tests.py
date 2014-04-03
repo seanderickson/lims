@@ -1,10 +1,17 @@
+import os
 from django.test.testcases import TestCase
-from lims.api import CSVSerializer, CsvBooleanField
+from lims.api import CSVSerializer, CsvBooleanField, SDFSerializer
 
 import logging
+from lims.hms.sdf2py import MOLDATAKEY
 
 logger = logging.getLogger(__name__)
 
+import lims;
+try:
+    APP_ROOT_DIR = os.path.abspath(os.path.dirname(lims.__path__[0]))
+except:
+    APP_ROOT_DIR = os.path.abspath(os.path.dirname(lims.__path__))
 
 def is_boolean(field):
     if type(field) == bool: return True
@@ -17,11 +24,16 @@ def is_boolean(field):
     
 csvBooleanField = CsvBooleanField()
 
-# equivocal, and other equivalency methods are for end-to-end testing of the API with
-# values read from csv or json, submitted, then read back as json from the API.
+####
+# NOTE: equivocal, and other equivalency methods are for end-to-end testing 
+# of the API with values read from csv or json.
+# Values are submitted, then read back as json from the API.
+####
+
 def equivocal(val1, val2):
     '''
-    For testing equality from the CSV input to the JSON response of what is created in the DB
+    For testing equality from the CSV input to the JSON response of what is 
+    created in the DB
     obj1 input
     obj2 output 
     '''
@@ -38,12 +50,15 @@ def equivocal(val1, val2):
         val1 = str(val1)
         val2 = str(val2)
         if val1 != val2:
-            if is_boolean(val1) and csvBooleanField.convert(val1) == csvBooleanField.convert(val2):
+            if (is_boolean(val1) and 
+                    csvBooleanField.convert(val1)==csvBooleanField.convert(val2)):
                 return True, ('val1', val1, 'val2', val2 )
             return False, ('val1', val1, 'val2', val2 )
                 
     else: # better be a list
-        assert isinstance(val1, list) and isinstance(val2, list), str(('Must be a list if not a string', 'val1', val1, 'val2', val2))
+        assert ( isinstance(val1, list) and 
+                 isinstance(val2, list), 
+                 str(('Must be a list if not a string', 'val1', val1, 'val2', val2)))
         for v in val1:
             if not v: 
                 if val2 and len(val2) > 0:
@@ -54,9 +69,13 @@ def equivocal(val1, val2):
     return True, ('val1', val1, 'val2', val2 )
     
 #NOTE only works for String comparisons
-def assert_obj1_to_obj2(obj1, obj2, keys=['key', 'scope', 'ordinal', 'username', 'name'], excludes=['resource_uri']):
+def assert_obj1_to_obj2(
+        obj1, obj2, 
+        keys=['key', 'scope', 'ordinal', 'username', 'name'], 
+        excludes=['resource_uri']):
     '''
-    For testing equality from the CSV input to the JSON response of what is created in the DB
+    For testing equality from the CSV input to the JSON response of what is 
+    created in the DB
     obj1 input
     obj2 output 
     '''
@@ -66,7 +85,6 @@ def assert_obj1_to_obj2(obj1, obj2, keys=['key', 'scope', 'ordinal', 'username',
     intersect_keys = original_keys.intersection(updated_keys)
     if intersect_keys != original_keys:
         return False, ('keys missing', original_keys-intersect_keys)
-#    logger.info(str(('intersect_keys', intersect_keys)))
     for key in keys:
         if key not in obj1:
             continue
@@ -74,10 +92,11 @@ def assert_obj1_to_obj2(obj1, obj2, keys=['key', 'scope', 'ordinal', 'username',
             return False, ('key not found',key)  
         result, msgs =  equivocal(obj1[key], obj2[key])
         if not result:
-            return False, () # don't report for this section, just move along to the next items to test
-#        if str(obj1[key]) != str(obj2[key]):
-#            return False, None  # don't report for this section
-#    logger.info(str(('equal so far, keys to search', keys_to_search)))
+            # don't report for this section, just move along to the next items to test
+            return False, () 
+        #        if str(obj1[key]) != str(obj2[key]):
+        #            return False, None  # don't report for this section
+        #    logger.info(str(('equal so far, keys to search', keys_to_search)))
 
     fkey = 'resource_uri'
     if fkey not in excludes:
@@ -94,7 +113,8 @@ def assert_obj1_to_obj2(obj1, obj2, keys=['key', 'scope', 'ordinal', 'username',
                 if val1 != val2:
                     if val1 not in val2:
                         return False, ('resource uri', val1, val2)
-                    logger.warn(str(('using imprecise uri matching, equivocating: ', val1, val2)))
+                    logger.warn(str((
+                        'imprecise uri matching, equivocating:', val1, val2)))
     
     keys_to_search = set(obj1.keys()) - set(keys) - set(excludes)
 
@@ -128,6 +148,91 @@ def find_all_obj_in_list(list1, list2, **kwargs):
             return False, msgs
     return True, msgs
 
+class SDFSerializerTest(TestCase):
+    
+    def test1_read(self):
+        logger.info('=== test1 SDF read')
+        
+        records = [{
+            'smiles': 'Cl',
+            'chemical_name': 'HCl (hydrochloric acid)',
+            'molecular_mass': '35.976677742',
+            MOLDATAKEY: '''
+  SciTegic12121315112D
+
+  1  0  0  0  0  0            999 V2000
+    0.0000    0.0000    0.0000 Cl  0  0  0  0  0  0  0  0  0  0  0  0
+M  END
+'''
+            },
+            {
+            'smiles': 'C([C@@H](C(=O)O)O)C(=O)O',
+            'inchi': 'InChI=1S/C4H6O5/c5-2(4(8)9)1-3(6)7/h2,5H,1H2,(H,6,7)(H,8,9)/t2-/m0/s1',
+            'chemical_name': 'malate',
+            'molecular_mass': '134.021523292',
+            MOLDATAKEY: '''
+  SciTegic12121315112D
+
+  9  8  0  0  1  0            999 V2000
+    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    0.0000    0.0000 C   0  0  1  0  0  0  0  0  0  0  0  0
+    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+  1  2  1  0  0  0  0
+  2  3  1  0  0  0  0
+  3  4  2  0  0  0  0
+  3  5  1  0  0  0  0
+  2  6  1  1  0  0  0
+  1  7  1  0  0  0  0
+  7  8  2  0  0  0  0
+  7  9  1  0  0  0  0
+M  END
+'''                
+            },{
+            'smiles': 'O.O.Cl',
+            'inchi': 'InChI=1S/ClH.2H2O/h1H;2*1H2',
+            'chemical_name': 'hydrochloride hydrate',
+            'molecular_mass': '71.99780711',
+            MOLDATAKEY: '''
+  SciTegic12121315112D
+
+  3  0  0  0  0  0            999 V2000
+    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    0.0000    0.0000 Cl  0  0  0  0  0  0  0  0  0  0  0  0
+M  END
+'''
+            }]
+        
+        serializer = SDFSerializer()
+        
+        sdf_data = serializer.to_sdf(records)
+        with open(APP_ROOT_DIR + '/lims/test/test1.sdf', 'w') as fout:    
+            fout.write(sdf_data)
+            
+        fout.close()
+    
+        with open(APP_ROOT_DIR + '/lims/test/test1.sdf') as fin:    
+            final_data = serializer.from_sdf(fin.read(), root=None)
+            logger.info(str(('final_data', final_data)))
+            self.assertTrue(
+                len(final_data)==len(records), 
+                str(('len is', len(final_data),len(records))))
+            for obj in final_data:
+                logger.info(str(('object: ', obj)))
+                
+                for record in records:
+                    if record['smiles'] == obj['smiles']:
+                        for k,v in record.items():
+                            self.assertTrue(k in obj, str(('obj does not contain',k)))
+                            self.assertTrue(
+                                obj[k] == v, 
+                                str(('values not equal', k, record[k], '\n read: ', v)))
 
 class BaselineTest(TestCase):
 
@@ -138,7 +243,7 @@ class BaselineTest(TestCase):
             ['',''],
             ['', None],
             ['1','1'],
-            ['1',1],        # integer strings can come back as integers (if integerfield is defined)
+            ['1',1], # integer strings can come back as integers (if integerfield is defined)
             ['sal','sal'],
             ['True','TRUE'],
             ['true','True'],
@@ -257,23 +362,12 @@ class BaselineTest(TestCase):
                 'email': 'bad.fester@slimstest.com',    
             },
         ]        
-        item = {'login_id': 'jt1', 'first_name': 'Joe', 'last_name': 'Tester', 'email': 'joe.tester@limstest.com'}
+        item = {'login_id': 'jt1', 'first_name': 'Joe', 'last_name': 'Tester', 
+                'email': 'joe.tester@limstest.com'}
         result, obj = find_obj_in_list(item, bootstrap_items)
         logger.info(str((result, obj)))
         
         self.assertTrue(obj['email'] == 'joe.tester@limstest.com')
         
-        logger.info(str(('====== test_4user_example done ===='))) # if this passes, then why does line 431 fail in reports.tests.py?
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        logger.info(str(('====== test_4user_example done ===='))) 
+        # if this passes, then why does line 431 fail in reports.tests.py?

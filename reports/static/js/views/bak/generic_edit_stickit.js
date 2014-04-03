@@ -28,16 +28,6 @@ define([
             this._options = options;
 
             this._id = Iccbl.getTitleFromTitleAttribute(self.model, this._schemaResult);
-            // this._id = this.model.get('id');
-            // if(_.has(this._schemaResult['resource_definition'], 'title_attribute')){
-                // console.log('create title_attribute from ' + this._schemaResult['resource_definition']['title_attribute']);
-                // this._id = _.reduce(this._schemaResult['resource_definition']['title_attribute'],
-                    // function(memo, item){
-                        // if( self.model.has(item) ) memo += self.model.get(item)
-                        // else memo += item
-                        // return memo ;
-                    // }, '');
-            // }
             console.log('id: ' + this._id);
 
             this._keys = Iccbl.sortOnOrdinal(_.keys(this.model.attributes), self._schemaResult.fields);

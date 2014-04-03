@@ -19,25 +19,43 @@ class Migration(DataMigration):
         
         ###
         # AutoFields:
-        # Creating primary key "AutoFields" for the old java/hibernate "GenericGenerator" class
+        # Creating primary key "AutoFields" for the old java/hibernate 
+        # "GenericGenerator" class
         
         # Changing field 'Screen.screen_id' to auto field
-        # *NOTE: the following does not work with Postgres, for an already existing field
-        #         db.alter_column(u'screen', 'screen_id', self.gf('django.db.models.fields.AutoField')(primary_key=True))
-        # Postgres can create a field of type 'serial', but its not a real type, so postgres will not 
-        # convert a field to 'serial'
+        # *NOTE: the following does not work with Postgres, for an already 
+        # existing field
+        # db.alter_column(u'screen', 'screen_id', self.gf('django.db.models.fields.AutoField')(primary_key=True))
+        # Postgres can create a field of type 'serial', but its not a real type, 
+        # so postgres will not convert a field to 'serial'
         # see: http://www.postgresql.org/docs/8.3/interactive/datatype-numeric.html#DATATYPE-SERIAL
         # see: http://south.aeracode.org/ticket/407, 
         # Fix is as follows:
         
         # Note: we don't need to create the sequence; just re-associate the old one
-        #         db.execute("CREATE SEQUENCE {column}_seq".format(column='screen_id'))
-        #         db.execute("SELECT setval('{table}_{column}_seq', (SELECT MAX({column}) FROM {table}))".format(table='screen', column='screen_id'))
-        db.execute("ALTER TABLE {table} ALTER COLUMN {column} SET DEFAULT nextval('{column}_seq'::regclass)".format(table='screen', column='screen_id'))
-        db.execute("ALTER SEQUENCE {column}_seq OWNED BY {table}.{column}".format(table='screen', column='screen_id'))
+        # db.execute("CREATE SEQUENCE {column}_seq".format(column='screen_id'))
+        # db.execute("SELECT setval('{table}_{column}_seq', (SELECT MAX({column}) FROM {table}))".format(table='screen', column='screen_id'))
+#         db.execute("ALTER TABLE {table} ALTER COLUMN {column} SET DEFAULT nextval('{column}_seq'::regclass)".format(table='screen', column='screen_id'))
+#         db.execute("ALTER SEQUENCE {column}_seq OWNED BY {table}.{column}".format(table='screen', column='screen_id'))
+# 
+#         db.execute("ALTER TABLE {table} ALTER COLUMN {column} SET DEFAULT nextval('{column}_seq'::regclass)".format(table='library', column='library_id'))
+#         db.execute("ALTER SEQUENCE {column}_seq OWNED BY {table}.{column}".format(table='library', column='library_id'))
 
-        db.execute("ALTER TABLE {table} ALTER COLUMN {column} SET DEFAULT nextval('{column}_seq'::regclass)".format(table='library', column='library_id'))
-        db.execute("ALTER SEQUENCE {column}_seq OWNED BY {table}.{column}".format(table='library', column='library_id'))
+        db.execute(
+            ("ALTER TABLE {table} ALTER COLUMN {column} "
+             "SET DEFAULT nextval('{column}_seq'::regclass)").format(
+                 table='screen', column='screen_id'))
+        db.execute(
+            "ALTER SEQUENCE {column}_seq OWNED BY {table}.{column}".format(
+                table='screen', column='screen_id'))
+ 
+        db.execute(
+            ("ALTER TABLE {table} ALTER COLUMN {column} "
+             "SET DEFAULT nextval('{column}_seq'::regclass)").format(
+                 table='library', column='library_id'))
+        db.execute(
+            "ALTER SEQUENCE {column}_seq OWNED BY {table}.{column}".format(
+                table='library', column='library_id'))
 
     def backwards(self, orm):
         "Write your backwards methods here."
@@ -633,11 +651,25 @@ class Migration(DataMigration):
             'vendor_name': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'well': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']"})
         },
+        u'db.reagentfacilitygenes': {
+            'Meta': {'object_name': 'ReagentFacilityGenes', 'db_table': "u'reagent_facility_genes'", 'managed': 'False'},
+            'gene': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Gene']", 'unique': 'True'}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'ordinal': ('django.db.models.fields.IntegerField', [], {}),
+            'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SilencingReagent']"})
+        },
         u'db.reagentpublicationlink': {
             'Meta': {'object_name': 'ReagentPublicationLink', 'db_table': "u'reagent_publication_link'"},
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'publication_id': ('django.db.models.fields.IntegerField', [], {'unique': 'True'}),
             'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Reagent']"})
+        },
+        u'db.reagentvendorgenes': {
+            'Meta': {'object_name': 'ReagentVendorGenes', 'db_table': "u'reagent_vendor_genes'", 'managed': 'False'},
+            'gene': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Gene']", 'unique': 'True'}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'ordinal': ('django.db.models.fields.IntegerField', [], {}),
+            'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SilencingReagent']"})
         },
         u'db.resultvalue': {
             'Meta': {'object_name': 'ResultValue', 'db_table': "u'result_value'"},

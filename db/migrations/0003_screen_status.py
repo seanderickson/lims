@@ -626,11 +626,25 @@ class Migration(DataMigration):
             'vendor_name': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'well': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']"})
         },
+        u'db.reagentfacilitygenes': {
+            'Meta': {'object_name': 'ReagentFacilityGenes', 'db_table': "u'reagent_facility_genes'", 'managed': 'False'},
+            'gene': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Gene']", 'unique': 'True'}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'ordinal': ('django.db.models.fields.IntegerField', [], {}),
+            'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SilencingReagent']"})
+        },
         u'db.reagentpublicationlink': {
             'Meta': {'object_name': 'ReagentPublicationLink', 'db_table': "u'reagent_publication_link'"},
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'publication_id': ('django.db.models.fields.IntegerField', [], {'unique': 'True'}),
             'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Reagent']"})
+        },
+        u'db.reagentvendorgenes': {
+            'Meta': {'object_name': 'ReagentVendorGenes', 'db_table': "u'reagent_vendor_genes'", 'managed': 'False'},
+            'gene': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Gene']", 'unique': 'True'}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'ordinal': ('django.db.models.fields.IntegerField', [], {}),
+            'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SilencingReagent']"})
         },
         u'db.resultvalue': {
             'Meta': {'object_name': 'ResultValue', 'db_table': "u'result_value'"},

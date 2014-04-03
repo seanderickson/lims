@@ -10,6 +10,7 @@ require.config({
     backgrid_paginator: 'libs/backgrid-paginator',
     backgrid_select_all: 'libs/backgrid-select-all',
     backbone_stickit: 'libs/backbone.stickit',
+    backbone_modelbinder: 'libs/Backbone.ModelBinder',
     backbone_forms: 'libs/backbone-forms', // TODO: evaluating vs. backbone.stickit
     layoutmanager: 'libs/backbone.layoutmanager',
     bootstrap: 'libs/bootstrap',
@@ -31,8 +32,10 @@ require.config({
     backbone_pageable: {
       deps: ['backbone', 'underscore', 'jquery'],
       exports: 'BackbonePageableCollection'
-      // Note, object naming rules won't allow the dot separator, as in "Backbone.PageableCollection"
-      // so the PageableCollection must be tied back in to the Backbone object with each module it is imported into
+      // Note, object naming rules won't allow the dot separator, 
+      // as in "Backbone.PageableCollection"
+      // so the PageableCollection must be tied back in to the Backbone object 
+      // with each module it is imported into
     },
     backgrid: {
       deps: ['backbone', 'underscore', 'jquery'],
@@ -76,7 +79,7 @@ require([
   'bootstrap' // Note: Bootstrap does not return an object; it modifies the Jquery object with new methods
 ],
 function($, _, Backbone, Iccbl, appModel, AppView, AppRouter ) {
-
+  console.log('init screensaver/reports...')
   // Augment the view prototype with this close utility function to 
   // prevent memory leaks
   // See: http://lostechies.com/derickbailey/2011/09/15/zombies-run-managing-page-transitions-in-backbone-apps/
@@ -97,13 +100,12 @@ function($, _, Backbone, Iccbl, appModel, AppView, AppRouter ) {
   var appView = new AppView({ model: appModel },{ router: appRouter});
 
   appModel.start(function(){
-      
+    console.log('Render application')
     appView.$el.appendTo("#application_div")
     appView.render();
         
     Backbone.history = Backbone.history || new Backbone.History({});
     Backbone.history.start({ pushState: false, root: appModel.get('root_url') });
-
   });
   
   // Set the document title

@@ -9,8 +9,12 @@ define([
     'text!templates/modal_ok_cancel.html',
 
 ], function( $, _, Backbone, stickit, Iccbl, genericDetailTemplate, genericFormTemplate, modalOkCancel ) {
-    var DetailView = Backbone.View.extend({
-
+    
+  /**
+   * Use backbone.stickit to bind model attributes to both a "detail" view and to
+   * a "edit" view (a form).
+   */
+  var DetailView = Backbone.View.extend({
 
         events: {
             'click button#save': 'save',
@@ -77,7 +81,8 @@ define([
             bindings = {};
             var self = this;
             var editKeys = _(this._keys).filter(function(key){
-                return _.has(self._schemaResult.fields[key], 'visibility') && _.contains(self._schemaResult.fields[key]['visibility'], 'edit');
+                return _.has(self._schemaResult.fields[key], 'visibility') 
+                	&& _.contains(self._schemaResult.fields[key]['visibility'], 'edit');
             });
 
             _.each(editKeys, function(key){

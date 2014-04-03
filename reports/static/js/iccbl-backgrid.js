@@ -567,7 +567,10 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
                           backgridCellType = klass;
                       }
                   } catch(ex) {
-                      var msg = '----for: field: ' + key + ', no Iccbl class found for type: ' + prop['backgrid_cell_type'] + ', this may be a Backgrid cell type';
+                      var msg = ('----for: field: ' + key + 
+                          ', no Iccbl class found for type: ' + 
+                          prop['backgrid_cell_type'] + 
+                          ', this may be a Backgrid cell type');
                       console.log(msg + ': ' + JSON.stringify(ex));
                   }
               }

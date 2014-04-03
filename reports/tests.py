@@ -76,10 +76,10 @@ class SerializerTest(TestCase):
         csv_data = serializer.to_csv(input_data, root=None)
         logger.info(str(('back to csv', csv_data)))
 
-        with open(directory + '/test_csv_.csv', 'w') as f:
+        with open(directory + '/reports/test/test_csv_.csv', 'w') as f:
             f.write(csv_data)
             
-        with open(directory + '/test_csv_.csv') as fin:    
+        with open(directory + '/reports/test/test_csv_.csv') as fin:    
             final_data = serializer.from_csv(fin.read(), root=None)
             logger.info(str(('final_data', final_data)))
             for obj in final_data:

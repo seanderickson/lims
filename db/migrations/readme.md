@@ -1,5 +1,14 @@
 ######## Migrations for an existing Screensaver installation  #####
 
+meta:
+# can recreate the initial script at any time using 
+mv db/migrations db/migrations.bak # to save the migrations
+./manage.py schemamigration db --initial # regenerate 001 script
+# now if the db has changed, can generate a migration script for it:
+./manage.py schemamigration db --auto
+# compare this migration to the previous, move the model changes up to the previous 
+
+
 0001 - initial
 
 - should be faked, as the datbase is already existent 
@@ -22,6 +31,11 @@ Screen table with the latest status.
 psql -Uuser database -f ./migrations/manual/0003_screen_status.sql
 
 0003_screen_status:
+
+**NOTE: "manual/0003_screen_status.sql" must be run before 
+"0003_screen_status.py" is run, in order to convert the table to have an id 
+field so that the Django ORM can read it.
+
 
 migrate the screen_status_item table to the "status" field of the screen object 
 and create the needed ApiLog entries to record the history
@@ -82,4 +96,17 @@ Re-associate the sequences for the screen_id and library_id fields.
 
 * set reagent substance IDs
 
+0012_create_reagent_autofield
 
+* setup autofield reagent_id
+
+0013_create_library_content_diffs
+
+** NOTE: before running this migration the manual migration 
+0003_screen_status.sql must be run first.  This script converts the gene_symbol
+table to have an internal pk ID field; this makes the table readable by Django.
+
+This migration converts the data tracked in the "library_content_version" (LCV)
+table into equivalent report_apilog table entries.  For each well in a library,
+each reagent version is compared; diff_keys and diffs entries are created on 
+the Apilog.

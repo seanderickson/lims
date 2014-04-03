@@ -1,5 +1,7 @@
 NOTES: 
 
+#TODO: can the django custom sql hooks?
+
 - strategy will be to have a migrations directory *only* for migrating from 
 Screensaver 1.
 - For clean installations, we will create a new 0001_initial script just before 

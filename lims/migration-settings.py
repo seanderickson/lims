@@ -14,13 +14,6 @@ import os.path
 print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
 
 
-# make tests faster
-# use from the command line with testing like
-# ./manage.py test --settings=lims.testing-settings
-SOUTH_TESTS_MIGRATE = False
-DATABASES['default'] = {'ENGINE': 'django.db.backends.sqlite3',
-                        'NAME': ':memory'}
-
 # A sample logging configuration. The only tangible logging
 # performed by this configuration is to send an email to
 # the site admins on every HTTP 500 error when DEBUG=False.
@@ -65,6 +58,11 @@ LOGGING = {
         },
         'db': {  # set a default handler
             'handlers': ['logfile'],
+            'propagate': False,
+            'level': 'INFO',
+        },        
+        'db.support': {  # set a default handler
+            'handlers': ['console'],
             'propagate': False,
             'level': 'INFO',
         },        

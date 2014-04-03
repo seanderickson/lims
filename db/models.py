@@ -569,6 +569,7 @@ class GeneSymbol(models.Model):
     entrezgene_symbol = models.TextField()
     ordinal = models.IntegerField()
     class Meta:
+        unique_together = (('entrezgene_symbol', 'ordinal'))    
         db_table = 'gene_symbol'
 
 class LabAffiliation(models.Model):
@@ -606,6 +607,11 @@ class Molfile(models.Model):
 
 class NaturalProductReagent(models.Model):
     reagent = models.ForeignKey('Reagent', primary_key=True)
+    
+    def get_substance_id(self):
+        return 'fooey' #self.reagent.substance_id
+    substance_id = property(get_substance_id)
+    
     class Meta:
         db_table = 'natural_product_reagent'
 
@@ -646,7 +652,8 @@ class SchemaHistory(models.Model):
         db_table = 'schema_history'
 
 class Screen(models.Model):
-    # Note: migration scripts have converted this to use a sequence (essentially AutoField)
+    # Note: migration scripts have converted this to use a sequence 
+    # (essentially AutoField)
     #     screen_id = models.IntegerField(primary_key=True) 
     screen_id = models.AutoField(primary_key=True) 
     version = models.IntegerField()
@@ -765,7 +772,8 @@ class ScreenResult(models.Model):
     class Meta:
         db_table = 'screen_result'
 
-# TODO: this will be obsoleted by migration scripts 0002,0003
+# TODO: this table is obsoleted after migration scripts 0002,0003 and 
+# manual/0003_screen_status.sql are run.
 class ScreenStatusItem(models.Model):
     screen = models.ForeignKey(Screen)
     status = models.TextField()
@@ -861,14 +869,33 @@ class ScreensaverUserRole(models.Model):
         db_table = 'screensaver_user_role'
 
 
-
+from lims.hms.gray_codes import create_substance_id
+from django.db import connection
+def create_id():
+    # TODO: this is wasting an id
+    cursor = connection.cursor()
+    cursor.execute("SELECT nextval('reagent_id_seq')")
+    row = cursor.fetchone();
+    val = row[0]
+    new_id = create_substance_id(val)
+    logger.info(str(('create_id', val, new_id)))
+    cursor.execute("SELECT setval('reagent_id_seq', %s)", [val-1])
+    return new_id
 
 class Reagent(models.Model):
-    reagent_id = models.IntegerField(primary_key=True)
+    # Note: migration scripts have converted this to use a sequence 
+    # (essentially AutoField)
+    #     reagent_id = models.IntegerField(primary_key=True)
+    reagent_id = models.AutoField(primary_key=True)
+    
+    substance_id = models.CharField(
+        max_length=8, unique=True, 
+        default=create_id)
+    
     vendor_identifier = models.TextField(blank=True)
     vendor_name = models.TextField(blank=True)
-    library_contents_version = models.ForeignKey('LibraryContentsVersion')
-    well = models.ForeignKey('Well')
+    library_contents_version = models.ForeignKey('LibraryContentsVersion', null=True)
+    well = models.ForeignKey('Well', null=True)
     facility_batch_id = models.IntegerField(null=True, blank=True)
     vendor_batch_id = models.TextField(blank=True)
     class Meta:
@@ -883,12 +910,29 @@ class ReagentPublicationLink(models.Model):
 class SilencingReagent(models.Model):
     reagent = models.ForeignKey(Reagent, primary_key=True)
     sequence = models.TextField(blank=True)
+    anti_sense_sequence = models.TextField(blank=True)
     silencing_reagent_type = models.TextField(blank=True)
-    vendor_gene = models.ForeignKey(Gene, unique=True, null=True, blank=True, related_name='vendor_reagent')
-    facility_gene = models.ForeignKey(Gene, unique=True, null=True, blank=True, related_name='facility_reagent')
+#     vendor_gene = models.ForeignKey(Gene, unique=True, null=True, blank=True, related_name='vendor_reagent')
+#     facility_gene = models.ForeignKey(Gene, unique=True, null=True, blank=True, related_name='facility_reagent')
     is_restricted_sequence = models.BooleanField()
     class Meta:
         db_table = 'silencing_reagent'
+
+class ReagentFacilityGenes(models.Model):
+    reagent = models.ForeignKey(SilencingReagent, primary_key=True)
+    gene = models.ForeignKey(Gene, unique=True)
+    ordinal = models.IntegerField()
+    class Meta:
+        managed = False
+        db_table = 'reagent_facility_genes'
+ 
+class ReagentVendorGenes(models.Model):
+    reagent = models.ForeignKey(SilencingReagent, primary_key=True)
+    gene = models.ForeignKey(Gene, unique=True)
+    ordinal = models.IntegerField()
+    class Meta:
+        managed = False
+        db_table = 'reagent_vendor_genes'
 
 class SilencingReagentDuplexWells(models.Model):
     silencing_reagent = models.ForeignKey(SilencingReagent)
@@ -991,6 +1035,11 @@ class Library(models.Model):
     solvent = models.TextField()
     date_loaded = models.DateTimeField(null=True, blank=True)
     date_publicly_available = models.DateTimeField(null=True, blank=True)
+    
+    version_number = models.IntegerField(default=0)
+    loaded_by = models.ForeignKey('ScreensaverUser',
+                                  related_name='libraries_loaded',
+                                  null=True, blank=True)
     class Meta:
         db_table = 'library'
 
@@ -1089,6 +1138,9 @@ class Well(models.Model):
     deprecation_admin_activity = models.ForeignKey(AdministrativeActivity, null=True, blank=True)
     is_deprecated = models.BooleanField()
     latest_released_reagent = models.ForeignKey(Reagent, null=True, blank=True, related_name='reagent_well')
+    
+#     reagent = models.ForeignKey('Reagent', to_field='substance_id')
+    
     molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
     mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
     class Meta:

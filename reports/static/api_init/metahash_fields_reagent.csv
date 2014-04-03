@@ -1,5 +1,5 @@
 key,scope,resource_uri,ordinal,comment,ui_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,backgrid_cell_type,backgrid_cell_options,is_restricted
-reagent_id,fields.reagent,/reports/api/v1/metahash/fields.reagent/reagent_id/,1,,integer,TRUE,"Reagent ID","Reagent ID",TRUE,,,"[list,detail]",,Iccbl.EditCell,,
 vendor_name,fields.reagent,/reports/api/v1/metahash/fields.reagent/vendor_name/,2,,string,TRUE,"The vendor of the reagent of this well.","Reagent Vendor",TRUE,,,"[list,detail]",,,,
 vendor_identifier,fields.reagent,/reports/api/v1/metahash/fields.reagent/vendor_identifier/,3,,string,TRUE,"The vendor-assigned identifier for the reagent in this well.","Vendor Reagent ID",TRUE,,,"[list,detail]",,,,
 compound_names,fields.reagent,/reports/api/v1/metahash/fields.reagent/compound_names/,4,,string,TRUE,"The names of the compounds in the well.","Compound names",TRUE,,,"[list,detail]",,,,
+substance_id,fields.reagent,/reports/api/v1/metahash/fields.reagent/compound_names/,0,,string,TRUE,"Unique Facility substance ID","Substance ID",TRUE,,,"[list,detail]",,Iccbl.EditCell,,

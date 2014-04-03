@@ -2,13 +2,14 @@ BEGIN;
 
 INSERT INTO schema_history (screensaver_revision, date_updated, comment)
 SELECT
-7155,
+20140003,
 current_timestamp,
 'migrate screen_status_item into the api_history and screen';
 
 /**
   Depends on migration script 0002_screen_status, because this script creates
-  the status, status_date fields on Screen
+  the status, status_date fields on Screen.
+  ** This script must be run before the migrations/0003_screen_status.py is run.
 **/
 
 /**

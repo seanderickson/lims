@@ -6,6 +6,7 @@ create,field.visibility,/reports/api/v1/vocabularies/field.visibility/create/,4,
 Select,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/choice/,0,"The field referred to by this record is a single choice vocabulary term","Single choice field",Select
 Radio,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/Radio/,0,,"Radio selector",Radio
 integer,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/integer/,0,,"This is an integer type",Integer
+float,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/float/,0,,"Floating point precision field",Float
 Checkboxes,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/multiselect/,0,"The field referred to by this record is a single choice vocabulary term","Multiple choice vocabulary term",Checkboxes
 string,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/string/,0,,"Field contains text",Text
 date,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/date/,0,"Date field type shows the date only (not the time)","Date field type",Date
@@ -96,7 +97,7 @@ stock_plates,librarycopy.usage_type,/reports/api/v1/vocabularies/librarycopy.usa
 96_stock_plates,librarycopy.usage_type,/reports/api/v1/vocabularies/librarycopy.usage_type/96_stock_plates/,4,,"96 Stock Plates","96 Stock Plates"
 undefined,library.well_type,/reports/api/v1/vocabularies/library.well_type/undefined/,1,"for cases where library has been created, but library contents have not yet been loaded (or have been unloaded)","Library contents not yet loaded, have been unloaded",<undefined>
 experimental,library.well_type,/reports/api/v1/vocabularies/library.well_type/experimental/,2,,"Experiment assay wells",Experimental
-empty,library.well_type,/reports/api/v1/vocabularies/library.well_type/empty/,3,"for RNAi libraries, on assay, can become Assay Control, Assay Positive Control, Other (see AssayWellControlType)","Empty wells ",Empty
+empty,library.well_type,/reports/api/v1/vocabularies/library.well_type/empty/,3,"for RNAi libraries, on assay, can become Assay Control, Assay Positive Control, Other (see AssayWellControlType)","Empty wells",Empty
 dmso,library.well_type,/reports/api/v1/vocabularies/library.well_type/dmso/,4,"Small molecule libraries only",DMSO,DMSO
 library_control,library.well_type,/reports/api/v1/vocabularies/library.well_type/library_control/,5,"RNAi libraries only","Library Control","Library Control"
 rnai_buffer,library.well_type,/reports/api/v1/vocabularies/library.well_type/rnai_buffer/,6,,"RNAi Buffer","RNAi Buffer"

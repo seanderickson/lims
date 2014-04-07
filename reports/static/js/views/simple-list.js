@@ -38,7 +38,8 @@ define([
         var compiledTemplate = this.compiledTemplate = _.template( listTemplate, data );
 
         var collection = this.collection = options.collection;
-
+        
+        console.log('initialize list:' + JSON.stringify(this.options.columns));
         var grid = this.grid = new Backgrid.Grid({
           columns: this.options.columns,
           collection: this.options.collection,
@@ -88,6 +89,19 @@ define([
             });
         }
 
+
+        this.listenTo(
+          self.collection, "MyCollection:detail", 
+          function (model) {
+            var idList = Iccbl.getIdKeys(model,schemaResult);
+            appModel.set({
+              current_scratch: { schemaResult: schemaResult, model: model},
+            });
+            // NOTE: prefer to send custom signal, rather than uriStack:change for 
+            // detail/edit; this allows the parent to decide URI signalling
+            self.trigger('detail', model);
+          });        
+        
         // TODO: work out the specifics of communication complete event
         this.listenTo(self.collection, 'request', ajaxStart);
         this.listenTo(self.collection, 'error', ajaxComplete);
@@ -113,7 +127,7 @@ define([
         }
     },
 
-    beforeRender: function(){
+    afterRender: function(){
         var self = this;
         this.$el.html(this.compiledTemplate);
         this.$("#example-table").append(this.grid.render().$el);

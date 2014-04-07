@@ -498,14 +498,39 @@ class ManagedResource(LoggingMixin):
     
     # override
     def obj_create(self, bundle, **kwargs):
-        bundle = super(ManagedResource, self).obj_create(bundle, **kwargs);
-        return bundle
+        try:
+            bundle = super(ManagedResource, self).obj_create(bundle, **kwargs);
+            return bundle
+        except Exception, e:
+            logger.warn(str(('==ex on create, kwargs', kwargs, e)))
+            raise type(e), type(e)(str(e) + 
+                                 'request.path', bundle.request.path, kwargs)
 
     # override
     def obj_update(self, bundle, **kwargs):
-        bundle = super(ManagedResource, self).obj_update(bundle, **kwargs);
-        return bundle
+        try:
+            bundle = super(ManagedResource, self).obj_update(bundle, **kwargs);
+            return bundle
+        except Exception, e:
+            logger.warn(str(('==ex on update, kwargs', kwargs, e)))
+            raise type(e), type(e)(str(e) + 
+                                 'request.path', bundle.request.path, kwargs)
 
+    # override
+    def obj_get(self, bundle, **kwargs):
+        try:
+            bundle = super(ManagedResource, self).obj_get(bundle, **kwargs);
+            return bundle
+        except Exception, e:
+#             extype, ex, tb = sys.exc_info()
+#             logger.warn(str((
+#                 'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
+#                 tb.tb_lineno, extype, ex)))
+            logger.warn(str(('==ex on get, kwargs', kwargs, e)))
+            raise type(e), type(e)(str(e) + 
+                                 'request.path', bundle.request.path, kwargs)
+
+    # override
     def detail_uri_kwargs(self, bundle_or_obj):
         """
         Override resources.ModelResource

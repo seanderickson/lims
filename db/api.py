@@ -361,7 +361,7 @@ class ScreenResultResource(ManagedResource):
                 'no screen found for facility id', facility_id)))
             
     def build_schema(self, screenresult=None):
-        logger.info(unicode(('==========build schema for ', screenresult)))
+        logger.debug(str(('==========build schema for screen result', screenresult)))
         data = super(ScreenResultResource,self).build_schema()
         
         if screenresult:
@@ -529,7 +529,7 @@ class ScreenResource(ManagedModelResource):
         try:
             bundle.data['has_screen_result'] = bundle.obj.screenresult != None
         except ScreenResult.DoesNotExist, e:
-            logger.info(unicode(('no screenresult for ', bundle.obj)))
+            logger.debug(str(('no screenresult for ', bundle.obj)))
         return bundle
     
     def build_schema(self):

@@ -822,7 +822,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
       var self = this;
       this.options = options;
 
-      Iccbl.requireOptions(options, ['url','listModel']);
+//      Iccbl.requireOptions(options, ['url','listModel']);
 
       this.url = options.url;
       this.listModel = options.listModel;

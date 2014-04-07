@@ -77,7 +77,20 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     showList: function(resource, uriStack, schemaResult) {
       var self = this;
       var uriStack = _.clone(uriStack);
-      var view = new ListView({ model: appModel, 
+      var viewClass = ListView;
+      if (_.has(resource, 'listView')){
+        if (_.has(VIEWS, resource['listView'])) {
+          viewClass = VIEWS[resource['listView']];
+          console.log('found view ' + resource['listView']);
+        }else{
+          var msg = 'listView class specified could not be found: ' + 
+              resource['listView'];
+          
+          window.alert(msg);
+          throw msg;
+        }
+      }
+      view = new viewClass({ model: appModel, 
         options: { 
           uriStack: uriStack,
           schemaResult: schemaResult, 

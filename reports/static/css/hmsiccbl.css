@@ -7,6 +7,10 @@
   border: 1px solid #DDD;
 }
 
+.backgrid-paginator {
+	min-width: 30em;
+}
+
 /** bootstrap overrides **/
 
 @media screen{

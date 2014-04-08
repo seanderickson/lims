@@ -503,8 +503,12 @@ class ManagedResource(LoggingMixin):
             return bundle
         except Exception, e:
             logger.warn(str(('==ex on create, kwargs', kwargs, e)))
-            raise type(e), type(e)(str(e) + 
-                                 'request.path', bundle.request.path, kwargs)
+#             extype, ex, tb = sys.exc_info()
+#             logger.warn(str((
+#                 'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
+#                 tb.tb_lineno, extype, ex)))
+            raise type(e), str(( type(e), e, 
+                                 'request.path', bundle.request.path, kwargs))
 
     # override
     def obj_update(self, bundle, **kwargs):
@@ -513,8 +517,8 @@ class ManagedResource(LoggingMixin):
             return bundle
         except Exception, e:
             logger.warn(str(('==ex on update, kwargs', kwargs, e)))
-            raise type(e), type(e)(str(e) + 
-                                 'request.path', bundle.request.path, kwargs)
+            raise type(e), str((type(e), e,
+                                'request.path', bundle.request.path, kwargs))
 
     # override
     def obj_get(self, bundle, **kwargs):
@@ -527,8 +531,8 @@ class ManagedResource(LoggingMixin):
 #                 'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
 #                 tb.tb_lineno, extype, ex)))
             logger.warn(str(('==ex on get, kwargs', kwargs, e)))
-            raise type(e), type(e)(str(e) + 
-                                 'request.path', bundle.request.path, kwargs)
+            raise type(e), str((type(e), e,
+                                'request.path', bundle.request.path, kwargs))
 
     # override
     def detail_uri_kwargs(self, bundle_or_obj):
@@ -582,7 +586,7 @@ class ManagedResource(LoggingMixin):
         # Fall back to base class implementation 
         # (using the declared primary key only, for ModelResource)
         # This is useful in order to bootstrap the ResourceResource
-        print 'use base class method for ', bundle_or_obj
+        logger.info(str(( 'use base class method for ', bundle_or_obj)))
         return super(ManagedResource,self).detail_uri_kwargs(bundle_or_obj)
 
     def get_via_uri(self, uri, request=None):

@@ -18,8 +18,10 @@ print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
 # use from the command line with testing like
 # ./manage.py test --settings=lims.testing-settings
 SOUTH_TESTS_MIGRATE = False
-DATABASES['default'] = {'ENGINE': 'django.db.backends.sqlite3',
-                        'NAME': ':memory'}
+
+# FIXME: sqllite3 db does not work - errors on "DISTINCT ON" clause
+# DATABASES['default'] = {'ENGINE': 'django.db.backends.sqlite3',
+#                         'NAME': ':memory'}
 
 # A sample logging configuration. The only tangible logging
 # performed by this configuration is to send an email to

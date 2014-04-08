@@ -146,6 +146,9 @@ INSTALLED_APPS = (
 APPEND_SLASH=True
 TASTYPIE_ALLOW_MISSING_SLASH=True
 
+# turn off migrations during testing (just make the database from models.py)
+SOUTH_TESTS_MIGRATE = False
+
 # Default if "next" is not given as a request param
 LOGIN_REDIRECT_URL='/reports'
 

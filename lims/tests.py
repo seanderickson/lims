@@ -218,8 +218,10 @@ M  END
         fout.close()
     
         with open(APP_ROOT_DIR + '/lims/test/test1.sdf') as fin:    
-            final_data = serializer.from_sdf(fin.read(), root=None)
+            _data = serializer.from_sdf(fin.read(), root=None)
+            final_data = _data['objects']
             logger.info(str(('final_data', final_data)))
+            
             self.assertTrue(
                 len(final_data)==len(records), 
                 str(('len is', len(final_data),len(records))))

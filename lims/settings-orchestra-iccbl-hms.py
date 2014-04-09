@@ -99,7 +99,7 @@ LOGGING = {
             'format': '%(levelname)s %(asctime)s %(module)s:%(lineno)d %(process)d %(thread)d %(message)s'
         },
         'simple': {
-            'format': '%(levelname)s %(asctime)s: %(pathname)s:%(lineno)d:%(levelname)s: %(message)s'
+            'format': '%(levelname)s %(asctime)s: %(name)s:%(lineno)d: %(message)s'
         },
     },
     'filters': {

@@ -201,14 +201,24 @@ class CSVSerializer(Serializer):
             data = data['objects']
         if len(data) == 0:
             return raw_data
-        i = 0
-        keys = None
-        for item in data:
-            if i == 0:
-                keys = item.keys()
-                writer.writerow([smart_str(key) for key in keys])
+
+        if isinstance(data, dict):
+            # usually, this happens when the data is actually an error message;
+            # but also, it could be just one item being returned
+            keys = data.keys()
+            writer.writerow([smart_str(key) for key in keys])
+            writer.writerow(self.get_list(data))
+        else:    
+            # default 
+            i = 0
+            keys = None
+            for item in data:
+                if i == 0:
+                    keys = item.keys()
+                    writer.writerow([smart_str(key) for key in keys])
                 i += 1
-            writer.writerow(self.get_list(item))
+                writer.writerow(self.get_list(item))
+
         return raw_data.getvalue()
     
     def get_list(self,item):

@@ -683,7 +683,7 @@ class LibraryResource(ManagedModelResource):
     def dehydrate(self, bundle):
         # get the api comments
         
-        #FIXME: these are _all_ apilog comments, at this time
+        #FIXME: just poc: gets_all_ apilog comments, at this time
         comments = self.apiLog.obj_get_list(
             bundle, ref_resource_name='library', key=bundle.obj.short_name,
             comment__isnull=False)

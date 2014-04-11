@@ -1,4 +1,4 @@
-# Django settings for lims project
+# Django settings for 1km project
 
 try:
     from settings import *
@@ -13,6 +13,15 @@ import os.path
 
 print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
 
+
+# make tests faster
+# use from the command line with testing like
+# ./manage.py test --settings=lims.testing-settings
+SOUTH_TESTS_MIGRATE = False
+
+# FIXME: sqllite3 db does not work - errors on "DISTINCT ON" clause
+# DATABASES['default'] = {'ENGINE': 'django.db.backends.sqlite3',
+#                         'NAME': ':memory'}
 
 # A sample logging configuration. The only tangible logging
 # performed by this configuration is to send an email to
@@ -51,6 +60,11 @@ LOGGING = {
         },  
     },
     'loggers': {
+        '': {
+            'handlers': ['console'],
+            'propagate': False,
+            'level': 'INFO',
+        },
         'django.request': {
             'handlers': ['logfile'],
             'level': 'ERROR',
@@ -61,11 +75,6 @@ LOGGING = {
             'propagate': False,
             'level': 'INFO',
         },        
-        'db.support': {  # set a default handler
-            'handlers': ['console'],
-            'propagate': False,
-            'level': 'INFO',
-        },        
         'lims': {  # set a default handler
             'handlers': ['console'],
             'propagate': False,
@@ -73,7 +82,7 @@ LOGGING = {
         },               
         'reports': {  # set a default handler
             'handlers': ['logfile'],
-            'propagate': False,
+            'propagate': True,
             'level': 'INFO',
         },
         'db.tests': {  # set a default handler

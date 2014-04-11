@@ -37,7 +37,7 @@ import json
 from django.test import TestCase
 from django.contrib.auth.models import User
 from tastypie.test import ResourceTestCase, TestApiClient
-from reports.models import Vocabularies
+# from reports.models import Vocabularies
 from tastypie.fields import BooleanField
 
 from lims.api import CSVSerializer
@@ -459,10 +459,11 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
 
         filename = os.path.join(self.directory,'metahash_fields_user.csv')
         self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.user'})
-
+        
+        self.resource_uri = BASE_URI + '/user'
         print '============== User setup: done ============'
     
-    def _test0_create_user(self):
+    def test0_create_user(self):
         logger.info(str(('==== test_create_user =====')))
         
         # the simplest of tests, create some simple users
@@ -474,23 +475,28 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
                 'email': 'sally.tester@limstest.com',    
             },
             {
-                'login_id': 'jt1',
+                'username': 'jt1',
                 'first_name': 'Joe',
                 'last_name': 'Tester',    
                 'email': 'joe.tester@limstest.com',    
             },
             {
-                'login_id': 'bt1',
+                'username': 'bt1',
                 'first_name': 'Bad',
                 'last_name': 'TestsALot',    
                 'email': 'bad.fester@slimstest.com',    
             },
         ]
 
-        for i,item in enumerate(self.bootstrap_items):         
-            resp = self.api_client.post(self.resource_uri, 
-                format='json', data=item, authentication=self.get_credentials())
-            self.assertHttpCreated(resp)
+        for i,item in enumerate(self.bootstrap_items):  
+            try:       
+                resp = self.api_client.post(self.resource_uri, 
+                    format='json', data=item, authentication=self.get_credentials())
+                self.assertTrue(resp.status_code in [201], str((resp.status_code, resp.serialize())))
+#                 self.assertHttpCreated(resp)
+            except Exception, e:
+                logger.error(str(('on creating', item, '==ex==', e)))
+                raise
             
         logger.info('created items, now get them')
         resp = self.api_client.get(self.resource_uri, format='json', 

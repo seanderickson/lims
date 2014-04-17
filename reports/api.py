@@ -14,6 +14,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.auth.models import User
 from django.db.models.aggregates import Max
 from django.db.models import Q
+from django.db import transaction
 from tastypie.exceptions import NotFound, ImmediateHttpResponse
 from tastypie.bundle import Bundle
 from tastypie.authorization import Authorization
@@ -44,7 +45,8 @@ class LoggingMixin(Resource):
     ** note: "detail_uri_kwargs" returns the set of lookup keys for the resource 
     URI construction.
     '''
- 
+        
+    @transaction.commit_on_success()
     def patch_list(self, request, **kwargs):
         ''' Override
         '''
@@ -56,9 +58,9 @@ class LoggingMixin(Resource):
         listlog.ref_resource_name = self._meta.resource_name
         listlog.api_action = 'PATCH_LIST'
         listlog.uri = self.get_resource_uri()
-        # TODO
-#         if 'apilog_comment' in bundle.data:
-#             listlog.comment = bundle.data['apilog_comment']
+        # TODO: is this allowed?
+        if 'HTTP_APILOG_COMMENT' in request.META:
+            listlog.comment = request.META['HTTP_APILOG_COMMENT']
         
         
         response =  super(LoggingMixin, self).patch_list(request, **kwargs) 
@@ -71,6 +73,7 @@ class LoggingMixin(Resource):
         return response        
     
     
+    @transaction.commit_on_success()
     def obj_create(self, bundle, **kwargs):
         logger.info(str(('----log obj_create', bundle)))
         
@@ -113,6 +116,7 @@ class LoggingMixin(Resource):
         return bundle    
     
     # TODO: not tested
+    @transaction.commit_on_success()
     def obj_delete(self, bundle, **kwargs):
         logger.info('---log obj_delete')
         
@@ -208,6 +212,7 @@ class LoggingMixin(Resource):
         
         return log
     
+    @transaction.commit_on_success()
     def obj_update(self, bundle, skip_errors=False, **kwargs):
         logger.info('--- log obj_update')
         original_bundle = Bundle(data=deepcopy(bundle.data))
@@ -871,10 +876,11 @@ class ApiLogResource(ManagedModelResource):
 
 class UserResource(ManagedModelResource):
 
-    username = fields.CharField('user__username', null=False)
-    first_name = fields.CharField('user__first_name', null=False)
-    last_name = fields.CharField('user__last_name', null=False)
-    email = fields.CharField('user__email', null=False)
+    username = fields.CharField('user__username', null=False, readonly=True)
+    first_name = fields.CharField('user__first_name', null=False, readonly=True)
+    last_name = fields.CharField('user__last_name', null=False, readonly=True)
+    email = fields.CharField('user__email', null=False, readonly=True)
+    is_staff = CsvBooleanField('user__is_staff', null=True, readonly=True)
 
 #     usergroups = fields.ToManyField(
 #         'reports.api.UserGroupResource', 'usergroup_set', related_name='users', 
@@ -931,6 +937,9 @@ class UserResource(ManagedModelResource):
         ''' 
         Called by full_hydrate 
         sequence is obj_create->full_hydrate(hydrate, then full)->save
+        
+        Our custom implementation will create an auth_user for the input; so 
+        there will be a reports_userprofile.user -> auth_user.
         '''
         bundle = super(UserResource, self).hydrate(bundle);
         
@@ -938,68 +947,93 @@ class UserResource(ManagedModelResource):
         # specified, then we will use the ecommons        
         ecommons = bundle.data.get('ecommons_id')
         username = bundle.data.get('username')
+        email=bundle.data.get('email')
+        first_name=bundle.data.get('first_name')
+        last_name=bundle.data.get('last_name')
+        is_staff = self.is_staff.convert(bundle.data.get('is_staff'))
+        
+        
+        # TODO: also grab the "is_staff", "is_superuser", "is_active"
+        
         if not username:
-            bundle.obj.username = ecommons;
-         
-        import django.contrib.auth.models
+            username = ecommons;
+        bundle.obj.username = username
+        
+        django_user = None
         try:
             django_user = bundle.obj.user
         except ObjectDoesNotExist, e:
-            django_user = django.contrib.auth.models.User.objects.create_user(
-                bundle.obj.username, 
-                email=bundle.data.get('email'), 
-                first_name=bundle.data.get('first_name'), 
-                last_name=bundle.data.get('last_name'))
-            # NOTE: we'll use user.is_password_usable() to verify if the user has a 
-            # staff/manual django password account
+            from django.contrib.auth.models import User as DjangoUser
+            try:
+                django_user = DjangoUser.objects.get(username=username)
+            except ObjectDoesNotExist, e:
+                # ok, will create
+                pass;
+
+        if django_user:            
+            django_user.first_name = first_name
+            django_user.last_name = last_name
+            django_user.email = email
+            django_user.is_staff = is_staff
+            django_user.save();
+        else:
+            django_user = DjangoUser.objects.create_user(
+                username, 
+                email=email, 
+                first_name=first_name, 
+                last_name=last_name)
+            # NOTE: we'll use user.is_password_usable() to verify if the 
+            # user has a staff/manual django password account
             logger.info('save django user')
-            django_user.save()
+            # Note: don't save yet, since the userprofile should be saved first
+            # django_user.save()
             # this has to be done to set the FK on obj; since we're the only
             # side maintaining this rel' with auth_user
-            bundle.obj.user=django_user 
+
+        bundle.obj.user=django_user 
 #             bundle.obj.save()
         
         
         return bundle
     
-    def save(self, bundle, skip_errors=False):
-        ''' 
-        overriding base save - so that we can create the django auth_user if 
-        needed.
-        - everything else should be the same (todo: update if not)
-        '''
-        logger.info(str(('+save', bundle.obj)))
-        self.is_valid(bundle)
- 
-        if bundle.errors and not skip_errors:
-            raise ImmediateHttpResponse(response=self.error_response(
-                bundle.request, bundle.errors))
- 
-        # Check if they're authorized.
-        if bundle.obj.pk:
-            self.authorized_update_detail(self.get_object_list(bundle.request), 
-                                          bundle)
-        else:
-            self.authorized_create_detail(self.get_object_list(bundle.request), 
-                                          bundle)        
-        # Save FKs just in case.
-        self.save_related(bundle)
- 
-        logger.info(str((
-            'saving', bundle.obj )))
-#             [str(x) for x in bundle.obj.usergroup_set.all()] )))
-        bundle.obj.save();
-         
-             
-        bundle.objects_saved.add(self.create_identifier(bundle.obj))
- 
-        # Now pick up the M2M bits.
-        m2m_bundle = self.hydrate_m2m(bundle)
-        self.save_m2m(m2m_bundle)
- 
-        #TODO: set password as a separate step
-        logger.info('user save done')
-        return bundle
+#     def save(self, bundle, skip_errors=False):
+#         ''' 
+#         overriding base save - so that we can create the django auth_user if 
+#         needed.
+#         - everything else should be the same (todo: update if not)
+#         '''
+#         logger.info(str(('+save', bundle.obj)))
+#         self.is_valid(bundle)
+#  
+#         if bundle.errors and not skip_errors:
+#             raise ImmediateHttpResponse(response=self.error_response(
+#                 bundle.request, bundle.errors))
+#  
+#         # Check if they're authorized.
+#         if bundle.obj.pk:
+#             self.authorized_update_detail(self.get_object_list(bundle.request), 
+#                                           bundle)
+#         else:
+#             self.authorized_create_detail(self.get_object_list(bundle.request), 
+#                                           bundle)        
+#         # Save FKs just in case.
+#         self.save_related(bundle)
+#  
+#         logger.info(str((
+#             'saving', bundle.obj )))
+# #             [str(x) for x in bundle.obj.usergroup_set.all()] )))
+#         bundle.obj.save();
+#          
+#              
+#         bundle.objects_saved.add(self.create_identifier(bundle.obj))
+#  
+#         # Now pick up the M2M bits.
+#         m2m_bundle = self.hydrate_m2m(bundle)
+#         self.save_m2m(m2m_bundle)
+#  
+#         #TODO: set password as a separate step
+#         logger.info('user save done')
+#         return bundle
 
     def is_valid(self, bundle):
         """

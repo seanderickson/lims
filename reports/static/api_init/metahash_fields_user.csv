@@ -3,4 +3,5 @@ first_name,fields.user,/reports/api/v1/metahash/fields.user/first_name/,1,,strin
 last_name,fields.user,/reports/api/v1/metahash/fields.user/last_name/,2,,string,TRUE,"Last Name","Last Name",TRUE,,,"[list,detail,edit]",,,,
 ecommons_id,fields.user,/reports/api/v1/metahash/fields.user/ecommons_id/,3,,string,TRUE,Ecommons,Ecommons,TRUE,,,"[list,detail,edit]",,,,
 email,fields.user,/reports/api/v1/metahash/fields.user/email/,5,,string,TRUE,Email,Email,TRUE,,,"[list,detail,edit]",,,,
-username,fields.user,/reports/api/v1/metahash/fields.user/username/,0,,string,TRUE,Username,Username,TRUE,,,"[list,detail,edit]",,iccbl.EditCell,,
+username,fields.user,/reports/api/v1/metahash/fields.user/username/,0,,string,TRUE,Username,Username,TRUE,,,"[list,detail,edit]",,Iccbl.EditCell,,
+is_staff,fields.user,/reports/api/v1/metahash/fields.user/is_staff/,6,,boolean,TRUE,"Staff users may upload data","Is Staff",TRUE,,,"[list,detail,edit]",,,,

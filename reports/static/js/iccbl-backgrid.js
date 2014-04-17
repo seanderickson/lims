@@ -560,8 +560,6 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
                       //                            console.log('look for ' +
                       // key + ', ' + prop['backgrid_cell_type']);
                       var klass = Iccbl.stringToFunction(prop['backgrid_cell_type']);
-                      //                            console.log('got  ' +
-                      // klass);
                       if (!_.isUndefined(klass)) {
                           console.log('----- class found: ' + klass);
                           backgridCellType = klass;

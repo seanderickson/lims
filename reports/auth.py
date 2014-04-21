@@ -1,6 +1,6 @@
 import logging
 from django.contrib.auth.models import User
-from reports.auth import authenticate
+from reports.hms.auth import authenticate
 
 logger = logging.getLogger(__name__)
 
@@ -18,15 +18,12 @@ class CustomAuthenticationBackend():
         logger.info(str(('find and authenticate the user', username)))
         try:
             user = User.objects.get(username=username)
-            if(username == 'admin' or user.is_superuser):
-                logger.info(str(('authenticate admin superuser', user)))
+            if user.password:
                 if(user.check_password(password)):
-                    logger.info(str(('authenticated',user)))
                     return user
                 else:
-                    logger.info(str('incorrect password given for superuser:', user))
                     return None
-            logger.info("found non-superuser user, now try to authenticate with ecommons...")
+            logger.info("no password set, try to authenticate with ecommons...")
             if(authenticate(username, password)):
                 logger.info(str(('user authenticated with the ecommons server', user)))
                 if(user.is_active):

@@ -12,6 +12,9 @@ from django.db import models
 from django.db.models.query import QuerySet
 from django.db.models.sql.query import Query
 from django.db.models.sql.compiler import SQLCompiler
+from django.db import connection
+
+from reports.utils.gray_codes import create_substance_id
 
 import logging
 
@@ -869,8 +872,6 @@ class ScreensaverUserRole(models.Model):
         db_table = 'screensaver_user_role'
 
 
-from lims.hms.gray_codes import create_substance_id
-from django.db import connection
 def create_id():
     # TODO: this is wasting an id
     cursor = connection.cursor()

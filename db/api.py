@@ -20,7 +20,7 @@ from db.models import ScreensaverUser,Screen, LabHead, LabAffiliation, \
     PlateLocation, Reagent, Well, LibraryContentsVersion, Activity,\
     AdministrativeActivity, SmallMoleculeReagent, SilencingReagent, GeneSymbol,\
     NaturalProductReagent
-from lims.api import CursorSerializer, LimsSerializer, SmallMoleculeSerializer
+from reports.serializers import CursorSerializer, LimsSerializer, SmallMoleculeSerializer
 from reports.models import MetaHash, Vocabularies, ApiLog
 from reports.api import ManagedModelResource, ManagedResource, ApiLogResource
 

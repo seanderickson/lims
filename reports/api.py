@@ -15,18 +15,18 @@ from django.contrib.auth.models import User
 from django.db.models.aggregates import Max
 from django.db.models import Q
 from django.db import transaction
-from tastypie.exceptions import NotFound, ImmediateHttpResponse
+from tastypie.exceptions import NotFound, ImmediateHttpResponse, Unauthorized
 from tastypie.bundle import Bundle
-from tastypie.authorization import Authorization
+from tastypie.authorization import Authorization, ReadOnlyAuthorization
 from tastypie.authentication import BasicAuthentication, SessionAuthentication,\
     MultiAuthentication
 from tastypie.constants import ALL, ALL_WITH_RELATIONS
 # NOTE: tastypie.fields is required for dynamic field instances using eval
 from tastypie import fields 
-from tastypie.resources import Resource
+from tastypie.resources import Resource, ModelResource
 from tastypie.utils.urls import trailing_slash
 
-from lims.api import PostgresSortingResource, LimsSerializer, CsvBooleanField
+from reports.serializers import LimsSerializer, CsvBooleanField
 from reports.models import MetaHash, Vocabularies, ApiLog, Permission, \
                            UserGroup, UserProfile
 # import lims.settings 
@@ -34,6 +34,104 @@ from tastypie.utils.timezone import make_naive
 from django.db.utils import IntegrityError
         
 logger = logging.getLogger(__name__)
+
+
+class SuperUserAuthorization(ReadOnlyAuthorization):
+    
+    def delete_list(self, object_list, bundle):
+        if bundle.request.user.is_superuser:
+            return object_list
+        raise Unauthorized("Only superuser may delete lists.")
+
+    def delete_detail(self, object_list, bundle):
+        if bundle.request.user.is_superuser:
+            return object_list
+        raise Unauthorized("Only superuser may delete.")
+ 
+    def create_list(self, object_list, bundle):
+        if bundle.request.user.is_superuser:
+            return object_list
+        raise Unauthorized("Only superuser may create lists.")
+
+    def create_detail(self, object_list, bundle):
+        if bundle.request.user.is_superuser:
+            return True
+#             return object_list
+        return False
+#         raise Unauthorized("Only superuser may create.")
+
+    def update_list(self, object_list, bundle):
+        if bundle.request.user.is_superuser:
+            return object_list
+        raise Unauthorized("Only superuser may update lists.")
+
+    def update_detail(self, object_list, bundle):
+        if bundle.request.user.is_superuser:
+            return object_list
+        raise Unauthorized("Only superuser may update.")
+
+
+# TODO: this class should be constructed as a Mixin, not inheritor of ModelResource
+class PostgresSortingResource(ModelResource):
+
+    def __init__(self, **kwargs):
+        super(PostgresSortingResource,self).__init__( **kwargs)
+
+    def apply_sorting(self, obj_list, options):
+        """
+        Create a none-too-pretty workaround for the postgresql null sorting
+        issue - nulls sort higher than values, which is not desired.  
+        We want nulls to sort lower than values.
+        
+        Caveat: this will not work with joined fields unless they have an alias.  
+        This is because it creates a field like:
+        (screensaver_user_id is null) AS "screensaver_user_id_null"
+        - if this field is duplicated in two sides of a join, then it must be 
+        referenced by an alias, or as "table".screensaver_user_id, 
+        and we are not supporting table speciciations in this method, so if 
+        joined fields are used, they must be referenced by alias only.
+
+        @param non_null_fields list - fields to ignore
+        """ 
+        obj_list = super(PostgresSortingResource, self).apply_sorting(
+            obj_list, options)
+        logger.debug(str(('order_by', obj_list.query.order_by)))
+        extra_select = {}
+        extra_ordering = []
+        
+        non_null_fields = options.get('non_null_fields', [])
+        logger.debug(str(('==== non null fields', non_null_fields))) 
+        for field in obj_list.query.order_by:
+            is_null_dir = '-'  # default nulls first for ascending
+            if field.startswith('-'):
+                is_null_dir = ''
+                field = field[1:]
+            if field in non_null_fields:
+                continue
+            extra_select[field+"_null"]=field + ' is null'
+            extra_ordering.append(is_null_dir + field+"_null")
+        logger.debug(str(('extra_select', extra_select, 
+                          'extra_ordering', extra_ordering)))
+        obj_list = obj_list.extra(extra_select)
+
+        # Note: the following doesn't work, something in the framework 
+        # deletes the extra order_by clause when apply_sorting, or, if this is
+        # run last, it deletes the sorting applied in apply_sorting...
+        #        obj_list = obj_list.extra(order_by=['-comments_null'])
+
+        # Note: this doesn't work because the "is null" field order by clauses
+        # must be prepended so that they occur before their intended fields
+        #        obj_list.query.add_ordering('comments_null')
+        
+        temp = obj_list.query.order_by;
+        obj_list.query.clear_ordering(force_empty=True)
+        for xfield in extra_ordering:
+            temp.insert(0,xfield)
+        logger.debug(str(('ordering', temp)))
+        obj_list.query.add_ordering(*temp)
+        
+        return obj_list
+
 
 
 class LoggingMixin(Resource):
@@ -546,13 +644,15 @@ class ManagedResource(LoggingMixin):
             bundle = super(ManagedResource, self).obj_create(bundle, **kwargs);
             return bundle
         except Exception, e:
-            logger.warn(str(('==ex on create, kwargs', kwargs, e)))
+            logger.warn(str(('==ex on create, kwargs', kwargs,
+                             'request.path', bundle.request.path,e)))
+            raise e
 #             extype, ex, tb = sys.exc_info()
 #             logger.warn(str((
 #                 'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
 #                 tb.tb_lineno, extype, ex)))
-            raise type(e), str(( type(e), e, 
-                                 'request.path', bundle.request.path, kwargs))
+#             raise type(e), str(( type(e), e, 
+#                                  'request.path', bundle.request.path, kwargs))
 
     # override
     def obj_update(self, bundle, **kwargs):
@@ -560,9 +660,11 @@ class ManagedResource(LoggingMixin):
             bundle = super(ManagedResource, self).obj_update(bundle, **kwargs);
             return bundle
         except Exception, e:
-            logger.warn(str(('==ex on update, kwargs', kwargs, e)))
-            raise type(e), str((type(e), e,
-                                'request.path', bundle.request.path, kwargs))
+            logger.warn(str(('==ex on update, kwargs', kwargs,
+                             'request.path', bundle.request.path,e)))
+            raise e
+#             raise type(e), str((type(e), e,
+#                                 'request.path', bundle.request.path, kwargs))
 
     # override
     def obj_get(self, bundle, **kwargs):
@@ -570,13 +672,16 @@ class ManagedResource(LoggingMixin):
             bundle = super(ManagedResource, self).obj_get(bundle, **kwargs);
             return bundle
         except Exception, e:
+            logger.warn(str(('==ex on get, kwargs', kwargs,
+                             'request.path', bundle.request.path,e)))
+            raise e
 #             extype, ex, tb = sys.exc_info()
 #             logger.warn(str((
 #                 'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
 #                 tb.tb_lineno, extype, ex)))
-            logger.warn(str(('==ex on get, kwargs', kwargs, e)))
-            raise type(e), str((type(e), e,
-                                'request.path', bundle.request.path, kwargs))
+#             logger.warn(str(('==ex on get, kwargs', kwargs, e)))
+#             raise type(e), str((type(e), e,
+#                                 'request.path', bundle.request.path, kwargs))
 
     # override
     def detail_uri_kwargs(self, bundle_or_obj):
@@ -873,6 +978,21 @@ class ApiLogResource(ManagedModelResource):
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
+
+class CustomAuthentication(BasicAuthentication):
+    '''
+    Work-around authentication for dev on orchestra:
+    orchestra apache strips Basic authentication headers, and more work is needed
+    to store the csrf token.
+    '''
+    def is_authenticated(self, request, **kwargs):
+        '''
+        Use simple session authentication
+        NOTE: this does not perform csrf checks
+        '''
+        
+        logger.info(str(('=== in custom authentication', request.user.is_authenticated())))
+        return request.user.is_authenticated()    
 
 class UserResource(ManagedModelResource):
 

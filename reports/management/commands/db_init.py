@@ -128,7 +128,7 @@ class Command(BaseCommand):
 
 def delete(obj_url, headers, authentication):
     try:
-        r = requests.delete(obj_url, auth=authentication, headers=headers)
+        r = requests.delete(obj_url, auth=authentication, headers=headers,verify=False)
         if(r.status_code != 204):
             print "ERROR", r, r.text
             raise ApiError(obj_url,'DELETE',r)
@@ -142,7 +142,7 @@ def put(input_file, obj_url,headers,authentication):
     try:
         with open(input_file) as f:
             r = requests.put(
-                obj_url, auth=authentication, headers=headers, data=f.read() )
+                obj_url, auth=authentication, headers=headers, data=f.read(),verify=False)
             if(r.status_code != 200):
                 raise ApiError(obj_url,'PUT',r)
             print ('PUT: ' , input_file, 'to ', obj_url,' ,response:', 
@@ -168,7 +168,7 @@ def patch(patch_file, obj_url,headers,authentication):
         print 'PATCH: ' , patch_file, 'to ', obj_url
         with open(patch_file) as f:
             r = requests.patch(
-                obj_url, auth=authentication, headers=headers, data=f.read() )
+                obj_url, auth=authentication, headers=headers, data=f.read(),verify=False)
             if(r.status_code not in [200,202,204]):
                 raise ApiError(obj_url,'PATCH',r)
             print ('PATCH: ', patch_file, ', to: ',obj_url,' ,response:', 

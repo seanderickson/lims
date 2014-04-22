@@ -10,6 +10,7 @@ from django.utils.timezone import utc
 class Migration(DataMigration):
 
     def forwards(self, orm):
+        # TODO: REDO This based on reports.User - 20140409 - sde4
         '''
         Create entries in auth_user for each valid entry in the screensaver_user table.
         - 'valid' entries have [ecommons_id or login_id] and email addresses.

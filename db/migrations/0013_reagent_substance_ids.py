@@ -5,7 +5,7 @@ from south.db import db
 from south.v2 import DataMigration
 from django.db import models
 
-from lims.hms.gray_codes import create_substance_id
+from reports.utils.gray_codes import create_substance_id
 from django.db import transaction
 from django.db.models.aggregates import Max
 

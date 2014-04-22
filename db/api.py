@@ -20,7 +20,7 @@ from db.models import ScreensaverUser,Screen, LabHead, LabAffiliation, \
     PlateLocation, Reagent, Well, LibraryContentsVersion, Activity,\
     AdministrativeActivity, SmallMoleculeReagent, SilencingReagent, GeneSymbol,\
     NaturalProductReagent
-from lims.api import CursorSerializer, LimsSerializer, SmallMoleculeSerializer
+from reports.serializers import CursorSerializer, LimsSerializer, SmallMoleculeSerializer
 from reports.models import MetaHash, Vocabularies, ApiLog
 from reports.api import ManagedModelResource, ManagedResource, ApiLogResource
 
@@ -683,7 +683,7 @@ class LibraryResource(ManagedModelResource):
     def dehydrate(self, bundle):
         # get the api comments
         
-        #FIXME: these are _all_ apilog comments, at this time
+        #FIXME: just poc: gets_all_ apilog comments, at this time
         comments = self.apiLog.obj_get_list(
             bundle, ref_resource_name='library', key=bundle.obj.short_name,
             comment__isnull=False)

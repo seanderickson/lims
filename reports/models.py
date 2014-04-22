@@ -1,12 +1,25 @@
-from django.db import models
-from lims.models import GetOrNoneManager
-
 import json
 import logging
+
+from django.db import models
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
 from django.core.cache import cache
+
+class GetOrNoneManager(models.Manager):
+    """Adds get_or_none method to objects
+    """
+    def get_or_none(self, function=None, **kwargs):
+        try:
+            x = self.get(**kwargs)
+            if x and function:
+                return function(x)
+            else:
+                return x
+        except self.model.DoesNotExist: # todo: check for better err to catch
+            return None
 
 class MetaManager(GetOrNoneManager):
 
@@ -121,7 +134,6 @@ class ApiLog(models.Model):
     diff_keys = models.TextField(blank=True, null=True)
     diffs = models.TextField(blank=True, null=True)
     comment = models.TextField(blank=True, null=True)
-    
     
     # This is the "meta" field, it contains "virtual" json fields, defined in 
     # the metahash
@@ -285,51 +297,78 @@ class Permission(models.Model):
     
 class UserGroup(models.Model):
     name = models.TextField(unique=True, blank=False)
-    #    users = models.ManyToManyField('auth.User')
-    
-    #FIXME: removed 2014-03-02 so that the reports project doesn't have 
-    # dependencies on the db project
-    # users = models.ManyToManyField('db.ScreensaverUser')
-    
+    users = models.ManyToManyField('reports.UserProfile')
     permissions = models.ManyToManyField('reports.Permission')
 
     def __unicode__(self):
         return unicode(str((self.name, self.users)))
+ 
+class UserProfile(models.Model):
+    objects                 = MetaManager()
+    # link to django.contrib.auth.models.User, note: allow null so that it
+    # can be created at the same time, but it is not allowed to be null in practice
+    user = models.OneToOneField(settings.AUTH_USER_MODEL) #, null=True, blank=True) 
+    # will mirror the auth_user.username field
+    username = models.TextField(null=False,blank=False) 
+    
+    # Harvard specific fields
+    gender = models.CharField(null=True, max_length=15)
+    phone = models.TextField(blank=True)
+    mailing_address = models.TextField(blank=True)
+    comments = models.TextField(blank=True)
+    ecommons_id = models.TextField(blank=True)
+    harvard_id = models.TextField(blank=True)
+    harvard_id_expiration_date = models.DateField(null=True, blank=True)
+    harvard_id_requested_expiration_date = models.DateField(null=True, blank=True)
+    
+    
+    # permissions assigned directly to the user, as opposed to by group
+    permissions = models.ManyToManyField('reports.Permission')
+
+    # required if the field is a JSON field; choices are from the TastyPie 
+    # field types
+    json_field_type = models.CharField(
+        max_length=128, blank=True, null=True); 
+    
+    # This is the "meta" field, it contains "virtual" json fields
+    json_field = models.TextField(blank=True) 
+
+    def __unicode__(self):
+        return unicode(
+            str((self.ecommons_id)))
+
+    def get_field_hash(self):
+        if self.json_field:
+            return json.loads(self.json_field)
+        else:
+            return {}
+    
+    def get_field(self, field):
+        temp = self.get_field_hash()
+        if(field in temp):
+            return temp[field]
+        else:
+            # Note, json_field is sparse, not padded with empty attributes
+            logger.debug(str((self,'field not found: ',field))) 
+            return None
+            
+    def set_field(self, field, value):
+        temp = self.get_field_hash()
+        temp[field] = value;
+        self.json_field = json.dumps(temp)
         
+    def _get_first_name(self):
+        "Returns the person's full name."
+        return self.user.first_name
+    first_name = property(_get_first_name)    
     
-#    
-#class User(models.Model):
-#    username = models.TextField(unique=True, blank=False)
-#
-##    permissions = models.ManyToManyField('Permission')
-#    # permissions are simply a reference to a meta concept
-#    readPermissions = models.ManyToManyField('Metahash', related_name='read_user')
-#    writePermissions = models.ManyToManyField('Metahash', related_name='write_user')
-#
-#    def __unicode__(self):
-#        return unicode(str((self.username)))
-
-#class Permission(models.Model):
-#    name = models.TextField(unique=True, blank=False)
-#    
-#    groups = models.ManyToManyField('Group')
-#    users = models.ManyToManyField('User')
-#    
-#    type = models.TextField();
-#    
-#    resource = models.ManyToManyField('Metahash')
-#
-#    def __unicode__(self):
-#        return unicode(str((self.name)))
-
+    def _get_last_name(self):
+        "Returns the person's full name."
+        return self.user.first_name
+    last_name = property(_get_last_name)    
     
-#class UserPermission(models.Model):
-#    user = models.ForeignKey('User')
-#    permission = models.ForeignKey('Permission')
-#    
-#class UserGroup(models.Model):
-#    user = models.ForeignKey('User')
-#    group = models.ForeignKey('Group')
-    
-    
-    
+#     def _get_full_name(self):
+#         "Returns the person's full name."
+#         return '%s %s' % (self.first_name, self.last_name)
+#     full_name = property(_get_full_name)    
+#  

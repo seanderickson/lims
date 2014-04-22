@@ -8,7 +8,9 @@ from django.db import models
 class Migration(SchemaMigration):
 
     def forwards(self, orm):
-
+        # TODO: REDO This based on reports.User - 20140409 - sde4
+        
+        
         # Changing field 'AdministratorUser.screensaver_user'
         db.alter_column(u'administrator_user', 'screensaver_user_id', self.gf('django.db.models.fields.related.OneToOneField')(to=orm['db.ScreensaverUser'], unique=True, primary_key=True))
 

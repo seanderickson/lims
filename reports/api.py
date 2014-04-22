@@ -14,24 +14,124 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.auth.models import User
 from django.db.models.aggregates import Max
 from django.db.models import Q
-from tastypie.exceptions import NotFound, ImmediateHttpResponse
+from django.db import transaction
+from tastypie.exceptions import NotFound, ImmediateHttpResponse, Unauthorized
 from tastypie.bundle import Bundle
-from tastypie.authorization import Authorization
+from tastypie.authorization import Authorization, ReadOnlyAuthorization
 from tastypie.authentication import BasicAuthentication, SessionAuthentication,\
     MultiAuthentication
 from tastypie.constants import ALL, ALL_WITH_RELATIONS
 # NOTE: tastypie.fields is required for dynamic field instances using eval
 from tastypie import fields 
-from tastypie.resources import Resource
+from tastypie.resources import Resource, ModelResource
 from tastypie.utils.urls import trailing_slash
-# !! FIXME: broken after removing dependencies on ScreensaverUser - 20140402
-# from db.models import ScreensaverUser
-from lims.api import PostgresSortingResource, LimsSerializer, CsvBooleanField
-from reports.models import MetaHash, Vocabularies, ApiLog, Permission, UserGroup
+
+from reports.serializers import LimsSerializer, CsvBooleanField
+from reports.models import MetaHash, Vocabularies, ApiLog, Permission, \
+                           UserGroup, UserProfile
 # import lims.settings 
 from tastypie.utils.timezone import make_naive
+from django.db.utils import IntegrityError
         
 logger = logging.getLogger(__name__)
+
+
+class SuperUserAuthorization(ReadOnlyAuthorization):
+    
+    def delete_list(self, object_list, bundle):
+        if bundle.request.user.is_superuser:
+            return object_list
+        raise Unauthorized("Only superuser may delete lists.")
+
+    def delete_detail(self, object_list, bundle):
+        if bundle.request.user.is_superuser:
+            return object_list
+        raise Unauthorized("Only superuser may delete.")
+ 
+    def create_list(self, object_list, bundle):
+        if bundle.request.user.is_superuser:
+            return object_list
+        raise Unauthorized("Only superuser may create lists.")
+
+    def create_detail(self, object_list, bundle):
+        if bundle.request.user.is_superuser:
+            return True
+#             return object_list
+        return False
+#         raise Unauthorized("Only superuser may create.")
+
+    def update_list(self, object_list, bundle):
+        if bundle.request.user.is_superuser:
+            return object_list
+        raise Unauthorized("Only superuser may update lists.")
+
+    def update_detail(self, object_list, bundle):
+        if bundle.request.user.is_superuser:
+            return object_list
+        raise Unauthorized("Only superuser may update.")
+
+
+# TODO: this class should be constructed as a Mixin, not inheritor of ModelResource
+class PostgresSortingResource(ModelResource):
+
+    def __init__(self, **kwargs):
+        super(PostgresSortingResource,self).__init__( **kwargs)
+
+    def apply_sorting(self, obj_list, options):
+        """
+        Create a none-too-pretty workaround for the postgresql null sorting
+        issue - nulls sort higher than values, which is not desired.  
+        We want nulls to sort lower than values.
+        
+        Caveat: this will not work with joined fields unless they have an alias.  
+        This is because it creates a field like:
+        (screensaver_user_id is null) AS "screensaver_user_id_null"
+        - if this field is duplicated in two sides of a join, then it must be 
+        referenced by an alias, or as "table".screensaver_user_id, 
+        and we are not supporting table speciciations in this method, so if 
+        joined fields are used, they must be referenced by alias only.
+
+        @param non_null_fields list - fields to ignore
+        """ 
+        obj_list = super(PostgresSortingResource, self).apply_sorting(
+            obj_list, options)
+        logger.debug(str(('order_by', obj_list.query.order_by)))
+        extra_select = {}
+        extra_ordering = []
+        
+        non_null_fields = options.get('non_null_fields', [])
+        logger.debug(str(('==== non null fields', non_null_fields))) 
+        for field in obj_list.query.order_by:
+            is_null_dir = '-'  # default nulls first for ascending
+            if field.startswith('-'):
+                is_null_dir = ''
+                field = field[1:]
+            if field in non_null_fields:
+                continue
+            extra_select[field+"_null"]=field + ' is null'
+            extra_ordering.append(is_null_dir + field+"_null")
+        logger.debug(str(('extra_select', extra_select, 
+                          'extra_ordering', extra_ordering)))
+        obj_list = obj_list.extra(extra_select)
+
+        # Note: the following doesn't work, something in the framework 
+        # deletes the extra order_by clause when apply_sorting, or, if this is
+        # run last, it deletes the sorting applied in apply_sorting...
+        #        obj_list = obj_list.extra(order_by=['-comments_null'])
+
+        # Note: this doesn't work because the "is null" field order by clauses
+        # must be prepended so that they occur before their intended fields
+        #        obj_list.query.add_ordering('comments_null')
+        
+        temp = obj_list.query.order_by;
+        obj_list.query.clear_ordering(force_empty=True)
+        for xfield in extra_ordering:
+            temp.insert(0,xfield)
+        logger.debug(str(('ordering', temp)))
+        obj_list.query.add_ordering(*temp)
+        
+        return obj_list
+
 
 
 class LoggingMixin(Resource):
@@ -43,11 +143,42 @@ class LoggingMixin(Resource):
     ** note: "detail_uri_kwargs" returns the set of lookup keys for the resource 
     URI construction.
     '''
+        
+    @transaction.commit_on_success()
+    def patch_list(self, request, **kwargs):
+        ''' Override
+        '''
+        # create an apilog for the patch list
+        listlog = self.listlog = ApiLog()
+        listlog.username = request.user.username 
+        listlog.user_id = request.user.id 
+        listlog.date_time = timezone.now()
+        listlog.ref_resource_name = self._meta.resource_name
+        listlog.api_action = 'PATCH_LIST'
+        listlog.uri = self.get_resource_uri()
+        # TODO: is this allowed?
+        if 'HTTP_APILOG_COMMENT' in request.META:
+            listlog.comment = request.META['HTTP_APILOG_COMMENT']
+        
+        
+        response =  super(LoggingMixin, self).patch_list(request, **kwargs) 
+        
+        listlog.save();
+        listlog.key = listlog.id
+        listlog.save()
+        self.listlog = None
+
+        return response        
+    
+    
+    @transaction.commit_on_success()
     def obj_create(self, bundle, **kwargs):
-        logger.info(str(('----log obj_create')))
+        if(logger.isEnabledFor(logging.DEBUG)):
+            logger.debug(str(('----log obj_create', bundle)))
         
         bundle = super(LoggingMixin, self).obj_create(bundle=bundle, **kwargs)
-        logger.info(str(('object created', bundle.obj )))
+        if(logger.isEnabledFor(logging.DEBUG)):
+            logger.debug(str(('object created', bundle.obj )))
         log = ApiLog()
         log.username = bundle.request.user.username 
         log.user_id = bundle.request.user.id 
@@ -69,11 +200,25 @@ class LoggingMixin(Resource):
             log.comment = bundle.data['apilog_comment']
             
         log.save()
-        logger.info(str(('create, api log', log)) )
+        if(logger.isEnabledFor(logging.DEBUG)):
+            logger.debug(str(('create, api log', log)) )
+
+
+        # TODO: create an analog of this in delete, update
+        # if there is a listlog, it means "patch_list", or "put_list" were called
+        if hasattr(self, 'listlog') and self.listlog:
+            if(logger.isEnabledFor(logging.DEBUG)):
+                logger.debug(str(('update listlog', self.listlog)))
+            added_keys = []
+            if self.listlog.added_keys:
+                added_keys = json.loads(self.listlog.added_keys)
+            added_keys.append(log.key); # TODO: append the log.id too?
+            self.listlog.added_keys = json.dumps(added_keys)
         
         return bundle    
     
     # TODO: not tested
+    @transaction.commit_on_success()
     def obj_delete(self, bundle, **kwargs):
         logger.info('---log obj_delete')
         
@@ -169,6 +314,7 @@ class LoggingMixin(Resource):
         
         return log
     
+    @transaction.commit_on_success()
     def obj_update(self, bundle, skip_errors=False, **kwargs):
         logger.info('--- log obj_update')
         original_bundle = Bundle(data=deepcopy(bundle.data))
@@ -502,13 +648,15 @@ class ManagedResource(LoggingMixin):
             bundle = super(ManagedResource, self).obj_create(bundle, **kwargs);
             return bundle
         except Exception, e:
-            logger.warn(str(('==ex on create, kwargs', kwargs, e)))
+            logger.warn(str(('==ex on create, kwargs', kwargs,
+                             'request.path', bundle.request.path,e)))
+            raise e
 #             extype, ex, tb = sys.exc_info()
 #             logger.warn(str((
 #                 'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
 #                 tb.tb_lineno, extype, ex)))
-            raise type(e), str(( type(e), e, 
-                                 'request.path', bundle.request.path, kwargs))
+#             raise type(e), str(( type(e), e, 
+#                                  'request.path', bundle.request.path, kwargs))
 
     # override
     def obj_update(self, bundle, **kwargs):
@@ -516,9 +664,11 @@ class ManagedResource(LoggingMixin):
             bundle = super(ManagedResource, self).obj_update(bundle, **kwargs);
             return bundle
         except Exception, e:
-            logger.warn(str(('==ex on update, kwargs', kwargs, e)))
-            raise type(e), str((type(e), e,
-                                'request.path', bundle.request.path, kwargs))
+            logger.warn(str(('==ex on update, kwargs', kwargs,
+                             'request.path', bundle.request.path,e)))
+            raise e
+#             raise type(e), str((type(e), e,
+#                                 'request.path', bundle.request.path, kwargs))
 
     # override
     def obj_get(self, bundle, **kwargs):
@@ -526,13 +676,16 @@ class ManagedResource(LoggingMixin):
             bundle = super(ManagedResource, self).obj_get(bundle, **kwargs);
             return bundle
         except Exception, e:
+            logger.warn(str(('==ex on get, kwargs', kwargs,
+                             'request.path', bundle.request.path,e)))
+            raise e
 #             extype, ex, tb = sys.exc_info()
 #             logger.warn(str((
 #                 'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
 #                 tb.tb_lineno, extype, ex)))
-            logger.warn(str(('==ex on get, kwargs', kwargs, e)))
-            raise type(e), str((type(e), e,
-                                'request.path', bundle.request.path, kwargs))
+#             logger.warn(str(('==ex on get, kwargs', kwargs, e)))
+#             raise type(e), str((type(e), e,
+#                                 'request.path', bundle.request.path, kwargs))
 
     # override
     def detail_uri_kwargs(self, bundle_or_obj):
@@ -780,6 +933,7 @@ class ResourceResource(ManagedModelResource):
         bundle = super(ResourceResource,self).dehydrate(bundle)
         # Get the schema
         # FIXME: why is the resource registry keyed off of "field."+key ?
+        logger.info(str(('resource registry', ManagedResource.resource_registry)))
         resource = ManagedResource.resource_registry['fields.'+bundle.obj.key]
         if resource:
             bundle.data['schema'] = resource.build_schema();
@@ -830,78 +984,239 @@ class ApiLogResource(ManagedModelResource):
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
 
-# !! FIXME: broken after removing dependencies on ScreensaverUser - 20140402
-class UserResource(ManagedModelResource):
+class CustomAuthentication(BasicAuthentication):
     '''
-    Resource to access the django auth_user model.
-    Utilizes the local user model in db.screensaveruser as well.
-    Note: screensaverusers are in the db model for historical reasons (chose 
-    not to migrate at genesis)
+    Work-around authentication for dev on orchestra:
+    orchestra apache strips Basic authentication headers, and more work is needed
+    to store the csrf token.
     '''
-    
-    # force the pk to be read only so that it doesn't try to create
-    # TODO: store readonly attribute in the hash
-    screensaver_user_id = fields.IntegerField(
-        'screensaver_user_id', readonly=True) 
-    usergroups = fields.ToManyField(
-        'reports.api.UserGroupResource', 'usergroup_set', related_name='users', 
-        blank=True, null=True)
-    permissions = fields.ToManyField(
-        'reports.api.PermissionResource', 'permissions', related_name='users', 
-        null=True) #, related_name='users', blank=True, null=True)
-    groups = fields.CharField(attribute='groups', blank=True, null=True)
-    is_for_group = fields.BooleanField(
-        attribute='is_for_group', blank=True, null=True)
-    
-    class Meta:
-        scope = 'fields.user'
-# !! FIXME: removed dep on ScreensaverUser - 20140402
-#         queryset = ScreensaverUser.objects.all().order_by(
-#             'last_name', 'first_name')
-        queryset = User.objects.all().order_by(
-            'last_name', 'first_name')
-        key = 'groups'
+    def is_authenticated(self, request, **kwargs):
+        '''
+        Use simple session authentication
+        NOTE: this does not perform csrf checks
+        '''
         
+        logger.info(str(('=== in custom authentication', request.user.is_authenticated())))
+        return request.user.is_authenticated()    
 
-        # FIX?: separate sections for databases
-#         if 'postgres' in lims.settings.DATABASES['default']['ENGINE'].lower():
-#             queryset = queryset.extra( select = {
-#               key: (
-#               "( select array_to_string(array_agg(ug.name), ', ') " 
-#               "  from reports_usergroup ug "
-#               "  join reports_usergroup_users ruu on(ug.id=ruu.usergroup_id) "
-#               "  where ruu.screensaveruser_id=screensaver_user.screensaver_user_id)")
-#             } ) 
-#         else:
-#             logger.warn(str((
-#                 '=========using the special sqllite lims.settings.DATABASES', 
-#                 lims.settings.DATABASES)))
-#             queryset = queryset.extra( select = {
-#               key: (
-#               "( select group_concat(ug.name, ', ') " 
-#               "  from reports_usergroup ug "
-#               "  join reports_usergroup_users ruu on(ug.id=ruu.usergroup_id) "
-#               "  where ruu.screensaveruser_id=screensaver_user.screensaver_user_id)")
-#             }) 
-            
-        authentication = MultiAuthentication(
-            BasicAuthentication(), SessionAuthentication())
-        resource_name='user' 
-        authorization= Authorization()        
-        
-        excludes = ['password']
-        ordering = []
-        filtering = { }
-        serializer = LimsSerializer()
+class UserResource(ManagedModelResource):
+
+    username = fields.CharField('user__username', null=False, readonly=True)
+    first_name = fields.CharField('user__first_name', null=False, readonly=True)
+    last_name = fields.CharField('user__last_name', null=False, readonly=True)
+    email = fields.CharField('user__email', null=False, readonly=True)
+    is_staff = CsvBooleanField('user__is_staff', null=True, readonly=True)
+
+#     usergroups = fields.ToManyField(
+#         'reports.api.UserGroupResource', 'usergroup_set', related_name='users', 
+#         blank=True, null=True)
+#     permissions = fields.ToManyField(
+#         'reports.api.PermissionResource', 'permissions', related_name='users', 
+#         null=True) #, related_name='users', blank=True, null=True)
 
     def __init__(self, **kwargs):
         super(UserResource,self).__init__(**kwargs)
+
+    class Meta:
+#         bootstrap_fields = [ 'json_field']
+        queryset = UserProfile.objects.all().order_by('username') 
+        # .order_by('user__first_name', 'user__last_name')
+        authentication = MultiAuthentication(
+            BasicAuthentication(), SessionAuthentication())
+        authorization= Authorization()        
+        ordering = []
+        filtering = {'scope':ALL, 'key': ALL, 'alias':ALL}
+        serializer = LimsSerializer()
+        excludes = [] #['json_field']
+        always_return_data = True # this makes Backbone happy
+        resource_name = 'user'
+
+    def prepend_urls(self):
+        return [
+            url(r"^(?P<resource_name>%s)/(?P<username>((?=(schema))__|(?!(schema))[^/]+))%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            ]    
+
+    def obj_update(self, bundle, skip_errors=False, **kwargs):
+        bundle = super(UserResource, self).obj_update(bundle, **kwargs);
         
-    def obj_get_list(self,bundle, **kwargs):
-        ''' calls 1. apply_filters, 2.authorized_read_list
+        # Update the auth.user 
+        django_user = bundle.obj.user
+        
+        # TODO validate these fields
+        django_user.first_name = bundle.data.get('first_name')
+        django_user.last_name = bundle.data.get('last_name')
+        django_user.email = bundle.data.get('email')
+        # Note cannot update username
+        django_user.save()
+
+        
+    def obj_create(self, bundle, **kwargs):
+        
+        bundle = super(UserResource, self).obj_create(bundle, **kwargs);
+              
+        return bundle
+
+    def hydrate(self, bundle):
+        ''' 
+        Called by full_hydrate 
+        sequence is obj_create->full_hydrate(hydrate, then full)->save
+        
+        Our custom implementation will create an auth_user for the input; so 
+        there will be a reports_userprofile.user -> auth_user.
         '''
-        return super(UserResource, self).obj_get_list(bundle, **kwargs)
+        bundle = super(UserResource, self).hydrate(bundle);
+        
+        # fixup the username; stock hydrate will set either, but if it's not 
+        # specified, then we will use the ecommons        
+        ecommons = bundle.data.get('ecommons_id')
+        username = bundle.data.get('username')
+        email=bundle.data.get('email')
+        first_name=bundle.data.get('first_name')
+        last_name=bundle.data.get('last_name')
+        is_staff = self.is_staff.convert(bundle.data.get('is_staff'))
+        
+        
+        # TODO: also grab the "is_staff", "is_superuser", "is_active"
+        
+        if not username:
+            username = ecommons;
+        bundle.obj.username = username
+        
+        django_user = None
+        try:
+            django_user = bundle.obj.user
+        except ObjectDoesNotExist, e:
+            from django.contrib.auth.models import User as DjangoUser
+            try:
+                django_user = DjangoUser.objects.get(username=username)
+            except ObjectDoesNotExist, e:
+                # ok, will create
+                pass;
+
+        if django_user:            
+            django_user.first_name = first_name
+            django_user.last_name = last_name
+            django_user.email = email
+            django_user.is_staff = is_staff
+            django_user.save();
+        else:
+            django_user = DjangoUser.objects.create_user(
+                username, 
+                email=email, 
+                first_name=first_name, 
+                last_name=last_name)
+            # NOTE: we'll use user.is_password_usable() to verify if the 
+            # user has a staff/manual django password account
+            logger.info('save django user')
+            # Note: don't save yet, since the userprofile should be saved first
+            # django_user.save()
+            # this has to be done to set the FK on obj; since we're the only
+            # side maintaining this rel' with auth_user
+
+        bundle.obj.user=django_user 
+#             bundle.obj.save()
+        
+        
+        return bundle
     
+#     def save(self, bundle, skip_errors=False):
+#         ''' 
+#         overriding base save - so that we can create the django auth_user if 
+#         needed.
+#         - everything else should be the same (todo: update if not)
+#         '''
+#         logger.info(str(('+save', bundle.obj)))
+#         self.is_valid(bundle)
+#  
+#         if bundle.errors and not skip_errors:
+#             raise ImmediateHttpResponse(response=self.error_response(
+#                 bundle.request, bundle.errors))
+#  
+#         # Check if they're authorized.
+#         if bundle.obj.pk:
+#             self.authorized_update_detail(self.get_object_list(bundle.request), 
+#                                           bundle)
+#         else:
+#             self.authorized_create_detail(self.get_object_list(bundle.request), 
+#                                           bundle)        
+#         # Save FKs just in case.
+#         self.save_related(bundle)
+#  
+#         logger.info(str((
+#             'saving', bundle.obj )))
+# #             [str(x) for x in bundle.obj.usergroup_set.all()] )))
+#         bundle.obj.save();
+#          
+#              
+#         bundle.objects_saved.add(self.create_identifier(bundle.obj))
+#  
+#         # Now pick up the M2M bits.
+#         m2m_bundle = self.hydrate_m2m(bundle)
+#         self.save_m2m(m2m_bundle)
+#  
+#         #TODO: set password as a separate step
+#         logger.info('user save done')
+#         return bundle
+
+    def is_valid(self, bundle):
+        """
+        Should return a dictionary of error messages. If the dictionary has
+        zero items, the data is considered valid. If there are errors, keys
+        in the dictionary should be field names and the values should be a list
+        of errors, even if there is only one.
+        """
+        
+        # cribbed from tastypie.validation.py:
+        # - mesh data and obj values, then validate
+        data = {}
+        if bundle.obj.pk:
+            data = model_to_dict(bundle.obj)
+        if data is None:
+            data = {}
+        data.update(bundle.data)
+        
+        # do validations
+        errors = defaultdict(list)
+        
+        # TODO: rework this to be driven by the metahash
+        
+        if not data.get('first_name'):
+            errors['first_name'] = ['first_name must be specified']
+        
+        if not data.get('last_name'):
+            errors['last_name'] = ['last_name must be specified']
+        
+        if not data.get('email'):
+            errors['email'] = ['email must be specified']
+        
+        ecommons = data.get('ecommons_id')
+        username = data.get('username')
+        
+        if ecommons and username:
+            errors['specify either username or ecommons, not both']
+        elif ecommons:
+            bundle.obj.username = ecommons;
+            
+        if errors:
+            bundle.errors[self._meta.resource_name] = errors
+            logger.warn(str(('bundle errors', bundle.errors, len(bundle.errors.keys()))))
+            return False
+        return True
+
+
+#     
+#     # not tested
+#     def obj_delete(self, bundle, **kwargs):
+#         
+#         django_user = bundle.obj.user
+#         
+#         super(UserResource, self).obj_delete(bundle,**kwargs)
+#         
+#         if django_user:
+#             django_user.delete()
+        
     def get_object_list(self, request, is_for_group=None):
         ''' 
         Called immediately before filtering, actually grabs the (ModelResource) 
@@ -915,20 +1230,20 @@ class UserResource(ManagedModelResource):
         adding this field    
         '''
         query = super(UserResource, self).get_object_list(request);
-        logger.info(str(('get_obj_list', is_for_group)))
-        if is_for_group:
-            query = query.extra(select = {
-                'is_for_group': ( 
-                    '(select count(*)>0 '
-                    ' from reports_usergroup ug '
-                    ' join reports_usergroup_users ruu on(ug.id=ruu.usergroup_id) '
-                    ' where ruu.screensaveruser_id=screensaver_user.screensaver_user_id '
-                    ' and ug.name like %s )' ),
-              },
-              select_params = [is_for_group] )
-            query = query.order_by('-is_for_group', 'last_name', 'first_name')
+#         logger.info(str(('get_obj_list', is_for_group)))
+#         if is_for_group:
+#             query = query.extra(select = {
+#                 'is_for_group': ( 
+#                     '(select count(*)>0 '
+#                     ' from reports_usergroup ug '
+#                     ' join reports_usergroup_users ruu on(ug.id=ruu.usergroup_id) '
+#                     ' where ruu.screensaveruser_id=screensaver_user.screensaver_user_id '
+#                     ' and ug.name like %s )' ),
+#               },
+#               select_params = [is_for_group] )
+#             query = query.order_by('-is_for_group', 'last_name', 'first_name')
         return query
-    
+
     def apply_filters(self, request, applicable_filters):
         logger.info(str(('apply_filters', applicable_filters)))
         # Special logic to filter on the aggregate groups column
@@ -967,231 +1282,32 @@ class UserResource(ManagedModelResource):
         obj_list = super(UserResource, self).apply_sorting(obj_list, options)
         return obj_list
 
-    def get_resource_uri(self, bundle_or_obj=None, url_name='api_dispatch_list'):
-        ''' 
-        Override - Either have to generate localized resource uri, or, 
-        in client, equate localized uri with non-localized uri's (* see user.js,
-        where _.without() is used).
-        This modification represents the first choice
-        '''
-        return self.get_local_resource_uri(
-            bundle_or_obj=bundle_or_obj, url_name=url_name)
+#     def get_resource_uri(self, bundle_or_obj=None, url_name='api_dispatch_list'):
+#         ''' 
+#         Override - Either have to generate localized resource uri, or, 
+#         in client, equate localized uri with non-localized uri's (* see user.js,
+#         where _.without() is used).
+#         This modification represents the first choice
+#         '''
+#         return self.get_local_resource_uri(
+#             bundle_or_obj=bundle_or_obj, url_name=url_name)
 
-    def dehydrate_permissions(self, bundle):
-        uri_list = []
-        P = PermissionResource()
-        for p in bundle.obj.permissions.all():
-            uri_list.append(P.get_local_resource_uri(p))
-        return uri_list;
-      
-    def dehydrate_usergroups(self, bundle):
-        uri_list = []
-        UR = UserGroupResource()
-        for g in bundle.obj.usergroup_set.all():
-            uri_list.append(UR.get_local_resource_uri(g))
-        return uri_list;
-
-    def is_valid(self, bundle):
-        """
-        Should return a dictionary of error messages. If the dictionary has
-        zero items, the data is considered valid. If there are errors, keys
-        in the dictionary should be field names and the values should be a list
-        of errors, even if there is only one.
-        """
-        
-        # cribbed from tastypie.validation.py:
-        # - mesh data and obj values, then validate
-        data = {}
-        if bundle.obj.pk:
-            data = model_to_dict(bundle.obj)
-        if data is None:
-            data = {}
-        data.update(bundle.data)
-        
-        # do validations
-        errors = defaultdict(list)
-        
-        # TODO: rework this to be driven by the metahash
-        
-        # TODO: clean up model, use only login_id
-        if data.get('login_id') and data.get('ecommons_id'):
-            errors['login_id'] = ['specify either ecommons or login_id']
-        if not ( data.get('login_id') or data.get('ecommons_id') ):
-            errors['login_id'] = ['specify either ecommons or login_id']
-        
-        if not data.get('first_name'):
-            errors['first_name'] = ['first_name must be specified']
-        
-        if not data.get('last_name'):
-            errors['last_name'] = ['last_name must be specified']
-        
-        if not data.get('email'):
-            errors['email'] = ['email must be specified']
-        
-        username = data.get('ecommons_id')
-        if not username:
-            username = data.get('login_id')
-
-                # TODO: verify that we should not check for extant here
-        #        # Special validations, because there are two user objects, 
-        #        # the ScreensaverUser, django auth.User
-        #        try:
-        #            extant_user = User.objects.get(username=username)
-        #            errors['login_id'].append('login_id is already in use: ' + username)
-        #            errors['ecommons_id'].append('ecommons_id is already in use: ' + username)
-        #            
-        #            # TODO: email is not unique, should it be?
-        #            #            extant_user = User.objects.get(email=data['email'])
-        #            #            errors['email'].append('email is already in use: ' + username)
-        #        except ObjectDoesNotExist:
-        #            pass
-        
-        if errors:
-            bundle.errors[self._meta.resource_name] = errors
-            logger.warn(str(('bundle errors', bundle.errors, len(bundle.errors.keys()))))
-            return False
-        return True
-        
-    def obj_create(self, bundle, **kwargs):
-        bundle = super(UserResource, self).obj_create(bundle);
-        return bundle
-
-#         """
-#         A iccbl user specific implementation of ``obj_create``.
-#         Override so that we can call our own save?
-#         """
-#         logger.info(str(('++obj_create', bundle.data)))
-#         bundle.obj = self._meta.object_class()
-# 
-#         for key, value in kwargs.items():
-#             setattr(bundle.obj, key, value)
-# 
-#         self.authorized_create_detail(self.get_object_list(bundle.request), bundle)
-#         bundle = self.full_hydrate(bundle)
-#         return self.save(bundle)
-
-    def hydrate(self, bundle):
-        bundle = super(UserResource, self).hydrate(bundle);
-        return bundle
-    
-    def save(self, bundle, skip_errors=False):
-        ''' 
-        overriding base save - so that we can create the django auth_user if 
-        needed.
-        - everything else should be the same (todo: update if not)
-        TODO: document: login_id overrides ecommons_id for assignment to the 
-        auth_user.login_id when creating the auth_user object
-        '''
-        logger.info(str(('+save', bundle.obj, bundle.obj.user)))
-        self.is_valid(bundle)
-
-        if bundle.errors and not skip_errors:
-            raise ImmediateHttpResponse(response=self.error_response(
-                bundle.request, bundle.errors))
-
-        # Check if they're authorized.
-        if bundle.obj.pk:
-            self.authorized_update_detail(self.get_object_list(bundle.request), 
-                                          bundle)
-        else:
-            self.authorized_create_detail(self.get_object_list(bundle.request), 
-                                          bundle)
-        
-# !! FIXME: broken after removing dependencies on ScreensaverUser - 20140402
-#         # create a new screensaver_user_id
-#         if not bundle.obj.screensaver_user_id:
-#             max_result = ScreensaverUser.objects.all().aggregate(
-#                 Max('screensaver_user_id'))
-#             new_id = max_result.get('screensaver_user_id__max', 0) or 0
-#             new_id +=1
-#             logger.info(str(('creating new screensaver_user_id',new_id)))
-#             bundle.obj.screensaver_user_id = new_id
-#             
-#             bundle.obj.date_created = timezone.now()
-        
-        # Save FKs just in case.
-        self.save_related(bundle)
-
-        logger.info(str((
-            'saving', bundle.obj, bundle.obj.user, 
-            [str(x) for x in bundle.obj.usergroup_set.all()] )))
-        bundle.obj.save();
-        
-        # create a Django user
-        username = bundle.obj.ecommons_id
-        if bundle.obj.login_id:  
-            # TODO: document: login_id overrides ecommons_id
-            username = bundle.obj.login_id
-        
-        if not bundle.obj.user:
-            logger.info('======create a django user for username: ' + username )
-            django_user = User.objects.create_user(username, 
-                email=bundle.obj.email, 
-                first_name=bundle.obj.first_name, 
-                last_name=bundle.obj.last_name)
-# !! FIXME: broken after removing dependencies on ScreensaverUser - 20140402
-            django_user.screensaveruser = bundle.obj
-            logger.info('save django user')
-            django_user.save()
-            # this has to be done to set the FK on obj; since we're the only
-            # side maintaining this rel' with auth_user
-            bundle.obj.user=django_user 
-            bundle.obj.save()
-            
-        bundle.objects_saved.add(self.create_identifier(bundle.obj))
-
-        # Now pick up the M2M bits.
-        m2m_bundle = self.hydrate_m2m(bundle)
-        self.save_m2m(m2m_bundle)
-
-        #TODO: set password as a separate step
-        logger.info('user save done')
-        return bundle
-
-
-    def obj_update(self, bundle, skip_errors=False, **kwargs):
-        """
-        A iccbl user-specific implementation of ``obj_update``.
-        NOTE: this is the same as superclass right now
-        """
-        logger.info(str(('++obj_update', bundle.data)))
-        if not bundle.obj or not self.get_bundle_detail_data(bundle):
-            try:
-                lookup_kwargs = self.lookup_kwargs_with_identifiers(bundle, kwargs)
-            except:
-                # if there is trouble hydrating the data, fall back to just
-                # using kwargs by itself (usually it only contains a "pk" key
-                # and this will work fine.
-                lookup_kwargs = kwargs
-
-            try:
-                bundle.obj = self.obj_get(bundle=bundle, **lookup_kwargs)
-            except ObjectDoesNotExist:
-                raise NotFound(
-                    "A model instance matching the provided arguments could not be found.")
-
-        bundle = self.full_hydrate(bundle)
-        return self.save(bundle, skip_errors=skip_errors)
-    
-    # not tested
-    def obj_delete(self, bundle, **kwargs):
-        
-        django_user = bundle.obj.user
-        
-        super(UserResource, self).obj_delete(bundle,**kwargs)
-        
-        if django_user:
-            django_user.delete()
-        
-    def prepend_urls(self):
-        return [
-            url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>[\d]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<ecommons_id>((?=(schema))__|(?!(schema))[^/]+))%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            ]    
+#     def dehydrate_permissions(self, bundle):
+#         uri_list = []
+#         P = PermissionResource()
+# todo https://docs.djangoproject.com/en/dev/topics/db/queries/#lookups-that-span-relationships        
+#         
+#         userprofile = bundle.obj.userprofile_set.all()[0]
+#         for p in bundle.obj.permissions.all():
+#             uri_list.append(P.get_local_resource_uri(p))
+#         return uri_list;
+#       
+#     def dehydrate_usergroups(self, bundle):
+#         uri_list = []
+#         UR = UserGroupResource()
+#         for g in bundle.obj.usergroup_set.all():
+#             uri_list.append(UR.get_local_resource_uri(g))
+#         return uri_list;
 
 
 class UserGroupResource(ManagedModelResource):
@@ -1232,15 +1348,9 @@ class UserGroupResource(ManagedModelResource):
         return schema
     
     def dehydrate_permission_list(self, bundle):
-        logger.info('dehydrate permissions')
-        try:
-            screensaverUser = bundle.obj.screensaveruser
-            if screensaverUser:
-                permissions = [ [x.scope, x.key, x.type] 
-                                    for x in screensaverUser.permissions.all()]
-                return permissions
-        except Exception, e:
-            logger.warn(str(('error accessing the screensaver user element', e)))
+        permissions = [ [x.scope, x.key, x.type] 
+                            for x in bundle.obj.permissions.all()]
+        return permissions
         
     def dehydrate_user_list(self,bundle):
         users = []
@@ -1250,13 +1360,13 @@ class UserGroupResource(ManagedModelResource):
                  % (user.screensaver_user_id, user.first_name, user.last_name))
         return users
     
-    def dehydrate_users(self, bundle):
-        uri_list = []
-        U = UserResource()
-        for user in bundle.obj.users.all():
-             uri_list.append(U.get_local_resource_uri(
-                 { 'screensaver_user_id':user.screensaver_user_id }))
-        return uri_list;
+    #     def dehydrate_users(self, bundle):
+    #         uri_list = []
+    #         U = UserResource()
+    #         for user in bundle.obj.users.all():
+    #              uri_list.append(U.get_local_resource_uri(
+    #                  { 'screensaver_user_id':user.screensaver_user_id }))
+    #         return uri_list;
         
     def dehydrate_permissions(self, bundle):
         uri_list = []
@@ -1480,4 +1590,106 @@ class PermissionResource(ManagedModelResource):
                         % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             ]
+
+
+# # !! FIXME: broken after removing dependencies on ScreensaverUser - 20140402
+# class UserResource(ManagedModelResource):
+#     '''
+#     Resource to access the django auth_user model.
+#     Utilizes the local user model in db.screensaveruser as well.
+#     Note: screensaverusers are in the db model for historical reasons (chose 
+#     not to migrate at genesis)
+#     '''
+#     
+#     # force the pk to be read only so that it doesn't try to create
+#     # TODO: store readonly attribute in the hash
+#     screensaver_user_id = fields.IntegerField(
+#         'screensaver_user_id', readonly=True) 
+#     usergroups = fields.ToManyField(
+#         'reports.api.UserGroupResource', 'usergroup_set', related_name='users', 
+#         blank=True, null=True)
+#     permissions = fields.ToManyField(
+#         'reports.api.PermissionResource', 'permissions', related_name='users', 
+#         null=True) #, related_name='users', blank=True, null=True)
+#     groups = fields.CharField(attribute='groups', blank=True, null=True)
+#     is_for_group = fields.BooleanField(
+#         attribute='is_for_group', blank=True, null=True)
+#     
+#     class Meta:
+#         scope = 'fields.user'
+# # !! FIXME: removed dep on ScreensaverUser - 20140402
+# #         queryset = ScreensaverUser.objects.all().order_by(
+# #             'last_name', 'first_name')
+#         queryset = User.objects.all().order_by(
+#             'last_name', 'first_name')
+#         key = 'groups'
+#         
+# 
+#         # FIX?: separate sections for databases
+# #         if 'postgres' in lims.settings.DATABASES['default']['ENGINE'].lower():
+# #             queryset = queryset.extra( select = {
+# #               key: (
+# #               "( select array_to_string(array_agg(ug.name), ', ') " 
+# #               "  from reports_usergroup ug "
+# #               "  join reports_usergroup_users ruu on(ug.id=ruu.usergroup_id) "
+# #               "  where ruu.screensaveruser_id=screensaver_user.screensaver_user_id)")
+# #             } ) 
+# #         else:
+# #             logger.warn(str((
+# #                 '=========using the special sqllite lims.settings.DATABASES', 
+# #                 lims.settings.DATABASES)))
+# #             queryset = queryset.extra( select = {
+# #               key: (
+# #               "( select group_concat(ug.name, ', ') " 
+# #               "  from reports_usergroup ug "
+# #               "  join reports_usergroup_users ruu on(ug.id=ruu.usergroup_id) "
+# #               "  where ruu.screensaveruser_id=screensaver_user.screensaver_user_id)")
+# #             }) 
+#             
+#         authentication = MultiAuthentication(
+#             BasicAuthentication(), SessionAuthentication())
+#         resource_name='user' 
+#         authorization= Authorization()        
+#         
+#         excludes = ['password']
+#         ordering = []
+#         filtering = { }
+#         serializer = LimsSerializer()
+# 
+#     def __init__(self, **kwargs):
+#         super(UserResource,self).__init__(**kwargs)
+#         
+#     def obj_get_list(self,bundle, **kwargs):
+#         ''' calls 1. apply_filters, 2.authorized_read_list
+#         '''
+#         return super(UserResource, self).obj_get_list(bundle, **kwargs)
+#     
+#     def get_object_list(self, request, is_for_group=None):
+#         ''' 
+#         Called immediately before filtering, actually grabs the (ModelResource) 
+#         query - 
+#         
+#         Override this and apply_filters, so that we can control the 
+#         extra column "is_for_group".  This extra column is present when 
+#         navigating to users from a usergroup; see prepend_urls.
+#         TODO: we could programmatically create the "is_for_group" column by 
+#         grabbing the entire queryset, converting to an array of dicts, and 
+#         adding this field    
+#         '''
+#         query = super(UserResource, self).get_object_list(request);
+#         logger.info(str(('get_obj_list', is_for_group)))
+#         if is_for_group:
+#             query = query.extra(select = {
+#                 'is_for_group': ( 
+#                     '(select count(*)>0 '
+#                     ' from reports_usergroup ug '
+#                     ' join reports_usergroup_users ruu on(ug.id=ruu.usergroup_id) '
+#                     ' where ruu.screensaveruser_id=screensaver_user.screensaver_user_id '
+#                     ' and ug.name like %s )' ),
+#               },
+#               select_params = [is_for_group] )
+#             query = query.order_by('-is_for_group', 'last_name', 'first_name')
+#         return query
+    
+
         

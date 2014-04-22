@@ -6,7 +6,7 @@
  * @author      Sean Erickson
  * @contact     sean_erickson “AT” hms.harvard.edu
  *
- * @copyright Copyright 2013 Harvard University, all rights reserved.
+ * @copyright 2014 Harvard University, all rights reserved.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -560,8 +560,6 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
                       //                            console.log('look for ' +
                       // key + ', ' + prop['backgrid_cell_type']);
                       var klass = Iccbl.stringToFunction(prop['backgrid_cell_type']);
-                      //                            console.log('got  ' +
-                      // klass);
                       if (!_.isUndefined(klass)) {
                           console.log('----- class found: ' + klass);
                           backgridCellType = klass;

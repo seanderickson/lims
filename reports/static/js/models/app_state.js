@@ -134,7 +134,7 @@ define([
               },
               'permissions':{
                   view: 'list',
-              },
+              }
             }
           },
         }
@@ -591,7 +591,7 @@ define([
   appState.apiVersion = API_VERSION;
   appState.reportsApiUri = REPORTS_API_URI;
   appState.dbApiUri = DB_API_URI;
-  appState.LIST_ARGS = ['page','rpp','order','search'];      
+  appState.LIST_ARGS = ['page','rpp','order','search','log'];      
   
   
   return appState;

@@ -1,4 +1,4 @@
-# Django settings for lims project
+# Django settings for 1km project
 
 try:
     from settings import *
@@ -36,7 +36,7 @@ LOGGING = {
             'format': '%(levelname)s %(asctime)s %(module)s:%(lineno)d %(process)d %(thread)d %(message)s'
         },
         'simple': {
-            'format': '%(levelname)s %(asctime)s: %(pathname)s:%(lineno)d:%(levelname)s: %(message)s'
+            'format': '%(levelname)s %(msecs)s: %(name)s:%(funcName)s:%(lineno)d: %(message)s'
         },
     },
     'filters': {
@@ -60,6 +60,11 @@ LOGGING = {
         },  
     },
     'loggers': {
+        '': {
+            'handlers': ['console'],
+            'propagate': False,
+            'level': 'INFO',
+        },
         'django.request': {
             'handlers': ['logfile'],
             'level': 'ERROR',
@@ -77,7 +82,7 @@ LOGGING = {
         },               
         'reports': {  # set a default handler
             'handlers': ['logfile'],
-            'propagate': False,
+            'propagate': True,
             'level': 'INFO',
         },
         'db.tests': {  # set a default handler

@@ -6,7 +6,7 @@
  * @author      Sean Erickson
  * @contact     sean_erickson “AT” hms.harvard.edu
  *
- * @copyright Copyright 2013 Harvard University, all rights reserved.
+ * @copyright 2014 Harvard University, all rights reserved.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License

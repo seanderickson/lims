@@ -135,7 +135,6 @@ class ApiLog(models.Model):
     diffs = models.TextField(blank=True, null=True)
     comment = models.TextField(blank=True, null=True)
     
-    
     # This is the "meta" field, it contains "virtual" json fields, defined in 
     # the metahash
     json_field = models.TextField(blank=True, null=True)

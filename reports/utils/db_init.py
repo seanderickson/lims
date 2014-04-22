@@ -24,16 +24,20 @@ class ApiError(Exception):
             if json_status and 'error_message' in json_status:
                 err_msg = json_status['error_message']
         except ValueError,e:
-            logger.info('There is no json in the response')
-            logger.debug(str(('-----raw response text-------', result.text)) )
+            logger.warn('There is no json in the response')
+            logger.warn(str(('-----raw response text-------', result.text)) )
+            err_msg = result.content
+
         self.message = str((
-            url,'action',action, result.reason, result.status_code, err_msg )).replace('\\','')
+            url,'action',action, result.reason, result.status_code, err_msg )) \
+            .replace('\\n','') \
+            .replace('\\','')
         if(logger.isEnabledFor(logging.DEBUG)):
             self.message = str((url,'action',action, result.reason, 
-                                result.status_code, result )).replace('\\','')
+                                result.status_code, result.content )).replace('\\','')
 
     def __str__(self):
-        return repr(self.message)
+        return str(self.message)
 
 
 def delete(obj_url, headers, session=None, authentication=None):
@@ -57,7 +61,7 @@ def put(input_file, obj_url,headers, session=None, authentication=None):
         with open(input_file) as f:
             if session:
                 r = session.put(
-                    obj_url, auth=authentication, headers=headers, data=f.read(),verify=False)
+                    obj_url, headers=headers, data=f.read(),verify=False)
             elif authentication:
                 r = requests.put(
                     obj_url, auth=authentication, headers=headers, data=f.read(),verify=False)
@@ -87,11 +91,12 @@ def patch(patch_file, obj_url,headers, session=None, authentication=None):
         with open(patch_file) as f:
             if session:
                 r = session.patch(
-                    obj_url, auth=authentication, headers=headers, data=f.read(),verify=False)
+                    obj_url, headers=headers, data=f.read(),verify=False)
             elif authentication:
                 r = requests.patch(
                     obj_url, auth=authentication, headers=headers, data=f.read(),verify=False)
             if(r.status_code not in [200,202,204]):
+                
                 raise ApiError(obj_url,'PATCH',r)
             print ('PATCH: ', patch_file, ', to: ',obj_url,' ,response:', 
                     r.status_code,', count: ',len(r.json()['objects']))
@@ -126,9 +131,21 @@ parser.add_argument(
 parser.add_argument(
     '-p', '--password',
     help='user password for the api authentication')
+parser.add_argument(
+    '-v', '--verbose', dest='verbose', action='count',
+    help="Increase verbosity (specify multiple times for more)")    
 
 if __name__ == "__main__":
     args = parser.parse_args()
+    log_level = logging.WARNING # default
+    if args.verbose == 1:
+        log_level = logging.INFO
+    elif args.verbose >= 2:
+        log_level = logging.DEBUG
+        DEBUG=True
+    logging.basicConfig(
+        level=log_level, 
+        format='%(msecs)d:%(module)s:%(lineno)d:%(levelname)s: %(message)s')        
 
     CONTENT_TYPES =   { 
         'json': {'content-type': 'application/json'},

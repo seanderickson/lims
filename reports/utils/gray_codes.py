@@ -96,7 +96,8 @@ def int2igray_base(x, symbols):
 start = len(digs)**8 # start with a full 8 digit register       
 
 def create_substance_id(_id):
-    logger.info(str(('create substance id from', start, _id)))
+    if(logger.isEnabledFor(logging.DEBUG)):
+        logger.debug(str(('create substance id from', start, _id)))
     return int2gray_base(start + _id, digs);
     
 if __name__ == '__main__':

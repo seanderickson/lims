@@ -6,9 +6,14 @@
 .backgrid td {
   border: 1px solid #DDD;
 }
+div.backgrid-paginator {
+  display: inline;
+	text-align: left;
+}
 
-.backgrid-paginator {
-	min-width: 30em;
+ul.backgrid-paginator {
+	display: inline;
+  text-align: left;
 }
 
 /** bootstrap overrides **/

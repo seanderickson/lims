@@ -173,10 +173,12 @@ class LoggingMixin(Resource):
     
     @transaction.commit_on_success()
     def obj_create(self, bundle, **kwargs):
-        logger.info(str(('----log obj_create', bundle)))
+        if(logger.isEnabledFor(logging.DEBUG)):
+            logger.debug(str(('----log obj_create', bundle)))
         
         bundle = super(LoggingMixin, self).obj_create(bundle=bundle, **kwargs)
-        logger.info(str(('object created', bundle.obj )))
+        if(logger.isEnabledFor(logging.DEBUG)):
+            logger.debug(str(('object created', bundle.obj )))
         log = ApiLog()
         log.username = bundle.request.user.username 
         log.user_id = bundle.request.user.id 
@@ -198,13 +200,15 @@ class LoggingMixin(Resource):
             log.comment = bundle.data['apilog_comment']
             
         log.save()
-        logger.info(str(('create, api log', log)) )
+        if(logger.isEnabledFor(logging.DEBUG)):
+            logger.debug(str(('create, api log', log)) )
 
 
         # TODO: create an analog of this in delete, update
         # if there is a listlog, it means "patch_list", or "put_list" were called
         if hasattr(self, 'listlog') and self.listlog:
-            logger.info(str(('update listlog', self.listlog)))
+            if(logger.isEnabledFor(logging.DEBUG)):
+                logger.debug(str(('update listlog', self.listlog)))
             added_keys = []
             if self.listlog.added_keys:
                 added_keys = json.loads(self.listlog.added_keys)
@@ -929,6 +933,7 @@ class ResourceResource(ManagedModelResource):
         bundle = super(ResourceResource,self).dehydrate(bundle)
         # Get the schema
         # FIXME: why is the resource registry keyed off of "field."+key ?
+        logger.info(str(('resource registry', ManagedResource.resource_registry)))
         resource = ManagedResource.resource_registry['fields.'+bundle.obj.key]
         if resource:
             bundle.data['schema'] = resource.build_schema();

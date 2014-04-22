@@ -48,6 +48,7 @@ define([
         });
 
       // convert the uriStack into the listmodel
+      var urlSuffix = self.urlSuffix = "";
       var listInitial = {};
       if(_.has(self.options,'uriStack')){
         var stack = self.options.uriStack;
@@ -57,6 +58,11 @@ define([
           if (i==stack.length) continue;
           var value = stack[i];
           if (!value || _.isEmpty(value) ){
+            continue;
+          }
+          
+          if(key == 'log'){
+            self.urlSuffix = key + '/' + value;
             continue;
           }
           
@@ -126,7 +132,7 @@ define([
       	state: _state  
       });
       
-      var url = self.options.resource.apiUri;
+      var url = self.options.resource.apiUri + '/' + self.urlSuffix;
       if (_.has(self.options, 'url')) {
         url = self.options.url;
       } else {
@@ -149,6 +155,12 @@ define([
       var self = this;
       var newStack = [];
       
+      // If a suffix was consumed, then put it back
+      if(self.urlSuffix != ""){
+        newStack = self.urlSuffix.split('/');
+      }
+      
+      var urlparams = '';
       _.each(self.LIST_ROUTE_ORDER, function(route){
         var value = self.listModel.get(route);
         if ( (!_.isObject(value) && value ) || 
@@ -163,6 +175,10 @@ define([
               val += k + "=" + v;
             });
             newStack.push(val);
+            
+            if(!_.isEmpty(urlparams)) urlparams += '&';
+            // TODO: replace comma with &'s
+            urlparams += val;
           }else if (route === 'order') {
               var val = '';
             _.each(value, function(v,k){
@@ -171,12 +187,21 @@ define([
               val += v + k;
             });
             newStack.push(val);
+
+            if(!_.isEmpty(urlparams)) urlparams += '&';
+              // TODO: replace comma with &'s
+              urlparams += 'order_by='+val;
           } else {
             newStack.push(value);
           }
         }
       });
-      
+      console.log('urlparams' + urlparams);
+      $('#download_link').html(
+          '<a class="btn btn-medium" href="' + 
+          self.collection.url + '?format=csv' + 
+          '&limit=' +self.collection.state.totalRecords + '&' + urlparams +
+          '">download</a>');
       self.trigger('uriStack:change', newStack );
     },
 
@@ -259,7 +284,7 @@ define([
         });
       var rppSelectorInstance = self.rppSelectorInstance = new genericSelector(
           { model: rppModel }, 
-          { label: 'Rows per page:', 
+          { label: 'Rows', 
             options: ['', '25','50','200','1000'], 
             selectorClass: 'input-small' });
       this.objects_to_destroy.push(rppSelectorInstance);
@@ -446,7 +471,10 @@ define([
         self.$("#extra-selector-div").append(
         		self.extraSelectorInstance.render().$el);
       }
-      self.$("#table-footer-div").append(self.footer.$el);
+      
+      
+      // FIXME: Disabling "add" - this should be enabled by meta information:
+      // self.$("#table-footer-div").append(self.footer.$el);
 
       this.delegateEvents();
       
@@ -482,7 +510,7 @@ define([
           msg += self.options.header_message;
         }
         if (msg) msg += ', ';
-        msg += 'total records: ' + self.collection.state.totalRecords;
+        msg += 'Count: ' + self.collection.state.totalRecords;
         self.$('#header_message').html(msg);
       });
       

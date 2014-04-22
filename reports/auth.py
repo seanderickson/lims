@@ -18,10 +18,11 @@ class CustomAuthenticationBackend():
         logger.info(str(('find and authenticate the user', username)))
         try:
             user = User.objects.get(username=username)
-            if user.password:
+            if user.has_usable_password():
                 if(user.check_password(password)):
                     return user
                 else:
+                    logger.info('user password authentication failed')
                     return None
             logger.info("no password set, try to authenticate with ecommons...")
             if(authenticate(username, password)):

@@ -6,12 +6,8 @@ logger = logging.getLogger(__name__)
 
 class CustomAuthenticationBackend():
     """
-    For a user registered with our system, 
-    - if superuser, find the user and check the password against the database 
-    user table entry,
-    - if non-superuser, find the user then check the password against the 
-    Ecommons server;
-    -- username will also be the ecommons_id
+    Authenticate users - if auth_user has a valid password, use that, otherwise,
+    use Ecommons.
     """
 
     def authenticate(self, username=None, password=None):

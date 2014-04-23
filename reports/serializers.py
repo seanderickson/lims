@@ -40,6 +40,20 @@ class CsvBooleanField(fields.ApiField):
             return bool(value)
 
 
+class TextIntegerField(fields.IntegerField):
+    """
+    Special hydration for text-to-integer interpretation; 
+    - convert empty string to None
+    """
+    dehydrated_type = 'integer'
+    help_text = 'Integer data. Ex: 2673'
+
+    def hydrate(self, bundle):
+        val = super(TextIntegerField,self).hydrate(bundle)
+        if not val or val == '': 
+            return None
+        return val
+
 class BackboneSerializer(Serializer):
     
     def from_json(self, content):

@@ -2,7 +2,7 @@
         <% keys.each(function(key) {
          %>
             <dt><%= _(fieldDefinitions[key]).has('title') ? fieldDefinitions[key]['title']:key %></dt>
-            <dd><%= ( 
+            <dd ><%= ( 
 				              _(object).has(key) && !_.isUndefined(object[key]) && 
 				                ( !_.isEmpty(object[key]) || _.isNumber(object[key]) ) 
 		                ) ? object[key]:'&nbsp;' %></dd>

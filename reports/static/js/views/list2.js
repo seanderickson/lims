@@ -151,6 +151,44 @@ define([
       this.buildGrid( self.options.schemaResult );
     },
     
+    getCollectionUrl: function() {
+      var self = this;
+      var urlparams = '';
+      _.each(self.LIST_ROUTE_ORDER, function(route){
+        var value = self.listModel.get(route);
+        if ( (!_.isObject(value) && value ) || 
+             ( _.isObject(value) && !_.isEmpty(value))) {
+          
+          if (route === 'search') {
+            var val = '';
+            _.each(value, function(v,k){
+              if (val !== '' ) val += '&';
+              
+              val += k + "=" + v;
+            });
+            if(!_.isEmpty(urlparams)) urlparams += '&';
+            urlparams += val;
+          }else if (route === 'order') {
+              var val = '';
+            _.each(value, function(v,k){
+              if (val !== '' ) val += '&';
+              
+              val += 'order_by=' + v + k;
+            });
+            if(!_.isEmpty(urlparams)) urlparams += '&';
+              urlparams += val;
+          } 
+        }
+      });
+      var url = self.collection.url + '?format=csv' + 
+                '&limit=' +self.collection.state.totalRecords;
+      if(!_.isEmpty(urlparams)) url += '&' + urlparams;
+//      console.log('url' + url);
+      return url;
+      
+    },
+    
+    // FIXME: refactor: getUriStack()
     reportState: function() {
       var self = this;
       var newStack = [];
@@ -160,7 +198,6 @@ define([
         newStack = self.urlSuffix.split('/');
       }
       
-      var urlparams = '';
       _.each(self.LIST_ROUTE_ORDER, function(route){
         var value = self.listModel.get(route);
         if ( (!_.isObject(value) && value ) || 
@@ -176,9 +213,6 @@ define([
             });
             newStack.push(val);
             
-            if(!_.isEmpty(urlparams)) urlparams += '&';
-            // TODO: replace comma with &'s
-            urlparams += val;
           }else if (route === 'order') {
               var val = '';
             _.each(value, function(v,k){
@@ -188,20 +222,11 @@ define([
             });
             newStack.push(val);
 
-            if(!_.isEmpty(urlparams)) urlparams += '&';
-              // TODO: replace comma with &'s
-              urlparams += 'order_by='+val;
           } else {
             newStack.push(value);
           }
         }
       });
-      console.log('urlparams' + urlparams);
-      $('#download_link').html(
-          '<a class="btn btn-medium" href="' + 
-          self.collection.url + '?format=csv' + 
-          '&limit=' +self.collection.state.totalRecords + '&' + urlparams +
-          '">download</a>');
       self.trigger('uriStack:change', newStack );
     },
 
@@ -254,12 +279,16 @@ define([
 
       self.listenTo(self.collection, "MyCollection:delete", function (model) {
           var modalDialog = new Backbone.View({
-              el: _.template(modalTemplate, { body: "Please confirm deletion of record: '" + model.get('toString') + "'", title: "Please confirm deletion" } ),
+              el: _.template(modalTemplate, { 
+                  body: "Please confirm deletion of record: '" + model.get('toString') + 
+                        "'", title: "Please confirm deletion" } ),
               events: {
                   'click #modal-cancel':function(event) {
-                      console.log('cancel button click event, '); // + JSON.stringify(fieldDefinitions));
+                      console.log('cancel button click event, '); 
                       event.preventDefault();
-                      $('#modal').modal('hide'); // TODO: read-up on modal!  this is not ideal with the reference to template elements!
+                      // TODO: read-up on modal!  this is not ideal with the 
+                      // reference to template elements!
+                      $('#modal').modal('hide'); 
                   },
                   'click #modal-ok':function(event) {
                       console.log('ok button click event, '); // + JSON.stringify(fieldDefinitions));
@@ -286,7 +315,7 @@ define([
           { model: rppModel }, 
           { label: 'Rows', 
             options: ['', '25','50','200','1000'], 
-            selectorClass: 'input-small' });
+            selectorClass: 'input-mini' });
       this.objects_to_destroy.push(rppSelectorInstance);
       this.listenTo(this.listModel, 'change: rpp', function(){
           rppModel.set({ selection: String(self.listModel.get('rpp')) });
@@ -294,6 +323,9 @@ define([
       this.listenTo(rppModel, 'change', function() {
           console.log('===--- rppModel change');
           self.listModel.set('rpp', String(rppModel.get('selection')));
+          
+          self.collection.setPageSize(parseInt(self.listModel.get('rpp')));
+
       });
 
       var paginator = self.paginator = new Backgrid.Extension.Paginator({
@@ -311,7 +343,9 @@ define([
     	  // from https://github.com/wyuenho/backgrid/issues/432
     	  goBackFirstOnSort: false, // Default is true
 
-    	  collection: self.collection
+    	  collection: self.collection,
+    	  
+//    	  className: 'span6 pull-left pull-down'
     	});            
       this.objects_to_destroy.push(paginator);
 
@@ -451,6 +485,12 @@ define([
           });
       }
     },
+    
+    afterRender: function(){
+//      $('.pull-down').each(function() {
+//        $(this).css('margin-top', $(this).parent().height()-$(this).height())
+//      });
+    },
 
     beforeRender: function(){
       console.log('--render start');
@@ -465,14 +505,19 @@ define([
       var finalGrid = self.finalGrid = this.grid.render();
       self.$("#example-table").append(finalGrid.$el);
       self.$("#paginator-div").append(self.paginator.render().$el);
-      self.$("#rows-selector-div").append(
+//      self.paginator.$el.addClass('pull-down');
+      self.$('#list-header').append(
+          '<div class="span2 pull-right pull-down"><a class="btn btn-medium pull-down pull-right" id="download_link" href="' + 
+          self.getCollectionUrl() +
+          '">download</a></div>');
+      self.$("#list-header").append(
       		self.rppSelectorInstance.render().$el);
       if(!_.isUndefined(self.extraSelectorInstance)){
-        self.$("#extra-selector-div").append(
+        self.$("#list-header").append(
         		self.extraSelectorInstance.render().$el);
+//        self.extraSelectorInstance.$el.attr("class", "well span4 pull-right");
       }
-      
-      
+              
       // FIXME: Disabling "add" - this should be enabled by meta information:
       // self.$("#table-footer-div").append(self.footer.$el);
 
@@ -510,7 +555,10 @@ define([
           msg += self.options.header_message;
         }
         if (msg) msg += ', ';
-        msg += 'Count: ' + self.collection.state.totalRecords;
+        msg += 'Page ' + self.collection.state.currentPage + 
+               ' of ' + self.collection.state.lastPage + 
+               ' pages, ' + self.collection.state.totalRecords + 
+               ' ' + self.options.resource.title + ' records total';
         self.$('#header_message').html(msg);
       });
       
@@ -519,7 +567,6 @@ define([
         self.collection.fetch(fetchOptions);
         self.reportState();
       }
-      console.log('rendered');
       return this;
     },
     
@@ -544,6 +591,8 @@ define([
         'page': currentPage,
         'order': orderHash 
       });
+      
+      $('#download_link').attr('href', self.getCollectionUrl());
     }
 
   });

@@ -6,8 +6,11 @@ define([
 ], function($, _, Backbone, genericSelectorTemplate) {
 
   var GenericSelector = Backbone.View.extend({
-
-      initialize : function(attributes, options) {
+    
+    /** default to span4, adjust as needed **/
+    className : 'span2 pull-down pull-right',
+    
+    initialize : function(attributes, options) {
 
           this.listenTo(this.model, 'change', this.changeNotified);
           this._options = options;
@@ -37,7 +40,7 @@ define([
               this._options.options.unshift('');
               // create a blank entry
           }
-          this.$el.append(_.template(genericSelectorTemplate, {
+          this.$el.html(_.template(genericSelectorTemplate, {
               label : this._options.label,
               'options' : _(this._options.options)
           }));

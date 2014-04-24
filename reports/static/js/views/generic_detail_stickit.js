@@ -19,7 +19,8 @@ define([
 	  initialize: function(args) {
 	    var self = this;
       var schema = this.model.resource.schema;
-      var buttons = this.buttons = args.buttons || ['edit','delete','history','back'];
+//      var buttons = this.buttons = args.buttons || ['edit','delete','history','back'];
+      var buttons = this.buttons = args.buttons || ['download','history','back'];
       var keys = this.detailKeys = schema.detailKeys(this.model);
       var bindings = this.bindings = {};
       var schemaBindings = this.schemaBindings = {};

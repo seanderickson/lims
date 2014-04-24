@@ -8,7 +8,7 @@
 }
 div.backgrid-paginator {
   display: inline;
-	text-align: left;
+/* 	text-align: left; */
 }
 
 ul.backgrid-paginator {
@@ -16,15 +16,20 @@ ul.backgrid-paginator {
   text-align: left;
 }
 
+dd {
+	white-space: nowrap;
+	overflow-x: auto;
+}
+
 /** bootstrap overrides **/
 
 @media screen{
 	.row-fluid [class*="span"] {
-    display: -webkit-inline-box;
+    display: inherit;
 	}
-  .row-fluid .span10 {
+/*   .row-fluid .span10 {
     width: 87%;
-  }    
+  }  */   
   .well {
     padding: 5px;
   }
@@ -36,12 +41,22 @@ ul.backgrid-paginator {
 	  padding-right: 0px;
 	}
 }
-
+.no-space [class*="span"] {
+    margin-left: 0;
+    margin-right: 0;
+}
+.one-space [class*="span"] {
+    margin-left: 2px;
+    margin-right: 0;
+}
 
 /** other **/
 
 #content {
-  overflow-x: auto; /* for pages with too many columns */
+	/* style choice:
+	   for pages with too many columns, will contain them in the parent,
+	   with a scrollbar on the bottom */
+/*   overflow-x: auto;  */
 }
 
 #content.fullwidth {

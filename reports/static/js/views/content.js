@@ -10,10 +10,12 @@ define([
   'views/library',
   'views/user',
   'text!templates/content.html',
-  'text!templates/welcome.html'
+  'text!templates/welcome.html',
+  'text!templates/about.html'
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
-         LibraryView, UserAdminView, layout, welcomeLayout) {
+         LibraryView, UserAdminView, layout, welcomeLayout, 
+         aboutLayout) {
   
   var VIEWS = {
     'ListView': ListView, 
@@ -132,6 +134,18 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       // Test for a view ID
       var uiResourceId = uriStack.shift();
       this.consumedStack.push(uiResourceId);
+      
+      
+      if (uiResourceId == 'about'){
+        var WelcomeView = Backbone.Layout.extend({
+          template: _.template(aboutLayout)
+        });
+        var view = new WelcomeView();
+        self.setView('#content', view).render();
+        return;
+      }
+      
+      
       var resource = appModel.getResource(uiResourceId);
 
       // Test for list args, if not found, then it's a detail view

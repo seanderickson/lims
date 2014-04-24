@@ -933,7 +933,6 @@ class ResourceResource(ManagedModelResource):
         bundle = super(ResourceResource,self).dehydrate(bundle)
         # Get the schema
         # FIXME: why is the resource registry keyed off of "field."+key ?
-        logger.info(str(('resource registry', ManagedResource.resource_registry)))
         resource = ManagedResource.resource_registry['fields.'+bundle.obj.key]
         if resource:
             bundle.data['schema'] = resource.build_schema();

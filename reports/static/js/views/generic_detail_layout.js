@@ -22,6 +22,7 @@ define([
 	  },
     events: {
       'click button#save': 'save',
+      'click button#download': 'download',
       'click button#delete': 'delete',
       'click button#edit': 'showEdit',
       'click button#cancel': 'cancel',
@@ -126,6 +127,10 @@ define([
         });
       }
     },    
+    
+    download: function(event){
+      $('#tmpFrame').attr('src', this.model.url + '?format=csv' );
+    },
 
     cancel: function(event){
       event.preventDefault();

@@ -40,11 +40,28 @@ define([
           this.changeUri();
         }
       },
+      
+      updateTopMenu: function(ui_resource_id) {
+        
+        $('ul.topnav > li').each(function(index){
+          var id = $(this).attr('id');
+          if( id != ui_resource_id ){
+            $(this).removeClass('active');
+          }else{
+            $(this).addClass('active');
+          }
+        });        
+        if(_.isUndefined(ui_resource_id)){
+          $('ul.topnav > #home').addClass('active');
+        }
+      },
 
       changeUri: function() {
         var uriStack = appModel.get('uriStack');
         var ui_resource_id = uriStack[0];
         console.log('got ui_resource: ' + ui_resource_id);
+        
+        this.updateTopMenu(ui_resource_id);
 
         this.$('li').removeClass('active');
         if(_.isEmpty(uriStack)) return; // Home, for now
@@ -52,7 +69,7 @@ define([
         var menus = appModel.get('menu');
         var found_menus = this.find_submenu_path(menus, ui_resource_id);
         if(_.isUndefined(found_menus)){
-          window.alert('unknown submenu: ' + ui_resource_id);
+          console.log('unknown submenu: ' + ui_resource_id);
           return;
         }else{
           _.each(found_menus, function(menu){
@@ -139,6 +156,7 @@ define([
         }
         this.$('li').removeClass('active');
         this.$('#' + ui_resource_id).addClass('active');
+        this.updateTopMenu(ui_resource_id);
       }
 
     });

@@ -5,10 +5,13 @@ define([
   'backbone_pageable',
   'backgrid',
   'iccbl_backgrid',
+  'models/app_state',
+  'views/generic_selector',
   'text!templates/simple-list.html',
-  'text!templates/modal_ok_cancel.html',
-  'text!templates/generic-selector.html',
-], function($, _, Backbone, BackbonePageableCollection, Backgrid, Iccbl, listTemplate, modalTemplate, genericSelectorTemplate ){
+  'text!templates/modal_ok_cancel.html'
+], function(
+    $, _, Backbone, BackbonePageableCollection, Backgrid, Iccbl, appModel, 
+    genericSelector, listTemplate, modalTemplate ){
 
   // for compatibility with require.js, attach PageableCollection in the right place on the Backbone object
   // see https://github.com/wyuenho/backbone-pageable/issues/62
@@ -24,7 +27,7 @@ define([
       ajaxComplete(); // TODO: bind this closer to the collection
   });
 
-  var ListView = Backbone.View.extend({
+  var ListView = Backbone.Layout.extend({
     LIST_ROUTE_ORDER: ['rpp', 'page','order','search'],
 
     initialize : function(attributes, options) {
@@ -67,7 +70,7 @@ define([
                 }
             });
             var extraSelectorInstance = self.extraSelectorInstance =
-                new Iccbl.GenericSelector({ model: extraSelectorModel } , schemaResult.extraSelectorOptions );
+                new genericSelector({ model: extraSelectorModel } , schemaResult.extraSelectorOptions );
             this.objects_to_destroy.push(extraSelectorInstance);
 
             this.listenTo(this.model, 'change: search', function(){
@@ -93,12 +96,17 @@ define([
         this.listenTo(
           self.collection, "MyCollection:detail", 
           function (model) {
-            var idList = Iccbl.getIdKeys(model,schemaResult);
-            appModel.set({
-              current_scratch: { schemaResult: schemaResult, model: model},
-            });
-            // NOTE: prefer to send custom signal, rather than uriStack:change for 
-            // detail/edit; this allows the parent to decide URI signalling
+            try{
+              
+            } catch (e){
+              console.log('caught error: ' + JSON.stringify(e));
+              var idList = Iccbl.getIdKeys(model,schemaResult);
+              appModel.set({
+                current_scratch: { schemaResult: schemaResult, model: model},
+              });
+              // NOTE: prefer to send custom signal, rather than uriStack:change for 
+              // detail/edit; this allows the parent to decide URI signalling
+            }
             self.trigger('detail', model);
           });        
         
@@ -135,7 +143,11 @@ define([
         if(!_.isUndefined(self.extraSelectorInstance)){
             self.$("#extra-selector-div").append(self.extraSelectorInstance.render().$el);
         }
-
+        var fetched = false;
+        if ( !fetched ) {
+          var fetchOptions = { reset: false, error: appModel.jqXHRerror };
+          self.collection.fetch(fetchOptions);
+        }
         this.delegateEvents();
         return this;
     }

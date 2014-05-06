@@ -26,6 +26,9 @@ define([
       this.tabViews = {}; // view cache
       this.uriStack = args.uriStack;
       this.consumedStack = [];
+      this.title = Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource.schema);
+      this.model.id = Iccbl.getIdFromIdAttribute(this.model, this.model.resource.schema);
+      
       _.bindAll(this, 'click_tab');
     },
     
@@ -141,93 +144,88 @@ define([
         var resourceId = 'usergroup';
         var resource = appModel.getResource(resourceId);
 
-//        var createGroups = function(schemaResult){
-//          var resource = schemaResult.resource;
-          var columns = Iccbl.createBackgridColModel(
-              resource.schema.fields, Iccbl.MyHeaderCell);
+        var columns = Iccbl.createBackgridColModel(
+            resource.schema.fields, Iccbl.MyHeaderCell);
 
-          // make a checkbox column that will be used to manage the group->user relationship
-          columns.unshift({
-              column: "isForUser",
-              name: "isForUser",
-              label: "Select groups for " + self.title,
-              cell: "boolean"
-          });
+        // make a checkbox column that will be used to manage the group->user relationship
+        columns.unshift({
+            column: "isForUser",
+            name: "isForUser",
+            label: "Select groups for " + self.title,
+            cell: "boolean"
+        });
 
-          var ListModel = Backbone.Model.extend({
-              defaults: {
-                  rpp: 25,
-                  page: 1,
-                  order: {},
-                  search: {}}
-              });
-          var listModel = new ListModel({});
-          
-          var _state = {
-              currentPage: parseInt(listModel.get('page')),
-              pageSize: parseInt(listModel.get('rpp'))
-            };
+        var ListModel = Backbone.Model.extend({
+            defaults: {
+                rpp: 25,
+                page: 1,
+                order: {},
+                search: {}}
+            });
+        var listModel = new ListModel({});
+        
+        var _state = {
+            currentPage: parseInt(listModel.get('page')),
+            pageSize: parseInt(listModel.get('rpp'))
+          };
 
-          var Collection = Iccbl.MyCollection.extend({
-            state: _state
-          });
-          var collection  = new Collection({
-            'url': resource.apiUri,
-            listModel: listModel
-          });
+        var Collection = Iccbl.MyCollection.extend({
+          state: _state
+        });
+        var collection  = new Collection({
+          'url': resource.apiUri,
+          listModel: listModel
+        });
 
-          // collection.bind("change reset add remove", function(){
-          collection.bind("sync", function(){
-            collection.each(function(model){
+        // collection.bind("change reset add remove", function(){
+        collection.bind("sync", function(){
+          collection.each(function(model){
+            var currentUsers = model.get('users');
+            var currentUserUri = self.model.get('resource_uri');
+            // Note; the resource_uri for the current user may be full, and the
+            // uri's from the server may be relative (so not including "api/v1")
+            // model.set('isForUser', _.find(currentUsers, function(user_uri) {
+              // return  currentUserUri.indexOf(user_uri) != -1;
+            // }));
+
+            model.set('isForUser', Iccbl.containsByMatch(currentUsers, currentUserUri) );
+
+            // when the checkbox is selected, use a custom model event to 
+            // update the group model relationship and refetch the user model
+            // reln is group->users, so update it that way
+            model.on('change:isForUser', function(model){
+              console.log('model change: ' + JSON.stringify(model));
               var currentUsers = model.get('users');
               var currentUserUri = self.model.get('resource_uri');
-              // Note; the resource_uri for the current user may be full, and the
-              // uri's from the server may be relative (so not including "api/v1")
-              // model.set('isForUser', _.find(currentUsers, function(user_uri) {
-                // return  currentUserUri.indexOf(user_uri) != -1;
-              // }));
-
-              model.set('isForUser', Iccbl.containsByMatch(currentUsers, currentUserUri) );
-
-              // when the checkbox is selected, use a custom model event to 
-              // update the group model relationship and refetch the user model
-              // reln is group->users, so update it that way
-              model.on('change:isForUser', function(model){
-                console.log('model change: ' + JSON.stringify(model));
-                var currentUsers = model.get('users');
-                var currentUserUri = self.model.get('resource_uri');
-                var changed = false;
-                var alreadyContained = Iccbl.containsByMatch(currentUsers, currentUserUri);
-                if(model.get('isForUser') && ! alreadyContained) { 
-                  currentUsers.unshift(currentUserUri);
-                  changed = true;
-                }else if(!model.get('isForUser') && alreadyContained ){
-                  currentUsers = _.without(currentUsers, currentUserUri);
-                  changed = true;
-                }
-                if(changed){
-                  model.save({'users':currentUsers},{
-                    patch: true,
-                    success: function(){
-                      self.model.fetch();
-                    }
-                  });
-                }
-              });
+              var changed = false;
+              var alreadyContained = Iccbl.containsByMatch(currentUsers, currentUserUri);
+              if(model.get('isForUser') && ! alreadyContained) { 
+                currentUsers.unshift(currentUserUri);
+                changed = true;
+              }else if(!model.get('isForUser') && alreadyContained ){
+                currentUsers = _.without(currentUsers, currentUserUri);
+                changed = true;
+              }
+              if(changed){
+                model.save({'users':currentUsers},{
+                  patch: true,
+                  success: function(){
+                    self.model.fetch();
+                  }
+                });
+              }
             });
           });
-          
+        });
+        
 
-          var view = new SimpleListView(
-              { model: listModel },
-              { columns: columns,collection: collection, schemaResult: resource.schema });
-          Backbone.Layout.setupView(view);
-          self.listenTo(view , 'uriStack:change', self.reportUriStack);
-          self.tabViews[key] = view;
-          self.setView("#tab_container", view ).render();
-//        };
-//  
-//        appModel.getSchema(resourceId, createGroups);
+        var view = new SimpleListView(
+            { model: listModel },
+            { columns: columns,collection: collection, schemaResult: resource.schema });
+//        Backbone.Layout.setupView(view);
+        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        self.tabViews[key] = view;
+        self.setView("#tab_container", view ).render();
       } else {
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.setView("#tab_container", view ).render();
@@ -245,89 +243,84 @@ define([
         var resourceId = 'permission';
         var resource = appModel.getResource(resourceId);
 
-//        // get all of the permissions first, then checkoff the ones that are for this user
-//        var createPermissions = function(schemaResult){
-//          var resource = schemaResult.resource;
-          var columns = Iccbl.createBackgridColModel(
-              resource.schema.fields, Iccbl.MyHeaderCell);
+        // get all of the permissions first, then checkoff the ones that are for this user
+        var columns = Iccbl.createBackgridColModel(
+            resource.schema.fields, Iccbl.MyHeaderCell);
 
-          // make a checkbox column that will be used to manage the user->permission relationship
-          columns.unshift({
-              column: "isForUser",
-              name: "isForUser",
-              label: "Select permissions for " + self.title,
-              cell: "boolean"
-          });
+        // make a checkbox column that will be used to manage the user->permission relationship
+        columns.unshift({
+            column: "isForUser",
+            name: "isForUser",
+            label: "Select permissions for " + self.title,
+            cell: "boolean"
+        });
 
-          var ListModel = Backbone.Model.extend({
-              defaults: {
-                  rpp: 25,
-                  page: 1,
-                  order: {},
-                  search: {}}
+        var ListModel = Backbone.Model.extend({
+            defaults: {
+                rpp: 25,
+                page: 1,
+                order: {},
+                search: {}}
+            });
+        var listModel = new ListModel();
+
+        var _state = {
+            currentPage: parseInt(listModel.get('page')),
+            pageSize: parseInt(listModel.get('rpp'))
+          };
+
+        var Collection = Iccbl.MyCollection.extend({
+          state: _state
+        });
+        var collection  = new Collection({
+          'url': resource.apiUri,
+          listModel: listModel
+        });
+
+        // update the collection models with a new attribute tied to the checkbox column
+        collection.bind("sync", function(){
+          collection.each(function(model){
+            var currentPerms = self.model.get('permissions');
+            var currentPermissionUri = model.get('resource_uri');
+            model.set('isForUser', Iccbl.containsByMatch(currentPerms, currentPermissionUri));
+
+            // when the checkbox is selected, use a custom model event to 
+            // update the group model relationship and refetch the user model
+            model.on('change:isForUser', function(model){
+                var currentPerms = self.model.get('permissions');
+                var permissionUri = model.get('resource_uri');
+                var containsByMatch = Iccbl.containsByMatch(currentPerms, permissionUri);
+                var changed = false;
+                if(model.get('isForUser') && ! containsByMatch ){
+                  currentPerms.push(permissionUri);
+                  changed = true;
+                }else if(!model.get('isForUser')  && containsByMatch ) {
+                  currentPerms = _.without(currentPerms, permissionUri);
+                  changed = true
+                }
+                if(changed){
+                  self.model.save({'permissions': currentPerms },{
+                    patch: true,
+                    success: function(){
+                      console.log('refetch the permission model');
+                      model.fetch();
+                    }
+                  });
+                }
               });
-          var listModel = new ListModel();
+            });
+        });
 
-          var _state = {
-              currentPage: parseInt(listModel.get('page')),
-              pageSize: parseInt(listModel.get('rpp'))
-            };
+        collection.fetch();
 
-          var Collection = Iccbl.MyCollection.extend({
-            state: _state
-          });
-          var collection  = new Collection({
-            'url': resource.apiUri,
-            listModel: listModel
-          });
-
-          // update the collection models with a new attribute tied to the checkbox column
-          collection.bind("sync", function(){
-            collection.each(function(model){
-              var currentPerms = self.model.get('permissions');
-              var currentPermissionUri = model.get('resource_uri');
-              model.set('isForUser', Iccbl.containsByMatch(currentPerms, currentPermissionUri));
-
-              // when the checkbox is selected, use a custom model event to 
-              // update the group model relationship and refetch the user model
-              model.on('change:isForUser', function(model){
-                  var currentPerms = self.model.get('permissions');
-                  var permissionUri = model.get('resource_uri');
-                  var containsByMatch = Iccbl.containsByMatch(currentPerms, permissionUri);
-                  var changed = false;
-                  if(model.get('isForUser') && ! containsByMatch ){
-                    currentPerms.push(permissionUri);
-                    changed = true;
-                  }else if(!model.get('isForUser')  && containsByMatch ) {
-                    currentPerms = _.without(currentPerms, permissionUri);
-                    changed = true
-                  }
-                  if(changed){
-                    self.model.save({'permissions': currentPerms },{
-                      patch: true,
-                      success: function(){
-                        console.log('refetch the permission model');
-                        model.fetch();
-                      }
-                    });
-                  }
-                });
-              });
-          });
-
-          collection.fetch();
-
-          var view = new SimpleListView(
-              { model: listModel },
-              { columns: columns,collection: collection, schemaResult: resource.schema});
-          Backbone.Layout.setupView(view);
-          self.listenTo(view , 'uriStack:change', self.reportUriStack);
-          self.tabViews[key] = view;
-          self.setView("#tab_container", view ).render();
+        var view = new SimpleListView(
+            { model: listModel },
+            { columns: columns,collection: collection, schemaResult: resource.schema});
+        Backbone.Layout.setupView(view);
+        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        self.tabViews[key] = view;
+        self.setView("#tab_container", view ).render();
             
-//        };
-//
-//        appModel.getSchema(resourceId, createPermissions);
       } else {
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.setView("#tab_container", view ).render();

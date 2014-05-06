@@ -16,6 +16,6 @@ v1_api.register(UserGroupResource())
 v1_api.register(PermissionResource())
 
 urlpatterns = patterns('',
-    url(r'^$', views.main, name="home"),
+#     url(r'^$', views.main, name="home"),
     (r'^api/', include(v1_api.urls)),
 )

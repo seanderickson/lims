@@ -41,7 +41,6 @@ from tastypie.test import ResourceTestCase, TestApiClient
 from tastypie.fields import BooleanField
 
 from reports.serializers import CsvBooleanField,CSVSerializer, SDFSerializer
-
 from reports.utils.sdf2py import MOLDATAKEY
 
 
@@ -53,8 +52,6 @@ try:
     APP_ROOT_DIR = os.path.abspath(os.path.dirname(reports.__path__[0]))
 except:
     APP_ROOT_DIR = os.path.abspath(os.path.dirname(reports.__path__))
-
-
 
 
 def is_boolean(field):
@@ -86,7 +83,7 @@ def equivocal(val1, val2):
     
     if not val1:
         if val2:
-            if len(val2) > 0:
+            if val2 or len(val2) > 0:
                 return False, ('val1', val1, 'val2', val2 )
         return True, ('val1', val1, 'val2', val2 )
     
@@ -114,7 +111,8 @@ def equivocal(val1, val2):
 #NOTE only works for String comparisons
 def assert_obj1_to_obj2(
         obj1, obj2, 
-        keys=['key', 'scope', 'ordinal', 'username', 'name'], 
+        keys=[],
+#         keys=['key', 'scope', 'ordinal', 'username', 'name'], 
         excludes=['resource_uri']):
     '''
     For testing equality from the CSV input to the JSON response of what is 
@@ -179,7 +177,8 @@ def find_obj_in_list(obj, item_list, **kwargs):
             logger.debug(str(('found', obj, item)))
             return True, (item)
         else:
-            list_msgs.append(msgs)
+            if not msgs in list_msgs:
+                list_msgs.append(msgs)
     return False, ('obj not found in list', obj, list_msgs)
 
 def find_all_obj_in_list(list1, list2, **kwargs):
@@ -511,6 +510,7 @@ class MetaHashResourceBootstrap():
         data_for_get - dict of extra header information to send with the GET request
         '''
         data_for_get.setdefault('limit', 999 )
+        data_for_get.setdefault('HTTP_APILOG_COMMENT', 'patch_test: %s' % filename )
         resource_uri = BASE_URI + '/' + resource_name
         
         logger.info(str(('===resource_uri', resource_uri)))
@@ -520,7 +520,7 @@ class MetaHashResourceBootstrap():
             logger.info(str(('Submitting patch...', bootstrap_file)))
             resp = self.testApiClient.patch(
                 resource_uri, format='csv', data=input_data, 
-                authentication=self.get_credentials() )
+                authentication=self.get_credentials(), **data_for_get )
             logger.info(str(('Response: ' , resp.status_code)))
 #            self.assertHttpAccepted(resp)
             self.assertTrue(resp.status_code in [202, 204], str((resp)))
@@ -550,7 +550,11 @@ class MetaHashResourceBootstrap():
                         inputobj[id_key] in outputobj['resource_uri'], 
                         str(('wrong resource_uri returned:', outputobj,
                              'should contain id key', id_key, 'val', inputobj[id_key])))
-
+            #TODO: GET the apilogs expected and test them
+            
+            
+            
+            
             # return both collections for further testing
             return (input_data['objects'], new_obj['objects']) 
 
@@ -562,6 +566,7 @@ class MetaHashResourceBootstrap():
             the returned resource_uri field
         '''
         data_for_get.setdefault('limit', 999 )
+        data_for_get.setdefault('HTTP_APILOG_COMMENT', 'put_test: %s' % filename )
         resource_uri = BASE_URI + '/' + resource_name
 
         with open(filename) as bootstrap_file:
@@ -570,10 +575,11 @@ class MetaHashResourceBootstrap():
             logger.info(str(('Submitting put...', bootstrap_file)))
             resp = self.testApiClient.put(
                 resource_uri, format='csv', data=input_data, 
-                authentication=self.get_credentials() )
+                authentication=self.get_credentials(), **data_for_get )
             logger.info(str(('Response: ' , resp.status_code)))
 #            self.assertHttpAccepted(resp)
-            self.assertTrue(resp.status_code in [200, 202, 204], str((resp)))
+            self.assertTrue(resp.status_code in [200, 202, 204], 
+                            str((resp.status_code, str((resp)) )) )
     
             logger.info(str(('check put data for',resource_name,
                              'execute get on:',resource_uri)))
@@ -600,6 +606,10 @@ class MetaHashResourceBootstrap():
                         str(('wrong resource_uri returned:', outputobj,
                              'should contain id key', id_key, 'val', inputobj[id_key])))
                 
+            #TODO: GET the apilogs expected and test them
+            
+            
+            
             # return both collections for further testing
             return (input_data['objects'], new_obj['objects']) 
                     
@@ -889,11 +899,13 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
         logger.info(str(('==== test1_user_test_data =====')))
         
         filename = os.path.join(self.directory,'test_data/users1.csv')
-        self._put_test('user', filename)
+        # NOTE: verify the username manually, because the username will
+        # be set to the ecommons id if not set
+        self._put_test('user', filename, keys_not_to_check=['username'])
         
         logger.info(str(('==== test1_user_test_data done =====')))
     
-    def _runonlythisone_test2_user_permissions(self):
+    def test2_user_permissions(self):
         logger.info(str(('==== test2_user_permissions =====')))
         self._test1_user_test_data()
         
@@ -931,6 +943,16 @@ class UserGroupResource(UserResource):
         #create users
         self._test1_user_test_data()
         
+#         
+#         data_for_get = {}
+#         data_for_get.setdefault('limit', 999 )
+#         resp = self.api_client.get(
+#                 '/reports/api/v1/user', format='json', 
+#                 authentication=self.get_credentials(), data=data_for_get)
+#         logger.info(str(('--------resp to get:', resp.status_code)))
+#         self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+#         new_obj = self.deserialize(resp)
+
         logger.info(str(('----- test2_usergroup =====')))
 
         filename = os.path.join(self.directory,'test_data/usergroups1.csv')
@@ -940,9 +962,10 @@ class UserGroupResource(UserResource):
         logger.info(str(('==== test2_usergroup done =====')))
 
 
-    def _runonlythisone_test3_user_groups(self):
+    def test3_user_groups(self):
         logger.info(str(('==== test3_user_groups =====')))
         self._test2_usergroup()
+        
         logger.info(str(('==== test3_user_groups start =====')))
         filename = os.path.join(self.directory,'test_data/users3_groups_patch.csv')
         self._patch_test('user', filename)

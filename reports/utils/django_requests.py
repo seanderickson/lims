@@ -4,6 +4,7 @@ import argparse
 import logging
 from urlparse import urlparse
 import sys
+import getpass
 
 DEBUG=False
 LOGIN_FORM = '/db/login/'
@@ -17,12 +18,15 @@ logger = logging.getLogger(__name__)
 
 
 def get_logged_in_session(username, password, base_url, 
-                          login_form=ACCOUNTS_LOGIN_FORM,
+                          login_form=None,
                           headers={}):
     ''' 
     Preferred form, first gets the csrf token from the account form, then uses
     this to perform subsequent operations.
     '''
+    if not login_form:
+        login_form=ACCOUNTS_LOGIN_FORM
+    
     if DEBUG:
         print 'username:%s:%s,%s,%s' % (username,password,base_url,login_form)
     s = requests.Session()
@@ -49,9 +53,11 @@ def get_logged_in_session(username, password, base_url,
         sys.stderr.write('request: %s\n' % str((r)) )
     
     prepped = s.prepare_request(r)
-
+    
+    # Post the login request to the url
+    logger.info(str(('post the login request', r.url, r.method)))
     r = s.send(prepped)
-
+    logger.info(str(('response', r.status_code)))
     if DEBUG:
         sys.stderr.write('login response: %s\n' % r.content )
     
@@ -103,6 +109,7 @@ def delete(url, request_or_session, headers):
 
 
 def get(url,request_or_session,headers): 
+    logger.info(str(('GET', url)))
     r = request_or_session.get(url,headers=headers)
     
     if r.status_code not in [200]:
@@ -160,13 +167,15 @@ def patch(url,request_or_session,file, headers={} ):
 parser = argparse.ArgumentParser(description='url')
 parser.add_argument('url', help='url to connect to')
 parser.add_argument('-u', '--username', help='username', required=True)
-parser.add_argument('-p', '--password', help='password', required=True)
+parser.add_argument('-p', '--password', help='password', required=False)
 parser.add_argument('-f', '--file', help='file', required=False)
 parser.add_argument('-a', '--action', help='HTTP action', required=True,
                     choices=['GET','PUT','PATCH','DELETE'])
 parser.add_argument('--header', action='append')
 parser.add_argument('-v', '--verbose', dest='verbose', action='count',
                 help="Increase verbosity (specify multiple times for more)")    
+parser.add_argument('--login_form', help='login form to use, i.e. /accounts/login/', 
+                    required=False)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -180,6 +189,10 @@ if __name__ == "__main__":
     logging.basicConfig(
         level=log_level, 
         format='%(msecs)d:%(module)s:%(lineno)d:%(levelname)s: %(message)s')        
+
+    password = args.password
+    if not password:
+        password = getpass.getpass()
     
     # Default headers
     headers = {'content-type': 'application/json',
@@ -197,7 +210,7 @@ if __name__ == "__main__":
     url = args.url
     u = urlparse(url)
     base_url = '%s://%s' % (u.scheme,u.netloc)
-    s = get_logged_in_session(args.username,args.password,base_url)
+    s = get_logged_in_session(args.username,password,base_url,login_form=args.login_form)
     
     action = args.action
     

@@ -143,6 +143,8 @@ if __name__ == "__main__":
     elif args.verbose >= 2:
         log_level = logging.DEBUG
         DEBUG=True
+	from reports.utils.django_requests import DEBUG as DJANGO_REQUESTS_DEBUG
+	DJANGO_REQUESTS_DEBUG=True
     logging.basicConfig(
         level=log_level, 
         format='%(msecs)d:%(module)s:%(lineno)d:%(levelname)s: %(message)s')        
@@ -203,4 +205,5 @@ if __name__ == "__main__":
                         '- cannot POST multiple objects to tastypie; ',
                         'therefore the "post" command is invalid with the initialization scripts',
                         'resource entry: ',json.dumps(action) )) )
-    
+
+

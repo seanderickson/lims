@@ -6,11 +6,11 @@ from django.utils.encoding import smart_str
 
 logger = logging.getLogger(__name__)
 
-
-def main(request):
-    search = request.GET.get('search', '')
-    logger.debug(str(('main search: ', search)))
-    return render(request, 'reports/index_require.html', {'search': search})
+#  
+# def main(request):
+#     search = request.GET.get('search', '')
+#     logger.debug(str(('main search: ', search)))
+#     return render(request, 'reports/index_require.html', {'search': search})
 
 #def fieldinformation(request):
 #    search = request.GET.get('search', '')

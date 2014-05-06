@@ -314,17 +314,19 @@ define([
       var rppSelectorInstance = self.rppSelectorInstance = new genericSelector(
           { model: rppModel }, 
           { label: 'Rows', 
-            options: ['', '25','50','200','1000'], 
+            options: ['25','50','200','1000'], 
             selectorClass: 'input-mini' });
       this.objects_to_destroy.push(rppSelectorInstance);
       this.listenTo(this.listModel, 'change: rpp', function(){
           rppModel.set({ selection: String(self.listModel.get('rpp')) });
       });
       this.listenTo(rppModel, 'change', function() {
-          console.log('===--- rppModel change');
-          self.listModel.set('rpp', String(rppModel.get('selection')));
+          var rpp = parseInt(rppModel.get('selection'));
+          self.listModel.set('rpp', String(rpp));
+
+          console.log('===--- rppModel change: ' + rpp );
           
-          self.collection.setPageSize(parseInt(self.listModel.get('rpp')));
+          self.collection.setPageSize(rpp);
 
       });
 
@@ -365,9 +367,15 @@ define([
               }
           });
         }
+        var selectorOptions = _.clone(schemaResult.extraSelectorOptions);
+        if (!_.contains(selectorOptions.options, '')) {
+          selectorOptions.options.unshift('');
+          // create a blank entry
+        }
+
         var extraSelectorInstance = self.extraSelectorInstance =
             new genericSelector({ model: extraSelectorModel }, 
-                                        schemaResult.extraSelectorOptions );
+                selectorOptions );
         this.objects_to_destroy.push(extraSelectorInstance);
 
         this.listenTo(this.listModel, 'change: search', function(){
@@ -505,17 +513,15 @@ define([
       var finalGrid = self.finalGrid = this.grid.render();
       self.$("#example-table").append(finalGrid.$el);
       self.$("#paginator-div").append(self.paginator.render().$el);
-//      self.paginator.$el.addClass('pull-down');
       self.$('#list-header').append(
-          '<div class="span2 pull-right pull-down"><a class="btn btn-medium pull-down pull-right" id="download_link" href="' + 
+          '<div class="pull-right pull-down"><a class="btn btn-medium pull-down pull-right" id="download_link" href="' + 
           self.getCollectionUrl() +
           '">download</a></div>');
       self.$("#list-header").append(
       		self.rppSelectorInstance.render().$el);
       if(!_.isUndefined(self.extraSelectorInstance)){
         self.$("#list-header").append(
-        		self.extraSelectorInstance.render().$el);
-//        self.extraSelectorInstance.$el.attr("class", "well span4 pull-right");
+            self.extraSelectorInstance.render().$el);
       }
               
       // FIXME: Disabling "add" - this should be enabled by meta information:
@@ -558,7 +564,7 @@ define([
         msg += 'Page ' + self.collection.state.currentPage + 
                ' of ' + self.collection.state.lastPage + 
                ' pages, ' + self.collection.state.totalRecords + 
-               ' ' + self.options.resource.title + ' records total';
+               ' ' + self.options.resource.title + ' records';
         self.$('#header_message').html(msg);
       });
       
@@ -592,6 +598,9 @@ define([
         'order': orderHash 
       });
       
+      // FIXME: TODO: see reports.ManagedResource.create_response:
+      // We need to set the "Content-Disposition" header to trigger the server to 
+      // bounce it back 
       $('#download_link').attr('href', self.getCollectionUrl());
     }
 

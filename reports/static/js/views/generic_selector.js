@@ -8,7 +8,7 @@ define([
   var GenericSelector = Backbone.View.extend({
     
     /** default to span4, adjust as needed **/
-    className : 'span2 pull-down pull-right',
+    className : 'pull-down pull-right',
     
     initialize : function(attributes, options) {
 
@@ -36,10 +36,10 @@ define([
 
       render : function() {
           this.$el.empty();
-          if (!_.contains(this._options.options, '')) {
-              this._options.options.unshift('');
-              // create a blank entry
-          }
+//          if (!_.contains(this._options.options, '')) {
+//              this._options.options.unshift('');
+//              // create a blank entry
+//          }
           this.$el.html(_.template(genericSelectorTemplate, {
               label : this._options.label,
               'options' : _(this._options.options)

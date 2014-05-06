@@ -288,6 +288,10 @@ class Permission(models.Model):
     scope = models.CharField(max_length=35, blank=True) # scope of the permission
     key = models.CharField(max_length=35, blank=True)  # key of the permission
     type = models.CharField(max_length=15)
+
+#     user_permissions = models.ManyToManyField('reports.UserProfile')
+    
+    
     class Meta:
         unique_together = (('scope', 'key', 'type'))    
         
@@ -335,7 +339,7 @@ class UserProfile(models.Model):
 
     def __unicode__(self):
         return unicode(
-            str((self.ecommons_id)))
+            str((self.ecommons_id, self.username)))
 
     def get_field_hash(self):
         if self.json_field:
@@ -364,7 +368,7 @@ class UserProfile(models.Model):
     
     def _get_last_name(self):
         "Returns the person's full name."
-        return self.user.first_name
+        return self.user.last_name
     last_name = property(_get_last_name)    
     
 #     def _get_full_name(self):

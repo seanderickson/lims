@@ -24,6 +24,12 @@ dd {
 /** bootstrap overrides **/
 
 @media screen{
+
+  .container-fluid {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+  
 	.row-fluid [class*="span"] {
     display: inherit;
 	}
@@ -41,12 +47,12 @@ dd {
 	  padding-right: 0px;
 	}
 }
-.no-space [class*="span"] {
-    margin-left: 0;
-    margin-right: 0;
-}
 .one-space [class*="span"] {
     margin-left: 2px;
+    margin-right: 0;
+}
+.no-space [class*="span"] {
+    margin-left: 0;
     margin-right: 0;
 }
 

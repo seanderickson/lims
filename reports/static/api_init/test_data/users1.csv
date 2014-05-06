@@ -1,5 +1,6 @@
-ecommons_id,login_id,first_name,last_name,email,permissions
-,tester1,Sally,Smith,sally.smith@tester.com,"[permission/resource/user/read,permission/resource/user/write]"
-,tester2,Joe,Schmoe,joe.schmoe@tester.com,"[permission/resource/usergroup/read,permission/resource/library/read]"
-,tester3,Bessy,Baker,bessy.baker@genesplice.com,
+ecommons_id,username,first_name,last_name,email,permissions
+yal1,,Sally,Smith,sally.smith@tester.com,"[permission/resource/user/read,permission/resource/user/write]"
+sde4,,Joe,Schmoe,joe.schmoe@tester.com,"[permission/resource/usergroup/read,permission/resource/library/read]"
+bra2,,Bessy,Baker,bessy.baker@genesplice.com,
 ,tester4,Ace,Ventura,ace.ventura@ventures.com,
+,sde,Sean,Erickson,stothee@yomail.com,"[permission/resource/metahash/read, permission/resource/metahash/write,permission/resource/resource/read,permission/resource/metahash/write]   "

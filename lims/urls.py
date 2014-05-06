@@ -1,5 +1,5 @@
 from django.conf.urls import patterns, include, url
-from lims.views import logout_page
+from lims import views
 
 from django.contrib import admin
 admin.autodiscover()
@@ -14,8 +14,9 @@ urlpatterns = patterns('',
     # this is done because at this time only the reports project has
     # all of the necessary css and javascript installed
     (r'^accounts/login/$', 'django.contrib.auth.views.login', {'template_name': 'login.html'}),
-    url(r'^accounts/logout/$', logout_page, name='logout'),
-
+    url(r'^accounts/logout/$', views.logout_page, name='logout'),
+    
+    url(r'^lims/$', views.main, name="home"),
     url(r'^db/', include('db.urls')),
     url(r'^reports/', include('reports.urls')),
 )

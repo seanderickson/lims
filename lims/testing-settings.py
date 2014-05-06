@@ -60,11 +60,11 @@ LOGGING = {
         },  
     },
     'loggers': {
-        '': {
-            'handlers': ['console'],
-            'propagate': False,
-            'level': 'INFO',
-        },
+#         '': {
+#             'handlers': ['console'],
+#             'propagate': False,
+#             'level': 'INFO',
+#         },
         'django.request': {
             'handlers': ['logfile'],
             'level': 'ERROR',
@@ -76,7 +76,7 @@ LOGGING = {
             'level': 'INFO',
         },        
         'lims': {  # set a default handler
-            'handlers': ['console'],
+            'handlers': ['logfile'],
             'propagate': False,
             'level': 'INFO',
         },               

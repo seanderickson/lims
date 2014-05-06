@@ -19,13 +19,12 @@ MANAGERS = ADMINS
 
 DATABASES = {
     'default': {
-        'ENGINE': 'sqlite3', # Add 'postgresql_psycopg2', 'mysql', 'sqlite3' or 'oracle'.
-        'NAME': os.path.join(PROJECT_ROOT, 'project.db'),                      # Or path to database file if using sqlite3.
-        # The following settings are not used with sqlite3:
+        'ENGINE': 'sqlite3', 
+        'NAME': os.path.join(PROJECT_ROOT, 'project.db'),       
         'USER': '',
         'PASSWORD': '',
-        'HOST': '',                      # Empty for localhost through domain sockets or '127.0.0.1' for localhost through TCP.
-        'PORT': '',                      # Set to empty string for default.
+        'HOST': '',
+        'PORT': '',
     }
 }
 
@@ -150,7 +149,7 @@ TASTYPIE_ALLOW_MISSING_SLASH=True
 SOUTH_TESTS_MIGRATE = False
 
 # Default if "next" is not given as a request param
-LOGIN_REDIRECT_URL='/reports'
+LOGIN_REDIRECT_URL='/lims'
 
 # A sample logging configuration. The only tangible logging
 # performed by this configuration is to send an email to

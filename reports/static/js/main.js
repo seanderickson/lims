@@ -94,6 +94,7 @@ function($, _, Backbone, Iccbl, appModel, AppView, AppRouter ) {
 
   if(_.isUndefined(window.logged_in) || window.logged_in != 'True' ){
   	window.location='/accounts/login/?next=' + window.location.pathname + window.location.hash;
+    return;
   }
 
   var appRouter = appModel.router = new AppRouter({ model: appModel });

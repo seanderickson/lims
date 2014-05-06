@@ -147,6 +147,12 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       
       
       var resource = appModel.getResource(uiResourceId);
+      
+      if (_.isUndefined(resource) || _.isUndefined(resource.schema)){
+        var msg = "Resource schema not defined: " + uiResourceId;
+        appModel.error(msg)
+        throw msg;
+      }
 
       // Test for list args, if not found, then it's a detail view
       if (!_.isEmpty(uriStack) && 

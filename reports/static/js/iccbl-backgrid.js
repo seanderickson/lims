@@ -304,11 +304,21 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
    */
   var containsByMatch = Iccbl.containsByMatch = function(collection, matchstring){
     return _.find(collection, function(item) {
-      var result = (( matchstring.indexOf(item) != -1 ) || 
-                    ( item.indexOf(matchstring) != -1 ));
+      var result = false;
+      var index = matchstring.indexOf(item);
+      if (index > -1 && index+item.length == matchstring.length ){
+        result = true;
+      }
+      var index = item.indexOf(matchstring);
+      if (!result && index > -1 && index+matchstring.length == item.length){
+        result = true;
+      }
       console.log('containsByMatch: ' + result + ', ' + matchstring + ', ' + 
           JSON.stringify(collection));
       return result;
+//      var result = (( matchstring.indexOf(item) != -1 ) || 
+//                    ( item.indexOf(matchstring) != -1 ));
+//      return result;
     });
   };
 

@@ -1,23 +1,16 @@
-"""
-This file demonstrates writing tests using the unittest module. These will pass
-when you run "manage.py test".
-
-Replace this with more appropriate tests for your application.
-"""
-
 from django.test import TestCase
-from reports.tests import MetaHashResourceBootstrap
-from tastypie.test import ResourceTestCase, TestApiClient
-import os
-import logging
-from lims.tests import assert_obj1_to_obj2, find_all_obj_in_list, find_obj_in_list
 import json
 import factory
-import db.models
-import reports.tests
+import os
+import logging
+from tastypie.test import ResourceTestCase, TestApiClient
 
+import db.models
 from test.factories import *
-from lims.api import CSVSerializer
+from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, find_obj_in_list
+from reports.serializers import CSVSerializer
+from reports.tests import MetaHashResourceBootstrap
+import reports.tests
 
 
 logger = logging.getLogger(__name__)

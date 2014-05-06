@@ -1049,7 +1049,8 @@ class LibraryContentsVersion(models.Model):
     version = models.IntegerField()
     version_number = models.IntegerField()
     library = models.ForeignKey(Library)
-    library_contents_loading_activity = models.ForeignKey(AdministrativeActivity, related_name='lcv_load')
+    library_contents_loading_activity = models.ForeignKey(
+        AdministrativeActivity, related_name='lcv_load')
     library_contents_release_activity = models.ForeignKey(AdministrativeActivity, null=True, blank=True, related_name='lcv_release')
     class Meta:
         db_table = 'library_contents_version'

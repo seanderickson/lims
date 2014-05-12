@@ -59,15 +59,12 @@ def authenticate(ecommons_id, ecommons_password):
     issue_instant = datetime.now()
     not_before = issue_instant  # 2012-10-14 11:00:26
     not_after = issue_instant + timedelta(days=7)
-    prepared_req = (authreq 
-        % (issue_instant, not_before, not_after, ecommons_id, ecommons_password))
-    logger.info(str(('authreq',prepared_req)))
+    prepared_req = authreq % (
+        issue_instant, not_before, not_after, ecommons_id, ecommons_password)
     r = requests.post(url, data=prepared_req, headers=headers, timeout=10 )
     if(r.status_code != 200): 
         raise Exception(str(('HTTP response', r.status_code, r)))
 
-    logger.info('response')
-    logger.info(r.text)
     matchObject = re.match(PATTERN_STATUS_CODE, r.text)
     if(matchObject):
         status=matchObject.group(1)
@@ -105,8 +102,8 @@ if __name__ == "__main__":
         log_level = logging.INFO
     elif args.verbose >= 2:
         log_level = logging.DEBUG
-    # NOTE this doesn't work because the config is being set by the included 
-    # settings.py, and you can only set the config once
-    logging.basicConfig(level=log_level, format='%(msecs)d:%(module)s:%(lineno)d:%(levelname)s: %(message)s')        
+    logging.basicConfig(
+        level=log_level, 
+        format='%(msecs)d:%(module)s:%(lineno)d:%(levelname)s: %(message)s')        
     logger.setLevel(log_level)
     authenticate(args.id,args.pw)

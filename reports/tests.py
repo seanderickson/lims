@@ -895,7 +895,7 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
 
         logger.info(str(('==== test_create_user done =====')))
 
-    def _test1_user_test_data(self):
+    def test1_create_user_with_permissions(self):
         logger.info(str(('==== test1_user_test_data =====')))
         
         filename = os.path.join(self.directory,'test_data/users1.csv')
@@ -905,17 +905,16 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
         
         logger.info(str(('==== test1_user_test_data done =====')))
     
-    def test2_user_permissions(self):
-        logger.info(str(('==== test2_user_permissions =====')))
-        self._test1_user_test_data()
+    def test2_patch_user_permissions(self):
+        logger.info(str(('==== test2_patch_user_permissions =====')))
+        self.test1_create_user_with_permissions()
         
-        logger.info(str(('==== test2_user_permissions start =====')))
+        logger.info(str(('==== test2_patch_user_permissions start =====')))
         filename = os.path.join(self.directory,'test_data/users2_patch.csv')
         self._patch_test('user', filename)
         
-        logger.info(str(('==== test2_user_permissions done =====')))
+        logger.info(str(('==== test2_patch_user_permissions done =====')))
 
-# FIXME: broken because the user model needs to be reworked - sde4 - 20140408
 class UserGroupResource(UserResource):
     
     def setUp(self):
@@ -938,10 +937,10 @@ class UserGroupResource(UserResource):
 
         logger.info(str(( '============== UserGroup setup done ============')))
 
-    def _test2_usergroup(self):
+    def _test2_create_usergroup_with_permissions(self):
         logger.info(str(('==== test2_usergroup =====')))
         #create users
-        self._test1_user_test_data()
+        self.test1_create_user_with_permissions()
         
 #         
 #         data_for_get = {}
@@ -962,12 +961,12 @@ class UserGroupResource(UserResource):
         logger.info(str(('==== test2_usergroup done =====')))
 
 
-    def test3_user_groups(self):
-        logger.info(str(('==== test3_user_groups =====')))
-        self._test2_usergroup()
+    def test3_patch_users_groups(self):
+        logger.info(str(('==== test3_patch_users_groups =====')))
+        self._test2_create_usergroup_with_permissions()
         
-        logger.info(str(('==== test3_user_groups start =====')))
+        logger.info(str(('==== test3_patch_users_groups start =====')))
         filename = os.path.join(self.directory,'test_data/users3_groups_patch.csv')
         self._patch_test('user', filename)
       
-        logger.info(str(('==== test3_user_groups done =====')))
+        logger.info(str(('==== test3_patch_users_groups done =====')))

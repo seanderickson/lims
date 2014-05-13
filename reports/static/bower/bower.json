@@ -36,5 +36,9 @@
   },
   "resolutions": {
     "jquery": "~2.1.0"
+  },
+  "devDependencies": {
+    "qunit": "~1.14.0",
+    "sinon": "http://sinonjs.org/releases/sinon-1.9.0.js"
   }
 }

@@ -423,7 +423,7 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
     });
     var instance = new CollectionClass();
     instance.fetch({
-      data: { limit: 999 },
+      data: { limit: 0 },
       success: function(collection, response) {
         console.log('success callback...');
         callback(collection);
@@ -440,7 +440,9 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
           if (!_.isEmpty(response.responseText))
               msg += sep + response.responseText;
           window.alert(msg);
-          // TODO: use Bootstrap inscreen alert classed message div
+          // TODO: 1. use Bootstrap inscreen alert classed message div
+          // TODO: 2. jquery seems to swallow json parsing exceptions, fyi
+          throw msg;
       },
       always: function(){
         console.log('done: ');

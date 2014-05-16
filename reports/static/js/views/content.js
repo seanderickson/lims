@@ -8,7 +8,7 @@ define([
   'views/list2',
   'views/generic_detail_layout',
   'views/library',
-  'views/user',
+  'views/user/user2',
   'text!templates/content.html',
   'text!templates/welcome.html',
   'text!templates/about.html'

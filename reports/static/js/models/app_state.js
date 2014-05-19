@@ -3,7 +3,8 @@ define([
   'underscore',
   'backbone',
   'iccbl_backgrid',
-], function($, _, Backbone, Iccbl ){
+  'text!templates/modal_ok_cancel.html'    
+], function($, _, Backbone, Iccbl, modalOkCancelTemplate ){
   
   var API_VERSION = 'api/v1';
   var REPORTS_API_URI = '/reports/' + API_VERSION;
@@ -549,7 +550,65 @@ define([
       }else{
         this.set('messages', [msg]);
       }
-    }
+    }, 
+    
+    setUriStack: function(value){
+      var self = this;
+      var _deferred = function(){
+       self.set({ uriStack: value });
+      };
+      if(self.isPagePending()){
+        self.showModal(_deferred);
+      }else{
+        _deferred();
+      }
+    },
+    
+    /**
+     * Set flag to signal that the current page has pending changes;
+     * (see setUriStack; modal confirm dialog will be triggered).
+     */
+    setPagePending: function(value){
+      this.set({'pagePending': value});
+    },
+    
+    isPagePending: function(){
+      return this.has('pagePending') && this.get('pagePending');
+    },
+    
+    showModal: function(callback){
+      var self = this;
+      console.log('showModal: ' + JSON.stringify(this.model));
+      var modalDialog = new Backbone.View({
+          el: _.template(modalOkCancelTemplate, { 
+            body: "Pending changes in the page: continue anyway?",
+            title: "Please confirm" } ),
+          events: {
+              'click #modal-cancel':function(event) {
+                  console.log('cancel button click event, '); 
+                  event.preventDefault();
+                  $('#modal').modal('hide'); 
+              },
+              'click #modal-ok':function(event) {
+                  console.log('ok button click event, '); 
+                  event.preventDefault();
+                  $('#modal').modal('hide');
+                  self.setPagePending(false);
+                  callback();
+              }
+          },
+      });
+      modalDialog.render();
+      modalDialog.$el.find('#modal-cancel').html('Cancel and return to page');
+      modalDialog.$el.find('#modal-ok').html('Continue');
+      $('#modal').empty();
+      $('#modal').html(modalDialog.$el);
+      $('#modal').modal({show:true, backdrop: 'static'});
+    }   
+    
+    
+    
+    
   });
 
   var appState = new AppState();

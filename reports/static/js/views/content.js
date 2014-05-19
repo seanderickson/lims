@@ -17,6 +17,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
          LibraryView, UserAdminView, layout, welcomeLayout, 
          aboutLayout) {
   
+  
   var VIEWS = {
     'ListView': ListView, 
     'DetailView': DetailLayout, 
@@ -126,6 +127,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         var WelcomeView = Backbone.Layout.extend({
           template: _.template(welcomeLayout)
         });
+        $('#navbar').children().removeClass('active');
+        $('#navbar').children('#home').addClass('active');
         var view = new WelcomeView();
         self.setView('#content', view).render();
         return;
@@ -140,6 +143,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         var WelcomeView = Backbone.Layout.extend({
           template: _.template(aboutLayout)
         });
+        $('#navbar').children().removeClass('active');
+        $('#navbar').children('#about').addClass('active');
         var view = new WelcomeView();
         self.setView('#content', view).render();
         return;

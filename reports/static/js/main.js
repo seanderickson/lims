@@ -35,6 +35,7 @@ requirejs(['require-config'], function() {
     };
   
     if(_.isUndefined(window.logged_in) || window.logged_in != 'True' ){
+      console.log('window.logged_in: ' + window.logged_in );
       window.location='/accounts/login/?next=' + 
         window.location.pathname + window.location.hash;
       return;
@@ -46,8 +47,8 @@ requirejs(['require-config'], function() {
     var appView = new AppView({ model: appModel },{ router: appRouter});
   
     appModel.start(function(){
-      console.log('Render application')
-      appView.$el.appendTo("#application_div")
+      console.log("Render application to it's div");
+//      $("#application_div").html(appView.render().$el);
       appView.render();
           
       Backbone.history = Backbone.history || new Backbone.History({});

@@ -1,139 +1,134 @@
 <!DOCTYPE html>
 <html>
 <head>
-	<meta charset="utf-8" />
+  <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <!-- Le styles -->
-	<!-- more bootstrap themes: http://paintstrap.com/gallery/?page=5 -->
-    <!--
-    <link rel="stylesheet" media="screen" href="{{ STATIC_URL }}css/paintstrap-kuler-2373730-56af4d94_fmoactuel/bootstrap.css" />
-    <link rel="stylesheet" media="screen" href="{{ STATIC_URL }}css/paintstrap-kuler-2373730-56af4d94_fmoactuel/bootstrap-responsive.css" />
-    -->
 
     <link rel="stylesheet" media="screen" href="{{ STATIC_URL }}css/external/bootstrap.css" />
-    <link rel="stylesheet" media="screen" href="{{ STATIC_URL }}css/external/bootstrap-responsive.css" />
+    <link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/hmsiccbl.css" />
 
-<!--     <link rel="stylesheet" media="screen" href="{{ STATIC_URL }}css/paintstrap/bootstrap.css" /> -->
-<!--     <link rel="stylesheet" media="screen" href="{{ STATIC_URL }}css/paintstrap/bootstrap-responsive.css" /> -->
+  {% load admin_urls %}
 
-  	<link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/hmsiccbl.css" />
-
-
-	<!--
-	    <script type='text/javascript' src='{{STATIC_URL}}js/jquery-2.0.0.js'></script>
-	    <script type='text/javascript' src='//ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js'></script>
-	    -->
-
-	{% load admin_urls %}
-
-	<link rel="shortcut icon" href="/favicon.ico" type="image/x-icon" />
+  <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="">
     <meta name="author" content="">
 
-	<style type='text/css'>
-		body {
-			background-color: #CCC;
- 			padding-top: 0px;
-  			padding-left: 0px;
-		}
+<style type='text/css'>
 
-		/* Sticky footer styles
-		-------------------------------------------------- */
+  /** Fixed header styles
+  -------------------------------------------------- **/
+  #wrap > .container-fluid {
+    padding-top: 50px;
+    padding-bottom: 60px;
+    margin-left: inherit;
+    margin-right: inherit;
+  }
+  .container .credit {
+    margin: 20px 0;
+  }
 
-		html,
-		body {
-			height: 100%;
-			/* The html and body elements cannot have any padding or margin. */
-		}
+  /** Sticky footer styles
+  -------------------------------------------------- **/
+  html {
+    position: relative;
+    min-height: 100%;
+  }
+  body {
+    /* Margin bottom by footer height */
+    margin-bottom: 60px;
+  }
+  #footer {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    /* Set the fixed height of the footer here */
+    height: 60px;
+    background-color: #f5f5f5;
+  }
+  /* end Sticky footer styles
+  -------------------------------------------------- */
 
-		/* Wrapper for page content to push down footer */
-		#wrap {
-			min-height: 100%;
-			height: auto !important;
-			height: 100%;
-			/* Negative indent footer by it's height */
-			margin: 0 auto -60px;
-		}
+  /** Loading indicator
+      - loading style requires STATIC_URL - (not available from css stylesheets?)
+  -------------------------------------------------- **/
+	.loading1 {
+	    background:rgba(0,0,0,0.3);
+	}
+	#loading{
+	    position:fixed;
+	    z-index:999;
+	    top:0;
+	    left:0;
+	    width:100%;
+	    height: 100%;
+	    background: url( "{{ STATIC_URL }}/images/ajax-loading2.gif" )
+	        50% 20%
+	        no-repeat;
+	}
+  
+</style>
 
-		/* Set the fixed height of the footer here */
-		#push,
-		#footer {
-			height: 60px;
-		}
-		#footer {
-			background-color: #f5f5f5;
-		}
-
-		/* Lastly, apply responsive CSS fixes as necessary */
-		@media (max-width: 767px) {
-			#footer {
-				margin-left: -20px;
-				margin-right: -20px;
-				padding-left: 20px;
-				padding-right: 20px;
-			}
-		}
-	</style>
-	
-	<script language="javascript" type="text/javascript">
-	  window.logged_in = "{{ user.is_authenticated }}";
-	</script>
-
-	{% block head %}
-	  <title>ICCBL Screensaver</title>
-	{% endblock %}
+  {% block head %}
+    <title>ICCBL Screensaver</title>
+  {% endblock %}
 
 </head>
 
 <body>
-	<div id="wrap">
-		{% block body%}
-			{% block navbar %}
-			    <div class="navbar navbar-fixed-top">
-			      <div class="navbar-inner">
-			        <div class="container-fluid">
-			          <button type="button" class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
-			            <span class="icon-bar"></span>
-			            <span class="icon-bar"></span>
-			            <span class="icon-bar"></span>
-			          </button>
-			          <a class="brand" href="#">Screensaver 2</a>
-			          <div class="nav-collapse collapse">
-			            <ul class="nav">
-			              <li class="active"><a href="#">Home</a></li>
-			              <li><a href="#about">About</a></li>
-			              <li><a href="#contact">Contact</a></li>
-			            </ul>
-						  <div class="navbar-text pull-right" id=loginmsg>
-						    {% if user.is_authenticated %}
-						      logged in as: {{ user }} <a href="{% url 'logout' %}">Log out</a>
-						    {% else %}
-						      <a href="{{ login_url }}">Log in</a>
-						    {% endif %}
-						  </div>
-			          </div><!--/.nav-collapse -->
-			        </div>
-			      </div>
-			    </div>
-			{% endblock %} <!-- navbar -->
+  <script language="javascript" type="text/javascript">
+    window.logged_in = "{{ user.is_authenticated }}";
+  </script>
+  <div id="wrap">
+    {% block body%}
+      {% block navbar %}
+  
+    <div class="navbar navbar-default navbar-fixed-top" role="navigation">
+      <div class="container">
+        <div class="navbar-header">
+          <button type="button" class="navbar-toggle" data-toggle="collapse" 
+              data-target=".navbar-collapse">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+          </button>
+          <a class="navbar-brand" href="#">Screensaver 2</a>
+        </div>
+        <!-- Collect the nav links, forms, and other content for toggling
+          TODO: create a backbone class to handle clicks here, so that 
+          appModel can process the uriStackChange before the router does.
+         -->
+        <div class="collapse navbar-collapse">
+          <ul id='navbar' class="nav navbar-nav hover">
+            <li id='home' class="active"><a href="#">Home</a></li>
+            <li id='about' ><a href="#about">About</a></li>
+            <li id=''><a href="#contact">Contact</a></li>
+          </ul>
+          <div class="nav navbar-nav navbar-right" id=loginmsg>
+            {% if user.is_authenticated %}
+              logged in as: {{ user }} <a href="{% url 'logout' %}">Log out</a>
+            {% else %}
+              <a href="{{ login_url }}">Log in</a>
+            {% endif %}
+          </div>
+       </div><!--/.nav-collapse -->
+      </div>
+    </div>
+    {% endblock %} <!-- navbar -->
+    {% block application %}
+    {% endblock %} <!-- application -->
+  {% endblock %} <!-- body -->
+  </div> <!-- wrap -->
+  <div id="footer">
+    <div class="container">
+      <a href="#">Screensaver</a> | <a href="#">ICCB-Longwood/NSRB</a> | <a href="#">Release Notes</a> | <a href="#">Feedback</a> | <a href="#">Help</a> | <a href="{% url 'admin:index' %}">Admin</a>
+    </div>
+  </div>
 
-			{% block application %}
-			{% endblock %}
-
-		{% endblock %} <!-- body -->
-	</div> <!-- wrap -->
-	<div id="footer">
-	  <div class="container">
-	  	<a href="#">Screensaver</a> | <a href="#">ICCB-Longwood/NSRB</a> | <a href="#">Release Notes</a> | <a href="#">Feedback</a> | <a href="#">Help</a> | <a href="{% url 'admin:index' %}">Admin</a>
-	  </div>
-	</div>
-
-
-    <!-- Le javascript
-    ================================================== -->
-    <!-- Placed at the end of the document so the pages load faster
-	<script src="{{ STATIC_URL }}js/bootstrap.js"></script> -->
+  <!-- Note: load bootstrap library from require
+  <script src="{{ STATIC_URL }}js/libs/bootstrap.js"></script> 
+  -->
 
 </body>
 

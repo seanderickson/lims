@@ -13,6 +13,7 @@ define([
             ContentView, MessageView, layout) {
 
     var AppView = Backbone.Layout.extend({
+      el: '#application_div',
       
       initialize: function(args) {
         this.listenTo(appModel, 'change:messages', this.setMessages);

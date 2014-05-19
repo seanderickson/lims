@@ -1,4 +1,102 @@
+body {
+	background-color: #e3e3e3;
+  background-color: #c5d2db;
+}
+
+.loading1 {
+    background:rgba(0,0,0,0.3);
+}
+
+#loading{
+    position:fixed;
+    z-index:999;
+    top:0;
+    left:0;
+    width:100%;
+    height: 100%;
+    background: url( "{{ STATIC_URL }}/images/ajax-loading2.gif" )
+        50% 20%
+        no-repeat;
+}
+
+
+/** bootstrap overrides **/
+
+@media screen{
+
+  .well {
+    padding: 5px;
+  }
+
+
+  .nav-header {
+    padding: 3px 0px;
+  }
+  
+	.nav-sidebar {
+	  padding: 0px;
+	  padding-left: 5px;
+	}
+}
+
+div#application_div > .one-space {
+    padding-right: 0px;
+    padding-left: 2px;
+    padding-top: 4px;
+}
+
+/* #application_div { */
+/*     padding-left: 6px; */
+/* } */
+
+.no-space [class*="col"] {
+    margin-left: 0;
+    margin-right: 0;
+    padding-right: 0px;
+    padding-left: 0px;
+}
+
+.one-space {
+    padding-right: 0px;
+    padding-left: 2px;
+    padding-top: 4px;
+}
+
+
+/** menu list styling from bootstrap 2.3.2 **/
+
+.menu {
+  list-style: none;
+}
+.menu > li > a {
+  display: block;
+}
+.menu > li > a {
+padding: 3px 15px;
+}
+
+.menu > .active > a,
+.menu > .active > a:hover,
+.menu > .active > a:focus {
+  color: #ffffff;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.2);
+  background-color: #0088cc;
+}
+
+.menu > li > a:hover,
+.menu > li > a:focus {
+  text-decoration: none;
+  background-color: #eeeeee;
+}
+
+.hover  li > a:hover,
+.hover  li > a:focus {
+  text-decoration: none;
+  background-color: #eeeeee !important;
+}
+
 /** backgrid.css overrides **/
+
 .backgrid {
   border: 1px solid #DDD;
 }
@@ -8,53 +106,19 @@
 }
 div.backgrid-paginator {
   display: inline;
-/* 	text-align: left; */
+/*  text-align: left; */
 }
 
 ul.backgrid-paginator {
-	display: inline;
+  display: inline;
   text-align: left;
 }
 
 dd {
-	white-space: nowrap;
-	overflow-x: auto;
+  white-space: nowrap;
+  overflow-x: auto;
 }
 
-/** bootstrap overrides **/
-
-@media screen{
-
-  .container-fluid {
-    padding-right: 10px;
-    padding-left: 10px;
-  }
-  
-	.row-fluid [class*="span"] {
-    display: inherit;
-	}
-/*   .row-fluid .span10 {
-    width: 87%;
-  }  */   
-  .well {
-    padding: 5px;
-  }
-  .nav-header {
-    padding: 3px 0px;
-  }
-  
-	.nav-list {
-	  padding-right: 0px;
-	}
-}
-.one-space [class*="span"] {
-    margin-left: 2px;
-    margin-right: 0;
-}
-.no-space [class*="span"] {
-    margin-left: 0;
-    margin-right: 0;
-}
 
 /** other **/
 
@@ -164,55 +228,55 @@ th.desc {
 .entity-detail-other {
   font-weight: normal;
 }
-.propertyLabelColumn {
-  width: 160px;
-  min-width: 160px;
-	padding-bottom: 1px;
-	border-width: 1px;
-	border-style: solid;
-	border-color: white;
+/* .propertyLabelColumn { */
+/*   width: 160px; */
+/*   min-width: 160px; */
+/* 	padding-bottom: 1px; */
+/* 	border-width: 1px; */
+/* 	border-style: solid; */
+/* 	border-color: white; */
 
-	vertical-align: top;
-	padding-top: 1px;
-	padding-left: 3px;
-	padding-right: 3px;
-}
-.propertyLabelColumn, .propertyLabel, .subduedLabel {
-	font-weight: bold;
-	background-color: #DDD;
-}
+/* 	vertical-align: top; */
+/* 	padding-top: 1px; */
+/* 	padding-left: 3px; */
+/* 	padding-right: 3px; */
+/* } */
+/* .propertyLabelColumn, .propertyLabel, .subduedLabel { */
+/* 	font-weight: bold; */
+/* 	background-color: #DDD; */
+/* } */
 
-.propertyValueColumn {
-	padding-left: 3px;
-  word-wrap: break-word;
-  width: 476px;
-  max-width: 476px;
-}
+/* .propertyValueColumn { */
+/* 	padding-left: 3px; */
+/*   word-wrap: break-word; */
+/*   width: 476px; */
+/*   max-width: 476px; */
+/* } */
 
-#innercontent ul.pagination {
-  margin-left: 0;
-  margin-right: 0;
-  width: 100%;
-}
+/* #innercontent ul.pagination { */
+/*   margin-left: 0; */
+/*   margin-right: 0; */
+/*   width: 100%; */
+/* } */
 
-ul.pagination > li {
-  display: inline-block;
-  vertical-align: middle;
-  padding: 0 8px;
-  border-left: 1px solid #000000;
-}
+/* ul.pagination > li { */
+/*   display: inline-block; */
+/*   vertical-align: middle; */
+/*   padding: 0 8px; */
+/*   border-left: 1px solid #000000; */
+/* } */
 
-ul.pagination > li:first-child {
-  padding-left: 0;
-  border-left: 0;
-}
+/* ul.pagination > li:first-child { */
+/*   padding-left: 0; */
+/*   border-left: 0; */
+/* } */
 
-ul.pagination > li.items_per_page {
-  border-left: 0;
-  position: absolute;
-  right: 0;
-  padding-right: 0;
-}
+/* ul.pagination > li.items_per_page { */
+/*   border-left: 0; */
+/*   position: absolute; */
+/*   right: 0; */
+/*   padding-right: 0; */
+/* } */
 
 /** to control layout of checkboxes **/
 .form-horizontal ul > li, .controls ul > li {
@@ -230,9 +294,9 @@ ul.pagination > li.items_per_page {
 }
 */
 
-#content ul.basictab {
-  margin-left: 0;
-}
+/* #content ul.basictab { */
+/*   margin-left: 0; */
+/* } */
 
 td.facility_salt_batch {
   white-space: nowrap;

@@ -1,12 +1,8 @@
-<form class="form-horizontal">
-    <div class="control-group">
-        <label class="control-label" for="rowsperpage_selector">Rows per page:</label>
-        <div class="controls">
-            <select  class="input-mini" id="rowsperpage_selector">
-                <% options.each(function(option) { %>
-                    <option value="<%= option %>"><%= option %></option>
-                <% }); %>
-            </select>
-        </div>
-    </div>
+<form class="form-inline">
+   <label for="rowsperpage_selector">Rows per page:</label>
+   <select  class="form-control input-sm" id="rowsperpage_selector">
+       <% options.each(function(option) { %>
+           <option value="<%= option %>"><%= option %></option>
+       <% }); %>
+   </select>
 </form>

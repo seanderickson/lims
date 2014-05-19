@@ -14,6 +14,8 @@ requirejs(['require-config'],
     'views/app_view',
     'router',
     // NOTE: browser security restrictions prevent loading this from file:///
+    'text!models/reports_ui_resources_fixture.js', 
+    'text!models/reports_menu_fixture.js', 
     'text!models/ui_resources_fixture.js', 
     'text!models/menu_fixture.js', 
     // TODO: verify this: Bootstrap does not return an object; it modifies the 
@@ -21,7 +23,7 @@ requirejs(['require-config'],
     'bootstrap'
   ],
       function($, _, Backbone, Iccbl, appModel, AppView, AppRouter, 
-               ui_resources_raw, menu_raw ) {
+               reports_ui_resources_raw, reports_menu_raw, ui_resources_raw, menu_raw ) {
     
     console.log('init screensaver/reports...')
   
@@ -37,13 +39,19 @@ requirejs(['require-config'],
     };
   
     if(_.isUndefined(window.logged_in) || window.logged_in != 'True' ){
+      console.log('window.logged_in: ' + window.logged_in );
       window.location='/accounts/login/?next=' + 
         window.location.pathname + window.location.hash;
       return;
     }
     
-    appModel.set('ui_resources', JSON.parse(ui_resources_raw));
-    appModel.set('menu', JSON.parse(menu_raw));
+    var ui_resources = JSON.parse(reports_ui_resources_raw);
+    _.extend(ui_resources, JSON.parse(ui_resources_raw));
+    appModel.set('ui_resources', ui_resources);
+    
+    var menu_resource = JSON.parse(menu_raw);
+    _.extend(menu_resource['submenus'], JSON.parse(reports_menu_raw)['submenus']);
+    appModel.set('menu', menu_resource);
 
     var appRouter = appModel.router = new AppRouter({ model: appModel });
     var appView = new AppView({ model: appModel },{ router: appRouter});

@@ -28,7 +28,7 @@ define([
       $('#loading').fadeOut({duration:100});
   };
   $(document).bind("ajaxComplete", function(){
-      ajaxComplete(); // TODO: bind this closer to the collection
+      ajaxComplete(); 
   });
 
   var ListView = Backbone.View.extend({
@@ -37,7 +37,7 @@ define([
     initialize : function(args) {
       console.log('initialize ListView: ');
       var self = this;
-      self.options = args.options;
+      var options = self.options = args.options;
       
       var ListModel = Backbone.Model.extend({
         defaults: {
@@ -128,27 +128,43 @@ define([
         });
       }
 
-      var Collection = Iccbl.MyCollection.extend({
-      	state: _state  
-      });
-      
       var url = self.options.resource.apiUri + '/' + self.urlSuffix;
       if (_.has(self.options, 'url')) {
         url = self.options.url;
       } else {
         self.options.url = url;   // TODO: cleanup messy initializations
       }
-      var collection = self.collection = new Collection({
-        'url': url,
-        listModel: listModel
-      });
-      this.objects_to_destroy.push(collection);
+
+      var collection;
+      if( !options.collection){  
+        var Collection = Iccbl.MyCollection.extend({
+          state: _state  
+        });
+        
+        collection = self.collection = new Collection({
+          'url': url,
+          listModel: listModel
+        });
+        this.objects_to_destroy.push(collection);
+      }else{
+        collection = self.collection = options.collection;
+        collection.listmodel = listModel;
+        collection.state = _state;
+      }
+      
+      var columns;
+      if(!options.columns){
+        columns = Iccbl.createBackgridColModel(
+            this.options.schemaResult.fields, Iccbl.MyHeaderCell);
+      }else{
+        columns = options.columns;
+      }
 
       this.listenTo(this.listModel, 'change', this.reportState );
 
       var compiledTemplate = this.compiledTemplate = _.template(listTemplate);
 
-      this.buildGrid( self.options.schemaResult );
+      this.buildGrid( columns, self.options.schemaResult );
     },
     
     getCollectionUrl: function() {
@@ -230,7 +246,7 @@ define([
       self.trigger('uriStack:change', newStack );
     },
 
-    buildGrid: function( schemaResult ) {
+    buildGrid: function( columns, schemaResult ) {
 
       console.log( 'buildGrid...');
       var self = this;
@@ -314,8 +330,7 @@ define([
       var rppSelectorInstance = self.rppSelectorInstance = new genericSelector(
           { model: rppModel }, 
           { label: 'Rows', 
-            options: ['25','50','200','1000'], 
-            selectorClass: 'input-mini' });
+            options: ['25','50','200','1000'] });
       this.objects_to_destroy.push(rppSelectorInstance);
       this.listenTo(this.listModel, 'change: rpp', function(){
           rppModel.set({ selection: String(self.listModel.get('rpp')) });
@@ -347,7 +362,6 @@ define([
 
     	  collection: self.collection,
     	  
-//    	  className: 'span6 pull-left pull-down'
     	});            
       this.objects_to_destroy.push(paginator);
 
@@ -401,9 +415,6 @@ define([
             self.collection.setSearch(searchHash);
         });
       }
-
-      var columns = Iccbl.createBackgridColModel(
-  		this.options.schemaResult.fields, Iccbl.MyHeaderCell);
 
       var grid = this.grid = new Backgrid.Grid({
         columns: columns,
@@ -512,9 +523,10 @@ define([
       this.$el.html(this.compiledTemplate);
       var finalGrid = self.finalGrid = this.grid.render();
       self.$("#example-table").append(finalGrid.$el);
+      finalGrid.$el.addClass("table-striped table-condensed table-hover");
       self.$("#paginator-div").append(self.paginator.render().$el);
       self.$('#list-header').append(
-          '<div class="pull-right pull-down"><a class="btn btn-medium pull-down pull-right" id="download_link" href="' + 
+          '<div class="pull-right pull-down"><a class="btn btn-default btn-sm pull-down" role="button" id="download_link" href="' + 
           self.getCollectionUrl() +
           '">download</a></div>');
       self.$("#list-header").append(
@@ -562,7 +574,7 @@ define([
         }
         if (msg) msg += ', ';
         msg += 'Page ' + self.collection.state.currentPage + 
-               ' of ' + self.collection.state.lastPage + 
+               ' of ' + ( self.collection.state.lastPage ? self.collection.state.lastPage:1 ) + 
                ' pages, ' + self.collection.state.totalRecords + 
                ' ' + self.options.resource.title + ' records';
         self.$('#header_message').html(msg);

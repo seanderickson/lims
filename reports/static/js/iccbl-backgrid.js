@@ -298,6 +298,9 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
   };
 
   /**
+   * Matches collection items against the matchstring.  
+   * - Matches from the right to left; allowing URI fragments to match their 
+   * parent URIs.
    * Similar the the contains function, 
    * but using item.indexOf(matchString) || matchString.indexOf(item)
    * for the truth test.
@@ -313,8 +316,8 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
       if (!result && index > -1 && index+matchstring.length == item.length){
         result = true;
       }
-      console.log('containsByMatch: ' + result + ', ' + matchstring + ', ' + 
-          JSON.stringify(collection));
+//      console.log('containsByMatch: ' + result + ', ' + matchstring + ', ' + 
+//          JSON.stringify(collection));
       return result;
 //      var result = (( matchstring.indexOf(item) != -1 ) || 
 //                    ( item.indexOf(matchstring) != -1 ));
@@ -1168,7 +1171,7 @@ var MyHeaderCell = Iccbl.MyHeaderCell = Backgrid.HeaderCell.extend({
     render : function() {
         Backgrid.HeaderCell.prototype.render.apply(this);
         var _handle = this;
-        var filterIcon = $('<i class="icon-search"></i>');
+        var filterIcon = $('<span class="glyphicon glyphicon-search"></span>');
         filterIcon.click(function(e) {
             _handle.$el.append(_handle._serverSideFilter.render().el);
         });

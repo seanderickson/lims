@@ -24,9 +24,9 @@
     margin-left: inherit;
     margin-right: inherit;
   }
-  .container .credit {
-    margin: 20px 0;
-  }
+/*   .container .credit { */
+/*     margin: 20px 0; */
+/*   } */
 
   /** Sticky footer styles
   -------------------------------------------------- **/
@@ -78,13 +78,15 @@
 <body>
   <script language="javascript" type="text/javascript">
     window.logged_in = "{{ user.is_authenticated }}";
+    window.is_superuser = "{{ user.is_superuser }}";
+    window.user = "{{ user }}"
   </script>
   <div id="wrap">
     {% block body%}
       {% block navbar %}
   
     <div class="navbar navbar-default navbar-fixed-top" role="navigation">
-      <div class="container">
+    <div class="container-fluid">
         <div class="navbar-header">
           <button type="button" class="navbar-toggle" data-toggle="collapse" 
               data-target=".navbar-collapse">
@@ -105,7 +107,7 @@
             <li id='about' ><a href="#about">About</a></li>
             <li id=''><a href="#contact">Contact</a></li>
           </ul>
-          <div class="nav navbar-nav navbar-right" id=loginmsg>
+          <div class="navbar-right" id=loginmsg>
             {% if user.is_authenticated %}
               logged in as: {{ user }} <a href="{% url 'logout' %}">Log out</a>
             {% else %}
@@ -113,7 +115,7 @@
             {% endif %}
           </div>
        </div><!--/.nav-collapse -->
-      </div>
+       </div>
     </div>
     {% endblock %} <!-- navbar -->
     {% block application %}

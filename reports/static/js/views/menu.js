@@ -17,14 +17,13 @@ define([
       initialize: function(attributes, options) {
         console.log('initialize menu.js');
         this.listenTo(appModel, 'change:uriStack', this.uriStackChange);
-//        _.bindAll(this,'_menuClick');
       },
       
       template: _.template(menuTemplate),
       
       serialize: function(){
         return {
-          menu: appModel.get('menu'),
+          menu: appModel.getMenu(),
           ui_resources: appModel.get('ui_resources')
         };          
       },
@@ -127,7 +126,6 @@ define([
         
         if (ui_resource_id==='home') {
           appModel.setUriStack([]);
-//          appModel.set({uriStack: []});
           return;
         }
 
@@ -141,7 +139,6 @@ define([
 
         // if menu doesn't have an "expanded" flag, then just do it's action
         if( ! _.has(menu, 'expanded')){
-//          appModel.set({ uriStack: [ui_resource_id] });
           appModel.setUriStack([ui_resource_id]);
         }else{
           // first click on a menu item expands it
@@ -155,7 +152,6 @@ define([
               appModel.set({'menu':menus});
               this.render();
 
-//              appModel.set({ uriStack: [ui_resource_id] });
               appModel.setUriStack([ui_resource_id]);
           }
         }
@@ -163,49 +159,7 @@ define([
         this.$('#' + ui_resource_id).addClass('active');
         this.updateTopMenu(ui_resource_id);
       },
-      
-//      _setUriStack: function(value){
-//        var self = this;
-//        var _deferred = function(){
-//          appModel.set({ uriStack: value });
-//        };
-//        if(appModel.get('modal')){
-//          self.showModal(_deferred);
-//        }else{
-//          _deferred();
-//        }
-//      },
-//      
-//      showModal: function(callback, initialEvent){
-//        var self = this;
-//        console.log('showModal: ' + JSON.stringify(this.model));
-//        var modalDialog = new Backbone.View({
-//            el: _.template(modalOkCancel, { 
-//              body: "Pending changes in the page, continue or cancel and finish with changes?",
-//              title: "Please confirm" } ),
-//            events: {
-//                'click #modal-cancel':function(event) {
-//                    console.log('cancel button click event, '); 
-//                    event.preventDefault();
-//                    $('#modal').modal('hide'); 
-//                },
-//                'click #modal-ok':function(event) {
-//                    console.log('ok button click event, '); 
-//                    event.preventDefault();
-//                    $('#modal').modal('hide');
-////                    self.$el.empty();
-////                    self.trigger('remove');
-//                    appModel.set({'modal': false});
-//                    callback(initialEvent);
-//                }
-//            },
-//        });
-//        modalDialog.render();
-//        modalDialog.$el.find('#modal-ok').html('Continue');
-//        $('#modal').empty();
-//        $('#modal').html(modalDialog.$el);
-//        $('#modal').modal({show:true, backdrop: 'static'});
-//      }      
+   
       
 
     });

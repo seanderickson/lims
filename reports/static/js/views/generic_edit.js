@@ -11,8 +11,7 @@ define([
 ], function( $, _, Backbone, stickit, backbone_forms, Iccbl, editTemplate, 
             modalOkCancel ) {
 	
-  // like 'Select' editor, but will always return a boolean (true or
-  // false)
+  // like 'Select' editor, but will always return a boolean (true or false)
   Backbone.Form.editors.BooleanSelect = Backbone.Form.editors.Select.extend({
     
     initialize: function(options) {
@@ -37,10 +36,10 @@ define([
     // using custom templates to hold the editors,
     // control the layout with the "controls, control-group" classes
     altFieldTemplate:  _.template('\
-      <div class="control-group"> \
-            <label class="control-label" for="<%= editorId %>"><%= title %></label>\
-            <div class="controls" >\
-              <span data-editor></span>\
+      <div class="form-group"> \
+            <label class="control-label col-sm-2" for="<%= editorId %>"><%= title %></label>\
+            <div class="col-sm-10" >\
+              <div data-editor></span>\
               <div data-error></div>\
               <div><%= help %></div>\
             </div>\
@@ -50,9 +49,9 @@ define([
     // using custom templates to hold the editors,
     // control the layout with the "controls, control-group" classes
     altRadioFieldTemplate: _.template('\
-      <div class="control-group"> \
-          <label class="control-label" for="<%= editorId %>"><%= title %></label>\
-          <div class="controls" >\
+      <div class="form-group"> \
+          <label class="control-label col-sm-2" for="<%= editorId %>"><%= title %></label>\
+          <div class="col-sm-10" >\
             <span data-editor></span>\
             <div data-error></div>\
             <div><%= help %></div>\
@@ -62,7 +61,6 @@ define([
       
     schema: function() {
       var self = this;
-      console.log('-----schema called -----');
       var schema = this.model.resource.schema;
       var keys = Iccbl.sortOnOrdinal(
           _.keys(this.model.attributes), schema.fields)

@@ -14,8 +14,6 @@ requirejs(['require-config'], function() {
     'models/app_state',
     'views/app_view',
     'router',
-    // TODO: verify this: Bootstrap does not return an object; it modifies the 
-    // Jquery object with new methods
     'bootstrap',
     //NOTE: this will only load from http, not file in most default browser setups!
     'text!models/app_model_fixture.js' 
@@ -43,18 +41,18 @@ requirejs(['require-config'], function() {
     
     appModel.set('ui_resources', JSON.parse(ui_resources_raw));
 
-    var appRouter = appModel.router = new AppRouter({ model: appModel });
-    var appView = new AppView({ model: appModel },{ router: appRouter});
-  
     appModel.start(function(){
       console.log("Render application to it's div");
-//      $("#application_div").html(appView.render().$el);
       appView.render();
           
       Backbone.history = Backbone.history || new Backbone.History({});
       Backbone.history.start({ pushState: false, root: appModel.get('root_url') });
+      console.log('App model initialized.');
     });
     
+    var appRouter = appModel.router = new AppRouter({ model: appModel });
+    var appView = new AppView({ model: appModel },{ router: appRouter});
+  
     // Set the document title
     Backbone.history.on('route', function(router, route, params) {
       var title = _.reduce(

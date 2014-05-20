@@ -19,8 +19,15 @@ define([
 	  initialize: function(args) {
 	    var self = this;
       var schema = this.model.resource.schema;
-//      var buttons = this.buttons = args.buttons || ['edit','delete','history','back'];
+//      var buttons = this.buttons = 
+//          args.buttons || ['edit','delete','download','history','back'];
       var buttons = this.buttons = args.buttons || ['download','history','back'];
+      
+      if(appModel.getCurrentUser().is_superuser){
+        this.buttons.unshift('edit');
+        this.buttons.unshift('delete');
+      }
+      
       var keys = this.detailKeys = schema.detailKeys(this.model);
       var bindings = this.bindings = {};
       var schemaBindings = this.schemaBindings = {};

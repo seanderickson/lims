@@ -18,10 +18,9 @@
  * or FITNESS FOR A PARTICULAR PURPOSE. See the license files for details.
  *
  * For details please refer to: https://github.com/hmsiccbl/lims
- *
+ **/
 // TODO: lunr should not be a requirement - for client side filtering,
 // and backgrid_filter is requiring it.
- **/
 define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid', 
         'backgrid_filter', 'backgrid_paginator', 'backgrid_select_all', 'lunr',
         'layoutmanager'],
@@ -38,31 +37,6 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
   
   var Iccbl = root.Iccbl = {
       VERSION : "0.0.1",
-
-      // Extension: {},
-      //
-      // requireOptions: function (options, requireOptionKeys) {
-      // for (var i = 0; i < requireOptionKeys.length; i++) {
-      // var key = requireOptionKeys[i];
-      // if (_.isUndefined(options[key])) {
-      // throw new TypeError("'" + key  + "' is required");
-      // }
-      // }
-      // },
-      //
-      // resolveNameToClass: function (name) {
-      // if (_.isString(name)) {
-      // // var key = _.map(name.split('-'), function (e) { return
-      // capitalize(e); }).join('') + suffix;
-      // var klass = Iccbl[key]; // || Backgrid.Extension[key];
-      // if (_.isUndefined(klass)) {
-      // throw new ReferenceError("Class '" + key + "' not found");
-      // }
-      // return klass;
-      // }
-      //
-      // return name;
-      // }
   };
 
   // TODO: remove this
@@ -72,7 +46,7 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
       }
   };
 
-  // TODO: remove this
+  // TODO: deprecated
   requireOptions = Iccbl.requireOptions = function(options,requireOptionKeys){
       for (var i = 0; i < requireOptionKeys.length; i++) {
         var key = requireOptionKeys[i];
@@ -316,12 +290,7 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
       if (!result && index > -1 && index+matchstring.length == item.length){
         result = true;
       }
-//      console.log('containsByMatch: ' + result + ', ' + matchstring + ', ' + 
-//          JSON.stringify(collection));
       return result;
-//      var result = (( matchstring.indexOf(item) != -1 ) || 
-//                    ( item.indexOf(matchstring) != -1 ));
-//      return result;
     });
   };
 
@@ -544,7 +513,7 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
   };
 
   /**
-   *
+   * Return an array for backgrid column descriptors.
    * @param {Object} fields_from_rest - hash of fields for the current dataset:
    *      field properties { visibility: [array of strings], title: a label for
    * the field, order: display order of the field }
@@ -931,10 +900,17 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
         // searchbox
         if (!_.has(self.queryParams, key) || !_.isFunction(self.queryParams[key])) {
         	_data[key]=val;
+        	
+        	// Hack to make the params persistent (if not a backgrid-filter)
+          self.queryParams[key] = function () {
+            return val;
+          };
         }
       }
     });
     if(!_.isEmpty(_data)){
+      
+      
       self.fetch({data:_.clone(_data), reset: true});
       // Notify: todo:test
       self.listModel.set({

@@ -28,10 +28,12 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
   var ContentView = Iccbl.UriContainerView.extend({
     
     template: _.template(layout),
+    className: "row",
     
     initialize: function() {
       console.log('initialize content.js');
       Iccbl.UriContainerView.prototype.initialize.apply(this,arguments);
+      this.title = null;
     },
     
 //    /**
@@ -56,6 +58,12 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
 //      }
 //    },
     
+//    serialize: function(){
+//      return {
+//        'title': this.title
+//      };
+//    },
+    
     showDetail: function(resource, uriStack, model){
       var self = this;
       var uriStack = _.clone(uriStack);
@@ -72,6 +80,12 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           throw msg;
         }
       }
+      
+      this.$('#content_title').html(
+          model.resource.title + 
+          ': ' + Iccbl.getTitleFromTitleAttribute(model,model.resource.schema) + '' 
+          );
+      
       var view = new viewClass({ model: model, uriStack: uriStack });
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView('#content', view).render();
@@ -93,12 +107,19 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           throw msg;
         }
       }
+      this.$('#content_title').html(resource.title + ' listing');
+      
       view = new viewClass({ model: appModel, 
         options: { 
           uriStack: uriStack,
           schemaResult: schemaResult, 
           resource: resource
         }
+      });
+      self.listenTo(view, 'update_title', function(val){
+        this.$('#content_title').html(
+            resource.title + 
+            ': ' + val + '');
       });
 
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
@@ -122,8 +143,17 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     changeUri: function(uriStack) {
       var self = this;
       var consumedStack = this.consumedStack = [];
+
+      if (!_.isEmpty(uriStack)){
+        var uiResourceId = uriStack.shift();
+        this.consumedStack.push(uiResourceId);
+      }else{
+        uiResourceId = 'home';
+      }
       
-      if (_.isEmpty(uriStack)){
+      var resource = appModel.getResource(uiResourceId);
+      
+      if (uiResourceId == 'home'){
         var WelcomeView = Backbone.Layout.extend({
           template: _.template(welcomeLayout)
         });
@@ -131,13 +161,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         $('#navbar').children('#home').addClass('active');
         var view = new WelcomeView();
         self.setView('#content', view).render();
+        this.$('#content_title').html(resource.title);
         return;
       }
-      
-      // Test for a view ID
-      var uiResourceId = uriStack.shift();
-      this.consumedStack.push(uiResourceId);
-      
       
       if (uiResourceId == 'about'){
         var WelcomeView = Backbone.Layout.extend({
@@ -147,11 +173,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         $('#navbar').children('#about').addClass('active');
         var view = new WelcomeView();
         self.setView('#content', view).render();
+        this.$('#content_title').html(resource.title);
         return;
       }
-      
-      
-      var resource = appModel.getResource(uiResourceId);
       
       if (_.isUndefined(resource) || _.isUndefined(resource.schema)){
         var msg = "Resource schema not defined: " + uiResourceId;

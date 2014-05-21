@@ -2,7 +2,7 @@
 	<label for="generic_selector"><%=label%></label>
 	<select  class="form-control input-sm" id="generic_selector">
 	    <% options.each(function(option) { %>
-	        <option value="<%= option %>"><%= option %></option>
+	        <option value="<%= option.value?option.value:option %>"><%= option.label?option.label:option %></option>
 	    <% }); %>
 	</select>
 </form>

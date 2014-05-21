@@ -2,13 +2,6 @@
 
 <div class="panel-group" id="accordion">
   <div class="panel panel-default">
-    <div class="panel-heading">
-      <h4 class="panel-title">
-        <a data-toggle="collapse" href="#collapseOne">
-          Groups
-        </a>
-      </h4>
-    </div>
     <div id="collapseOne" class="panel-collapse collapse in">
       <div class="panel-body">
 			  <div id='list-with-selection-table'>
@@ -38,7 +31,12 @@
             <p id='remove-selection-list' class="form-control-static"></p>
           </div>
        </div>
-        <textarea class="form-control" id="comment" placeholder="Comment"/>
+       <div class="form-group">
+          <label class="col-sm-1 control-label">Comment:</label>
+          <div class="col-sm-6">
+            <textarea class="form-control" id="comment" placeholder="Comment"/>
+          </div>
+       </div>
         <div class="controls">
             <button type="button" class="btn disabled" id="save" >Save</button>
             <button type="button" class="btn disabled" id="cancel" >Cancel</button>

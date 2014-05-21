@@ -266,6 +266,10 @@ define([
       var msgs = this.get('messages');
       if (msgs && msgs.length > 0) {
         msgs.push(msg);
+        
+        if(msgs.length > 5){
+          msgs = msgs.splice(4, msgs.length-5);
+        }
         this.set('messages', msgs);
       }else{
         this.set('messages', [msg]);

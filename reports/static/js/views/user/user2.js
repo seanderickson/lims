@@ -68,7 +68,7 @@ define([
      */
     serialize: function() {
       return {
-        'title': Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource.schema),
+//        'title': Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource.schema),
         'tab_resources': this.tabbed_resources
       }      
     }, 
@@ -121,9 +121,6 @@ define([
         this.$('li').removeClass('active'); // TODO: use bootstrap tabs
         this.$('#' + key).addClass('active');
         
-//        this.$('li').tab('hide');
-//        this.$('#' + key).tab('show');
-//        
         this.consumedStack = [key];
         var delegateStack = _.clone(this.uriStack);
         this.uriStack = [];
@@ -155,25 +152,17 @@ define([
       this.setView("#tab_container", view ).render();
     },
 
-    setGroups: function(){
+    setGroups: function(delegateStack){
       var self = this;
       var key = 'groups';
-      var uriStack = _.clone(this.uriStack);
-
       var view = this.tabViews[key];
       if ( !view ) {      
-        view = new GroupsView({ model: this.model, uriStack: uriStack });
+        view = new GroupsView({ model: this.model, uriStack: delegateStack });
         self.tabViews[key] = view;
       }
-//      else {
-//        self.listenTo(view , 'uriStack:change', self.reportUriStack);
-//        self.setView("#tab_container", view ).render();
-//      }
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
-      self.reportUriStack([]);
-
-    
+//      self.reportUriStack([]);
     },
     
     setPermissions: function(){

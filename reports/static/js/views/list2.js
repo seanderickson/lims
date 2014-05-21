@@ -148,7 +148,7 @@ define([
         this.objects_to_destroy.push(collection);
       }else{
         collection = self.collection = options.collection;
-        collection.listmodel = listModel;
+        collection.listModel = listModel;
         collection.state = _state;
       }
       
@@ -182,6 +182,7 @@ define([
               
               val += k + "=" + v;
             });
+            self.trigger('update_title', 'Search: ' + val);
             if(!_.isEmpty(urlparams)) urlparams += '&';
             urlparams += val;
           }else if (route === 'order') {
@@ -227,6 +228,7 @@ define([
               
               val += k + "=" + v;
             });
+            
             newStack.push(val);
             
           }else if (route === 'order') {
@@ -405,11 +407,17 @@ define([
         this.listenTo(extraSelectorModel, 'change', function() {
             console.log('===--- extraSelectorModel change');
             var searchHash = _.clone(self.listModel.get('search'));
-            var value = extraSelectorModel.get('selection');
+            var val = extraSelectorModel.get('selection');
+            var value =  _.isUndefined(val.value) ? val: val.value ;
             if(_.isEmpty(value) || _.isEmpty(value.trim())){
               delete searchHash[extraSelectorKey + '__exact']
             } else {
-              searchHash[extraSelectorKey + '__exact'] = value;
+              var field = self.options.schemaResult.fields[extraSelectorKey];
+              if(field.ui_type=='boolean'){
+                searchHash[extraSelectorKey] = value;
+              }else{
+                searchHash[extraSelectorKey + '__exact'] = value;
+              }
             }
             self.listModel.set('search', searchHash);
             self.collection.setSearch(searchHash);

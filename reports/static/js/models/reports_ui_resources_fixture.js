@@ -7,11 +7,19 @@
         "description": "Perform admin activities"
     },
     "home": {
-        "title": "Screensaver Reporting",
+        "title": "Screensaver LIMS",
         "route": "/",
         "view": "HomeView",
         "content_header": "Welcome",
         "description": "Menu starting point"
+    },
+    
+    "about": {
+      "title": "ICCB-L Screensaver LIMS",
+      "route": "about",
+      "view": "AboutView",
+      "content_header": "ICCB-L Screensaver LIMS",
+      "description": "About page"
     },
 
     "metahash": {
@@ -59,10 +67,9 @@
         "url_root": "/reports/api/v1",
         "description": "Change logs"
     },
-    "users": {
+    "user": {
         "header_message": "Django users",
         "title": "Users",
-        "route": "list/users",
         "list_view": "ListView",
         "detailView": "UserAdminView",
         "api_resource": "user",

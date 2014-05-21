@@ -1,5 +1,20 @@
 {   
-    "screensaveruser": {
+  "home": {
+    "title": "Screensaver LIMS",
+    "route": "/",
+    "view": "HomeView",
+    "content_header": "Welcome",
+    "description": "Menu starting point"
+  },
+  "about": {
+    "title": "ICCB-L Screensaver LIMS",
+    "route": "about",
+    "view": "AboutView",
+    "content_header": "ICCB-L Screensaver LIMS",
+    "description": "About page"
+  },
+
+  "screensaveruser": {
         "header_message": "All users (Screeners and Staff)",
         "title": "Screensaver Users",
         "route": "list/screensaveruser",

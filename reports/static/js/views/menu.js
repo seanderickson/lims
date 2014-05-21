@@ -156,6 +156,8 @@ define([
           }
         }
         this.$('li').removeClass('active');
+        // also the top navbar
+        $('.nav').children('li').removeClass('active');
         this.$('#' + ui_resource_id).addClass('active');
         this.updateTopMenu(ui_resource_id);
       },

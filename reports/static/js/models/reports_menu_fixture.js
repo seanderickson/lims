@@ -17,7 +17,7 @@
         "apilog":{
             "view": "list"
         },
-        "users":{
+        "user":{
             "view": "list"
         },
         "groups":{

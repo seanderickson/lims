@@ -2,11 +2,10 @@
  * Application loading script for the Iccbl-lims app.
  */
 
-// First, load require.js and require-config
-requirejs(['require-config'], function() {
+requirejs(['require-config'], 
+    function() { // First, load require.js and require-config
   
-  // Second, load application code
-  require([
+  require([ // now load application code
     'jquery',
     'underscore',
     'backbone',
@@ -14,11 +13,18 @@ requirejs(['require-config'], function() {
     'models/app_state',
     'views/app_view',
     'router',
-    'bootstrap',
-    //NOTE: this will only load from http, not file in most default browser setups!
-    'text!models/app_model_fixture.js' 
- ],
-  function($, _, Backbone, Iccbl, appModel, AppView, AppRouter, ui_resources_raw ) {
+    // NOTE: browser security restrictions prevent loading this from file:///
+    'text!models/reports_ui_resources_fixture.js', 
+    'text!models/reports_menu_fixture.js', 
+    'text!models/ui_resources_fixture.js', 
+    'text!models/menu_fixture.js', 
+    // TODO: verify this: Bootstrap does not return an object; it modifies the 
+    // Jquery object with new methods
+    'bootstrap'
+  ],
+      function($, _, Backbone, Iccbl, appModel, AppView, AppRouter, 
+               reports_ui_resources_raw, reports_menu_raw, ui_resources_raw, menu_raw ) {
+    
     console.log('init screensaver/reports...')
   
     // Augment the view prototype to prevent memory leaks - 
@@ -39,20 +45,32 @@ requirejs(['require-config'], function() {
       return;
     }
     
-    appModel.set('ui_resources', JSON.parse(ui_resources_raw));
+    var ui_resources = JSON.parse(reports_ui_resources_raw);
+    _.extend(ui_resources, JSON.parse(ui_resources_raw));
+    appModel.set('ui_resources', ui_resources);
+    
+    var menu_resource = JSON.parse(menu_raw);
+    _.extend(menu_resource['submenus'], JSON.parse(reports_menu_raw)['submenus']);
+    appModel.set('menu', menu_resource);
 
-    appModel.start(function(){
-      console.log("Render application to it's div");
-      appView.render();
-          
-      Backbone.history = Backbone.history || new Backbone.History({});
-      Backbone.history.start({ pushState: false, root: appModel.get('root_url') });
-      console.log('App model initialized.');
+    $(document).bind("ajaxSend", function(){
+      $('#loading').fadeIn({duration:100});
+    }).bind("ajaxComplete", function(){
+      $('#loading').fadeOut({duration:100});
     });
     
     var appRouter = appModel.router = new AppRouter({ model: appModel });
     var appView = new AppView({ model: appModel },{ router: appRouter});
   
+    appModel.start(function(){
+      console.log('Render application')
+      appView.$el.appendTo("#application_div")
+      appView.render();
+          
+      Backbone.history = Backbone.history || new Backbone.History({});
+      Backbone.history.start({ pushState: false, root: appModel.get('root_url') });
+    });
+    
     // Set the document title
     Backbone.history.on('route', function(router, route, params) {
       var title = _.reduce(
@@ -65,7 +83,7 @@ requirejs(['require-config'], function() {
             return memo ;
           }, ' ');              
       
-        document.title = route + ':' + title;
+        document.title = 'Screensaver LIMS' + ':' + title;
      }, this);    
    
   });

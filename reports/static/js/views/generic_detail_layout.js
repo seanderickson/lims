@@ -12,16 +12,17 @@ define([
 
 ], function($, _, Backbone, stickit, backbone_forms, Iccbl, appModel,
             DetailView, EditView, layoutTemplate ) {
-	
+
 	var DetailLayout = Backbone.Layout.extend({
 	  
 	  initialize: function() {
 	    console.log('---- initialize detail layout');
 	    this.subviews = {};
       _.bindAll(this, 'showDetail');
+      
+
 	  },
     events: {
-      'click button#save': 'save',
       'click button#download': 'download',
       'click button#delete': 'delete',
       'click button#edit': 'showEdit',
@@ -58,6 +59,9 @@ define([
         Backbone.Layout.setupView(view);
         this.subviews['edit'] = view;
       }
+      this.listenTo(view,'remove',function(){
+        this.showDetail();
+      });
       // NOTE: no subviews, so can notify on render
       this.trigger('uriStack:change',[]);
       this.setView("#detail_content", view ).render();
@@ -66,67 +70,7 @@ define([
     afterRender: function(){
       this.showDetail();
     },
-    
-    save: function( event ) {
-      event.preventDefault();
-      var self = this;
-      
-      var view = this.subviews['edit'];
-      if ( ! view ) { 
-        window.alert("edit view not found");
-      }else{
-        view.commit();
-        
-        // Fixup the URL - if it points to the model instance, make it point to 
-        // the API resource only: tastypie wants this
-        // Note: this is happening if the model was fetched specifically for this
-        // page, and has the url used to fetch it, rather than the collection url.
-        var key = Iccbl.getIdFromIdAttribute( self.model,self.model.resource.schema );
-        var url = _.result(this.model, 'url');
-        ////    if ( url && url.indexOf(key) != -1 ) {
-        ////    url = url.substring( 0,url.indexOf(key) );
-        ////  }        
-        
-        // TODO: check if creating new or updating here
-        // set the id specifically on the model: backbone requires this to 
-        // determine whether a "POST" or "PATCH" will be used
-        this.model.id = key;
-
-        this.model.save(null, {
-          url: url // set the url property explicitly
-        })
-        .done(function(model, resp){
-          // done replaces success as of jq 1.8
-          console.log('model saved');
-        })
-        .fail(function(model,xhr){
-          // fail replaces error as of jquery 1.8
-          if ( _.has(xhr,'responseJSON' ) ) {
-            if ( _.has( xhr.responseJSON, 'error_message') ) {
-              window.alert( xhr.responseJSON.error_message );
-            }
-            else if ( _.has( xhr.responseJSON, 'error') ) {
-              window.alert( xhr.responseJSON.error_message );
-            }
-          } else {
-            var re = /([\s\S]*)Request Method/;
-            var match = re.exec(xhr.responseText);
-            if (match) {
-              window.alert(
-                'error saving: ' + match[1] + ': ' + xhr.status + ':' +
-                xhr.statusText );
-            } else {
-              window.alert('error on saving: ' + xhr.status + ':' + 
-                           xhr.statusText );
-            }              
-          }
-        })
-        .always(function() {
-          // always replaces complete as of jquery 1.8
-          self.showDetail();
-        });
-      }
-    },    
+ 
     
     download: function(event){
       $('#tmpFrame').attr('src', this.model.url + '?format=csv' );
@@ -162,7 +106,7 @@ define([
             function(keyval) {
               return keyval.join('=');
             }).join(','));
-      
+      newUriStack.push('order/-date_time');
       var route = newUriStack.join('/');
       console.log('history route: ' + route);
       appModel.router.navigate(route, {trigger: true});

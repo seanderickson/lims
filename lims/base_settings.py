@@ -122,6 +122,8 @@ ROOT_URLCONF = 'lims.urls'
 # Python dotted path to the WSGI application used by Django's runserver.
 WSGI_APPLICATION = 'lims.wsgi.application'
 
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+
 TEMPLATE_DIRS = [os.path.join(PROJECT_ROOT, 'templates')]
 
 INSTALLED_APPS = (
@@ -137,8 +139,8 @@ INSTALLED_APPS = (
     'south',
     'tastypie', # manual says this is "not necessary, but useful"
     'db',
-    'reports',
     'lims',
+    'reports',
 )
 
 # for tastypie: will evaluate resource URIs the same with or without the trailing slash

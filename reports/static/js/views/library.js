@@ -74,7 +74,7 @@ define([
      */
     serialize: function() {
       return {
-        'title': Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource.schema),
+//        'title': Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource.schema),
         'tab_resources': this.tabbed_resources
       }      
     }, 

@@ -124,6 +124,22 @@ define([
         var ui_resource_id = event.currentTarget.id;
         console.log('menu click: ' + ui_resource_id);
         
+        if(appModel.isPagePending()){
+          appModel.requestPageChange({
+            immediate: function(){
+              self._menuAction(ui_resource_id)
+            },
+            ok: function(){
+              self._menuAction(ui_resource_id, true)
+            }
+          });
+        }else{
+          self._menuAction(ui_resource_id, false)
+        }
+        
+      },
+      
+      _menuAction: function(ui_resource_id, isImmediate){
         if (ui_resource_id==='home') {
           appModel.setUriStack([]);
           return;
@@ -138,7 +154,7 @@ define([
         }
 
         // if menu doesn't have an "expanded" flag, then just do it's action
-        if( ! _.has(menu, 'expanded')){
+        if( ! _.has(menu, 'expanded') || isImmediate ){
           appModel.setUriStack([ui_resource_id]);
         }else{
           // first click on a menu item expands it
@@ -160,10 +176,8 @@ define([
         $('.nav').children('li').removeClass('active');
         this.$('#' + ui_resource_id).addClass('active');
         this.updateTopMenu(ui_resource_id);
-      },
+      }
    
-      
-
     });
 
     return MenuView;

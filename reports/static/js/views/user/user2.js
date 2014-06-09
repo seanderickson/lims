@@ -10,10 +10,11 @@ define([
     'views/list',
     'views/simple-list',
     'views/user/groups',
+    'views/user/permissions',
     'text!templates/generic-tabbed.html',
 ], function($, _, Backbone, BackbonePageableCollection, Iccbl, layoutmanager, 
             appModel, DetailLayout, 
-            ListView, SimpleListView, GroupsView, layout) {
+            ListView, SimpleListView, GroupsView, PermissionsView, layout) {
 
   // for compatibility with require.js, attach PageableCollection in the 
   // right place on the Backbone object
@@ -68,7 +69,6 @@ define([
      */
     serialize: function() {
       return {
-//        'title': Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource.schema),
         'tab_resources': this.tabbed_resources
       }      
     }, 
@@ -102,13 +102,12 @@ define([
         return;
       }
       
-      if(appModel.isPagePending()){
-        appModel.showModal(function(){
+      appModel.requestPageChange({
+        ok: function(){
           self.change_to_tab(key);
-        })
-      }else{
-        self.change_to_tab(key);
-      }
+        }
+      })
+      
     },
 
     change_to_tab: function(key){
@@ -162,104 +161,20 @@ define([
       }
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
-//      self.reportUriStack([]);
     },
-    
-    setPermissions: function(){
+
+    setPermissions: function(delegateStack){
       var self = this;
       var key = 'permissions';
-      
-      var view = self.tabViews[key];
-      if ( !view ) {
-        
-        // TODO: make a userPermissions subview
-        var resourceId = 'permission';
-        var resource = appModel.getResource(resourceId);
-
-        // get all of the permissions first, then checkoff the ones that are for this user
-        var columns = Iccbl.createBackgridColModel(
-            resource.schema.fields, Iccbl.MyHeaderCell);
-
-        // make a checkbox column that will be used to manage the user->permission relationship
-        columns.unshift({
-            column: "isForUser",
-            name: "isForUser",
-            label: "Select permissions for " + self.title,
-            cell: "boolean"
-        });
-
-        var ListModel = Backbone.Model.extend({
-            defaults: {
-                rpp: 25,
-                page: 1,
-                order: {},
-                search: {}}
-            });
-        var listModel = new ListModel();
-
-        var _state = {
-            currentPage: parseInt(listModel.get('page')),
-            pageSize: parseInt(listModel.get('rpp'))
-          };
-
-        var Collection = Iccbl.MyCollection.extend({
-          state: _state
-        });
-        var collection  = new Collection({
-          'url': resource.apiUri,
-          listModel: listModel
-        });
-
-        // update the collection models with a new attribute tied to the checkbox column
-        collection.bind("sync", function(){
-          collection.each(function(model){
-            var currentPerms = self.model.get('permissions');
-            var currentPermissionUri = model.get('resource_uri');
-            model.set('isForUser', Iccbl.containsByMatch(currentPerms, currentPermissionUri));
-
-            // when the checkbox is selected, use a custom model event to 
-            // update the group model relationship and refetch the user model
-            model.on('change:isForUser', function(model){
-                var currentPerms = self.model.get('permissions');
-                var permissionUri = model.get('resource_uri');
-                var containsByMatch = Iccbl.containsByMatch(currentPerms, permissionUri);
-                var changed = false;
-                if(model.get('isForUser') && ! containsByMatch ){
-                  currentPerms.push(permissionUri);
-                  changed = true;
-                }else if(!model.get('isForUser')  && containsByMatch ) {
-                  currentPerms = _.without(currentPerms, permissionUri);
-                  changed = true
-                }
-                if(changed){
-                  self.model.save({'permissions': currentPerms },{
-                    patch: true,
-                    success: function(){
-                      console.log('refetch the permission model');
-                      model.fetch();
-                    }
-                  });
-                }
-              });
-            });
-        });
-
-        collection.fetch();
-
-        var view = new SimpleListView(
-            { model: listModel },
-            { columns: columns,collection: collection, schemaResult: resource.schema});
-        Backbone.Layout.setupView(view);
-        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      var view = this.tabViews[key];
+      if ( !view ) {      
+        view = new PermissionsView({ model: this.model, uriStack: delegateStack });
         self.tabViews[key] = view;
-        self.setView("#tab_container", view ).render();
-            
-      } else {
-        self.listenTo(view , 'uriStack:change', self.reportUriStack);
-        self.setView("#tab_container", view ).render();
       }
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView("#tab_container", view ).render();
     },
-
+    
     onClose: function() {
       // TODO: is this necessary when using Backbone LayoutManager
       this.tabViews = {};

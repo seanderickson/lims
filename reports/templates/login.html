@@ -43,7 +43,7 @@ Login page to authenticate users.
 {% endblock %}
 
 {% block application %}
-    <div class="container">
+    <div class="container-fluid">
 	  {% if user.is_authenticated %}
 	    logged in as: {{ user }}<br/>
 	    <a href="{% url "logout" %}">Log out</a>

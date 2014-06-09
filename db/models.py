@@ -827,7 +827,7 @@ class ScreensaverUser(models.Model):
     # TODO: it would be nice to move user out of db
 #    user = models.OneToOneField(User, null=True, blank=True)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True)
-    permissions = models.ManyToManyField('reports.Permission')
+#     permissions = models.ManyToManyField('reports.Permission')
 #    usergroups = models.ManyToManyField('reports.UserGroup')
     class Meta:
         db_table = 'screensaver_user'

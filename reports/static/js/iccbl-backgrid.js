@@ -272,15 +272,15 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
   };
 
   /**
-   * Matches collection items against the matchstring.  
+   * Matches array items against the matchstring.  
    * - Matches from the right to left; allowing URI fragments to match their 
    * parent URIs.
    * Similar the the contains function, 
    * but using item.indexOf(matchString) || matchString.indexOf(item)
    * for the truth test.
    */
-  var containsByMatch = Iccbl.containsByMatch = function(collection, matchstring){
-    return _.find(collection, function(item) {
+  var containsByMatch = Iccbl.containsByMatch = function(array, matchstring){
+    return _.find(array, function(item) {
       var result = false;
       var index = matchstring.indexOf(item);
       if (index > -1 && index+item.length == matchstring.length ){
@@ -858,6 +858,10 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     // backbone-tastypie.js fix
     var state = _.clone(state);
     state.totalRecords = response.meta.total_count;
+    
+    // FIXME: having to set this for the pre-fetched collections
+    if(!_.isNumber(state.firstPage)) state.firstPage = 1;
+    
     if (Math.ceil(state.totalRecords / state.pageSize) < state.currentPage) {
       console.log('adjust currentPage');
       state.currentPage = 1;
@@ -880,6 +884,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     var searchHash = _.clone(searchHash);
     console.log('collection.setSearch: trigger search to headers:' + 
     		JSON.stringify(searchHash));
+    // tell all the header cells
     this.trigger("MyServerSideFilter:search", searchHash, this);
 
     // Allow searches that aren't for a visible column:
@@ -897,20 +902,18 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
         // check if param dne, or if param exists and is a value to be set
         // the reason for the "isFunction" check is that the Backgrid-filter
         // defined params are function calls to get the current value in the
-        // searchbox
+        // searchbox - so skip those as state is stored there.
         if (!_.has(self.queryParams, key) || !_.isFunction(self.queryParams[key])) {
         	_data[key]=val;
         	
-        	// Hack to make the params persistent (if not a backgrid-filter)
+        	// make the params persistent (if not a backgrid-filter)
           self.queryParams[key] = function () {
-            return val;
+            return self.listModel.get('search')[key] || null;
           };
         }
       }
     });
     if(!_.isEmpty(_data)){
-      
-      
       self.fetch({data:_.clone(_data), reset: true});
       // Notify: todo:test
       self.listModel.set({

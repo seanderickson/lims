@@ -20,11 +20,9 @@ require.config({
     text: 'libs/text',
     router: 'router',
     app_state: 'models/app_state',
-    iccbl_backgrid: 'iccbl-backgrid',
-    //NOTE: this will only load from http, not file in most default browser setups!
-    'text!models/app_model_fixture.js' 
-
+    iccbl_backgrid: 'iccbl-backgrid'
   },
+  
   shim: {
     underscore: {
       exports: "_"

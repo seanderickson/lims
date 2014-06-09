@@ -28,8 +28,7 @@
 /*     margin: 20px 0; */
 /*   } */
 
-  /** Sticky footer styles
-  -------------------------------------------------- **/
+  /** Sticky footer styles **/
   html {
     position: relative;
     min-height: 100%;
@@ -46,12 +45,12 @@
     height: 60px;
     background-color: #f5f5f5;
   }
-  /* end Sticky footer styles
-  -------------------------------------------------- */
+  /** end Sticky footer styles **/
 
-  /** Loading indicator
-      - loading style requires STATIC_URL - (not available from css stylesheets?)
-  -------------------------------------------------- **/
+  /** 
+  FIXME: remove this or the clause in the base.html
+  Loading indicator
+      - loading style requires STATIC_URL - (not available from css stylesheets?) **/
 	.loading1 {
 	    background:rgba(0,0,0,0.3);
 	}
@@ -81,12 +80,11 @@
     window.is_superuser = "{{ user.is_superuser }}";
     window.user = "{{ user }}"
   </script>
-  <div id="wrap">
     {% block body%}
       {% block navbar %}
   
     <div class="navbar navbar-default navbar-fixed-top" role="navigation">
-    <div class="container-fluid">
+      <div class="container-fluid">
         <div class="navbar-header">
           <button type="button" class="navbar-toggle" data-toggle="collapse" 
               data-target=".navbar-collapse">
@@ -115,13 +113,14 @@
             {% endif %}
           </div>
        </div><!--/.nav-collapse -->
-       </div>
+      </div>
     </div>
     {% endblock %} <!-- navbar -->
+  <div id="wrap">
     {% block application %}
     {% endblock %} <!-- application -->
+    </div> <!-- wrap -->
   {% endblock %} <!-- body -->
-  </div> <!-- wrap -->
   <div id="footer">
     <div class="container">
       <a href="#">Screensaver</a> | <a href="#">ICCB-Longwood/NSRB</a> | <a href="#">Release Notes</a> | <a href="#">Feedback</a> | <a href="#">Help</a> | <a href="{% url 'admin:index' %}">Admin</a>

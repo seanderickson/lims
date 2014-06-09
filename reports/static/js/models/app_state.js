@@ -277,32 +277,76 @@ define([
     }, 
     
     setUriStack: function(value){
-      var self = this;
-      var _deferred = function(){
-       self.set({ uriStack: value });
-      };
-      if(self.isPagePending()){
-        self.showModal(_deferred);
-      }else{
-        _deferred();
-      }
+      this.set({ uriStack: value });
     },
+
+//    setUriStack: function(value){
+//      var self = this;
+//      var _deferred = function(){
+//       self.set({ uriStack: value });
+//      };
+//      
+//      // TODO: push the requestPageChange method up the call stack to the client code:
+//      // - this will allow us to prevent other actions on the client side.
+//      
+//      if(self.isPagePending()){
+//        self.showModal({
+//          ok: _deferred
+//        });
+//      }else{
+//        _deferred();
+//      }
+//    },
     
     /**
      * Set flag to signal that the current page has pending changes;
      * (see setUriStack; modal confirm dialog will be triggered).
      */
-    setPagePending: function(value){
-      this.set({'pagePending': value});
+    setPagePending: function(callback){
+      this.set({'pagePending': callback});
     },
-    
+    clearPagePending: function(){
+      this.unset('pagePending');
+    },    
     isPagePending: function(){
-      return this.has('pagePending') && this.get('pagePending');
+      return this.has('pagePending');
     },
     
-    showModal: function(callback){
+    /**
+     * options.ok = ok function
+     * options.cancel = cancel function
+     */
+    requestPageChange: function(options){
       var self = this;
-      console.log('showModal: ' + JSON.stringify(this.model));
+      var callbackOk = options.ok;
+      options.ok = function(){
+        if(callbackOk) callbackOk();
+        self.clearPagePending();
+      };
+      
+
+      if(! self.isPagePending()){
+        options.ok();
+      }else{
+        var pendingFunction = this.get('pagePending');
+        if(_.isFunction(pendingFunction)){
+          options.cancel = pendingFunction;
+        }
+        self.showModal(options);
+      }
+    },
+    
+    /**
+     * options.ok = ok function
+     * options.cancel = cancel function
+     */
+    showModal: function(options){
+      
+      var self = this;
+      var callbackOk = (options && options.ok)? options.ok : function(){};
+      var callbackCancel = (options && options.cancel)? options.cancel: function(){};
+      
+      console.log('showModal: ' + options);
       var modalDialog = new Backbone.View({
           el: _.template(modalOkCancelTemplate, { 
             body: "Pending changes in the page: continue anyway?",
@@ -312,13 +356,14 @@ define([
                   console.log('cancel button click event, '); 
                   event.preventDefault();
                   $('#modal').modal('hide'); 
+                  callbackCancel();
               },
               'click #modal-ok':function(event) {
                   console.log('ok button click event, '); 
                   event.preventDefault();
                   $('#modal').modal('hide');
                   self.setPagePending(false);
-                  callback();
+                  callbackOk();
               }
           },
       });

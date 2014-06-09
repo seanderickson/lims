@@ -62,6 +62,7 @@ LANGUAGE_CODE = 'en-us'
 
 SITE_ID = 1
 
+AUTHENTICATION_BACKENDS = ('reports.auth.CustomAuthenticationBackend',)
 
 # Absolute path to the directory static files should be collected to.
 # Don't put anything in this directory yourself; store your static files

@@ -818,7 +818,6 @@ class TestApiInit(MetaHashResourceBootstrap,ResourceTestCase):
                         else:
                             self.fail('unknown command: ' + command + ', ' + json.dumps(action))
                     
-# FIXME: broken because the user model needs to be reworked - sde4 - 20140408
 class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
     
     def setUp(self):
@@ -832,7 +831,6 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
         
         # Create the User resource field entries
         testApiClient = TestApiClient(serializer=self.csv_serializer) 
-
         filename = os.path.join(self.directory,'metahash_fields_user.csv')
         self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.user'})
         
@@ -869,7 +867,7 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
                 resp = self.api_client.post(self.resource_uri, 
                     format='json', data=item, authentication=self.get_credentials())
                 self.assertTrue(resp.status_code in [201], str((resp.status_code, resp.serialize())))
-#                 self.assertHttpCreated(resp)
+                #                 self.assertHttpCreated(resp)
             except Exception, e:
                 logger.error(str(('on creating', item, '==ex==', e)))
                 raise
@@ -886,11 +884,6 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
             result, obj = find_obj_in_list(item, new_obj['objects'])
             self.assertTrue(
                 result, str(('bootstrap item not found', item, new_obj['objects'])))
-#             self.assertTrue(
-#                 'screensaver_user_id' in obj, 'the primary key was not created')
-#             self.assertEqual(
-#                 i+1, obj['screensaver_user_id'], 
-#                 str(('expected the screensaver_user_id returned to be incremented to ', i+1, obj)) )
             logger.info(str(('item found', obj)))
 
         logger.info(str(('==== test_create_user done =====')))

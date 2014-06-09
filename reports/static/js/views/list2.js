@@ -200,12 +200,10 @@ define([
       var url = self.collection.url + '?format=csv' + 
                 '&limit=' +self.collection.state.totalRecords;
       if(!_.isEmpty(urlparams)) url += '&' + urlparams;
-//      console.log('url' + url);
       return url;
       
     },
     
-    // FIXME: refactor: getUriStack()
     reportState: function() {
       var self = this;
       var newStack = [];
@@ -378,7 +376,9 @@ define([
         if ( !_.isEmpty(searchHash)){
           _.each(_.keys(searchHash), function(key){
               console.log('key: ' + key + ', extrSelectorKey: ' + extraSelectorKey);
-              if( key == extraSelectorKey || key  === extraSelectorKey+ '__exact'){
+              if( key == extraSelectorKey 
+                  || key  === extraSelectorKey+ '__exact'
+                  || key  === extraSelectorKey+ '__ne'){
                   extraSelectorModel.set({ selection: searchHash[key] });
               }
           });
@@ -390,8 +390,7 @@ define([
         }
 
         var extraSelectorInstance = self.extraSelectorInstance =
-            new genericSelector({ model: extraSelectorModel }, 
-                selectorOptions );
+            new genericSelector({ model: extraSelectorModel }, selectorOptions );
         this.objects_to_destroy.push(extraSelectorInstance);
 
         this.listenTo(this.listModel, 'change: search', function(){
@@ -405,18 +404,26 @@ define([
             });
         });
         this.listenTo(extraSelectorModel, 'change', function() {
-            console.log('===--- extraSelectorModel change');
             var searchHash = _.clone(self.listModel.get('search'));
             var val = extraSelectorModel.get('selection');
             var value =  _.isUndefined(val.value) ? val: val.value ;
-            if(_.isEmpty(value) || _.isEmpty(value.trim())){
-              delete searchHash[extraSelectorKey + '__exact']
-            } else {
+
+            delete searchHash[extraSelectorKey + '__exact']
+            delete searchHash[extraSelectorKey + '__ne']
+            delete searchHash[extraSelectorKey]
+            
+            if(!_.isEmpty(value) && !_.isEmpty(value.trim())){
               var field = self.options.schemaResult.fields[extraSelectorKey];
               if(field.ui_type=='boolean'){
                 searchHash[extraSelectorKey] = value;
               }else{
-                searchHash[extraSelectorKey + '__exact'] = value;
+                // Convert the !negated values to value__ne 
+                // (this is better for the URL)
+                if(value.indexOf('!')==0){
+                  searchHash[extraSelectorKey + '__ne'] = value.substring(1);
+                }else{
+                  searchHash[extraSelectorKey + '__exact'] = value;
+                }
               }
             }
             self.listModel.set('search', searchHash);
@@ -527,11 +534,13 @@ define([
       self.listenTo(self.collection, "reset", self.checkState);
       self.listenTo(self.collection, "sort", self.checkState);
 
-
+      
+      // FIXME: move css classes out to templates
       this.$el.html(this.compiledTemplate);
       var finalGrid = self.finalGrid = this.grid.render();
       self.$("#example-table").append(finalGrid.$el);
-      finalGrid.$el.addClass("table-striped table-condensed table-hover");
+      finalGrid.$el.addClass("col-sm-12 table-striped table-condensed table-hover");
+
       self.$("#paginator-div").append(self.paginator.render().$el);
       self.$('#list-header').append(
           '<div class="pull-right pull-down"><a class="btn btn-default btn-sm pull-down" role="button" id="download_link" href="' + 
@@ -622,6 +631,7 @@ define([
       // We need to set the "Content-Disposition" header to trigger the server to 
       // bounce it back 
       $('#download_link').attr('href', self.getCollectionUrl());
+      
     }
 
   });

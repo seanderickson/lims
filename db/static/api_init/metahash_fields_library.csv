@@ -1,5 +1,5 @@
 key,scope,resource_uri,ordinal,comment,ui_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,backgrid_cell_type,backgrid_cell_options,is_restricted,nested_resource
-short_name,fields.library,/reports/api/v1/metahash/fields.library/short_name/,2,,string,TRUE,"The abbreviated name for the library","Short Namex",TRUE,,,"[list,detail,edit]",,Iccbl.EditCell,,,
+short_name,fields.library,/reports/api/v1/metahash/fields.library/short_name/,2,,string,TRUE,"The abbreviated name for the library","Short Name",TRUE,,,"[list,detail,edit]",,Iccbl.EditCell,,,
 library_name,fields.library,/reports/api/v1/metahash/fields.library/library_name/,1,,string,TRUE,"The full name of the library","Library Name",TRUE,,,"[list,detail,edit]",,,,,
 experimental_well_count,fields.library,/reports/api/v1/metahash/fields.library/experimental_well_count/,99,,integer,TRUE,"The number of experimental wells in the library (click link to browse experimental wells)","Experimental Well Count",TRUE,,,"[list,detail]",,,,,
 provider,fields.library,/reports/api/v1/metahash/fields.library/provider/,3,,string,TRUE,"The vendor or source that provided the library",Provider,TRUE,,,"[list,detail,edit]",,,,,

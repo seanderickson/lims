@@ -7,6 +7,7 @@ import traceback
 from collections import defaultdict, OrderedDict
 from copy import deepcopy
 from django.conf.urls import url
+from django.conf import settings
 from django.utils.encoding import smart_text
 from django.utils import timezone
 from django.forms.models import model_to_dict
@@ -15,7 +16,8 @@ from django.contrib.auth.models import User
 from django.db.models.aggregates import Max
 from django.db.models import Q
 from django.db import transaction
-from tastypie.exceptions import NotFound, ImmediateHttpResponse, Unauthorized
+from tastypie.exceptions import NotFound, ImmediateHttpResponse, Unauthorized,\
+    BadRequest
 from tastypie.bundle import Bundle
 from tastypie.authorization import Authorization, ReadOnlyAuthorization
 from tastypie.authentication import BasicAuthentication, SessionAuthentication,\
@@ -34,6 +36,57 @@ from tastypie.utils.timezone import make_naive
 from django.db.utils import IntegrityError
         
 logger = logging.getLogger(__name__)
+
+
+# TODO: this is only a placeholder
+class UserGroupAuthorization(Authorization):
+    def read_list(self, object_list, bundle):
+        
+        user = bundle.request.user
+        if user.is_superuser:
+            return object_list
+         
+        userprofile = user.userprofile
+        resource_name = self.resource_meta.resource_name
+        
+        permissions = [x for x in 
+            userprofile.permissions.all().filter(scope='resource', key=resource_name)]
+        logger.info(str(('user permissions', permissions)))
+        permissions_group = [ permission 
+                for group in userprofile.usergroup_set.all() 
+                for permission in group.permissions.all()]
+        logger.info(str(('group permissions', permissions)))
+        
+        
+        raise Unauthorized("User requires permission to read this resource.")
+
+    def read_detail(self, object_list, bundle):
+        return True
+
+    def create_list(self, object_list, bundle):
+        return []
+
+    def create_detail(self, object_list, bundle):
+        if bundle.request.user.is_superuser:
+            return True
+        raise Unauthorized("Only superuser may create.")
+
+    def update_list(self, object_list, bundle):
+        if bundle.request.user.is_superuser:
+            return object_list
+        raise Unauthorized("Only superuser may update lists.")
+
+    def update_detail(self, object_list, bundle):
+        if bundle.request.user.is_superuser:
+            return True
+        raise Unauthorized("Only superuser may update.")
+
+    def delete_list(self, object_list, bundle):
+        return []
+
+    def delete_detail(self, object_list, bundle):
+        raise Unauthorized("You are not allowed to access that resource.")
+
 
 
 class SuperUserAuthorization(ReadOnlyAuthorization):
@@ -56,9 +109,7 @@ class SuperUserAuthorization(ReadOnlyAuthorization):
     def create_detail(self, object_list, bundle):
         if bundle.request.user.is_superuser:
             return True
-#             return object_list
-        return False
-#         raise Unauthorized("Only superuser may create.")
+        raise Unauthorized("Only superuser may create.")
 
     def update_list(self, object_list, bundle):
         if bundle.request.user.is_superuser:
@@ -66,8 +117,9 @@ class SuperUserAuthorization(ReadOnlyAuthorization):
         raise Unauthorized("Only superuser may update lists.")
 
     def update_detail(self, object_list, bundle):
+        logger.info(str(('create detail', bundle.request.user)))
         if bundle.request.user.is_superuser:
-            return object_list
+            return True
         raise Unauthorized("Only superuser may update.")
 
 
@@ -283,12 +335,10 @@ class LoggingMixin(Resource):
         
         added_keys = list(updated_keys - intersect_keys)
         if len(added_keys)>0: 
-#             log['added_keys'] = json.dumps(added_keys)
             log['added_keys'] = added_keys
         
         removed_keys = list(original_keys- intersect_keys)
         if len(removed_keys)>0: 
-#             log['removed_keys'] = json.dumps(removed_keys)
             log['removed_keys'] = removed_keys
         
         diff_keys = list()
@@ -313,7 +363,6 @@ class LoggingMixin(Resource):
         #                     if dict1[key] != dict2[key])
 
         if len(diff_keys)>0: 
-#             log['diff_keys'] = json.dumps(diff_keys)
             log['diff_keys'] = diff_keys
             log['diffs'] = dict(
                 zip(diff_keys, 
@@ -673,11 +722,10 @@ class ManagedResource(LoggingMixin):
             bundle = super(ManagedResource, self).obj_update(bundle, **kwargs);
             return bundle
         except Exception, e:
-            logger.warn(str(('==ex on update, kwargs', kwargs,
-                             'request.path', bundle.request.path,e)))
+            response = None;
+            if hasattr(e, 'response'): response = e.response
+            logger.warn(str(('==ex on update',bundle.request.path,e, response )))
             raise e
-#             raise type(e), str((type(e), e,
-#                                 'request.path', bundle.request.path, kwargs))
 
     # override
     def obj_get(self, bundle, **kwargs):
@@ -843,7 +891,135 @@ class ManagedResource(LoggingMixin):
         return response
  
  
-class ManagedModelResource(ManagedResource, PostgresSortingResource):
+class ExtensibleModelResourceMixin(ModelResource):
+    '''
+    Tastypie ModelResource mixin that passes the full request/url parsing kwargs
+    on to the underlying "get_obj_list method:    
+    Tastypie sequence:
+    Resource.get_list()-> 
+        ModelResource.obj_get_list()->  (kwargs not passed further)
+            ModelResource.build_filters()->
+            ModelResource.apply_filters()->
+                ModelResource.get_obj_list()
+    Ordinarily, "get_obj_list" does not receive the kwargs from the base
+    Resource class - it just returns a stock query for the model.  With this 
+    modification, extra args can be passed to modfify the stock query (and 
+    return extra columns, for instance).
+    
+    Note: TP is built for extensible hooks, but this is pointing to a custom
+    Resource class implementation.
+    '''
+
+    # Override Resoure to enable (optional) kwargs to modify the base query
+    # Provisional, move to base class
+    # get_list->obj_get_list->build_filters->apply_filters->get_obj_list
+    def obj_get_list(self, bundle, **kwargs):
+        """
+        A ORM-specific implementation of ``obj_get_list``.
+
+        Takes an optional ``request`` object, whose ``GET`` dictionary can be
+        used to narrow the query.
+        """
+        filters = {}
+
+        if hasattr(bundle.request, 'GET'):
+            # Grab a mutable copy.
+            filters = bundle.request.GET.copy()
+
+        # Update with the provided kwargs.
+        filters.update(kwargs)
+        applicable_filters = self.build_filters(filters=filters)
+
+        try:
+            # MODIFICATION: adding kwargs to the apply_filters call - sde
+            logger.info(str(('kwargs', kwargs)))
+            _kwargs = kwargs
+            if 'request' in _kwargs: 
+                _kwargs = {}
+            objects = self.apply_filters(bundle.request, applicable_filters, **_kwargs)
+            return self.authorized_read_list(objects, bundle)
+        except ValueError:
+            raise BadRequest("Invalid resource lookup data provided (mismatched type).")
+        
+        
+    def apply_filters(self, request, applicable_filters, **kwargs): 
+        '''
+        Delegates to the parent ModelResource.apply_filters method.
+        '''       
+        query = self.get_object_list(request, **kwargs)
+        return query.apply_filters(request, applicable_filters);
+
+
+    def get_object_list(self, request, **kwargs):
+        '''
+        Override this method if the kwargs will be used to modify the base query
+        returned by get_obj_list()
+        '''
+        return super(ExtensibleModelResourceMixin, self).get_object_list(request);
+
+
+class FilterModelResourceMixin(ExtensibleModelResourceMixin):
+    '''
+    Tastypie ModelResource mixin to enable "exclude" filters as well as "include"
+    filters.
+    
+    How:  Modifies the dict returned from build_filters;
+    - the new dict contains a top level: "include" and "exclude" sub dicts.
+    - "include is the same, "exlude" is for an exclude filter.
+    '''
+    
+    def build_filters(self, filters=None):
+        ''' 
+        Override of Resource - 
+        Enable excludes as well as regular filters.
+        see https://github.com/toastdriven/django-tastypie/issues/524#issuecomment-34730169
+        
+        Note: call sequence: 
+        get_list->obj_get_list->build_filters->apply_filters->get_obj_list
+        
+        '''
+        if not filters:
+            return filters
+    
+        applicable_filters = {}
+    
+        # Normal filtering
+        filter_params = dict([(x, filters[x]) 
+            for x in filter(lambda x: not x.endswith('__ne'), filters)])
+        applicable_filters['filter'] = \
+            super(FilterModelResourceMixin, self).build_filters(filter_params)
+    
+        # Exclude filtering
+        exclude_params = dict([(x[:-4], filters[x]) 
+            for x in filter(lambda x: x.endswith('__ne'), filters)])
+        applicable_filters['exclude'] = \
+            super(FilterModelResourceMixin, self).build_filters(exclude_params)
+    
+        return applicable_filters 
+       
+    def apply_filters(self, request, applicable_filters, **kwargs):
+        ''' 
+        Override of ModelResource - 
+        "applicable_filters" now contains two sub dictionaries:
+        - "filter" - normal filters
+        - "exclude" - exclude filters, to be applied serially (AND'ed)
+        '''
+
+        query = self.get_object_list(request, **kwargs)
+        
+        f = applicable_filters.get('filter')
+        if f:
+            query = query.filter(**f)
+            
+        e = applicable_filters.get('exclude')
+        if e:
+            for exclusion_filter, value in e.items():
+                query = query.exclude(**{exclusion_filter: value})
+
+        return query 
+    
+class ManagedModelResource(FilterModelResourceMixin, 
+                           ManagedResource, PostgresSortingResource):
     pass
 
 class MetaHashResource(ManagedModelResource):
@@ -855,7 +1031,7 @@ class MetaHashResource(ManagedModelResource):
             scope__startswith="fields.").order_by('scope','ordinal','key')
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
-        authorization= Authorization()        
+        authorization= SuperUserAuthorization()        
         ordering = []
         filtering = {} #{'scope':ALL, 'key':ALL}
         serializer = LimsSerializer()
@@ -914,7 +1090,7 @@ class VocabulariesResource(ManagedModelResource):
         queryset = Vocabularies.objects.all().order_by('scope', 'ordinal', 'key')
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
-        authorization= Authorization()        
+        authorization= SuperUserAuthorization()        
         ordering = []
         filtering = {'scope':ALL, 'key': ALL, 'alias':ALL}
         serializer = LimsSerializer()
@@ -948,7 +1124,7 @@ class ResourceResource(ManagedModelResource):
             scope='resource').order_by('key', 'ordinal', 'scope')
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
-        authorization= Authorization()        
+        authorization= SuperUserAuthorization()        
         # TODO: drive this from data
         ordering = []
         filtering = {'scope':ALL, 'key': ALL, 'alias':ALL}
@@ -965,7 +1141,6 @@ class ResourceResource(ManagedModelResource):
         return schema
 
     def dehydrate(self, bundle):
-        logger.info(str(('dehydrating resource', bundle.obj.key)))
         bundle = super(ResourceResource,self).dehydrate(bundle)
         # Get the schema
         # FIXME: why is the resource registry keyed off of "field."+key ?
@@ -976,7 +1151,6 @@ class ResourceResource(ManagedModelResource):
             logger.error('no API resource found in the registry for ' + 
                          bundle.data['key'] + 
                          '.  Cannot build the schema for this resource.' )
-        logger.info(str(('dehydrating resource done')))
         return bundle
 
 
@@ -1036,6 +1210,8 @@ class ApiLogResource(ManagedModelResource):
 #         logger.info(str(('=== in custom authentication', request.user.is_authenticated())))
 #         return request.user.is_authenticated()    
 
+
+
 class UserResource(ManagedModelResource):
 
     username = fields.CharField('user__username', null=False, readonly=True)
@@ -1043,25 +1219,24 @@ class UserResource(ManagedModelResource):
     last_name = fields.CharField('user__last_name', null=False, readonly=True)
     email = fields.CharField('user__email', null=False, readonly=True)
     is_staff = CsvBooleanField('user__is_staff', null=True, readonly=True)
+    is_superuser = CsvBooleanField('user__is_superuser', null=True, readonly=True)
 
     usergroups = fields.ToManyField(
         'reports.api.UserGroupResource', 'usergroup_set', related_name='users', 
         blank=True, null=True)
     permissions = fields.ToManyField(
         'reports.api.PermissionResource', 'permissions', null=True) #, related_name='users', blank=True, null=True)
-#     permissions = fields.ToManyField(
-#         'reports.api.PermissionResource', 'permissions', null=True)
+    is_for_group = fields.BooleanField(attribute='is_for_group', blank=True, null=True)
 
     def __init__(self, **kwargs):
         super(UserResource,self).__init__(**kwargs)
 
     class Meta:
-#         bootstrap_fields = [ 'json_field']
         queryset = UserProfile.objects.all().order_by('username') 
-        # .order_by('user__first_name', 'user__last_name')
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
-        authorization= Authorization()        
+#         authorization= UserGroupAuthorization() #SuperUserAuthorization()        
+        authorization= SuperUserAuthorization()        
         ordering = []
         filtering = {'scope':ALL, 'key': ALL, 'alias':ALL}
         serializer = LimsSerializer()
@@ -1074,8 +1249,22 @@ class UserResource(ManagedModelResource):
             url(r"^(?P<resource_name>%s)/(?P<username>((?=(schema))__|(?!(schema))[^/]+))%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<username>((?=(schema))__|(?!(schema))[^/]+))/groups%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_user_groupview'), name="api_dispatch_user_groupview"),
+            url(r"^(?P<resource_name>%s)/(?P<username>((?=(schema))__|(?!(schema))[^/]+))/permissions%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_user_permissionview'), name="api_dispatch_user_permissionview"),
             ]    
 
+    def dispatch_user_groupview(self, request, **kwargs):
+        # signal to include extra column
+        return UserGroupResource().dispatch('list', request, **kwargs)    
+    
+    def dispatch_user_permissionview(self, request, **kwargs):
+        # signal to include extra column
+        return PermissionResource().dispatch('list', request, **kwargs)    
+        
     def obj_update(self, bundle, skip_errors=False, **kwargs):
         bundle = super(UserResource, self).obj_update(bundle, **kwargs);
         
@@ -1088,12 +1277,9 @@ class UserResource(ManagedModelResource):
         django_user.email = bundle.data.get('email')
         # Note cannot update username
         django_user.save()
-
         
     def obj_create(self, bundle, **kwargs):
-        
         bundle = super(UserResource, self).obj_create(bundle, **kwargs);
-              
         return bundle
 
     def hydrate(self, bundle):
@@ -1114,9 +1300,6 @@ class UserResource(ManagedModelResource):
         first_name=bundle.data.get('first_name')
         last_name=bundle.data.get('last_name')
         is_staff = self.is_staff.convert(bundle.data.get('is_staff'))
-        
-        
-        # TODO: also grab the "is_staff", "is_superuser", "is_active"
         
         if not username:
             username = ecommons;
@@ -1153,11 +1336,7 @@ class UserResource(ManagedModelResource):
             # side maintaining this rel' with auth_user
 
         django_user.is_staff = is_staff
-
         bundle.obj.user=django_user 
-#             bundle.obj.save()
-        
-        
         return bundle
     
     def is_valid(self, bundle):
@@ -1205,7 +1384,7 @@ class UserResource(ManagedModelResource):
             return False
         return True
         
-    def get_object_list(self, request, is_for_group=None):
+    def get_object_list(self, request, groupname=None):
         ''' 
         Called immediately before filtering, actually grabs the (ModelResource) 
         query - 
@@ -1213,62 +1392,68 @@ class UserResource(ManagedModelResource):
         Override this and apply_filters, so that we can control the 
         extra column "is_for_group".  This extra column is present when 
         navigating to users from a usergroup; see prepend_urls.
-        TODO: we could programmatically create the "is_for_group" column by 
-        grabbing the entire queryset, converting to an array of dicts, and 
-        adding this field    
         '''
         query = super(UserResource, self).get_object_list(request);
-
         
-        logger.info(str(('get_obj_list', is_for_group)))
-        if is_for_group:
+        logger.info(str(('AUTH_USER_MODEL', settings.AUTH_USER_MODEL)))
+        logger.info(str(('get_obj_list', groupname)))
+        if groupname:
             query = query.extra(select = {
                 'is_for_group': ( 
                     '(select count(*)>0 '
                     ' from reports_usergroup ug '
                     ' join reports_usergroup_users ruu on(ug.id=ruu.usergroup_id) '
-                    ' where ruu.userprofile_id=userprofile.id '
+                    ' where ruu.userprofile_id=reports_userprofile.id '
                     ' and ug.name like %s )' ),
               },
-              select_params = [is_for_group] )
-            query = query.order_by('-is_for_group', 'last_name', 'first_name')
+              select_params = [groupname] )
+            query = query.order_by('-is_for_group','user__last_name', 'user__first_name')
         return query
 
-    def apply_filters(self, request, applicable_filters):
-        logger.info(str(('apply_filters', applicable_filters)))
-        # Special logic to filter on the aggregate groups column
-        groups_filter = None
-        val = None
-        
-        # Grab the groups filter out of the dict
-        for f in applicable_filters.keys():
-            if 'groups' in f:
-                groups_filter = f
-                val = applicable_filters.pop(f)
-        # perform the query without the groups filter
-        # also: 1. override before filtering - pull out the instruction to 
-        # include extra column
-        is_for_group = applicable_filters.pop('is_for_group__exact',None)
-        query = self.get_object_list(
-            request, is_for_group=is_for_group).filter(**applicable_filters)
-        # normally:        
-        # query = super(UserResource, self).apply_filters(request, applicable_filters)
+    def apply_filters(self, request, applicable_filters, **kwargs):
 
-        # then add the groups filter back in
-        
-        if groups_filter:
-            ids = [x.id 
-                        for x in UserProfile.objects.filter(
-                            usergroup__name__contains=val)]
-            query = query.filter(id__in=ids)
-        return query
+        query = self.get_object_list(request, **kwargs)
+        logger.info(str(('applicable_filters', applicable_filters)))
+        filters = applicable_filters.get('filter')
+        if filters:
+            
+            # Grab the groups/users filter out of the dict
+            groups_filter_val = None
+            for f in filters.keys():
+                if 'usergroup' in f:
+                    groups_filter_val = filters.pop(f)
+
+            query = query.filter(**filters)
+            
+            # then add the groups filter back in
+            if groups_filter_val:
+                ids = [x.id for x in UserProfile.objects.filter(
+                        usergroup__name__iexact=groups_filter_val)]
+                query = query.filter(id__in=ids)
+            
+        e = applicable_filters.get('exclude')
+        if e:
+            groups_filter_val = None
+            for x in e.keys():
+                if 'usergroup' in x:
+                    groups_filter_val = e.pop(x)
+            for exclusion_filter, value in e.items():
+                query = query.exclude(**{exclusion_filter: value})
+
+            # then add the user/groups filter back in
+            if groups_filter_val:
+                ids = [x.id for x in UserProfile.objects.filter(
+                        usergroup__name__iexact=groups_filter_val)]
+                query = query.exclude(id__in=ids)
+
+        return query                 
 
     def apply_sorting(self, obj_list, options):
         '''
         Override to exclude certain fields from the PostgresSortingResource
         ''' 
         options = options.copy()
-        options['non_null_fields'] = ['groups','is_for_group'] 
+        options['non_null_fields'] = ['groups','is_for_group','user__first_name', 'user__last_name'] 
         obj_list = super(UserResource, self).apply_sorting(obj_list, options)
         return obj_list
 
@@ -1285,9 +1470,9 @@ class UserResource(ManagedModelResource):
     def dehydrate_permissions(self, bundle):
         uri_list = []
         P = PermissionResource()
-# todo https://docs.djangoproject.com/en/dev/topics/db/queries/#lookups-that-span-relationships        
+        # todo https://docs.djangoproject.com/en/dev/topics/db/queries/#lookups-that-span-relationships        
          
-#         userprofile = bundle.obj.userprofile_set.all()[0]
+        #         userprofile = bundle.obj.userprofile_set.all()[0]
         for p in bundle.obj.permissions.all():
             uri_list.append(P.get_local_resource_uri(p))
         return uri_list;
@@ -1299,22 +1484,23 @@ class UserResource(ManagedModelResource):
             uri_list.append(UR.get_local_resource_uri(g))
         return uri_list;
 
-
+       
 class UserGroupResource(ManagedModelResource):
     
+    # relational fields must be defined   
     permissions = fields.ToManyField(
         'reports.api.PermissionResource', 'permissions',related_name='groups', 
         null=True) #, related_name='users', blank=True, null=True)
- 
-    # relational fields must be defined   
     users = fields.ToManyField('reports.api.UserResource', 'users', 
         related_name='usergroups', blank=True, null=True)
+    is_for_user = fields.BooleanField(attribute='is_for_user', blank=True, null=True)
 
     class Meta:
-        queryset = UserGroup.objects.all();
+        queryset = UserGroup.objects.all();        
+        
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
-        authorization= Authorization()        
+        authorization= SuperUserAuthorization()        
 
         ordering = []
         filtering = {}
@@ -1326,7 +1512,35 @@ class UserGroupResource(ManagedModelResource):
     def __init__(self, **kwargs):
         super(UserGroupResource,self).__init__(**kwargs)
 
+    def prepend_urls(self):
+        return [
+            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[^/]+))%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[^/]+))/users%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_group_userview'), name="api_dispatch_group_userview"),
+            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[^/]+))/permissions%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_group_permissionview'), 
+                name="api_dispatch_group_permissionview"),
+            ]
+
+    def dispatch_group_userview(self, request, **kwargs):
+        # signal to include extra column
+        kwargs['groupname'] = kwargs.pop('name')  
+        return UserResource().dispatch('list', request, **kwargs)    
+    
+    def dispatch_group_permissionview(self, request, **kwargs):
+        # signal to include extra column
+        kwargs['groupname'] = kwargs.pop('name')  
+        return PermissionResource().dispatch('list', request, **kwargs)    
+
     def get_resource_uri(self, bundle_or_obj=None, url_name='api_dispatch_list'):
+        '''Override to shorten the URI'''
         return self.get_local_resource_uri(
             bundle_or_obj=bundle_or_obj, url_name=url_name)
     
@@ -1334,13 +1548,6 @@ class UserGroupResource(ManagedModelResource):
         bundle = super(UserGroupResource, self).obj_create(bundle=bundle, **kwargs)
 
     def hydrate(self, bundle):
-        ''' 
-        Called by full_hydrate 
-        sequence is obj_create->full_hydrate(hydrate, then full)->save
-        
-        Our custom implementation will create an auth_user for the input; so 
-        there will be a reports_userprofile.user -> auth_user.
-        '''
         bundle = super(UserGroupResource, self).hydrate(bundle);
         return bundle;
     
@@ -1380,32 +1587,89 @@ class UserGroupResource(ManagedModelResource):
         bundle.data['id'] = bundle.obj.id
         return bundle
 
-    def prepend_urls(self):
-        return [
-            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[^/]+))%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[^/]+))/users%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_group_userview'), name="api_dispatch_group_userview"),
-            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[^/]+))/permissions%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_group_permissionview'), 
-                name="api_dispatch_group_permissionview"),
-            ]
-
-    def dispatch_group_userview(self, request, **kwargs):
-        # signal to include extra column
-        kwargs['is_for_group'] = kwargs.pop('name')  
-        return UserResource().dispatch('list', request, **kwargs)    
+    # ModelResource override
+    # get_list->obj_get_list->build_filters->apply_filters->get_obj_list
+    def get_object_list(self, request, **kwargs): #is_for_user=None):
+        ''' 
+        Called immediately before filtering, this method actually grabs the 
+        (ModelResource) base query - 
+        
+        Because we are using the ExtensibleModelResourceMixin here, we are also
+        getting the kwargs from the Request.GET.  We use extra kwargs,
+        ("username") in this case, to signal that we want to include the extra 
+        column, "is_for_user".  
+        
+        Note: This special case is served from the url:
+        /user/<username>/groups.
+        All of this is a convenience feature for the client code; having
+        "is_for_user" allows for easy filtering on the client.
+        '''
+        logger.info(str(('get_obj_list', kwargs)))
+        query = super(UserGroupResource, self).get_object_list(request);
+        
+        if 'username' in kwargs:
+            is_for_user = kwargs.pop('username')
+            logger.info(str(('get_obj_list', is_for_user)))
+            query = query.extra(select = {
+                'is_for_user': ( 
+                    '(select count(*)>0 '
+                    ' from reports_userprofile up '
+                    ' join reports_usergroup_users ruu on(up.id=ruu.userprofile_id) '
+                    ' where ruu.usergroup_id=reports_usergroup.id '
+                    ' and up.username = %s )' ),
+              },
+              select_params = [is_for_user] )
+            query = query.order_by('-is_for_user', 'name')
+        return query
     
-    def dispatch_group_permissionview(self, request, **kwargs):
-        # signal to include extra column
-        kwargs['is_for_group'] = kwargs.pop('name')  
-        return PermissionResource().dispatch('list', request, **kwargs)    
+    def apply_filters(self, request, applicable_filters, **kwargs):
+        '''
+        ModelResource override - 
+        because the FilterModelResource mixin is being used here, the 
+        applicable_filters includes an extra level: {filter,excludes}
+        '''
+        logger.info(str(('apply_filters', applicable_filters, kwargs)))
+        query = self.get_object_list(request, **kwargs)
+        
+        filters = applicable_filters.get('filter')
+        if filters:
+
+            # Grab the users filter out of the dict
+            users_filter_val = None
+            for x in filters.keys():
+                if 'users' in x:
+                    users_filter_val = filters.pop(x)
+
+            query = query.filter(**filters)
+            
+            if users_filter_val:
+                ids = [x.id for x in UserGroup.objects.filter(
+                        users__username__iexact=users_filter_val)]
+                query = query.filter(id__in=ids)          
+            
+        e = applicable_filters.get('exclude')
+        if e:
+            users_filter_val = None
+            for x in e.keys():
+                if 'users' in x:
+                    users_filter_val = e.pop(x)
+            
+            for exclusion_filter, value in e.items():
+                query = query.exclude(**{exclusion_filter: value})
+
+            if users_filter_val:
+                ids = [x.id for x in UserGroup.objects.filter(
+                        users__username__iexact=users_filter_val)]
+                query = query.exclude(id__in=ids)          
+
+        return query
+
+    def apply_sorting(self, obj_list, options):
+        options = options.copy()
+        options['non_null_fields'] = ['is_for_user'] # Override to exclude this field in the PostgresSortingResource 
+        obj_list = super(UserGroupResource, self).apply_sorting(obj_list, options)
+        return obj_list
+
     
 
 class PermissionResource(ManagedModelResource):
@@ -1421,12 +1685,15 @@ class PermissionResource(ManagedModelResource):
 
     is_for_group = fields.BooleanField(
         attribute='is_for_group', blank=True, null=True)
+    is_for_user = fields.BooleanField(
+        attribute='is_for_user', blank=True, null=True)
 
     class Meta:
         # note: the queryset for this resource is actually the permissions
         queryset = Permission.objects.all().order_by('scope', 'key')
-        key = 'groups'
-        
+
+# FIXME: creating a "groups" field that can be used to sort
+#         key = 'groups'
 #         if 'postgres' in lims.settings.DATABASES['default']['ENGINE'].lower():
 #             queryset = queryset.extra( select = {
 #               key: ( "( select array_to_string(array_agg(ug.name), ', ') " 
@@ -1449,7 +1716,7 @@ class PermissionResource(ManagedModelResource):
 
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
-        authorization= Authorization()        
+        authorization= SuperUserAuthorization()        
         object_class = object
         
         ordering = []
@@ -1483,13 +1750,18 @@ class PermissionResource(ManagedModelResource):
                         scope=r.scope, key=r.key, type=ptype.key)
                     logger.info(str(('bootstrap created permission', p)))
 
-        
-    def obj_get_list(self,bundle, **kwargs):
-        ''' calls 1. apply_filters, 2.authorized_read_list
-        '''
-        return super(PermissionResource, self).obj_get_list(bundle, **kwargs)
+    def prepend_urls(self):
+        return [
+            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url((r"^(?P<resource_name>%s)/(?P<scope>[\w\d_.\-:]+)/"
+                 r"(?P<key>[\w\d_.\-\+:]+)/(?P<type>[\w\d_.\-\+:]+)%s$" ) 
+                        % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            ]
     
-    def get_object_list(self, request, is_for_group=None):
+    def get_object_list(self, request, **kwargs): #username=None, groupname=None):
         ''' 
         Called immediately before filtering, actually grabs the (ModelResource) 
         query - 
@@ -1502,8 +1774,9 @@ class PermissionResource(ManagedModelResource):
         adding this field    
         '''
         query = super(PermissionResource, self).get_object_list(request);
-        logger.info(str(('get_obj_list', is_for_group)))
-        if is_for_group:
+        if 'groupname' in kwargs:
+            groupname = kwargs.pop('groupname')
+            logger.info(str(('get_obj_list', groupname)))
             query = query.extra(select = {
                 'is_for_group': (
                     '( select count(*)>0 '
@@ -1511,50 +1784,85 @@ class PermissionResource(ManagedModelResource):
                     '  join reports_usergroup_permissions rup '
                        '  on(ug.id=rup.usergroup_id) '
                     ' where rup.permission_id=reports_permission.id '
-                    ' and ug.name like %s )' ),
+                    ' and ug.name = %s )' ),
               },
-              select_params = [is_for_group] )
+              select_params = [groupname] )
             query = query.order_by('-is_for_group')
+        if 'username' in kwargs:
+            username = kwargs.pop('username')
+            query = query.extra(select = {
+                'is_for_user': (
+                    '( select count(*)>0 '
+                    '  from reports_userprofile up '
+                    '  join reports_userprofile_permissions rup '
+                       '  on(up.id=rup.userprofile_id) '
+                    ' where rup.permission_id=reports_permission.id '
+                    ' and up.username = %s )' ),
+              },
+              select_params = [username] )
+            query = query.order_by('-is_for_user')
         return query
     
-    def apply_filters(self, request, applicable_filters):
-        logger.info(str(('apply_filters', applicable_filters)))
-        # Special logic to filter on the aggregate groups column
-        groups_filter = None
-        val = None
+    def apply_filters(self, request, applicable_filters, **kwargs):
         
-        # Grab the groups filter out of the dict
-        for f in applicable_filters.keys():
-            if 'groups' in f:
-                groups_filter = f
-                val = applicable_filters.pop(f)
-        # perform the query without the groups filter
-        # also: 1. override before filtering - pull out the instruction to 
-        # include extra column
-        is_for_group = applicable_filters.pop('is_for_group__exact',None)
-        query = self.get_object_list(
-            request, is_for_group=is_for_group).filter(**applicable_filters)
-        # normally:        
-        # query = super(UserResource, self).apply_filters(request, applicable_filters)
+        query = self.get_object_list(request, **kwargs)
+        logger.info(str(('applicable_filters', applicable_filters)))
+        filters = applicable_filters.get('filter')
+        if filters:
+            
+            # Grab the groups/users filter out of the dict
+            groups_filter_val = None
+            users_filter_val = None
+            for f in filters.keys():
+                if 'groups' in f:
+                    groups_filter_val = filters.pop(f)
+                if 'userprofile' in f:
+                    users_filter_val = filters.pop(f)
 
-        # then add the groups filter back in
-        if groups_filter:
-            ids = [x.id 
-                        for x in UserProfile.objects.filter(
-                            usergroup__name__contains=val)]
-            query = query.filter(id__in=ids)
-        return query
+            query = query.filter(**filters)
+            
+            # then add the groups filter back in
+            if groups_filter_val:
+                ids = [x.id for x in Permission.objects.filter(
+                        usergroup__name__iexact=groups_filter_val)]
+                query = query.filter(id__in=ids)
+            if users_filter_val:
+                ids = [x.id for x in Permission.objects.filter(
+                        userprofile__username__iexact=users_filter_val)]
+                query = query.filter(id__in=ids)
+            
+        e = applicable_filters.get('exclude')
+        if e:
+            groups_filter_val = None
+            users_filter_val = None
+            for x in e.keys():
+                if 'userprofile' in x:
+                    users_filter_val = e.pop(x)
+                if 'groups' in x:
+                    groups_filter_val = e.pop(x)
+            for exclusion_filter, value in e.items():
+                query = query.exclude(**{exclusion_filter: value})
+
+            # then add the user/groups filter back in
+            if groups_filter_val:
+                ids = [x.id for x in Permission.objects.filter(
+                        usergroup__name__iexact=groups_filter_val)]
+                query = query.exclude(id__in=ids)
+            if users_filter_val:
+                ids = [x.id for x in Permission.objects.filter(
+                        userprofile__username__iexact=users_filter_val)]
+                query = query.exclude(id__in=ids)
+
+        return query         
 
     def apply_sorting(self, obj_list, options):
         options = options.copy()
         # Override to exclude this field in the PostgresSortingResource 
-        options['non_null_fields'] = ['groups','is_for_group'] 
+        options['non_null_fields'] = ['groups','is_for_group','users','is_for_user'] 
         obj_list = super(PermissionResource, self).apply_sorting(
             obj_list, options)
         return obj_list
 
-
-    
     def get_resource_uri(self, bundle_or_obj=None, url_name='api_dispatch_list'):
         return self.get_local_resource_uri(
             bundle_or_obj=bundle_or_obj, url_name=url_name)
@@ -1579,14 +1887,5 @@ class PermissionResource(ManagedModelResource):
             'label': 'Resource', 'searchColumn': 'scope', 'options': temp }
         return schema
         
-    def prepend_urls(self):
-        return [
-            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url((r"^(?P<resource_name>%s)/(?P<scope>[\w\d_.\-:]+)/"
-                 r"(?P<key>[\w\d_.\-\+:]+)/(?P<type>[\w\d_.\-\+:]+)%s$" ) 
-                        % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            ]
+
 

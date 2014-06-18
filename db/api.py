@@ -810,7 +810,7 @@ class LibraryCopyResource(ManagedModelResource):
         query = super(LibraryCopyResource, self).get_object_list(request);
         logger.info(str(('get_obj_list', len(query))))
         if library_short_name:
-            query = query.filter(library_short_name=library_short_name)
+            query = query.filter(library__short_name=library_short_name)
         return query
     
         
@@ -993,7 +993,7 @@ class LibraryCopyPlateResource(ManagedModelResource):
         '''
         query = super(LibraryCopyPlateResource, self).get_object_list(request);
         if library_short_name:
-            query = query.filter(library_short_name=library_short_name)
+            query = query.filter(copy__library__short_name=library_short_name)
         if copy_name:
             query = query.filter(copy_name=copy_name)
         return query
@@ -1330,7 +1330,7 @@ class WellResource(ManagedModelResource):
         '''
         query = super(WellResource, self).get_object_list(request);
         if library_short_name:
-            query = query.filter(library_short_name=library_short_name)
+            query = query.filter(library__short_name=library_short_name)
         return query
                     
 
@@ -1464,7 +1464,7 @@ class LibraryContentsVersionResource(ManagedModelResource):
         '''
         query = super(LibraryContentsVersionResource, self).get_object_list(request);
         if library_short_name:
-            query = query.filter(library_short_name=library_short_name)
+            query = query.filter(library__short_name=library_short_name)
         return query
                     
 

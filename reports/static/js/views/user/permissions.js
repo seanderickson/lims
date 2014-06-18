@@ -169,9 +169,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView,
                        {value:'!'+self.model.id, label:'no'} ]}; //FIXME: need a not_eq operator
       
       var fields = resource.schema.fields;
-      // FIXME: is this wired?
-      fields['key']['backgrid_cell_type'] = 'Iccbl.LinkCell';
-      fields['key']['backgrid_cell_options'] = '/permissions/{scope}/{key}'; 
+//      // FIXME: is this wired?
+//      fields['key']['backgrid_cell_type'] = 'Iccbl.LinkCell';
+//      fields['key']['backgrid_cell_options'] = '/permissions/{scope}/{key}'; 
       var columns = Iccbl.createBackgridColModel(
           fields, Iccbl.MyHeaderCell);
       

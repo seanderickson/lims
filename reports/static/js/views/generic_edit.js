@@ -5,11 +5,12 @@ define([
     'backbone_stickit',
     'backbone_forms',
     'iccbl_backgrid',
+    'models/app_state',
     'text!templates/generic-edit.html',
     'text!templates/modal_ok_cancel.html',
 
-], function( $, _, Backbone, stickit, backbone_forms, Iccbl, editTemplate, 
-            modalOkCancel ) {
+], function( $, _, Backbone, stickit, backbone_forms, Iccbl, appModel,
+            editTemplate, modalOkCancel ) {
 	
   // like 'Select' editor, but will always return a boolean (true or false)
   Backbone.Form.editors.BooleanSelect = Backbone.Form.editors.Select.extend({
@@ -31,6 +32,15 @@ define([
   
   
   var EditView = Backbone.Form.extend({
+
+    initialize: function(args) {
+      console.log('---- initialize EditView');
+      this.uriStack = args.uriStack;
+      this.consumedStack = []; // TODO: not used
+      
+      Backbone.Form.prototype.initialize.apply(this,args);
+
+    },
 
     events: {
       'click button#save': 'save'
@@ -137,7 +147,6 @@ define([
           validators: ['required'], 
           template: self.altFieldTemplate
       };
-//      this.model.set('comment',"");
       
       return editSchema;
     },
@@ -203,14 +212,21 @@ define([
       ////    url = url.substring( 0,url.indexOf(key) );
       ////  }        
       
-      // TODO: check if creating new or updating here
-      // set the id specifically on the model: backbone requires this to 
-      // determine whether a "POST" or "PATCH" will be used
-      this.model.id = key;
+      var _patch = true;
+      if (_.contains(this.uriStack, '+add')){
+        _patch = false;
+        url += key;
+      }else{
+        // TODO: check if creating new or updating here
+        // set the id specifically on the model: backbone requires this to 
+        // determine whether a "POST" or "PATCH" will be used
+        this.model.id = key;
+      }
+      
 
       this.model.save(null, {
         url: url, // set the url property explicitly
-        patch: true,
+        patch: _patch,
         headers: {
         'APILOG_COMMENT': self.model.get('comment')
         }
@@ -219,28 +235,7 @@ define([
         // done replaces success as of jq 1.8
         console.log('model saved');
       })
-      .fail(function(xhr, text){
-        // fail replaces error as of jquery 1.8
-        if ( _.has(xhr,'responseJSON' ) ) {
-          if ( _.has( xhr.responseJSON, 'error_message') ) {
-            window.alert( xhr.responseJSON.error_message );
-          }
-          else if ( _.has( xhr.responseJSON, 'error') ) {
-            window.alert( xhr.responseJSON.error_message );
-          }
-        } else {
-          var re = /([\s\S]*)Request Method/;
-          var match = re.exec(xhr.responseText);
-          if (match) {
-            window.alert(
-              'error saving: ' + match[1] + ': ' + xhr.status + ':' +
-              xhr.statusText );
-          } else {
-            window.alert('error on saving: ' + xhr.status + ':' + 
-                         xhr.statusText );
-          }              
-        }
-      })
+      .fail(appModel.jqXHRFail)
       .always(function() {
         // always replaces complete as of jquery 1.8
         self.trigger('remove');

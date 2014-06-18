@@ -64,7 +64,7 @@ define([
     },
 
     initialize : function() {
-      _.bindAll(this,'jqXHRerror', 'error');
+      _.bindAll(this,'jqXHRerror', 'jqXHRFail', 'error');
     },
         
     start: function(callBack) {
@@ -184,7 +184,11 @@ define([
           success : function(model) {
             model.resource = resource;
             model.key = key;
-            callBack(model);
+            try{
+              callBack(model);
+            } catch (e) {
+              console.log('uncaught error: ' + e);
+            }
           },
           error: this.jqXHRerror
 
@@ -231,12 +235,12 @@ define([
      */
     getResource: function(resourceId){
       var uiResources = this.get('ui_resources');
-      var resources = this.get('resources');
+//      var resources = this.get('resources');
       if(!_.has(uiResources, resourceId)) {
-        if(!_.has(resources, resourceId)) {
+//        if(!_.has(resources, resourceId)) {
           this.error('Unknown resource: ' + resourceId);
           throw "Unknown resource: " + resourceId;
-        }
+//        }
         return resources[resourceId];
       }
       return uiResources[resourceId];
@@ -260,6 +264,30 @@ define([
       if(DEBUG) window.alert(msg);
       else console.log(msg);
       // TODO: use Bootstrap inscreen alert classed message div
+    },
+    
+    jqXHRFail: function(xhr, text){
+      var self = this;
+      
+      // fail replaces error as of jquery 1.8
+      var msg = '';
+      if ( _.has(xhr,'responseJSON' ) ) {
+        if ( _.has( xhr.responseJSON, 'error_message') ) {
+          msg = xhr.responseJSON.error_message;
+        }
+        else if ( _.has( xhr.responseJSON, 'error') ) {
+          msg = xhr.responseJSON.error;
+        }
+      } else {
+        var re = /([\s\S]*)Request Method/;
+        var match = re.exec(xhr.responseText);
+        if (match) {
+          msg = match[1] + ': ' + xhr.status + ':' + xhr.statusText;
+        } else {
+          msg = xhr.status + ':' + xhr.statusText;
+        }              
+      }
+      self.error('Server error: ' + msg);
     },
     
     error: function(msg){

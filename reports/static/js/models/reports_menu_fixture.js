@@ -20,10 +20,10 @@
         "user":{
             "view": "list"
         },
-        "groups":{
+        "usergroup":{
             "view": "list"
         },
-        "permissions":{
+        "permission":{
             "view": "list"
         }
       }

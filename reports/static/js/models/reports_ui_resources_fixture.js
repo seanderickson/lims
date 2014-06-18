@@ -76,17 +76,17 @@
         "url_root": "/reports/api/v1",
         "description": "Django user"
     },
-    "groups": {
+    "usergroup": {
         "header_message": "User Groups",
         "title": "User Groups",
         "route": "list/groups",
         "list_view": "ListView",
-        "detailView": "DetailView",
+        "detailView": "UserGroupAdminView",
         "api_resource": "usergroup",
         "url_root": "/reports/api/v1",
         "description": "User Groups"
     },
-    "permissions": {
+    "permission": {
         "header_message": "Django permissions",
         "title": "Permissions",
         "route": "list/permissions",

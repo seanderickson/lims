@@ -1546,6 +1546,7 @@ class UserGroupResource(ManagedModelResource):
     
     def obj_create(self, bundle, **kwargs):
         bundle = super(UserGroupResource, self).obj_create(bundle=bundle, **kwargs)
+        return bundle
 
     def hydrate(self, bundle):
         bundle = super(UserGroupResource, self).hydrate(bundle);

@@ -3,6 +3,6 @@ resource,resource,[key],[title],/reports/api/v1/resource/resource/,0,,"Resource 
 metahash,resource,"[scope,key]","[scope,/,title]",/reports/api/v1/resource/metahash/,0,,"Metahash describes all the fields in the tables","Field Information","[list,detail]",,,reports
 vocabularies,resource,"[scope,key]","[scope,/,title]",/reports/api/v1/resource/vocabularies/,0,,"Vocabularies describe controlled vocabularies",Vocabularies,"[list,detail]",,,reports
 apilog,resource,"[ref_resource_name,key,date_time]","[ref_resource_name,. ,key, @,date_time]",/reports/api/v1/resource/apilog/,0,,"The Change log resource","Change log","[list,detail]",,,reports
-user,resource,[username],"[first_name, ,last_name, (,username,)]",/reports/api/v1/resource/user/,0,,"The admin user view",User,"[list,detail]",,,reports
-usergroup,resource,[name],[name],/reports/api/v1/resource/usergroup/,0,,"The Django group",Group,"[list,detail]",,,reports
-permission,resource,"[scope,key,type]","[scope,/,key,:,type]",/reports/api/v1/resource/permission/,0,,"The Django permission",Permission,"[list,detail]",,,reports
+user,resource,[username],"[first_name, ,last_name, (,username,)]",/reports/api/v1/resource/user/,0,,"The admin user view",Users,"[list,detail,add]",,,reports
+usergroup,resource,[name],[name],/reports/api/v1/resource/usergroup/,0,,"The Django group",Groups,"[list,detail,add]",,,reports
+permission,resource,"[scope,key,type]","[scope,/,key,:,type]",/reports/api/v1/resource/permission/,0,,"The Django permission",Permissions,"[list,detail]",,,reports

@@ -15,17 +15,19 @@ define([
 
 	var DetailLayout = Backbone.Layout.extend({
 	  
-	  initialize: function() {
+	  initialize: function(args) {
 	    console.log('---- initialize detail layout');
+      this.uriStack = args.uriStack;
+      this.consumedStack = [];
 	    this.subviews = {};
       _.bindAll(this, 'showDetail');
-      
-
+      _.bindAll(this, 'showEdit');
 	  },
-    events: {
+
+	  events: {
       'click button#download': 'download',
       'click button#delete': 'delete',
-      'click button#edit': 'showEdit',
+      'click button#edit': 'clickEdit',
       'click button#cancel': 'cancel',
       'click button#back': 'back',
       'click button#history': 'history'
@@ -47,43 +49,64 @@ define([
         view = new DetailView({ model: this.model});
         this.subviews['detail'] = view;
       }
-      // NOTE: no subviews, so can notify on render
-      this.trigger('uriStack:change',[]);
       this.setView("#detail_content", view ).render();
+    },
+    
+    clickEdit: function(event){
+      event.preventDefault();
+      this.reportUriStack(['edit']);
+      this.showEdit();
     },
     
     showEdit: function() {
       var view = this.subviews['edit'];
       if (!view) {
-        view = new EditView({ model: this.model});
+        view = new EditView({ model: this.model, uriStack: ['edit'] });
         Backbone.Layout.setupView(view);
         this.subviews['edit'] = view;
       }
       this.listenTo(view,'remove',function(){
         this.showDetail();
       });
-      // NOTE: no subviews, so can notify on render
-      this.trigger('uriStack:change',[]);
+      
+      this.setView("#detail_content", view ).render();
+    },    
+    
+    showAdd: function() {
+      var view = this.subviews['add'];
+      if (!view) {
+        view = new EditView({ model: this.model, uriStack: ['add'] });
+        Backbone.Layout.setupView(view);
+        this.subviews['add'] = view;
+      }
+      this.listenTo(view,'remove',function(){
+        this.showDetail();
+      });
       this.setView("#detail_content", view ).render();
     },
     
     afterRender: function(){
+      if (!_.isEmpty(this.uriStack)){
+        viewId = this.uriStack.shift();
+        if (viewId == 'edit') {
+          this.showEdit();
+          return;
+        }else if (viewId == '+add') {
+          this.showAdd();
+          return;
+        }
+      }
       this.showDetail();
     },
- 
-    
+     
     download: function(event){
       $('#tmpFrame').attr('src', this.model.url + '?format=csv' );
     },
 
     cancel: function(event){
       event.preventDefault();
-      if ( this.getView("#detail_content") == this.subviews['detail'] ) {
-        this.remove();
-        appModel.back();
-      } else {
-        this.showDetail();
-      }
+      this.remove();
+      appModel.router.back();
     },    
     
     back: function(event){
@@ -116,6 +139,15 @@ define([
     onClose: function() {
       this.subviews = {};
     },
+    
+    /**
+     * Child view bubble up URI stack change event
+     */
+    reportUriStack: function(reportedUriStack) {
+      var consumedStack = this.consumedStack || [];
+      var actualStack = consumedStack.concat(reportedUriStack);
+      this.trigger('uriStack:change', actualStack );
+    }
     
 	});
 	

@@ -9,12 +9,13 @@ define([
   'views/generic_detail_layout',
   'views/library',
   'views/user/user2',
+  'views/usergroup/usergroup2',
   'text!templates/content.html',
   'text!templates/welcome.html',
   'text!templates/about.html'
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
-         LibraryView, UserAdminView, layout, welcomeLayout, 
+         LibraryView, UserAdminView, UserGroupAdminView, layout, welcomeLayout, 
          aboutLayout) {
   
   
@@ -22,18 +23,20 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     'ListView': ListView, 
     'DetailView': DetailLayout, 
     'LibraryView': LibraryView,
-    'UserAdminView': UserAdminView
+    'UserAdminView': UserAdminView,
+    'UserGroupAdminView': UserGroupAdminView
   };
     
   var ContentView = Iccbl.UriContainerView.extend({
     
     template: _.template(layout),
-    className: "row",
+//    className: "",
     
     initialize: function() {
       console.log('initialize content.js');
       Iccbl.UriContainerView.prototype.initialize.apply(this,arguments);
       this.title = null;
+      this.consumedStack = [];
     },
     
 //    /**
@@ -64,9 +67,10 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
 //      };
 //    },
     
-    showDetail: function(resource, uriStack, model){
+    showDetail: function(uriStack, model){
       var self = this;
       var uriStack = _.clone(uriStack);
+      var resource = model.resource;
       var viewClass = DetailLayout;
       if (_.has(resource, 'detailView')){
         if (_.has(VIEWS, resource['detailView'])) {
@@ -75,8 +79,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         }else{
           var msg = 'detailView class specified could not be found: ' + 
               resource['detailView'];
-          
-          window.alert(msg);
+          console.log(msg);
           throw msg;
         }
       }
@@ -86,10 +89,12 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           ': ' + Iccbl.getTitleFromTitleAttribute(model,model.resource.schema) + '' 
           );
       
-      var view = new viewClass({ model: model, uriStack: uriStack });
+
+      var view = new viewClass({ model: model, uriStack: uriStack});
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView('#content', view).render();
     },
+    
     
     showList: function(resource, uriStack, schemaResult) {
       var self = this;
@@ -119,23 +124,11 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       self.listenTo(view, 'update_title', function(val){
         this.$('#content_title').html(
             resource.title + 
-            ': ' + val + '');
+            ': <small>' + val + '</small>');
       });
 
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      self.listenTo(view, 'detail', function(model){
-        var key = Iccbl.getIdFromIdAttribute(model,schemaResult);
-        var keysToReport = Iccbl.getIdKeys(model,schemaResult);
-        
-        // NOTE: TODO: have to call this explicitly because this is the
-        // top level of the view hierarchy.  Could/would delegate, but then
-        // need to have the child view consume the keys from the stack
-        self.reportUriStack(keysToReport, {source: view});
-        var newUriStack = [];
-        model.resource = resource;
-        model.key = key;
-        self.showDetail(resource, newUriStack, model);          
-      });
+    
       Backbone.Layout.setupView(view);
       self.setView('#content', view ).render();
     },
@@ -186,11 +179,37 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       // Test for list args, if not found, then it's a detail view
       if (!_.isEmpty(uriStack) && 
             !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
-        var _key = Iccbl.popKeyFromStack(resource, uriStack, consumedStack );
-        appModel.getModel(uiResourceId, _key, function(model){
-          self.showDetail(resource, uriStack, model);
-        });
+        // DETAIL VIEW
+        
+        if(uriStack[0] == '+add'){
+          // Note: have to fill up the default fields so that the edit form will
+          // show those fields
+          var defaults = {};
+          _.each(resource.schema.fields, function(value, key){
+            if (key == 'resource_uri') {
+                defaults[key] = self.options.url;
+            } else if (key == 'id'){
+              // nop 
+              // always exclude the id field to signal create case to the server
+            } else {
+                 defaults[key] = ''; // fill the rest of the fields with blanks
+            }
+          });
+
+          var NewModel = Backbone.Model.extend({
+            urlRoot: resource.apiUri , defaults: defaults 
+          });
+          var newModel = new NewModel();
+          newModel.resource = resource;
+          self.showDetail(uriStack, newModel);
+        }else{ 
+          var _key = Iccbl.popKeyFromStack(resource, uriStack, consumedStack );
+          appModel.getModel(uiResourceId, _key, function(model){
+            self.showDetail(uriStack, model);
+          });
+        }
       } else {
+        // LIST VIEW
         self.showList(resource, uriStack,resource.schema);
       }
     }

@@ -120,6 +120,9 @@ define([
       menuClick: function(event){
         var self = this;
         event.preventDefault();
+
+        // TODO: 20140618: test remove messages
+        appModel.unset('messages');
         
         var ui_resource_id = event.currentTarget.id;
         console.log('menu click: ' + ui_resource_id);

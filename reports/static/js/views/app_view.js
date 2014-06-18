@@ -26,7 +26,13 @@ define([
       },
       
       setMessages: function() {
-        this.setView("#messages", new MessageView({model: appModel})).render();
+        var messages = appModel.get('messages');
+        if(!_.isEmpty(messages)){
+          this.messageView = new MessageView({model: appModel});
+          this.setView("#messages", this.messageView).render();
+        }else if(this.messageView){
+          this.messageView.remove();
+        }
       },      
       
       template: _.template(layout)

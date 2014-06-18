@@ -217,7 +217,7 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
   };
   
   /**
-   * Create an string ID from the 'id_attribute' of a schema resource definition.
+   * Create a string ID from the 'id_attribute' of a schema resource definition.
    * - the id_attribute is an array of field specifiers
    * - the 'ID' will be each of these fields, concatenated with a forward slash.
    * Note: the composite key is the public key; although there is often an
@@ -545,7 +545,7 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
                       // key + ', ' + prop['backgrid_cell_type']);
                       var klass = Iccbl.stringToFunction(prop['backgrid_cell_type']);
                       if (!_.isUndefined(klass)) {
-                          console.log('----- class found: ' + klass);
+                          console.log('----- class found: ' + prop['backgrid_cell_type']);
                           backgridCellType = klass;
                       }
                   } catch(ex) {
@@ -787,7 +787,14 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
       return;
     }else{
       var uriStack = _.clone(this.model.get('uriStack'));
-      this.changeUri(uriStack);
+      try {
+        this.changeUri(uriStack);
+      }catch (e){
+        // FIXME: better global error handling
+        console.log('error thrown' + e);
+        // FIXME: why is the ajaxStop handler in main.js not being called anyway?
+        $('#loading').fadeOut({duration:100});
+      }
     }
   },
   

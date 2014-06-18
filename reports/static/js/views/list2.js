@@ -267,32 +267,16 @@ define([
           }
         });
 
-      // FIXME: old code - won't work
       self.listenTo(
-        self.collection, "MyCollection:edit", 
-    		function (model) {
-          var id = Iccbl.getIdFromIdAttribute( model, schemaResult );
-          // signal to the app_model that the current view has changed 
-          // todo: separate out app_model from list_model
-          this.model.set({    current_scratch: { schemaResult: schemaResult, model: model} ,
-                              current_view: 'edit',
-                              current_options: { key: id },
-                              routing_options: {trigger: false, replace: false}
-                         }); 
-        });
-
-      self.listenTo(
-        self.collection, "MyCollection:detail", 
-        function (model) {
-          var idList = Iccbl.getIdKeys(model,schemaResult);
-          appModel.set({
-            current_scratch: { schemaResult: schemaResult, model: model},
+          self.collection, "MyCollection:detail", 
+          function (model) {
+            var id = Iccbl.getIdFromIdAttribute( model, schemaResult );
+            model.resource = self.options.resource;
+            appModel.router.navigate(model.resource.key + '/' + id, {trigger:true});
+           
           });
-          // NOTE: prefer to send custom signal, rather than uriStack:change for 
-          // detail/edit; this allows the parent to decide URI signalling
-          self.trigger('detail', model);
-        });
 
+      // TODO: not used
       self.listenTo(self.collection, "MyCollection:delete", function (model) {
           var modalDialog = new Backbone.View({
               el: _.template(modalTemplate, { 
@@ -445,44 +429,10 @@ define([
               'click button':function(event) {
                   console.log('button click event, '); 
                   event.preventDefault();
-                  // TODO: set the defaults, also determine if should be 
-                  // set on create, from the Meta Hash
-                  var defaults = {};
 
-                  id_attributes = self.options.schemaResult['resource_definition']['id_attribute']
-                  _.each(schemaResult.fields, function(value, key){
-                      if (key == 'resource_uri') {
-                          defaults[key] = self.options.url;
-                      } else if (key == 'id'){
-                          // nop // TODO: using the meta-hash, always exclude the primary key from create
-                      // } else if (_.contains(id_attributes,key)){
-                          // // nop // TODO: using the meta-hash, always exclude the primary key from create
-                      } else {
-                           defaults[key] = '';
-                      }
-                  });
-                  var NewModel = Backbone.Model.extend({urlRoot: self.options.url, defaults: defaults });
-
-                  self.collection.trigger('MyCollection:edit', new NewModel());
-
-                  // // TODO: get the model "edit title" from the metainformation_hash
-                  // var detailView = new DetailView(
-                      // { model: new NewModel},
-                      // { isEditMode: true, title: "Add new record", schemaResult:schemaResult, router:self.options.router});
-//
-                  // $('#list-container').hide();
-                  // // NOTE: having self bind to the detailView like this:
-                  // // self.listenTo(detailView, 'remove', function(){
-                  // // causes the detailView to hang around in memory until self is closed
-                  // // detailView.on('remove', function(){
-                  // self.listenToOnce(detailView, 'remove', function(){
-                      // console.log('... remove detailView event');
-                      // self.collection.fetch({reset:true});
-                      // $('#list-container').show();
-                      // detailView.close();
-                  // });
-                  // $('#detail-container').append(detailView.render().$el);
-
+                  
+                  appModel.router.navigate(self.options.resource.api_resource + "/+add", {trigger:true});
+                  return;
               },
           },
 
@@ -553,8 +503,11 @@ define([
             self.extraSelectorInstance.render().$el);
       }
               
-      // FIXME: Disabling "add" - this should be enabled by meta information:
-      // self.$("#table-footer-div").append(self.footer.$el);
+      // FIXME: "add" feature should be enabled declaratively, by user/group status:
+      if(appModel.getCurrentUser().is_superuser
+          && _.contains(self.options.resource.visibility, 'add')){
+        self.$("#table-footer-div").append(self.footer.$el);
+      }
 
       this.delegateEvents();
       

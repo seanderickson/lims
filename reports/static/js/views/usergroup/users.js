@@ -27,37 +27,38 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView,
       this.consumedStack = [];
       this.model.id = Iccbl.getIdFromIdAttribute(this.model, this.model.resource.schema);
       
-      var groupResourceId = 'usergroup';
-      var groupResource = this.groupResource = _.extend({}, appModel.getResource(groupResourceId)); 
+      var containedResourceId = 'user';
+      var containedResource = this.containedResource = 
+          _.extend({}, appModel.getResource(containedResourceId)); 
       
-      this.currentGroups = _.clone(this.model.get('usergroups'));
+      this.currentList = _.clone(this.model.get('users'));
       
-      this.addGroups = new Backbone.Collection();
-      this.removeGroups = new Backbone.Collection();
+      this.addList = new Backbone.Collection();
+      this.removeList = new Backbone.Collection();
       
       self.changed = false;
-      _.bindAll(this,'changeGroups');
+      _.bindAll(this,'changeList');
     },
     
-    changeGroups: function() {
+    changeList: function() {
       var self = this;
-      this.currentGroups = _.clone(this.model.get('usergroups'));
+      this.currentList = _.clone(this.model.get('users'));
       
-      this.groupsCollection.each(function(model){
-        if(model.hasChanged() && model.get('is_for_user') ) { 
-          if(!Iccbl.containsByMatch(self.currentGroups, model.get('resource_uri'))){
-            self.addGroups.add(model);
+      this.containedCollection.each(function(model){
+        if(model.hasChanged() && model.get('is_for_group') ) { 
+          if(!Iccbl.containsByMatch(self.currentList, model.get('resource_uri'))){
+            self.addList.add(model);
           }
-          self.removeGroups.remove(model);
-        }else if(model.hasChanged() && !model.get('is_for_user')){
-          if(Iccbl.containsByMatch(self.currentGroups, model.get('resource_uri'))){
-            self.removeGroups.add(model);
+          self.removeList.remove(model);
+        }else if(model.hasChanged() && !model.get('is_for_group')){
+          if(Iccbl.containsByMatch(self.currentList, model.get('resource_uri'))){
+            self.removeList.add(model);
           }
-          self.addGroups.remove(model);
+          self.addList.remove(model);
         }        
       });
       
-      if(!self.addGroups.isEmpty() || !self.removeGroups.isEmpty() ){
+      if(!self.addList.isEmpty() || !self.removeList.isEmpty() ){
         self.changed = true;
       }else{
         self.changed = false;
@@ -67,17 +68,16 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView,
         this.$('#save').removeClass('disabled');
         this.$('#cancel').removeClass('disabled');
         
-        this.$('#add-selection-list').html(self.addGroups.reduce(function(memo,model){
+        this.$('#add-selection-list').html(self.addList.reduce(function(memo,model){
           if(memo != "") memo += ", ";
-          memo += Iccbl.getTitleFromTitleAttribute(model, self.groupResource.schema);
+          memo += Iccbl.getTitleFromTitleAttribute(model, self.containedResource.schema);
           return memo;
         },""));
-        this.$('#remove-selection-list').html(self.removeGroups.reduce(function(memo,model){
+        this.$('#remove-selection-list').html(self.removeList.reduce(function(memo,model){
           if(memo != "") memo += ", ";
-          memo += Iccbl.getTitleFromTitleAttribute(model, self.groupResource.schema);
+          memo += Iccbl.getTitleFromTitleAttribute(model, self.containedResource.schema);
           return memo;
         },""));
-        
         appModel.setPagePending(function(){
           // function to run if user requests another page then cancels that request.
           self.$('#collapseTwo').collapse('show');
@@ -100,11 +100,12 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView,
         self.reset();
         return;
       }
-      self.addGroups.each(function(model){
-        self.currentGroups.push(model.get('resource_uri'));
+
+      self.addList.each(function(model){
+        self.currentList.push(model.get('resource_uri'));
       });
-      self.removeGroups.each(function(model){
-        self.currentGroups = _.without(self.currentGroups, model.get('resource_uri'));
+      self.removeList.each(function(model){
+        self.currentList = _.without(self.currentList, model.get('resource_uri'));
       });
       
       var comment = this.$('#comment').val();
@@ -116,14 +117,14 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView,
       }
       
       self.model.save(
-        {'usergroups':self.currentGroups},
+        {'users':self.currentList},
         { patch: true,
           headers: {
             'APILOG_COMMENT': comment
           }, 
           success: function(){
             self.reset();
-            self.groupView.render();
+            self.userView.render();
           }
         });
     },
@@ -136,8 +137,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView,
       var self=this;
       appModel.clearPagePending();
       self.changed = false;
-      self.addGroups.reset();
-      self.removeGroups.reset();
+      self.addList.reset();
+      self.removeList.reset();
       this.$('#add-selection-list').html("");
       this.$('#remove-selection-list').html("");
       this.$('#save').addClass('disabled');
@@ -147,7 +148,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView,
       this.$('#collapseOne').collapse('show');
       this.$('#collapseTwo').collapse('hide');
     },
-    
+
     /**
      * Child view bubble up URI stack change event
      */
@@ -161,35 +162,37 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView,
     afterRender: function(){
       var self = this;
 
-      var resource = self.groupResource;
+      var resource = self.containedResource;
       resource.schema.extraSelectorOptions = { 
-          'label': 'For user', 'searchColumn': 'users', 
+          'label': 'For group', 'searchColumn': 'usergroups', 
           'options': [ {value: self.model.id,label:'yes'},
                        {value:'!'+self.model.id, label:'no'} ]}; //FIXME: need a not_eq operator
       
       var fields = resource.schema.fields;
-//      fields['name']['backgrid_cell_type'] = 'Iccbl.LinkCell';
-//      fields['name']['backgrid_cell_options'] = '/groups/{name}'
+//      // update the field definition to make it a link cell
+//      fields['username']['backgrid_cell_type'] = 'Iccbl.LinkCell';
+//      fields['username']['backgrid_cell_options'] = '/user/{username}'; 
       var columns = Iccbl.createBackgridColModel(
           fields, Iccbl.MyHeaderCell);
       
       // make the (normally not visible) checkbox column
       var editable = appModel.getCurrentUser().is_superuser;
       columns.unshift({
-          column: "is_for_user",
-          name: "is_for_user",
+          column: "is_for_group",
+          name: "is_for_group",
           label: "Member",
           cell: "boolean",
+          ui_type: "boolean",
           editable: editable
       });
 
-      var collection  = this.groupsCollection = new Iccbl.MyCollection({
-        'url': self.model.resource.apiUri + '/' + self.model.id + '/groups'
+      var collection  = this.containedCollection = new Iccbl.MyCollection({
+        'url': self.model.resource.apiUri + '/' + self.model.id + '/users'
       });
 
       var uriStack = _.clone(this.uriStack);
       
-      var view = this.groupView = new ListView({ options: {
+      var view = this.userView = new ListView({ options: {
         uriStack: uriStack,
         schemaResult: resource.schema,
         resource: resource,
@@ -198,28 +201,25 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView,
       }});
       Backbone.Layout.setupView(view);
 
-      self.listenTo(self.groupsCollection, 'sync', function(){
+      self.listenTo(self.containedCollection, 'sync', function(){
         if(self.changed){
-          self.groupsCollection.each(function(model){
-            if(Iccbl.containsByMatch(self.addGroups.pluck("resource_uri"), model.get('resource_uri'))){
-              model.set({'is_for_user': true});
+          self.containedCollection.each(function(model){
+            if(Iccbl.containsByMatch(
+                self.addList.pluck("resource_uri"), model.get('resource_uri'))){
+              model.set({'is_for_group': true});
             }
-            if(Iccbl.containsByMatch(self.removeGroups.pluck("resource_uri"), model.get('resource_uri'))){
-              model.set({'is_for_user': false});
+            if(Iccbl.containsByMatch(
+                self.removeList.pluck("resource_uri"), model.get('resource_uri'))){
+              model.set({'is_for_group': false});
             }
           });
         }
       });
-      
-      // bubble up the regular list "add" action: TODO: could this be simplified with the router?
-      self.listenTo(view, 'add', function(model){ 
-        self.trigger('add', model); 
-      });
 
       // React to changes in the form:
       // NOTE: only listen -after- is editing, otherwise, change is called when syncing too
-      self.listenTo(self.groupsCollection, 'backgrid:edit', function(){
-        self.groupsCollection.once('change:is_for_user', self.changeGroups);
+      self.listenTo(self.containedCollection, 'backgrid:edit', function(){
+        self.containedCollection.once('change:is_for_group', self.changeList);
       })
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
 

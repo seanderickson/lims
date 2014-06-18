@@ -9,12 +9,12 @@ define([
     'views/generic_detail_layout',
     'views/list',
     'views/simple-list',
-    'views/user/groups',
-    'views/user/permissions',
+    'views/usergroup/users',
+    'views/usergroup/permissions',
     'text!templates/generic-tabbed.html',
 ], function($, _, Backbone, BackbonePageableCollection, Iccbl, layoutmanager, 
             appModel, DetailLayout, 
-            ListView, SimpleListView, GroupsView, PermissionsView, layout) {
+            ListView, SimpleListView, UsersView, PermissionsView, layout) {
 
   // for compatibility with require.js, attach PageableCollection in the 
   // right place on the Backbone object
@@ -38,16 +38,16 @@ define([
     
     tabbed_resources: {
         detail: { 
-          description: 'User Details', 
-          title: 'User Details', 
+          description: 'Group Details', 
+          title: 'Group Details', 
           invoke: 'setDetail' },
-        usergroup: { 
-          description: 'User Groups', 
-          title: 'User Groups', 
-          invoke: 'setGroups' },
+        user: { 
+          description: 'Group Users', 
+          title: 'Group Users', 
+          invoke: 'setUsers' },
         permission: { 
-          description: 'User Permissions', 
-          title: 'User Permissions', 
+          description: 'Group Permissions', 
+          title: 'Group Permissions', 
           invoke: 'setPermissions' },
     },
     
@@ -77,8 +77,9 @@ define([
         }
         if (!_.has(this.tabbed_resources, viewId)){
           var msg = 'could not find the tabbed resource: ' + viewId;
-          window.alert(msg);
-          throw msg;
+          console.log('Error: ' + msg);
+          appModel.error(msg);
+          return;
         }
       }
       this.change_to_tab(viewId);
@@ -114,7 +115,7 @@ define([
     },
 
     change_to_tab: function(key){
-    
+
       if(_.has(this.tabbed_resources, key)){
         var delegateStack = _.clone(this.uriStack);
 //        delegateStack.push(key);
@@ -159,13 +160,14 @@ define([
       this.setView("#tab_container", view ).render();
       return view;
     },
-
-    setGroups: function(delegateStack){
+    
+    setUsers: function(delegateStack){
       var self = this;
-      var key = 'usergroup';
+      var resource = appModel.getResource('user');
+      var key = resource.key;
       var view = this.tabViews[key];
       if ( !view ) {      
-        view = new GroupsView({ model: this.model, uriStack: delegateStack });
+        view = new UsersView({ model: this.model, uriStack: delegateStack });
         self.tabViews[key] = view;
       }
       this.consumedStack = [key]; 

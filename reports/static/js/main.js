@@ -57,7 +57,9 @@ requirejs(['require-config'],
       $('#loading').fadeIn({duration:100});
     }).bind("ajaxComplete", function(){
       $('#loading').fadeOut({duration:100});
-    });
+    }).bind("ajaxStop"), function(){
+      $('#loading').fadeOut({duration:100});
+    };
     
     var appRouter = appModel.router = new AppRouter({ model: appModel });
     var appView = new AppView({ model: appModel },{ router: appRouter});

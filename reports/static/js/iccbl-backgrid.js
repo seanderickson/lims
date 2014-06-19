@@ -920,12 +920,13 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
         }
       }
     });
+//    self.fetch();
     if(!_.isEmpty(_data)){
       self.fetch({data:_.clone(_data), reset: true});
-      // Notify: todo:test
-      self.listModel.set({
-        'search': _data
-      });
+//      // Notify: todo:test
+//      self.listModel.set({
+//        'search': _data
+//      });
     }else{
       self.fetch();
     }

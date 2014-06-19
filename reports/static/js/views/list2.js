@@ -38,6 +38,7 @@ define([
       console.log('initialize ListView: ');
       var self = this;
       var options = self.options = args.options;
+      var resource = self.options.resource;
       
       var ListModel = Backbone.Model.extend({
         defaults: {
@@ -46,10 +47,21 @@ define([
             order: {},
             search: {}}
         });
+      
+
+      // grab any preset searches
+      var preset_searches = {};
+      if(!_.isUndefined(resource.options)
+          && ! _.isUndefined(resource.options.search)){
+        _.each(_.keys(resource.options.search), function(key){
+          preset_searches[key] = resource.options.search[key];
+        });
+      }
 
       // convert the uriStack into the listmodel
       var urlSuffix = self.urlSuffix = "";
       var listInitial = {};
+      var searchHash = {};
       if(_.has(self.options,'uriStack')){
         var stack = self.options.uriStack;
         for (var i=0; i<stack.length; i++){
@@ -70,18 +82,18 @@ define([
             
             if(key === 'search') {
               var searches = value.split(',');
-              var searchHash = {};
               _.each(searches, function(search){
                 var parts = search.split('=');
                 if (!parts || parts.length!=2) {
-                  window.alert('invalid search parts: ' + search);
+                  var msg = 'invalid search parts: ' + search;
+                  console.log(msg);
+                  appModel.error(msg);
                 } else if (_.isEmpty(parts[1])) {
                   // pass, TODO: prevent empty searches from notifying
                 } else {
                   searchHash[parts[0]] = parts[1];
                 }
               });
-              listInitial[key] = searchHash;
             } else if (key === 'order') {
               var orderings = value.split(',');
               var orderHash = {};
@@ -100,6 +112,11 @@ define([
             }
           }
         }
+      }
+      // TODO: do the same thing here to implement preset orderings
+      searchHash = _.extend({}, preset_searches,searchHash);
+      if(!_.isEmpty(searchHash)){
+        listInitial['search'] = searchHash;
       }
       var listModel = this.listModel = new ListModel(listInitial);
 
@@ -244,6 +261,35 @@ define([
         }
       });
       self.trigger('uriStack:change', newStack );
+
+      // FIXME: TODO: see reports.ManagedResource.create_response:
+      // We need to set the "Content-Disposition" header to trigger the server to 
+      // bounce it back 
+      $('#download_link').attr('href', self.getCollectionUrl());
+    },
+    
+    checkState: function(){
+      var self = this;
+      var state = self.collection.state;
+      var currentPage = Math.max(state.currentPage, state.firstPage);
+
+      // Order: note, single sort only at this time
+      var orderHash = {};
+      if(state.order && state.order != 0 && state.sortKey ){
+          // Note: 
+        // backbone-pageable: state.order: ascending=-1, descending=1
+        // tastypie: "-"=descending, ""=ascending (not specified==ascending)
+        orderHash[state.sortKey] = state.order == -1 ? '' : '-';
+      }
+      
+      // search: set in Iccbl Collection
+      
+      self.listModel.set({ 
+        'rpp': state.pageSize, 
+        'page': currentPage,
+        'order': orderHash 
+      });
+      
     },
 
     buildGrid: function( columns, schemaResult ) {
@@ -429,8 +475,6 @@ define([
               'click button':function(event) {
                   console.log('button click event, '); 
                   event.preventDefault();
-
-                  
                   appModel.router.navigate(self.options.resource.api_resource + "/+add", {trigger:true});
                   return;
               },
@@ -470,11 +514,6 @@ define([
       }
     },
     
-    afterRender: function(){
-//      $('.pull-down').each(function() {
-//        $(this).css('margin-top', $(this).parent().height()-$(this).height())
-//      });
-    },
 
     beforeRender: function(){
       console.log('--render start');
@@ -484,22 +523,21 @@ define([
       self.listenTo(self.collection, "reset", self.checkState);
       self.listenTo(self.collection, "sort", self.checkState);
 
-      
-      // FIXME: move css classes out to templates
       this.$el.html(this.compiledTemplate);
       var finalGrid = self.finalGrid = this.grid.render();
       self.$("#example-table").append(finalGrid.$el);
+      // FIXME: move css classes out to templates
       finalGrid.$el.addClass("col-sm-12 table-striped table-condensed table-hover");
 
       self.$("#paginator-div").append(self.paginator.render().$el);
-      self.$('#list-header').append(
-          '<div class="pull-right pull-down"><a class="btn btn-default btn-sm pull-down" role="button" id="download_link" href="' + 
-          self.getCollectionUrl() +
-          '">download</a></div>');
-      self.$("#list-header").append(
+//      self.$('#list-header').append(
+//          '<div class="pull-right pull-down"><a class="btn btn-default btn-sm pull-down" role="button" id="download_link" href="' + 
+//          self.getCollectionUrl() +
+//          '">download</a></div>');
+      self.$("#rppselector").html(
       		self.rppSelectorInstance.render().$el);
       if(!_.isUndefined(self.extraSelectorInstance)){
-        self.$("#list-header").append(
+        self.$("#extraselector").html(
             self.extraSelectorInstance.render().$el);
       }
               
@@ -553,38 +591,9 @@ define([
       if ( !fetched ) {
         var fetchOptions = { reset: false, error: appModel.jqXHRerror };
         self.collection.fetch(fetchOptions);
-        self.reportState();
       }
+      self.reportState();
       return this;
-    },
-    
-    checkState: function(){
-    	var self = this;
-    	var state = self.collection.state;
-      var currentPage = Math.max(state.currentPage, state.firstPage);
-
-      // Order: note, single sort only at this time
-      var orderHash = {};
-      if(state.order && state.order != 0 && state.sortKey ){
-          // Note: 
-      	// backbone-pageable: state.order: ascending=-1, descending=1
-      	// tastypie: "-"=descending, ""=ascending (not specified==ascending)
-      	orderHash[state.sortKey] = state.order == -1 ? '' : '-';
-      }
-      
-      // search: set in Iccbl Collection
-      
-      self.listModel.set({ 
-        'rpp': state.pageSize, 
-        'page': currentPage,
-        'order': orderHash 
-      });
-      
-      // FIXME: TODO: see reports.ManagedResource.create_response:
-      // We need to set the "Content-Disposition" header to trigger the server to 
-      // bounce it back 
-      $('#download_link').attr('href', self.getCollectionUrl());
-      
     }
 
   });

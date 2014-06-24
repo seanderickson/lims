@@ -515,17 +515,17 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
   /**
    * Return an array for backgrid column descriptors.
    * @param {Object} fields_from_rest - hash of fields for the current dataset:
-   *      field properties { visibility: [array of strings], title: a label for
-   * the field, order: display order of the field }
+   *    field properties { visibility: [array of strings], title: a label for
+   *    the field, order: display order of the field }
    * @param {Object} optionalHeaderCell - a Backgrid.HeaderCell to use for each
-   * column
+   *    column
    * @param {Object} options - a hash of { fieldKey: [custom cell: extend
-   * Backgrid.Cell] } to map custom cell implementations to fields
+   *    Backgrid.Cell] } to map custom cell implementations to fields
    */
   var createBackgridColModel = Iccbl.createBackgridColModel = 
-  	function(restFields, optionalHeaderCell, orderHash) {
+  	    function(restFields, optionalHeaderCell, orderStack) {
       
-  	console.log('--createBackgridColModel');
+  	  console.log('--createBackgridColModel');
       //: restFields: ' + JSON.stringify(restFields));
       var colModel = [];
       var i = 0;
@@ -565,8 +565,11 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
                   order : prop['ordinal'],
                   editable : false,
               };
-              if(orderHash && _.has(orderHash, key)){
-              	colModel[i]['direction'] = 'ascending';
+              if(orderStack && _.contains(orderStack, key)){
+                colModel[i]['direction'] = 'ascending';
+              }
+              else if(orderStack && _.contains(orderStack, '-' + key)){
+                colModel[i]['direction'] = 'descending';
               }
               if (optionalHeaderCell) {
                   colModel[i]['headerCell'] = optionalHeaderCell;
@@ -749,13 +752,6 @@ var CollectionInColumns = Iccbl.CollectionInColumns = Backbone.Collection.extend
     },
 });
 
-
-
-//var UriContainerView = Iccbl.UriContainerView = function(options) {
-//  this.initialize.apply(this, arguments);
-//};
-//
-//_.extend(UriContainerView.prototype, {   
   
 var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
   initialize: function(args) {
@@ -805,18 +801,46 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
 
 });
 
+var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
+  
+  /**
+   * See Backgrid.Body.sort:
+   * - created to solve the multisort case for the server side backbone-pageable
+   * collection only.
+   */
+  sort: function (column, direction) {
+    var collection = this.collection;
+
+    var order;
+    if (direction === "ascending") order = -1;
+    else if (direction === "descending") order = 1;
+    else order = null;
+    
+    // Replaces:    
+    //    collection.setSorting(order && column.get("name"), order,
+    //        {sortValue: column.sortValue()});
+    collection.setSorting(column.get("name"), order,
+        {sortValue: column.sortValue()});
+
+    collection.fetch({reset: true, success: function () {
+      collection.trigger("backgrid:sorted", column, direction, collection);
+    }});
+    
+    column.set("direction", direction);
+
+    return this;
+  }
+});
+
 var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
 
   initialize : function(options) {
-      var self = this;
-      this.options = options;
+    var self = this;
+    this.options = options;
+    this.url = options.url;
+    this.listModel = options.listModel;
 
-//      Iccbl.requireOptions(options, ['url','listModel']);
-
-      this.url = options.url;
-      this.listModel = options.listModel;
-
-      Backbone.PageableCollection.prototype.initialize.apply(this, options);
+    Backbone.PageableCollection.prototype.initialize.apply(this, options);
   },
   mode: 'server',
 
@@ -828,8 +852,9 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
   state : {
       pageSize : 25,  // TODO: probably not necessary
   },
+  
   // PageableCollection.fetch() uses the queryParams attribute to interpret 
-  // the server response.
+  // the server response and to determine the data hash sent to the server.
   queryParams : {
       // adjust the query params for tastypie
       pageSize : 'limit',
@@ -841,19 +866,19 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
       sortKey : "order_by", // modified for tastypie
       order : null, // unset for tastypie
       order_by : function() {// modified for tastypie: use only
-          // "order_by=(-)field_name"
-          if ( typeof this.state !== 'undefined' && this.state.sortKey && this.state.order) {
-              var dir = "-";
-              if (this.state.order < 0) {// according to docs, -1 == ascending
-                  dir = "";
-              }
-              return dir + this.state.sortKey;
-          }
-      },
-      directions : {
-          "-1" : "asc",
-          "1" : "desc"
+        if ( typeof this.state !== 'undefined' 
+              && this.state.orderStack
+              && this.state.orderStack.length ) {
+          // Note: convert the orderStack using "traditional" array serialization
+          // see: http://api.jquery.com/jQuery.param/
+          //          var val = this.state.orderStack.join('&order_by=');
+          return this.state.orderStack;
+        }
       }
+      //      directions : {
+      //          "-1" : "asc",
+      //          "1" : "desc"
+      //      }
   },
 
   /**
@@ -889,9 +914,8 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
   setSearch: function(searchHash) {
     var self = this;
     var searchHash = _.clone(searchHash);
-    console.log('collection.setSearch: trigger search to headers:' + 
-    		JSON.stringify(searchHash));
-    // tell all the header cells
+    
+    // Tell all the header cells
     this.trigger("MyServerSideFilter:search", searchHash, this);
 
     // Allow searches that aren't for a visible column:
@@ -920,19 +944,17 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
         }
       }
     });
-//    self.fetch();
+
     if(!_.isEmpty(_data)){
       self.fetch({data:_.clone(_data), reset: true});
-//      // Notify: todo:test
-//      self.listModel.set({
-//        'search': _data
-//      });
     }else{
       self.fetch();
     }
   },
 
-  // Proxy for the search elements to add search terms to the listModel
+  /**
+   * Proxy for the search elements to add search terms to the listModel
+   */ 
   addSearch: function(searchHash) {
     var self = this;
     var oldsearchHash = _.clone(self.listModel.get('search'));
@@ -945,7 +967,9 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     });
   },
 
-  // Proxy for the search elements to clear search terms from the listModel
+  /**
+   * Proxy for the search elements to clear search terms from the listModel
+   */ 
   clearSearch: function(searchKeys) {
     console.log('clearsearch: ' + JSON.stringify(searchKeys));
     var self = this;
@@ -959,14 +983,54 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     self.listModel.set({
         'search' : searchHash
     });
-
   },
 
   /**
-   *  Override - called from HeaderCells
+   *  Override - 
+   *  HeaderCell.onClick -> backgrid:sort -> body.sort -> 
+   *    -> (BackbonePageable)Collection.setSorting
+   *    -> Collection.fetch() -> grab data from state based on "queryParams"
    */
   setSorting : function(sortKey, order, options) {
-  	Backbone.PageableCollection.prototype.setSorting.call(this, sortKey, order);
+    var state = this.state;
+    
+    var orderStack = state.orderStack || [];
+    
+    var newdir = order == 1 ? '-' : order == -1 ? '': null;
+    
+    var newStack = [];
+    var found = false;
+    
+    _.each(orderStack, function(order_entry){
+      var dir = order_entry.substring(0,1);
+      var fieldname = order_entry;
+      if(dir == '-'){
+        fieldname = order_entry.substring(1);
+      }else{
+        dir = '';
+      }
+      if(fieldname == sortKey){
+        found = true;
+        if(newdir === null){
+          // pop this off
+        }else if(newdir == dir){
+          // no change; push back on the stack
+          newStack.push(order_entry);
+        }else if (newdir != dir){
+          newStack.push(newdir + fieldname);
+        }
+      }else{
+        newStack.push(order_entry);
+      }
+    });
+    
+    if(!found && newdir !== null) newStack.push(newdir + sortKey);
+    
+    console.log('Ordering update: old: ' + JSON.stringify(orderStack) 
+        + ', new: ' + JSON.stringify(newStack));
+    state.orderStack = newStack;
+    
+    //  	Backbone.PageableCollection.prototype.setSorting.call(this, sortKey, order);
 	  // TODO: Investigate why PageableCollection.setSorting is not triggering 
 	  // a 'sort' event (needed to clear old sort indicators).
 	  // Sequence of a sort:
@@ -986,7 +1050,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
 	  // Last note: this may be caused by not getting the sortKey from the 
 	  // queryParams on parseState.
     	this.trigger('sort',this); 
-    },
+  },
 
 });
 
@@ -996,8 +1060,6 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
  * TODO: can handle this with events instead (so that the filter notifies the
  * containing headercell?)
  * 
- * TODO: probably going to have to implement full, instead of extending.  Too 
- * many side effects of extending ServerSideFilter
  **/
 var MyServerSideFilter = 
 		  Iccbl.MyServerSideFilter = 
@@ -1011,9 +1073,9 @@ var MyServerSideFilter =
     template: _.template('<input type="search" <% if (placeholder) { %> placeholder="<%- placeholder %>" <% } %> name="<%- name %>" /><a class="backgrid-filter clear" data-backgrid-action="clear" href="#">&times;</a>', null, {variable: null}),
 
     initialize : function(options) {
-        this.columnName = options.columnName;
-        Backgrid.Extension.ServerSideFilter.prototype.initialize.apply(
-        		this, [options]);
+      this.columnName = options.columnName;
+      Backgrid.Extension.ServerSideFilter.prototype.initialize.apply(
+      		this, [options]);
     },
     
     /**
@@ -1021,8 +1083,8 @@ var MyServerSideFilter =
      * (note: this has negative side effect that if the page is too high, a 
      * blank list is shown).
      */
-    search: function(e){
-        if (e) e.preventDefault();    	
+    search: function(e) {
+      if (e) e.preventDefault();    	
     	var searchHash = {};
     	searchHash[this.name] = this.searchBox().val();
     	console.log('server side filter add search: ' + 
@@ -1032,37 +1094,40 @@ var MyServerSideFilter =
     	
     	// Note: not calling super, because it will force first page.
     	//    	Backgrid.Extension.ServerSideFilter.prototype.search.apply(this,e);
-        if (e) e.preventDefault();
+      if (e) e.preventDefault();
 
-        var data = {};
-        var query = this.searchBox().val();
-        if (query) data[this.name] = query;
+      var data = {};
+      var query = this.searchBox().val();
+      if (query) data[this.name] = query;
 
-        var collection = this.collection;
-        // We're overriding this behaviour:
-    		//        // go back to the first page on search
-    		//        if (Backbone.PageableCollection &&
-    		//            collection instanceof Backbone.PageableCollection) {
-    		//          collection.getFirstPage({data: data, reset: true, fetch: true});
-    		//        }
-        collection.fetch({data: data, reset: true});
-        
-        this.showClearButtonMaybe();
+      var collection = this.collection;
+      // We're overriding this behaviour:
+  		//        // go back to the first page on search
+  		//        if (Backbone.PageableCollection &&
+  		//            collection instanceof Backbone.PageableCollection) {
+  		//          collection.getFirstPage({data: data, reset: true, fetch: true});
+  		//        }
+      collection.fetch({data: data, reset: true});
+      
+      this.showClearButtonMaybe();
     },
     
     /**
      * Override
      */
     clear: function(e){
-        if (e) e.preventDefault();
-        this.remove();
-        this.collection.clearSearch([this.name]); 
-        Backgrid.Extension.ServerSideFilter.prototype.clear.apply(this,e);
+      if (e) e.preventDefault();
+      this.remove();
+      this.collection.clearSearch([this.name]); 
+      Backgrid.Extension.ServerSideFilter.prototype.clear.apply(this,e);
     },    
 });
 
 /**
- * Override to add Search capability.
+ * Override of the Backgrid.HeaderCell to:
+ * - add search
+ * - add multisort
+ * 
  * TODO: this should be named "contains" header cell, because it searches using
  * "__contains"
  **/
@@ -1086,28 +1151,10 @@ var MyHeaderCell = Iccbl.MyHeaderCell = Backgrid.HeaderCell.extend({
         });
 
         this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
-
-//        this._serverSideFilter['events']['click .close'] = function(e) {
-//            if(e) e.preventDefault();
-//
-//            this.remove();
-//            this.clear();
-//            this.collection.clearSearch([this.name]);
-//        };
-
-//        this._serverSideFilter['events']['submit'] = function(e) {
-//            var searchHash = {};
-//            searchHash[this.name] = this.searchBox().val();
-//            console.log('server side filter add search: ' + 
-//            		JSON.stringify(searchHash));
-//            this.collection.addSearch(searchHash);
-//            this.search(e);
-//        };
+        this.listenTo(this.collection,"sort",this.collectionSorted);
     },
 
-
-    
-    remove : function() {
+    remove: function() {
         console.log('headercell remove called');
         this._serverSideFilter.remove();
         this._serverSideFilter.unbind();
@@ -1116,7 +1163,61 @@ var MyHeaderCell = Iccbl.MyHeaderCell = Backgrid.HeaderCell.extend({
 
         Backgrid.HeaderCell.prototype.remove.apply(this);
     },
+    
+    collectionSorted: function(collection, options){
+      var self = this;
+      var name = this.column.get('name');
+      var state = this.collection.state;
+      if(_.isUndefined(state.orderStack)){
+        console.log('Warning: grid does not support the ordered sort functionality');
+        return;
+      }
+      var i = 0;
+      _.each(state.orderStack, function(order_entry){
+        i++;
+        var dir = order_entry.substring(0,1);
+        var direction = null;
+        var fieldname = order_entry;
+        if(dir == '-'){
+          fieldname = order_entry.substring(1);
+          direction = 'ascending';
+        }else{
+          dir = '';
+          direction = 'descending';
+        }
+        if(fieldname == name){
+          self.$el.removeClass("ascending").removeClass("descending");
+          self.$el.addClass(direction);
 
+          var sorter = self.$el.find('#sorter');
+          sorter.empty();
+          sorter.append("<span class='badge pull-right'>" + i + "<b class='sort-caret'></b></span>");
+        }
+      });
+    },
+    
+    /**
+     Event handler for the collection's `sort` event. Removes all the CSS
+     direction classes.
+    */
+    removeCellDirection: function () {
+      //   this.$el.removeClass("ascending").removeClass("descending");
+      //   this.column.set("direction", null);
+    },
+
+    /**
+      Event handler for the column's `change:direction` event. If this
+      HeaderCell's column is being sorted on, it applies the direction given as a
+      CSS class to the header cell. Removes all the CSS direction classes
+      otherwise.
+    */
+    setCellDirection: function (column, direction) {
+      if(! direction){
+        this.$el.removeClass("ascending").removeClass("descending");
+        this.$el.find("#sorter").empty();
+      }
+    },
+    
     /**
      * Function to listen for router generated custom search event
      * "MyServerSideFilter:search"
@@ -1166,6 +1267,17 @@ var MyHeaderCell = Iccbl.MyHeaderCell = Backgrid.HeaderCell.extend({
 
         this.$el.prop('title', 
         			  this.options['column']['attributes']["description"]);
+        
+        // modify the sorting to use our badge-sort multisort 
+        var column = this.column;
+        var sortable = Backgrid.callByNeed(column.sortable(), column, this.collection);
+        if(sortable){
+          var sort = this.$el.find(".sort-caret");
+          var parent = sort.parent();
+          sort.remove();
+          parent.append("<div id='sorter'></div>");
+        }
+        
         return this;
     }
 });

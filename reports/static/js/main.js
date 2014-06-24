@@ -26,6 +26,13 @@ requirejs(['require-config'],
                reports_ui_resources_raw, reports_menu_raw, ui_resources_raw, menu_raw ) {
     
     console.log('init screensaver/reports...')
+    
+    // NOTE: the ajax "traditional" setting is needed to serialize the ordering
+    // array used to implement multisort with the tastypie server
+    // With traditional serialization, the array values are serialized as
+    // order=val1&order=val1&order=...
+    // see http://api.jquery.com/jQuery.param/c
+    $.ajaxSettings.traditional = true;
   
     // Augment the view prototype to prevent memory leaks - 
     // See: http://lostechies.com/derickbailey/2011/09/15/zombies-run-managing-page-transitions-in-backbone-apps/

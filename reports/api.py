@@ -130,30 +130,29 @@ class PostgresSortingResource(ModelResource):
         super(PostgresSortingResource,self).__init__( **kwargs)
 
     def apply_sorting(self, obj_list, options):
-        """
-        Create a none-too-pretty workaround for the postgresql null sorting
-        issue - nulls sort higher than values, which is not desired.  
-        We want nulls to sort lower than values.
-        
+        '''
+        Override sorting so that we can make postgres sort nulls as less than
+         everything else.
+
         Caveat: this will not work with joined fields unless they have an alias.  
         This is because it creates a field like:
         (screensaver_user_id is null) AS "screensaver_user_id_null"
         - if this field is duplicated in two sides of a join, then it must be 
         referenced by an alias, or as "table".screensaver_user_id, 
-        and we are not supporting table speciciations in this method, so if 
+        and we are not supporting table specifications in this method, so if 
         joined fields are used, they must be referenced by alias only.
-
-        @param non_null_fields list - fields to ignore
-        """ 
+        '''
+        
         obj_list = super(PostgresSortingResource, self).apply_sorting(
             obj_list, options)
         logger.debug(str(('order_by', obj_list.query.order_by)))
         extra_select = {}
-        extra_ordering = []
-        
         non_null_fields = options.get('non_null_fields', [])
+        new_ordering = []
+
         logger.debug(str(('==== non null fields', non_null_fields))) 
         for field in obj_list.query.order_by:
+            original_field = field
             is_null_dir = '-'  # default nulls first for ascending
             if field.startswith('-'):
                 is_null_dir = ''
@@ -161,28 +160,75 @@ class PostgresSortingResource(ModelResource):
             if field in non_null_fields:
                 continue
             extra_select[field+"_null"]=field + ' is null'
-            extra_ordering.append(is_null_dir + field+"_null")
+            new_ordering.append(is_null_dir + field+"_null")
+            new_ordering.append(original_field)
         logger.debug(str(('extra_select', extra_select, 
-                          'extra_ordering', extra_ordering)))
+                          'new_ordering', new_ordering)))
         obj_list = obj_list.extra(extra_select)
 
-        # Note: the following doesn't work, something in the framework 
-        # deletes the extra order_by clause when apply_sorting, or, if this is
-        # run last, it deletes the sorting applied in apply_sorting...
-        #        obj_list = obj_list.extra(order_by=['-comments_null'])
-
-        # Note: this doesn't work because the "is null" field order by clauses
-        # must be prepended so that they occur before their intended fields
-        #        obj_list.query.add_ordering('comments_null')
-        
-        temp = obj_list.query.order_by;
         obj_list.query.clear_ordering(force_empty=True)
-        for xfield in extra_ordering:
-            temp.insert(0,xfield)
-        logger.debug(str(('ordering', temp)))
-        obj_list.query.add_ordering(*temp)
+        obj_list.query.add_ordering(*new_ordering)
         
         return obj_list
+
+    
+#     def apply_sorting1(self, obj_list, options):
+#         """
+#         Create a none-too-pretty workaround for the postgresql null sorting
+#         issue - nulls sort higher than values, which is not desired.  
+#         We want nulls to sort lower than values.
+#         
+#         Caveat: this will not work with joined fields unless they have an alias.  
+#         This is because it creates a field like:
+#         (screensaver_user_id is null) AS "screensaver_user_id_null"
+#         - if this field is duplicated in two sides of a join, then it must be 
+#         referenced by an alias, or as "table".screensaver_user_id, 
+#         and we are not supporting table speciciations in this method, so if 
+#         joined fields are used, they must be referenced by alias only.
+# 
+#         @param non_null_fields list - fields to ignore
+#         """ 
+#         obj_list = super(PostgresSortingResource, self).apply_sorting(
+#             obj_list, options)
+#         logger.debug(str(('order_by', obj_list.query.order_by)))
+#         extra_select = {}
+#         extra_ordering = []
+#         
+#         non_null_fields = options.get('non_null_fields', [])
+#         logger.debug(str(('==== non null fields', non_null_fields))) 
+#         for field in obj_list.query.order_by:
+#             is_null_dir = '-'  # default nulls first for ascending
+#             if field.startswith('-'):
+#                 is_null_dir = ''
+#                 field = field[1:]
+#             if field in non_null_fields:
+#                 continue
+#             extra_select[field+"_null"]=field + ' is null'
+#             extra_ordering.append(is_null_dir + field+"_null")
+#         logger.debug(str(('extra_select', extra_select, 
+#                           'extra_ordering', extra_ordering)))
+#         obj_list = obj_list.extra(extra_select)
+# 
+#         # Note: the following doesn't work, something in the framework 
+#         # deletes the extra order_by clause when apply_sorting, or, if this is
+#         # run last, it deletes the sorting applied in apply_sorting...
+#         #        obj_list = obj_list.extra(order_by=['-comments_null'])
+# 
+#         # Note: this doesn't work because the "is null" field order by clauses
+#         # must be prepended so that they occur before their intended fields
+#         #        obj_list.query.add_ordering('comments_null')
+#         
+#         temp = obj_list.query.order_by;
+#         obj_list.query.clear_ordering(force_empty=True)
+#         temp1 = []
+#         for xfield in extra_ordering:
+#             temp1.append(xfield)
+#         
+#         temp1.extend(temp)
+#         logger.debug(str(('ordering', temp1)))
+#         obj_list.query.add_ordering(*temp1)
+#         
+#         return obj_list
 
 
 

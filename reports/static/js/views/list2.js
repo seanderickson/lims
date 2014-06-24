@@ -95,18 +95,7 @@ define([
                 }
               });
             } else if (key === 'order') {
-              var orderings = value.split(',');
-              var orderHash = {};
-              _.each(orderings, function(order){
-                var dir = '';
-                if (order.charAt(0)==='-'){
-                  dir = '-';
-                  order = order.substring(1);
-                }
-                orderHash[order] = dir;
-              });
-              listInitial[key] = orderHash;
-              
+              listInitial[key] = value.split(',');        
             }else {
               listInitial[key] = value;
             }
@@ -127,23 +116,8 @@ define([
         pageSize: parseInt(self.listModel.get('rpp'))
       };
 
-      var orderHash = self.listModel.get('order');
-      if(!_.isEmpty(orderHash)){
-        // TODO: this only allows one ordering - here it happens to be the last
-        _.each(_.keys(orderHash), function(key) {
-            var dir = orderHash[key];
-            var direction = 'ascending';
-            var order = -1;
-            // according to the docs, -1 == ascending
-            if (dir === '-') {
-                // according to the docs, 1 == descending
-                direction = 'descending';
-                order = 1;
-            }
-            _state['sortKey'] = key;
-            _state['order'] = order;
-        });
-      }
+      var orderStack = self.listModel.get('order') || [];
+      _state.orderStack = _.clone(orderStack);
 
       var url = self.options.resource.apiUri + '/' + self.urlSuffix;
       if (_.has(self.options, 'url')) {
@@ -172,7 +146,7 @@ define([
       var columns;
       if(!options.columns){
         columns = Iccbl.createBackgridColModel(
-            this.options.schemaResult.fields, Iccbl.MyHeaderCell);
+            this.options.schemaResult.fields, Iccbl.MyHeaderCell, orderStack);
       }else{
         columns = options.columns;
       }
@@ -203,15 +177,8 @@ define([
             if(!_.isEmpty(urlparams)) urlparams += '&';
             urlparams += val;
           }else if (route === 'order') {
-              var val = '';
-            _.each(value, function(v,k){
-              if (val !== '' ) val += '&';
-              
-              val += 'order_by=' + v + k;
-            });
-            if(!_.isEmpty(urlparams)) urlparams += '&';
-              urlparams += val;
-          } 
+            urlparams += 'order_by=' + value.join('&order_by=');
+          }
         }
       });
       var url = self.collection.url + '?format=csv' + 
@@ -247,14 +214,7 @@ define([
             newStack.push(val);
             
           }else if (route === 'order') {
-              var val = '';
-            _.each(value, function(v,k){
-              if (val !== '' ) val += ',';
-              
-              val += v + k;
-            });
-            newStack.push(val);
-
+            newStack.push(value);
           } else {
             newStack.push(value);
           }
@@ -273,21 +233,13 @@ define([
       var state = self.collection.state;
       var currentPage = Math.max(state.currentPage, state.firstPage);
 
-      // Order: note, single sort only at this time
-      var orderHash = {};
-      if(state.order && state.order != 0 && state.sortKey ){
-          // Note: 
-        // backbone-pageable: state.order: ascending=-1, descending=1
-        // tastypie: "-"=descending, ""=ascending (not specified==ascending)
-        orderHash[state.sortKey] = state.order == -1 ? '' : '-';
-      }
       
       // search: set in Iccbl Collection
       
       self.listModel.set({ 
         'rpp': state.pageSize, 
         'page': currentPage,
-        'order': orderHash 
+        'order': _.clone(state.orderStack) 
       });
       
     },
@@ -463,6 +415,7 @@ define([
 
       var grid = this.grid = new Backgrid.Grid({
         columns: columns,
+        body: Iccbl.MultiSortBody,
         collection: self.collection,
       });
 
@@ -557,22 +510,8 @@ define([
         fetched = true;
       }
 
-      var orderHash = self.listModel.get('order');
-      if(!_.isEmpty(orderHash)){
-        _.each(_.keys(orderHash), function(key) {
-          var dir = orderHash[key];
-          var direction = 'ascending';
-          var order = -1;
-          // according to the docs, -1 == ascending
-          if (dir === '-') {
-              // according to the docs, 1 == descending
-              direction = 'descending';
-              order = 1;
-          }
-          finalGrid.sort(key, direction);
-          fetched = true;
-        });
-      }
+      var orderStack = self.listModel.get('order') || [];
+      self.collection.state.orderStack = _.clone(orderStack);
 
       this.listenTo(self.collection, 'sync', function(event){
         var msg = ''; 

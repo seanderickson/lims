@@ -86,6 +86,13 @@ def equivocal(val1, val2):
             if val2 or len(val2) > 0:
                 return False, ('val1', val1, 'val2', val2 )
         return True, ('val1', val1, 'val2', val2 )
+
+    if isinstance(val1, (int, long, float, complex)):
+        val1 = str(val1)
+        val2 = str(val2)
+        if val1 != val2:
+            return False, ('val1', val1, 'val2', val2 )
+        
     
     if isinstance(val1, basestring):
         val1 = str(val1)
@@ -95,7 +102,6 @@ def equivocal(val1, val2):
                     csvBooleanField.convert(val1)==csvBooleanField.convert(val2)):
                 return True, ('val1', val1, 'val2', val2 )
             return False, ('val1', val1, 'val2', val2 )
-                
     else: # better be a list
         assert isinstance(val1, list) and isinstance(val2, list), \
                str(('Must be a list if not a string', 'val1', val1, 'val2', val2))
@@ -711,8 +717,9 @@ class TestApiInit(MetaHashResourceBootstrap,ResourceTestCase):
         self.assertEqual(len(new_obj['objects']), 4, str((new_obj)))
         
         for inputobj in bootstrap_items:
+            logger.info(str(('testing:', inputobj)))
             result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
-            self.assertTrue(result, str(('not found', outputobj )) )
+            self.assertTrue(result, str(('not found', inputobj, outputobj )) )
         
         print '================ test_0bootstrap_metahash done ========== '
     

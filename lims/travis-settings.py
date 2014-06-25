@@ -140,6 +140,11 @@ LOGGING = {
             'propagate': False,
             'level': 'WARN',
         },        
+        'db.tests': {  # set a default handler
+            'handlers': ['console'],
+            'propagate': False,
+            'level': 'INFO',
+        },        
         'lims': {  # set a default handler
             'handlers': ['console'],
             'propagate': False,

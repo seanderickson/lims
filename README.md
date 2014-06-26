@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/hmsiccbl/lims.svg?branch=master)](https://travis-ci.org/hmsiccbl/lims.svg?branch=master)
+[![Build Status](https://travis-ci.org/hmsiccbl/lims.svg?branch=master)](https://travis-ci.org/hmsiccbl/lims)
 
 ICCBL-LIMS:
 

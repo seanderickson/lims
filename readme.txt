@@ -1,5 +1,5 @@
 # ICCB-L (HMS) specific instructions
-
+[![Build Status](https://travis-ci.org/hmsiccbl/lims.svg?branch=master)](https://travis-ci.org/hmsiccbl/lims.svg?branch=master)
 # To run manage.py on the orchestra file system:
 - PGSQL_SCREENSAVER_DB, _USER, _HOST, _PASSWORD variables must be in the environment; the settings.py looks for them
 - copy lims/settings-orchestra-iccbl-hms.py to lims/settings.py

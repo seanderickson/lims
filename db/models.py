@@ -879,7 +879,7 @@ def create_id():
     row = cursor.fetchone();
     val = row[0]
     new_id = create_substance_id(val)
-    logger.info(str(('create_id', val, new_id)))
+#     logger.info(str(('create_id', val, new_id)))
     cursor.execute("SELECT setval('reagent_id_seq', %s)", [val-1])
     return new_id
 

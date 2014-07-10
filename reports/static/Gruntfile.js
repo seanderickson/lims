@@ -1,31 +1,8 @@
 /*global module*/
 module.exports = function (grunt) {
   'use strict';
- 
-//  grunt.event.on('qunit.spawn', function (url) {
-//    grunt.log.ok("qunit.spawn - Running test: " + url);
-//  });
-  grunt.event.on('fail.timeout', function (url) {
-    grunt.log.ok("qunit.fail.timeout: " + url);
-  });
-//grunt.event.on('qunit.log', function (result, actual, expected, message, source) {
-//  grunt.log.ok("qunit.fail.timeout: " + result +',' 
-//      + actual +',' + expected +',' +  message + ',' + source);
-//});
   
   var gruntConfig = {};
-
-//  gruntConfig.qunit = {
-//    all: {
-//      options: {
-//        urls: [
-//          'http://localhost:8008/js/test/index_tests.html'
-//        ],
-//        run: true,
-//        ignoreLeaks: false
-//      }
-//    }
-//  };
   
   // specify a local PhantomJS server, see
   // https://github.com/gruntjs/grunt-contrib-qunit & 
@@ -40,25 +17,17 @@ module.exports = function (grunt) {
     }
   };
 
-  gruntConfig.jshint = {
-      options: { bitwise: true, camelcase: true, curly: true, eqeqeq: true, forin: true, immed: true,
-          indent: 2, latedef: true, newcap: true, noarg: true, noempty: true, nonew: true, plusplus: true,
-          quotmark: true, regexp: true, undef: true, unused: true, strict: true, trailing: true,
-          maxparams: 3, maxdepth: 2, maxstatements: 500},
-      all: [
-          'Gruntfile.js',
-          'js/models/**/*.js',
-          'js/views/**/*.js',
-          'js/*.js'
-      ]
-  };
-  
-  
   gruntConfig.mocha = {
     test: {
       options: {
         urls: ['http://localhost:8008/js/test/index_tests_mocha.html'],
+        //        reporter: 'Spec',
+        //        reporter: 'Min',
+        reporter: 'JSON' ,
+        //        reporter: 'List',
         run: false,
+        timeout: 25000,
+        log: true
       }
     }
     
@@ -74,7 +43,7 @@ module.exports = function (grunt) {
         },
         files: {
           'require.js' : 'requirejs/require.js',
-          'jquery.js' : 'jquery/jquery.js',
+          'jquery.js' : 'jquery/dist/jquery.js',
           'underscore.js' : 'underscore/underscore.js', 
           'backbone.js' : 'backbone-amd/backbone.js', 
           'backbone-pageable.js' : 'backbone-pageable/lib/backbone-pageable.js',
@@ -97,7 +66,6 @@ module.exports = function (grunt) {
       },
       files: {
         'bootstrap.css': 'bootstrap/dist/css/bootstrap.css',
-//          'bootstrap.css.map': 'bootstrap/dist/css/bootstrap.css.map',
         'backgrid.css': 'backgrid/lib/backgrid.css',
         'backgrid-paginator.css': 'backgrid-paginator/backgrid-paginator.css',
         'backgrid-filter.css': 'backgrid-filter/backgrid-filter.css'
@@ -128,13 +96,8 @@ module.exports = function (grunt) {
 
   grunt.loadNpmTasks('grunt-contrib-jshint');
   grunt.loadNpmTasks('grunt-bowercopy');
-//  grunt.loadNpmTasks('grunt-contrib-qunit');
   grunt.loadNpmTasks('grunt-contrib-connect');
   grunt.loadNpmTasks('grunt-mocha');
-//grunt.registerTask('test', ['connect', 'qunit']);
-//  grunt.registerTask('test', ['connect:server', 'mocha:test']);
   grunt.registerTask('test', ['connect', 'mocha']);
-  
-
   
 };

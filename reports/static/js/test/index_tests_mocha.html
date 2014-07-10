@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <!-- NOTE: This file serves as the Mocha "specrunner";
+             See https://gist.github.com/kmiyashiro/2655876"  -->
   <meta charset="utf-8">
   <title>Iccbl-Lims test suite</title>
   <link rel="stylesheet" href="resources/mocha.css">
@@ -12,40 +14,24 @@
   <script src="resources/mocha.js"></script>  
   <script src="resources/chai.js"></script>  
   <script src="config.js" type="text/javascript" charset="utf-8"></script>
-   <script src="../libs/require.js" type="text/javascript" charset="utf-8"></script>
-    <script type="text/javascript">
-      // MOCHA SETUP
-      mocha.setup('bdd');
-
-      requirejs(['../require-config'], function() { // First, load application require-config
-        //second, load the testing require-config, which sets the baseUrl to ".." :
-        requirejs(['require-config'], function() {
-          // load test code
-          require(['chai', 'chai-jquery'], 
-              function(chai, chaiJquery){
-            
-		            // Chai
-		            var should = chai.should();
-		            chai.use(chaiJquery);
-           
-		            mocha.setup('bdd');
-		            require([
-                  'tests/model-tests.js','tests/dummyModelTest-mocha.js',
-                  ], runMocha);
-                  
-//                   function() {
-// 		                console.log('run mocha...');
-// 		                mocha.run();
-// 	                });
-	            });
-            
-          });
+  <script src="../libs/require.js" type="text/javascript" charset="utf-8"></script>
+  <script type="text/javascript">
+    //First, load application require-config   
+    requirejs(['../require-config'], function() { 
+      //second, load the testing require-config, which sets the baseUrl to ".." :
+      requirejs(['require-config'], function() {
+        // load test code
+        require(['chai', 'chai-jquery'], function(chai, chaiJquery){
+          //             chai.use(chaiJquery);
+          mocha.setup('bdd');
+          require([
+              'tests/model-tests.js',
+              'tests/dummyModelTest-mocha.js',
+              'tests/testAppState-mocha.js'
+              ], runMocha);
+        });
       });
-
-      </script>
-<!--       <script data-main="SpecRunner" src="../libs/require.js"></script> -->
-
-
-
+    });
+  </script>
 </body>
 </html>

@@ -59,7 +59,7 @@
         "url_root": "/reports/api/v1",
         "description": "Change logs"
     },
-    "users": {
+    "user": {
         "header_message": "Django users",
         "title": "Users",
         "route": "list/users",
@@ -67,7 +67,10 @@
         "detailView": "UserAdminView",
         "api_resource": "user",
         "url_root": "/reports/api/v1",
-        "description": "Django user"
+        "description": "Django user",
+        "api_name": "reports",
+        "key": "user",
+        "apiUri": "reports/api/v1/user"
     },
     "groups": {
         "header_message": "User Groups",

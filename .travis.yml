@@ -12,5 +12,5 @@ install:
 before_script:
   - psql -c 'create database travis_ci_test;' -U postgres
 script: 
-  - cd reports/static && grunt bowercopy && grunt test
-  - python manage.py test --settings=lims.travis-settings
+  - grunt bowercopy && grunt test
+  - cd ../../ && python manage.py test --settings=lims.travis-settings

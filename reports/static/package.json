@@ -1,0 +1,15 @@
+{
+  "name": "iccb-lims",
+  "version": "0.0.1",
+  "description": "Javascript build environment for the ICCBL-LIMS",
+  "author": "Sean Erickson <sean_erickson @ hms.harvard.edu>",
+  "devDependencies": {
+    "grunt-cli": ">0.1.6",
+    "grunt": ">=0.4.5",
+    "grunt-contrib-watch": ">=0.2.0",
+    "grunt-qunit-cov": "~0.3.2",
+    "grunt-bowercopy": ">=1.1.0",
+    "mocha": ">=1.20.1",
+    "grunt-mocha": "~0.4.11"
+  }
+}

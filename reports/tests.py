@@ -143,7 +143,7 @@ def assert_obj1_to_obj2(
             return False, () 
         #        if str(obj1[key]) != str(obj2[key]):
         #            return False, None  # don't report for this section
-        #    logger.info(str(('equal so far, keys to search', keys_to_search)))
+        #    logger.debug(str(('equal so far, keys to search', keys_to_search)))
 
     fkey = 'resource_uri'
     if fkey not in excludes:
@@ -199,7 +199,7 @@ def find_all_obj_in_list(list1, list2, **kwargs):
 class SDFSerializerTest(TestCase):
     
     def test1_read(self):
-        logger.info('=== test1 SDF read')
+        logger.debug('=== test1 SDF read')
         
         records = [{
             'smiles': 'Cl',
@@ -268,13 +268,13 @@ M  END
         with open(APP_ROOT_DIR + '/lims/test/test1.sdf') as fin:    
             _data = serializer.from_sdf(fin.read(), root=None)
             final_data = _data['objects']
-            logger.info(str(('final_data', final_data)))
+            logger.debug(str(('final_data', final_data)))
             
             self.assertTrue(
                 len(final_data)==len(records), 
                 str(('len is', len(final_data),len(records))))
             for obj in final_data:
-                logger.info(str(('object: ', obj)))
+                logger.debug(str(('object: ', obj)))
                 
                 for record in records:
                     if record['smiles'] == obj['smiles']:
@@ -287,7 +287,7 @@ M  END
 class BaselineTest(TestCase):
 
     def test_0equivocal(self):
-        logger.info(str(('====== test_0equivocal ====')))
+        logger.debug(str(('>> test_0equivocal <<')))
         
         test_true = [
             ['',''],
@@ -305,7 +305,7 @@ class BaselineTest(TestCase):
             ## TODO: test date strings 
         
         for [a,b] in test_true:
-            logger.info(str(('csv serialization equivocal truthy test', a, b)))
+            logger.debug(str(('csv serialization equivocal truthy test', a, b)))
             result, msgs = equivocal(a,b)
             self.assertTrue(result, msgs)
 
@@ -321,13 +321,13 @@ class BaselineTest(TestCase):
             ['False',True],
             ]
         for [a,b] in test_false:
-            logger.info(str(('csv serialization equivocal falsy test', a, b)))
+            logger.debug(str(('csv serialization equivocal falsy test', a, b)))
             result, msgs = equivocal(a,b)
             self.assertFalse(result, msgs)
-        logger.info(str(('====== test_0equivocal done ====')))
+        logger.debug(str(('>> test_0equivocal done <<')))
     
     def test_1assert_obj1_to_obj2(self):
-        logger.info(str(('====== test_1assert_obj1_to_obj2 ====')))
+        logger.debug(str(('====== test_1assert_obj1_to_obj2 ====')))
         # all of obj1 in obj2 (may be more in obj2
         
         obj1 = { 'one': '1', 'two': 'two', 'three':''}
@@ -344,10 +344,10 @@ class BaselineTest(TestCase):
         obj5 = { 'one':'1', 'two':'2', 'three':None }
         result, msgs = assert_obj1_to_obj2(obj5, obj4)
         self.assertTrue(result, str((result,msgs)))
-        logger.info(str(('====== test_1assert_obj1_to_obj2 done ====')))
+        logger.debug(str(('====== test_1assert_obj1_to_obj2 done ====')))
 
     def test_2find_obj_in_list(self):
-        logger.info(str(('====== test_2find_obj_in_list ====')))
+        logger.debug(str(('====== test_2find_obj_in_list ====')))
         
         obj1 = { 'one': '1', 'two': 'two', 'three':''}
         obj1a = { 'one': '2', 'two': 'two', 'three':''}
@@ -364,16 +364,16 @@ class BaselineTest(TestCase):
 
         obj_list = [ obj3, obj1a ]
         result, msgs = find_obj_in_list(obj1, obj_list)
-        logger.info(str((result,msgs)))
+        logger.debug(str((result,msgs)))
         self.assertFalse(result, str((msgs)))
 
         obj_list = [ obj1a, obj3 ]
         result, msgs = find_obj_in_list(obj1, obj_list)
         self.assertFalse(result, msgs)
-        logger.info(str(('====== test_2find_obj_in_list done ====')))
+        logger.debug(str(('====== test_2find_obj_in_list done ====')))
 
     def test_3find_all_obj_in_list(self):
-        logger.info(str(('====== test_3find_all_obj_in_list ====')))
+        logger.debug(str(('====== test_3find_all_obj_in_list ====')))
         
         obj1 = { 'one': '1', 'two': 'two', 'three':''}
         obj1a = { 'one': '2', 'two': 'two', 'three':''}
@@ -388,10 +388,10 @@ class BaselineTest(TestCase):
         obj_list2 = [ obj2, obj3 ]
         result, msgs = find_all_obj_in_list(obj_list, obj_list2)
         self.assertFalse(result, str((result, msgs  )))
-        logger.info(str(('====== test_3find_all_obj_in_list done ====')))
+        logger.debug(str(('====== test_3find_all_obj_in_list done ====')))
 
     def test_4user_example(self):
-        logger.info(str(('====== test_4user_example ====')))
+        logger.debug(str(('====== test_4user_example ====')))
         bootstrap_items = [   
             {
                 'ecommons_id': 'st1',
@@ -415,11 +415,11 @@ class BaselineTest(TestCase):
         item = {'login_id': 'jt1', 'first_name': 'Joe', 'last_name': 'Tester', 
                 'email': 'joe.tester@limstest.com'}
         result, obj = find_obj_in_list(item, bootstrap_items)
-        logger.info(str((result, obj)))
+        logger.debug(str((result, obj)))
         
         self.assertTrue(obj['email'] == 'joe.tester@limstest.com')
         
-        logger.info(str(('====== test_4user_example done ===='))) 
+        logger.debug(str(('====== test_4user_example done ===='))) 
         # if this passes, then why does line 431 fail in reports.tests.py?
     
     
@@ -428,7 +428,7 @@ import reports.utils.serialize
 class SerializerTest(TestCase):
 
     def test_csv(self):
-        logger.info(str(('======== test_csv =========')))
+        logger.debug(str(('======== test_csv =========')))
         directory = APP_ROOT_DIR
         serializer = CSVSerializer() 
         
@@ -443,16 +443,16 @@ class SerializerTest(TestCase):
             self.assertTrue(obj['three']=='true')
             self.assertTrue(obj['four']=='false')
             self.assertTrue(obj['five']=='')
-        logger.info(str(('input to object', input_data)))
+        logger.debug(str(('input to object', input_data)))
         csv_data = serializer.to_csv(input_data, root=None)
-        logger.info(str(('back to csv', csv_data)))
+        logger.debug(str(('back to csv', csv_data)))
 
         with open(directory + '/reports/test/test_csv_.csv', 'w') as f:
             f.write(csv_data)
             
         with open(directory + '/reports/test/test_csv_.csv') as fin:    
             final_data = serializer.from_csv(fin.read(), root=None)
-            logger.info(str(('final_data', final_data)))
+            logger.debug(str(('final_data', final_data)))
             for obj in final_data:
                 self.assertTrue(obj['one']=='uno')
                 self.assertTrue(obj['two']=='2')
@@ -461,12 +461,12 @@ class SerializerTest(TestCase):
                 self.assertTrue(obj['five']=='')
         
         # TODO: delete the file
-        logger.info(str(('======== test_csv done =========')))
+        logger.debug(str(('======== test_csv done =========')))
 
 class HydrationTest(TestCase):
     
     def test_hydrate_boolean_tastypie(self):
-        logger.info(str(('======== test_hydrate_boolean =========')))
+        logger.debug(str(('======== test_hydrate_boolean =========')))
         
         field = BooleanField()
         
@@ -477,7 +477,7 @@ class HydrationTest(TestCase):
             result = field.convert(item)
             self.assertEqual(result, expected[i], 
                              str((i,' is not equal', item, result, expected[i])))
-        logger.info(str(('======== test_hydrate_boolean done =========')))
+        logger.debug(str(('======== test_hydrate_boolean done =========')))
             
     def test_hydrate_boolean_lims(self):
         field = CsvBooleanField()
@@ -519,24 +519,24 @@ class MetaHashResourceBootstrap():
         data_for_get.setdefault('HTTP_APILOG_COMMENT', 'patch_test: %s' % filename )
         resource_uri = BASE_URI + '/' + resource_name
         
-        logger.info(str(('===resource_uri', resource_uri)))
+        logger.debug(str(('===resource_uri', resource_uri)))
         with open(filename) as bootstrap_file:
             input_data = self.csv_serializer.from_csv(bootstrap_file.read())
 
-            logger.info(str(('Submitting patch...', bootstrap_file)))
+            logger.debug(str(('Submitting patch...', bootstrap_file)))
             resp = self.testApiClient.patch(
                 resource_uri, format='csv', data=input_data, 
                 authentication=self.get_credentials(), **data_for_get )
-            logger.info(str(('Response: ' , resp.status_code)))
+            logger.debug(str(('Response: ' , resp.status_code)))
 #            self.assertHttpAccepted(resp)
             self.assertTrue(resp.status_code in [202, 204], str((resp)))
             
-            logger.info(str(('check patched data for',resource_name,
+            logger.debug(str(('check patched data for',resource_name,
                              'execute get on:',resource_uri)))
             resp = self.api_client.get(
                 resource_uri, format='json', authentication=self.get_credentials(), 
                 data=data_for_get)
-            logger.info(str(('--------resp to get:', resp.status_code)))
+            logger.debug(str(('--------resp to get:', resp.status_code)))
             self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
             new_obj = self.deserialize(resp)
             
@@ -578,21 +578,21 @@ class MetaHashResourceBootstrap():
         with open(filename) as bootstrap_file:
             input_data = self.csv_serializer.from_csv(bootstrap_file.read())
             
-            logger.info(str(('Submitting put...', bootstrap_file)))
+            logger.debug(str(('Submitting put...', bootstrap_file)))
             resp = self.testApiClient.put(
                 resource_uri, format='csv', data=input_data, 
                 authentication=self.get_credentials(), **data_for_get )
-            logger.info(str(('Response: ' , resp.status_code)))
+            logger.debug(str(('Response: ' , resp.status_code)))
 #            self.assertHttpAccepted(resp)
             self.assertTrue(resp.status_code in [200, 202, 204], 
                             str((resp.status_code, str((resp)) )) )
     
-            logger.info(str(('check put data for',resource_name,
+            logger.debug(str(('check put data for',resource_name,
                              'execute get on:',resource_uri)))
             resp = self.api_client.get(
                 resource_uri, format='json', 
                 authentication=self.get_credentials(), data=data_for_get)
-            logger.info(str(('--------resp to get:', resp.status_code)))
+            logger.debug(str(('--------resp to get:', resp.status_code)))
             self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
             new_obj = self.deserialize(resp)
             # do a length check, since put will delete existing resources
@@ -629,7 +629,7 @@ class MetaHashResourceBootstrap():
         - PUT vocabularies_data.csv
         - PUT metahash_resource_data.csv
         '''
-        print '------------- _bootstrap_init_files -----------------'
+        logger.debug('------------- _bootstrap_init_files -----------------')
         serializer=CSVSerializer() 
         resource_uri = BASE_URI + '/metahash'
         # todo: doesn't work for post, see TestApiClient.post() method, it is 
@@ -658,7 +658,7 @@ class MetaHashResourceBootstrap():
         self._put_test('vocabularies', filename, id_keys_to_check=['key'])
 
   
-        print '------------- done _bootstrap_init_files -----------------'
+        logger.debug('------------- done _bootstrap_init_files -----------------')
 
         
 class TestApiInit(MetaHashResourceBootstrap,ResourceTestCase):
@@ -669,7 +669,7 @@ class TestApiInit(MetaHashResourceBootstrap,ResourceTestCase):
 
     def test_0bootstrap_metahash(self):
         
-        print '================ reports test_0bootstrap_metahash =============== '
+        logger.debug('================ reports test_0bootstrap_metahash =============== ')
         # in order for the metahash resource to work, the metahash itself must 
         # be "bootstrapped":
         # the metahash must be filled with the fields that describe itself
@@ -706,31 +706,31 @@ class TestApiInit(MetaHashResourceBootstrap,ResourceTestCase):
                     'item', item)))
             #             self.assertHttpCreated(resp)
             
-        logger.info('created items, now get them')
+        logger.debug('created items, now get them')
         resp = self.api_client.get(
             self.resource_uri, format='json', 
             authentication=self.get_credentials(), data={ 'limit': 999 })
-        logger.info(str(('--------resp to get:', resp, resp.status_code)))
+        logger.debug(str(('--------resp to get:', resp, resp.status_code)))
         new_obj = self.deserialize(resp)
-        logger.info(str(('deserialized object:', json.dumps(new_obj))))
+        logger.debug(str(('deserialized object:', json.dumps(new_obj))))
         self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
         self.assertEqual(len(new_obj['objects']), 4, str((new_obj)))
         
         for inputobj in bootstrap_items:
-            logger.info(str(('testing:', inputobj)))
+            logger.debug(str(('testing:', inputobj)))
             result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
             self.assertTrue(result, str(('not found', inputobj, outputobj )) )
         
-        print '================ test_0bootstrap_metahash done ========== '
+        logger.debug('================ test_0bootstrap_metahash done ========== ')
     
     def test_1bootstrap_init(self):
-        print '================ reports test_1bootstrap_init ================'
+        logger.debug('================ reports test_1bootstrap_init ================')
         self._bootstrap_init_files()
-        print '================ test_1bootstrap_init done ================'
+        logger.debug('================ test_1bootstrap_init done ================')
         
     def test_2api_init(self):
         
-        print '***================ reports test_2api_init =============== '
+        logger.debug('***================ reports test_2api_init =============== ')
         serializer=CSVSerializer() 
         # todo: doesn't work for post, see TestApiClient.post() method, it is 
         # incorrectly "serializing" the data before posting
@@ -749,7 +749,7 @@ class TestApiInit(MetaHashResourceBootstrap,ResourceTestCase):
                 'vocabularies_data.csv']
             for action in api_init_actions:
                 
-                print '\n++++=========== processing action', json.dumps(action)
+                logger.debug('\n++++=========== processing action', json.dumps(action))
                 command = action['command'].lower() 
                 resource = action['resource'].lower()
                 resource_uri = BASE_URI + '/' + resource
@@ -767,7 +767,7 @@ class TestApiInit(MetaHashResourceBootstrap,ResourceTestCase):
                     # the uri generation
                     if action['file'] in bootstrap_files:
                         search_excludes = ['resource_uri'] 
-                    logger.info(str(('+++++++++++processing file', filename)))
+                    logger.debug(str(('+++++++++++processing file', filename)))
                     with open(filename) as data_file:
                         input_data = serializer.from_csv(data_file.read())
                         
@@ -828,13 +828,13 @@ class TestApiInit(MetaHashResourceBootstrap,ResourceTestCase):
 class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
     
     def setUp(self):
-        print '============== User setup ============'
+        logger.debug('============== User setup ============')
         super(UserResource, self).setUp()
         super(UserResource, self)._setUp()
         # load the bootstrap files, which will load the metahash fields, 
         # and the resource definitions
         super(UserResource, self)._bootstrap_init_files()
-        print '============== User setup: begin ============'
+        logger.debug('============== User setup: begin ============')
         
         # Create the User resource field entries
         testApiClient = TestApiClient(serializer=self.csv_serializer) 
@@ -842,10 +842,10 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
         self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.user'})
         
         self.resource_uri = BASE_URI + '/user'
-        print '============== User setup: done ============'
+        logger.debug('============== User setup: done ============')
     
     def test0_create_user(self):
-        logger.info(str(('==== test_create_user =====')))
+        logger.debug(str(('==== test_create_user =====')))
         
         # the simplest of tests, create some simple users
         self.bootstrap_items = [   
@@ -879,10 +879,10 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
                 logger.error(str(('on creating', item, '==ex==', e)))
                 raise
             
-        logger.info('created items, now get them')
+        logger.debug('created items, now get them')
         resp = self.api_client.get(self.resource_uri, format='json', 
             authentication=self.get_credentials(), data={ 'limit': 999 })
-        logger.info(str(('--------resp to get:', resp.status_code)))
+        logger.debug(str(('--------resp to get:', resp.status_code)))
         new_obj = self.deserialize(resp)
         self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
         self.assertEqual(len(new_obj['objects']), 3, str((new_obj)))
@@ -891,37 +891,37 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
             result, obj = find_obj_in_list(item, new_obj['objects'])
             self.assertTrue(
                 result, str(('bootstrap item not found', item, new_obj['objects'])))
-            logger.info(str(('item found', obj)))
+            logger.debug(str(('item found', obj)))
 
-        logger.info(str(('==== test_create_user done =====')))
+        logger.debug(str(('==== test_create_user done =====')))
 
     def test1_create_user_with_permissions(self):
-        logger.info(str(('==== test1_user_test_data =====')))
+        logger.debug(str(('==== test1_user_test_data =====')))
         
         filename = os.path.join(self.directory,'test_data/users1.csv')
         # NOTE: verify the username manually, because the username will
         # be set to the ecommons id if not set
         self._put_test('user', filename, keys_not_to_check=['username'])
         
-        logger.info(str(('==== test1_user_test_data done =====')))
+        logger.debug(str(('==== test1_user_test_data done =====')))
     
     def test2_patch_user_permissions(self):
-        logger.info(str(('==== test2_patch_user_permissions =====')))
+        logger.debug(str(('==== test2_patch_user_permissions =====')))
         self.test1_create_user_with_permissions()
         
-        logger.info(str(('==== test2_patch_user_permissions start =====')))
+        logger.debug(str(('==== test2_patch_user_permissions start =====')))
         filename = os.path.join(self.directory,'test_data/users2_patch.csv')
         self._patch_test('user', filename)
         
-        logger.info(str(('==== test2_patch_user_permissions done =====')))
+        logger.debug(str(('==== test2_patch_user_permissions done =====')))
 
 class UserGroupResource(UserResource):
     
     def setUp(self):
-        logger.info(str(( '============== UserGroup setup ============')))
+        logger.debug(str(( '============== UserGroup setup ============')))
         super(UserGroupResource, self).setUp()
         
-        logger.info(str(( '============== UserGroup setup: begin ============')))
+        logger.debug(str(( '============== UserGroup setup: begin ============')))
         meta_resource_uri = BASE_URI + '/metahash'
         
         # Create the User resource field entries
@@ -935,10 +935,10 @@ class UserGroupResource(UserResource):
         filename = os.path.join(self.directory,'metahash_fields_permission.csv')
         self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.permission'})
 
-        logger.info(str(( '============== UserGroup setup done ============')))
+        logger.debug(str(( '============== UserGroup setup done ============')))
 
     def _test2_create_usergroup_with_permissions(self):
-        logger.info(str(('==== test2_usergroup =====')))
+        logger.debug(str(('==== test2_usergroup =====')))
         #create users
         self.test1_create_user_with_permissions()
         
@@ -948,25 +948,25 @@ class UserGroupResource(UserResource):
 #         resp = self.api_client.get(
 #                 '/reports/api/v1/user', format='json', 
 #                 authentication=self.get_credentials(), data=data_for_get)
-#         logger.info(str(('--------resp to get:', resp.status_code)))
+#         logger.debug(str(('--------resp to get:', resp.status_code)))
 #         self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
 #         new_obj = self.deserialize(resp)
 
-        logger.info(str(('----- test2_usergroup =====')))
+        logger.debug(str(('----- test2_usergroup =====')))
 
         filename = os.path.join(self.directory,'test_data/usergroups1.csv')
         self._put_test('usergroup', filename)
 
 
-        logger.info(str(('==== test2_usergroup done =====')))
+        logger.debug(str(('==== test2_usergroup done =====')))
 
 
     def test3_patch_users_groups(self):
-        logger.info(str(('==== test3_patch_users_groups =====')))
+        logger.debug(str(('==== test3_patch_users_groups =====')))
         self._test2_create_usergroup_with_permissions()
         
-        logger.info(str(('==== test3_patch_users_groups start =====')))
+        logger.debug(str(('==== test3_patch_users_groups start =====')))
         filename = os.path.join(self.directory,'test_data/users3_groups_patch.csv')
         self._patch_test('user', filename)
       
-        logger.info(str(('==== test3_patch_users_groups done =====')))
+        logger.debug(str(('==== test3_patch_users_groups done =====')))

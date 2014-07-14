@@ -40,11 +40,11 @@ class TestApiInit(reports.tests.TestApiInit):
         
     def test_2api_init(self):
         
-        print '***================ super: db test_2api_init =============== '
+        logger.debug('***================ super: db test_2api_init =============== ')
 
         super(TestApiInit, self).test_2api_init()
         
-        print '***================ local: db test_2api_init =============== '
+        logger.debug('***================ local: db test_2api_init =============== ')
         
         
         serializer=CSVSerializer() 
@@ -61,7 +61,7 @@ class TestApiInit(reports.tests.TestApiInit):
                 'vocabularies_data.csv']
             for action in api_init_actions:
                 
-                print '\n++++=========== processing action', json.dumps(action)
+                logger.debug('\n++++=========== processing action', json.dumps(action))
                 command = action['command'].lower() 
                 resource = action['resource'].lower()
                 resource_uri = BASE_REPORTS_URI + '/' + resource
@@ -79,7 +79,7 @@ class TestApiInit(reports.tests.TestApiInit):
                     # the uri generation
                     if action['file'] in bootstrap_files:
                         search_excludes = ['resource_uri'] 
-                    logger.info(str(('+++++++++++processing file', filename)))
+                    logger.debug(str(('+++++++++++processing file', filename)))
                     with open(filename) as data_file:
                         input_data = serializer.from_csv(data_file.read())
                         
@@ -143,13 +143,13 @@ class TestApiInit(reports.tests.TestApiInit):
 class LibraryContentLoadTest(MetaHashResourceBootstrap,ResourceTestCase):
 
     def setUp(self):
-        print '============== LibraryContentLoadTest setup ============'
+        logger.debug('============== LibraryContentLoadTest setup ============')
         super(LibraryContentLoadTest, self).setUp()
         super(LibraryContentLoadTest, self)._setUp()
         # load the bootstrap files, which will load the metahash fields, 
         # and the resource definitions
         super(LibraryContentLoadTest, self)._bootstrap_init_files()
-        print '============== LibraryContentLoadTest setup: begin ============'
+        logger.debug('============== LibraryContentLoadTest setup: begin ============')
         self.db_resource_uri = BASE_URI + '/metahash'
         self.db_directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
         
@@ -160,13 +160,13 @@ class LibraryContentLoadTest(MetaHashResourceBootstrap,ResourceTestCase):
 class LibraryTest(MetaHashResourceBootstrap,ResourceTestCase):
 
     def setUp(self):
-        print '============== LibraryTest setup ============'
+        logger.debug('============== LibraryTest setup ============')
         super(LibraryTest, self).setUp()
         super(LibraryTest, self)._setUp()
         # load the bootstrap files, which will load the metahash fields, 
         # and the resource definitions
         super(LibraryTest, self)._bootstrap_init_files()
-        print '============== LibraryTest setup: begin ============'
+        logger.debug('============== LibraryTest setup: begin ============')
         self.db_resource_uri = BASE_URI + '/metahash'
         self.db_directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
         
@@ -176,17 +176,17 @@ class LibraryTest(MetaHashResourceBootstrap,ResourceTestCase):
         self._patch_test(
             'metahash', filename, data_for_get={ 'scope':'fields.library'})
 
-        print '============== LibraryTest setup: done ============'
+        logger.debug('============== LibraryTest setup: done ============')
         
 
     def test1_create_library(self):
-        logger.info(str(('==== test1_create_library =====')))
+        logger.debug(str(('==== test1_create_library =====')))
         
         resource_uri = BASE_URI_DB + '/library'
         
         library_item = LibraryFactory.attributes()
         
-        logger.info(str((library_item)))
+        logger.debug(str((library_item)))
         resp = self.api_client.post(
             resource_uri, format='json', data=library_item, 
             authentication=self.get_credentials())
@@ -195,7 +195,7 @@ class LibraryTest(MetaHashResourceBootstrap,ResourceTestCase):
         # create a second library
         library_item = LibraryFactory.attributes()
         
-        logger.info(str(('item', library_item)))
+        logger.debug(str(('item', library_item)))
         resp = self.api_client.post(
             resource_uri, format='json', data=library_item, 
             authentication=self.get_credentials())
@@ -204,7 +204,7 @@ class LibraryTest(MetaHashResourceBootstrap,ResourceTestCase):
         resp = self.api_client.get(
             resource_uri, format='json', authentication=self.get_credentials(), 
             data={ 'limit': 999 })
-        logger.info(str(('--------resp to get:', resp.status_code)))
+        logger.debug(str(('--------resp to get:', resp.status_code)))
         new_obj = self.deserialize(resp)
         self.assertValidJSONResponse(resp)
         self.assertEqual(len(new_obj['objects']), 2, str((new_obj)))
@@ -213,43 +213,44 @@ class LibraryTest(MetaHashResourceBootstrap,ResourceTestCase):
         self.assertTrue(
             result, str(('bootstrap item not found', obj, 
                          library_item, new_obj['objects'])))
-        logger.info(str(('item found', obj)))
+        logger.debug(str(('item found', obj)))
 
 
     def test2_create_library_invalid_library_type(self):
-        logger.info(str(('==== test2_create_library_invalid_library_type =====')))
+        logger.debug(str(('==== test2_create_library_invalid_library_type =====')))
         
         resource_uri = BASE_URI_DB + '/library'
         
         library_item = LibraryFactory.attributes()
         library_item['library_type'] = 'invalid_type'
         
-        logger.info(str(('try to create an invalid library_type:', library_item)))
+        logger.debug(str(('try to create an invalid library_type:', library_item)))
         resp = self.api_client.post(
             resource_uri, format='json', data=library_item, 
             authentication=self.get_credentials())
         
-        from reports.dump_obj import dumpObj
-        logger.info(str(('response', dumpObj(resp))))
+#         from reports.dump_obj import dumpObj
+#         logger.debug(str(('response', dumpObj(resp))))
         
         self.assertTrue(resp.status_code in [400], str((resp.status_code, resp)))
         
-        logger.info(str(('response.content.library message', 
+        logger.debug(str(('response.content.library message', 
                          getattr(resp, 'content'))))
         
         obj = json.loads(getattr(resp, 'content'))
-        logger.info(str(('dump', dumpObj(obj))))
+#         logger.debug(str(('dump', dumpObj(obj))))
+        logger.debug(str(('==== done: test2_create_library_invalid_library_type =====')))
 
 class ScreensTest(MetaHashResourceBootstrap,ResourceTestCase):
     
     def setUp(self):
-        print '============== ScreensTest setup ============'
+        logger.debug('============== ScreensTest setup ============')
         super(ScreensTest, self).setUp()
         super(ScreensTest, self)._setUp()
         # load the bootstrap files, which will load the metahash fields, 
         # and the resource definitions
         super(ScreensTest, self)._bootstrap_init_files()
-        print '============== ScreensTest setup: begin ============'
+        logger.debug('============== ScreensTest setup: begin ============')
         self.db_resource_uri = BASE_URI + '/metahash'
         self.db_directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
         
@@ -259,17 +260,17 @@ class ScreensTest(MetaHashResourceBootstrap,ResourceTestCase):
         self._patch_test(
             'metahash', filename, data_for_get={ 'scope':'fields.screen'})
 
-        print '============== ScreensTest setup: done ============'
+        logger.debug('============== ScreensTest setup: done ============')
         
 
     def test1_create_screen(self):
-        logger.info(str(('==== test1_create_screen =====')))
+        logger.debug(str(('==== test1_create_screen =====')))
         
         resource_uri = BASE_URI_DB + '/screen'
         
         screen_item = ScreenFactory.attributes()
         
-        logger.info(str(('screen_item',screen_item)))
+        logger.debug(str(('screen_item',screen_item)))
         resp = self.api_client.post(
             resource_uri, format='json', data=screen_item, 
             authentication=self.get_credentials())
@@ -277,7 +278,7 @@ class ScreensTest(MetaHashResourceBootstrap,ResourceTestCase):
         
         screen_item = ScreenFactory.attributes()
         
-        logger.info(str(('item', screen_item)))
+        logger.debug(str(('item', screen_item)))
         resp = self.api_client.post(
             resource_uri, format='json', data=screen_item, 
             authentication=self.get_credentials())
@@ -286,7 +287,7 @@ class ScreensTest(MetaHashResourceBootstrap,ResourceTestCase):
         resp = self.api_client.get(
             resource_uri, format='json', authentication=self.get_credentials(), 
             data={ 'limit': 999 })
-        logger.info(str(('--------resp to get:', resp.status_code)))
+        logger.debug(str(('--------resp to get:', resp.status_code)))
         new_obj = self.deserialize(resp)
         self.assertValidJSONResponse(resp)
         self.assertEqual(len(new_obj['objects']), 2, str((new_obj)))
@@ -296,10 +297,10 @@ class ScreensTest(MetaHashResourceBootstrap,ResourceTestCase):
             result, str(('bootstrap item not found', obj, 
                          screen_item, new_obj['objects'])))
         self.assertTrue('facility_id' in obj, 'the facility_id was not created')
-        logger.info(str(('item found', obj)))
+        logger.debug(str(('item found', obj)))
 
     def test0_create_screen(self):
-        logger.info(str(('==== test_create_screen =====')))
+        logger.debug(str(('==== test_create_screen =====')))
         
         # the simplest of tests, create some simple screens
         self.bootstrap_items = [   
@@ -322,20 +323,20 @@ class ScreensTest(MetaHashResourceBootstrap,ResourceTestCase):
         ]
         
         resource_uri = BASE_URI_DB + '/screen'
-        logger.info(str(('--posting to:', resource_uri)))
+        logger.debug(str(('--posting to:', resource_uri)))
         for i,item in enumerate(self.bootstrap_items):
-            logger.info(str(('item', item)))         
+            logger.debug(str(('item', item)))         
             resp = self.api_client.post(
                 resource_uri, format='json', data=item, 
                 authentication=self.get_credentials())
             self.assertTrue(resp.status_code in [201], str((resp.status_code, resp)))
 #             self.assertHttpCreated(resp)
             
-        logger.info('created items, now get them')
+        logger.debug('created items, now get them')
         resp = self.api_client.get(
             resource_uri, format='json', authentication=self.get_credentials(), 
             data={ 'limit': 999 })
-        logger.info(str(('--------resp to get:', resp.status_code)))
+        logger.debug(str(('--------resp to get:', resp.status_code)))
         new_obj = self.deserialize(resp)
         self.assertValidJSONResponse(resp)
         self.assertEqual(len(new_obj['objects']), 2, str((new_obj)))
@@ -350,10 +351,10 @@ class ScreensTest(MetaHashResourceBootstrap,ResourceTestCase):
                 str((i+1)), obj['facility_id'], 
                 str(('expected the facility_id returned to be incremented to ',
                      i+1, obj)) )
-            logger.info(str(('item found', obj)))
+            logger.debug(str(('item found', obj)))
             assert_obj1_to_obj2(item, obj)
 
-        logger.info(str(('==== test_create_screen done =====')))
+        logger.debug(str(('==== test_create_screen done =====')))
         
 
 class MutualScreensTest(MetaHashResourceBootstrap,ResourceTestCase):

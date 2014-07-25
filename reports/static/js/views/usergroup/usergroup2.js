@@ -11,10 +11,11 @@ define([
     'views/simple-list',
     'views/usergroup/users',
     'views/usergroup/permissions',
+    'views/usergroup/super_groups',
     'text!templates/generic-tabbed.html',
 ], function($, _, Backbone, BackbonePageableCollection, Iccbl, layoutmanager, 
             appModel, DetailLayout, 
-            ListView, SimpleListView, UsersView, PermissionsView, layout) {
+            ListView, SimpleListView, UsersView, PermissionsView, SuperGroupsView, layout) {
 
   // for compatibility with require.js, attach PageableCollection in the 
   // right place on the Backbone object
@@ -45,6 +46,10 @@ define([
           description: 'Group Users', 
           title: 'Group Users', 
           invoke: 'setUsers' },
+        supergroups: { 
+          description: 'Groups that this group inherits permissions from', 
+          title: 'Permission Groups', 
+          invoke: 'setPermissionGroups' },
         permission: { 
           description: 'Group Permissions', 
           title: 'Group Permissions', 
@@ -175,6 +180,20 @@ define([
       self.setView("#tab_container", view ).render();
     },
 
+    setPermissionGroups: function(delegateStack){
+      var self = this;
+      var key = 'supergroups';
+      var view = this.tabViews[key];
+      if ( !view ) {      
+        view = new SuperGroupsView({ model: this.model, uriStack: delegateStack });
+        self.tabViews[key] = view;
+      }
+      this.consumedStack = [key]; 
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView("#tab_container", view ).render();
+      
+    },
+    
     setPermissions: function(delegateStack){
       var self = this;
       var key = 'permission';

@@ -30,7 +30,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
   var ContentView = Iccbl.UriContainerView.extend({
     
     template: _.template(layout),
-//    className: "",
+    className: "col-sm-10 col-md-10 col-lg-10",
     
     initialize: function() {
       console.log('initialize content.js');

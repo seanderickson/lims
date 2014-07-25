@@ -23,9 +23,17 @@ define([
   var LibraryView = Backbone.Layout.extend({
     
     initialize: function(args) {
+      var self = this;
       this.tabViews = {}; // view cache
       this.uriStack = args.uriStack;
       this.consumedStack = [];
+      
+      _.each(_.keys(this.tabbed_resources), function(key){
+        if(key !== 'detail' && !appModel.hasPermission(self.tabbed_resources[key].permission)){
+          delete self.tabbed_resources[key];
+        }
+      });
+      console.log('check1');
       _.bindAll(this, 'click_tab');
     },
     
@@ -38,18 +46,22 @@ define([
         invoke: 'setDetail'
       },
       copy: { 
-        description: 'Copies', title: 'Copies', invoke: 'setCopies' 
+        description: 'Copies', title: 'Copies', invoke: 'setCopies',
+        permission: 'permission/resource/librarycopy/read'
       },
       plate: { 
-        description: 'Plates', title: 'Plates', invoke: 'setPlates' 
+        description: 'Plates', title: 'Plates', invoke: 'setPlates' ,
+        permission: 'permission/resource/librarycopyplate/read'
       },
       well: { 
         description: 'Well based view of the library contents', 
-        title: 'Wells', invoke: 'setWells' 
+        title: 'Wells', invoke: 'setWells' ,
+        permission: 'permission/resource/well/read'
       },
       version: { 
         description: 'Library contents version', 
-        title: 'Versions', invoke: 'setVersions' 
+        title: 'Versions', invoke: 'setVersions' ,
+        permission: 'permission/resource/librarycontentsversion/read'
       }
     },      
     
@@ -98,8 +110,8 @@ define([
     click_tab : function(event){
       event.preventDefault();
       // Block clicks from the wrong elements
-      // TODO: how to make this specific to this view? (it is also catching
-      //clicks on the table paginator)
+      // TODO: how to make this specific to this view? (is it still also catching
+      // clicks on the table paginator?)
       var key = event.currentTarget.id;
       if(_.isEmpty(key)) return;
       this.change_to_tab(key);

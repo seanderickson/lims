@@ -22,7 +22,8 @@ from db.models import ScreensaverUser,Screen, LabHead, LabAffiliation, \
     NaturalProductReagent
 from reports.serializers import CursorSerializer, LimsSerializer, SmallMoleculeSerializer
 from reports.models import MetaHash, Vocabularies, ApiLog
-from reports.api import ManagedModelResource, ManagedResource, ApiLogResource
+from reports.api import ManagedModelResource, ManagedResource, ApiLogResource,\
+    UserGroupAuthorization
 
         
 logger = logging.getLogger(__name__)
@@ -46,9 +47,8 @@ class ScreensaverUserResource(ManagedModelResource):
         queryset = ScreensaverUser.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
+        authorization= UserGroupAuthorization()
         ordering = []
-#        filtering = { 'administratoruser': ALL_WITH_RELATIONS, 
-#                      'screeningroomuser': ALL_WITH_RELATIONS }
         filtering = {}
         serializer = LimsSerializer()
         excludes = ['digested_password']
@@ -103,12 +103,14 @@ class ScreeningRoomUserResource(ManagedModelResource):
         queryset = ScreeningRoomUser.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), 
             SessionAuthentication())
+        authorization= UserGroupAuthorization()
     
 class LabAffiliationResource(ManagedModelResource):   
     class Meta:
         queryset = LabAffiliation.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
+        authorization= UserGroupAuthorization()
     
 class LabHeadResource(ManagedModelResource):
 
@@ -129,7 +131,7 @@ class LabHeadResource(ManagedModelResource):
         queryset = LabHead.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
-#        resource_name = 'lab_head'
+        authorization= UserGroupAuthorization()
         
     def dehydrate(self, bundle):
         # flatten the inheritance hierarchy, rather than show nested
@@ -150,6 +152,7 @@ class ScreenResultResource(ManagedResource):
         queryset = ScreenResult.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
+        authorization= UserGroupAuthorization()
         resource_name = 'screenresult'
         
         ordering = []
@@ -398,6 +401,7 @@ class ScreenSummaryResource(ManagedModelResource):
         queryset = Screen.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
+        authorization= UserGroupAuthorization()
         resource_name = 'screensummary'
         
         ordering = []
@@ -447,6 +451,7 @@ class DataColumnResource(ManagedModelResource):
         queryset = DataColumn.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
+        authorization= UserGroupAuthorization()
         resource_name = 'datacolumn'
         
         ordering = []
@@ -486,7 +491,7 @@ class ScreenResource(ManagedModelResource):
         queryset = Screen.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
-        authorization= Authorization()        
+        authorization= UserGroupAuthorization()
         resource_name = 'screen'
         
         ordering = []
@@ -613,7 +618,7 @@ class LibraryResource(ManagedModelResource):
         queryset = Library.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
-        authorization= Authorization()        
+        authorization= UserGroupAuthorization()
         resource_name = 'library'
         
         ordering = []
@@ -757,7 +762,7 @@ class LibraryCopyResource(ManagedModelResource):
         queryset = Copy.objects.all().order_by('name')
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
-        authorization= Authorization()        
+        authorization= UserGroupAuthorization()
         resource_name = 'librarycopy'
         
         ordering = []
@@ -911,7 +916,7 @@ class PlateLocationResource(ManagedModelResource):
         queryset = PlateLocation.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
-        authorization= Authorization()        
+        authorization= UserGroupAuthorization()
         resource_name = 'platelocation'
         
         ordering = []
@@ -954,7 +959,7 @@ class LibraryCopyPlateResource(ManagedModelResource):
         queryset = Plate.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
-        authorization= Authorization()        
+        authorization= UserGroupAuthorization()
         resource_name = 'librarycopyplate'
         
         ordering = []
@@ -1056,7 +1061,7 @@ class ReagentResource(ManagedModelResource):
         queryset = Reagent.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
-        authorization= Authorization()        
+        authorization= UserGroupAuthorization()
         resource_name = 'reagent'
         
         ordering = []
@@ -1094,7 +1099,7 @@ class NaturalProductReagentResource(ManagedModelResource):
         queryset = NaturalProductReagent.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
-        authorization= Authorization()        
+        authorization= UserGroupAuthorization()
         resource_name = 'naturalproductreagent'
         
         ordering = []
@@ -1136,7 +1141,7 @@ class SilencingReagentResource(ManagedModelResource):
         queryset = SilencingReagent.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
-        authorization= Authorization()        
+        authorization= UserGroupAuthorization()
         resource_name = 'silencingreagent'
         
         ordering = []
@@ -1192,7 +1197,7 @@ class SmallMoleculeReagentResource(ManagedModelResource):
         queryset = SmallMoleculeReagent.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
-        authorization= Authorization()        
+        authorization= UserGroupAuthorization()
         resource_name = 'smallmoleculereagent'
         
         ordering = []
@@ -1295,7 +1300,7 @@ class WellResource(ManagedModelResource):
         queryset = Well.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
-        authorization= Authorization()        
+        authorization= UserGroupAuthorization()
         resource_name = 'well'
         
         ordering = []
@@ -1368,7 +1373,7 @@ class ActivityResource(ManagedModelResource):
         queryset = AdministrativeActivity.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
-        authorization= Authorization()        
+        authorization= UserGroupAuthorization()
         resource_name = 'activity'
         
         ordering = []
@@ -1428,7 +1433,7 @@ class LibraryContentsVersionResource(ManagedModelResource):
         queryset = LibraryContentsVersion.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
-        authorization= Authorization()        
+        authorization= UserGroupAuthorization()
         resource_name = 'librarycontentsversion'
         
         ordering = []

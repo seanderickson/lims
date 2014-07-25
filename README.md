@@ -6,9 +6,8 @@ The LIMS (lab information management system) for the ICCB high throughput screen
 
 Overview:
 
-Javascript UI (Jquery, Backbone)
-Django based web server
-Postgresql database
+- Javascript UI (Jquery, Backbone)
+- Python/Django web server
+- Postgresql database
 
-Installation Notes:
 

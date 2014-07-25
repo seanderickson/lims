@@ -20,10 +20,26 @@
   -------------------------------------------------- **/
   #wrap > .container-fluid {
     padding-top: 50px;
-    padding-bottom: 60px;
+/*     padding-bottom: 60px; */
     margin-left: inherit;
     margin-right: inherit;
   }
+  
+@media (min-width: 568px) {
+  .container {
+    width: inherit;
+  }
+}
+@media (min-width: 992px) {
+  .container {
+    width: inherit;
+  }
+}
+@media (min-width: 1200px) {
+  .container {
+    width: ;
+  }
+}  
 
   /** Sticky footer styles **/
   html {
@@ -79,7 +95,8 @@
   </script>
   {% block navbar %}
   {% endblock %} <!-- navbar reports -->
-  <div id="wrap">
+<!--   <div id="wrap" class='container'> -->
+  <div id="wrap" class=''>
     {% block application %}
     {% endblock %} <!-- application reports-->
   </div>

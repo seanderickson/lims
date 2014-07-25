@@ -6,3 +6,8 @@
 - then, the cgi-bin/django.cgi script will be run with these variables set by the orchestra system
 - to run manage.py from the command line, use the "setenv_and_run.sh" script to grab the vars from the apache/conf/auth file:
 ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu ./manage.py <other args>
+
+# To reset/regenerate the migrations (useful in reports, before final deploy, to reset)
+mv reports/migrations reports/migrations.bak
+./manage.py schemamigration reports --initial
+./manage.py migrate reports 0001 --fake --delete-ghost-migrations

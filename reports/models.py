@@ -303,9 +303,85 @@ class UserGroup(models.Model):
     name = models.TextField(unique=True, blank=False)
     users = models.ManyToManyField('reports.UserProfile')
     permissions = models.ManyToManyField('reports.Permission')
+    
+    # inherit permissions from super_groups, this group is a sub_group to them
+    super_groups = models.ManyToManyField('self', symmetrical=False, related_name='sub_groups')
 
+    def get_all_permissions(self, sub_groups=set(), **kwargs):
+        '''
+        get permissions of this group, and any inherited through super_groups
+        @param kwargs to filter permissions by attributes
+        '''
+        sub_groups.add(self) # TODO: test recursion check
+        # start with this groups permissions
+        permissions = set(self.permissions.filter(**kwargs));
+        
+        for group in self.super_groups.all():
+            if group not in sub_groups:
+                permissions.update(group.get_all_permissions(sub_groups=sub_groups, **kwargs))
+        
+        return list(permissions)
+    
+    def get_all_users(self, sub_groups=set(), **kwargs):
+        '''
+        get users of this group, and any from sub_groups as well
+        @param kwargs to filter users by attributes
+        '''
+        sub_groups.add(self)
+        # start with this groups users
+        users = set(self.users.filter(**kwargs));
+        
+        for group in self.sub_groups.all():
+            if group not in sub_groups:
+                users.update(group.get_all_users(sub_groups=sub_groups, **kwargs))
+        
+        return list(users)
+    
+#     def get_group_members(self, **kwargs):
+#         users = set(self.users.filter(**kwargs))
+#         for group in self.groups.filter(sub_groups__super_group=self):
+#             users.update(group.get_group_members(**kwargs));
+#             
+#         return users
+    
     def __unicode__(self):
-        return unicode(str((self.name, self.users)))
+        return unicode(str((self.name, [x for x in self.users.all()])))
+    
+    
+#     groups = models.ManyToManyField('self', through='reports.Membership', 
+#                                            symmetrical=False, 
+#                                            related_name='member_of')
+# #     permission_super_groups = models.ManyToManyField('self', through='reports.Membership', 
+# #                                            symmetrical=False, 
+# #                                            related_name='sub_group')
+# 
+#     def get_group_permissions(self, **kwargs):
+#         # start with this groups permissions
+#         permissions = set(self.permissions.all().filter(**kwargs));
+#         
+#         for group in self.groups.filter(super_groups__sub_group=self):
+#             permissions.update(group.get_group_permissions(**kwargs))
+#         
+#         return permissions
+#     
+#     def get_group_members(self, **kwargs):
+#         # start with this groups permissions
+#         members = set(self.users.all().filter(**kwargs));
+#         
+#         for group in self.groups.filter(sub_groups__super_group=self):
+#             members.update(group.get_group_permissions(**kwargs))
+#         
+#         return members
+#     
+#     def __unicode__(self):
+#         return unicode(str((self.name, self.users)))
+# 
+#         
+# 
+# class Membership(models.Model):
+#     sub_group = models.ForeignKey(UserGroup, related_name='sub_groups')
+#     super_group = models.ForeignKey(UserGroup, related_name='super_groups')
+    
  
 class UserProfile(models.Model):
     objects                 = MetaManager()

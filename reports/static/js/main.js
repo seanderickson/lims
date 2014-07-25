@@ -27,16 +27,21 @@ requirejs(['require-config'],
     
     console.log('init screensaver/reports...')
     
-    // NOTE: the ajax "traditional" setting is needed to serialize the ordering
-    // array used to implement multisort with the tastypie server
-    // With traditional serialization, the array values are serialized as
-    // order=val1&order=val1&order=...
-    // see http://api.jquery.com/jQuery.param/c
+    /** 
+     * NOTE: The ajax "traditional" setting is needed to serialize the ordering
+     * array sent to the server and used to implement multisort with the 
+     * tastypie server.
+     * With traditional serialization, the array values are serialized as
+     * order=val1&order=val1&order=...
+     * see http://api.jquery.com/jQuery.param/c
+     **/
     $.ajaxSettings.traditional = true;
   
-    // Augment the view prototype to prevent memory leaks - 
-    // See: http://lostechies.com/derickbailey/2011/09/15/zombies-run-managing-page-transitions-in-backbone-apps/
-    // Todo: is this still needed with the Backbone.Layout extension managing all the views?
+    /**
+     * Augment the view prototype to prevent memory leaks -
+     * See: http://lostechies.com/derickbailey/2011/09/15/zombies-run-managing-page-transitions-in-backbone-apps/
+     * Todo: is this still needed with the Backbone.Layout extension managing all the views?
+     **/
     Backbone.View.prototype.close = function(){
       this.remove();
       this.unbind();
@@ -45,6 +50,7 @@ requirejs(['require-config'],
       }
     };
   
+    // Check logged in status
     if(_.isUndefined(window.logged_in) || window.logged_in != 'True' ){
       console.log('window.logged_in: ' + window.logged_in );
       window.location='/accounts/login/?next=' + 
@@ -52,10 +58,11 @@ requirejs(['require-config'],
       return;
     }
     
+    // Bootstrap the resources hash
     var ui_resources = JSON.parse(reports_ui_resources_raw);
     _.extend(ui_resources, JSON.parse(ui_resources_raw));
     appModel.set('ui_resources', ui_resources);
-    
+    // Bootstrap the menu hash
     var menu_resource = JSON.parse(menu_raw);
     _.extend(menu_resource['submenus'], JSON.parse(reports_menu_raw)['submenus']);
     appModel.set('menu', menu_resource);

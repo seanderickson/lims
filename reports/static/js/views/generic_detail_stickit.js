@@ -57,7 +57,7 @@ define([
         bindings['#'+key] = {
           observe: key,
           onGet: function(value) {
-            if (value) return value;
+            if (!_.isEmpty(value)) return value;
             else return '-';
           }
         };

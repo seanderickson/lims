@@ -42,6 +42,7 @@ from tastypie.fields import BooleanField
 
 from reports.serializers import CsvBooleanField,CSVSerializer, SDFSerializer
 from reports.utils.sdf2py import MOLDATAKEY
+from tastypie.utils.dict import dict_strip_unicode_keys
 
 
 logger = logging.getLogger(__name__)
@@ -286,8 +287,8 @@ M  END
 
 class BaselineTest(TestCase):
 
-    def test_0equivocal(self):
-        logger.debug(str(('>> test_0equivocal <<')))
+    def test0_equivocal(self):
+        logger.debug(str(('>> test0_equivocal <<')))
         
         test_true = [
             ['',''],
@@ -324,10 +325,10 @@ class BaselineTest(TestCase):
             logger.debug(str(('csv serialization equivocal falsy test', a, b)))
             result, msgs = equivocal(a,b)
             self.assertFalse(result, msgs)
-        logger.debug(str(('>> test_0equivocal done <<')))
+        logger.debug(str(('>> test0_equivocal done <<')))
     
-    def test_1assert_obj1_to_obj2(self):
-        logger.debug(str(('====== test_1assert_obj1_to_obj2 ====')))
+    def test1_assert_obj1_to_obj2(self):
+        logger.debug(str(('====== test1_assert_obj1_to_obj2 ====')))
         # all of obj1 in obj2 (may be more in obj2
         
         obj1 = { 'one': '1', 'two': 'two', 'three':''}
@@ -344,10 +345,10 @@ class BaselineTest(TestCase):
         obj5 = { 'one':'1', 'two':'2', 'three':None }
         result, msgs = assert_obj1_to_obj2(obj5, obj4)
         self.assertTrue(result, str((result,msgs)))
-        logger.debug(str(('====== test_1assert_obj1_to_obj2 done ====')))
+        logger.debug(str(('====== test1_assert_obj1_to_obj2 done ====')))
 
-    def test_2find_obj_in_list(self):
-        logger.debug(str(('====== test_2find_obj_in_list ====')))
+    def test2_find_obj_in_list(self):
+        logger.debug(str(('====== test2_find_obj_in_list ====')))
         
         obj1 = { 'one': '1', 'two': 'two', 'three':''}
         obj1a = { 'one': '2', 'two': 'two', 'three':''}
@@ -370,10 +371,10 @@ class BaselineTest(TestCase):
         obj_list = [ obj1a, obj3 ]
         result, msgs = find_obj_in_list(obj1, obj_list)
         self.assertFalse(result, msgs)
-        logger.debug(str(('====== test_2find_obj_in_list done ====')))
+        logger.debug(str(('====== test2_find_obj_in_list done ====')))
 
-    def test_3find_all_obj_in_list(self):
-        logger.debug(str(('====== test_3find_all_obj_in_list ====')))
+    def test3_find_all_obj_in_list(self):
+        logger.debug(str(('====== test3_find_all_obj_in_list ====')))
         
         obj1 = { 'one': '1', 'two': 'two', 'three':''}
         obj1a = { 'one': '2', 'two': 'two', 'three':''}
@@ -388,10 +389,10 @@ class BaselineTest(TestCase):
         obj_list2 = [ obj2, obj3 ]
         result, msgs = find_all_obj_in_list(obj_list, obj_list2)
         self.assertFalse(result, str((result, msgs  )))
-        logger.debug(str(('====== test_3find_all_obj_in_list done ====')))
+        logger.debug(str(('====== test3_find_all_obj_in_list done ====')))
 
-    def test_4user_example(self):
-        logger.debug(str(('====== test_4user_example ====')))
+    def test4_user_example(self):
+        logger.debug(str(('====== test4_user_example ====')))
         bootstrap_items = [   
             {
                 'ecommons_id': 'st1',
@@ -419,7 +420,7 @@ class BaselineTest(TestCase):
         
         self.assertTrue(obj['email'] == 'joe.tester@limstest.com')
         
-        logger.debug(str(('====== test_4user_example done ===='))) 
+        logger.debug(str(('====== test4_user_example done ===='))) 
         # if this passes, then why does line 431 fail in reports.tests.py?
     
     
@@ -498,10 +499,10 @@ class MetaHashResourceBootstrap():
 
     def _setUp(self):
         # Create a user.
-        self.username = 'daniel'
+        self.username = 'testsuper'
         self.password = 'pass'
         self.user = User.objects.create_superuser(
-            self.username, 'daniel@example.com', self.password)
+            self.username, 'testsuperuser@example.com', self.password)
         
         self.resource_uri = BASE_URI + '/metahash'
         self.directory = os.path.join(APP_ROOT_DIR, 'reports/static/api_init')
@@ -513,7 +514,7 @@ class MetaHashResourceBootstrap():
     def _patch_test(self,resource_name, filename, keys_not_to_check=[], 
                     id_keys_to_check=[], data_for_get={}):
         '''
-        data_for_get - dict of extra header information to send with the GET request
+        data_for_get - dict of extra header krmation to send with the GET request
         '''
         data_for_get.setdefault('limit', 999 )
         data_for_get.setdefault('HTTP_APILOG_COMMENT', 'patch_test: %s' % filename )
@@ -528,7 +529,7 @@ class MetaHashResourceBootstrap():
                 resource_uri, format='csv', data=input_data, 
                 authentication=self.get_credentials(), **data_for_get )
             logger.debug(str(('Response: ' , resp.status_code)))
-#            self.assertHttpAccepted(resp)
+            #            self.assertHttpAccepted(resp)
             self.assertTrue(resp.status_code in [202, 204], str((resp)))
             
             logger.debug(str(('check patched data for',resource_name,
@@ -585,7 +586,7 @@ class MetaHashResourceBootstrap():
             logger.debug(str(('Response: ' , resp.status_code)))
 #            self.assertHttpAccepted(resp)
             self.assertTrue(resp.status_code in [200, 202, 204], 
-                            str((resp.status_code, str((resp)) )) )
+                            str((resp.status_code, resp.serialize() )) )
     
             logger.debug(str(('check put data for',resource_name,
                              'execute get on:',resource_uri)))
@@ -593,7 +594,7 @@ class MetaHashResourceBootstrap():
                 resource_uri, format='json', 
                 authentication=self.get_credentials(), data=data_for_get)
             logger.debug(str(('--------resp to get:', resp.status_code)))
-            self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+            self.assertTrue(resp.status_code in [200], str((resp.status_code, resp.serialize())))
             new_obj = self.deserialize(resp)
             # do a length check, since put will delete existing resources
             self.assertEqual(len(new_obj['objects']), len(input_data['objects']), 
@@ -667,9 +668,9 @@ class TestApiInit(MetaHashResourceBootstrap,ResourceTestCase):
         super(TestApiInit, self).setUp()
         super(TestApiInit, self)._setUp()
 
-    def test_0bootstrap_metahash(self):
+    def test0_bootstrap_metahash(self):
         
-        logger.debug('================ reports test_0bootstrap_metahash =============== ')
+        logger.debug('================ reports test0_bootstrap_metahash =============== ')
         # in order for the metahash resource to work, the metahash itself must 
         # be "bootstrapped":
         # the metahash must be filled with the fields that describe itself
@@ -721,16 +722,16 @@ class TestApiInit(MetaHashResourceBootstrap,ResourceTestCase):
             result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
             self.assertTrue(result, str(('not found', inputobj, outputobj )) )
         
-        logger.debug('================ test_0bootstrap_metahash done ========== ')
+        logger.debug('================ test0_bootstrap_metahash done ========== ')
     
-    def test_1bootstrap_init(self):
-        logger.debug('================ reports test_1bootstrap_init ================')
+    def test1_bootstrap_init(self):
+        logger.debug('================ reports test1_bootstrap_init ================')
         self._bootstrap_init_files()
-        logger.debug('================ test_1bootstrap_init done ================')
+        logger.debug('================ test1_bootstrap_init done ================')
         
-    def test_2api_init(self):
+    def test2_api_init(self):
         
-        logger.debug('***================ reports test_2api_init =============== ')
+        logger.debug('***================ reports test2_api_init =============== ')
         serializer=CSVSerializer() 
         # todo: doesn't work for post, see TestApiClient.post() method, it is 
         # incorrectly "serializing" the data before posting
@@ -865,7 +866,7 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
                 'username': 'bt1',
                 'first_name': 'Bad',
                 'last_name': 'TestsALot',    
-                'email': 'bad.fester@slimstest.com',    
+                'email': 'bad.tester@slimstest.com',    
             },
         ]
 
@@ -914,7 +915,123 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
         self._patch_test('user', filename)
         
         logger.debug(str(('==== test2_patch_user_permissions done =====')))
+        
+    def test3_user_read_permissions(self):
+        '''
+        Try to do something we don't have permissions for - 
+        read a resource (metahash) 
+        - done in prev test: create a new user (as superuser)
+        - done in prev test: assign some permissions (as superuser)
+        '''
+        
+        logger.debug(str(('==== test3_user_read_permissions =====')))
+        self.test2_patch_user_permissions()
+                
+        # assign password to the test user
+        username = 'sde4'
+        password = 'testpass1'
+        user = User.objects.get(username=username)
+        user.set_password(password)
+        user.save()
 
+        # Try to do some unauthorized actions
+
+        resource_uri = BASE_URI + '/metahash'
+        resp = self.testApiClient.get(
+            resource_uri, format='json', data={}, 
+            authentication=self.create_basic(username, password) )
+        self.assertTrue(resp.status_code in [403], str((resp.status_code, resp)))
+        
+        # Now add the needed permission
+        
+        user_patch = {
+            'resource': 'user/' + username,
+            'permissions': ['permission/resource/metahash/read'] };
+
+        logger.debug(str(('now add the permission needed to this user:', user_patch)))
+        uri = self.resource_uri + '/' + username
+        resp = self.api_client.patch( uri, 
+                    format='json', data=user_patch, 
+                    authentication=self.get_credentials())
+        self.assertTrue(resp.status_code in [202, 204], 
+                        str((resp.status_code, resp.serialize())))  
+        
+        #         # is it set?
+        #         resp = self.api_client.get(
+        #                 uri, format='json', authentication=self.get_credentials())
+        #         logger.warn(str(('response: ' , self.deserialize(resp) )))
+
+        # now try again as the updated user:
+        
+        resp = self.testApiClient.get(
+            resource_uri, format='json', data={}, 
+            authentication=self.create_basic(username, password) )
+        self.assertTrue(resp.status_code in [200], 
+                        str((resp.status_code, resp.serialize())))
+       
+        logger.debug(str(('==== test3_user_read_permissions done =====')))
+
+    def test4_user_write_permissions(self):
+        '''
+        Try to do something we don't have permissions for - 
+        write a resource (user),
+        then give that permission to the user, and try again 
+        - done in prev test: create a new user (as superuser)
+        - done in prev test: assign some permissions (as superuser)
+        '''
+        logger.debug(str(('==== test4_user_write_permissions =====')))
+
+        self.test2_patch_user_permissions()
+                
+        # assign password to the test user
+        username = 'sde4'
+        password = 'testpass1'
+        user = User.objects.get(username=username)
+        user.set_password(password)
+        user.save()
+
+        # Try to do some unauthorized actions
+
+        resource_uri = BASE_URI + '/usergroup'
+        
+        # just adding a group, for instance
+        
+        json_data = { 'objects': [{ 'name': 'test_group_x' }] }
+        
+        resp = self.testApiClient.patch(
+            resource_uri, format='json', data=json_data, 
+            authentication=self.create_basic(username, password) )
+        self.assertTrue(resp.status_code in [403], str((resp.status_code, resp.serialize())))
+        
+        # Now add the needed permission
+        
+        user_patch = {
+            'resource': 'user/' + username,
+            'permissions': ['permission/resource/usergroup/write'] };
+
+        logger.debug(str(('now add the permission needed to this user:', user_patch)))
+        uri = self.resource_uri + '/' + username
+        resp = self.api_client.patch( uri, 
+                    format='json', data=user_patch, 
+                    authentication=self.get_credentials())
+        self.assertTrue(resp.status_code in [202, 204], 
+                        str((resp.status_code, resp.serialize())))  
+        
+        # now try again as the updated user:
+        
+        resp = self.testApiClient.patch(
+            resource_uri, format='json', data=json_data, 
+            authentication=self.create_basic(username, password) )
+        self.assertTrue(resp.status_code in [202, 204], 
+                        str((resp.status_code, resp.serialize())))
+
+        #         # is it set?
+        #         resp = self.api_client.get(
+        #                 uri, format='json', authentication=self.get_credentials())
+        #         logger.warn(str(('response: ' , self.deserialize(resp) )))
+
+        logger.debug(str(('==== test4_user_write_permissions done =====')))
+        
 class UserGroupResource(UserResource):
     
     def setUp(self):
@@ -935,9 +1052,10 @@ class UserGroupResource(UserResource):
         filename = os.path.join(self.directory,'metahash_fields_permission.csv')
         self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.permission'})
 
+        self.resource_uri = BASE_URI + '/usergroup'
         logger.debug(str(( '============== UserGroup setup done ============')))
 
-    def _test2_create_usergroup_with_permissions(self):
+    def test2_create_usergroup_with_permissions(self):
         logger.debug(str(('==== test2_usergroup =====')))
         #create users
         self.test1_create_user_with_permissions()
@@ -955,18 +1073,220 @@ class UserGroupResource(UserResource):
         logger.debug(str(('----- test2_usergroup =====')))
 
         filename = os.path.join(self.directory,'test_data/usergroups1.csv')
-        self._put_test('usergroup', filename)
-
+        # note: excluding sub_groups here because the one sub_group is set when 
+        # "testGroupX" sets super_groups=['testGroup3']; and thereby testGroup3 
+        # gets sub_groups=['testGroupX']; even though that's not in the input file.
+        self._put_test('usergroup', filename, keys_not_to_check=['sub_groups'])
 
         logger.debug(str(('==== test2_usergroup done =====')))
 
-
     def test3_patch_users_groups(self):
         logger.debug(str(('==== test3_patch_users_groups =====')))
-        self._test2_create_usergroup_with_permissions()
+        self.test2_create_usergroup_with_permissions()
         
         logger.debug(str(('==== test3_patch_users_groups start =====')))
         filename = os.path.join(self.directory,'test_data/users3_groups_patch.csv')
-        self._patch_test('user', filename)
+        self._patch_test('user', filename) #, keys_not_to_check=['groups'])
       
         logger.debug(str(('==== test3_patch_users_groups done =====')))
+
+#     def test3a_patch_usersgroups_groups(self):
+#         logger.debug(str(('==== test3a_patch_usersgroups_groups =====')))
+#         self.test2_create_usergroup_with_permissions()
+#         
+#         logger.debug(str(('==== test3a_patch_usersgroups_groups start =====')))
+#         filename = os.path.join(self.directory,'test_data/users3_groups_patch.csv')
+#         self._patch_test('user', filename, keys_not_to_check=['groups'])
+#       
+#         logger.debug(str(('==== test3a_patch_usersgroups_groups done =====')))
+
+
+    def test4_user_group_permissions(self):
+        '''
+        Test of a group permission -
+        first test that the user in the group has the permission,
+        then remove this user from this group and try again
+        - done in prev test: create a new user (as superuser)
+        - done in prev test: assign some permissions (as superuser)
+        - add/remove users to groups (as superuser)
+        '''
+        logger.debug(str(('==== test4_user_group_permissions =====')))
+        
+        self.test2_create_usergroup_with_permissions()
+                        
+        # assign password to the test user
+        username = 'sde4'
+        password = 'testpass1'
+        user = User.objects.get(username=username)
+        user.set_password(password)
+        user.save()
+
+        # 1 read test - should have permission through group
+        resource_uri = BASE_URI + '/metahash'
+        resp = self.testApiClient.get(
+            resource_uri, format='json', data={}, 
+            authentication=self.create_basic(username, password ))
+        self.assertTrue(resp.status_code in [200], str((resp.status_code, resp.serialize())))
+        
+        #         # is it set?
+        #         uri = self.resource_uri + '/' + username
+        #         resp = self.api_client.get(
+        #                 uri, format='json', authentication=self.get_credentials())
+        #         logger.info(str(('is it set? response: ' , self.deserialize(resp) )))
+
+        # now patch this user's usergroups, removing the user from the group 'testgroup1'
+        # which will remove the permissions as well 
+        user_patch = {
+            'usergroups': ['usergroup/testGroup3'] };
+
+        logger.debug(str(('now reset this users groups and remove testGroup1:', user_patch)))
+        uri = BASE_URI + '/user' + '/' + username
+        resp = self.api_client.patch(uri, format='json', data=user_patch, 
+                                     authentication=self.get_credentials())
+        self.assertTrue(resp.status_code in [202, 204], 
+                        str((resp.status_code, resp.serialize())))  
+        
+        #         # is it set?
+        #         resp = self.api_client.get(
+        #                 uri, format='json', authentication=self.get_credentials())
+        #         logger.info(str(('is it set? response: ' , self.deserialize(resp) )))
+
+        # now try again as the updated user:
+        resp = self.testApiClient.get(
+            resource_uri, format='json', data={}, 
+            authentication=self.create_basic(username, password) )
+        self.assertTrue(resp.status_code in [403], 
+                        str((resp.status_code, resp.serialize())))
+       
+        logger.debug(str(('==== test4_user_group_permissions done =====')))
+
+
+    def test5_usergroup_can_contain_group_permissions(self):
+        '''
+        Test of an inherited group permission  -
+        first test that the user in the group doesn't have the permission,
+        then add the user's usergroup to a group with the permission and try again
+        - done in prev test: create a new user (as superuser)
+        - done in prev test: assign some permissions (as superuser)
+        - add/remove users to groups (as superuser)
+        '''
+        logger.debug(str(('==== test5_usergroup_can_contain_group_permissions =====')))
+        
+        self.test2_create_usergroup_with_permissions()
+                        
+        # assign password to the test user
+        username = 'sde4'
+        password = 'testpass1'
+        user = User.objects.get(username=username)
+        user.set_password(password)
+        user.save()
+
+        # 1 read test - user, user's group don't have the permission
+        resource_uri = BASE_URI + '/vocabularies'
+        resp = self.testApiClient.get(
+            resource_uri, format='json', data={}, 
+            authentication=self.create_basic(username, password ))
+        self.assertTrue(resp.status_code in [403], str((resp.status_code, resp.serialize())))
+        
+        # now create a new group, with previous user's group as a member,
+        # then add permissions to this new group to read (vocabularies)
+        # note: double nest the groups also as a test
+        usergroup_patch = { 'objects': [
+            {
+            'name': 'testGroup5',
+            'super_groups': ['usergroup/testGroup3'] },
+            {
+            'name': 'testGroup6',
+            'users': ['user/sde4'],
+            'super_groups': ['usergroup/testGroup5'] },
+        ]}
+        
+        logger.debug(str(('now set the new group:', usergroup_patch)))
+        uri = self.resource_uri + '/'
+        logger.warn(str(('resource_uri', uri)))
+        resp = self.api_client.patch(uri, format='json', 
+            data=usergroup_patch, 
+            authentication=self.get_credentials())
+        self.assertTrue(resp.status_code in [202, 204], 
+                        str((resp.status_code, resp.serialize())))  
+        
+        # is it set?
+        resp = self.api_client.get(
+                uri, format='json', authentication=self.get_credentials())
+        new_obj = self.deserialize(resp)
+        result, outputobj = find_all_obj_in_list(
+            usergroup_patch['objects'],new_obj['objects']) #, excludes=keys_not_to_check )
+        self.assertTrue(
+            result, 
+            str(('not found', outputobj,'=== objects returned ===', 
+                 new_obj['objects'] )) ) 
+        
+        # is it set-2, does group inherit the permissions?
+        for obj in new_obj['objects']:
+            if obj['name'] == 'testGroup6':
+                testGroup6 = obj
+            if obj['name'] == 'testGroup3':
+                testGroup3 = obj
+                
+        self.assertTrue(testGroup6 and testGroup3)
+        for permission in testGroup3['all_permissions']:
+            logger.info(str(('find permission', permission)))
+            self.assertTrue(permission in testGroup6['all_permissions'], 
+                str(('could not find permission', permission, 
+                     'in testGroup6 permissions', testGroup6['all_permissions'])))
+        
+        # 2 read test - user has permissions through inherited permissions,
+        resource_uri = BASE_URI + '/vocabularies'
+        resp = self.testApiClient.get(
+            resource_uri, format='json', data={}, 
+            authentication=self.create_basic(username, password ))
+        self.assertTrue(resp.status_code in [200], str((resp.status_code, resp.serialize())))
+
+        logger.debug(str(('==== Done: test5_usergroup_can_contain_group_permissions =====')))
+
+    
+    def test6_usergroup_can_contain_group_users(self):
+        '''
+        Test that group "contains" the subgroup users (through "all_users")
+        first test that the group doesn't have the user, then add the subgroup
+        with the user, test that the group has the user in "all_users
+        - done in prev test: create a new user (as superuser)
+        - add/remove users to groups (as superuser)
+        '''
+        logger.debug(str(('==== test6_usergroup_can_contain_group_users =====')))
+        
+        self.test2_create_usergroup_with_permissions()
+                        
+        # now create a new group, with a previous group as a sub_group
+        usergroup_patch = { 'objects': [
+            {
+            'name': 'testGroup5',
+            'sub_groups': ['usergroup/testGroup2'] },
+            {
+            'name': 'testGroup6',
+            'sub_groups': ['usergroup/testGroup5'] },
+        ]}
+        
+        logger.debug(str(('now set the new groups:', usergroup_patch)))
+        uri = self.resource_uri + '/'
+        logger.warn(str(('resource_uri', uri)))
+        resp = self.api_client.patch(uri, format='json', 
+            data=usergroup_patch, 
+            authentication=self.get_credentials())
+        self.assertTrue(resp.status_code in [202, 204], 
+                        str((resp.status_code, resp.serialize())))  
+        
+        # is it set?
+        resp = self.api_client.get(
+                uri + 'testGroup6', format='json', authentication=self.get_credentials())
+        new_obj = self.deserialize(resp)
+        # TODO: review: TP returns all dict/keys as unicode
+        new_obj = dict_strip_unicode_keys(new_obj)
+        logger.info(str(('results from get', new_obj)))
+        
+        self.assertTrue(new_obj['all_users'])
+        self.assertTrue('user/sde4' in new_obj['all_users'])
+        
+        # TODO: could also test that testGroup2 now has super_group=testGroup5
+        
+        logger.debug(str(('==== Done: test6_usergroup_can_contain_group_users =====')))

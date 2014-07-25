@@ -79,7 +79,7 @@ define([
       var self = this;
       this.getModel('user', window.user, function(model){
         self.currentUser = model.toJSON();
-        console.log('Current user: ' + JSON.stringify(this.currentUser));
+        console.log('Current user: ' + JSON.stringify(self.currentUser));
         
         if(callBack) callBack(); 
       });
@@ -188,6 +188,7 @@ define([
               callBack(model);
             } catch (e) {
               console.log('uncaught error: ' + e);
+              self.error('error displaying model: ' + model + ', '+ e);
             }
           },
           error: this.jqXHRerror
@@ -197,13 +198,50 @@ define([
     
     
     getMenu: function(){
-      
+      var self = this;
+      var currentUser = this.getCurrentUser();
       var menu = this.get('menu');
       
-      if(!this.getCurrentUser().is_superuser){
+      if(!currentUser.is_superuser){
+        // TODO: use permissions here
         menu.submenus = _.omit(menu.submenus, 'admin');
+        
+        // TODO: iterate over each menu: if user doesn't have read perm for 
+        // resource, omit
+        var new_submenus = {}
+        _.each(_.keys(menu.submenus), function(key){
+          var r_perm = 'permission/resource/'+key
+          var match = false;
+          _.each(self.getCurrentUser().all_permissions, function(permission){
+            // NOTE: allow match of [either] 'read' or 'write'
+            if(permission.indexOf(r_perm) > -1 ) {
+              match = true;
+            }
+          })
+          if(match){
+            new_submenus[key] = menu.submenus[key];
+          }else{
+            console.log('user: ' + currentUser.username 
+                + ', doesnt have permission to view the menu: ' + key );
+          }
+        });
+        menu.submenus = new_submenus;
       }
       return menu;
+    },
+    
+    hasPermission: function(p_check){
+      var self = this;
+      var current_user = self.getCurrentUser();
+      if (current_user.is_superuser){
+        return true;
+      }
+      var result = _.find(current_user.all_permissions, function(permission){
+        console.log('check for perm: ' + permission);
+        return permission.indexOf(p_check) > -1;
+      });
+      console.log("perm check: " + p_check + ',' + result);
+      return result;
     },
     
     /**

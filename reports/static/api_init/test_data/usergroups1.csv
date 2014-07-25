@@ -1,5 +1,6 @@
-name,users,permissions
-testGroup1,"[user/yal1,user/sde4]","[permission/resource/metahash/read,permission/fields.user/username/read]"
-testGroup2,"[user/sde4,user/bra2]","[permission/resource/user/read,permission/resource/screen/read]"
-testGroup3,,"[permission/resource/user/read,permission/resource/screen/read]"
-testGroup4,[user/tester4],
+name,users,permissions,super_groups,sub_groups
+testGroup1,"[user/yal1,user/sde4]","[permission/resource/metahash/read,permission/fields.user/username/read]",,
+testGroup2,"[user/sde4,user/bra2]","[permission/resource/user/read,permission/resource/screen/read]",,
+testGroup3,,"[permission/resource/user/read,permission/resource/screen/read,permission/resource/vocabularies/read]",,
+testGroup4,[user/tester4],,,
+testGroupX,,,[usergroup/testGroup3],

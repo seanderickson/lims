@@ -30,6 +30,13 @@ define([
       this.consumedStack = [];
       this.title = Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource.schema);
       this.model.id = Iccbl.getIdFromIdAttribute(this.model, this.model.resource.schema);
+
+      _.each(_.keys(this.tabbed_resources), function(key){
+        if(key !== 'detail' && !appModel.hasPermission(
+            'permission/resource/' + self.tabbed_resources[key].resource + '/read')){
+          delete self.tabbed_resources[key];
+        }
+      });
       
       _.bindAll(this, 'click_tab');
     },
@@ -44,11 +51,13 @@ define([
         usergroup: { 
           description: 'User Groups', 
           title: 'User Groups', 
-          invoke: 'setGroups' },
+          invoke: 'setGroups', 
+          resource: 'usergroup' },
         permission: { 
           description: 'User Permissions', 
           title: 'User Permissions', 
-          invoke: 'setPermissions' },
+          invoke: 'setPermissions',
+          resource: 'permission' },
     },
     
     events: {

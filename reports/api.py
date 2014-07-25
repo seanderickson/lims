@@ -33,59 +33,106 @@ from reports.models import MetaHash, Vocabularies, ApiLog, Permission, \
                            UserGroup, UserProfile
 # import lims.settings 
 from tastypie.utils.timezone import make_naive
-from django.db.utils import IntegrityError
+from tastypie.http import HttpForbidden
         
 logger = logging.getLogger(__name__)
 
 
-# TODO: this is only a placeholder
 class UserGroupAuthorization(Authorization):
-    def read_list(self, object_list, bundle):
+    
+    def _is_resource_authorized(self, resource_name, user, permission_type):
+        logger.debug(str(("_is_resource_authorized", resource_name, user, permission_type)))
+        scope = 'resource'
+        prefix = 'permission'
+        uri_separator = '/'
+        permission_str =  uri_separator.join([prefix,scope,resource_name,permission_type])       
+
+        logger.debug(str(( 'authorization query:', permission_str, 
+            'user', user, user.is_superuser)))
         
-        user = bundle.request.user
         if user.is_superuser:
-            return object_list
-         
+            return True
+        
         userprofile = user.userprofile
-        resource_name = self.resource_meta.resource_name
         
         permissions = [x for x in 
-            userprofile.permissions.all().filter(scope='resource', key=resource_name)]
-        logger.info(str(('user permissions', permissions)))
+            userprofile.permissions.all().filter(
+                scope=scope, key=resource_name, type=permission_type)]
+        
+        if permissions:
+            if(logger.isEnabledFor(logging.DEBUG)):
+                logger.debug(str(('user',user ,'auth query', permission_str, 
+                    'found matching user permissions', permissions)))
+            return True
+        
+        logger.debug(str(('user',user ,'auth query', permission_str, 
+            'not found in user permissions', permissions)))
+        
         permissions_group = [ permission 
                 for group in userprofile.usergroup_set.all() 
-                for permission in group.permissions.all()]
-        logger.info(str(('group permissions', permissions)))
+                for permission in group.get_all_permissions(
+                    scope=scope, key=resource_name, type=permission_type)]
+        if permissions_group:
+            if(logger.isEnabledFor(logging.DEBUG)):
+                logger.debug(str(('user',user ,'auth query', permission_str,
+                    'found matching usergroup permissions', permissions_group)))
+            return True
+        
+        logger.info(str(('user',user ,'auth query', permission_str,
+             'not found in group permissions', permissions_group)))
         
         
-        raise Unauthorized("User requires permission to read this resource.")
+        # Note: the TP framework raises the "Unauthorized" error: it then 
+        # translates this into the (incorrect) HttpUnauthorized (401) response
+        # Instead, raise an immediate exception with the correct 403 error code
+        raise ImmediateHttpResponse(response=HttpForbidden(
+            str(('user',user ,'permission not found', permission_str))))
+
+        # NOTE: the tastypie lib creates the incorrect "Unauthorized" - 401 error, 
+        # - it should be a 403 "forbidden" code, but "Unauthorized" generates a 401
+        #         raise Unauthorized(
+        #             str(("User", user, " requires permission to read this resource.", resource_name)) )
+
+    
+    def read_list(self, object_list, bundle):
+        if self._is_resource_authorized(
+            self.resource_meta.resource_name, bundle.request.user, 'read'):
+            return object_list
 
     def read_detail(self, object_list, bundle):
-        return True
+        if self._is_resource_authorized(
+            self.resource_meta.resource_name, bundle.request.user, 'read'):
+            return True
 
     def create_list(self, object_list, bundle):
-        return []
+        if self._is_resource_authorized(
+            self.resource_meta.resource_name, bundle.request.user, 'write'):
+            return object_list
 
     def create_detail(self, object_list, bundle):
-        if bundle.request.user.is_superuser:
+        if self._is_resource_authorized(
+            self.resource_meta.resource_name, bundle.request.user, 'write'):
             return True
-        raise Unauthorized("Only superuser may create.")
 
     def update_list(self, object_list, bundle):
-        if bundle.request.user.is_superuser:
+        if self._is_resource_authorized(
+            self.resource_meta.resource_name, bundle.request.user, 'write'):
             return object_list
-        raise Unauthorized("Only superuser may update lists.")
 
     def update_detail(self, object_list, bundle):
-        if bundle.request.user.is_superuser:
+        if self._is_resource_authorized(
+            self.resource_meta.resource_name, bundle.request.user, 'write'):
             return True
-        raise Unauthorized("Only superuser may update.")
 
     def delete_list(self, object_list, bundle):
-        return []
+        if self._is_resource_authorized(
+            self.resource_meta.resource_name, bundle.request.user, 'write'):
+            return object_list
 
     def delete_detail(self, object_list, bundle):
-        raise Unauthorized("You are not allowed to access that resource.")
+        if self._is_resource_authorized(
+            self.resource_meta.resource_name, bundle.request.user, 'write'):
+            return True
 
 
 
@@ -420,6 +467,7 @@ class LoggingMixin(Resource):
     @transaction.commit_on_success()
     def obj_update(self, bundle, skip_errors=False, **kwargs):
         logger.info('--- log obj_update')
+        
         original_bundle = Bundle(data=deepcopy(bundle.data))
         i=0;
 
@@ -429,6 +477,7 @@ class LoggingMixin(Resource):
         # store and compare dehydrated outputs: 
         # the api logger is concerned with what's sent out of the system, i.e.
         # the dehydrated output, not the internal representations.
+        
         original_bundle = super(LoggingMixin, self).full_dehydrate(original_bundle)
         updated_bundle = super(LoggingMixin, self).obj_update(bundle=bundle, **kwargs)
         updated_bundle = super(LoggingMixin, self).full_dehydrate(updated_bundle)
@@ -468,6 +517,7 @@ class LoggingMixin(Resource):
                 val2 = make_naive(val2)
             if val1 != val2: 
                 diff_keys.append(key)
+                
         # Note, simple equality not used, since the serialization isn't 
         # symmetric, e.g. see datetimes, where tz naive dates look like UTC 
         # upon serialization to the ISO 8601 format.
@@ -502,7 +552,7 @@ class LoggingMixin(Resource):
                   
 
 # NOTE if using this class, must implement the "not implemented error" methods
-# on Resource (Are implemented with ModelResource)
+# on Resource (these are implemented with ModelResource)
 class ManagedResource(LoggingMixin):
     '''
     Uses the field and resource definitions in the Metahash store to determine 
@@ -754,13 +804,13 @@ class ManagedResource(LoggingMixin):
         except Exception, e:
             logger.warn(str(('==ex on create, kwargs', kwargs,
                              'request.path', bundle.request.path,e)))
-            raise e
-#             extype, ex, tb = sys.exc_info()
-#             logger.warn(str((
-#                 'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
-#                 tb.tb_lineno, extype, ex)))
-#             raise type(e), str(( type(e), e, 
-#                                  'request.path', bundle.request.path, kwargs))
+#             raise e
+            extype, ex, tb = sys.exc_info()
+            logger.warn(str((
+                'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
+                tb.tb_lineno, extype, ex)))
+            raise type(e), str(( type(e), e, 
+                                 'request.path', bundle.request.path, kwargs))
 
     # override
     def obj_update(self, bundle, **kwargs):
@@ -779,16 +829,16 @@ class ManagedResource(LoggingMixin):
             bundle = super(ManagedResource, self).obj_get(bundle, **kwargs);
             return bundle
         except Exception, e:
-            logger.warn(str(('==ex on get, kwargs', kwargs,
-                             'request.path', bundle.request.path,e)))
-            raise e
-#             extype, ex, tb = sys.exc_info()
-#             logger.warn(str((
-#                 'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
-#                 tb.tb_lineno, extype, ex)))
-#             logger.warn(str(('==ex on get, kwargs', kwargs, e)))
-#             raise type(e), str((type(e), e,
-#                                 'request.path', bundle.request.path, kwargs))
+#             logger.warn(str(('==ex on get, kwargs', kwargs,
+#                              'request.path', bundle.request.path,e)))
+#             raise e
+            extype, ex, tb = sys.exc_info()
+            logger.warn(str((
+                'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
+                tb.tb_lineno, extype, ex)))
+            logger.warn(str(('==ex on get, kwargs', kwargs, e)))
+            raise type(e), str((type(e), e,
+                                'request.path', bundle.request.path, kwargs))
 
     # override
     def detail_uri_kwargs(self, bundle_or_obj):
@@ -830,11 +880,12 @@ class ManagedResource(LoggingMixin):
             try:
                 if logger.isEnabledFor(logging.INFO):
                     logger.info(str((
-                        'unable to locate resource information[id_attribute];'
+                        'unable to locate resource: ', resource_name,
+                        ' resource[id_attribute]: ',resource['id_attribute'],
                         ' has it been loaded yet for this resource?',
                         'also note that this may not work with south, since model methods',
-                        'are not available: ', resource_name, e, 
-                        'type', type(bundle_or_obj), 'attr', resource['id_attribute'],
+                        'are not available: ', e, 
+                        'type', type(bundle_or_obj),
                         'bundle', bundle_or_obj,
                          )))
             except Exception, e:
@@ -983,7 +1034,12 @@ class ExtensibleModelResourceMixin(ModelResource):
             if 'request' in _kwargs: 
                 _kwargs = {}
             objects = self.apply_filters(bundle.request, applicable_filters, **_kwargs)
-            return self.authorized_read_list(objects, bundle)
+            
+            if self._meta.resource_name == 'apilog':
+                logger.info(str(('kwargs', kwargs)))
+                return self._meta.authorization.read_list(objects, bundle, **_kwargs)
+            else:
+                return self.authorized_read_list(objects, bundle)
         except ValueError:
             raise BadRequest("Invalid resource lookup data provided (mismatched type).")
         
@@ -1069,6 +1125,19 @@ class ManagedModelResource(FilterModelResourceMixin,
     pass
 
 class MetaHashResource(ManagedModelResource):
+    '''
+    This table serves as a relatively low volume triple/quad store;
+    - values can be defined at will for the text-based, software-implemented
+    json_value storage field:
+      - these values are defined by "virtual" fields in the quad store, keyed by
+        a "field.tablename" scope.
+      - must define a json_field_type for any "virtual" field stored in the 
+        json_value field.
+    - key field
+    - scope field; secondary key, for quad store usage patterns (table based)
+    
+    The fields of this class are determined by the ManagedResource mixin.
+    '''
     
     class Meta:
         bootstrap_fields = ['scope', 'key', 'ordinal', 'json_field_type', 
@@ -1077,7 +1146,7 @@ class MetaHashResource(ManagedModelResource):
             scope__startswith="fields.").order_by('scope','ordinal','key')
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
-        authorization= SuperUserAuthorization()        
+        authorization= UserGroupAuthorization()        
         ordering = []
         filtering = {} #{'scope':ALL, 'key':ALL}
         serializer = LimsSerializer()
@@ -1136,7 +1205,7 @@ class VocabulariesResource(ManagedModelResource):
         queryset = Vocabularies.objects.all().order_by('scope', 'ordinal', 'key')
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
-        authorization= SuperUserAuthorization()        
+        authorization= UserGroupAuthorization() #SuperUserAuthorization()        
         ordering = []
         filtering = {'scope':ALL, 'key': ALL, 'alias':ALL}
         serializer = LimsSerializer()
@@ -1200,6 +1269,19 @@ class ResourceResource(ManagedModelResource):
         return bundle
 
 
+class ApiLogAuthorization(UserGroupAuthorization):
+    
+    def read_list(self, object_list, bundle, ref_resource_name=None, **kwargs):
+        if self._is_resource_authorized(
+            ref_resource_name, bundle.request.user, 'read'):
+            return object_list
+
+    def read_detail(self, object_list, bundle, ref_resource_name=None, **kwargs):
+        if self._is_resource_authorized(
+            ref_resource_name, bundle.request.user, 'read'):
+            return True
+
+
 class ApiLogResource(ManagedModelResource):
     
     class Meta:
@@ -1207,7 +1289,7 @@ class ApiLogResource(ManagedModelResource):
             'ref_resource_name', 'username','date_time')
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
-        authorization= Authorization()        
+        authorization= ApiLogAuthorization() #Authorization()        
         ordering = []
         filtering = {'username':ALL, 'uri': ALL, 'ref_resource_name':ALL}
         serializer = LimsSerializer()
@@ -1272,6 +1354,9 @@ class UserResource(ManagedModelResource):
         blank=True, null=True)
     permissions = fields.ToManyField(
         'reports.api.PermissionResource', 'permissions', null=True) #, related_name='users', blank=True, null=True)
+    
+    all_permissions = fields.ListField(attribute='all_permissions', blank=True, null=True, readonly=True)
+
     is_for_group = fields.BooleanField(attribute='is_for_group', blank=True, null=True)
 
     def __init__(self, **kwargs):
@@ -1281,8 +1366,11 @@ class UserResource(ManagedModelResource):
         queryset = UserProfile.objects.all().order_by('username') 
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
+        
+        # FIXME: should override UserGroupAuthorization, and should allow user to view
+        # (1) record by default: their own.
+        authorization = SuperUserAuthorization()
 #         authorization= UserGroupAuthorization() #SuperUserAuthorization()        
-        authorization= SuperUserAuthorization()        
         ordering = []
         filtering = {'scope':ALL, 'key': ALL, 'alias':ALL}
         serializer = LimsSerializer()
@@ -1375,7 +1463,7 @@ class UserResource(ManagedModelResource):
                 last_name=last_name)
             # NOTE: we'll use user.is_password_usable() to verify if the 
             # user has a staff/manual django password account
-            logger.info('save django user')
+            #             logger.debug(str(('save django user', django_user)))
             # Note: don't save yet, since the userprofile should be saved first
             # django_user.save()
             # this has to be done to set the FK on obj; since we're the only
@@ -1441,8 +1529,7 @@ class UserResource(ManagedModelResource):
         '''
         query = super(UserResource, self).get_object_list(request);
         
-        logger.info(str(('AUTH_USER_MODEL', settings.AUTH_USER_MODEL)))
-        logger.info(str(('get_obj_list', groupname)))
+        logger.debug(str(('get_obj_list', groupname)))
         if groupname:
             query = query.extra(select = {
                 'is_for_group': ( 
@@ -1522,6 +1609,17 @@ class UserResource(ManagedModelResource):
         for p in bundle.obj.permissions.all():
             uri_list.append(P.get_local_resource_uri(p))
         return uri_list;
+    
+    def dehydrate_all_permissions(self, bundle):
+        uri_list = set()
+        uri_list.update(self.dehydrate_permissions(bundle))
+        P = PermissionResource()
+        for permission in [ permission
+            for usergroup in bundle.obj.usergroup_set.all()
+            for permission in usergroup.get_all_permissions()]:
+            uri_list.add(P.get_local_resource_uri(permission))
+        
+        return list(uri_list)
        
     def dehydrate_usergroups(self, bundle):
         uri_list = []
@@ -1539,14 +1637,26 @@ class UserGroupResource(ManagedModelResource):
         null=True) #, related_name='users', blank=True, null=True)
     users = fields.ToManyField('reports.api.UserResource', 'users', 
         related_name='usergroups', blank=True, null=True)
+    
+    super_groups = fields.ToManyField('reports.api.UserGroupResource', 
+        'super_groups', blank=True, null=True)
+    sub_groups = fields.ToManyField('reports.api.UserGroupResource', 
+        'sub_groups', blank=True, null=True)
+
+    all_permissions = fields.ListField(attribute='all_permissions', 
+        blank=True, null=True, readonly=True)
+    all_users = fields.ListField(attribute='all_users', 
+        blank=True, null=True, readonly=True)
+    
     is_for_user = fields.BooleanField(attribute='is_for_user', blank=True, null=True)
+    is_for_group = fields.BooleanField(attribute='is_for_group', blank=True, null=True)
 
     class Meta:
         queryset = UserGroup.objects.all();        
         
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
-        authorization= SuperUserAuthorization()        
+        authorization = UserGroupAuthorization() #SuperUserAuthorization()        
 
         ordering = []
         filtering = {}
@@ -1573,6 +1683,10 @@ class UserGroupResource(ManagedModelResource):
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_group_permissionview'), 
                 name="api_dispatch_group_permissionview"),
+            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[^/]+))/supergroups%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_group_supergroupview'), 
+                name="api_dispatch_group_supergroupview"),
             ]
 
     def dispatch_group_userview(self, request, **kwargs):
@@ -1583,7 +1697,12 @@ class UserGroupResource(ManagedModelResource):
     def dispatch_group_permissionview(self, request, **kwargs):
         # signal to include extra column
         kwargs['groupname'] = kwargs.pop('name')  
-        return PermissionResource().dispatch('list', request, **kwargs)    
+        return PermissionResource().dispatch('list', request, **kwargs)       
+   
+    def dispatch_group_supergroupview(self, request, **kwargs):
+        # signal to include extra column
+        kwargs['groupname'] = kwargs.pop('name')  
+        return UserGroupResource().dispatch('list', request, **kwargs)    
 
     def get_resource_uri(self, bundle_or_obj=None, url_name='api_dispatch_list'):
         '''Override to shorten the URI'''
@@ -1627,9 +1746,40 @@ class UserGroupResource(ManagedModelResource):
         uri_list = []
         P = PermissionResource()
         for p in bundle.obj.permissions.all():
-             uri_list.append(P.get_local_resource_uri(p))
+            uri_list.append(P.get_local_resource_uri(p))
         return uri_list;
+    
+    def dehydrate_super_groups(self, bundle):
+        '''
+        shallow report of groups contained directly in this group
+        '''
+        uri_list = []
+        for g in bundle.obj.super_groups.all():
+            uri_list.append(self.get_local_resource_uri(g))
         
+        return uri_list
+        
+    def dehydrate_sub_groups(self, bundle):
+        '''
+        shallow report of groups contained directly in this group
+        '''
+        uri_list = []
+        for g in bundle.obj.sub_groups.all():
+            uri_list.append(self.get_local_resource_uri(g))
+        
+        return uri_list
+        
+    def dehydrate_all_permissions(self, bundle):
+        P = PermissionResource()
+        return [P.get_local_resource_uri(permission) for permission in 
+                    bundle.obj.get_all_permissions()]
+    
+    def dehydrate_all_users(self, bundle):
+        U = UserResource()
+        return [U.get_local_resource_uri(user) for user in 
+                    bundle.obj.get_all_users()]
+
+    
     def dehydrate(self,bundle):
         bundle.data['id'] = bundle.obj.id
         return bundle
@@ -1651,12 +1801,11 @@ class UserGroupResource(ManagedModelResource):
         All of this is a convenience feature for the client code; having
         "is_for_user" allows for easy filtering on the client.
         '''
-        logger.info(str(('get_obj_list', kwargs)))
+        logger.debug(str(('get_obj_list', kwargs)))
         query = super(UserGroupResource, self).get_object_list(request);
         
         if 'username' in kwargs:
             is_for_user = kwargs.pop('username')
-            logger.info(str(('get_obj_list', is_for_user)))
             query = query.extra(select = {
                 'is_for_user': ( 
                     '(select count(*)>0 '
@@ -1666,7 +1815,20 @@ class UserGroupResource(ManagedModelResource):
                     ' and up.username = %s )' ),
               },
               select_params = [is_for_user] )
-            query = query.order_by('-is_for_user', 'name')
+            query = query.order_by('-is_for_user', 'name')        
+        if 'groupname' in kwargs:
+            is_for_group = kwargs.pop('groupname')
+            query = query.extra(select = {
+                'is_for_group': ( 
+                    '(select count(*)>0 '
+                    ' from reports_usergroup ug '
+                    ' join reports_usergroup_super_groups ugsg on(ug.id=ugsg.from_usergroup_id) '
+                    ' where ugsg.to_usergroup_id=reports_usergroup.id '
+                    ' and ug.name = %s )' ),
+              },
+              select_params = [is_for_group] )
+            query = query.exclude(name=is_for_group)
+            query = query.order_by('-is_for_group', 'name')
         return query
     
     def apply_filters(self, request, applicable_filters, **kwargs):
@@ -1713,7 +1875,10 @@ class UserGroupResource(ManagedModelResource):
 
     def apply_sorting(self, obj_list, options):
         options = options.copy()
-        options['non_null_fields'] = ['is_for_user'] # Override to exclude this field in the PostgresSortingResource 
+        
+        # Override to exclude these fields in the PostgresSortingResource 
+        options['non_null_fields'] = ['is_for_user', 'is_for_group'] 
+
         obj_list = super(UserGroupResource, self).apply_sorting(obj_list, options)
         return obj_list
 
@@ -1739,31 +1904,31 @@ class PermissionResource(ManagedModelResource):
         # note: the queryset for this resource is actually the permissions
         queryset = Permission.objects.all().order_by('scope', 'key')
 
-# FIXME: creating a "groups" field that can be used to sort
-#         key = 'groups'
-#         if 'postgres' in lims.settings.DATABASES['default']['ENGINE'].lower():
-#             queryset = queryset.extra( select = {
-#               key: ( "( select array_to_string(array_agg(ug.name), ', ') " 
-#                      "  from reports_usergroup ug "
-#                      "  join reports_usergroup_permissions ugp "
-#                         " on(ug.id=ugp.usergroup_id) "
-#                      "  where ugp.permission_id=reports_permission.id)" )
-#             } ) 
-#         else:
-#             logger.warn(str((
-#                 '=========using the special sqllite lims.settings.DATABASES', 
-#                 lims.settings.DATABASES)))
-#         queryset = queryset.extra( select = {
-#           key: ( "( select group_concat(ug.name, ', ') " 
-#                  "  from reports_usergroup ug "
-#                  "  join reports_usergroup_permissions ugp "
-#                     " on(ug.id=ugp.usergroup_id) "
-#                  "  where ugp.permission_id=reports_permission.id)" )
-#         } ) 
+        # FIXME: creating a "groups" field that can be used to sort
+        #         key = 'groups'
+        #         if 'postgres' in lims.settings.DATABASES['default']['ENGINE'].lower():
+        #             queryset = queryset.extra( select = {
+        #               key: ( "( select array_to_string(array_agg(ug.name), ', ') " 
+        #                      "  from reports_usergroup ug "
+        #                      "  join reports_usergroup_permissions ugp "
+        #                         " on(ug.id=ugp.usergroup_id) "
+        #                      "  where ugp.permission_id=reports_permission.id)" )
+        #             } ) 
+        #         else:
+        #             logger.warn(str((
+        #                 '=========using the special sqllite lims.settings.DATABASES', 
+        #                 lims.settings.DATABASES)))
+        #         queryset = queryset.extra( select = {
+        #           key: ( "( select group_concat(ug.name, ', ') " 
+        #                  "  from reports_usergroup ug "
+        #                  "  join reports_usergroup_permissions ugp "
+        #                     " on(ug.id=ugp.usergroup_id) "
+        #                  "  where ugp.permission_id=reports_permission.id)" )
+        #         } ) 
 
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
-        authorization= SuperUserAuthorization()        
+        authorization= UserGroupAuthorization() #SuperUserAuthorization()        
         object_class = object
         
         ordering = []

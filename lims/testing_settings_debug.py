@@ -1,7 +1,7 @@
 # Django settings for 1km project
 
 try:
-    from settings import *
+    from testing_settings import *
 except ImportError:
     import sys
     print >>sys.stderr, '''Settings not defined.  Please configure a version of
@@ -10,24 +10,11 @@ except ImportError:
     
 import os.path
 
-
 print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
 
+# todo: does this exist?
+# TEST_RUNNER='test_utils.test_runners.keep_database'
 
-# make tests faster
-# use from the command line with testing like
-# ./manage.py test --settings=lims.testing-settings
-SOUTH_TESTS_MIGRATE = False
-
-# FIXME: sqllite3 db does not work - errors on "DISTINCT ON" clause
-# DATABASES['default'] = {'ENGINE': 'django.db.backends.sqlite3',
-#                         'NAME': ':memory'}
-
-# A sample logging configuration. The only tangible logging
-# performed by this configuration is to send an email to
-# the site admins on every HTTP 500 error when DEBUG=False.
-# See http://docs.djangoproject.com/en/dev/topics/logging for
-# more details on how to customize your logging configuration.
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -66,22 +53,22 @@ LOGGING = {
 #             'level': 'INFO',
 #         },
         'django.request': {
-            'handlers': ['logfile'],
+            'handlers': ['console'],
             'level': 'ERROR',
             'propagate': False,
         },
         'db': {  # set a default handler
-            'handlers': ['logfile'],
+            'handlers': ['console'],
             'propagate': False,
             'level': 'INFO',
         },        
         'lims': {  # set a default handler
-            'handlers': ['logfile'],
+            'handlers': ['console'],
             'propagate': False,
             'level': 'INFO',
         },               
         'reports': {  # set a default handler
-            'handlers': ['logfile'],
+            'handlers': ['console'],
             'propagate': True,
             'level': 'INFO',
         },
@@ -101,17 +88,17 @@ LOGGING = {
             'level': 'INFO',
         },        
         'django': {  # set a default handler
-            'handlers': ['logfile'],
+            'handlers': ['console'],
             'propagate': False,
-            'level': 'DEBUG',
-        },        
-        'utils': {  # for SQL
-            'handlers': ['logfile'],
-            'propagate': True,
             'level': 'INFO',
         },        
+        'utils': {  # for SQL
+            'handlers': ['console'],
+            'propagate': True,
+            'level': 'DEBUG',
+        },        
         'tastypie': {  # set a default handler
-            'handlers': ['logfile'],
+            'handlers': ['console'],
             'propagate': False,
             'level': 'INFO',
         },        

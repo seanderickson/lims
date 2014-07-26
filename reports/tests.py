@@ -421,7 +421,6 @@ class BaselineTest(TestCase):
         self.assertTrue(obj['email'] == 'joe.tester@limstest.com')
         
         logger.debug(str(('====== test4_user_example done ===='))) 
-        # if this passes, then why does line 431 fail in reports.tests.py?
     
     
 import reports.utils.serialize
@@ -948,8 +947,8 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
             'resource': 'user/' + username,
             'permissions': ['permission/resource/metahash/read'] };
 
-        logger.debug(str(('now add the permission needed to this user:', user_patch)))
         uri = self.resource_uri + '/' + username
+        logger.info(str(('=====now add the permission needed to this user:', user_patch, uri)))
         resp = self.api_client.patch( uri, 
                     format='json', data=user_patch, 
                     authentication=self.get_credentials())
@@ -1052,7 +1051,7 @@ class UserGroupResource(UserResource):
         filename = os.path.join(self.directory,'metahash_fields_permission.csv')
         self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.permission'})
 
-        self.resource_uri = BASE_URI + '/usergroup'
+#         self.resource_uri = BASE_URI + '/usergroup'
         logger.debug(str(( '============== UserGroup setup done ============')))
 
     def test2_create_usergroup_with_permissions(self):
@@ -1202,7 +1201,9 @@ class UserGroupResource(UserResource):
         ]}
         
         logger.debug(str(('now set the new group:', usergroup_patch)))
-        uri = self.resource_uri + '/'
+#         uri = self.resource_uri + '/'
+        uri = BASE_URI + '/usergroup'
+        
         logger.warn(str(('resource_uri', uri)))
         resp = self.api_client.patch(uri, format='json', 
             data=usergroup_patch, 
@@ -1268,8 +1269,8 @@ class UserGroupResource(UserResource):
         ]}
         
         logger.debug(str(('now set the new groups:', usergroup_patch)))
-        uri = self.resource_uri + '/'
-        logger.warn(str(('resource_uri', uri)))
+#         uri = self.resource_uri + '/'
+        uri = BASE_URI + '/usergroup'
         resp = self.api_client.patch(uri, format='json', 
             data=usergroup_patch, 
             authentication=self.get_credentials())
@@ -1278,11 +1279,13 @@ class UserGroupResource(UserResource):
         
         # is it set?
         resp = self.api_client.get(
-                uri + 'testGroup6', format='json', authentication=self.get_credentials())
+                uri + '/testGroup6', format='json', authentication=self.get_credentials())
+        self.assertTrue(resp.status_code in [200], 
+                        str((resp.status_code, resp.serialize())))
         new_obj = self.deserialize(resp)
         # TODO: review: TP returns all dict/keys as unicode
-        new_obj = dict_strip_unicode_keys(new_obj)
-        logger.info(str(('results from get', new_obj)))
+#         new_obj = dict_strip_unicode_keys(new_obj)
+#         logger.info(str(('results from get', new_obj)))
         
         self.assertTrue(new_obj['all_users'])
         self.assertTrue('user/sde4' in new_obj['all_users'])

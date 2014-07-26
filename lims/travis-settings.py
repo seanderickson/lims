@@ -11,6 +11,7 @@ except ImportError:
 import os.path
 
 # NOTE: the parent settings file defines the PROJECT_ROOT
+PROJECT_ROOT = '.'
 print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
     
 DEBUG = True

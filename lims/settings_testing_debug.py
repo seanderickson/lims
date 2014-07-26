@@ -1,7 +1,7 @@
 # Django settings for 1km project
 
 try:
-    from testing_settings import *
+    from settings_testing import *
 except ImportError:
     import sys
     print >>sys.stderr, '''Settings not defined.  Please configure a version of

@@ -804,13 +804,13 @@ class ManagedResource(LoggingMixin):
         except Exception, e:
             logger.warn(str(('==ex on create, kwargs', kwargs,
                              'request.path', bundle.request.path,e)))
-#             raise e
             extype, ex, tb = sys.exc_info()
             logger.warn(str((
                 'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
                 tb.tb_lineno, extype, ex)))
-            raise type(e), str(( type(e), e, 
-                                 'request.path', bundle.request.path, kwargs))
+            raise e
+#             raise type(e), str(( type(e), e, 
+#                                  'request.path', bundle.request.path, kwargs))
 
     # override
     def obj_update(self, bundle, **kwargs):
@@ -831,14 +831,14 @@ class ManagedResource(LoggingMixin):
         except Exception, e:
 #             logger.warn(str(('==ex on get, kwargs', kwargs,
 #                              'request.path', bundle.request.path,e)))
-#             raise e
             extype, ex, tb = sys.exc_info()
             logger.warn(str((
                 'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
                 tb.tb_lineno, extype, ex)))
             logger.warn(str(('==ex on get, kwargs', kwargs, e)))
-            raise type(e), str((type(e), e,
-                                'request.path', bundle.request.path, kwargs))
+            raise e
+#             raise type(e), str((type(e), e,
+#                                 'request.path', bundle.request.path, kwargs))
 
     # override
     def detail_uri_kwargs(self, bundle_or_obj):

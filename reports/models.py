@@ -305,35 +305,42 @@ class UserGroup(models.Model):
     permissions = models.ManyToManyField('reports.Permission')
     
     # inherit permissions from super_groups, this group is a sub_group to them
-    super_groups = models.ManyToManyField('self', symmetrical=False, related_name='sub_groups')
+    super_groups = models.ManyToManyField('self', symmetrical=False, 
+        related_name='sub_groups')
 
-    def get_all_permissions(self, sub_groups=set(), **kwargs):
+    def get_all_permissions(self, sub_groups=None, **kwargs):
         '''
         get permissions of this group, and any inherited through super_groups
         @param kwargs to filter permissions by attributes
         '''
+        if not sub_groups: 
+            sub_groups = set()
         sub_groups.add(self) # TODO: test recursion check
         # start with this groups permissions
         permissions = set(self.permissions.filter(**kwargs));
         
         for group in self.super_groups.all():
             if group not in sub_groups:
-                permissions.update(group.get_all_permissions(sub_groups=sub_groups, **kwargs))
+                permissions.update(group.get_all_permissions(
+                    sub_groups=sub_groups, **kwargs))
         
         return list(permissions)
     
-    def get_all_users(self, sub_groups=set(), **kwargs):
+    def get_all_users(self, super_groups=None, **kwargs):
         '''
         get users of this group, and any from sub_groups as well
         @param kwargs to filter users by attributes
         '''
-        sub_groups.add(self)
+        if not super_groups:
+            super_groups = set()
+        super_groups.add(self)
         # start with this groups users
         users = set(self.users.filter(**kwargs));
         
         for group in self.sub_groups.all():
-            if group not in sub_groups:
-                users.update(group.get_all_users(sub_groups=sub_groups, **kwargs))
+            if group not in super_groups:
+                users.update(group.get_all_users(
+                    super_groups=super_groups, **kwargs))
         
         return list(users)
     

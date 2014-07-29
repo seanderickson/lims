@@ -948,7 +948,7 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
             'permissions': ['permission/resource/metahash/read'] };
 
         uri = self.resource_uri + '/' + username
-        logger.info(str(('=====now add the permission needed to this user:', user_patch, uri)))
+        logger.debug(str(('=====now add the permission needed to this user:', user_patch, uri)))
         resp = self.api_client.patch( uri, 
                     format='json', data=user_patch, 
                     authentication=self.get_credentials())
@@ -1204,7 +1204,6 @@ class UserGroupResource(UserResource):
 #         uri = self.resource_uri + '/'
         uri = BASE_URI + '/usergroup'
         
-        logger.warn(str(('resource_uri', uri)))
         resp = self.api_client.patch(uri, format='json', 
             data=usergroup_patch, 
             authentication=self.get_credentials())

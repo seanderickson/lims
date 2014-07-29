@@ -7,6 +7,10 @@ from django.db import models
 
 class Migration(SchemaMigration):
 
+#     needed_by = (
+#         ("db", "0011_lib_content_diff_prep"),
+#     )
+    
     def forwards(self, orm):
         # Adding model 'ApiLog'
         db.create_table(u'reports_apilog', (

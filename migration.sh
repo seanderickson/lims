@@ -7,110 +7,265 @@
 #
 ##
 
-source ./setenv_and_run.sh
+REALPATH=${REALPATH:-"$(which realpath 2>/dev/null)"}
+if [[ -z $REALPATH ]]; then
+  PROG=$( basename $0 )
+  error 'cannot find realpath'
+fi
+
+SCRIPTPATH="$($REALPATH $0)"
+
+if [[ $# -lt 2 ]]
+then
+  echo "Usage: $0 [branch] [repository] [short|full]"
+  exit $WRONG_ARGS
+fi 
+
+BRANCH=$1
+REMOTE=$2
+RUN_TYPE=${3:-"short"}
+
+source ./migration.properties
+
+LOGFILE=./migration.log
+
+DBUSER=${DBUSER:-"screensaver-lims"}  
+DB=${DB:-"screensaver-lims"}  
+DBHOST=${DBHOST:-"localhost"}  
+DBPASSWORD=${DBPASSWORD:-""}
+SETENV_SCRIPT=${SETENV_SCRIPT:-""}
 
 # Prerequisites
 # - Python 2.7.x, pip, virtualenv
 # - Node, NPM
 # - git
 
-SCRIPTPATH="$($REALPATH $0)"
 
-
-if [[ $# -lt 2 ]]
-then
-  echo "Usage: $0 [branch] "
-  exit $WRONG_ARGS
+VENV=../iccbl-env
+# VENV=${VENV:-${SUPPORTDIR:+"$SUPPORTDIR/virtualenv"}}
+if [[ -z $VENV ]]; then
+  error 'no virtualenv available'
 fi
 
-BRANCH=$1
-REMOTE=$2
-
-LOGFILE=./migration.log
+source ./utils.sh
 
 function _debug {
   if $DEBUG; then echo "$@"; fi
 }
 
 function gitpull {
+  # git fetch --all
+  # git pull
+  # git merge seanderickson/master
+  
   _debug -n "pulling branch $BRANCH from $REMOTE... "
-  cp -a $SCRIPTPATH $SAVEPATH
+  #  cp -a $SCRIPTPATH $SAVEPATH
   git fetch $REMOTE >>"$LOGFILE" 2>&1 || error "git-fetch failed: $?"
   git checkout $BRANCH >>"$LOGFILE" 2>&1 || error "git-checkout failed: $?"
-  git checkout -- $SCRIPTPATH >>"$LOGFILE" 2>&1 || error "git-checkout $SCRIPTPATH failed: $?"
+  #  git checkout -- $SCRIPTPATH >>"$LOGFILE" 2>&1 || error "git-checkout $SCRIPTPATH failed: $?"
   git pull --ff-only $REMOTE $BRANCH >>"$LOGFILE" 2>&1 || error "git-pull failed: $?"
-  mv -f $SAVEPATH $SCRIPTPATH
-#  update_deploy_info "$STATUS"
+  #  mv -f $SAVEPATH $SCRIPTPATH
+  #  update_deploy_info "$STATUS"
   _debug 'done'
   return 0
 }
 
-# Steps:
-
-# Git pull
-# git fetch --all
-# git merge seanderickson/master
-
-gitpull
-
-# start virtualenv
-
-maybe_activate_virtualenv
-
-pip install -r requirements.txt
-
-# django test
-./manage.py test
-
-
-# cd reports/static
-# npm install
-
-# grunt bowercopy
-# grunt test
-
-# drop SS2 database
-# import Screensaver database
-# pg_restore -Fc --no-owner -h localhost -d screensaver_test -Uscreensaver_test screensaver.2014-01-10.excl_big_data.pg_dump 
-# bsub -q short -W 4:0 ../../scripts/pg_restore.sh 2014-01-10 devscreensaver2 devscreensaver2web dev.pgsql.orchestra
-
-# Migrate
-./manage.py migrate reports
-
-./manage.py migrate tastypie
-
-./manage.py migrate db 0001 --fake  
-
-./manage.py migrate db 0002
-
-psql -Uuser database -f ./migrations/manual/0003_screen_status.sql
-
-# run the rest of the migrations
-./manage.py migrate db
-
-# Bootstrapping the web server
-
-# run a local server
-./setenv_and_run.sh/opt/apache/conf/auth/dev.screensaver2.med.harvard.edu ./manage.py runserver 55001
-
-# bootstrap the metahash 
-PYTHONPATH=. python reports/utils/db_init.py  \
-  --input_dir=./reports/static/api_init/ \
-  -f ./reports/static/api_init/api_init_actions.csv \
-  -u http://localhost:8000/reports/api/v1 -U sde
+function restoredb {
+  # drop DB if exits
+  if [[ -z "$DROP_DB_COMMAND" ]]; then
+    dropdb -U $DBUSER $DB -h $DBHOST
+  else
+    $DROP_DB_COMMAND $DB $DBUSER
+  fi
   
-PYTHONPATH=. python reports/utils/db_init.py  \
-  --input_dir=./db/static/api_init/ \
-  -f ./db/static/api_init/api_init_actions.csv \
-  -u http://localhost:8000/reports/api/v1 -U sde
+  # create DB if exists
+  # TODO: could test for the database:
+  # psql -U screensaver screensaver -h localhost  -c '\d'
+  # if [[ $? -ne 0 ]]; then 
+  if [[ CREATE_DB ]]; then
+    createdb -U $DBUSER $DB -h $DBHOST || error "createdb fails with status $?" 
+  fi
+  
+  D=${PG_RESTORE_DIR:-.}
+  filespec=${PG_RESTORE_FILESPEC:-''}
+  
+  # NOTE: restore generates some errors - manual verification is required.
+  pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
+    `ls -1 ${D}/screensaver*${filespec}.excl_big_data.pg_dump`
+  pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
+    `ls -1 ${D}/screensaver*${filespec}.attached_file_schema.pg_dump` 
+  pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
+    `ls -1 ${D}/screensaver*${filespec}.result_data_schema.pg_dump` 
+  #pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
+  #  `ls -1 ${D}/screensaver*${filespec}.attached_file.pg_dump` 
+  #pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
+  #  `ls -1 ${D}/screensaver*${filespec}.result_data.pg_dump 
 
-# Setup the server:
+  # TODO: create a check to validate db imports
+  return 0
+}
 
-PYTHONPATH=. python reports/utils/db_init.py  \
-  --input_dir=./lims/static/production_data/ \
-  -f ./lims/static/production_data/api_init_actions.csv \
-  -u http://localhost:8000/reports/api/v1 -U sde
+function django_syncdb {
+  # Note; must first create a fixture: "initial_data.json", and fill it with
+  # an admin user for the site;
+  # see: http://stackoverflow.com/questions/1466827/automatically-create-an-admin-user-when-running-djangos-manage-py-syncdb
+  # using: 
+  # first, create a site with:
+  # ./manage.py syncdb 
+  # and respond to the user prompts, then export this information to the fixture:
+  # ./manage.py dumpdata --indent=2 auth > initial_data.json
+  # which creates the user "sde" 
+
+  # Now, this command will use the fixture to create the first user
+  ./manage.py syncdb --noinput || error "initdb failed: $?"
+
+}
+
+function migratedb {
+
+  ./manage.py migrate reports || error "reports migration failed: $?"
+  
+  ./manage.py migrate tastypie || error "tastypie migration failed: $?"
+  
+  ./manage.py migrate db 0001 --fake  || error "db 0001 failed: $?"
+  
+  ./manage.py migrate db 0002 || error "db 0002 failed: $?"
+  
+  psql -U $DBUSER $DB -h $DBHOST \
+    -f ./db/migrations/manual/0003_screen_status.sql || error "manual script 0003 failed: $?"
+  
+  # run the rest of the migrations
+  ./manage.py migrate db 0003 || error "db 0003 failed: $?"
+  ./manage.py migrate db 0004 || error "db 0004 failed: $?"
+  ./manage.py migrate db 0008 || error "db 0008 failed: $?"
+  ./manage.py migrate db 0009 || error "db 0009 failed: $?"
+  ./manage.py migrate db 0010 || error "db 0010 failed: $?"
+  ./manage.py migrate db 0011 || error "db 0011 failed: $?"
+  
+  # TODO 0013 is slow
+  if [[ "$RUN_TYPE" == "full" ]]; then
+    ./manage.py migrate db 0013 || error "db 0013 failed: $?"
+  fi
+  
+# TODO, not working:
+#  ./manage.py migrate db 0014 || error "db 0014 failed: $?"
+#  ./manage.py migrate db 0015 || error "db 0015 failed: $?"
+
+}
+
+function bootstrap {
+  echo "Bootstrapping the web server..."
+  
+  BOOTSTRAP_PORT=55001
+  
+  if [[ -n "$SETENV_SCRIPT" ]]; then
+    echo "run a prod server on port $BOOTSTRAP_PORT..."
+    nohup ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu \
+      ./manage.py runserver $BOOTSTRAP_PORT &
+    server_pid=$!
+    if [[ "$?" -ne 0 ]]; then
+      runserver_status =$?
+      echo "bootstrap error, prod runserver status: $runserver_status"
+      exit $runserver_status
+    fi
+  else
+    echo "run a local dev server on port $BOOTSTRAP_PORT..."
+    nohup ./manage.py runserver --nothreading --noreload 55001 &
+    server_pid=$!
+    if [[ "$?" -ne 0 ]]; then
+      runserver_status =$?
+      echo "bootstrap error, dev runserver status: $runserver_status"
+      exit $runserver_status
+    fi
+  fi
+#  echo "wait for server process: ($!) to start..."
+#  wait $server_pid
+  sleep 3
+  
+  echo "bootstrap the metahash data..."
+  PYTHONPATH=. python reports/utils/db_init.py  \
+    --input_dir=./reports/static/api_init/ \
+    -f ./reports/static/api_init/api_init_actions.csv \
+    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -U sde -p ${serverpass}  
+  if [[ $? -ne 0 ]]; then
+    kill $server_pid
+    error "bootstrap reports failed: $?"
+  fi
+    
+  PYTHONPATH=. python reports/utils/db_init.py  \
+    --input_dir=./db/static/api_init/ \
+    -f ./db/static/api_init/api_init_actions.csv \
+    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -U sde -p ${serverpass}
+  if [[ $? -ne 0 ]]; then
+    kill $server_pid
+    error "bootstrap db failed: $?"
+  fi
+  
+  # Setup the server:
+  
+  PYTHONPATH=. python reports/utils/db_init.py  \
+    --input_dir=./lims/static/production_data/ \
+    -f ./lims/static/production_data/api_init_actions.csv \
+    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -U sde -p ${serverpass}
+  if [[ $? -ne 0 ]]; then
+    kill $server_pid
+    error "bootstrap production data failed: $?"
+  fi
+
+  #final_server_pid=$(ps -aux |grep runserver| grep 55001 | awk '{print $2}')
+  #kill $final_server_pid
+  kill $server_pid
+}
+
+function frontend_setup {
+  cd reports/static
+  
+  npm install
+  
+  grunt bowercopy
+  
+  grunt test
+  
+  cd ../..
+}
+
+function main {
+  # Steps:
+  
+  gitpull
+  
+  restoredb
+  
+  maybe_activate_virtualenv
+  
+  pip install -r requirements.txt
+  
+  cp lims/settings_migration.py lims/settings.py
+  
+  ./manage.py test --verbosity=2 --settings=lims.settings_testing || error "django tests failed: $?"
+
+  frontend_setup
+  
+  django_syncdb
+  
+  migratedb
+  
+  bootstrap
+  
+  # run some grunt-mocha chai-jquery to test the UI?  
+}
 
 
+main "$@"
 
-# run some grunt-mocha chai-jquery to test the UI?  
+# bootstrap "$@"
+
+# restoredb
+
+#  maybe_activate_virtualenv
+  
+#  pip install -r requirements.txt
+  
+#  cp lims/settings_migration.py lims/settings.py
+
+# ./manage.py test --verbosity=2 --settings=lims.settings_testing || error "django tests failed: $?"

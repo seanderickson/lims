@@ -5,6 +5,8 @@ from south.v2 import DataMigration
 from django.db import models
 
 import re
+import logging
+logger = logging.getLogger(__name__)
 
 
 class Migration(DataMigration):
@@ -21,27 +23,38 @@ class Migration(DataMigration):
         
         library_vocabs = ['library_type', 'solvent', 'screen_type', 'screening_status']
         
+        count = 0
         for obj in orm.Library.objects.all():
             for attr in library_vocabs:
                 temp = getattr(obj, attr)
                 if temp:
                     temp2 = self.default_converter(temp)
                     setattr(obj, attr, temp2)
-                    print 'convert library vocab', attr, temp,'to',temp2 
+                    if(logger.isEnabledFor(logging.DEBUG)):
+                        logger.debug(str(('convert library vocab', attr, temp,'to',temp2)))
 
             obj.save()
-
+            count = count +1
+        logger.info(str(('converted vocabs on', count, 'libraries')))
+        
+        
         screen_vocabs = ['screen_type', 'project_phase', 'species' ] 
         # Note: data_sharing_levels: using int values instead of names
         
+        count = 0
         for obj in orm.Screen.objects.all():
             for attr in screen_vocabs:
                 temp = getattr(obj, attr)
                 if temp:
                     temp2 = self.default_converter(temp)
                     setattr(obj, attr, temp2)
-                    print 'convert screen vocab ', attr, temp,'to', temp2 
+                    if(logger.isEnabledFor(logging.DEBUG)):
+                        logger.debug(str(('convert screen vocab ', attr, temp,'to', temp2))) 
             obj.save()
+            count += 1
+        
+        logger.info(str(('converted vocabs on', count, 'screens')))
+        
             
     def default_converter(self, original_text):
         temp = re.sub(r'[\W]+', ' ', original_text)
@@ -852,7 +865,6 @@ class Migration(DataMigration):
             'last_name': ('django.db.models.fields.TextField', [], {}),
             'login_id': ('django.db.models.fields.TextField', [], {'unique': 'True', 'blank': 'True'}),
             'mailing_address': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'permissions': ('django.db.models.fields.related.ManyToManyField', [], {'to': u"orm['reports.Permission']", 'symmetrical': 'False'}),
             'phone': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'screensaver_user_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
             'user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['auth.User']", 'null': 'True'}),
@@ -986,13 +998,6 @@ class Migration(DataMigration):
             'Meta': {'object_name': 'WellVolumeCorrectionActivity', 'db_table': "u'well_volume_correction_activity'"},
             'activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AdministrativeActivity']", 'primary_key': 'True'})
         },
-        u'reports.permission': {
-            'Meta': {'unique_together': "(('scope', 'key', 'type'),)", 'object_name': 'Permission'},
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'key': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
-            'scope': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
-            'type': ('django.db.models.fields.CharField', [], {'max_length': '15'})
-        }
     }
 
     complete_apps = ['db']

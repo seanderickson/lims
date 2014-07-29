@@ -138,9 +138,9 @@ INSTALLED_APPS = (
     'django_tables2', # for UI tabling
     'south',
     'tastypie', # manual says this is "not necessary, but useful"
-    'db',
-    'lims',
     'reports',
+    'lims',
+    'db',
 )
 
 # for tastypie: will evaluate resource URIs the same with or without the trailing slash

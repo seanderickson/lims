@@ -27,19 +27,23 @@ RUN_TYPE=${3:-"short"}
 
 source ./migration.properties
 
-LOGFILE=./migration.log
-
 DBUSER=${DBUSER:-"screensaver-lims"}  
 DB=${DB:-"screensaver-lims"}  
 DBHOST=${DBHOST:-"localhost"}  
 DBPASSWORD=${DBPASSWORD:-""}
 SETENV_SCRIPT=${SETENV_SCRIPT:-""}
+DEBUG=${DEBUG:-false}
 
 # Prerequisites
 # - Python 2.7.x, pip, virtualenv
 # - Node, NPM
 # - git
 
+LOGFILE=./migration.log
+
+if $DEBUG; then
+  LOGFILE=$(tty)
+fi
 
 VENV=../iccbl-env
 # VENV=${VENV:-${SUPPORTDIR:+"$SUPPORTDIR/virtualenv"}}
@@ -73,17 +77,17 @@ function gitpull {
 function restoredb {
   # drop DB if exits
   if [[ -z "$DROP_DB_COMMAND" ]]; then
-    dropdb -U $DBUSER $DB -h $DBHOST
+    dropdb -U $DBUSER $DB -h $DBHOST >>"$LOGFILE" 2>&1 || error "dropdb failed: $?"
   else
-    $DROP_DB_COMMAND $DB $DBUSER
+    $DROP_DB_COMMAND $DB $DBUSER >>"$LOGFILE" 2>&1 || error "dropdb failed: $?"
   fi
   
   # create DB if exists
   # TODO: could test for the database:
   # psql -U screensaver screensaver -h localhost  -c '\d'
   # if [[ $? -ne 0 ]]; then 
-  if [[ CREATE_DB ]]; then
-    createdb -U $DBUSER $DB -h $DBHOST || error "createdb fails with status $?" 
+  if [[ $CREATE_DB -ne 0 ]]; then
+    createdb -U $DBUSER $DB -h $DBHOST >>"$LOGFILE" 2>&1 || error "createdb fails with status $?" 
   fi
   
   D=${PG_RESTORE_DIR:-.}
@@ -91,15 +95,15 @@ function restoredb {
   
   # NOTE: restore generates some errors - manual verification is required.
   pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
-    `ls -1 ${D}/screensaver*${filespec}.excl_big_data.pg_dump`
+    `ls -1 ${D}/screensaver*${filespec}.excl_big_data.pg_dump` >>"$LOGFILE" 2>&1 
   pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
-    `ls -1 ${D}/screensaver*${filespec}.attached_file_schema.pg_dump` 
+    `ls -1 ${D}/screensaver*${filespec}.attached_file_schema.pg_dump`  >>"$LOGFILE" 2>&1 
   pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
-    `ls -1 ${D}/screensaver*${filespec}.result_data_schema.pg_dump` 
+    `ls -1 ${D}/screensaver*${filespec}.result_data_schema.pg_dump`  >>"$LOGFILE" 2>&1 
   #pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
-  #  `ls -1 ${D}/screensaver*${filespec}.attached_file.pg_dump` 
+  #  `ls -1 ${D}/screensaver*${filespec}.attached_file.pg_dump`  >>"$LOGFILE" 2>&1 
   #pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
-  #  `ls -1 ${D}/screensaver*${filespec}.result_data.pg_dump 
+  #  `ls -1 ${D}/screensaver*${filespec}.result_data.pg_dump  >>"$LOGFILE" 2>&1 
 
   # TODO: create a check to validate db imports
   return 0
@@ -117,39 +121,39 @@ function django_syncdb {
   # which creates the user "sde" 
 
   # Now, this command will use the fixture to create the first user
-  ./manage.py syncdb --noinput || error "initdb failed: $?"
+  ./manage.py syncdb --noinput >>"$LOGFILE" 2>&1 || error "initdb failed: $?"
 
 }
 
 function migratedb {
 
-  ./manage.py migrate reports || error "reports migration failed: $?"
+  ./manage.py migrate reports >>"$LOGFILE" 2>&1 || error "reports migration failed: $?"
   
-  ./manage.py migrate tastypie || error "tastypie migration failed: $?"
+  ./manage.py migrate tastypie >>"$LOGFILE" 2>&1 || error "tastypie migration failed: $?"
   
-  ./manage.py migrate db 0001 --fake  || error "db 0001 failed: $?"
+  ./manage.py migrate db 0001 --fake >>"$LOGFILE" 2>&1 || error "db 0001 failed: $?"
   
-  ./manage.py migrate db 0002 || error "db 0002 failed: $?"
+  ./manage.py migrate db 0002 >>"$LOGFILE" 2>&1 || error "db 0002 failed: $?"
   
   psql -U $DBUSER $DB -h $DBHOST \
-    -f ./db/migrations/manual/0003_screen_status.sql || error "manual script 0003 failed: $?"
+    -f ./db/migrations/manual/0003_screen_status.sql >>"$LOGFILE" 2>&1 || error "manual script 0003 failed: $?"
   
   # run the rest of the migrations
-  ./manage.py migrate db 0003 || error "db 0003 failed: $?"
-  ./manage.py migrate db 0004 || error "db 0004 failed: $?"
-  ./manage.py migrate db 0008 || error "db 0008 failed: $?"
-  ./manage.py migrate db 0009 || error "db 0009 failed: $?"
-  ./manage.py migrate db 0010 || error "db 0010 failed: $?"
-  ./manage.py migrate db 0011 || error "db 0011 failed: $?"
+  ./manage.py migrate db 0003 >>"$LOGFILE" 2>&1 || error "db 0003 failed: $?"
+  ./manage.py migrate db 0004 >>"$LOGFILE" 2>&1 || error "db 0004 failed: $?"
+  ./manage.py migrate db 0008 >>"$LOGFILE" 2>&1 || error "db 0008 failed: $?"
+  ./manage.py migrate db 0009 >>"$LOGFILE" 2>&1 || error "db 0009 failed: $?"
+  ./manage.py migrate db 0010 >>"$LOGFILE" 2>&1 || error "db 0010 failed: $?"
+  ./manage.py migrate db 0011 >>"$LOGFILE" 2>&1 || error "db 0011 failed: $?"
   
   # TODO 0013 is slow
   if [[ "$RUN_TYPE" == "full" ]]; then
-    ./manage.py migrate db 0013 || error "db 0013 failed: $?"
+    ./manage.py migrate db 0013 >>"$LOGFILE" 2>&1 || error "db 0013 failed: $?"
   fi
   
 # TODO, not working:
-#  ./manage.py migrate db 0014 || error "db 0014 failed: $?"
-#  ./manage.py migrate db 0015 || error "db 0015 failed: $?"
+#  ./manage.py migrate db 0014 >>"$LOGFILE" 2>&1 || error "db 0014 failed: $?"
+#  ./manage.py migrate db 0015 >>"$LOGFILE" 2>&1 || error "db 0015 failed: $?"
 
 }
 
@@ -186,7 +190,7 @@ function bootstrap {
   PYTHONPATH=. python reports/utils/db_init.py  \
     --input_dir=./reports/static/api_init/ \
     -f ./reports/static/api_init/api_init_actions.csv \
-    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -U sde -p ${serverpass}  
+    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -U sde -p ${serverpass} >>"$LOGFILE" 2>&1 
   if [[ $? -ne 0 ]]; then
     kill $server_pid
     error "bootstrap reports failed: $?"
@@ -195,7 +199,7 @@ function bootstrap {
   PYTHONPATH=. python reports/utils/db_init.py  \
     --input_dir=./db/static/api_init/ \
     -f ./db/static/api_init/api_init_actions.csv \
-    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -U sde -p ${serverpass}
+    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -U sde -p ${serverpass} >>"$LOGFILE" 2>&1
   if [[ $? -ne 0 ]]; then
     kill $server_pid
     error "bootstrap db failed: $?"
@@ -206,7 +210,7 @@ function bootstrap {
   PYTHONPATH=. python reports/utils/db_init.py  \
     --input_dir=./lims/static/production_data/ \
     -f ./lims/static/production_data/api_init_actions.csv \
-    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -U sde -p ${serverpass}
+    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -U sde -p ${serverpass} >>"$LOGFILE" 2>&1
   if [[ $? -ne 0 ]]; then
     kill $server_pid
     error "bootstrap production data failed: $?"
@@ -218,13 +222,13 @@ function bootstrap {
 }
 
 function frontend_setup {
-  cd reports/static
+  cd reports/static >>"$LOGFILE" 2>&1
   
-  npm install
+  npm install >>"$LOGFILE" 2>&1
   
-  grunt bowercopy
+  grunt bowercopy >>"$LOGFILE" 2>&1
   
-  grunt test
+  grunt test >>"$LOGFILE" 2>&1
   
   cd ../..
 }
@@ -241,6 +245,7 @@ function main {
   pip install -r requirements.txt
   
   cp lims/settings_migration.py lims/settings.py
+  mkdir logs
   
   ./manage.py test --verbosity=2 --settings=lims.settings_testing || error "django tests failed: $?"
 

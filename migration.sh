@@ -35,7 +35,6 @@ DB=${DB:-"screensaver-lims"}
 DBHOST=${DBHOST:-"localhost"}  
 DBPASSWORD=${DBPASSWORD:-""}
 SETENV_SCRIPT=${SETENV_SCRIPT:-""}
-NPM_EXEC=${NPM_EXEC:-"npm"}
 DEBUG=${DEBUG:-false}
 RUN_DB_TESTS=${RUN_DB_TESTS:-false}
 
@@ -44,16 +43,30 @@ RUN_DB_TESTS=${RUN_DB_TESTS:-false}
 # - Node, NPM
 # - git
 
+# PATH TO node, npm, leave blank if part of the env path already
+NODE_PATH=${NODE_PATH:-""}
+
+if [[ "$NODE_PATH" -ne "" ]]; then
+  export PATH=${PATH}:$NODE_PATH
+fi
 
 if $DEBUG; then
   LOGFILE=$(tty)
 fi
 
-VENV=../iccbl-env
-# VENV=${VENV:-${SUPPORTDIR:+"$SUPPORTDIR/virtualenv"}}
+VENV=${VENV:-${SUPPORTDIR:+"$SUPPORTDIR/virtualenv"}}
 if [[ -z $VENV ]]; then
   error 'no virtualenv available'
 fi
+
+DJANGO_CMD=./manage.py
+
+if [[ -n "$SETENV_SCRIPT" ]]; then
+  AUTH_FILE=${AUTH_FILE:-"/opt/apache/conf/auth/dev.screensaver2.med.harvard.edu" }
+
+  DJANGO_CMD="$SETENV_SCRIPT $AUTH_FILE ./manage.py"
+fi
+
 
 source ./utils.sh
 
@@ -98,8 +111,14 @@ function restoredb {
   filespec=${PG_RESTORE_FILESPEC:-''}
   
   # NOTE: restore generates some errors - manual verification is required.
+#  pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
+#    `ls -1 ${D}/screensaver*${filespec}.excl_big_data.pg_dump` >>"$LOGFILE" 2>&1 
+
+  # For quick testing
   pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
-    `ls -1 ${D}/screensaver*${filespec}.excl_big_data.pg_dump` >>"$LOGFILE" 2>&1 
+    `ls -1 ${D}/screensaver*${filespec}.schema_only.pg_dump` >>"$LOGFILE" 2>&1 
+
+
   pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
     `ls -1 ${D}/screensaver*${filespec}.attached_file_schema.pg_dump`  >>"$LOGFILE" 2>&1 
   pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
@@ -125,39 +144,39 @@ function django_syncdb {
   # which creates the user "sde" 
 
   # Now, this command will use the fixture to create the first user
-  ./manage.py syncdb --noinput >>"$LOGFILE" 2>&1 || error "initdb failed: $?"
+  $DJANGO_CMD syncdb --noinput >>"$LOGFILE" 2>&1 || error "initdb failed: $?"
 
 }
 
 function migratedb {
 
-  ./manage.py migrate reports >>"$LOGFILE" 2>&1 || error "reports migration failed: $?"
+  $DJANGO_CMD migrate reports >>"$LOGFILE" 2>&1 || error "reports migration failed: $?"
   
-  ./manage.py migrate tastypie >>"$LOGFILE" 2>&1 || error "tastypie migration failed: $?"
+  $DJANGO_CMD migrate tastypie >>"$LOGFILE" 2>&1 || error "tastypie migration failed: $?"
   
-  ./manage.py migrate db 0001 --fake >>"$LOGFILE" 2>&1 || error "db 0001 failed: $?"
+  $DJANGO_CMD migrate db 0001 --fake >>"$LOGFILE" 2>&1 || error "db 0001 failed: $?"
   
-  ./manage.py migrate db 0002 >>"$LOGFILE" 2>&1 || error "db 0002 failed: $?"
+  $DJANGO_CMD migrate db 0002 >>"$LOGFILE" 2>&1 || error "db 0002 failed: $?"
   
   psql -U $DBUSER $DB -h $DBHOST \
     -f ./db/migrations/manual/0003_screen_status.sql >>"$LOGFILE" 2>&1 || error "manual script 0003 failed: $?"
   
   # run the rest of the migrations
-  ./manage.py migrate db 0003 >>"$LOGFILE" 2>&1 || error "db 0003 failed: $?"
-  ./manage.py migrate db 0004 >>"$LOGFILE" 2>&1 || error "db 0004 failed: $?"
-  ./manage.py migrate db 0008 >>"$LOGFILE" 2>&1 || error "db 0008 failed: $?"
-  ./manage.py migrate db 0009 >>"$LOGFILE" 2>&1 || error "db 0009 failed: $?"
-  ./manage.py migrate db 0010 >>"$LOGFILE" 2>&1 || error "db 0010 failed: $?"
-  ./manage.py migrate db 0011 >>"$LOGFILE" 2>&1 || error "db 0011 failed: $?"
+  $DJANGO_CMD migrate db 0003 >>"$LOGFILE" 2>&1 || error "db 0003 failed: $?"
+  $DJANGO_CMD migrate db 0004 >>"$LOGFILE" 2>&1 || error "db 0004 failed: $?"
+  $DJANGO_CMD migrate db 0008 >>"$LOGFILE" 2>&1 || error "db 0008 failed: $?"
+  $DJANGO_CMD migrate db 0009 >>"$LOGFILE" 2>&1 || error "db 0009 failed: $?"
+  $DJANGO_CMD migrate db 0010 >>"$LOGFILE" 2>&1 || error "db 0010 failed: $?"
+  $DJANGO_CMD migrate db 0011 >>"$LOGFILE" 2>&1 || error "db 0011 failed: $?"
   
   # TODO 0013 is slow
   if [[ "$RUN_TYPE" == "full" ]]; then
-    ./manage.py migrate db 0013 >>"$LOGFILE" 2>&1 || error "db 0013 failed: $?"
+    $DJANGO_CMD migrate db 0013 >>"$LOGFILE" 2>&1 || error "db 0013 failed: $?"
   fi
   
 # TODO, not working:
-#  ./manage.py migrate db 0014 >>"$LOGFILE" 2>&1 || error "db 0014 failed: $?"
-#  ./manage.py migrate db 0015 >>"$LOGFILE" 2>&1 || error "db 0015 failed: $?"
+#  $DJANGO_CMD migrate db 0014 >>"$LOGFILE" 2>&1 || error "db 0014 failed: $?"
+#  $DJANGO_CMD migrate db 0015 >>"$LOGFILE" 2>&1 || error "db 0015 failed: $?"
 
 }
 
@@ -166,25 +185,13 @@ function bootstrap {
   
   BOOTSTRAP_PORT=55001
   
-  if [[ -n "$SETENV_SCRIPT" ]]; then
-    echo "run a prod server on port $BOOTSTRAP_PORT..."
-    nohup ./setenv_and_run.sh /opt/apache/conf/auth/dev.screensaver2.med.harvard.edu \
-      ./manage.py runserver $BOOTSTRAP_PORT &
-    server_pid=$!
-    if [[ "$?" -ne 0 ]]; then
-      runserver_status =$?
-      echo "bootstrap error, prod runserver status: $runserver_status"
-      exit $runserver_status
-    fi
-  else
-    echo "run a local dev server on port $BOOTSTRAP_PORT..."
-    nohup ./manage.py runserver --nothreading --noreload 55001 &
-    server_pid=$!
-    if [[ "$?" -ne 0 ]]; then
-      runserver_status =$?
-      echo "bootstrap error, dev runserver status: $runserver_status"
-      exit $runserver_status
-    fi
+  echo "run a local dev server on port $BOOTSTRAP_PORT..."
+  nohup $DJANGO_CMD runserver --nothreading --noreload $BOOTSTRAP_PORT &
+  server_pid=$!
+  if [[ "$?" -ne 0 ]]; then
+    runserver_status =$?
+    echo "bootstrap error, dev runserver status: $runserver_status"
+    exit $runserver_status
   fi
 #  echo "wait for server process: ($!) to start..."
 #  wait $server_pid
@@ -220,19 +227,19 @@ function bootstrap {
     error "bootstrap production data failed: $?"
   fi
 
-  #final_server_pid=$(ps -aux |grep runserver| grep 55001 | awk '{print $2}')
-  #kill $final_server_pid
-  kill $server_pid
+  final_server_pid=$(ps -aux |grep runserver| grep 55001 | awk '{print $2}')
+  kill $final_server_pid
+  # kill $server_pid
 }
 
 function frontend_setup {
   cd reports/static >>"$LOGFILE" 2>&1
   
-  $($NPM_EXEC install) >>"$LOGFILE" 2>&1
+  npm install >>"$LOGFILE" 2>&1
   
-  grunt bowercopy >>"$LOGFILE" 2>&1
+  ./node_modules/.bin/grunt bowercopy >>"$LOGFILE" 2>&1
   
-  grunt test >>"$LOGFILE" 2>&1
+  ./node_modules/.bin/grunt test >>"$LOGFILE" 2>&1
   
   cd ../..
 }
@@ -240,20 +247,22 @@ function frontend_setup {
 function main {
   # Steps:
   
-  gitpull
+#  gitpull
   
   restoredb
-  
+    
   maybe_activate_virtualenv
   
-  pip install -r requirements.txt
+  pip install -r requirements.txt >>"$LOGFILE" 2>&1
   
   cp lims/settings_migration.py lims/settings.py
   mkdir logs
   
-  if [[ $RUN_DB_TESTS ]]; then
-    ./manage.py test --verbosity=2 --settings=lims.settings_testing || error "django tests failed: $?"
+  if $RUN_DB_TESTS ; then
+    $DJANGO_CMD test --verbosity=2 --settings=lims.settings_testing  \
+      >> "$LOGFILE" 2>&1 || error "django tests failed: $?"
   fi
+  
   frontend_setup
   
   django_syncdb
@@ -274,10 +283,13 @@ main "$@"
 
 # restoredb
 
-#  maybe_activate_virtualenv
+# maybe_activate_virtualenv
+
+# bootstrap
   
 #  pip install -r requirements.txt
   
 #  cp lims/settings_migration.py lims/settings.py
 
-# ./manage.py test --verbosity=2 --settings=lims.settings_testing || error "django tests failed: $?"
+# $DJANGO_CMD test --verbosity=2 --settings=lims.settings_testing || error "django tests failed: $?"
+# $DJANGO_CMD test --verbosity=2 --settings=lims.settings_testing

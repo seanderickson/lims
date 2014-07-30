@@ -1230,7 +1230,7 @@ class UserGroupResource(UserResource):
                 
         self.assertTrue(testGroup6 and testGroup3)
         for permission in testGroup3['all_permissions']:
-            logger.info(str(('find permission', permission)))
+            logger.debug(str(('find permission', permission)))
             self.assertTrue(permission in testGroup6['all_permissions'], 
                 str(('could not find permission', permission, 
                      'in testGroup6 permissions', testGroup6['all_permissions'])))

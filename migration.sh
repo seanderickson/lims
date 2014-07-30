@@ -14,6 +14,9 @@ if [[ -z $REALPATH ]]; then
 fi
 
 SCRIPTPATH="$($REALPATH $0)"
+BASEDIR=${BASEDIR:-"$(dirname $SCRIPTPATH)"}
+SUPPORTDIR=${SUPPORTDIR-"$(dirname $BASEDIR)"}
+LOGFILE=${LOGFILE:-${BASEDIR:+"$BASEDIR/migration.log"}}
 
 if [[ $# -lt 2 ]]
 then
@@ -32,14 +35,15 @@ DB=${DB:-"screensaver-lims"}
 DBHOST=${DBHOST:-"localhost"}  
 DBPASSWORD=${DBPASSWORD:-""}
 SETENV_SCRIPT=${SETENV_SCRIPT:-""}
+NPM_EXEC=${NPM_EXEC:-"npm"}
 DEBUG=${DEBUG:-false}
+RUN_DB_TESTS=${RUN_DB_TESTS:-false}
 
 # Prerequisites
 # - Python 2.7.x, pip, virtualenv
 # - Node, NPM
 # - git
 
-LOGFILE=./migration.log
 
 if $DEBUG; then
   LOGFILE=$(tty)
@@ -224,7 +228,7 @@ function bootstrap {
 function frontend_setup {
   cd reports/static >>"$LOGFILE" 2>&1
   
-  npm install >>"$LOGFILE" 2>&1
+  $($NPM_EXEC install) >>"$LOGFILE" 2>&1
   
   grunt bowercopy >>"$LOGFILE" 2>&1
   
@@ -247,8 +251,9 @@ function main {
   cp lims/settings_migration.py lims/settings.py
   mkdir logs
   
-  ./manage.py test --verbosity=2 --settings=lims.settings_testing || error "django tests failed: $?"
-
+  if [[ $RUN_DB_TESTS ]]; then
+    ./manage.py test --verbosity=2 --settings=lims.settings_testing || error "django tests failed: $?"
+  fi
   frontend_setup
   
   django_syncdb
@@ -262,6 +267,8 @@ function main {
 
 
 main "$@"
+
+# frontend_setup "$@"
 
 # bootstrap "$@"
 

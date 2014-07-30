@@ -7,6 +7,11 @@ from django.db import models
 
 class Migration(SchemaMigration):
 
+    depends_on = (
+        ("reports", "0001_initial"),
+    )
+
+
     def forwards(self, orm):
         # Adding model 'LegacySmallMoleculeCasNumber'
         db.create_table(u'_legacy_small_molecule_cas_number', (
@@ -784,15 +789,6 @@ class Migration(SchemaMigration):
             ('user', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['auth.User'], null=True)),
         ))
         db.send_create_signal(u'db', ['ScreensaverUser'])
-
-        # Adding M2M table for field permissions on 'ScreensaverUser'
-        m2m_table_name = db.shorten_name(u'screensaver_user_permissions')
-        db.create_table(m2m_table_name, (
-            ('id', models.AutoField(verbose_name='ID', primary_key=True, auto_created=True)),
-            ('screensaveruser', models.ForeignKey(orm[u'db.screensaveruser'], null=False)),
-            ('permission', models.ForeignKey(orm[u'reports.permission'], null=False))
-        ))
-        db.create_unique(m2m_table_name, ['screensaveruser_id', 'permission_id'])
 
         # Adding model 'ScreeningRoomUser'
         db.create_table(u'screening_room_user', (
@@ -2178,7 +2174,6 @@ class Migration(SchemaMigration):
             'last_name': ('django.db.models.fields.TextField', [], {}),
             'login_id': ('django.db.models.fields.TextField', [], {'unique': 'True', 'blank': 'True'}),
             'mailing_address': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'permissions': ('django.db.models.fields.related.ManyToManyField', [], {'to': u"orm['reports.Permission']", 'symmetrical': 'False'}),
             'phone': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'screensaver_user_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
             'user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['auth.User']", 'null': 'True'}),
@@ -2310,13 +2305,6 @@ class Migration(SchemaMigration):
             'Meta': {'object_name': 'WellVolumeCorrectionActivity', 'db_table': "u'well_volume_correction_activity'"},
             'activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AdministrativeActivity']", 'primary_key': 'True'})
         },
-        u'reports.permission': {
-            'Meta': {'unique_together': "(('scope', 'key', 'type'),)", 'object_name': 'Permission'},
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'key': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
-            'scope': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
-            'type': ('django.db.models.fields.CharField', [], {'max_length': '15'})
-        }
     }
 
     complete_apps = ['db']

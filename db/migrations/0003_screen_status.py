@@ -8,8 +8,16 @@ from reports.models import ApiLog
 from django.utils import timezone
 
 import re
+import logging
+logger = logging.getLogger(__name__)
+
 
 class Migration(DataMigration):
+
+    depends_on = (
+        ("reports", "0001_initial"),
+    )
+
 
     def default_converter(self, original_text):
         temp = re.sub(r'[\W]+', ' ', original_text)
@@ -31,7 +39,7 @@ class Migration(DataMigration):
             if temp:
                 temp2 = self.default_converter(temp)
                 setattr(obj, attr, temp2)
-                print 'screen', attr, temp,temp2 
+                logger.info(str(( 'screen', attr, temp,temp2))) 
             obj.save()
             
         # Now create a history log for all of the status's for each screen, 
@@ -59,14 +67,14 @@ class Migration(DataMigration):
                     diffs['status'] = [None, status.status]
                     diffs['status_date'] = [None, unicode(status.status_date)]
                 log.diffs = json.dumps(diffs)
-                print 'create log: ' , j, log
+                logger.info(str(( 'create log: ' , j, log)))
                 log.save()
                 
                 prev_item = status
                 i = i + 1
                 j = j + 1
         
-        print 'updated ', j, 'statuses'
+        logger.info(str(( 'updated ', j, 'statuses')))
 
     def backwards(self, orm):
         "Write your backwards methods here."

@@ -9,6 +9,10 @@ from reports.utils.gray_codes import create_substance_id
 from django.db import transaction
 from django.db.models.aggregates import Max
 
+import logging
+logger = logging.getLogger(__name__)
+
+
 class Migration(DataMigration):
 
     # do this in an isolated server, as there is no transaction protection
@@ -17,14 +21,14 @@ class Migration(DataMigration):
         i = 0
         _max = orm.Reagent.objects.all()\
                 .aggregate(Max('reagent_id'))['reagent_id__max']
-        print str(('max:', _max))
+        logger.info( str(('max:', _max)))
         
         step = 10000
         while i < _max:
             i = self.convert(orm, i, step)
-            print 'last processed ', i
+            logger.info( str(('last processed ', i)))
 
-        print 'substance IDs generated'
+        logger.info(str(('substance IDs generated', i)))
         
     @transaction.commit_manually
     def convert(self, orm, first, step):
@@ -32,7 +36,7 @@ class Migration(DataMigration):
 #         digs = digs.translate(None,'01OI') # remove unwanted chars 
 #         start = len(digs)**7       
         
-        print 'first', first, 'step', step
+        logger.info(str(( 'first', first, 'step', step)) )
         i = 0
         r_id = 0
         for reagent in orm.Reagent.objects.all()\
@@ -44,7 +48,7 @@ class Migration(DataMigration):
             if i==step:
                 break
         transaction.commit()
-        print 'processed: ', i
+        logger.info(str(( 'processed: ', i)) )
         
         return r_id 
     
@@ -853,7 +857,6 @@ class Migration(DataMigration):
             'last_name': ('django.db.models.fields.TextField', [], {}),
             'login_id': ('django.db.models.fields.TextField', [], {'unique': 'True', 'blank': 'True'}),
             'mailing_address': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'permissions': ('django.db.models.fields.related.ManyToManyField', [], {'to': u"orm['reports.Permission']", 'symmetrical': 'False'}),
             'phone': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'screensaver_user_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
             'user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['auth.User']", 'null': 'True'}),
@@ -987,13 +990,6 @@ class Migration(DataMigration):
             'Meta': {'object_name': 'WellVolumeCorrectionActivity', 'db_table': "u'well_volume_correction_activity'"},
             'activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AdministrativeActivity']", 'primary_key': 'True'})
         },
-        u'reports.permission': {
-            'Meta': {'unique_together': "(('scope', 'key', 'type'),)", 'object_name': 'Permission'},
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'key': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
-            'scope': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
-            'type': ('django.db.models.fields.CharField', [], {'max_length': '15'})
-        }
     }
 
     complete_apps = ['db']

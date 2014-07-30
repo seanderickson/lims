@@ -948,7 +948,7 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
             'permissions': ['permission/resource/metahash/read'] };
 
         uri = self.resource_uri + '/' + username
-        logger.info(str(('=====now add the permission needed to this user:', user_patch, uri)))
+        logger.debug(str(('=====now add the permission needed to this user:', user_patch, uri)))
         resp = self.api_client.patch( uri, 
                     format='json', data=user_patch, 
                     authentication=self.get_credentials())
@@ -1204,7 +1204,6 @@ class UserGroupResource(UserResource):
 #         uri = self.resource_uri + '/'
         uri = BASE_URI + '/usergroup'
         
-        logger.warn(str(('resource_uri', uri)))
         resp = self.api_client.patch(uri, format='json', 
             data=usergroup_patch, 
             authentication=self.get_credentials())
@@ -1231,7 +1230,7 @@ class UserGroupResource(UserResource):
                 
         self.assertTrue(testGroup6 and testGroup3)
         for permission in testGroup3['all_permissions']:
-            logger.info(str(('find permission', permission)))
+            logger.debug(str(('find permission', permission)))
             self.assertTrue(permission in testGroup6['all_permissions'], 
                 str(('could not find permission', permission, 
                      'in testGroup6 permissions', testGroup6['all_permissions'])))

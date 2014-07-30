@@ -1,7 +1,4 @@
-# Django settings for lims project on the HMS Orchestra system
-# Copy this file to settings.py and change local values for your installation
-
-from os import environ
+# Django settings for lims project
 
 try:
     from base_settings import *
@@ -11,46 +8,39 @@ except ImportError:
     base_settings.py for this site.'''
     del sys
     
+import os.path
+
 # NOTE: the parent settings file defines the PROJECT_ROOT
 print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
     
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
+# TASTYPIE_FULL_DEBUG is less useful than it seems.  
+# When it is used the error is easily discernable in the server logs (and not visible there otherwise), 
+# but the client message is spammed with an html response with the error code buried somewhere inside.
+#TASTYPIE_FULL_DEBUG = DEBUG
 
 ADMINS = (
-    ('Admin', 'admin@email.com'),
+    ('Sean D Erickson', 'sean_erickson@hms.harvard.edu'),
 )
 
 MANAGERS = ADMINS
 
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql_psycopg2', 
-        'NAME': 'devscreensaver2', 
-        'USER': 'devscreensaver2web',
+        'NAME': 'screensaver-lims',
+        # The following settings are not used with sqlite3:
+        'USER': 'screensaver-lims',
         'PASSWORD': '',
-        'HOST': 'dev.pgsql.orchestra:',
-        'PORT': '',                      # Set to empty string for default.
+        'HOST': '',                      
+        'PORT': '',                      
     }
 }
 
-# Note that the SCREENSAVER_PGSQL variables can be found in the appropriate file at:
-# /opt/apache/conf/auth/[server_address]
-# to access these variables from the commmand line, see "/setenv_and_run.sh"  
-_dbdefault = DATABASES['default']
-if 'SCREENSAVER_PGSQL_SERVER' in environ:
-    # explicit db configuration for lincs site in environment variables
-    _dbdefault['NAME'] = environ['SCREENSAVER_PGSQL_DB']
-    _dbdefault['HOST'] = environ['SCREENSAVER_PGSQL_SERVER']
-    _dbdefault['USER'] = environ['SCREENSAVER_PGSQL_USER']
-    _dbdefault['PASSWORD'] = environ['SCREENSAVER_PGSQL_PASSWORD']
-
-
-
 # Hosts/domain names that are valid for this site; required if DEBUG is False
 # See https://docs.djangoproject.com/en/1.5/ref/settings/#allowed-hosts
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['localhost']
 
 # Local time zone for this installation. Choices can be found here:
 # http://en.wikipedia.org/wiki/List_of_tz_zones_by_name
@@ -64,23 +54,22 @@ LANGUAGE_CODE = 'en-us'
 
 SITE_ID = 1
 
-AUTHENTICATION_BACKENDS = ('reports.auth.CustomAuthenticationBackend',)
-
 # Absolute path to the directory static files should be collected to.
 # Don't put anything in this directory yourself; store your static files
 # in apps' "static/" subdirectories and in STATICFILES_DIRS.
 # Example: "/var/www/example.com/static/"
-STATIC_ROOT = os.path.join(PROJECT_ROOT, '..', '..', '..', 'docroot', '_static')
+STATIC_ROOT = ''
 
 # URL prefix for static files.
 # Example: "http://example.com/static/", "http://static.example.com/"
-STATIC_URL = '/_static/'
+STATIC_URL = '/static/'
 
 # Additional locations of static files
 STATICFILES_DIRS = (
     # Put strings here, like "/home/html/static" or "C:/www/django/static".
     # Always use forward slashes, even on Windows.
     # Don't forget to use absolute paths, not relative paths.
+    os.path.join(PROJECT_ROOT, "static"),
 )
 
 # List of finder classes that know how to find static files in
@@ -91,9 +80,24 @@ STATICFILES_FINDERS = (
 #    'django.contrib.staticfiles.finders.DefaultStorageFinder',
 )
 
-# Make this unique, and don't share it with anybody.
-SECRET_KEY = 'x1gg450))screensaver2-lims2014001212045'
+#AUTHENTICATION_BACKENDS = ('reports.auth.CustomAuthenticationBackend',)
 
+# Make this unique, and don't share it with anybody.
+SECRET_KEY = 'x-=2g@c)#_z_1xxn0fpxj+y)v%n7&e#xpm+coo0(5^*@l___%8i*0devonly'
+
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake'
+    }
+}
+
+# A sample logging configuration. The only tangible logging
+# performed by this configuration is to send an email to
+# the site admins on every HTTP 500 error when DEBUG=False.
+# See http://docs.djangoproject.com/en/dev/topics/logging for
+# more details on how to customize your logging configuration.
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -104,6 +108,9 @@ LOGGING = {
         'simple': {
             'format': '%(levelname)s %(asctime)s: %(name)s:%(lineno)d: %(message)s'
         },
+        'simple1': {
+            'format': '%(levelname)s %(msecs)s: %(name)s:%(lineno)d: %(message)s'
+        },
     },
     'filters': {
         'require_debug_false': {
@@ -111,14 +118,10 @@ LOGGING = {
         }
     },
     'handlers': {
-        'logfile': {
-            'level':'DEBUG',
-            'class':'logging.handlers.RotatingFileHandler',
-#            'filename': os.path.join(PROJECT_ROOT, '..') +  "/logs/screensaver2.log",
-            'filename': "/www/dev.screensaver2.med.harvard.edu/support/logs/screensaver2.log",
-            'maxBytes': 5000000,
-            'backupCount': 2,
-            'formatter': 'simple',
+        'mail_admins': {
+            'level': 'ERROR',
+            'filters': ['require_debug_false'],
+            'class': 'django.utils.log.AdminEmailHandler'
         },
         'console':{
             'level': 'DEBUG',
@@ -128,55 +131,39 @@ LOGGING = {
     },
     'loggers': {
         'django.request': {
-            'handlers': ['logfile'],
+            'handlers': ['mail_admins'],
             'level': 'ERROR',
             'propagate': False,
         },
         'db': {  # set a default handler
-            'handlers': ['logfile'],
+            'handlers': ['console'],
             'propagate': False,
             'level': 'INFO',
         },        
         'lims': {  # set a default handler
-            'handlers': ['logfile'],
+            'handlers': ['console'],
             'propagate': False,
             'level': 'INFO',
         },               
         'reports': {  # set a default handler
-            'handlers': ['logfile'],
-            'propagate': False,
-            'level': 'INFO',
-        },
-        'db.tests': {  # set a default handler
             'handlers': ['console'],
             'propagate': False,
             'level': 'INFO',
         },        
-        'lims.tests': {  # set a default handler
-            'handlers': ['console'],
-            'propagate': False,
-            'level': 'INFO',
-        },               
-        'reports.tests': {  # set a default handler
+        'django.db': {  # for SQL
             'handlers': ['console'],
             'propagate': False,
             'level': 'INFO',
         },        
-        'django': {  # set a default handler
-            'handlers': ['logfile'],
-            'propagate': False,
-            'level': 'INFO',
-        },        
-        'utils': {  # for SQL
-            'handlers': ['logfile'],
+        'utils': {  # 
+            'handlers': ['console'],
             'propagate': True,
             'level': 'INFO',
         },        
         'tastypie': {  # set a default handler
-            'handlers': ['logfile'],
-            'propagate': False,
-            'level': 'INFO',
+            'handlers': ['console'],
+            'propagate': True,
+            'level': 'DEBUG',
         },        
     }
 }
-

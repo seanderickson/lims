@@ -11,6 +11,8 @@ except ImportError:
     base_settings.py for this site.'''
     del sys
     
+# NOTE: the parent settings file defines the PROJECT_ROOT
+print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
     
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
@@ -68,7 +70,7 @@ AUTHENTICATION_BACKENDS = ('reports.auth.CustomAuthenticationBackend',)
 # Don't put anything in this directory yourself; store your static files
 # in apps' "static/" subdirectories and in STATICFILES_DIRS.
 # Example: "/var/www/example.com/static/"
-STATIC_ROOT = os.path.join(BASE_DIR, '..', '..', '..', 'docroot', '_static')
+STATIC_ROOT = os.path.join(PROJECT_ROOT, '..', '..', '..', 'docroot', '_static')
 
 # URL prefix for static files.
 # Example: "http://example.com/static/", "http://static.example.com/"

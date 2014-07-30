@@ -93,10 +93,10 @@ function gitpull {
 
 function restoredb {
   # drop DB if exits
-  if [[ -z "$DROP_DB_COMMAND" ]]; then
-    dropdb -U $DBUSER $DB -h $DBHOST >>"$LOGFILE" 2>&1 || error "dropdb failed: $?"
-  else
+  if [[ -x "$DROP_DB_COMMAND" ]]; then
     $DROP_DB_COMMAND $DB $DBUSER >>"$LOGFILE" 2>&1 || error "dropdb failed: $?"
+  else
+    dropdb -U $DBUSER $DB -h $DBHOST >>"$LOGFILE" 2>&1 || error "dropdb failed: $?"
   fi
   
   # create DB if exists
@@ -111,23 +111,29 @@ function restoredb {
   filespec=${PG_RESTORE_FILESPEC:-''}
   
   # NOTE: restore generates some errors - manual verification is required.
-#  pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
-#    `ls -1 ${D}/screensaver*${filespec}.excl_big_data.pg_dump` >>"$LOGFILE" 2>&1 
 
-  # For quick testing
-  pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
-    `ls -1 ${D}/screensaver*${filespec}.schema_only.pg_dump` >>"$LOGFILE" 2>&1 
-
+  if [[ $DB_LOAD_SCHEMA_ONLY -ne 0 ]]; then
+    # For quick testing
+    pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
+      `ls -1 ${D}/screensaver*${filespec}.schema_only.pg_dump` >>"$LOGFILE" 2>&1 
+  else
+    pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
+     `ls -1 ${D}/screensaver*${filespec}.excl_big_data.pg_dump` >>"$LOGFILE" 2>&1 
+  fi
 
   pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
     `ls -1 ${D}/screensaver*${filespec}.attached_file_schema.pg_dump`  >>"$LOGFILE" 2>&1 
   pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
     `ls -1 ${D}/screensaver*${filespec}.result_data_schema.pg_dump`  >>"$LOGFILE" 2>&1 
-  #pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
-  #  `ls -1 ${D}/screensaver*${filespec}.attached_file.pg_dump`  >>"$LOGFILE" 2>&1 
-  #pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
-  #  `ls -1 ${D}/screensaver*${filespec}.result_data.pg_dump  >>"$LOGFILE" 2>&1 
 
+  if [[ $DB_LOAD_SCHEMA_ONLY -ne 0 ]]; then
+    echo "+++ LOADING attached file and result data ... "
+    pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
+      `ls -1 ${D}/screensaver*${filespec}.attached_file.pg_dump`  >>"$LOGFILE" 2>&1 
+    pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
+      `ls -1 ${D}/screensaver*${filespec}.result_data.pg_dump  >>"$LOGFILE" 2>&1 
+  fi
+  
   # TODO: create a check to validate db imports
   return 0
 }
@@ -219,15 +225,15 @@ function bootstrap {
   # Setup the server:
   
   PYTHONPATH=. python reports/utils/db_init.py  \
-    --input_dir=./lims/static/production_data/ \
-    -f ./lims/static/production_data/api_init_actions.csv \
+    --input_dir=$BOOTSTRAP_PRODUCTION_DIR \
+    -f ${BOOTSTRAP_PRODUCTION_DIR}/api_init_actions.csv \
     -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -U sde -p ${serverpass} >>"$LOGFILE" 2>&1
   if [[ $? -ne 0 ]]; then
     kill $server_pid
     error "bootstrap production data failed: $?"
   fi
 
-  final_server_pid=$(ps -aux |grep runserver| grep 55001 | awk '{print $2}')
+  final_server_pid=$(ps aux |grep runserver| grep 55001 | awk '{print $2}')
   kill $final_server_pid
   # kill $server_pid
 }
@@ -247,18 +253,23 @@ function frontend_setup {
 function main {
   # Steps:
   
-#  gitpull
+  gitpull
   
   restoredb
     
   maybe_activate_virtualenv
   
   pip install -r requirements.txt >>"$LOGFILE" 2>&1
+
+  if [[ -n "$SETTINGS_FILE" ]]; then
+    cp $SETTINGS_FILE lims/settings.py
+  else  
+    cp lims/settings_migration.py lims/settings.py
+  fi
   
-  cp lims/settings_migration.py lims/settings.py
   mkdir logs
   
-  if $RUN_DB_TESTS ; then
+  if [[ $RUN_DB_TESTS -ne 0 ]] ; then
     $DJANGO_CMD test --verbosity=2 --settings=lims.settings_testing  \
       >> "$LOGFILE" 2>&1 || error "django tests failed: $?"
   fi

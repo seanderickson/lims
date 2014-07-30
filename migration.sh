@@ -131,7 +131,7 @@ function restoredb {
     pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
       `ls -1 ${D}/screensaver*${filespec}.attached_file.pg_dump`  >>"$LOGFILE" 2>&1 
     pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
-      `ls -1 ${D}/screensaver*${filespec}.result_data.pg_dump  >>"$LOGFILE" 2>&1 
+      `ls -1 ${D}/screensaver*${filespec}.result_data.pg_dump`  >>"$LOGFILE" 2>&1 
   fi
   
   # TODO: create a check to validate db imports

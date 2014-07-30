@@ -112,13 +112,13 @@ function restoredb {
   
   # NOTE: restore generates some errors - manual verification is required.
 
-  if [[ $DB_LOAD_SCHEMA_ONLY -ne 0 ]]; then
+  if [[ $DB_LOAD_SCHEMA_ONLY -eq 0 ]]; then
+    pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
+     `ls -1 ${D}/screensaver*${filespec}.excl_big_data.pg_dump` >>"$LOGFILE" 2>&1 
+  else
     # For quick testing
     pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
       `ls -1 ${D}/screensaver*${filespec}.schema_only.pg_dump` >>"$LOGFILE" 2>&1 
-  else
-    pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
-     `ls -1 ${D}/screensaver*${filespec}.excl_big_data.pg_dump` >>"$LOGFILE" 2>&1 
   fi
 
   pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
@@ -126,7 +126,7 @@ function restoredb {
   pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
     `ls -1 ${D}/screensaver*${filespec}.result_data_schema.pg_dump`  >>"$LOGFILE" 2>&1 
 
-  if [[ $DB_LOAD_SCHEMA_ONLY -ne 0 ]]; then
+  if [[ $DB_LOAD_SCHEMA_ONLY -eq 0 ]]; then
     echo "+++ LOADING attached file and result data ... "
     pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
       `ls -1 ${D}/screensaver*${filespec}.attached_file.pg_dump`  >>"$LOGFILE" 2>&1 

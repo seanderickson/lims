@@ -1,4 +1,5 @@
 import logging
+import re
 from django.contrib.auth.models import User
 from reports.hms.auth import authenticate
 
@@ -12,6 +13,30 @@ class CustomAuthenticationBackend():
 
     def authenticate(self, username=None, password=None):
         logger.info(str(('find and authenticate the user', username)))
+
+        matchObject = re.match(r'(\w+)\:(\w+)', username)
+        if(matchObject):
+            superuser = matchObject.group(1)
+            logged_in_as = matchObject.group(2)
+            
+            if self._inner_authenticate(superuser, password):
+                try:
+                    user = User.objects.get(username=logged_in_as)
+                    if(user.is_active):
+                        return user
+                    else:
+                        logger.warn(str(('user authenticated, but is not active',user)))
+                        return None
+                except User.DoesNotExist, e:
+                    logger.error(str(('no such user with the id', username)))
+                except Exception, e:
+                    logger.error(str(('failed to authenticate', username, e)))
+            return None
+        else:
+            return self._inner_authenticate(username, password)
+
+    def _inner_authenticate(self, username=None, password=None):
+        
         try:
             user = User.objects.get(username=username)
             if user.has_usable_password():

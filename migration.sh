@@ -223,7 +223,7 @@ function bootstrap {
     error "bootstrap db failed: $?"
   fi
   
-  # Setup the server:
+  echo "bootstrap the server production data..."
   
   PYTHONPATH=. python reports/utils/db_init.py  \
     --input_dir=$BOOTSTRAP_PRODUCTION_DIR \
@@ -249,6 +249,9 @@ function frontend_setup {
   ./node_modules/.bin/grunt test >>"$LOGFILE" 2>&1
   
   cd ../..
+  
+  $DJANGO_CMD collectstatic --noinput
+  
 }
 
 function main {

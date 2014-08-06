@@ -1029,14 +1029,14 @@ class ExtensibleModelResourceMixin(ModelResource):
 
         try:
             # MODIFICATION: adding kwargs to the apply_filters call - sde
-            logger.info(str(('kwargs', kwargs)))
+            logger.debug(str(('kwargs', kwargs)))
             _kwargs = kwargs
             if 'request' in _kwargs: 
                 _kwargs = {}
             objects = self.apply_filters(bundle.request, applicable_filters, **_kwargs)
             
             if self._meta.resource_name == 'apilog':
-                logger.info(str(('kwargs', kwargs)))
+                logger.debug(str(('kwargs', kwargs)))
                 return self._meta.authorization.read_list(objects, bundle, **_kwargs)
             else:
                 return self.authorized_read_list(objects, bundle)
@@ -1272,11 +1272,15 @@ class ResourceResource(ManagedModelResource):
 class ApiLogAuthorization(UserGroupAuthorization):
     
     def read_list(self, object_list, bundle, ref_resource_name=None, **kwargs):
+        if not ref_resource_name:
+            ref_resource_name = self.resource_meta.resource_name;
         if self._is_resource_authorized(
             ref_resource_name, bundle.request.user, 'read'):
             return object_list
 
     def read_detail(self, object_list, bundle, ref_resource_name=None, **kwargs):
+        if not ref_resource_name:
+            ref_resource_name = self.resource_meta.resource_name;
         if self._is_resource_authorized(
             ref_resource_name, bundle.request.user, 'read'):
             return True
@@ -1303,9 +1307,8 @@ class ApiLogResource(ManagedModelResource):
 
     def build_schema(self):
         schema = super(ApiLogResource,self).build_schema()
-        temp = [ 
-            x.key for x in 
-                MetaHash.objects.all().filter(scope='resource').distinct('key')]
+        temp = [ x.key for x in 
+            MetaHash.objects.all().filter(scope='resource').distinct('key')]
         schema['extraSelectorOptions'] = { 
             'label': 'Resource', 
             'searchColumn': 'ref_resource_name', 'options': temp }

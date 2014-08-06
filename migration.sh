@@ -5,6 +5,11 @@
 # 
 # Migrate the Screensaver 1 database to the Screensaver 2 database
 #
+# Prerequisites
+# - Python 2.7.x, pip, virtualenv
+# - Node, NPM
+# - git
+# - postgres
 ##
 
 REALPATH=${REALPATH:-"$(which realpath 2>/dev/null)"}
@@ -38,11 +43,6 @@ DBPASSWORD=${DBPASSWORD:-""}
 SETENV_SCRIPT=${SETENV_SCRIPT:-""}
 DEBUG=${DEBUG:-false}
 RUN_DB_TESTS=${RUN_DB_TESTS:-false}
-
-# Prerequisites
-# - Python 2.7.x, pip, virtualenv
-# - Node, NPM
-# - git
 
 # PATH TO node, npm, leave blank if part of the env path already
 NODE_PATH=${NODE_PATH:-""}
@@ -104,10 +104,6 @@ function restoredb {
     fi
   fi
   
-  # create DB if exists
-  # TODO: could test for the database:
-  # psql -U screensaver screensaver -h localhost  -c '\d'
-  # if [[ $? -ne 0 ]]; then 
   if [[ $CREATE_DB -ne 0 ]]; then
     createdb -U $DBUSER $DB -h $DBHOST >>"$LOGFILE" 2>&1 || error "createdb fails with status $?" 
   fi

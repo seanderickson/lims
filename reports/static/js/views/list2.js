@@ -37,8 +37,8 @@ define([
     initialize : function(args) {
       console.log('initialize ListView: ');
       var self = this;
-      var options = self.options = args.options;
-      var resource = self.options.resource;
+      var _options = self._options = args.options;
+      var resource = self._options.resource;
       
       var ListModel = Backbone.Model.extend({
         defaults: {
@@ -62,8 +62,8 @@ define([
       var urlSuffix = self.urlSuffix = "";
       var listInitial = {};
       var searchHash = {};
-      if(_.has(self.options,'uriStack')){
-        var stack = self.options.uriStack;
+      if(_.has(self._options,'uriStack')){
+        var stack = self._options.uriStack;
         for (var i=0; i<stack.length; i++){
           var key = stack[i];
           i = i+1;
@@ -119,15 +119,15 @@ define([
       var orderStack = self.listModel.get('order') || [];
       _state.orderStack = _.clone(orderStack);
 
-      var url = self.options.resource.apiUri + '/' + self.urlSuffix;
-      if (_.has(self.options, 'url')) {
-        url = self.options.url;
+      var url = self._options.resource.apiUri + '/' + self.urlSuffix;
+      if (_.has(self._options, 'url')) {
+        url = self._options.url;
       } else {
-        self.options.url = url;   // TODO: cleanup messy initializations
+        self._options.url = url;   // TODO: cleanup messy initializations
       }
 
       var collection;
-      if( !options.collection){  
+      if( !_options.collection){  
         var Collection = Iccbl.MyCollection.extend({
           state: _state  
         });
@@ -138,24 +138,24 @@ define([
         });
         this.objects_to_destroy.push(collection);
       }else{
-        collection = self.collection = options.collection;
+        collection = self.collection = _options.collection;
         collection.listModel = listModel;
         collection.state = _state;
       }
       
       var columns;
-      if(!options.columns){
+      if(!_options.columns){
         columns = Iccbl.createBackgridColModel(
-            this.options.schemaResult.fields, Iccbl.MyHeaderCell, orderStack);
+            this._options.schemaResult.fields, Iccbl.MyHeaderCell, orderStack);
       }else{
-        columns = options.columns;
+        columns = _options.columns;
       }
 
       this.listenTo(this.listModel, 'change', this.reportState );
 
       var compiledTemplate = this.compiledTemplate = _.template(listTemplate);
 
-      this.buildGrid( columns, self.options.schemaResult );
+      this.buildGrid( columns, self._options.schemaResult );
     },
     
     getCollectionUrl: function() {
@@ -269,7 +269,7 @@ define([
           self.collection, "MyCollection:detail", 
           function (model) {
             var id = Iccbl.getIdFromIdAttribute( model, schemaResult );
-            model.resource = self.options.resource;
+            model.resource = self._options.resource;
             appModel.router.navigate(model.resource.key + '/' + id, {trigger:true});
            
           });
@@ -395,7 +395,7 @@ define([
             delete searchHash[extraSelectorKey]
             
             if(!_.isEmpty(value) && !_.isEmpty(value.trim())){
-              var field = self.options.schemaResult.fields[extraSelectorKey];
+              var field = self._options.schemaResult.fields[extraSelectorKey];
               if(field.ui_type=='boolean'){
                 searchHash[extraSelectorKey] = value;
               }else{
@@ -428,7 +428,7 @@ define([
               'click button':function(event) {
                   console.log('button click event, '); 
                   event.preventDefault();
-                  appModel.router.navigate(self.options.resource.api_resource + "/+add", {trigger:true});
+                  appModel.router.navigate(self._options.resource.api_resource + "/+add", {trigger:true});
                   return;
               },
           },
@@ -469,7 +469,7 @@ define([
     
 
     beforeRender: function(){
-      console.log('--render start');
+      console.log('--render start: ' + JSON.stringify(this._options));
       var self = this;
       self.listenTo(self.collection, "add", self.checkState);
       self.listenTo(self.collection, "remove", self.checkState);
@@ -496,7 +496,7 @@ define([
               
       // FIXME: "add" feature should be enabled declaratively, by user/group status:
       if(appModel.getCurrentUser().is_superuser
-          && _.contains(self.options.resource.visibility, 'add')){
+          && _.contains(self._options.resource.visibility, 'add')){
         self.$("#table-footer-div").append(self.footer.$el);
       }
 
@@ -515,15 +515,15 @@ define([
 
       this.listenTo(self.collection, 'sync', function(event){
         var msg = ''; 
-        if (self.options.header_message) {
+        if (self._options.header_message) {
           if (msg) msg += ', ';
-          msg += self.options.header_message;
+          msg += self._options.header_message;
         }
         if (msg) msg += ', ';
         msg += 'Page ' + self.collection.state.currentPage + 
                ' of ' + ( self.collection.state.lastPage ? self.collection.state.lastPage:1 ) + 
                ' pages, ' + self.collection.state.totalRecords + 
-               ' ' + self.options.resource.title + ' records';
+               ' ' + self._options.resource.title + ' records';
         self.$('#header_message').html(msg);
       });
       

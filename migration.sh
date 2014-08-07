@@ -250,7 +250,7 @@ function frontend_setup {
   
   cd ../..
   
-  $DJANGO_CMD collectstatic --noinput
+  $DJANGO_CMD collectstatic --noinput --ignore="*node_modules*" --ignore="*bower_components*"
   
 }
 

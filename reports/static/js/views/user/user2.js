@@ -25,6 +25,7 @@ define([
   var UserView = Backbone.Layout.extend({
 
     initialize: function(args) {
+      var self = this;
       this.tabViews = {}; // view cache
       this.uriStack = args.uriStack;
       this.consumedStack = [];

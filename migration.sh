@@ -5,6 +5,11 @@
 # 
 # Migrate the Screensaver 1 database to the Screensaver 2 database
 #
+# Prerequisites
+# - Python 2.7.x, pip, virtualenv
+# - Node, NPM
+# - git
+# - postgres
 ##
 
 REALPATH=${REALPATH:-"$(which realpath 2>/dev/null)"}
@@ -20,15 +25,16 @@ LOGFILE=${LOGFILE:-${BASEDIR:+"$BASEDIR/migration.log"}}
 
 if [[ $# -lt 2 ]]
 then
-  echo "Usage: $0 [branch] [repository] [short|full]"
+  echo "Usage: $0 [branch] [repository] [migration_file]"
   exit $WRONG_ARGS
 fi 
 
 BRANCH=$1
 REMOTE=$2
-RUN_TYPE=${3:-"short"}
+#MIGRATION_PROPERTIES_FILE=${3:-${MIGRATION_PROPERTIES_FILE:-${BASE_DIR:+"$BASE_DIR/migration.properties"}}}
+MIGRATION_PROPERTIES_FILE=${3:-${MIGRATION_PROPERTIES_FILE:-"./migration.properties"}}
 
-source ./migration.properties
+source $MIGRATION_PROPERTIES_FILE
 
 DBUSER=${DBUSER:-"screensaver-lims"}  
 DB=${DB:-"screensaver-lims"}  
@@ -37,11 +43,6 @@ DBPASSWORD=${DBPASSWORD:-""}
 SETENV_SCRIPT=${SETENV_SCRIPT:-""}
 DEBUG=${DEBUG:-false}
 RUN_DB_TESTS=${RUN_DB_TESTS:-false}
-
-# Prerequisites
-# - Python 2.7.x, pip, virtualenv
-# - Node, NPM
-# - git
 
 # PATH TO node, npm, leave blank if part of the env path already
 NODE_PATH=${NODE_PATH:-""}
@@ -96,13 +97,13 @@ function restoredb {
   if [[ -x "$DROP_DB_COMMAND" ]]; then
     $DROP_DB_COMMAND $DB $DBUSER >>"$LOGFILE" 2>&1 || error "dropdb failed: $?"
   else
-    dropdb -U $DBUSER $DB -h $DBHOST >>"$LOGFILE" 2>&1 || error "dropdb failed: $?"
+    # test if the db exists
+    psql -h $DBHOST -U $DBUSER -lqt | cut -d \| -f 1 | grep -w $DB
+    if [[ $? ]]; then
+      dropdb -U $DBUSER $DB -h $DBHOST >>"$LOGFILE" 2>&1 || error "dropdb failed: $?"
+    fi
   fi
   
-  # create DB if exists
-  # TODO: could test for the database:
-  # psql -U screensaver screensaver -h localhost  -c '\d'
-  # if [[ $? -ne 0 ]]; then 
   if [[ $CREATE_DB -ne 0 ]]; then
     createdb -U $DBUSER $DB -h $DBHOST >>"$LOGFILE" 2>&1 || error "createdb fails with status $?" 
   fi
@@ -126,7 +127,7 @@ function restoredb {
   pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
     `ls -1 ${D}/screensaver*${filespec}.result_data_schema.pg_dump`  >>"$LOGFILE" 2>&1 
 
-  if [[ $DB_LOAD_SCHEMA_ONLY -eq 0 ]]; then
+  if [[ ( $DB_LOAD_SCHEMA_ONLY -eq 0 && $DB_SKIP_BIG_FILES -eq 0 ) ]]; then
     echo "+++ LOADING attached file and result data ... "
     pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
       `ls -1 ${D}/screensaver*${filespec}.attached_file.pg_dump`  >>"$LOGFILE" 2>&1 
@@ -222,7 +223,7 @@ function bootstrap {
     error "bootstrap db failed: $?"
   fi
   
-  # Setup the server:
+  echo "bootstrap the server production data..."
   
   PYTHONPATH=. python reports/utils/db_init.py  \
     --input_dir=$BOOTSTRAP_PRODUCTION_DIR \
@@ -248,6 +249,9 @@ function frontend_setup {
   ./node_modules/.bin/grunt test >>"$LOGFILE" 2>&1
   
   cd ../..
+  
+  $DJANGO_CMD collectstatic --noinput --ignore="*node_modules*" --ignore="*bower_components*"
+  
 }
 
 function main {
@@ -264,7 +268,7 @@ function main {
   if [[ -n "$SETTINGS_FILE" ]]; then
     cp $SETTINGS_FILE lims/settings.py
   else  
-    cp lims/settings_migration.py lims/settings.py
+    cp lims/settings-dist.py lims/settings.py
   fi
   
   mkdir logs
@@ -282,12 +286,46 @@ function main {
   
   bootstrap
   
-  # run some grunt-mocha chai-jquery to test the UI?  
+  # Integration test: run some grunt-mocha chai-jquery to test the UI?  
 }
+
+function code_bootstrap {
+  # performs a full update, minus the database restoration
+  gitpull
+  
+  # restoredb
+    
+  maybe_activate_virtualenv
+  
+  pip install -r requirements.txt >>"$LOGFILE" 2>&1
+
+  if [[ -n "$SETTINGS_FILE" ]]; then
+    cp $SETTINGS_FILE lims/settings.py
+  else  
+    cp lims/settings-dist.py lims/settings.py
+  fi
+  
+  mkdir logs
+  
+  if [[ $RUN_DB_TESTS -ne 0 ]] ; then
+    $DJANGO_CMD test --verbosity=2 --settings=lims.settings_testing  \
+      >> "$LOGFILE" 2>&1 || error "django tests failed: $?"
+  fi
+  
+  frontend_setup
+  
+  django_syncdb
+  
+  migratedb
+  
+  bootstrap
+}  
 
 
 main "$@"
 
+#code_bootstrap "$@"
+  
 # frontend_setup "$@"
 
 # bootstrap "$@"

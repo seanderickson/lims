@@ -690,8 +690,8 @@ class Migration(SchemaMigration):
             ('date_publicly_available', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
             ('perturbagen_molar_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=13, decimal_places=12, blank=True)),
             ('perturbagen_ug_ml_concentration', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=5, decimal_places=3, blank=True)),
-            ('status', self.gf('django.db.models.fields.TextField')(null=True, blank=True)),
-            ('status_date', self.gf('django.db.models.fields.DateField')(null=True, blank=True)),
+#             ('status', self.gf('django.db.models.fields.TextField')(null=True, blank=True)),
+#             ('status_date', self.gf('django.db.models.fields.DateField')(null=True, blank=True)),
         ))
         db.send_create_signal(u'db', ['Screen'])
 
@@ -2065,8 +2065,8 @@ class Migration(SchemaMigration):
             'screened_experimental_well_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
             'see_comments': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
             'species': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'status': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            'status_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
+#             'status': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
+#             'status_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'study_type': ('django.db.models.fields.TextField', [], {}),
             'summary': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'title': ('django.db.models.fields.TextField', [], {}),

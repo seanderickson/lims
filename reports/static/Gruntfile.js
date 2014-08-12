@@ -35,7 +35,8 @@ module.exports = function (grunt) {
   
   gruntConfig.bowercopy = {
     options: {
-        srcPrefix: 'bower_components'
+        srcPrefix: 'bower_components',
+        clean: true
     },
     scripts: {
         options: {

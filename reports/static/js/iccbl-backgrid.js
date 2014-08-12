@@ -19,8 +19,10 @@
  *
  * For details please refer to: https://github.com/hmsiccbl/lims
  **/
-// TODO: lunr should not be a requirement - for client side filtering,
+
+// FIXME: lunr should not be a requirement - for server side filtering,
 // and backgrid_filter is requiring it.
+
 define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid', 
         'backgrid_filter', 'backgrid_paginator', 'backgrid_select_all', 'lunr',
         'layoutmanager'],
@@ -106,10 +108,7 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
     },
     
     pop: function() {
-      
     },
-    
-    
     
   });
   

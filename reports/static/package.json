@@ -1,7 +1,7 @@
 {
   "name": "iccb-lims",
   "version": "0.0.1",
-  "description": "Javascript build environment for the ICCBL-LIMS",
+  "description": "Node/NPM - Javascript build environment for the ICCBL-LIMS",
   "author": "Sean Erickson <sean_erickson @ hms.harvard.edu>",
   "devDependencies": {
     "grunt-cli": ">0.1.6",

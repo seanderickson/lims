@@ -22,7 +22,8 @@
         "detailView": "DetailView",
         "api_resource": "screensaveruser",
         "url_root": "/db/api/v1",
-        "description": "View user information"
+        "description": "View user information",
+        "options": { "order": ["last_name","first_name"] }
     },
 
     "screeners": {
@@ -34,7 +35,9 @@
         "api_resource": "screensaveruser",
         "url_root": "/db/api/v1",
         "description": "View user information",
-        "options": { "search": {"screeningroomuser__isnull": "False"} }
+        "options": { 
+          "search": {"screeningroomuser__isnull": "False"}, 
+          "order": ["last_name","first_name"] }
     },
 
     "staff": {
@@ -46,7 +49,9 @@
         "api_resource": "screensaveruser",
         "url_root": "/db/api/v1",
         "description": "View user information",
-        "options": { "search": {"administratoruser__isnull": "False"} }
+        "options": { 
+          "search": {"administratoruser__isnull": "False"},
+          "order": ["last_name","first_name"] }
     },
     "screen": {
         "header_message": "All screens (Small Molecule and RNAi)",
@@ -57,7 +62,9 @@
         "api_resource": "screen",
         "url_root": "/db/api/v1",
         "description": "View screen information",
-        "options": { "order_by": { "facility_id":"-"} }
+        "options": { 
+          "search": { "project_phase__ne": "annotation" }, 
+          "order": [ "facility_id"] }
     },
     "small_molecule_screens": {
         "header_message": "Small Molecule Screens",
@@ -68,7 +75,10 @@
         "api_resource": "screen",
         "url_root": "/db/api/v1",
         "description": "View small molecule screen information",
-        "options": { "search": { "screen_type": "small_molecule"} }
+        "options": { 
+          "search": { "screen_type": "small_molecule",
+                      "project_phase__ne": "annotation" },
+          "order": ["facility_id"] }
     },
     "rnai_screens": {
         "header_message": "All screens (Small Molecule and RNAi)",
@@ -79,7 +89,10 @@
         "api_resource": "screen",
         "url_root": "/db/api/v1",
         "description": "View rnai screen information",
-        "options": { "search": { "screen_type": "rnai"} }
+        "options": { 
+          "search": { "screen_type": "rnai",
+                      "project_phase__ne": "annotation" },
+          "order": ["facility_id"] }
     },
     "library": {
         "header_message": "All libraries (Small Molecule and RNAi)",
@@ -89,7 +102,8 @@
         "detailView": "LibraryView",
         "api_resource": "library",
         "url_root": "/db/api/v1",
-        "description": "View library information"
+        "description": "View library information",
+        "options": { "order": ["library_name"] }
     },
     "smallmoleculelibrary": {
         "header_message": "Small Molecule Libraries",
@@ -100,7 +114,9 @@
         "api_resource": "library",
         "url_root": "/db/api/v1",
         "description": "View Small Molecule Library information",
-        "options": { "search": { "screen_type": "small_molecule"} }
+        "options": { 
+          "search": { "screen_type": "small_molecule"}, 
+          "order": ["library_name"] }
     },
     "rnalibrary": {
         "header_message": "RNAi Libraries",
@@ -111,6 +127,8 @@
         "api_resource": "library",
         "url_root": "/db/api/v1",
         "description": "View RNAi library information",
-        "options": { "search": { "screen_type": "rnai"} }
+        "options": { 
+          "search": { "screen_type": "rnai"}, 
+          "order": ["library_name"]  }
     }
 }

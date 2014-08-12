@@ -945,7 +945,15 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     });
 
     if(!_.isEmpty(_data)){
-      self.fetch({data:_.clone(_data), reset: true});
+      self.fetch();
+      // TODO: 2014-04-11: not sure why removing this works:
+      // removed to fix sort not working when custom searches 
+      // are used. Custom searches seem to still work: further testing of search
+      // may reveal problems. (problem was that sort badge indicators would not render
+      // when there was a custom search).
+      // (this was cargo culted from backgrid header search)
+      // 
+      //      self.fetch({data:_.clone(_data), reset: true});
     }else{
       self.fetch();
     }

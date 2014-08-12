@@ -62,6 +62,7 @@ define([
       var urlSuffix = self.urlSuffix = "";
       var listInitial = {};
       var searchHash = {};
+      var orderings = []
       if(_.has(self._options,'uriStack')){
         var stack = self._options.uriStack;
         for (var i=0; i<stack.length; i++){
@@ -95,7 +96,8 @@ define([
                 }
               });
             } else if (key === 'order') {
-              listInitial[key] = value.split(',');        
+              orderings = value.split(',');
+              //listInitial[key] = value.split(',');        
             }else {
               listInitial[key] = value;
             }
@@ -107,6 +109,31 @@ define([
       if(!_.isEmpty(searchHash)){
         listInitial['search'] = searchHash;
       }
+      
+      if(!_.isUndefined(resource.options)
+          && ! _.isUndefined(resource.options.order)){
+        if(!_.isEmpty(resource.options.order)){
+          // TODO: to complicated: should deal with orderings as a hash, to simplify
+          orderings = _.union(orderings,resource.options.order);
+          var orderHash = {};
+          _.each(orderings, function(item){
+            var dir = item.substring(0,1);
+            var fieldname = item;
+            if(dir == '-'){
+              fieldname = item.substring(1);
+            }else{
+              dir = '';
+            }
+            if(!_.has(orderHash,fieldname)){
+              orderHash[fieldname] = dir;
+            }else{
+              orderings = _.without(orderings, item);
+            }
+          });
+        }
+      }
+      listInitial['order'] = orderings;
+      
       var listModel = this.listModel = new ListModel(listInitial);
 
       this.objects_to_destroy = _([]);
@@ -469,7 +496,6 @@ define([
     
 
     beforeRender: function(){
-      console.log('--render start: ' + JSON.stringify(this._options));
       var self = this;
       self.listenTo(self.collection, "add", self.checkState);
       self.listenTo(self.collection, "remove", self.checkState);
@@ -531,6 +557,10 @@ define([
         var fetchOptions = { reset: false, error: appModel.jqXHRerror };
         self.collection.fetch(fetchOptions);
       }
+      
+      // Note: replace: true - to suppress router history:
+      // at this point, reportState is modifying the URL to show rpp, pagesSize, etc.
+      appModel.set('routing_options', {replace: true});  
       self.reportState();
       return this;
     }

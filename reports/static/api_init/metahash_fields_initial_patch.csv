@@ -19,3 +19,7 @@ backgrid_cell_options,fields.metahash,/reports/api/v1/metahash/fields.metahash/b
 default,fields.metahash,/reports/api/v1/metahash/fields.metahash/default/,25,fields.CharField,default,string,FALSE,"Default value for new instances",Default,FALSE,,"[detail,edit]",,,
 is_restricted,fields.metahash,/reports/api/v1/metahash/fields.metahash/is_restricted/,26,CsvBooleanField,"Field permissions follow the resource permissions, unless the field is restricted, in which case explicit permissions must be given for this field.",boolean,FALSE,"Whether this field requires explicit permissions to view, edit, or create","Is Restricted",FALSE,,"[list,detail,edit,create]",,,
 nested_resource,fields.metahash,/reports/api/v1/metahash/fields.metahash/nested_resource/,27,fields.CharField,,Select,FALSE,"The resource ID for the nested resource","Nested Resource",FALSE,,"[list,detail,edit]",,,
+required,fields.metahash,/reports/api/v1/metahash/fields.metahash/required/,28,CsvBooleanField,,boolean,,"Does this field require a value?",Required,FALSE,,"[detail,edit]",,,
+format,fields.metahash,/reports/api/v1/metahash/fields.metahash/format/,29,fields.CharField,,string,,"Regex format that this field must comply to",Format,,,"[detail,edit]",,,
+min,fields.metahash,/reports/api/v1/metahash/fields.metahash/min/,30,fields.IntegerField,,integer,,"Minimum allowed value",Min,,,"[detail,edit]",,,
+max,fields.metahash,/reports/api/v1/metahash/fields.metahash/max/,31,fields.IntegerField,,integer,,"Maximum allowed value",Max,,,"[detail,edit]",,,

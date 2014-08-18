@@ -7,7 +7,8 @@ define([
   'models/app_state',
   'views/list2',
   'views/generic_detail_layout',
-  'views/library',
+  'views/generic_edit',
+  'views/library/library',
   'views/user/user2',
   'views/usergroup/usergroup2',
   'text!templates/content.html',
@@ -15,7 +16,7 @@ define([
   'text!templates/about.html'
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
-         LibraryView, UserAdminView, UserGroupAdminView, layout, welcomeLayout, 
+         EditView, LibraryView, UserAdminView, UserGroupAdminView, layout, welcomeLayout, 
          aboutLayout) {
   
   
@@ -66,6 +67,59 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
 //        'title': this.title
 //      };
 //    },
+    
+    showAdd: function(resource, uriStack){
+      var self = this;
+
+      // Note: have to fill up the default fields so that the edit form will
+      // show those fields
+      var defaults = {};
+      _.each(_.keys(resource.schema.fields), function(key){
+        
+        var field = resource.schema.fields[key];
+        if(_.isArray(field.visibility)  
+            && _.contains(field.visibility, 'edit')){
+          console.log('add field: ' + field.key );
+        
+          if (key == 'resource_uri') {
+              defaults[key] = self.options.url;
+          } else if (key == 'id'){
+            // nop 
+            // always exclude the id field to signal create case to the server
+          } else {
+            if(!_.isEmpty(field.default)){
+              defaults[key] = field.default;
+            }else{
+              defaults[key] = ''; // fill the rest of the fields with blanks
+            }
+          }
+        }
+      });
+
+      var NewModel = Backbone.Model.extend({
+        urlRoot: resource.apiUri , defaults: defaults 
+      });
+      var newModel = new NewModel();
+      newModel.resource = resource;
+      
+      this.$('#content_title').html(resource.title + ': Add' );
+      var viewClass = DetailLayout;
+//      if (_.has(resource, 'detailView')){
+//        if (_.has(VIEWS, resource['detailView'])) {
+//          viewClass = VIEWS[resource['detailView']];
+//          console.log('found view ' + resource['detailView']);
+//        }else{
+//          var msg = 'detailView class specified could not be found: ' + 
+//              resource['detailView'];
+//          console.log(msg);
+//          throw msg;
+//        }
+//      }
+      var view = new viewClass({ model: newModel, uriStack: uriStack});
+      Backbone.Layout.setupView(view);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView('#content', view).render();
+    },
     
     showDetail: function(uriStack, model){
       var self = this;
@@ -182,26 +236,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         // DETAIL VIEW
         
         if(uriStack[0] == '+add'){
-          // Note: have to fill up the default fields so that the edit form will
-          // show those fields
-          var defaults = {};
-          _.each(resource.schema.fields, function(value, key){
-            if (key == 'resource_uri') {
-                defaults[key] = self.options.url;
-            } else if (key == 'id'){
-              // nop 
-              // always exclude the id field to signal create case to the server
-            } else {
-                 defaults[key] = ''; // fill the rest of the fields with blanks
-            }
-          });
-
-          var NewModel = Backbone.Model.extend({
-            urlRoot: resource.apiUri , defaults: defaults 
-          });
-          var newModel = new NewModel();
-          newModel.resource = resource;
-          self.showDetail(uriStack, newModel);
+//          consumedStack = uriStack.unshift();
+          self.showAdd(resource, uriStack);
         }else{ 
           var _key = Iccbl.popKeyFromStack(resource, uriStack, consumedStack );
           appModel.getModel(uiResourceId, _key, function(model){

@@ -30,11 +30,11 @@ define([
       this.uriStack = args.uriStack;
       this.consumedStack = [];
       this.title = Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource.schema);
-      this.model.id = Iccbl.getIdFromIdAttribute(this.model, this.model.resource.schema);
+//      this.model.id = Iccbl.getIdFromIdAttribute(this.model, this.model.resource.schema);
 
       _.each(_.keys(this.tabbed_resources), function(key){
         if(key !== 'detail' && !appModel.hasPermission(
-            'permission/resource/' + self.tabbed_resources[key].resource + '/read')){
+            self.tabbed_resources[key].resource,'read')){
           delete self.tabbed_resources[key];
         }
       });

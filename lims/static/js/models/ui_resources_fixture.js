@@ -103,7 +103,7 @@
         "api_resource": "library",
         "url_root": "/db/api/v1",
         "description": "View library information",
-        "options": { "order": ["library_name"] }
+        "options": { "order": ["short_name"] }
     },
     "smallmoleculelibrary": {
         "header_message": "Small Molecule Libraries",
@@ -116,7 +116,7 @@
         "description": "View Small Molecule Library information",
         "options": { 
           "search": { "screen_type": "small_molecule"}, 
-          "order": ["library_name"] }
+          "order": ["short_name"] }
     },
     "rnalibrary": {
         "header_message": "RNAi Libraries",
@@ -129,6 +129,6 @@
         "description": "View RNAi library information",
         "options": { 
           "search": { "screen_type": "rnai"}, 
-          "order": ["library_name"]  }
+          "order": ["short_name"]  }
     }
 }

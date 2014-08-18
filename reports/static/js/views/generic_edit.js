@@ -33,13 +33,23 @@ define([
   
   var EditView = Backbone.Form.extend({
 
+    
+    /**
+     * Child view bubble up URI stack change event
+     */
+    reportUriStack: function(reportedUriStack) {
+      var consumedStack = this.consumedStack || [];
+      var actualStack = consumedStack.concat(reportedUriStack);
+      this.trigger('uriStack:change', actualStack );
+    },
+    
+    
     initialize: function(args) {
       console.log('---- initialize EditView');
       this.uriStack = args.uriStack;
-      this.consumedStack = []; // TODO: not used
+      this.consumedStack = []; 
       
       Backbone.Form.prototype.initialize.apply(this,args);
-
     },
 
     events: {
@@ -210,12 +220,18 @@ define([
       var url = _.result(this.model, 'url');
       ////    if ( url && url.indexOf(key) != -1 ) {
       ////    url = url.substring( 0,url.indexOf(key) );
-      ////  }        
+      ////  }    
+      
+      // TODO: this should be standard to have url end with '/'
+      if( url && url.charAt(url.length-1) != '/'){
+        url += '/';
+      }
       
       var _patch = true;
       if (_.contains(this.uriStack, '+add')){
         _patch = false;
-        url += key;
+        // NOTE: don't set the key, since this is a create/POST to the resource URL
+        //        url += key;
       }else{
         // TODO: check if creating new or updating here
         // set the id specifically on the model: backbone requires this to 
@@ -223,19 +239,33 @@ define([
         this.model.id = key;
       }
       
-
       this.model.save(null, {
         url: url, // set the url property explicitly
         patch: _patch,
+        // Note:
+        // You have to send { dataType: 'text' } to have the success function 
+        // work with jQuery and empty responses ( otherwise, fails on JSON.parse 
+        // of the empty response).        
+        //        dataType: 'text', 
+        // The other solution: use "always_return_data" in the tastypie
+        // resource definitions - which we are doing.
         headers: {
-        'APILOG_COMMENT': self.model.get('comment')
+          'APILOG_COMMENT': self.model.get('comment')
         }
       })
+      .success(function(model, resp){
+        // note, not a real backbone model, just JSON
+        model = new Backbone.Model(model);
+        var key = Iccbl.getIdFromIdAttribute( model,self.model.resource.schema );
+//        appModel.set('routing_options', {trigger: true});
+//        self.reportUriStack([key]);
+        appModel.router.navigate(self.model.resource.key + '/' + key, {trigger:true});
+      })
       .done(function(model, resp){
-        // done replaces success as of jq 1.8
+        // TODO: done replaces success as of jq 1.8
         console.log('model saved');
       })
-      .fail(appModel.jqXHRFail)
+      .error(appModel.jqXHRFail)
       .always(function() {
         // always replaces complete as of jquery 1.8
         self.trigger('remove');

@@ -50,6 +50,7 @@ define([
         this.subviews['detail'] = view;
       }
       this.setView("#detail_content", view ).render();
+      this.reportUriStack([]);
     },
     
     clickEdit: function(event){
@@ -68,20 +69,22 @@ define([
       this.listenTo(view,'remove',function(){
         this.showDetail();
       });
-      
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#detail_content", view ).render();
     },    
     
     showAdd: function() {
       var view = this.subviews['add'];
       if (!view) {
-        view = new EditView({ model: this.model, uriStack: ['add'] });
+        // TODO: "+add" is signaling to the editview 
+        view = new EditView({ model: this.model, uriStack: ['+add'] });
         Backbone.Layout.setupView(view);
         this.subviews['add'] = view;
       }
       this.listenTo(view,'remove',function(){
         this.showDetail();
       });
+      this.listenTo(view , 'uriStack:change', this.reportUriStack);
       this.setView("#detail_content", view ).render();
     },
     

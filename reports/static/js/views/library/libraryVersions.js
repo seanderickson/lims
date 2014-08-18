@@ -7,7 +7,7 @@ define([
   'models/app_state',
   'views/list2',
   'views/generic_detail_layout',
-  'views/library',
+  'views/library/library',
   'text!templates/genericResource.html'
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
@@ -18,7 +18,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     'DetailView': DetailLayout
   };
     
-  var LibraryCopyPlateView = Backbone.Layout.extend({
+  var LibraryWellView = Backbone.Layout.extend({
     
     template: _.template(layout),
     
@@ -26,7 +26,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       this.uriStack = args.uriStack;
       this.library = args.library;
       this.consumedStack = [];
-      _.bindAll(this, 'showDetail','showList');
+      _.bindAll(this, 'showDetail');
     },
     
     /**
@@ -43,28 +43,26 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var uriStack = this.uriStack;
       var library = this.library;
 
-      var url = library.resource.apiUri +'/' + library.key + '/plate/';
-      var resourceId = 'librarycopyplate';
+      var url = library.resource.apiUri +'/' + library.key + '/version/';
+      var resourceId = 'librarycontentsversion';
       var resource = appModel.getResource(resourceId);
 
       // Test for list args, if not found, then it's a detail view
       if (!_.isEmpty(uriStack) && !_.isEmpty(uriStack[0]) &&
               !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
-
         // Determine the key from the stack:
         // Note: because this is in the context of a library, the key for the 
-        // librarycopyplate can be simpler, ignoring the library__short_name,
+        // version can be simpler, ignoring the library__short_name
         var _key;
-        if (uriStack[0] !== library.key) {
-          // assume that it is the copy name/plate_number
-          this.consumedStack = [uriStack[0],uriStack[1]];
-        } else {
-          this.consumedStack = [uriStack[1],uriStack[2]];
-        } 
-        uriStack.shift();
-        uriStack.shift();
-        _key = library.key + '/' + this.consumedStack.join('/');
-
+        var stackItem = uriStack.shift();
+        if(stackItem !== library.key) {
+          // assume that it is version_number
+        }else{
+          stackItem = uriStack.shift();// else shift the library_short_name off
+        }
+        this.consumedStack = [stackItem];
+        
+        _key = library.key + '/' + stackItem;
         appModel.getModel(resourceId, _key, this.showDetail );
       } else {
         this.consumedStack = [];
@@ -108,8 +106,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       Backbone.Layout.setupView(view);
       self.setView('#content', view ).render();
-    }
+    },
   });
 
-  return LibraryCopyPlateView;
+  return LibraryWellView;
 });

@@ -210,38 +210,68 @@ define([
         // resource, omit
         var new_submenus = {}
         _.each(_.keys(menu.submenus), function(key){
-          var r_perm = 'permission/resource/'+key
-          var match = false;
-          _.each(self.getCurrentUser().all_permissions, function(permission){
-            // NOTE: allow match of [either] 'read' or 'write'
-            if(permission.indexOf(r_perm) > -1 ) {
-              match = true;
-            }
-          })
-          if(match){
+          if(self.hasPermission(key)){
             new_submenus[key] = menu.submenus[key];
           }else{
             console.log('user: ' + currentUser.username 
                 + ', doesnt have permission to view the menu: ' + key );
           }
+//          var r_perm = 'permission/resource/'+key
+//          var match = false;
+//          _.each(self.getCurrentUser().all_permissions, function(permission){
+//            // NOTE: allow match of [either] 'read' or 'write'
+//            if(permission.indexOf(r_perm) > -1 ) {
+//              match = true;
+//            }
+//          })
+//          if(match){
+//            new_submenus[key] = menu.submenus[key];
+//          }else{
+//            console.log('user: ' + currentUser.username 
+//                + ', doesnt have permission to view the menu: ' + key );
+//          }
         });
         menu.submenus = new_submenus;
       }
       return menu;
     },
     
-    hasPermission: function(p_check){
+//    hasPermission: function(p_check){
+//      var self = this;
+//      var current_user = self.getCurrentUser();
+//      if (current_user.is_superuser){
+//        return true;
+//      }
+//      var result = _.find(current_user.all_permissions, function(permission){
+//        console.log('check for perm: ' + permission);
+//        return permission.indexOf(p_check) > -1;
+//      });
+//      console.log("perm check: " + p_check + ',' + result);
+//      return result;
+//    },
+    
+    /**
+     * Test if the current user has the resource/permission - 
+     * - if permission is unset, 
+     * will check if the user has *any* permission on the resource.
+     */
+    hasPermission: function(resource, permission){
+      
       var self = this;
-      var current_user = self.getCurrentUser();
-      if (current_user.is_superuser){
-        return true;
-      }
-      var result = _.find(current_user.all_permissions, function(permission){
-        console.log('check for perm: ' + permission);
-        return permission.indexOf(p_check) > -1;
-      });
-      console.log("perm check: " + p_check + ',' + result);
-      return result;
+      if(self.getCurrentUser().is_superuser) return true;
+      
+      var r_perm = 'permission/resource/'+ resource;
+      if(!_.isUndefined(permission)){
+        r_perm += '/'+ permission;
+      }// otherwise, will return true if user has either permission
+      var match = _.find(
+          self.getCurrentUser().all_permissions, 
+          function(p){
+            if(p.indexOf(r_perm) > -1 ) {
+              return true;
+            }
+          });
+      return !_.isUndefined(match);
     },
     
     /**
@@ -304,28 +334,41 @@ define([
       // TODO: use Bootstrap inscreen alert classed message div
     },
     
-    jqXHRFail: function(xhr, text){
+    jqXHRFail: function(xhr, text, message){
       var self = this;
       
-      // fail replaces error as of jquery 1.8
-      var msg = '';
+      var msg = message;
       if ( _.has(xhr,'responseJSON' ) ) {
+        
         if ( _.has( xhr.responseJSON, 'error_message') ) {
-          msg = xhr.responseJSON.error_message;
+          msg += ': ' + xhr.responseJSON.error_message;
         }
         else if ( _.has( xhr.responseJSON, 'error') ) {
-          msg = xhr.responseJSON.error;
+          msg += ': ' + xhr.responseJSON.error;
+        }else{
+          msg += xhr.responseText;
         }
+        
       } else {
+        
         var re = /([\s\S]*)Request Method/;
         var match = re.exec(xhr.responseText);
+        
         if (match) {
-          msg = match[1] + ': ' + xhr.status + ':' + xhr.statusText;
+          msg += ': ' + match[1] + ': ' + xhr.status + ':' + xhr.statusText;
         } else {
-          msg = xhr.status + ':' + xhr.statusText;
+        
+          try{
+            var rtext = JSON.parse(xhr.responseText);
+            msg += ':' + rtext.error_message;
+          } catch (e) {
+            console.log('couldnt parse responseText: ' + xhr.responseText)
+            msg += ': ' +  xhr.status + ':' + xhr.statusText + ', ' + xhr.responseText;
+          }
         }              
+        
       }
-      self.error('Server error: ' + msg);
+      self.error(msg);
     },
     
     error: function(msg){

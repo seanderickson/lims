@@ -157,16 +157,16 @@ class LibraryContentLoadTest(MetaHashResourceBootstrap,ResourceTestCase):
         pass;
         
 
-class LibraryTest(MetaHashResourceBootstrap,ResourceTestCase):
+class LibraryResource(MetaHashResourceBootstrap,ResourceTestCase):
 
     def setUp(self):
-        logger.debug('============== LibraryTest setup ============')
-        super(LibraryTest, self).setUp()
-        super(LibraryTest, self)._setUp()
+        logger.debug('============== LibraryResource setup ============')
+        super(LibraryResource, self).setUp()
+        super(LibraryResource, self)._setUp()
         # load the bootstrap files, which will load the metahash fields, 
         # and the resource definitions
-        super(LibraryTest, self)._bootstrap_init_files()
-        logger.debug('============== LibraryTest setup: begin ============')
+        super(LibraryResource, self)._bootstrap_init_files()
+        logger.debug('============== LibraryResource setup: begin ============')
         self.db_resource_uri = BASE_URI + '/metahash'
         self.db_directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
         
@@ -176,7 +176,7 @@ class LibraryTest(MetaHashResourceBootstrap,ResourceTestCase):
         self._patch_test(
             'metahash', filename, data_for_get={ 'scope':'fields.library'})
 
-        logger.debug('============== LibraryTest setup: done ============')
+        logger.debug('============== LibraryResource setup: done ============')
         
 
     def test1_create_library(self):

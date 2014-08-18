@@ -23,8 +23,11 @@ define([
 //          args.buttons || ['edit','delete','download','history','back'];
       var buttons = this.buttons = args.buttons || ['download','history','back'];
       
-      if(appModel.getCurrentUser().is_superuser){
+      if(appModel.hasPermission(self.model.resource.key, 'edit')){
         this.buttons.unshift('edit');
+      }
+
+      if(appModel.getCurrentUser().is_superuser){
         this.buttons.unshift('delete');
       }
       
@@ -57,8 +60,8 @@ define([
         bindings['#'+key] = {
           observe: key,
           onGet: function(value) {
-            if (!_.isEmpty(value)) return value;
-            else return '-';
+            if (_.isUndefined(value) || _.isNull(value)) return '-';
+            else return value;
           }
         };
         schemaBindings['#title-'+key] = {

@@ -352,7 +352,8 @@ class UserGroup(models.Model):
 #         return users
     
     def __unicode__(self):
-        return unicode(str((self.name, [x for x in self.users.all()])))
+        return unicode(str((self.name)) )
+#         return unicode(str((self.name, [x for x in self.users.all()])))
     
     
 #     groups = models.ManyToManyField('self', through='reports.Membership', 

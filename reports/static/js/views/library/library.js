@@ -8,16 +8,17 @@ define([
   'iccbl_backgrid',
   'layoutmanager',
   'models/app_state',
-  'views/libraryCopies', 
-  'views/libraryCopyPlates', 
-  'views/libraryWells', 
-  'views/libraryVersions',
+  'views/library/libraryCopies', 
+  'views/library/libraryCopyPlates', 
+  'views/library/libraryWells', 
+  'views/library/libraryVersions',
   'views/generic_detail_layout',
+  'views/generic_edit',
   'views/list2',
   'text!templates/library.html'
 ], function($, _, Backbone, Iccbl, layoutmanager, appModel, LibraryCopiesView, 
             LibraryCopyPlatesView, LibraryWellsView, LibraryVersionsView,
-            DetailLayout, ListView, 
+            DetailLayout, EditView, ListView, 
             libraryTemplate) {
   
   var LibraryView = Backbone.Layout.extend({
@@ -29,7 +30,7 @@ define([
       this.consumedStack = [];
       
       _.each(_.keys(this.tabbed_resources), function(key){
-        if(key !== 'detail' && !appModel.hasPermission(self.tabbed_resources[key].permission)){
+        if(key !== 'detail' && !appModel.hasPermission(self.tabbed_resources[key].resource)){
           delete self.tabbed_resources[key];
         }
       });
@@ -45,23 +46,28 @@ define([
         title: 'Library Details', 
         invoke: 'setDetail'
       },
+//      add: { 
+//        description: 'Add Library', 
+//        title: 'Add Library', 
+//        invoke: 'showAdd'
+//      },
       copy: { 
         description: 'Copies', title: 'Copies', invoke: 'setCopies',
-        permission: 'permission/resource/librarycopy/read'
+        resource: 'librarycopy'
       },
       plate: { 
         description: 'Plates', title: 'Plates', invoke: 'setPlates' ,
-        permission: 'permission/resource/librarycopyplate/read'
+        resource: 'librarycopyplate'
       },
       well: { 
         description: 'Well based view of the library contents', 
         title: 'Wells', invoke: 'setWells' ,
-        permission: 'permission/resource/well/read'
+        resource: 'well'
       },
       version: { 
         description: 'Library contents version', 
         title: 'Versions', invoke: 'setVersions' ,
-        permission: 'permission/resource/librarycontentsversion/read'
+        resource: 'librarycontentsversion'
       }
     },      
     
@@ -98,6 +104,12 @@ define([
       var viewId = 'detail';
       if (!_.isEmpty(this.uriStack)){
         viewId = this.uriStack.shift();
+        if (viewId == '+add') {
+          this.uriStack.unshift(viewId);
+          this.showAdd();
+          return;
+        }
+
         if (!_.has(this.tabbed_resources, viewId)){
           var msg = 'could not find the tabbed resource: ' + viewId;
           appModel.error(msg);
@@ -117,11 +129,30 @@ define([
       this.change_to_tab(key);
     },
 
+    showAdd: function() {
+      var self = this;
+      var delegateStack = _.clone(this.uriStack);
+      var view = new DetailLayout({
+        model: self.model,
+        uriStack: delegateStack
+      });
+      Backbone.Layout.setupView(view);
+
+      // NOTE: have to re-listen after removing a view
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      this.setView("#tab_container", view ).render();
+    },
+    
     change_to_tab: function(key){
       if(_.has(this.tabbed_resources, key)){
         this.$('li').removeClass('active');
         this.$('#' + key).addClass('active');
-        this.consumedStack = [key];
+//        this.consumedStack = [key];
+        if(key !== 'detail'){
+          this.consumedStack = [key];
+        }else{
+          this.consumedStack = [];
+        }
         var delegateStack = _.clone(this.uriStack);
         this.uriStack = [];
         var method = this[this.tabbed_resources[key]['invoke']];
@@ -142,7 +173,9 @@ define([
       
       var view = this.tabViews[key];
       if ( !view ) {
-        view = new DetailLayout({ model: this.model});
+        view = new DetailLayout({ 
+          model: this.model,
+          uriStack: delegateStack });
         this.tabViews[key] = view;
       } 
       // NOTE: have to re-listen after removing a view
@@ -227,6 +260,41 @@ define([
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
     },
+
+//    showAdd: function(delegateStack) {
+//      var self = this;
+//      var key = 'add';
+//      var view = this.tabViews[key];
+//      if ( !view ) {
+//        var view = new EditView({
+//          model: self.model,
+//          uriStack: delegateStack
+//        });
+//        self.tabViews[key] = view;
+//        Backbone.Layout.setupView(view);
+//      } else {
+//        self.reportUriStack([]);
+//      }
+//      // NOTE: have to re-listen after removing a view
+//      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+//      this.setView("#tab_container", view ).render();
+//    },
+    
+//    showAdd: function() {
+//      var self = this;
+//      var view = this.tabViews['add'];
+//      if (!view) {
+//        view = new EditView({ model: this.model, uriStack: ['add'] });
+//        Backbone.Layout.setupView(view);
+//        this.subviews['add'] = view;
+//      }
+//      this.listenTo(view,'remove',function(){
+//        self.setDetail();
+//      });
+//      this.setView("#detail_content", view ).render();
+//    },
+//    
+//    
     
     onClose: function() {
       // TODO: is this necessary when using Backbone LayoutManager

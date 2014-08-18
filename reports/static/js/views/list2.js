@@ -520,9 +520,13 @@ define([
             self.extraSelectorInstance.render().$el);
       }
               
-      // FIXME: "add" feature should be enabled declaratively, by user/group status:
-      if(appModel.getCurrentUser().is_superuser
-          && _.contains(self._options.resource.visibility, 'add')){
+//      // FIXME: "add" feature should be enabled declaratively, by user/group status:
+//      if(appModel.getCurrentUser().is_superuser
+//          && _.contains(self._options.resource.visibility, 'add')){
+//        self.$("#table-footer-div").append(self.footer.$el);
+//      }
+      
+      if(appModel.hasPermission(self._options.resource.key, 'write')){
         self.$("#table-footer-div").append(self.footer.$el);
       }
 

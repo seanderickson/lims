@@ -30,7 +30,7 @@ define([
       this.uriStack = args.uriStack;
       this.consumedStack = [];
       this.title = Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource.schema);
-      this.model.id = Iccbl.getIdFromIdAttribute(this.model, this.model.resource.schema);
+      //this.model.id = Iccbl.getIdFromIdAttribute(this.model, this.model.resource.schema);
       
       _.bindAll(this, 'click_tab');
     },

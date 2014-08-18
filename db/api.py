@@ -24,6 +24,7 @@ from reports.serializers import CursorSerializer, LimsSerializer, SmallMoleculeS
 from reports.models import MetaHash, Vocabularies, ApiLog
 from reports.api import ManagedModelResource, ManagedResource, ApiLogResource,\
     UserGroupAuthorization
+from django.contrib.auth.models import User
 
         
 logger = logging.getLogger(__name__)
@@ -497,6 +498,8 @@ class ScreenResource(ManagedModelResource):
         ordering = []
         filtering = {}
         serializer = LimsSerializer()
+        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
+        always_return_data = True 
 
         
     def __init__(self, **kwargs):
@@ -612,18 +615,46 @@ class ScreenResource(ManagedModelResource):
         '''
         return super(ScreenResource, self).save(bundle, skip_errors=skip_errors)
 
+# class BasicAuthenticationAjaxBrowsers(BasicAuthentication):
+#     '''
+#     Solves the issue:
+#     The session key may not be timed out, but the browser has cleared the 
+#     basic-auth credentials: the Django templates use session auth and report 
+#     that the user is logged in, but when an ajax request is made, the server
+#     asks for basic-auth credentials, and the browser has already cleared them.
+#     
+#     see: 
+#     http://sysadminpy.com/programming/2011/11/14/ajax-and-tastypie---check-if-a-user-has-authenticated/
+#     '''
+#     
+#     
+#     def __init__(self, *args, **kwargs):
+#         super(BasicAuthenticationAjaxBrowsers, self).__init__(*args, **kwargs)
+#  
+#     def is_authenticated(self, request, **kwargs):
+#         from django.contrib.sessions.models import Session
+#         if 'sessionid' in request.COOKIES:
+#             s = Session.objects.get(pk=request.COOKIES['sessionid'])
+#             if '_auth_user_id' in s.get_decoded():
+#                 u = User.objects.get(id=s.get_decoded()['_auth_user_id'])
+#                 request.user = u
+#                 return True
+#         return super(BasicAuthenticationAjaxBrowsers, self).is_authenticated(request, **kwargs)
+
 class LibraryResource(ManagedModelResource):
 
     class Meta:
         queryset = Library.objects.all() #.order_by('facility_id')
-        authentication = MultiAuthentication(BasicAuthentication(), 
-                                             SessionAuthentication())
+        authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
         authorization= UserGroupAuthorization()
         resource_name = 'library'
         
         ordering = []
         filtering = {}
         serializer = LimsSerializer()
+        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
+        always_return_data = True 
+
         
     def __init__(self, **kwargs):
         self.apiLog = ApiLogResource()
@@ -768,6 +799,8 @@ class LibraryCopyResource(ManagedModelResource):
         ordering = []
         filtering = {}
         serializer = LimsSerializer()
+        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
+        always_return_data = True 
 
         
     def __init__(self, **kwargs):
@@ -874,7 +907,8 @@ class LibraryCopyResource(ManagedModelResource):
 
     def is_valid(self, bundle):
         """
-        Should return a dictionary of error messages. If the dictionary has
+        Should return a dictionary of error messages (in the bundle). 
+        If the dictionary has
         zero items, the data is considered valid. If there are errors, keys
         in the dictionary should be field names and the values should be a list
         of errors, even if there is only one.
@@ -922,6 +956,8 @@ class PlateLocationResource(ManagedModelResource):
         ordering = []
         filtering = {}
         serializer = LimsSerializer()
+        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
+        always_return_data = True 
 
         
     def __init__(self, **kwargs):
@@ -965,6 +1001,8 @@ class LibraryCopyPlateResource(ManagedModelResource):
         ordering = []
         filtering = {}
         serializer = LimsSerializer()
+        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
+        always_return_data = True 
 
         
     def __init__(self, **kwargs):
@@ -1067,6 +1105,8 @@ class ReagentResource(ManagedModelResource):
         ordering = []
         filtering = {}
         serializer = LimsSerializer()
+        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
+        always_return_data = True 
 
         
     def __init__(self, **kwargs):
@@ -1306,6 +1346,8 @@ class WellResource(ManagedModelResource):
         ordering = []
         filtering = {}
         serializer = LimsSerializer()
+        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
+        always_return_data = True 
 
         
     def __init__(self, **kwargs):

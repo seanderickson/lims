@@ -36,6 +36,40 @@ requirejs(['require-config'],
      * see http://api.jquery.com/jQuery.param/c
      **/
     $.ajaxSettings.traditional = true;
+
+    /**
+     * For ajax POST operations, we need to send the session id as a request
+     * header (CSRF protection in SessionAuthentication requires).
+     * (the other option is to use Basic Authentication)
+     * see:
+     * tastypie/authentication.is_authenticated
+     * and
+     * http://stackoverflow.com/questions/15388694/does-sessionauthentication-work-in-tastypie-for-http-post
+     */
+    function readCookie(name) {
+      var nameEQ = escape(name) + "=";
+      var ca = document.cookie.split(';');
+      for (var i = 0; i < ca.length; i++) {
+          var c = ca[i];
+          while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+          if (c.indexOf(nameEQ) === 0) return unescape(c.substring(nameEQ.length, c.length));
+      }
+      return null;
+    };
+    // sending a csrftoken with every ajax request
+    function csrfSafeMethod(method) {
+        // these HTTP methods do not require CSRF protection
+        return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
+    };
+    $.ajaxSetup({
+        crossDomain: false, // obviates need for sameOrigin test
+        beforeSend: function(xhr, settings) {
+            if (!csrfSafeMethod(settings.type)) {
+                xhr.setRequestHeader("X-CSRFToken", readCookie('csrftoken'));
+            }
+        }
+    });
+    
   
     /**
      * Augment the view prototype to prevent memory leaks -

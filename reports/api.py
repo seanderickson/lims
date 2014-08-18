@@ -1151,7 +1151,8 @@ class MetaHashResource(ManagedModelResource):
         filtering = {} #{'scope':ALL, 'key':ALL}
         serializer = LimsSerializer()
         excludes = [] #['json_field']
-        always_return_data = True # this makes Backbone happy
+        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
+        always_return_data = True 
         resource_name = 'metahash'
 
     def __init__(self, **kwargs):

@@ -491,7 +491,7 @@ class HydrationTest(TestCase):
                              str((i,' is not equal', item, result, expected[i])))
   
     
-class MetaHashResourceBootstrap():
+class MetaHashResourceBootstrap(object):
     
     def get_credentials(self):
         return self.create_basic(username=self.username, password=self.password)
@@ -607,9 +607,14 @@ class MetaHashResourceBootstrap():
                 self.assertTrue(resource_name in outputobj['resource_uri'], 
                     str(('wrong resource_uri returned:', outputobj,
                          'should contain', resource_name)))
+#                 for id_key in id_keys_to_check:
+#                     self.assertTrue(inputobj[id_key] in outputobj['resource_uri'], 
+#                         str(('wrong resource_uri returned:', outputobj,
+#                              'should contain id key', id_key, 'val', inputobj[id_key])))
                 for id_key in id_keys_to_check:
-                    self.assertTrue(inputobj[id_key] in outputobj['resource_uri'], 
-                        str(('wrong resource_uri returned:', outputobj,
+                    self.assertTrue(id_key in outputobj and 
+                        inputobj[id_key] == outputobj[id_key], 
+                        str(('wrong id_key returned:', outputobj,
                              'should contain id key', id_key, 'val', inputobj[id_key])))
                 
             #TODO: GET the apilogs expected and test them

@@ -75,7 +75,7 @@ LOGGING = {
         'db.tests': {  # set a default handler
             'handlers': ['console'],
             'propagate': False,
-            'level': 'INFO',
+            'level': 'DEBUG',
         },        
         'lims.tests': {  # set a default handler
             'handlers': ['console'],

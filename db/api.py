@@ -25,6 +25,7 @@ from reports.models import MetaHash, Vocabularies, ApiLog
 from reports.api import ManagedModelResource, ManagedResource, ApiLogResource,\
     UserGroupAuthorization
 from django.contrib.auth.models import User
+from tastypie.validation import Validation
 
         
 logger = logging.getLogger(__name__)
@@ -654,11 +655,12 @@ class LibraryResource(ManagedModelResource):
         serializer = LimsSerializer()
         # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
         always_return_data = True 
-
+        
         
     def __init__(self, **kwargs):
         self.apiLog = ApiLogResource()
         super(LibraryResource,self).__init__(**kwargs)
+#         self._meta.validation = ManagedValidation(scope=self.scope)
 
     def prepend_urls(self):
         # NOTE: this match "((?=(schema))__|(?!(schema))[^/]+)" 
@@ -719,7 +721,8 @@ class LibraryResource(ManagedModelResource):
     def dehydrate(self, bundle):
         # get the api comments
         
-        #FIXME: just poc: gets_all_ apilog comments, at this time
+        # FIXME: just poc: gets_all_ apilog comments, at this time
+        # FIXME: how to bypass hydrating comments when in the LoggingMixin on update?
         comments = self.apiLog.obj_get_list(
             bundle, ref_resource_name='library', key=bundle.obj.short_name,
             comment__isnull=False)
@@ -747,43 +750,43 @@ class LibraryResource(ManagedModelResource):
 
         return super(LibraryResource, self).obj_create(bundle, **kwargs)
 
-
-    def is_valid(self, bundle):
-        """
-        Should return a dictionary of error messages. If the dictionary has
-        zero items, the data is considered valid. If there are errors, keys
-        in the dictionary should be field names and the values should be a list
-        of errors, even if there is only one.
-        """
-        
-        fields = MetaHash.objects.get_and_parse(
-            scope='fields.library', field_definition_scope='fields.metahash')
-        
-        # cribbed from tastypie.validation.py - mesh data and obj values, then validate
-        data = {}
-        if bundle.obj.pk:
-            data = model_to_dict(bundle.obj)
-        if data is None:
-            data = {}
-        data.update(bundle.data)
-        
-        # do validations
-        errors = defaultdict(list)
-        
-        library_type = data.get('library_type')
-        if library_type:
-            field_def = fields['library_type']
-            if library_type not in field_def['choices']:
-                errors['library_type'] = str(('value is not one of the choices', 
-                    library_type, field_def['choices']))
-            
-        
-        if errors:
-            bundle.errors[self._meta.resource_name] = errors
-            logger.warn(str((
-                'bundle errors', bundle.errors, len(bundle.errors.keys()))))
-            return False
-        return True
+#     def is_valid(self, bundle):
+#         """
+#         Should return a dictionary of error messages. If the dictionary has
+#         zero items, the data is considered valid. If there are errors, keys
+#         in the dictionary should be field names and the values should be a list
+#         of errors, even if there is only one.
+#         """
+#         
+#         fields = MetaHash.objects.get_and_parse(
+#             scope='fields.library', field_definition_scope='fields.metahash')
+#         
+#         # cribbed from tastypie.validation.py - mesh data and obj values, then validate
+#         data = {}
+#         if bundle.obj.pk:
+#             data = model_to_dict(bundle.obj)
+#         if data is None:
+#             data = {}
+#         data.update(bundle.data)
+#         
+#         # do validations
+#         errors = defaultdict(list)
+#         
+#         library_type = data.get('library_type')
+#         if library_type:
+#             field_def = fields['library_type']
+#             if library_type not in field_def['choices']:
+#                 errors['library_type'] = str(('value is not one of the choices', 
+#                     library_type, field_def['choices']))
+#             
+#         
+#         if errors:
+#             bundle.errors[self._meta.resource_name] = errors
+#             logger.warn(str((
+#                 'bundle errors', bundle.errors, len(bundle.errors.keys()))))
+#             return False
+#         return True
+    
 
 class LibraryCopyResource(ManagedModelResource):
 
@@ -907,7 +910,7 @@ class LibraryCopyResource(ManagedModelResource):
 
     def is_valid(self, bundle):
         """
-        Should return a dictionary of error messages (in the bundle). 
+        Should set a dictionary of error messages (in the bundle). 
         If the dictionary has
         zero items, the data is considered valid. If there are errors, keys
         in the dictionary should be field names and the values should be a list

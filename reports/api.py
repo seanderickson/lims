@@ -3,6 +3,7 @@ import json
 import logging
 import sys
 import os
+import re
 import traceback
 from collections import defaultdict, OrderedDict
 from copy import deepcopy
@@ -34,6 +35,7 @@ from reports.models import MetaHash, Vocabularies, ApiLog, Permission, \
 # import lims.settings 
 from tastypie.utils.timezone import make_naive
 from tastypie.http import HttpForbidden
+from tastypie.validation import Validation
         
 logger = logging.getLogger(__name__)
 
@@ -319,54 +321,63 @@ class LoggingMixin(Resource):
     
     @transaction.commit_on_success()
     def obj_create(self, bundle, **kwargs):
-        if(logger.isEnabledFor(logging.DEBUG)):
-            logger.debug(str(('----log obj_create', bundle)))
-        
-        bundle = super(LoggingMixin, self).obj_create(bundle=bundle, **kwargs)
-        if(logger.isEnabledFor(logging.DEBUG)):
-            logger.debug(str(('object created', bundle.obj )))
-        log = ApiLog()
-        log.username = bundle.request.user.username 
-        log.user_id = bundle.request.user.id 
-        log.date_time = timezone.now()
-        log.ref_resource_name = self._meta.resource_name
-        log.api_action = str((bundle.request.method)).upper()
-        #        log.diffs = json.dumps(bundle.obj)
-            
-        # user can specify any valid, escaped json for this field
-        # FIXME: untested
-        if 'apilog_json_field' in bundle.data:
-            log.json_field = json.dumps(bundle.data['apilog_json_field'])
-            
-        log.uri = self.get_resource_uri(bundle)
-        log.key = '/'.join([str(x) for x in self.detail_uri_kwargs(bundle).values()])
-
-        # TODO: how do we feel about passing form data in the headers?
-        # TODO: abstract the form field name
-        if 'HTTP_APILOG_COMMENT' in bundle.request.META:
-            log.comment = bundle.request.META['HTTP_APILOG_COMMENT']
-# 
-#         if 'apilog_comment' in bundle.data:
-#             log.comment = bundle.data['apilog_comment']
-            
-        log.save()
-        if(logger.isEnabledFor(logging.DEBUG)):
-            logger.debug(str(('create, api log', log)) )
-
-
-        # TODO: create an analog of this in delete, update
-        # if there is a listlog, it means "patch_list", or "put_list" were called
-        if hasattr(self, 'listlog') and self.listlog:
+        try:
             if(logger.isEnabledFor(logging.DEBUG)):
-                logger.debug(str(('update listlog', self.listlog)))
-            added_keys = []
-            if self.listlog.added_keys:
-                added_keys = json.loads(self.listlog.added_keys)
-            added_keys.append(log.key); # TODO: append the log.id too?
-            self.listlog.added_keys = json.dumps(added_keys)
-        
-        return bundle    
+                logger.debug(str(('----log obj_create', bundle)))
+            
+            bundle = super(LoggingMixin, self).obj_create(bundle=bundle, **kwargs)
+            if(logger.isEnabledFor(logging.DEBUG)):
+                logger.debug(str(('object created', bundle.obj )))
+            log = ApiLog()
+            log.username = bundle.request.user.username 
+            log.user_id = bundle.request.user.id 
+            log.date_time = timezone.now()
+            log.ref_resource_name = self._meta.resource_name
+            log.api_action = str((bundle.request.method)).upper()
+            #        log.diffs = json.dumps(bundle.obj)
+                
+            # user can specify any valid, escaped json for this field
+            # FIXME: untested
+            if 'apilog_json_field' in bundle.data:
+                log.json_field = json.dumps(bundle.data['apilog_json_field'])
+                
+            log.uri = self.get_resource_uri(bundle)
+            log.key = '/'.join([str(x) for x in self.detail_uri_kwargs(bundle).values()])
     
+            # TODO: how do we feel about passing form data in the headers?
+            # TODO: abstract the form field name
+            if 'HTTP_APILOG_COMMENT' in bundle.request.META:
+                log.comment = bundle.request.META['HTTP_APILOG_COMMENT']
+    # 
+    #         if 'apilog_comment' in bundle.data:
+    #             log.comment = bundle.data['apilog_comment']
+                
+            log.save()
+            if(logger.isEnabledFor(logging.DEBUG)):
+                logger.debug(str(('create, api log', log)) )
+    
+    
+            # TODO: create an analog of this in delete, update
+            # if there is a listlog, it means "patch_list", or "put_list" were called
+            if hasattr(self, 'listlog') and self.listlog:
+                if(logger.isEnabledFor(logging.DEBUG)):
+                    logger.debug(str(('update listlog', self.listlog)))
+                added_keys = []
+                if self.listlog.added_keys:
+                    added_keys = json.loads(self.listlog.added_keys)
+                added_keys.append(log.key); # TODO: append the log.id too?
+                self.listlog.added_keys = json.dumps(added_keys)
+            
+            return bundle    
+        except Exception, e:
+#             logger.warn(str(('==ex on create, kwargs', kwargs,
+#                              'request.path', bundle.request.path,e)))
+            extype, ex, tb = sys.exc_info()
+            logger.warn(str((
+                'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
+                tb.tb_lineno, extype, ex)))
+            raise e    
+        
     # TODO: not tested
     @transaction.commit_on_success()
     def obj_delete(self, bundle, **kwargs):
@@ -469,6 +480,7 @@ class LoggingMixin(Resource):
         logger.info('--- log obj_update')
         
         original_bundle = Bundle(data=deepcopy(bundle.data))
+        original_bundle.request = bundle.request;
         i=0;
 
         if hasattr(bundle,'obj'): original_bundle.obj = bundle.obj
@@ -549,7 +561,7 @@ class LoggingMixin(Resource):
         logger.info(str(('update, api log', log)) )
         
         return updated_bundle
-                  
+
 
 # NOTE if using this class, must implement the "not implemented error" methods
 # on Resource (these are implemented with ModelResource)
@@ -586,6 +598,8 @@ class ManagedResource(LoggingMixin):
         super(ManagedResource,self).__init__(**kwargs)
         self.original_fields = deepcopy(self.fields)
         self.create_fields()
+        
+#         self._meta.validation = ManagedValidation()
         
     # local method  
     def reset_field_defs(self, scope):
@@ -714,6 +728,83 @@ class ManagedResource(LoggingMixin):
         logger.debug('------build_schema,done: ' + self.scope)
         return schema
     
+    def is_valid(self, bundle, request=None):
+        """
+        NOTE: not extending tastypie.Validation variations, since they don't do 
+        much, and we need access to the meta inf here anyway.
+        NOTE: since "is_valid" is called at save(), so post-hydrate, all of the 
+        defined fields have already "hydrated" the data; 
+        this is a fail-fast validation, essentially, and preempts this validation.
+        Here we will validate contextually, based on information in the metahash;
+        overridden in each resource for more specific needs.
+        
+        Performs a check on the data within the bundle (and optionally the
+        request) to ensure it is valid.
+
+        Should return a dictionary of error messages. If the dictionary has
+        zero items, the data is considered valid. If there are errors, keys
+        in the dictionary should be field names and the values should be a list
+        of errors, even if there is only one.
+        """
+        
+        schema = self.build_schema()
+        fields = schema['fields']
+        
+        # cribbed from tastypie.validation.py - mesh data and obj values, then validate
+        data = {}
+        if bundle.obj.pk:
+            data = model_to_dict(bundle.obj)
+        if data is None:
+            data = {}
+        data.update(bundle.data)
+        
+        # do validations
+        errors = defaultdict(list)
+        
+        for key, value in data.items():
+            if key == 'json_field':
+                continue;
+            
+            # only consider data that has a field
+            if key in fields and fields[key]: 
+                field = fields[key]
+                keyerrors = []
+                            
+            if field.get('required', False):
+                logger.warn(str(('check required: ', key, value)))
+                if not value:
+                     keyerrors.append('required')
+
+            if value and 'choices' in field and field['choices']:
+                logger.warn(str(('check choices: ', key, value, field['choices'])))
+                if field['ui_type'] != 'Checkboxes':
+                    if value not in field['choices']:
+                        keyerrors.append(
+                            str((value, 'is not one of', field['choices'])))
+                else:
+                    for x in value:
+                        if x not in field['choices']:
+                            keyerrors.append(
+                                str((value, 'are not members of', field['choices'])))
+
+            if value and 'regex' in field and field['regex']:
+                logger.warn(str(('check regex: ', key, value, field['regex'] )))
+                if not re.match(field['regex'], value):
+                    msg = field.get('validation_message', None)
+                    if not msg:
+                        msg = str((value, 'failed to match the pattern', field['regex']))
+                    keyerrors.append(msg)
+
+            if keyerrors:
+                errors[key] = keyerrors            
+        
+        if errors:
+            bundle.errors[self._meta.resource_name] = errors
+            logger.warn(str((
+                'bundle errors', bundle.errors, len(bundle.errors.keys()))))
+            return False
+        return True
+        
     def dehydrate(self, bundle):
         ''' 
         Implementation hook method, override to augment bundle, post dehydrate
@@ -1174,6 +1265,16 @@ class MetaHashResource(ManagedModelResource):
         bundle = super(MetaHashResource, self).obj_update(bundle, **kwargs);
         self.reset_field_defs(getattr(bundle.obj,'scope'))
         return bundle
+    
+    def is_valid(self, bundle, request=None):
+        '''
+        We need to override this to bypass when initializing
+        '''
+        if getattr(bundle.obj,'scope').find('fields') == 0: #'fields.metahash':
+            return True
+        
+        return super(MetaHashResource, self).is_valid(bundle, request=request)
+            
 
     def hydrate(self, bundle):
         bundle = super(MetaHashResource, self).hydrate(bundle);
@@ -1255,7 +1356,20 @@ class ResourceResource(ManagedModelResource):
         schema['extraSelectorOptions'] = { 
             'label': 'Resource', 'searchColumn': 'key', 'options': temp }
         return schema
-
+    
+    def is_valid(self, bundle, request=None):
+        '''
+        We need to override this to bypass when initializing
+        TODO: re-examine dehydrate, same issue there.
+        '''
+        try:
+            return super(ResourceResource, self).is_valid(bundle, request=request)
+        except ObjectDoesNotExist, e:
+            # notify and bypass
+            logger.warn(str(('Resources not defined', e, self._meta.resource_name)))
+            
+            return True;
+            
     def dehydrate(self, bundle):
         bundle = super(ResourceResource,self).dehydrate(bundle)
         # Get the schema

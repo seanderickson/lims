@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 BASE_URI = '/db/api/v1'
+# import reports.BASE_URI as BASE_REPORTS_URI
 BASE_REPORTS_URI = '/reports/api/v1'
 import db; 
 try:
@@ -155,9 +156,40 @@ class LibraryContentLoadTest(MetaHashResourceBootstrap,ResourceTestCase):
         
     def test_load_sdf(self):
         pass;
+
+class DBMetaHashResourceBootstrap(MetaHashResourceBootstrap):
+
+    def _bootstrap_init_files(self):
+        '''
+        test loads the essential files of the api initialization, the 'bootstrap':
+        - PUT metahash_fields_initial.csv
+        - PATCH metahash_fields_initial_patch.csv
+        - PATCH metahash_fields_resource.csv
+        - PATCH metahash_vocabularies.csv
+        - PUT vocabularies_data.csv
+        - PUT metahash_resource_data.csv
+        '''
+        logger.debug('------------- DBMetaHashResourceBootstrap _bootstrap_init_files -----------------')        
+        super(DBMetaHashResourceBootstrap, self)._bootstrap_init_files()
+
+        
+        serializer=CSVSerializer() 
+        resource_uri = BASE_URI + '/metahash'
+        directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
+
+        # Note, once the resources are loaded, can start checking the 
+        # resource_uri that is returned
+        filename = os.path.join(directory, 'metahash_resource_data.csv')
+        (input, output) = self._patch_test('resource', filename, id_keys_to_check=['key'])
+        filename = os.path.join(directory, 'vocabularies_data.csv')
+        self._patch_test('vocabularies', filename, id_keys_to_check=['key'])
+
+        
+        logger.debug('------------- Done: DBMetaHashResourceBootstrap _bootstrap_init_files -----------------')        
+        
         
 
-class LibraryResource(MetaHashResourceBootstrap,ResourceTestCase):
+class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
 
     def setUp(self):
         logger.debug('============== LibraryResource setup ============')
@@ -170,7 +202,8 @@ class LibraryResource(MetaHashResourceBootstrap,ResourceTestCase):
         self.db_resource_uri = BASE_URI + '/metahash'
         self.db_directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
         
-        testApiClient = TestApiClient(serializer=self.csv_serializer) 
+#         testApiClient = TestApiClient(serializer=self.csv_serializer) 
+        testApiClient = TestApiClient(serializer=reports.serializers.LimsSerializer) 
 
         filename = os.path.join(self.db_directory,'metahash_fields_library.csv')
         self._patch_test(
@@ -229,17 +262,102 @@ class LibraryResource(MetaHashResourceBootstrap,ResourceTestCase):
             resource_uri, format='json', data=library_item, 
             authentication=self.get_credentials())
         
-#         from reports.dump_obj import dumpObj
-#         logger.debug(str(('response', dumpObj(resp))))
-        
         self.assertTrue(resp.status_code in [400], str((resp.status_code, resp)))
         
         logger.debug(str(('response.content.library message', 
                          getattr(resp, 'content'))))
         
         obj = json.loads(getattr(resp, 'content'))
-#         logger.debug(str(('dump', dumpObj(obj))))
+        logger.warn(str(('content', obj)))    
+        self.assertTrue('library_type' in obj['library'], 
+            str(('content should have an entry for the faulty "name"', obj)))
         logger.debug(str(('==== done: test2_create_library_invalid_library_type =====')))
+
+    def test3_create_library_invalid_library_name(self):
+        logger.debug(str(('==== test3_create_library_invalid_library_name =====')))
+        
+        resource_uri = BASE_URI_DB + '/library'
+        
+        library_item = LibraryFactory.attributes()
+        library_item['name'] = 'invalid & name'
+        
+        logger.debug(str(('try to create an invalid library name:', library_item)))
+        resp = self.api_client.post(
+            resource_uri, format='json', data=library_item, 
+            authentication=self.get_credentials())
+        
+#         from reports.dump_obj import dumpObj
+#         logger.debug(str(('response', dumpObj(resp))))
+        
+        self.assertTrue(resp.status_code in [400], str((resp.status_code, resp)))
+        
+        logger.warn(str(('response.content.library message', 
+                         getattr(resp, 'content'))))
+        
+        obj = json.loads(getattr(resp, 'content'))
+        logger.warn(str(('content', obj)))    
+        self.assertTrue('name' in obj['library'], 
+            str(('content should have an entry for the faulty "name"', obj)))
+        
+        # TODO: test the error message
+        
+        
+#         obj = json.loads(getattr(resp, 'content'))
+#         logger.debug(str(('dump', dumpObj(obj))))
+        logger.debug(str(('==== done: test3_create_library_invalid_library_name =====')))
+
+    def test4_create_library_invalids(self):
+        '''
+        Test the schema "required" validations 
+        
+        - todo: this can be a template for other endpoints
+        ''' 
+        logger.debug(str(('==== test4_create_library_invalids =====')))
+
+        resource_uri = BASE_REPORTS_URI + '/resource/library'
+        logger.debug(str(('Get the library schema', resource_uri )))
+        resp = self.api_client.get(
+            resource_uri, format='json', authentication=self.get_credentials(), 
+            data={ 'limit': 999 })
+        logger.debug(str(('--------resp to get:', resp.status_code)))
+        self.assertTrue(resp.status_code in [200], 
+                        str((resp.status_code, resp.serialize())))
+        new_obj = self.deserialize(resp)
+        fields = new_obj['schema']['fields']
+        logger.debug(str(('=== field keys', fields.keys())))
+        resource_uri = BASE_URI_DB + '/library'
+        
+        # make sure the default works
+        library_item = LibraryFactory.attributes()
+        resp = self.api_client.post(
+            resource_uri, format='json', data=library_item, 
+            authentication=self.get_credentials())
+        self.assertTrue(resp.status_code in [201], str((resp.status_code, resp)))
+        
+        for key,field in fields.items():
+            logger.debug(str(('key, field', key,field)))
+            if field.get('required', False):
+                logger.debug(str(('testing required field', key, field)))
+                
+                library_item = LibraryFactory.attributes()
+                library_item[key] = None
+                resp = self.api_client.post(
+                    resource_uri, format='json', data=library_item, 
+                    authentication=self.get_credentials())
+                self.assertTrue(resp.status_code in [400], str((resp.status_code, resp)))
+                logger.warn(str(('response.content.library message', 
+                                 getattr(resp, 'content'))))
+        
+                obj = json.loads(getattr(resp, 'content'))
+                logger.warn(str(('==========content', obj)))
+                self.assertTrue(key in obj['library'], 
+                    str(('error content should have an entry for the faulty key:',key, obj)))
+                
+                
+        # TODO: test regex and number: min/max
+        
+        
+        logger.debug(str(('==== done: test4_create_library_invalids =====')))
 
 class ScreensTest(MetaHashResourceBootstrap,ResourceTestCase):
     

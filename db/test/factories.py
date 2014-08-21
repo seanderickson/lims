@@ -6,8 +6,8 @@ class ScreenFactory(factory.django.DjangoModelFactory):
 
     data_sharing_level = 1
     facility_id = factory.Sequence(lambda n: str(n))
-    project_phase = "Primary Screen"
-    screen_type = "Small Molecule"
+    project_phase = "primary_screen"
+    screen_type = "small_molecule"
     title = "Test screen 1"
 
 

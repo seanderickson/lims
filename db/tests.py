@@ -268,7 +268,7 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
                          getattr(resp, 'content'))))
         
         obj = json.loads(getattr(resp, 'content'))
-        logger.warn(str(('content', obj)))    
+        logger.debug(str(('content', obj)))    
         self.assertTrue('library_type' in obj['library'], 
             str(('content should have an entry for the faulty "name"', obj)))
         logger.debug(str(('==== done: test2_create_library_invalid_library_type =====')))
@@ -279,7 +279,7 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
         resource_uri = BASE_URI_DB + '/library'
         
         library_item = LibraryFactory.attributes()
-        library_item['name'] = 'invalid & name'
+        library_item['library_name'] = 'invalid & name'
         
         logger.debug(str(('try to create an invalid library name:', library_item)))
         resp = self.api_client.post(
@@ -291,12 +291,12 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
         
         self.assertTrue(resp.status_code in [400], str((resp.status_code, resp)))
         
-        logger.warn(str(('response.content.library message', 
+        logger.debug(str(('response.content.library message', 
                          getattr(resp, 'content'))))
         
         obj = json.loads(getattr(resp, 'content'))
-        logger.warn(str(('content', obj)))    
-        self.assertTrue('name' in obj['library'], 
+        logger.debug(str(('content', obj)))    
+        self.assertTrue('library_name' in obj['library'], 
             str(('content should have an entry for the faulty "name"', obj)))
         
         # TODO: test the error message
@@ -345,11 +345,11 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
                     resource_uri, format='json', data=library_item, 
                     authentication=self.get_credentials())
                 self.assertTrue(resp.status_code in [400], str((resp.status_code, resp)))
-                logger.warn(str(('response.content.library message', 
+                logger.debug(str(('response.content.library message', 
                                  getattr(resp, 'content'))))
         
                 obj = json.loads(getattr(resp, 'content'))
-                logger.warn(str(('==========content', obj)))
+                logger.debug(str(('==========content', obj)))
                 self.assertTrue(key in obj['library'], 
                     str(('error content should have an entry for the faulty key:',key, obj)))
                 
@@ -359,26 +359,28 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
         
         logger.debug(str(('==== done: test4_create_library_invalids =====')))
 
-class ScreensTest(MetaHashResourceBootstrap,ResourceTestCase):
+class ScreenResource(DBMetaHashResourceBootstrap,ResourceTestCase):
     
+        
     def setUp(self):
-        logger.debug('============== ScreensTest setup ============')
-        super(ScreensTest, self).setUp()
-        super(ScreensTest, self)._setUp()
+        logger.debug('============== ScreenResource setup ============')
+        super(ScreenResource, self).setUp()
+        super(ScreenResource, self)._setUp()
         # load the bootstrap files, which will load the metahash fields, 
         # and the resource definitions
-        super(ScreensTest, self)._bootstrap_init_files()
-        logger.debug('============== ScreensTest setup: begin ============')
+        super(ScreenResource, self)._bootstrap_init_files()
+        logger.debug('============== ScreenResource setup: begin ============')
         self.db_resource_uri = BASE_URI + '/metahash'
         self.db_directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
         
-        testApiClient = TestApiClient(serializer=self.csv_serializer) 
+#         testApiClient = TestApiClient(serializer=self.csv_serializer) 
+        testApiClient = TestApiClient(serializer=reports.serializers.LimsSerializer) 
 
         filename = os.path.join(self.db_directory,'metahash_fields_screen.csv')
         self._patch_test(
             'metahash', filename, data_for_get={ 'scope':'fields.screen'})
 
-        logger.debug('============== ScreensTest setup: done ============')
+        logger.debug('============== ScreenResource setup: done ============')
         
 
     def test1_create_screen(self):
@@ -424,16 +426,16 @@ class ScreensTest(MetaHashResourceBootstrap,ResourceTestCase):
         self.bootstrap_items = [   
             {
                 'facility_id': "1",
-                'project_phase': "Primary Screen",
-                'screen_type': "Small Molecule",
+                'project_phase': "primary_screen",
+                'screen_type': "small_molecule",
                 'title': "Test screen 1",
                 'data_sharing_level': 1,
                 'total_plated_lab_cherry_picks': 0,
             },
             {
                 'facility_id': "2",
-                'project_phase': "Primary Screen",
-                'screen_type': "RNAi",
+                'project_phase': "primary_screen",
+                'screen_type': "rnai",
                 'title': "Test Screen 2",
                 'data_sharing_level': 0,
                 'total_plated_lab_cherry_picks': 0,
@@ -475,7 +477,7 @@ class ScreensTest(MetaHashResourceBootstrap,ResourceTestCase):
         logger.debug(str(('==== test_create_screen done =====')))
         
 
-class MutualScreensTest(MetaHashResourceBootstrap,ResourceTestCase):
+class MutualScreensTest(DBMetaHashResourceBootstrap,ResourceTestCase):
     
     def test_mutual_positives_to_screen(self):
         pass

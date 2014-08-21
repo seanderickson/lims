@@ -719,10 +719,10 @@ class ManagedResource(LoggingMixin):
             schema['resource_definition'] = resource_def.model_to_dict(scope='fields.resource')
 
         except Exception, e:
-            logger.warn(str(('on building schema', e, self._meta.resource_name)))
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            logger.error(str((exc_type, fname, exc_tb.tb_lineno)))
+            logger.error(str(('on build_schema()', self._meta.resource_name, 
+                exc_type, fname, exc_tb.tb_lineno)))
             raise e
             
         logger.debug('------build_schema,done: ' + self.scope)
@@ -765,11 +765,14 @@ class ManagedResource(LoggingMixin):
             if key == 'json_field':
                 continue;
             
-            # only consider data that has a field
+            # only consider input fields that *have* a schema field
             if key in fields and fields[key]: 
                 field = fields[key]
                 keyerrors = []
-                            
+            else:
+                logger.warn(str(('=======================================++++ no schema field for:', key, value )))
+                continue
+            
             if field.get('required', False):
                 logger.warn(str(('check required: ', key, value)))
                 if not value:

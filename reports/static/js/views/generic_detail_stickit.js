@@ -61,6 +61,8 @@ define([
           observe: key,
           onGet: function(value) {
             if (_.isUndefined(value) || _.isNull(value)) return '-';
+            else if (_.isString(value) && value === '' ) return '-';
+            else if (_.isObject(value) && _.isEmpty(value)) return '-';
             else return value;
           }
         };

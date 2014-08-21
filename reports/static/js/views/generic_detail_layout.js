@@ -60,6 +60,7 @@ define([
     },
     
     showEdit: function() {
+      var self = this;
       var view = this.subviews['edit'];
       if (!view) {
         view = new EditView({ model: this.model, uriStack: ['edit'] });

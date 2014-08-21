@@ -104,17 +104,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       
       this.$('#content_title').html(resource.title + ': Add' );
       var viewClass = DetailLayout;
-//      if (_.has(resource, 'detailView')){
-//        if (_.has(VIEWS, resource['detailView'])) {
-//          viewClass = VIEWS[resource['detailView']];
-//          console.log('found view ' + resource['detailView']);
-//        }else{
-//          var msg = 'detailView class specified could not be found: ' + 
-//              resource['detailView'];
-//          console.log(msg);
-//          throw msg;
-//        }
-//      }
       var view = new viewClass({ model: newModel, uriStack: uriStack});
       Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
@@ -236,8 +225,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         // DETAIL VIEW
         
         if(uriStack[0] == '+add'){
-//          consumedStack = uriStack.unshift();
-          self.showAdd(resource, uriStack);
+//        consumedStack = uriStack.unshift();
+        self.showAdd(resource, uriStack);
         }else{ 
           var _key = Iccbl.popKeyFromStack(resource, uriStack, consumedStack );
           appModel.getModel(uiResourceId, _key, function(model){

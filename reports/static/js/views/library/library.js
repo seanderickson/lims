@@ -46,11 +46,6 @@ define([
         title: 'Library Details', 
         invoke: 'setDetail'
       },
-//      add: { 
-//        description: 'Add Library', 
-//        title: 'Add Library', 
-//        invoke: 'showAdd'
-//      },
       copy: { 
         description: 'Copies', title: 'Copies', invoke: 'setCopies',
         resource: 'librarycopy'
@@ -92,7 +87,6 @@ define([
      */
     serialize: function() {
       return {
-//        'title': Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource.schema),
         'tab_resources': this.tabbed_resources
       }      
     }, 
@@ -107,6 +101,10 @@ define([
         if (viewId == '+add') {
           this.uriStack.unshift(viewId);
           this.showAdd();
+          return;
+        }else if (viewId == 'edit'){
+          this.uriStack.unshift(viewId);
+          this.showEdit();
           return;
         }
 
@@ -141,13 +139,30 @@ define([
       // NOTE: have to re-listen after removing a view
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
+      this.$('li').removeClass('active');
+      this.$('#detail').addClass('active');
+    },
+    
+    showEdit: function() {
+      var self = this;
+      var delegateStack = _.clone(this.uriStack);
+      var view = new DetailLayout({
+        model: self.model,
+        uriStack: delegateStack
+      });
+      Backbone.Layout.setupView(view);
+
+      // NOTE: have to re-listen after removing a view
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      this.setView("#tab_container", view ).render();
+      this.$('li').removeClass('active');
+      this.$('#detail').addClass('active');
     },
     
     change_to_tab: function(key){
       if(_.has(this.tabbed_resources, key)){
         this.$('li').removeClass('active');
         this.$('#' + key).addClass('active');
-//        this.consumedStack = [key];
         if(key !== 'detail'){
           this.consumedStack = [key];
         }else{
@@ -261,41 +276,6 @@ define([
       this.setView("#tab_container", view ).render();
     },
 
-//    showAdd: function(delegateStack) {
-//      var self = this;
-//      var key = 'add';
-//      var view = this.tabViews[key];
-//      if ( !view ) {
-//        var view = new EditView({
-//          model: self.model,
-//          uriStack: delegateStack
-//        });
-//        self.tabViews[key] = view;
-//        Backbone.Layout.setupView(view);
-//      } else {
-//        self.reportUriStack([]);
-//      }
-//      // NOTE: have to re-listen after removing a view
-//      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-//      this.setView("#tab_container", view ).render();
-//    },
-    
-//    showAdd: function() {
-//      var self = this;
-//      var view = this.tabViews['add'];
-//      if (!view) {
-//        view = new EditView({ model: this.model, uriStack: ['add'] });
-//        Backbone.Layout.setupView(view);
-//        this.subviews['add'] = view;
-//      }
-//      this.listenTo(view,'remove',function(){
-//        self.setDetail();
-//      });
-//      this.setView("#detail_content", view ).render();
-//    },
-//    
-//    
-    
     onClose: function() {
       // TODO: is this necessary when using Backbone LayoutManager
       this.tabViews = {};

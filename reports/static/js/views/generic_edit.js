@@ -95,12 +95,15 @@ define([
               _.contains(schema.fields[key]['visibility'], 'edit');
       });
                   
-      // TODO: memoize?
       var editSchema = {};
       var itemcount = 0;
+      // process the ui_types - convert to backbone-forms schema editor type
       _.each(editKeys, function(key){
         if( _(schema.fields).has(key)){
-          option = schema.fields[key];
+          var option = schema.fields[key];
+          
+          var validators = [];
+          
           if(option.ui_type == 'Select' 
               || option.ui_type == 'Radio'
               || option.ui_type == 'Checkboxes' ){
@@ -110,9 +113,8 @@ define([
                 return choice;
               });
             }else{
-              // TODO: use bootstrap alerts
-              window.alert('Warning, no choices defined for: ' + key);
-              // set choices so the template doesn't complain
+              appModel.error('no choices defined for: ' + key);
+              // set null choices so the template doesn't complain
               option.choices = _(_optionsCollection); 
             }
             editSchema[key] = { 
@@ -136,11 +138,39 @@ define([
               type: 'Text'
             };
           }
+          
           if(option.ui_type == 'Radio'){
             // editSchema[key]['template'] = self.altRadioFieldTemplate;
           }else{
             editSchema[key]['template'] = self.altFieldTemplate;
           }
+
+          // validation stuff
+          if(option.ui_type == 'integer' || option.ui_type == 'float'){
+            editSchema[key]['type'] = 'Number';
+            // TODO: check for the "min" "max" validation properties and implement
+          }
+          if(option.required){
+            validators.unshift('required');
+          }
+          if(!_.isUndefined(option.regex) && !_.isEmpty(option.regex)){
+            var validator = { type: 'regexp', regexp: new RegExp(option.regex) };
+            if(!_.isUndefined(option.validation_message) && !_.isEmpty(option.validation_message)){
+              validator.message = option.validation_message;
+              // TODO: rework, if req'd, to use tokenized strings (will need 
+              // to reimplement backbone-forms
+              //  function(value, formValues){
+              //    //                TODO: figure out how to get the pending model
+              //    return 'value: ' + value + ' is incorrect: ' + Iccbl.replaceTokens(new Backbone.Model(formValues), option.validation_message);
+              //  };
+            }
+            validators.unshift(validator);
+          }
+          if(!_.isEmpty(validators)){
+            editSchema[key].validators = validators;
+          }
+          
+          editSchema[key]['maxlength'] = 50;
 
           if(itemcount++ == 0){
             // Set autofocus (HTML5) on the first field

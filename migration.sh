@@ -12,6 +12,11 @@
 # - postgres
 ##
 
+function error () {
+  warn "$@"
+  exit 1
+}
+
 REALPATH=${REALPATH:-"$(which realpath 2>/dev/null)"}
 if [[ -z $REALPATH ]]; then
   PROG=$( basename $0 )
@@ -19,6 +24,7 @@ if [[ -z $REALPATH ]]; then
 fi
 
 SCRIPTPATH="$($REALPATH $0)"
+SAVEPATH="$SCRIPTPATH.save"
 BASEDIR=${BASEDIR:-"$(dirname $SCRIPTPATH)"}
 SUPPORTDIR=${SUPPORTDIR-"$(dirname $BASEDIR)"}
 LOGFILE=${LOGFILE:-${BASEDIR:+"$BASEDIR/migration.log"}}
@@ -47,11 +53,12 @@ RUN_DB_TESTS=${RUN_DB_TESTS:-false}
 # PATH TO node, npm, leave blank if part of the env path already
 NODE_PATH=${NODE_PATH:-""}
 
-if [[ "$NODE_PATH" -ne "" ]]; then
+if [[ -n "$NODE_PATH" ]]; then
   export PATH=${PATH}:$NODE_PATH
 fi
 
 if $DEBUG; then
+  echo "set logfile to tty"
   LOGFILE=$(tty)
 fi
 
@@ -70,6 +77,10 @@ fi
 
 
 source ./utils.sh
+
+function ts {
+  date +%Y%m%dT%H%M%S%z
+}
 
 function _debug {
   if $DEBUG; then echo "$@"; fi
@@ -129,8 +140,12 @@ function restoredb {
 
   if [[ ( $DB_LOAD_SCHEMA_ONLY -eq 0 && $DB_SKIP_BIG_FILES -eq 0 ) ]]; then
     echo "+++ LOADING attached file and result data ... "
+    echo "+++ LOADING attached file data ... " >> "$LOGFILE"
+
     pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
       `ls -1 ${D}/screensaver*${filespec}.attached_file.pg_dump`  >>"$LOGFILE" 2>&1 
+
+    echo "+++ LOADING result data ... " >> "$LOGFILE"
     pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
       `ls -1 ${D}/screensaver*${filespec}.result_data.pg_dump`  >>"$LOGFILE" 2>&1 
   fi
@@ -149,8 +164,8 @@ function django_syncdb {
   # and respond to the user prompts, then export this information to the fixture:
   # ./manage.py dumpdata --indent=2 auth > initial_data.json
   # which creates the user "sde" 
-
-  # Now, this command will use the fixture to create the first user
+  
+  # Now, this command will use the fixture, "./initial_data.json" to create the first user
   $DJANGO_CMD syncdb --noinput >>"$LOGFILE" 2>&1 || error "initdb failed: $?"
 
 }
@@ -160,30 +175,78 @@ function migratedb {
   $DJANGO_CMD migrate reports >>"$LOGFILE" 2>&1 || error "reports migration failed: $?"
   
   $DJANGO_CMD migrate tastypie >>"$LOGFILE" 2>&1 || error "tastypie migration failed: $?"
+ 
+  # check which migrations are completed - if we've skipped db restore, then only apply latest
+  completed_migrations=$($DJANGO_CMD migrate db --list | grep '*' | awk '{print $2}')
+  echo "completed migrations: $completed_migrations" >> "$LOGFILE"
   
-  $DJANGO_CMD migrate db 0001 --fake >>"$LOGFILE" 2>&1 || error "db 0001 failed: $?"
-  
-  $DJANGO_CMD migrate db 0002 >>"$LOGFILE" 2>&1 || error "db 0002 failed: $?"
-  
-  psql -U $DBUSER $DB -h $DBHOST \
-    -f ./db/migrations/manual/0003_screen_status.sql >>"$LOGFILE" 2>&1 || error "manual script 0003 failed: $?"
-  
-  # run the rest of the migrations
-  $DJANGO_CMD migrate db 0003 >>"$LOGFILE" 2>&1 || error "db 0003 failed: $?"
-  $DJANGO_CMD migrate db 0004 >>"$LOGFILE" 2>&1 || error "db 0004 failed: $?"
-  $DJANGO_CMD migrate db 0008 >>"$LOGFILE" 2>&1 || error "db 0008 failed: $?"
-  $DJANGO_CMD migrate db 0009 >>"$LOGFILE" 2>&1 || error "db 0009 failed: $?"
-  $DJANGO_CMD migrate db 0010 >>"$LOGFILE" 2>&1 || error "db 0010 failed: $?"
-  $DJANGO_CMD migrate db 0011 >>"$LOGFILE" 2>&1 || error "db 0011 failed: $?"
-  
-  # TODO 0013 is slow
-  if [[ "$RUN_TYPE" == "full" ]]; then
-    $DJANGO_CMD migrate db 0013 >>"$LOGFILE" 2>&1 || error "db 0013 failed: $?"
+  migration='0001'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    $DJANGO_CMD migrate db $migration --fake >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
   fi
   
+  migration='0002'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+  fi
+  
+  migration='0003'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    psql -U $DBUSER $DB -h $DBHOST \
+      -f ./db/migrations/manual/0003_screen_status.sql >>"$LOGFILE" 2>&1 || error "manual script 0003 failed: $?"
+  
+    # run the rest of the migrations
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+  fi
+  
+  migration='0004'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+  fi
+  migration='0008'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    $DJANGO_CMD migrate db 0008 >>"$LOGFILE" 2>&1 || error "db 0008 failed: $?"
+  fi
+  migration='0009'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+  fi
+  migration='0010'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+  fi
+  migration='0011'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+  fi
+  migration='0012'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    echo "migration $migration" >> "$LOGFILE"
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+  fi
+  if [[ $DB_FULL_MIGRATION -eq 1 ]]; then
+    migration='0013'
+    if [[ ! $completed_migrations =~ $migration ]]; then
+        echo "migration $migration" >> "$LOGFILE"
+        $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    fi
+    migration='0014'
+    if [[ ! $completed_migrations =~ $migration ]]; then
+      echo "migration $migration" >> "$LOGFILE"
+      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    fi
+    migration='0015'
+    if [[ ! $completed_migrations =~ $migration ]]; then
+      echo "migration $migration" >> "$LOGFILE"
+      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    fi
+  fi
+    
 # TODO, not working:
 #  $DJANGO_CMD migrate db 0014 >>"$LOGFILE" 2>&1 || error "db 0014 failed: $?"
 #  $DJANGO_CMD migrate db 0015 >>"$LOGFILE" 2>&1 || error "db 0015 failed: $?"
+
+  echo "migrations completed..." >> "$LOGFILE"
 
 }
 
@@ -235,22 +298,24 @@ function bootstrap {
   fi
 
   final_server_pid=$(ps aux |grep runserver| grep 55001 | awk '{print $2}')
-  kill $final_server_pid
+  kill $final_server_pid || error "kill server $final_server_pid failed with $?"
   # kill $server_pid
 }
 
 function frontend_setup {
   cd reports/static >>"$LOGFILE" 2>&1
   
-  npm install >>"$LOGFILE" 2>&1
+  npm --version 2>&1 || error "npm not found: $?"
   
-  ./node_modules/.bin/grunt bowercopy >>"$LOGFILE" 2>&1
+  npm install >>"$LOGFILE" 2>&1 || error "npm install failed: $?"
   
-  ./node_modules/.bin/grunt test >>"$LOGFILE" 2>&1
+  ./node_modules/.bin/grunt bowercopy >>"$LOGFILE" 2>&1 || error "grunt bowercopy failed: $?"
+  
+  ./node_modules/.bin/grunt test >>"$LOGFILE" 2>&1 || error "grunt test failed: $?"
   
   cd ../..
   
-  $DJANGO_CMD collectstatic --noinput --ignore="*node_modules*" --ignore="*bower_components*"
+  $DJANGO_CMD collectstatic --noinput --ignore="*node_modules*" --ignore="*bower_components*" || error "collectstatic failed: $?"
   
 }
 
@@ -321,10 +386,11 @@ function code_bootstrap {
   bootstrap
 }  
 
+echo "start migration: $(ts) ..."
 
 main "$@"
 
-#code_bootstrap "$@"
+# code_bootstrap "$@"
   
 # frontend_setup "$@"
 
@@ -342,3 +408,5 @@ main "$@"
 
 # $DJANGO_CMD test --verbosity=2 --settings=lims.settings_testing || error "django tests failed: $?"
 # $DJANGO_CMD test --verbosity=2 --settings=lims.settings_testing
+
+echo "migration finished: $(ts)"

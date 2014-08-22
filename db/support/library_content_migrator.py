@@ -217,8 +217,17 @@ class Migrator:
             activity = (b.reagent.library_contents_version
                          .library_contents_loading_activity.activity)
             log = ApiLog()
-            log.username = activity.performed_by.ecommons_id
-            log.user_id = activity.performed_by.user.id 
+#             log.username = activity.performed_by.ecommons_id
+#             log.user_id = activity.performed_by.user.id 
+
+            if getattr(activity.performed_by, 'ecommons_id', None):
+                log.username = activity.performed_by.ecommons_id
+            if getattr(activity.performed_by, 'user', None):
+                log.user_id = getattr(activity.performed_by.user, 'id', log.username)
+            if not log.user_id:
+                logger.warn(str(("can't find a user id, lcv ", b.reagent.library_contents_version, activity)))
+                log.user_id = 1
+            
             log.date_time = make_aware(activity.date_created,timezone.get_default_timezone())
             log.ref_resource_name = self.wellResource._meta.resource_name
             # TODO: what types here? could also be a REST specifier, i.e. 'PATCH'

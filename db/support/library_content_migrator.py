@@ -66,8 +66,7 @@ class Migrator:
         query = orm.LibraryContentsVersion.objects.all()
         if screen_type:
             query = query.filter(library__screen_type=screen_type)
-        library_ids = [x['library'] for x in ( 
-            query
+        library_ids = [x['library'] for x in (query
                 .values('library')  # actually, library id's here
                 .annotate(count=Count('library'))
                 .filter(count__gt=1)
@@ -78,9 +77,9 @@ class Migrator:
                         .filter(library_id__in=library_ids)):
 #                         .filter(screen_type='small_molecule')
 #                         .exclude(library_type='natural_products')):
-            versions = [x.version_number for x in 
-                            (library.librarycontentsversion_set.all()
-                             .order_by('version_number')) ] 
+            versions = [x.version_number 
+                for x in (library.librarycontentsversion_set.all()
+                    .order_by('version_number')) ] 
             if len(versions) < 2:
                 continue
 
@@ -127,8 +126,13 @@ class Migrator:
                 # create an apilog for the library
                 activity = (version.library_contents_loading_activity.activity)
                 log = ApiLog()
-                log.username = activity.performed_by.ecommons_id
-                log.user_id = activity.performed_by.user.id 
+                if getattr(activity.performed_by, 'ecommons_id', None):
+                    log.username = activity.performed_by.ecommons_id
+                if getattr(activity.performed_by, 'user', None):
+                    log.user_id = getattr(activity.performed_by.user, 'id', log.username)
+                if not log.user_id:
+                    logger.warn(str(("can't find a user id for version", version, activity)))
+                    log.user_id = 1
                 log.date_time = make_aware(
                     activity.date_created,timezone.get_default_timezone())
                 log.ref_resource_name = self.libraryResource._meta.resource_name

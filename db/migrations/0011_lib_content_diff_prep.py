@@ -30,7 +30,7 @@ class Migration(DataMigration):
                           self.gf('django.db.models.fields.IntegerField')(null=True),
                           keep_default=False)
         except Exception, e:
-            print 'execption on trying to create dummy cols', e
+            print 'exception on trying to create dummy cols', e
                     
         
     def backwards(self, orm):

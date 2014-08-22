@@ -238,6 +238,8 @@ function migratedb {
     migration='0015'
     if [[ ! $completed_migrations =~ $migration ]]; then
       echo "migration $migration" >> "$LOGFILE"
+      psql -U $DBUSER $DB -h $DBHOST \
+        -f ./db/migrations/manual/0015_manual_convert_gene_symbol.sql >>"$LOGFILE" 2>&1 || error "manual script 0015 failed: $?"
       $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
     fi
   fi

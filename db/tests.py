@@ -202,7 +202,6 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
         self.db_resource_uri = BASE_URI + '/metahash'
         self.db_directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
         
-#         testApiClient = TestApiClient(serializer=self.csv_serializer) 
         testApiClient = TestApiClient(serializer=reports.serializers.LimsSerializer) 
 
         filename = os.path.join(self.db_directory,'metahash_fields_library.csv')
@@ -286,9 +285,6 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
             resource_uri, format='json', data=library_item, 
             authentication=self.get_credentials())
         
-#         from reports.dump_obj import dumpObj
-#         logger.debug(str(('response', dumpObj(resp))))
-        
         self.assertTrue(resp.status_code in [400], str((resp.status_code, resp)))
         
         logger.debug(str(('response.content.library message', 
@@ -301,9 +297,6 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
         
         # TODO: test the error message
         
-        
-#         obj = json.loads(getattr(resp, 'content'))
-#         logger.debug(str(('dump', dumpObj(obj))))
         logger.debug(str(('==== done: test3_create_library_invalid_library_name =====')))
 
     def test4_create_library_invalids(self):

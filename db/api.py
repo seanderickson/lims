@@ -749,43 +749,6 @@ class LibraryResource(ManagedModelResource):
         logger.info(str(('===creating library', bundle.data)))
 
         return super(LibraryResource, self).obj_create(bundle, **kwargs)
-
-#     def is_valid(self, bundle):
-#         """
-#         Should return a dictionary of error messages. If the dictionary has
-#         zero items, the data is considered valid. If there are errors, keys
-#         in the dictionary should be field names and the values should be a list
-#         of errors, even if there is only one.
-#         """
-#         
-#         fields = MetaHash.objects.get_and_parse(
-#             scope='fields.library', field_definition_scope='fields.metahash')
-#         
-#         # cribbed from tastypie.validation.py - mesh data and obj values, then validate
-#         data = {}
-#         if bundle.obj.pk:
-#             data = model_to_dict(bundle.obj)
-#         if data is None:
-#             data = {}
-#         data.update(bundle.data)
-#         
-#         # do validations
-#         errors = defaultdict(list)
-#         
-#         library_type = data.get('library_type')
-#         if library_type:
-#             field_def = fields['library_type']
-#             if library_type not in field_def['choices']:
-#                 errors['library_type'] = str(('value is not one of the choices', 
-#                     library_type, field_def['choices']))
-#             
-#         
-#         if errors:
-#             bundle.errors[self._meta.resource_name] = errors
-#             logger.warn(str((
-#                 'bundle errors', bundle.errors, len(bundle.errors.keys()))))
-#             return False
-#         return True
     
 
 class LibraryCopyResource(ManagedModelResource):

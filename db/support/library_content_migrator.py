@@ -75,8 +75,8 @@ class Migrator:
     
         for library in (orm.Library.objects.all()
                         .filter(library_id__in=library_ids)):
-#                         .filter(screen_type='small_molecule')
-#                         .exclude(library_type='natural_products')):
+                        #                         .filter(screen_type='small_molecule')
+                        #                         .exclude(library_type='natural_products')):
             versions = [x.version_number 
                 for x in (library.librarycontentsversion_set.all()
                     .order_by('version_number')) ] 
@@ -117,6 +117,8 @@ class Migrator:
                                                 diff_function):
                             logs_created +=1
                     prev_version_reagent = reagent
+                    if logs_created % 1000 == 0:
+                        logger.info(str(('created ',logs_created, ' logs for ',library.short_name )))
             logger.info(str(('library', library.short_name, 
                              'logs_created', logs_created)) )
             
@@ -222,11 +224,17 @@ class Migrator:
 
             if getattr(activity.performed_by, 'ecommons_id', None):
                 log.username = activity.performed_by.ecommons_id
-            if getattr(activity.performed_by, 'user', None):
-                log.user_id = getattr(activity.performed_by.user, 'id', log.username)
-            if not log.user_id:
-                logger.warn(str(("can't find a user id, lcv ", b.reagent.library_contents_version, activity)))
-                log.user_id = 1
+            if getattr(activity.performed_by, 'login_id', None):
+                log.username = activity.performed_by.login_id
+            if not log.username:
+                logger.warn(str(("can't find alog.username, library, ss user id ", 
+                    b.reagent.library_contents_version.library.short_name, activity.performed_by.id)))
+                log.username = 'sde'
+
+            # FIXME: to make this work, we need to copy all of the screensaver_user 
+            # table to our user table
+            log.user_id = 1
+            ### end FIXME ###    
             
             log.date_time = make_aware(activity.date_created,timezone.get_default_timezone())
             log.ref_resource_name = self.wellResource._meta.resource_name

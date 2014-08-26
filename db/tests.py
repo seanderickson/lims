@@ -8,7 +8,7 @@ from tastypie.test import ResourceTestCase, TestApiClient
 import db.models
 from test.factories import *
 from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, find_obj_in_list
-from reports.serializers import CSVSerializer
+from reports.serializers import CSVSerializer, SmallMoleculeSerializer
 from reports.tests import MetaHashResourceBootstrap
 import reports.tests
 
@@ -140,23 +140,6 @@ BASE_URI_DB = '/db/api/v1'
 #                         else:
 #                             self.fail('unknown command: ' + command + ', ' + json.dumps(action))
 
-
-class LibraryContentLoadTest(MetaHashResourceBootstrap,ResourceTestCase):
-
-    def setUp(self):
-        logger.debug('============== LibraryContentLoadTest setup ============')
-        super(LibraryContentLoadTest, self).setUp()
-        super(LibraryContentLoadTest, self)._setUp()
-        # load the bootstrap files, which will load the metahash fields, 
-        # and the resource definitions
-        super(LibraryContentLoadTest, self)._bootstrap_init_files()
-        logger.debug('============== LibraryContentLoadTest setup: begin ============')
-        self.db_resource_uri = BASE_URI + '/metahash'
-        self.db_directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
-        
-    def test_load_sdf(self):
-        pass;
-
 class DBMetaHashResourceBootstrap(MetaHashResourceBootstrap):
 
     def _bootstrap_init_files(self):
@@ -217,6 +200,8 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
         resource_uri = BASE_URI_DB + '/library'
         
         library_item = LibraryFactory.attributes()
+        
+        self.library1 = library_item # store for later use
         
         logger.debug(str((library_item)))
         resp = self.api_client.post(
@@ -351,6 +336,68 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
         
         
         logger.debug(str(('==== done: test4_create_library_invalids =====')))
+
+    def test5_load_small_molecule(self):
+        logger.debug(str(('==== test5_load_small_molecule =====')))
+        
+        self.test1_create_library()
+        logger.debug(str(('==== start: test5_load_small_molecule =====')))
+        
+        resource_uri = BASE_URI_DB + '/smallmoleculereagent/' + self.library1.short_name
+        filename = APP_ROOT_DIR + '/db/static/api_init/test_data/clean_data_small_molecule.sdf'
+
+        serializer = SmallMoleculeSerializer()
+ 
+        with open(filename) as input_file:
+        
+            input_data = serializer.from_sdf(input_file.read())
+    
+            logger.debug(str(('Submitting patch...', bootstrap_file)))
+            resp = self.testApiClient.patch(
+                resource_uri, format='sdf', data=input_data, 
+                authentication=self.get_credentials(), **data_for_get )
+            logger.debug(str(('Response: ' , resp.status_code)))
+            #            self.assertHttpAccepted(resp)
+            self.assertTrue(resp.status_code in [202, 204], str((resp)))
+            
+            logger.debug(str(('check patched data for',resource_name,
+                             'execute get on:',resource_uri)))
+
+        resp = self.api_client.get(
+            resource_uri, format='sdf', authentication=self.get_credentials(), 
+            data=data_for_get)
+        logger.debug(str(('--------resp to get:', resp.status_code)))
+        self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+        new_obj = serializer.deserialize(resp)
+        
+        for inputobj in input_data['objects']:
+            result, outputobj = find_obj_in_list(
+                inputobj,new_obj['objects'], excludes=keys_not_to_check )
+            self.assertTrue(
+                result, 
+                str(('not found', outputobj,'=== objects returned ===', 
+                     new_obj['objects'] )) ) 
+            self.assertTrue(
+                resource_name in outputobj['resource_uri'], 
+                str(('wrong resource_uri returned:', outputobj,
+                     'should contain', resource_name)))
+            for id_key in id_keys_to_check:
+                self.assertTrue(
+                    inputobj[id_key] in outputobj['resource_uri'], 
+                    str(('wrong resource_uri returned:', outputobj,
+                         'should contain id key', id_key, 'val', inputobj[id_key])))
+        #TODO: GET the apilogs expected and test them
+
+
+
+
+
+
+
+        
+        logger.debug(str(('==== done: test5_load_small_molecule =====')))
+
+
 
 class ScreenResource(DBMetaHashResourceBootstrap,ResourceTestCase):
     

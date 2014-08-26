@@ -9,6 +9,7 @@ from collections import defaultdict, OrderedDict
 from copy import deepcopy
 from django.conf.urls import url
 from django.conf import settings
+from django.core.cache import cache
 from django.utils.encoding import smart_text
 from django.utils import timezone
 from django.forms.models import model_to_dict
@@ -614,11 +615,21 @@ class ManagedResource(LoggingMixin):
             logger.warn(msg)
             raise Exception(msg)
         resource = ManagedResource.resource_registry[scope]
+
+        resource.clear_cache();
+                
         logger.info(str((
             '----------reset_field_defs, resource_name' , 
             resource._meta.resource_name, 'scope', scope, 'resource', resource )))
         resource.create_fields();
         resource.reset_filtering_and_ordering();
+    
+    def clear_cache(self):
+        
+        # provisional 20140825
+        logger.info('clear cache')
+        cache.delete(self._meta.resource_name + ':schema')
+
     
     # local method    
     # TODO: allow turn on/off of the reset methods for faster loading.
@@ -695,7 +706,12 @@ class ManagedResource(LoggingMixin):
         '''
         Override
         '''
+        schema = cache.get(self._meta.resource_name + ":schema")
+        if schema:
+            return schema
+        
         logger.debug('------build_schema: ' + self.scope)
+        
         try:
             schema = {}
             schema['fields'] = deepcopy(
@@ -726,6 +742,8 @@ class ManagedResource(LoggingMixin):
             raise e
             
         logger.debug('------build_schema,done: ' + self.scope)
+        
+        cache.set(self._meta.resource_name + ':schema', schema)
         return schema
     
     def is_valid(self, bundle, request=None):
@@ -844,6 +862,8 @@ class ManagedResource(LoggingMixin):
         logger.debug(str(('hydrate_json_field', bundle)))
         
         json_obj = {}
+        
+        # FIXME: why is clear=True here?
         local_field_defs = MetaHash.objects.get_and_parse(
             scope=self.scope, field_definition_scope='fields.metahash', clear=True)
         logger.debug(str(('local_field_defs',local_field_defs)))
@@ -934,6 +954,33 @@ class ManagedResource(LoggingMixin):
 #             raise type(e), str((type(e), e,
 #                                 'request.path', bundle.request.path, kwargs))
 
+    def _get_attribute(self, obj, attribute):
+        '''
+        get an attribute that is possibly defined by dot notation:
+        so reagent.substance_id will first get the reagent, then the substance_id
+        '''
+        parts = attribute.split('.')
+        
+        current_obj = obj
+        for part in parts:
+            if hasattr(current_obj,part):
+                current_obj = getattr(current_obj, part)
+        
+        return current_obj 
+    
+    def _get_hashvalue(self, dictionary, attribute):
+        '''
+        get an attribute that is possibly defined by dot notation:
+        so reagent.substance_id will first get the reagent, then the substance_id
+        '''
+        parts = attribute.split('.')
+        current_val = dictionary
+        for part in parts:
+            if part in current_val:
+                current_val = current_val[part]
+        
+        return current_val
+    
     # override
     def detail_uri_kwargs(self, bundle_or_obj):
         """
@@ -943,12 +990,14 @@ class ManagedResource(LoggingMixin):
 
         By default, it uses the model's ``pk`` in order to create the URI.
         """
-        
+
         resource_name = self._meta.resource_name
         try:
-            resource_def = MetaHash.objects.get(
-                scope='resource', key=resource_name)
-            resource = resource_def.model_to_dict(scope='fields.resource')
+            schema = self.build_schema()
+            resource = schema['resource_definition']
+#             resource_def = MetaHash.objects.get(
+#                 scope='resource', key=resource_name)
+#             resource = resource_def.model_to_dict(scope='fields.resource')
             
             # TODO: memoize
             # note use an ordered dict here so that the args can be returned as
@@ -958,12 +1007,15 @@ class ManagedResource(LoggingMixin):
             for x in resource['id_attribute']:
                 val = ''
                 if isinstance(bundle_or_obj, Bundle):
-                    val = getattr(bundle_or_obj.obj,x)
+#                     val = getattr(bundle_or_obj.obj,x)
+                    val = self._get_attribute(bundle_or_obj.obj, x)
                 else:
                     if hasattr(bundle_or_obj, x):
-                        val = getattr(bundle_or_obj,x) # it may be an object- 
+#                         val = getattr(bundle_or_obj,x)  
+                        val = self._get_attribute(bundle_or_obj,x)  
                     else:
-                        val = bundle_or_obj[x] # allows simple dicts
+#                         val = bundle_or_obj[x] # allows simple dicts
+                        val = self._get_hashvalue(bundle_or_obj, x) # allows simple dicts
                 kwargs[x] = str(val)
             
             return kwargs

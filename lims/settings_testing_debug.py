@@ -72,6 +72,11 @@ LOGGING = {
             'propagate': True,
             'level': 'INFO',
         },
+        'reports.api': {  # set a default handler
+            'handlers': ['console'],
+            'propagate': True,
+            'level': 'DEBUG',
+        },
         'db.tests': {  # set a default handler
             'handlers': ['console'],
             'propagate': False,

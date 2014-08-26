@@ -48,12 +48,12 @@ def delete(obj_url, headers, session=None, authentication=None):
             r = requests.delete(obj_url, auth=authentication, headers=headers,verify=False)
         
         if(r.status_code != 204):
-            print "ERROR", r, r.text
+            print "DELETE ERROR", r, r.text
             raise ApiError(obj_url,'DELETE',r)
         print 'DELETE: ', obj_url, ' ,response:', r.status_code
         logger.info(str(('DELETE', obj_url)))
     except Exception, e:
-        logger.error(str(('exception recorded while contacting server', e)))
+        logger.error(str(('delete', obj_url, 'exception recorded while contacting server', e)))
         raise e
 
 def put(input_file, obj_url,headers, session=None, authentication=None):
@@ -82,7 +82,7 @@ def put(input_file, obj_url,headers, session=None, authentication=None):
         logger.warn(str((
             'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
             tb.tb_lineno, extype, ex)))
-        logger.error(str(('exception recorded while contacting server', e)))
+        logger.error(str(('put', obj_url, 'exception recorded while contacting server', e)))
         raise e
     
 def patch(patch_file, obj_url,headers, session=None, authentication=None):
@@ -109,7 +109,7 @@ def patch(patch_file, obj_url,headers, session=None, authentication=None):
                     logger.debug('----no json object to report')
                     logger.debug(str(('text response', r.text)))
     except Exception, e:
-        logger.error(str(('exception recorded while contacting server', e)))
+        logger.error(str(('patch', obj_url, 'exception recorded while contacting server', e)))
         raise e
 
 
@@ -190,6 +190,7 @@ if __name__ == "__main__":
             
             else:
                 data_file = os.path.join(args.input_dir,action['file'])
+                print 'Data File: ', data_file
                 extension = os.path.splitext(data_file)[1].strip('.')
                 headers.update(CONTENT_TYPES[extension])
                         

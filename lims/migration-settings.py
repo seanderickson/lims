@@ -39,7 +39,8 @@ LOGGING = {
         'logfile': {
             'level':'DEBUG',
             'class':'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(PROJECT_ROOT, '..') +  "/logs/iccbl-testing.log",
+            #'filename': os.path.join(PROJECT_ROOT, "migration-server.log"),
+            'filename': 'test.log',
             'maxBytes': 5000000,
             'backupCount': 2,
             'formatter': 'simple',
@@ -67,7 +68,7 @@ LOGGING = {
             'level': 'INFO',
         },        
         'lims': {  # set a default handler
-            'handlers': ['console'],
+            'handlers': ['logfile'],
             'propagate': False,
             'level': 'INFO',
         },               
@@ -94,7 +95,7 @@ LOGGING = {
         'django': {  # set a default handler
             'handlers': ['logfile'],
             'propagate': False,
-            'level': 'DEBUG',
+            'level': 'INFO',
         },        
         'utils': {  # for SQL
             'handlers': ['logfile'],

@@ -261,7 +261,7 @@ M  END
         serializer = SDFSerializer()
         
         sdf_data = serializer.to_sdf(records)
-        with open(APP_ROOT_DIR + '/lims/test/test1.sdf', 'w') as fout:    
+        with open(APP_ROOT_DIR + '/lims/static/api_init/test_data/test1.sdf', 'w') as fout:    
             fout.write(sdf_data)
             
         fout.close()

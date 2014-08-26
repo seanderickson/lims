@@ -104,6 +104,8 @@ function gitpull {
 }
 
 function restoredb {
+  echo "restoredb: $(ts) ..." >> "$LOGFILE"
+
   # drop DB if exits
   if [[ -x "$DROP_DB_COMMAND" ]]; then
     $DROP_DB_COMMAND $DB $DBUSER >>"$LOGFILE" 2>&1 || error "dropdb failed: $?"
@@ -133,6 +135,16 @@ function restoredb {
       `ls -1 ${D}/screensaver*${filespec}.schema_only.pg_dump` >>"$LOGFILE" 2>&1 
   fi
 
+  echo "restoredb completed: $(ts) " >> "$LOGFILE"
+
+}
+
+function restoredb_data {
+  echo "restoredb_data: $(ts) ..." >> "$LOGFILE"
+
+  D=${PG_RESTORE_DIR:-.}
+  filespec=${PG_RESTORE_FILESPEC:-''}
+
   pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
     `ls -1 ${D}/screensaver*${filespec}.attached_file_schema.pg_dump`  >>"$LOGFILE" 2>&1 
   pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
@@ -150,7 +162,22 @@ function restoredb {
       `ls -1 ${D}/screensaver*${filespec}.result_data.pg_dump`  >>"$LOGFILE" 2>&1 
   fi
   
+  if [[ ( $DB_LOAD_SCHEMA_ONLY -eq 0 && $DB_SKIP_BIG_FILES -eq 1 ) ]]; then
+    for x in `ls -1 ${TESTING_DATA_DIR}/result_value*`; do
+      echo "importing: $x"
+      psql -h $DBHOST -d $DB -U $DBUSER -c "\copy result_value from $x"
+    done          
+    for x in `ls -1 ${TESTING_DATA_DIR}/assay_well*`; do
+      echo "importing: $x"
+      psql -h $DBHOST -d $DB -U $DBUSER -c "\copy assay_well from $x"
+    done          
+  fi  
+  
+  
   # TODO: create a check to validate db imports
+  
+  echo "restoredb_data completed: $(ts) " >> "$LOGFILE"
+  
   return 0
 }
 
@@ -170,12 +197,14 @@ function django_syncdb {
 
 }
 
-function migratedb {
+function premigratedb {
+  echo "pre migrations: $(ts) ..." >> "$LOGFILE"
 
+  # these migrations can be run before bootstrapping
   $DJANGO_CMD migrate reports >>"$LOGFILE" 2>&1 || error "reports migration failed: $?"
   
   $DJANGO_CMD migrate tastypie >>"$LOGFILE" 2>&1 || error "tastypie migration failed: $?"
- 
+
   # check which migrations are completed - if we've skipped db restore, then only apply latest
   completed_migrations=$($DJANGO_CMD migrate db --list | grep '*' | awk '{print $2}')
   echo "completed migrations: $completed_migrations" >> "$LOGFILE"
@@ -184,11 +213,21 @@ function migratedb {
   if [[ ! $completed_migrations =~ $migration ]]; then
     $DJANGO_CMD migrate db $migration --fake >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
   fi
-  
   migration='0002'
   if [[ ! $completed_migrations =~ $migration ]]; then
     $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
   fi
+  
+  echo "pre migrations completed: $(ts) " >> "$LOGFILE"
+ 
+}
+
+function migratedb {
+  echo "running migrations: $(ts) ..." >> "$LOGFILE"
+
+  # check which migrations are completed - if we've skipped db restore, then only apply latest
+  completed_migrations=$($DJANGO_CMD migrate db --list | grep '*' | awk '{print $2}')
+  echo "completed migrations: $completed_migrations" >> "$LOGFILE"
   
   migration='0003'
   if [[ ! $completed_migrations =~ $migration ]]; then
@@ -248,17 +287,17 @@ function migratedb {
 #  $DJANGO_CMD migrate db 0014 >>"$LOGFILE" 2>&1 || error "db 0014 failed: $?"
 #  $DJANGO_CMD migrate db 0015 >>"$LOGFILE" 2>&1 || error "db 0015 failed: $?"
 
-  echo "migrations completed..." >> "$LOGFILE"
+  echo "migrations completed: $(ts) " >> "$LOGFILE"
 
 }
 
 function bootstrap {
-  echo "Bootstrapping the web server..."
+  echo "Bootstrapping the web server: $(ts) ...">> "$LOGFILE"
   
   BOOTSTRAP_PORT=55001
   
   echo "run a local dev server on port $BOOTSTRAP_PORT..."
-  nohup $DJANGO_CMD runserver --nothreading --noreload $BOOTSTRAP_PORT &
+  nohup $DJANGO_CMD runserver --nothreading --noreload $BOOTSTRAP_PORT --settings=lims.migration-settings &
   server_pid=$!
   if [[ "$?" -ne 0 ]]; then
     runserver_status =$?
@@ -302,9 +341,13 @@ function bootstrap {
   final_server_pid=$(ps aux |grep runserver| grep 55001 | awk '{print $2}')
   kill $final_server_pid || error "kill server $final_server_pid failed with $?"
   # kill $server_pid
+
+  echo "Bootstrapping the web server done: $(ts)" >> "$LOGFILE"
 }
 
 function frontend_setup {
+  echo "frontend_setup: $(ts) ..." >> "$LOGFILE"
+
   cd reports/static >>"$LOGFILE" 2>&1
   
   npm --version 2>&1 || error "npm not found: $?"
@@ -318,6 +361,8 @@ function frontend_setup {
   cd ../..
   
   $DJANGO_CMD collectstatic --noinput --ignore="*node_modules*" --ignore="*bower_components*" || error "collectstatic failed: $?"
+
+  echo "frontend_setup done: $(ts)" >> "$LOGFILE"
   
 }
 
@@ -327,6 +372,8 @@ function main {
   gitpull
   
   restoredb
+  
+  restoredb_data
     
   maybe_activate_virtualenv
   
@@ -348,10 +395,13 @@ function main {
   frontend_setup
   
   django_syncdb
-  
-  migratedb
-  
+
+  premigratedb  
+
   bootstrap
+  
+  # the later migrations require the bootstrapped data
+  migratedb
   
   # Integration test: run some grunt-mocha chai-jquery to test the UI?  
 }
@@ -361,6 +411,7 @@ function code_bootstrap {
   gitpull
   
   # restoredb
+  # restoredb_data
     
   maybe_activate_virtualenv
   
@@ -382,15 +433,19 @@ function code_bootstrap {
   frontend_setup
   
   django_syncdb
+  premigratedb  
+
+  bootstrap
   
   migratedb
   
-  bootstrap
 }  
 
 echo "start migration: $(ts) ..."
 
 main "$@"
+
+#restoredb_data
 
 # code_bootstrap "$@"
   

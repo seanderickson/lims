@@ -10,16 +10,21 @@ class Migration(DataMigration):
     
     def forwards(self, orm):
         # Adding field 'Library.version_number'
-        db.add_column(u'library', 'version_number',
-                      self.gf('django.db.models.fields.IntegerField')(default=0),
-                      keep_default=False)
 
-        # Adding field 'Library.loaded_by'
-        db.add_column(u'library', 'loaded_by',
-                      self.gf('django.db.models.fields.related.ForeignKey')(blank=True, related_name=u'libraries_loaded', null=True, to=orm['db.ScreensaverUser']),
-                      keep_default=False)
-
-
+        ### NOTE: 20140826 - moved to migration 0002
+        # because the migration bootstrap step needs these fields to be here.
+        # Also: note: we have not modified the "models" section below
+        # 
+        #         db.add_column(u'library', 'version_number',
+        #                       self.gf('django.db.models.fields.IntegerField')(default=0),
+        #                       keep_default=False)
+        # 
+        #         # Adding field 'Library.loaded_by'
+        #         db.add_column(u'library', 'loaded_by',
+        #                       self.gf('django.db.models.fields.related.ForeignKey')(blank=True, related_name=u'libraries_loaded', null=True, to=orm['db.ScreensaverUser']),
+        #                       keep_default=False)
+        
+        
         # create dummy "ID" field, for Django
         # FIXME: why is this necessary?
         try:

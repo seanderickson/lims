@@ -461,38 +461,6 @@ class CollaboratorLink(models.Model):
     class Meta:
         db_table = 'collaborator_link'
 
-class DataColumn(models.Model):
-    data_column_id = models.IntegerField(primary_key=True)
-    version = models.IntegerField()
-    ordinal = models.IntegerField()
-    replicate_ordinal = models.IntegerField(null=True, blank=True)
-    assay_phenotype = models.TextField(blank=True)
-    assay_readout_type = models.TextField(blank=True)
-    comments = models.TextField(blank=True)
-    description = models.TextField(blank=True)
-    how_derived = models.TextField(blank=True)
-    is_follow_up_data = models.BooleanField()
-    name = models.TextField()
-    time_point = models.TextField(blank=True)
-    is_derived = models.BooleanField()
-    positives_count = models.IntegerField(null=True, blank=True)
-    screen_result = models.ForeignKey('ScreenResult')
-    channel = models.IntegerField(null=True, blank=True)
-    time_point_ordinal = models.IntegerField(null=True, blank=True)
-    zdepth_ordinal = models.IntegerField(null=True, blank=True)
-    data_type = models.TextField()
-    decimal_places = models.IntegerField(null=True, blank=True)
-    strong_positives_count = models.IntegerField(null=True, blank=True)
-    medium_positives_count = models.IntegerField(null=True, blank=True)
-    weak_positives_count = models.IntegerField(null=True, blank=True)
-    class Meta:
-        db_table = 'data_column'
-
-class DataColumnDerivedFromLink(models.Model):
-    derived_data_column = models.ForeignKey(DataColumn)
-    derived_from_data_column = models.ForeignKey(DataColumn, related_name='derived_from')
-    class Meta:
-        db_table = 'data_column_derived_from_link'
 
 #class DjangoAdminLog(models.Model):
 #    id = models.IntegerField(primary_key=True)
@@ -774,6 +742,52 @@ class ScreenResult(models.Model):
     date_publicly_available = models.DateTimeField(null=True, blank=True)
     class Meta:
         db_table = 'screen_result'
+
+class ResultValue(models.Model):
+    result_value_id = models.IntegerField(null=True, blank=True)
+    assay_well_control_type = models.TextField(blank=True)
+    is_exclude = models.NullBooleanField(null=True, blank=True)
+    numeric_value = models.FloatField(null=True, blank=True)
+    is_positive = models.NullBooleanField(null=True, blank=True)
+    value = models.TextField(blank=True)
+    data_column = models.ForeignKey('DataColumn', null=True, blank=True)
+    well = models.ForeignKey('Well', null=True, blank=True)
+    class Meta:
+        db_table = 'result_value'
+
+class DataColumn(models.Model):
+    data_column_id = models.IntegerField(primary_key=True)
+    version = models.IntegerField()
+    ordinal = models.IntegerField()
+    replicate_ordinal = models.IntegerField(null=True, blank=True)
+    assay_phenotype = models.TextField(blank=True)
+    assay_readout_type = models.TextField(blank=True)
+    comments = models.TextField(blank=True)
+    description = models.TextField(blank=True)
+    how_derived = models.TextField(blank=True)
+    is_follow_up_data = models.BooleanField()
+    name = models.TextField()
+    time_point = models.TextField(blank=True)
+    is_derived = models.BooleanField()
+    positives_count = models.IntegerField(null=True, blank=True)
+    screen_result = models.ForeignKey('ScreenResult')
+    channel = models.IntegerField(null=True, blank=True)
+    time_point_ordinal = models.IntegerField(null=True, blank=True)
+    zdepth_ordinal = models.IntegerField(null=True, blank=True)
+    data_type = models.TextField()
+    decimal_places = models.IntegerField(null=True, blank=True)
+    strong_positives_count = models.IntegerField(null=True, blank=True)
+    medium_positives_count = models.IntegerField(null=True, blank=True)
+    weak_positives_count = models.IntegerField(null=True, blank=True)
+    class Meta:
+        db_table = 'data_column'
+
+class DataColumnDerivedFromLink(models.Model):
+    derived_data_column = models.ForeignKey(DataColumn)
+    derived_from_data_column = models.ForeignKey(DataColumn, related_name='derived_from')
+    class Meta:
+        db_table = 'data_column_derived_from_link'
+
 
 # TODO: this table is obsoleted after migration scripts 0002,0003 and 
 # manual/0003_screen_status.sql are run.
@@ -1116,18 +1130,6 @@ class PlateLocation(models.Model):
     shelf = models.TextField()
     class Meta:
         db_table = 'plate_location'
-
-class ResultValue(models.Model):
-    result_value_id = models.IntegerField(null=True, blank=True)
-    assay_well_control_type = models.TextField(blank=True)
-    is_exclude = models.NullBooleanField(null=True, blank=True)
-    numeric_value = models.FloatField(null=True, blank=True)
-    is_positive = models.NullBooleanField(null=True, blank=True)
-    value = models.TextField(blank=True)
-    data_column = models.ForeignKey(DataColumn, null=True, blank=True)
-    well = models.ForeignKey('Well', null=True, blank=True)
-    class Meta:
-        db_table = 'result_value'
 
 class Well(models.Model):
     well_id = models.TextField(primary_key=True)

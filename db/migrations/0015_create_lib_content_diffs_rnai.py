@@ -1,24 +1,21 @@
 # -*- coding: utf-8 -*-
 from south.utils import datetime_utils as datetime
 from south.db import db
-from south.v2 import DataMigration
+from south.v2 import SchemaMigration
 from django.db import models
 
 
-class Migration(DataMigration):
+class Migration(SchemaMigration):
 
-    depends_on = (
-        ("reports", "0001_initial"),
-    )
-    
     def forwards(self, orm):
-        
         from db.support.library_content_migrator import Migrator
-        
         Migrator().do_migration(orm, screen_type='rnai')
         
+
     def backwards(self, orm):
-        "Write your backwards methods here."
+        # Deleting field 'Reagent.library'
+        db.delete_column(u'reagent', 'library_id')
+
 
     models = {
         u'auth.group': {
@@ -532,14 +529,15 @@ class Migration(DataMigration):
         },
         u'db.molfile': {
             'Meta': {'object_name': 'Molfile', 'db_table': "u'molfile'"},
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+#             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'molfile': ('django.db.models.fields.TextField', [], {}),
             'ordinal': ('django.db.models.fields.IntegerField', [], {}),
-            'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SmallMoleculeReagent']", 'unique': 'True'})
+#             'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SmallMoleculeReagent']", 'unique': 'True'})
+            'reagent': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.SmallMoleculeReagent']", 'primary_key': 'True'}),
         },
         u'db.naturalproductreagent': {
             'Meta': {'object_name': 'NaturalProductReagent', 'db_table': "u'natural_product_reagent'"},
-            'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Reagent']", 'primary_key': 'True'})
+            'reagent': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.Reagent']", 'primary_key': 'True'}),
         },
         u'db.plate': {
             'Meta': {'object_name': 'Plate', 'db_table': "u'plate'"},
@@ -608,7 +606,7 @@ class Migration(DataMigration):
             'facility_batch_id': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'library_contents_version': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.LibraryContentsVersion']", 'null': 'True'}),
             'reagent_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UY2UH7Q'", 'unique': 'True', 'max_length': '8'}),
+            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UWPQEDDD'", 'unique': 'True', 'max_length': '8'}),
             'vendor_batch_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_identifier': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_name': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -863,7 +861,7 @@ class Migration(DataMigration):
             'Meta': {'object_name': 'SilencingReagent', 'db_table': "u'silencing_reagent'"},
             'anti_sense_sequence': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'is_restricted_sequence': ('django.db.models.fields.BooleanField', [], {}),
-            'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Reagent']", 'primary_key': 'True'}),
+            'reagent': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.Reagent']", 'primary_key': 'True'}),
             'sequence': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'silencing_reagent_type': ('django.db.models.fields.TextField', [], {'blank': 'True'})
         },
@@ -909,7 +907,7 @@ class Migration(DataMigration):
             'molecular_formula': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'molecular_mass': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '15', 'decimal_places': '9', 'blank': 'True'}),
             'molecular_weight': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '15', 'decimal_places': '9', 'blank': 'True'}),
-            'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Reagent']", 'primary_key': 'True'}),
+            'reagent': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.Reagent']", 'primary_key': 'True'}),
             'salt_form_id': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'smiles': ('django.db.models.fields.TextField', [], {'blank': 'True'})
         },
@@ -953,8 +951,7 @@ class Migration(DataMigration):
         u'db.wellvolumecorrectionactivity': {
             'Meta': {'object_name': 'WellVolumeCorrectionActivity', 'db_table': "u'well_volume_correction_activity'"},
             'activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AdministrativeActivity']", 'primary_key': 'True'})
-        },
+        }
     }
 
     complete_apps = ['db']
-    symmetrical = True

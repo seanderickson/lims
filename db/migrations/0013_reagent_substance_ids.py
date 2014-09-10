@@ -17,7 +17,29 @@ class Migration(DataMigration):
 
     # do this in an isolated server, as there is no transaction protection
     def forwards(self, orm):
+        # SQL method - takes 14 min on laptop
+        # so 5x faster
 
+        filename = APP_ROOT_DIR + '/new_substance_ids.csv'
+        import csv
+        
+        _count = 0
+        with open(filename, 'wb') as f:
+            writer = csv.writer(f)
+#             writer.writeheader(['reagent_id', 'substance_id'])
+            for r_id in ( orm.Reagent.objects.all()
+                                .order_by('reagent_id') #.filter(reagent_id__gt=first)
+                                .values_list('reagent_id') ):
+                reagent_id = r_id[0]
+                writer.writerow([reagent_id, create_substance_id(reagent_id)])
+                _count += 1
+                if _count %10000 == 0:
+                    logger.info('processed: %d' % _count )
+    
+        logger.info('wrote : %d substance_ids' % _count )
+
+    def forwards_bak(self, orm):
+        # ORM method - takes ~68 min on laptop
         i = 0
         _max = orm.Reagent.objects.all()\
                 .aggregate(Max('reagent_id'))['reagent_id__max']
@@ -30,11 +52,14 @@ class Migration(DataMigration):
 
         logger.info(str(('substance IDs generated', i)))
         
+    
     @transaction.commit_manually
-    def convert(self, orm, first, step):
+    def convert_bak(self, orm, first, step):
 #         digs = string.digits + string.uppercase
 #         digs = digs.translate(None,'01OI') # remove unwanted chars 
 #         start = len(digs)**7       
+        
+        # TODO: use bulk create here - 
         
         logger.info(str(( 'first', first, 'step', step)) )
         i = 0
@@ -51,6 +76,8 @@ class Migration(DataMigration):
         logger.info(str(( 'processed: ', i)) )
         
         return r_id 
+        
+    
     
     def backwards(self, orm):
         "Write your backwards methods here."

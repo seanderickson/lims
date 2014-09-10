@@ -4,6 +4,8 @@ from south.db import db
 from south.v2 import DataMigration
 from django.db import models
 
+from db.support.data_converter import default_converter
+
 import re
 import logging
 logger = logging.getLogger(__name__)
@@ -17,9 +19,8 @@ class Migration(DataMigration):
         - we are converting from the stored, display values, to a key value;
         this key will reference the entry for the respective vocab in the 
         reports_vocabularies table.  (Referencing by scope, key).
-        Note: there will be a conversion script for all vocabularies, eventually.
+        Note: some conversions are also being done in SQL (manual scripts)
         '''
-        # note, this is idempotent!!! -sde4
         
         library_vocabs = ['library_type', 'solvent', 'screen_type', 'screening_status']
         
@@ -28,7 +29,7 @@ class Migration(DataMigration):
             for attr in library_vocabs:
                 temp = getattr(obj, attr)
                 if temp:
-                    temp2 = self.default_converter(temp)
+                    temp2 = default_converter(temp)
                     setattr(obj, attr, temp2)
                     if(logger.isEnabledFor(logging.DEBUG)):
                         logger.debug(str(('convert library vocab', attr, temp,'to',temp2)))
@@ -46,7 +47,7 @@ class Migration(DataMigration):
             for attr in screen_vocabs:
                 temp = getattr(obj, attr)
                 if temp:
-                    temp2 = self.default_converter(temp)
+                    temp2 = default_converter(temp)
                     setattr(obj, attr, temp2)
                     if(logger.isEnabledFor(logging.DEBUG)):
                         logger.debug(str(('convert screen vocab ', attr, temp,'to', temp2))) 
@@ -55,10 +56,10 @@ class Migration(DataMigration):
         
         logger.info(str(('converted vocabs on', count, 'screens')))
         
-            
-    def default_converter(self, original_text):
-        temp = re.sub(r'[\W]+', ' ', original_text)
-        return '_'.join(temp.lower().split())
+#             
+#     def default_converter(self, original_text):
+#         temp = re.sub(r'[\W]+', ' ', original_text)
+#         return '_'.join(temp.lower().split())
 
     def backwards(self, orm):
         "Write your backwards methods here."

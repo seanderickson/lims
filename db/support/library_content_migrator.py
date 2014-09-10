@@ -16,6 +16,7 @@ from django.utils import timezone, tzinfo
 
 import logging
 from django.utils.timezone import make_aware, UTC
+from django.core.exceptions import ObjectDoesNotExist
 
 logger = logging.getLogger(__name__)
 
@@ -95,32 +96,88 @@ class Migrator:
             if library.screen_type == 'rnai':
                 base_query = orm.SilencingReagent.objects.all()
                 diff_function = self.diff_rnai
+                attribute = 'silencingreagent'
             else:
                 if library.library_type == 'natural_products':
                     base_query = orm.NaturalProductReagent.objects.all()
                     diff_function = self.diff_natural_product
+                    attribute = 'naturalproductreagent'
                 else:
                     base_query = orm.SmallMoleculeReagent.objects.all()
                     diff_function = self.diff_smr
-            
+                    attribute = 'smallmoleculereagent'
             logs_created = 0
+            
+# TODO: redo this based on reagent to speed up?            
+#             for reagent in library.well_set.all():
+#                 prev_version_reagent = None
+#                 for reagent in (
+#                     base_query
+#                     .filter(reagent__well=well)
+#                     .order_by('reagent__library_contents_version__version_number')):
+# 
+#                     if prev_version_reagent:
+#                         if self.create_diff_log(well, 
+#                                                 prev_version_reagent, reagent,
+#                                                 diff_function):
+#                             logs_created +=1
+#                     prev_version_reagent = reagent
+#                     if logs_created % 1000 == 0:
+#                         logger.info(str(('created ',logs_created, ' logs for ',library.short_name )))
+                        
+# Original way - 20140902                        
             for well in library.well_set.all():
                 prev_version_reagent = None
                 for reagent in (
                     base_query
                     .filter(reagent__well=well)
                     .order_by('reagent__library_contents_version__version_number')):
-
+ 
                     if prev_version_reagent:
                         if self.create_diff_log(well, 
                                                 prev_version_reagent, reagent,
                                                 diff_function):
                             logs_created +=1
                     prev_version_reagent = reagent
-                    if logs_created % 1000 == 0:
-                        logger.info(str(('created ',logs_created, ' logs for ',library.short_name )))
+                if logs_created and logs_created % 1000 == 0:
+                    logger.info(str(('created ',logs_created, ' logs for ',library.short_name )))                        
             logger.info(str(('library', library.short_name, 
                              'logs_created', logs_created)) )
+
+            # new way - 20140903 - no benefit, 6 min                     
+#             prev_version = None
+#             for version in ( library.librarycontentsversion_set.all()
+#                                 .order_by('version_number')):
+#                 if prev_version:
+#                     for prev_reagent in ( prev_version.reagent_set.all()
+#                                             .order_by('well__well_id') ):
+#                         j = 0
+#                         try:
+#                             for reagent in ( version.reagent_set.all()
+#                                                 .order_by('well__well_id')
+#                                                 .filter(well=prev_reagent.well) ):
+#                                 if j > 1:
+#                                     logger.warn(str((
+#                                         'found more than one reagent for the well', 
+#                                         prev_reagent.well, version, version.library)))
+#                                 
+#                                 r1 = getattr(prev_reagent, attribute)
+#                                 r2 = getattr(reagent, attribute)
+#                                 if self.create_diff_log(reagent.well, 
+#                                                         r1, r2,
+#                                                         diff_function):
+#                                     logs_created +=1
+#                                 j += 1
+#                                     
+#                         except ObjectDoesNotExist, e:
+#                             logger.info(str(('no smr for r',prev_reagent,reagent)))
+#                         if logs_created and logs_created % 1000 == 0:
+#                             logger.info(str(('created ',logs_created, 
+#                                 ' logs for ',library.short_name )))                        
+#                 prev_version=version
+#             
+#             logger.info(str(('library', library.short_name, 
+#                              'logs_created', logs_created)) )
             
             prev_version = None
             for version in (library.librarycontentsversion_set.all()
@@ -160,6 +217,16 @@ class Migrator:
                 library.loaded_by = activity.performed_by
             library.save()
             i=i+1
+
+            ## TODO: 20140826
+            ## - set all the reagent.library values
+            ## - prune out all the old reagents
+
+
+
+
+
+
             
 #             wells = {}
 #             prev_version = None
@@ -204,6 +271,10 @@ class Migrator:
         print 'processed: ', i, 'libraries'
 
     def create_diff_log(self,well,a,b,diff_function):
+        '''
+        @param a reagent a
+        @param b reagent b
+        '''
         difflog = diff_function(a,b)
         if ( 'added_keys' in difflog or 
              'removed_keys' in difflog or

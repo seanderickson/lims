@@ -530,14 +530,15 @@ class Migration(DataMigration):
         },
         u'db.molfile': {
             'Meta': {'object_name': 'Molfile', 'db_table': "u'molfile'"},
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+#             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'molfile': ('django.db.models.fields.TextField', [], {}),
             'ordinal': ('django.db.models.fields.IntegerField', [], {}),
-            'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SmallMoleculeReagent']", 'unique': 'True'})
+#             'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SmallMoleculeReagent']", 'unique': 'True'})
+            'reagent': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.SmallMoleculeReagent']", 'primary_key': 'True'}),
         },
         u'db.naturalproductreagent': {
             'Meta': {'object_name': 'NaturalProductReagent', 'db_table': "u'natural_product_reagent'"},
-            'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Reagent']", 'primary_key': 'True'})
+            'reagent': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.Reagent']", 'primary_key': 'True'}),
         },
         u'db.plate': {
             'Meta': {'object_name': 'Plate', 'db_table': "u'plate'"},
@@ -861,7 +862,7 @@ class Migration(DataMigration):
             'Meta': {'object_name': 'SilencingReagent', 'db_table': "u'silencing_reagent'"},
             'anti_sense_sequence': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'is_restricted_sequence': ('django.db.models.fields.BooleanField', [], {}),
-            'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Reagent']", 'primary_key': 'True'}),
+            'reagent': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.Reagent']", 'primary_key': 'True'}),
             'sequence': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'silencing_reagent_type': ('django.db.models.fields.TextField', [], {'blank': 'True'})
         },
@@ -907,7 +908,7 @@ class Migration(DataMigration):
             'molecular_formula': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'molecular_mass': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '15', 'decimal_places': '9', 'blank': 'True'}),
             'molecular_weight': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '15', 'decimal_places': '9', 'blank': 'True'}),
-            'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Reagent']", 'primary_key': 'True'}),
+            'reagent': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.Reagent']", 'primary_key': 'True'}),
             'salt_form_id': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'smiles': ('django.db.models.fields.TextField', [], {'blank': 'True'})
         },

@@ -739,8 +739,11 @@ class ManagedResource(LoggingMixin):
         except Exception, e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            logger.error(str(('on build_schema()', self._meta.resource_name, 
-                exc_type, fname, exc_tb.tb_lineno)))
+            msg = str(e)
+            if isinstance(e, ImmediateHttpResponse):
+                msg = str(e.response)
+            logger.warn(str(('on build_schema()', self._meta.resource_name, 
+                msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e
             
         logger.debug('------build_schema,done: ' + self.scope ) # + ', ' + str((schema['fields'])))

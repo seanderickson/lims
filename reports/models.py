@@ -121,6 +121,13 @@ class ApiLog(models.Model):
     # full public key of the resource instance being logged (may be composite, 
     # separted by '/')
     key = models.CharField(null=False, max_length=128)
+    
+#     #TODO How to link to parent/children?
+#     ref_containing_resource = models.CharField(null=False, max_length=105)
+#     containing_key = models.CharField(null=False, max_length=128)
+#     contained_keys = models.ListField(...)
+    
+        
     # the full uri of the resource instance being logged, so a combination of 
     # [base api uri]/[resource_name]/[key]
     uri = models.TextField(null=False)

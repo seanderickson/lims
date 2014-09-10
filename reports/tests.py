@@ -40,9 +40,14 @@ from tastypie.test import ResourceTestCase, TestApiClient
 # from reports.models import Vocabularies
 from tastypie.fields import BooleanField
 
-from reports.serializers import CsvBooleanField,CSVSerializer, SDFSerializer
+from reports.serializers import CsvBooleanField,CSVSerializer, SDFSerializer,\
+    LimsSerializer
 from reports.utils.sdf2py import MOLDATAKEY
 from tastypie.utils.dict import dict_strip_unicode_keys
+from django.test.testcases import SimpleTestCase
+from django.test.simple import DjangoTestSuiteRunner
+from reports import dump_obj
+from reports.dump_obj import dumpObj
 
 
 logger = logging.getLogger(__name__)
@@ -197,7 +202,28 @@ def find_all_obj_in_list(list1, list2, **kwargs):
             return False, msgs
     return True, msgs
 
-class SDFSerializerTest(TestCase):
+# Run tests without a database:
+# Example:
+# ./manage.py test reports.SDFSerializerTest.test2_clean_data_sdf \
+#      --settings=lims.settings_testing_debug --verbosity=2 --testrunner=reports.tests.NoDbTestRunner
+# NOTE: when using this testrunner, the class finder is different; note that the 
+# path excludes the module, so 
+# "reports.SDFSerializerTest.test2_clean_data_sdf"
+# not 
+# "reports.test.SDFSerializerTest.test2_clean_data_sdf"
+class NoDbTestRunner(DjangoTestSuiteRunner):
+  """ A test runner to test without database creation """
+
+  def setup_databases(self, **kwargs):
+    """ Override the database creation defined in parent class """
+    pass
+
+  def teardown_databases(self, old_config, **kwargs):
+    """ Override the database teardown defined in parent class """
+    pass
+
+
+class SDFSerializerTest(SimpleTestCase):
     
     def test1_read(self):
         logger.debug('=== test1 SDF read')
@@ -259,16 +285,16 @@ M  END
             }]
         
         serializer = SDFSerializer()
-        
+        filename = "lims/static/test_data/test1_output.sdf"
         sdf_data = serializer.to_sdf(records)
-        with open(APP_ROOT_DIR + '/lims/static/api_init/test_data/test1.sdf', 'w') as fout:    
+        with open(os.path.join(APP_ROOT_DIR, filename), 'w') as fout:    
             fout.write(sdf_data)
             
         fout.close()
     
-        with open(APP_ROOT_DIR + '/lims/test/test1.sdf') as fin:    
+        with open(os.path.join(APP_ROOT_DIR, filename)) as fin:    
             _data = serializer.from_sdf(fin.read(), root=None)
-            final_data = _data['objects']
+            final_data = _data
             logger.debug(str(('final_data', final_data)))
             
             self.assertTrue(
@@ -280,11 +306,219 @@ M  END
                 for record in records:
                     if record['smiles'] == obj['smiles']:
                         for k,v in record.items():
-                            self.assertTrue(k in obj, str(('obj does not contain',k)))
                             self.assertTrue(
-                                obj[k] == v, 
-                                str(('values not equal', k, record[k], '\n read: ', v)))
+                                obj[k] == v.strip(), 
+                                str(('values not equal', k, record[k], 'read:', v)))
 
+    def test2_clean_data_sdf(self):
+        logger.debug(str(('==== test2_clean_data_sdf =====')))
+
+        record_one = {
+            r'Library': r'Biomol-TimTec1',
+            r'Source': r'Biomol-TimTec',
+            r'Vendor': r'Biomol-TimTec',
+            r'Vendor_Reagent_ID': r'SPL000058',
+            r'vendor_batch_id': r'HM-001_TM-20090805',
+            r'OldWell': r'A01',
+            r'OldPlate': r'1',
+            r'Plate': r'1534',
+            r'Well': r'A01',
+            r'Well_type': r'EXPERIMENTAL',
+            r'Row': r'1',
+            r'Col':r'1',
+            r'Facility_Reagent_ID': r'ICCB-00589081',
+            r'Solvent':r'DMSO',
+            r'facility_batch_id':r'008',
+            r'salt_form_id':r'101',
+            r'Chemical_Name':r'fake compound name 1',
+            r'smiles':r'O=C1CC(C)(C)CC(=O)C1C(c1ccccc1)C1=C(O)CC(C)(C)CC1=O',
+            r'inchi':r'InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-23(3,4)13-18(21)27/h5-9,19-20,26H,10-13H2,1-4H3',
+            r'pubchem_cid':r'558309',
+            r'pubchem_cid':r'7335957',
+            r'chembank_id':r'1665724',
+            r'chembank_id':r'6066882',
+            r'concentration':r'111 nM',
+            r'chembl_id':r'100001',
+            r'chembl_id':r'100002',
+            r'chembl_id':r'111102',
+            r'pubmed_id':r'20653109',
+            r'pubmed_id':r'20653081' }
+
+        record_two = {
+            r'Library': r'Biomol-TimTec1',
+            r'Source': r'Biomol-TimTec',
+            r'Vendor': r'Biomol-TimTec',
+            r'Vendor_Reagent_ID': r'ST001215',
+            r'OldWell': r'A01',
+            r'OldPlate': r'2',
+            r'Plate': r'1534',
+            r'Well': r'A02',
+            r'Well_type': r'EXPERIMENTAL',
+            r'Row': r'1',
+            r'Col':r'2',
+            r'Facility_Reagent_ID': r'ICCB-00589082',
+            r'Solvent':r'DMSO',
+            r'Concentration': r'5 nM',
+            r'Chemical_Name':r'fake compound name 1',
+            r'CAS_Number': r'fake cas number 1',
+            r'smiles':r'Clc1ccc(\\C=C/c2c(C)n(C)n(c3ccccc3)c2=O)c(Cl)c1',
+            r'inchi':r'InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-23(3,4)13-18(21)27/h5-9,19-20,26H,10-13H2,1-4H3',
+            r'moldata':
+r'''Structure89
+csChFnd70/04290511482D
+
+ 16 17  0  0  0  0  0  0  0  0999 V2000
+    4.8373    2.0813    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    4.8373    0.7093    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    3.6256    2.7850    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    0.7093    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    6.0491    2.7850    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    2.4179    2.0813    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    2.4179    0.7093    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    2.0813    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    7.2308    6.2888    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    7.2308    4.9141    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    1.2076    2.7850    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    1.2076    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    6.0491    4.2034    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+    7.2308    2.1223    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+    6.0491    0.0000    0.0000 N   0  0  0  0  0  0  0  0  0  0  0  0
+    3.6256    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+  2  1  1  0  0  0  0
+  3  1  2  0  0  0  0
+ 16  2  1  0  0  0  0
+  5  1  1  0  0  0  0
+  6  3  1  0  0  0  0
+  7  6  2  0  0  0  0
+ 15  2  2  0  0  0  0
+ 14  5  2  0  0  0  0
+ 13  5  1  0  0  0  0
+ 11  6  1  0  0  0  0
+ 12  7  1  0  0  0  0
+ 10 13  1  0  0  0  0
+  9 10  1  0  0  0  0
+  8 11  2  0  0  0  0
+  4  8  1  0  0  0  0
+ 16  7  1  0  0  0  0
+  4 12  2  0  0  0  0
+M  END'''            }
+        last_record = {
+            'Library': 'Biomol-TimTec1',
+            'Source': 'Biomol-TimTec',
+            'Vendor': 'Biomol-TimTec',
+            'Vendor_Reagent_ID': '',
+            'OldWell': 'P24',
+            'OldPlate': '2',
+            'Plate': '1534',
+            'Well': 'A09',
+            'Well_type': 'EMPTY',
+            'Row': '1',
+            'Col': '8',
+            'Facility_Reagent_ID': '',
+            'Solvent': '',
+            'Concentration': '',
+            'Chemical_Name': '',
+            'smiles': '',
+            'inchi': '',
+            }
+        
+        
+        serializer = SDFSerializer()
+        filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_small_molecule.sdf'
+
+        with open(os.path.join(APP_ROOT_DIR, filename)) as fin:    
+            _data = serializer.from_sdf(fin.read(), root=None)
+            input_data = _data
+            
+            if logger.isEnabledFor(logging.DEBUG):
+                print 'data read in'
+                for x in input_data:
+                    print x, '\n'
+            
+            expected_count = 8
+            self.assertEqual(len(input_data), expected_count, 
+                str(('initial serialization of ',filename,'found',
+                    len(input_data), 'expected',expected_count,
+                    'input_data',input_data)))
+            
+            result, msgs = assert_obj1_to_obj2(record_one, input_data[0])
+            self.assertTrue(result, msgs)
+ 
+            if logger.isEnabledFor(logging.DEBUG):
+                print 'record 1 expected:'
+                print input_data[1]['moldata']
+                print '====='
+                print 'record 2 read:'
+                print record_two['moldata']
+            
+                for i,c in enumerate(input_data[1]['moldata']):
+                    if record_two['moldata'][i] != c:
+                        print 'i', i, c,record_two['moldata'][i]
+                        break 
+
+            result, msgs = assert_obj1_to_obj2(record_two, input_data[1])
+            self.assertTrue(result, msgs)
+ 
+            result, msgs = assert_obj1_to_obj2(last_record, input_data[-1])
+            self.assertTrue(result, msgs)
+ 
+            # Now test the whole system by writing back out and reading back in
+            
+            out_filename = os.path.join(APP_ROOT_DIR, filename + 'out')
+            sdf_data = serializer.to_sdf(input_data)
+            with open(out_filename, 'w') as fout:    
+                fout.write(sdf_data)
+            fout.close()
+
+            with open(out_filename) as fin:    
+                _fdata = serializer.from_sdf(fin.read(), root=None)
+                final_data = _fdata
+                
+                self.assertEqual(len(input_data), len(final_data), 
+                    str(('initial serialization of ',out_filename,'found',
+                        len(final_data), 'expected',len(input_data),
+                        'final_data',final_data)))
+                
+                keys_not_to_check=[]
+                for i,inputobj in enumerate(input_data):
+                    result, outputobj = find_obj_in_list(
+                        inputobj,final_data, excludes=keys_not_to_check )
+                    if not result:
+                        print 'input obj not found'
+                        print inputobj, '\n'
+                        print 'final data read in:'
+                        for x in final_data:
+                            print x , '\n'
+                        print 'messages'
+                        print_find_errors(outputobj)
+                        
+                        self.fail('input object not found')
+
+
+# TODO searching for a recursive way here...
+def print_find_errors(outputobj):
+    for x in outputobj:
+        if not isinstance(x, (basestring, dict)):
+            for y in x:
+                if not isinstance(x, (basestring, dict)):
+                    for z in x:
+                        if isinstance(z, (list,tuple)):
+                            for zz in z:
+                                print 'zz', zz, '\n'
+                        print 'a', z, '\n'
+                else:
+                    if isinstance(x, basestring):
+                        for z in x.split('msgs'), '\n':
+                            print 'b',z, '\n'
+                    else:
+                        print 'c',z, '\n'
+        else:
+            if isinstance(x, basestring):
+                for z in x.split('msgs'), '\n':
+                    print 'd',z, '\n'
+            else:
+                print 'e',z, '\n'
+        
 class BaselineTest(TestCase):
 
     def test0_equivocal(self):
@@ -491,12 +725,15 @@ class HydrationTest(TestCase):
                              str((i,' is not equal', item, result, expected[i])))
   
     
-class MetaHashResourceBootstrap(object):
+class MetaHashResourceBootstrap(ResourceTestCase):
+    # TODO: this class is a utility, not a TestCase
+    # still, overriding tastypie.test.TestCase for some utility methods, like
+    # "create_basic"... 
     
     def get_credentials(self):
         return self.create_basic(username=self.username, password=self.password)
-
-    def _setUp(self):
+        
+    def setUp(self):
         # Create a user.
         self.username = 'testsuper'
         self.password = 'pass'
@@ -506,10 +743,42 @@ class MetaHashResourceBootstrap(object):
         self.resource_uri = BASE_URI + '/metahash'
         self.directory = os.path.join(APP_ROOT_DIR, 'reports/static/api_init')
         self.csv_serializer=CSVSerializer() 
-        # todo: doesn't work for post, see TestApiClient.post() method,
-        # it is incorrectly "serializing" the data before posting
-        self.testApiClient = TestApiClient(serializer=self.csv_serializer) 
-   
+        
+        self.serializer = LimsSerializer()
+        self.api_client = TestApiClient(serializer=self.serializer)
+        
+        
+        self._bootstrap_init_files()
+        
+#         # TODO: clear the following up: use either testApiClient or api_client...
+#         
+#         # todo: doesn't work for post, see TestApiClient.post() method,
+#         # it is incorrectly "serializing" the data before posting 
+#         self.api_client = TestApiClient(serializer=self.csv_serializer) 
+#         self.api_client = TestApiClient(serializer=self.csv_serializer) 
+    
+    
+    def get_resource_from_server(self, resource_name):
+        '''
+        Utility to get a resource description from the server
+        '''
+        
+        resource_uri = BASE_URI + '/resource/' + resource_name
+        logger.debug(str(('Get the schema', resource_uri )))
+        
+        return self.get_from_server(resource_uri)
+        
+    def get_from_server(self, resource_uri):
+        resp = self.api_client.get(
+            resource_uri, format='json', authentication=self.get_credentials(), 
+            data={ 'limit': 999 })
+        logger.debug(str(('--------resp to get:', resp.status_code)))
+        self.assertTrue(resp.status_code in [200], 
+                        str((resp.status_code, resp.serialize())))
+        return self.deserialize(resp)
+
+        
+    
     def _patch_test(self,resource_name, filename, keys_not_to_check=[], 
                     id_keys_to_check=[], data_for_get={}):
         '''
@@ -521,10 +790,12 @@ class MetaHashResourceBootstrap(object):
         
         logger.debug(str(('===resource_uri', resource_uri)))
         with open(filename) as bootstrap_file:
+            # NOTE / TODO: we have to deserialize the input, because the TP test method 
+            # will expect a python data object, which it will serialize!
             input_data = self.csv_serializer.from_csv(bootstrap_file.read())
 
             logger.debug(str(('Submitting patch...', bootstrap_file)))
-            resp = self.testApiClient.patch(
+            resp = self.api_client.patch(
                 resource_uri, format='csv', data=input_data, 
                 authentication=self.get_credentials(), **data_for_get )
             logger.debug(str(('Response: ' , resp.status_code)))
@@ -537,7 +808,8 @@ class MetaHashResourceBootstrap(object):
                 resource_uri, format='json', authentication=self.get_credentials(), 
                 data=data_for_get)
             logger.debug(str(('--------resp to get:', resp.status_code)))
-            self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+            self.assertTrue(resp.status_code in [200], str((resp.status_code, resp.serialize())))
+#             self.assertTrue(resp.status_code in [200], str((resp.status_code, dumpObj(resp))))
             new_obj = self.deserialize(resp)
             
             for inputobj in input_data['objects']:
@@ -576,10 +848,12 @@ class MetaHashResourceBootstrap(object):
         resource_uri = BASE_URI + '/' + resource_name
 
         with open(filename) as bootstrap_file:
+            # NOTE / TODO: we have to deserialize the input, because the TP test method 
+            # will expect a python data object, which it will serialize!
             input_data = self.csv_serializer.from_csv(bootstrap_file.read())
             
             logger.debug(str(('Submitting put...', bootstrap_file)))
-            resp = self.testApiClient.put(
+            resp = self.api_client.put(
                 resource_uri, format='csv', data=input_data, 
                 authentication=self.get_credentials(), **data_for_get )
             logger.debug(str(('Response: ' , resp.status_code)))
@@ -666,11 +940,25 @@ class MetaHashResourceBootstrap(object):
         logger.debug('------------- done _bootstrap_init_files -----------------')
 
         
-class TestApiInit(MetaHashResourceBootstrap,ResourceTestCase):
+class TestApiInit(ResourceTestCase):
     
+    def get_credentials(self):
+        return self.create_basic(username=self.username, password=self.password)
+        
     def setUp(self):
-        super(TestApiInit, self).setUp()
-        super(TestApiInit, self)._setUp()
+        # Create a user.
+        self.username = 'testsuper'
+        self.password = 'pass'
+        self.user = User.objects.create_superuser(
+            self.username, 'testsuperuser@example.com', self.password)
+        
+        self.resource_uri = BASE_URI + '/metahash'
+        self.directory = os.path.join(APP_ROOT_DIR, 'reports/static/api_init')
+        self.csv_serializer=CSVSerializer() 
+        
+        self.serializer = LimsSerializer()
+        self.api_client = TestApiClient(serializer=self.serializer)
+        
 
     def test0_bootstrap_metahash(self):
         
@@ -728,10 +1016,10 @@ class TestApiInit(MetaHashResourceBootstrap,ResourceTestCase):
         
         logger.debug('================ test0_bootstrap_metahash done ========== ')
     
-    def test1_bootstrap_init(self):
-        logger.debug('================ reports test1_bootstrap_init ================')
-        self._bootstrap_init_files()
-        logger.debug('================ test1_bootstrap_init done ================')
+#     def test1_bootstrap_init(self):
+#         logger.debug('================ reports test1_bootstrap_init ================')
+#         self._bootstrap_init_files()
+#         logger.debug('================ test1_bootstrap_init done ================')
         
     def test2_api_init(self):
         
@@ -743,6 +1031,8 @@ class TestApiInit(MetaHashResourceBootstrap,ResourceTestCase):
         
         filename = os.path.join(self.directory,'api_init_actions.csv')
         with open(filename) as input_file:
+            # NOTE / TODO: we have to deserialize the input, because the TP test method 
+            # will expect a python data object, which it will serialize!
             api_init_actions = serializer.from_csv(input_file.read(), root=None)
             
             bootstrap_files = [
@@ -774,6 +1064,8 @@ class TestApiInit(MetaHashResourceBootstrap,ResourceTestCase):
                         search_excludes = ['resource_uri'] 
                     logger.debug(str(('+++++++++++processing file', filename)))
                     with open(filename) as data_file:
+                        # NOTE / TODO: we have to deserialize the input, because the TP test method 
+                        # will expect a python data object, which it will serialize!
                         input_data = serializer.from_csv(data_file.read())
                         
                         if command == 'put':
@@ -835,10 +1127,10 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
     def setUp(self):
         logger.debug('============== User setup ============')
         super(UserResource, self).setUp()
-        super(UserResource, self)._setUp()
-        # load the bootstrap files, which will load the metahash fields, 
-        # and the resource definitions
-        super(UserResource, self)._bootstrap_init_files()
+#         super(UserResource, self)._setUp()
+#         # load the bootstrap files, which will load the metahash fields, 
+#         # and the resource definitions
+#         super(UserResource, self)._bootstrap_init_files()
         logger.debug('============== User setup: begin ============')
         
         # Create the User resource field entries
@@ -941,7 +1233,7 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
         # Try to do some unauthorized actions
 
         resource_uri = BASE_URI + '/metahash'
-        resp = self.testApiClient.get(
+        resp = self.api_client.get(
             resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password) )
         self.assertTrue(resp.status_code in [403], str((resp.status_code, resp)))
@@ -967,7 +1259,7 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
 
         # now try again as the updated user:
         
-        resp = self.testApiClient.get(
+        resp = self.api_client.get(
             resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password) )
         self.assertTrue(resp.status_code in [200], 
@@ -1002,7 +1294,7 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
         
         json_data = { 'objects': [{ 'name': 'test_group_x' }] }
         
-        resp = self.testApiClient.patch(
+        resp = self.api_client.patch(
             resource_uri, format='json', data=json_data, 
             authentication=self.create_basic(username, password) )
         self.assertTrue(resp.status_code in [403], str((resp.status_code, resp.serialize())))
@@ -1023,7 +1315,7 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
         
         # now try again as the updated user:
         
-        resp = self.testApiClient.patch(
+        resp = self.api_client.patch(
             resource_uri, format='json', data=json_data, 
             authentication=self.create_basic(username, password) )
         self.assertTrue(resp.status_code in [202, 204], 
@@ -1127,7 +1419,7 @@ class UserGroupResource(UserResource):
 
         # 1 read test - should have permission through group
         resource_uri = BASE_URI + '/metahash'
-        resp = self.testApiClient.get(
+        resp = self.api_client.get(
             resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password ))
         self.assertTrue(resp.status_code in [200], str((resp.status_code, resp.serialize())))
@@ -1156,7 +1448,7 @@ class UserGroupResource(UserResource):
         #         logger.info(str(('is it set? response: ' , self.deserialize(resp) )))
 
         # now try again as the updated user:
-        resp = self.testApiClient.get(
+        resp = self.api_client.get(
             resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password) )
         self.assertTrue(resp.status_code in [403], 
@@ -1187,7 +1479,7 @@ class UserGroupResource(UserResource):
 
         # 1 read test - user, user's group don't have the permission
         resource_uri = BASE_URI + '/vocabularies'
-        resp = self.testApiClient.get(
+        resp = self.api_client.get(
             resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password ))
         self.assertTrue(resp.status_code in [403], str((resp.status_code, resp.serialize())))
@@ -1242,7 +1534,7 @@ class UserGroupResource(UserResource):
         
         # 2 read test - user has permissions through inherited permissions,
         resource_uri = BASE_URI + '/vocabularies'
-        resp = self.testApiClient.get(
+        resp = self.api_client.get(
             resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password ))
         self.assertTrue(resp.status_code in [200], str((resp.status_code, resp.serialize())))

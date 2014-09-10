@@ -77,7 +77,7 @@ LOGGING = {
         },               
         'reports': {  # set a default handler
             'handlers': ['logfile'],
-            'propagate': True,
+            'propagate': False,
             'level': 'INFO',
         },
         'db.tests': {  # set a default handler

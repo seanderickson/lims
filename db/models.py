@@ -569,23 +569,6 @@ class LabCherryPick(models.Model):
 #    class Meta:
 #        db_table = 'lab_head'
 
-class Molfile(models.Model):
-    molfile = models.TextField()
-    ordinal = models.IntegerField()
-    reagent = models.ForeignKey('SmallMoleculeReagent', unique=True)
-    class Meta:
-        db_table = 'molfile'
-
-class NaturalProductReagent(models.Model):
-    reagent = models.ForeignKey('Reagent', primary_key=True)
-    
-    def get_substance_id(self):
-        return 'fooey' #self.reagent.substance_id
-    substance_id = property(get_substance_id)
-    
-    class Meta:
-        db_table = 'natural_product_reagent'
-
 class PrimaryCell(models.Model):
     age_in_years = models.IntegerField()
     donor_ethnicity = models.CharField(max_length=255, blank=True)
@@ -886,16 +869,97 @@ class ScreensaverUserRole(models.Model):
         db_table = 'screensaver_user_role'
 
 
+
+
+# # 20140828 - provisional, to get a substance_id_seq that is available to test environment
+# # since can't figure out how to create it manually!
+# class Substance(models.Model):
+#     
+#     id = models.AutoField(primary_key=True)
+#     
+#     class Meta:
+#         db_table = 'substance'
+#     
+#     def __unicode__(self):
+#         return str(self.id)    
+#     
+#         
+# def create_id():
+#     # NOTE: using a custom sequence so we don't waste by using reagent_reagent_id_seq
+#     # REQUIRES: migration 0002_db_migration_prep_a
+#     sequence_name = 'substance_id_seq'
+#     cursor = connection.cursor()
+#     cursor.execute("SELECT nextval(%s)" % sequence_name)
+#     row = cursor.fetchone();
+#     val = row[0]
+#     new_id = create_substance_id(val)
+# #     logger.info(str(('create_id', val, new_id)))
+# #     cursor.execute("SELECT setval('reagent_reagent_id_seq', %s)", [val-1])
+#     return new_id
+
+# def create_id():
+#     # NOTE: using a custom sequence so we don't waste by using reagent_reagent_id_seq
+#     # REQUIRES: migration 0002_db_migration_prep_a
+#     sequence_name = 'reagent_reagent_id_seq'
+#     cursor = connection.cursor()
+#     cursor.execute("SELECT currval(%s)" % sequence_name)
+#     row = cursor.fetchone();
+#     val = row[0]
+#     new_id = create_substance_id(val)
+# #     logger.info(str(('create_id', val, new_id)))
+# #     cursor.execute("SELECT setval('reagent_reagent_id_seq', %s)", [val-1])
+#     return new_id
+
+from reports.utils.gray_codes import create_substance_id
+
 def create_id():
-    # TODO: this is wasting an id
-    cursor = connection.cursor()
-    cursor.execute("SELECT nextval('reagent_id_seq')")
-    row = cursor.fetchone();
-    val = row[0]
-    new_id = create_substance_id(val)
-#     logger.info(str(('create_id', val, new_id)))
-    cursor.execute("SELECT setval('reagent_id_seq', %s)", [val-1])
-    return new_id
+    # TODO: There is no way to pass an argument to
+    # to the default on a model, so this is why we have to grope around for the
+    # sequence value.  The sequence here is used with the model idfield  
+    try:
+        cursor = connection.cursor()
+        cursor.execute("SELECT nextval('db_substance_id_seq')")
+        row = cursor.fetchone();
+        val = row[0]
+    
+        new_id = create_substance_id(val)
+        if(logger.isEnabledFor(logging.DEBUG)):
+            logger.debug(str(('created_id', val, new_id)))
+    #     if val > 1:
+    #         cursor.execute("SELECT setval('db_substance_id_seq', %s)", [val-1])
+        return new_id
+    except Exception, e:
+        logger.warn(str(('create_substance_id fails', e)))
+        return None
+
+class Well(models.Model):
+    well_id = models.TextField(primary_key=True)
+    version = models.IntegerField(blank=True, null=True)
+    plate_number = models.IntegerField()
+    well_name = models.TextField()
+    facility_id = models.TextField(blank=True)
+    library_well_type = models.TextField()
+    library = models.ForeignKey('Library')
+    deprecation_admin_activity = models.ForeignKey('AdministrativeActivity', null=True, blank=True)
+    is_deprecated = models.BooleanField(default=False)
+    latest_released_reagent = models.ForeignKey('Reagent', null=True, blank=True, related_name='reagent_well')
+    
+#     reagent = models.ForeignKey('Reagent', null=True, related_name='wells')
+#     reagent = models.ForeignKey('Reagent', to_field='substance_id')
+    
+    molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
+    mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
+    class Meta:
+        db_table = 'well'
+    def __unicode__(self):
+        return str(self.well_id) 
+        
+# create a substance table, as an easy way of creating the db_substance_id_seq
+class Substance(models.Model):
+    comment = models.TextField()
+    def __unicode__(self):
+        return str(self.id) 
+
 
 class Reagent(models.Model):
     # Note: migration scripts have converted this to use a sequence 
@@ -910,7 +974,8 @@ class Reagent(models.Model):
     vendor_identifier = models.TextField(blank=True)
     vendor_name = models.TextField(blank=True)
     library_contents_version = models.ForeignKey('LibraryContentsVersion', null=True)
-    well = models.ForeignKey('Well', null=True)
+#     library = models.ForeignKey('Library', null=True)
+    well = models.ForeignKey('Well', null=True) # , related_name='well_reagent')
     facility_batch_id = models.IntegerField(null=True, blank=True)
     vendor_batch_id = models.TextField(blank=True)
     class Meta:
@@ -923,7 +988,7 @@ class ReagentPublicationLink(models.Model):
         db_table = 'reagent_publication_link'
 
 class SilencingReagent(models.Model):
-    reagent = models.ForeignKey(Reagent, primary_key=True)
+    reagent = models.OneToOneField(Reagent, primary_key=True)
     sequence = models.TextField(blank=True)
     anti_sense_sequence = models.TextField(blank=True)
     silencing_reagent_type = models.TextField(blank=True)
@@ -956,16 +1021,28 @@ class SilencingReagentDuplexWells(models.Model):
         db_table = 'silencing_reagent_duplex_wells'
 
 class SmallMoleculeReagent(models.Model):
-    reagent = models.ForeignKey(Reagent, primary_key=True)
+    reagent = models.OneToOneField(Reagent, primary_key=True)
     inchi = models.TextField(blank=True)
     molecular_formula = models.TextField(blank=True)
     molecular_mass = models.DecimalField(null=True, max_digits=15, decimal_places=9, blank=True)
     molecular_weight = models.DecimalField(null=True, max_digits=15, decimal_places=9, blank=True)
     smiles = models.TextField(blank=True)
     salt_form_id = models.IntegerField(null=True, blank=True)
-    is_restricted_structure = models.BooleanField()
+    is_restricted_structure = models.BooleanField(default=False)
     class Meta:
         db_table = 'small_molecule_reagent'
+
+class Molfile(models.Model):
+    molfile = models.TextField()
+    ordinal = models.IntegerField() # TODO: legacy, get rid of this
+    reagent = models.OneToOneField('SmallMoleculeReagent', unique=True, primary_key=True)
+    class Meta:
+        db_table = 'molfile'
+
+class NaturalProductReagent(models.Model):
+    reagent = models.OneToOneField(Reagent, primary_key=True)
+    class Meta:
+        db_table = 'natural_product_reagent'
 
 class StudyReagentLink(models.Model):
     study = models.ForeignKey(Screen)
@@ -1028,7 +1105,8 @@ class Library(models.Model):
     # (the original db-discovery only knew that it was the pk)
     #     library_id = models.IntegerField(primary_key=True) 
     library_id = models.AutoField(primary_key=True) 
-    version = models.IntegerField()
+#     version = models.IntegerField()
+    version = models.IntegerField(blank=True, null=True)
     library_name = models.TextField(unique=True)
     short_name = models.TextField(unique=True)
     description = models.TextField(blank=True)
@@ -1057,6 +1135,8 @@ class Library(models.Model):
                                   null=True, blank=True)
     class Meta:
         db_table = 'library'
+    def __unicode__(self):
+        return str((self.short_name, self.start_plate, self.end_plate)) 
 
 class LibraryContentsVersion(models.Model):
     library_contents_version_id = models.IntegerField(primary_key=True)
@@ -1131,24 +1211,6 @@ class PlateLocation(models.Model):
     class Meta:
         db_table = 'plate_location'
 
-class Well(models.Model):
-    well_id = models.TextField(primary_key=True)
-    version = models.IntegerField()
-    plate_number = models.IntegerField()
-    well_name = models.TextField()
-    facility_id = models.TextField(blank=True)
-    library_well_type = models.TextField()
-    library = models.ForeignKey(Library)
-    deprecation_admin_activity = models.ForeignKey(AdministrativeActivity, null=True, blank=True)
-    is_deprecated = models.BooleanField()
-    latest_released_reagent = models.ForeignKey(Reagent, null=True, blank=True, related_name='reagent_well')
-    
-#     reagent = models.ForeignKey('Reagent', to_field='substance_id')
-    
-    molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
-    mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
-    class Meta:
-        db_table = 'well'
 
 class WellVolumeAdjustment(models.Model):
     well_volume_adjustment_id = models.IntegerField(primary_key=True)

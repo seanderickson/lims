@@ -5,6 +5,7 @@ import cStringIO
 import StringIO
 import json
 import logging
+import re
 
 from django.utils.encoding import smart_str
 from django.core.serializers.json import DjangoJSONEncoder
@@ -103,33 +104,70 @@ class SDFSerializer(Serializer):
         if not formats:
             _formats = Serializer.formats # or []
             _formats = copy.copy(_formats)
-            _formats.append('sdf')
             formats = _formats
+        formats.append('sdf')
             
         super(SDFSerializer,self).__init__(
             formats=formats, 
             content_types=content_types,**kwargs);
+
         
-    def to_sdf(self, data):
-        logger.warn(str(('to_sdf', data)))
+    def to_sdf(self, data, options=None):
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(str(('to_sdf', data, options)))
+
+        data = self.to_simple(data, options)
         output = cStringIO.StringIO()
+
+        # TODO: smarter way to ignore 'objects'
+        if 'objects' in data:
+            data = data['objects']
+        if len(data) == 0:
+            return output
+        
+        if isinstance(data,dict):
+            data = [data]
+            
         MOLDATAKEY = s2p.MOLDATAKEY
         for d in data:
-            output.write('$$$$\n')
             
-            if MOLDATAKEY in d:
+            if d.get(MOLDATAKEY, None):
                 output.write(str(d[MOLDATAKEY]))
                 output.write('\n') 
-                del d[MOLDATAKEY]
-            logger.info(str(('d',d)))
+#                 del d[MOLDATAKEY]
             for k,v in d.items():
+                if k == MOLDATAKEY: 
+                    continue
                 output.write('> <%s>\n' % k)
-                output.write(str(v))
-                output.write('\n\n')
+                # according to 
+                # http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip
+                # "only one blank line should terminate a data item"
+                if v:
+                    output.write(str(v))
+                    output.write('\n')
+                output.write('\n')
+            output.write('$$$$\n')
         return output.getvalue()
     
-    def from_sdf(self, content, root=None):
-        return { 'objects': s2p.parse_sdf(content) }
+    def from_sdf(self, content, root='objects'):
+        '''
+        @param root - property to nest the return object iterable in for the 
+            response (None if no nesting, and return object will be an iterable)
+
+        NOTE: the use of "objects" only makes sense for lists - and cannot be used
+        when there is only one item in the list; therefore this will not even work
+        with a "POST"; tastypie isn't aware that the object is nested in "objects".
+        This shouldn't be used at all, but we need to dig further into tastypie
+
+        TODO: version 2 - read from a stream
+        '''
+        objects = s2p.parse_sdf(content,
+            _delimre=re.compile(ur'(?<=\n)\$\$\$\$'))
+        if root and not isinstance(objects, dict):
+            return { root: objects }
+        else:
+            return objects
 
 # class MultiPartDeserializser():
 #     
@@ -172,8 +210,8 @@ class CSVSerializer(Serializer):
         if not formats:
             _formats = Serializer.formats # or []
             _formats = copy.copy(_formats)
-            _formats.append('csv')
             formats = _formats
+        formats.append('csv')
             
         super(CSVSerializer,self).__init__(
             formats=formats, 
@@ -182,8 +220,7 @@ class CSVSerializer(Serializer):
         
     def to_csv(self, data, root='objects', options=None):
         '''
-        @param root where the return object iterable is nested in the data
-            object (None if no nesting, and data is iterable).
+        @param root ignored for csv!
         
         '''
         
@@ -200,6 +237,8 @@ class CSVSerializer(Serializer):
             return raw_data.getvalue()
             
         # TODO: stream this, don't do the whole dict at once 
+        
+        # TODO: smarter way to ignore 'objects'
         if 'objects' in data:
             data = data['objects']
         if len(data) == 0:
@@ -251,6 +290,12 @@ class CSVSerializer(Serializer):
         '''
         @param root - property to nest the return object iterable in for the 
             response (None if no nesting, and return object will be an iterable)
+
+        NOTE: the use of "objects" only makes sense for lists - and cannot be used
+        when there is only one item in the list; therefore this will not even work
+        with a "POST"; tastypie isn't aware that the object is nested in "objects".
+        This shouldn't be used at all, but we need to dig further into tastypie
+
         TODO: version 2 - read from a stream
         '''
         objects = reports.utils.serialize.from_csv(StringIO.StringIO(content))
@@ -429,11 +474,11 @@ class CursorSerializer(Serializer):
 
 
 
-class LimsSerializer(PrettyJSONSerializer, BackboneSerializer,CSVSerializer):
+class LimsSerializer(PrettyJSONSerializer, BackboneSerializer,CSVSerializer, SDFSerializer):
     ''' Combine all of the Serializers used by the API
     '''
 
-class SmallMoleculeSerializer(LimsSerializer, SDFSerializer):
-    ''' Combine all of the Serializers used by the API
-    '''
+# class SmallMoleculeSerializer(LimsSerializer, SDFSerializer):
+#     ''' Combine all of the Serializers used by the API
+#     '''
 

@@ -15,6 +15,9 @@ print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
 # todo: does this exist?
 # TEST_RUNNER='test_utils.test_runners.keep_database'
 
+# just found out that this will force a full stack trace (with DEBUG=False?)
+TASTYPIE_FULL_DEBUG=True
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -69,12 +72,12 @@ LOGGING = {
         },               
         'reports': {  # set a default handler
             'handlers': ['console'],
-            'propagate': True,
+            'propagate': False,
             'level': 'INFO',
         },
         'reports.api': {  # set a default handler
             'handlers': ['console'],
-            'propagate': True,
+            'propagate': False,
             'level': 'DEBUG',
         },
         'db.tests': {  # set a default handler

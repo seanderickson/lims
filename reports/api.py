@@ -37,6 +37,7 @@ from reports.models import MetaHash, Vocabularies, ApiLog, Permission, \
 from tastypie.utils.timezone import make_naive
 from tastypie.http import HttpForbidden
 from tastypie.validation import Validation
+from reports.dump_obj import dumpObj
         
 logger = logging.getLogger(__name__)
 
@@ -136,7 +137,6 @@ class UserGroupAuthorization(Authorization):
         if self._is_resource_authorized(
             self.resource_meta.resource_name, bundle.request.user, 'write'):
             return True
-
 
 
 class SuperUserAuthorization(ReadOnlyAuthorization):
@@ -371,11 +371,12 @@ class LoggingMixin(Resource):
             
             return bundle    
         except Exception, e:
-#             logger.warn(str(('==ex on create, kwargs', kwargs,
-#                              'request.path', bundle.request.path,e)))
             extype, ex, tb = sys.exc_info()
+            msg = str(e)
+            if isinstance(e, ImmediateHttpResponse):
+                msg = str(e.response)
             logger.warn(str((
-                'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
+                'throw', e, msg, tb.tb_frame.f_code.co_filename, 'error line', 
                 tb.tb_lineno, extype, ex)))
             raise e    
         
@@ -603,7 +604,9 @@ class ManagedResource(LoggingMixin):
 #         self._meta.validation = ManagedValidation()
         
     # local method  
-    def reset_field_defs(self, scope):
+    def reset_field_defs(self, scope=None):
+        if not scope:
+            scope = self.scope
         #         logger.info(str((
         #             '----------reset_field_defs, ' , scope, 'registry', 
         #             ManagedResource.resource_registry )))
@@ -672,14 +675,13 @@ class ManagedResource(LoggingMixin):
                 logger.debug('====== bootstrapping field: ' + field_name)
                 new_fields[field_name] = deepcopy(field_obj)
             elif field_name in self.meta_bootstrap_fields:
-                logger.debug('====== meta bootstrapping field: ' + field_name)
                 new_fields[field_name] = deepcopy(field_obj)
 
         unknown_keys = set(local_field_defs.keys()) - set(new_fields.keys())
         logger.debug(str(('managed keys not yet defined', unknown_keys)))
         for field_name in unknown_keys:
             field_def = local_field_defs[field_name]
-            logger.debug(str(('virtual managed field:', field_name, field_def)))
+#             logger.debug(str(('virtual managed field:', field_name, field_def)))
             if 'json_field_type' in field_def and field_def['json_field_type']:
                 # TODO: use type to create class instances
                 # JSON fields are read only because they are hydrated in the 
@@ -741,13 +743,15 @@ class ManagedResource(LoggingMixin):
                 exc_type, fname, exc_tb.tb_lineno)))
             raise e
             
-        logger.debug('------build_schema,done: ' + self.scope)
+        logger.debug('------build_schema,done: ' + self.scope ) # + ', ' + str((schema['fields'])))
         
         cache.set(self._meta.resource_name + ':schema', schema)
         return schema
     
     def is_valid(self, bundle, request=None):
         """
+        obj_create{ full_hydrate, save{ is_valid, save_related, save, save_m2m }}
+         
         NOTE: not extending tastypie.Validation variations, since they don't do 
         much, and we need access to the meta inf here anyway.
         NOTE: since "is_valid" is called at save(), so post-hydrate, all of the 
@@ -779,25 +783,28 @@ class ManagedResource(LoggingMixin):
         # do validations
         errors = defaultdict(list)
         
-        for key, value in data.items():
-            if key == 'json_field':
-                continue;
-            
-            # only consider input fields that *have* a schema field
-            if key in fields and fields[key]: 
-                field = fields[key]
-                keyerrors = []
-            else:
-                logger.warn(str(('=======================================++++ no schema field for:', key, value )))
-                continue
+        
+        for name, field in fields.items():
+            keyerrors = []
+            value = data.get(name, None)
+            logger.debug(str((self._meta.resource_name, 'validating field', name, value)))
             
             if field.get('required', False):
-                logger.warn(str(('check required: ', key, value)))
+                logger.debug(str(('check required: ', name, value)))
+                
                 if not value:
                      keyerrors.append('required')
-
-            if value and 'choices' in field and field['choices']:
-                logger.warn(str(('check choices: ', key, value, field['choices'])))
+                if isinstance(value, basestring):
+                    if len(value.strip()) == 0:
+                        keyerrors.append('required')
+                        
+            if not value:
+                if keyerrors:
+                    errors[name] = keyerrors            
+                continue
+            
+            if 'choices' in field and field['choices']:
+                logger.debug(str(('check choices: ', name, value, field['choices'])))
                 if field['ui_type'] != 'Checkboxes':
                     if value not in field['choices']:
                         keyerrors.append(
@@ -808,8 +815,8 @@ class ManagedResource(LoggingMixin):
                             keyerrors.append(
                                 str((value, 'are not members of', field['choices'])))
 
-            if value and 'regex' in field and field['regex']:
-                logger.warn(str(('check regex: ', key, value, field['regex'] )))
+            if 'regex' in field and field['regex']:
+                logger.debug(str(('check regex: ', name, value, field['regex'] )))
                 if not re.match(field['regex'], value):
                     msg = field.get('validation_message', None)
                     if not msg:
@@ -817,14 +824,64 @@ class ManagedResource(LoggingMixin):
                     keyerrors.append(msg)
 
             if keyerrors:
-                errors[key] = keyerrors            
+                errors[name] = keyerrors
+                
         
         if errors:
             bundle.errors[self._meta.resource_name] = errors
             logger.warn(str((
-                'bundle errors', bundle.errors, len(bundle.errors.keys()))))
+                'bundle errors', bundle.errors, len(bundle.errors.keys()),
+                'bundle_data', data)))
+
+#             errors['data_obj'] = data            
+
             return False
         return True
+
+
+        
+#         for key, value in data.items():
+#             if key == 'json_field':
+#                 continue;
+#             
+#             # only consider input fields that *have* a schema field
+#             if key in fields:
+#                 field = fields[key]
+#                 keyerrors = []
+#             else:
+#                 logger.warn(str((
+#                     '====++++ no schema field (or field) for:', 
+#                     key, value )))
+#                 continue
+#             
+#             if field.get('required', False):
+#                 logger.debug(str(('check required: ', key, value)))
+#                 if not value:
+#                      keyerrors.append('required')
+# 
+#             if value and 'choices' in field and field['choices']:
+#                 logger.debug(str(('check choices: ', key, value, field['choices'])))
+#                 if field['ui_type'] != 'Checkboxes':
+#                     if value not in field['choices']:
+#                         keyerrors.append(
+#                             str((value, 'is not one of', field['choices'])))
+#                 else:
+#                     for x in value:
+#                         if x not in field['choices']:
+#                             keyerrors.append(
+#                                 str((value, 'are not members of', field['choices'])))
+# 
+#             if value and 'regex' in field and field['regex']:
+#                 logger.debug(str(('check regex: ', key, value, field['regex'] )))
+#                 if not re.match(field['regex'], value):
+#                     msg = field.get('validation_message', None)
+#                     if not msg:
+#                         msg = str((value, 'failed to match the pattern', field['regex']))
+#                     keyerrors.append(msg)
+# 
+#             if keyerrors:
+#                 errors[key] = keyerrors            
+
         
     def dehydrate(self, bundle):
         ''' 
@@ -859,14 +916,14 @@ class ManagedResource(LoggingMixin):
         scope='metahash:field'; then they can be set as attribute values on 
         other fields in the second step.
         '''
-        logger.debug(str(('hydrate_json_field', bundle)))
+#         logger.debug(str(('hydrate_json_field', bundle)))
         
         json_obj = {}
         
         # FIXME: why is clear=True here?
         local_field_defs = MetaHash.objects.get_and_parse(
             scope=self.scope, field_definition_scope='fields.metahash', clear=True)
-        logger.debug(str(('local_field_defs',local_field_defs)))
+#         logger.debug(str(('local_field_defs',local_field_defs)))
         
         # Use the tastypie field type that has been designated to convert each
         # field in the json stuffed field just like it were a real db field
@@ -912,19 +969,30 @@ class ManagedResource(LoggingMixin):
     
     # override
     def obj_create(self, bundle, **kwargs):
+        '''
+        obj_create{ full_hydrate, save{ is_valid, save_related, save, save_m2m }}
+        '''
+
         try:
             bundle = super(ManagedResource, self).obj_create(bundle, **kwargs);
             return bundle
         except Exception, e:
-            logger.warn(str(('==ex on create, kwargs', kwargs,
-                             'request.path', bundle.request.path,e)))
-            extype, ex, tb = sys.exc_info()
-            logger.warn(str((
-                'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
-                tb.tb_lineno, extype, ex)))
+            msg = str((e));
+            if hasattr(e, 'response'): 
+                msg = str(e.response)
+            logger.warn(str(('==ex on update',bundle.request.path,e, msg )))
             raise e
-#             raise type(e), str(( type(e), e, 
-#                                  'request.path', bundle.request.path, kwargs))
+            
+#             logger.warn(str(('==ex on create, kwargs', kwargs,
+#                              'request.path', bundle.request.path,e)))
+#             extype, ex, tb = sys.exc_info()
+#             msg = str(e)
+#             if isinstance(e, ImmediateHttpResponse):
+#                 msg = str(e.response)
+#             logger.warn(str((
+#                 'throw', e, msg, tb.tb_frame.f_code.co_filename, 'error line', 
+#                 tb.tb_lineno, extype, ex)))
+#             raise e
 
     # override
     def obj_update(self, bundle, **kwargs):
@@ -932,9 +1000,10 @@ class ManagedResource(LoggingMixin):
             bundle = super(ManagedResource, self).obj_update(bundle, **kwargs);
             return bundle
         except Exception, e:
-            response = None;
-            if hasattr(e, 'response'): response = e.response
-            logger.warn(str(('==ex on update',bundle.request.path,e, response )))
+            msg = str((e));
+            if hasattr(e, 'response'): 
+                msg = str(e.response)
+            logger.warn(str(('==ex on update',bundle.request.path,e, msg )))
             raise e
 
     # override
@@ -943,16 +1012,19 @@ class ManagedResource(LoggingMixin):
             bundle = super(ManagedResource, self).obj_get(bundle, **kwargs);
             return bundle
         except Exception, e:
-#             logger.warn(str(('==ex on get, kwargs', kwargs,
-#                              'request.path', bundle.request.path,e)))
-            extype, ex, tb = sys.exc_info()
-            logger.warn(str((
-                'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
-                tb.tb_lineno, extype, ex)))
-            logger.warn(str(('==ex on get, kwargs', kwargs, e)))
+            msg = str((e));
+            if hasattr(e, 'response'): 
+                msg = str(e.response)
+            logger.warn(str(('==ex on update',bundle.request.path,e, msg )))
             raise e
-#             raise type(e), str((type(e), e,
-#                                 'request.path', bundle.request.path, kwargs))
+#             extype, ex, tb = sys.exc_info()
+#             logger.warn(str((
+#                 'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
+#                 tb.tb_lineno, extype, ex)))
+#             logger.warn(str(('==ex on get, kwargs', kwargs, e)))
+#             raise e
+# #             raise type(e), str((type(e), e,
+# #                                 'request.path', bundle.request.path, kwargs))
 
     def _get_attribute(self, obj, attribute):
         '''
@@ -1027,7 +1099,6 @@ class ManagedResource(LoggingMixin):
                 if logger.isEnabledFor(logging.INFO):
                     logger.info(str((
                         'unable to locate resource: ', resource_name,
-                        ' resource[id_attribute]: ',resource['id_attribute'],
                         ' has it been loaded yet for this resource?',
                         'also note that this may not work with south, since model methods',
                         'are not available: ', e, 
@@ -1186,8 +1257,9 @@ class ExtensibleModelResourceMixin(ModelResource):
                 return self._meta.authorization.read_list(objects, bundle, **_kwargs)
             else:
                 return self.authorized_read_list(objects, bundle)
-        except ValueError:
-            raise BadRequest("Invalid resource lookup data provided (mismatched type).")
+        except ValueError, e:
+            logger.warn(str(('on obj_get_list', e)))
+            raise BadRequest(str(("Invalid resource lookup data provided (mismatched type).", e)))
         
         
     def apply_filters(self, request, applicable_filters, **kwargs): 

@@ -7,15 +7,33 @@ import re
 
 VERBOSE = False,
 ENCODING = u'utf8',
-MOLDATAKEY = u'moldata',
-COMMENTKEY = u'comment',
-COMMENTTAG = u'comment',
+MOLDATAKEY = u'moldata'
+COMMENTKEY = u'comment'
+COMMENTTAG = u'comment'
 
 # ---------------------------------------------------------------------------
-def parse_mol(data, _delimre=re.compile(ur'((?<=\n)> <[^>]+>[^\S\n]*\n)')):
-    parts = _delimre.split(data)
-    yield (MOLDATAKEY, parts.pop(0))
+_moldata_re = re.compile(ur'M\s+END')
+_dos2unix = re.compile(ur'\r\n')
+
+def parse_mol(data, _delimre=re.compile(ur'(>\s+<[^>]+>[^\r^\n]*[\r\n]*)')):
+
+    #original: def parse_mol(data, _delimre=re.compile(ur'((?<=\n)>\s+<[^>]+>[^\S\n]*\n)')): 
+    #dos2unix: def parse_mol(data, _delimre=re.compile(ur'((?<=\n)>\s+<[^>]+>[^\r^\n]*[\r\n]*)')):
+    # also doesn't work with all line endings in the clean_data_small_molecule.sdf file
+    
+    # TODO: review usage of the look-behind regex which should eliminate strip()
+    parts = _delimre.split(data.strip())
+    
+    if not parts[0]:
+        # if the separator matched at the start of the string, then there is an
+        # empty value in the first position
+        parts.pop(0)
+    
+    if _moldata_re.search(parts[0]):
+        yield (MOLDATAKEY, _dos2unix.sub(ur'\n',parts.pop(0).strip()))
+    
     comments = {}
+        
     last_comment = None
     for tag, val in zip(*[iter(parts)] * 2):
         key = tag[tag.find(u'<')+1:tag.rfind(u'>')]
@@ -24,12 +42,12 @@ def parse_mol(data, _delimre=re.compile(ur'((?<=\n)> <[^>]+>[^\S\n]*\n)')):
             last_comment = v
             continue
 
-        if last_comment is not None:
+        if last_comment:
             comments[key] = last_comment
             last_comment = None
         yield key, v
 
-    assert last_comment is None
+    assert not last_comment
 
     yield (COMMENTTAG, comments if comments else None)
 
@@ -38,7 +56,7 @@ def first_nonempty_line(preamble):
         if len(txt):
             return txt
 
-def parse_sdf(data, _delimre=re.compile(ur'(?<=\n)\$\$\$\$\n')):
+def parse_sdf(data, _delimre=re.compile(ur'(?<=\n)\$\$\$\$')): #ur'(?<=\n)\$\$\$\$\n')):
     """
     for mol_record in sdf2py.parse_sdf(sdf_data_as_a_string):
         preamble = mol_record.pop(_params.MOLDATAKEY)
@@ -48,8 +66,19 @@ def parse_sdf(data, _delimre=re.compile(ur'(?<=\n)\$\$\$\$\n')):
             print (u'%s: %s' % (tag, value)).encode(_params.ENCODING)
         print
     """
-    mols = _delimre.split(data.strip(u'\n').strip(u'$'))
-    return tuple(dict(parse_mol(mol)) for mol in mols)
+#     data = data.strip(u'\r\n')
+#     data = data.strip(u'\n')
+    data = data.strip()
+    data = data.strip(u'$')
+    mols = _delimre.split(data)
+#     return tuple(dict(parse_mol(mol)) for mol in mols)
+
+    result = []
+    for mol in mols:
+        x = dict(parse_mol(mol))
+        result.append(x)
+    return tuple(result)
+
 
 if __name__ == '__main__':
     import sys

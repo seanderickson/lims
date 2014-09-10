@@ -217,6 +217,16 @@ function premigratedb {
   if [[ ! $completed_migrations =~ $migration ]]; then
     $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
   fi
+  migration='0003'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+
+    psql -U $DBUSER $DB -h $DBHOST -a  \
+      -f ./db/migrations/manual/0003_controlled_vocabularies.sql \
+      >>"$LOGFILE" 2>&1 || error "manual script 0003 failed: $?"
+
+
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+  fi
   
   echo "pre migrations completed: $(ts) " >> "$LOGFILE"
  
@@ -229,16 +239,16 @@ function migratedb {
   completed_migrations=$($DJANGO_CMD migrate db --list | grep '*' | awk '{print $2}')
   echo "completed migrations: $completed_migrations" >> "$LOGFILE"
   
-  migration='0003'
+  migration='0004'
   if [[ ! $completed_migrations =~ $migration ]]; then
-    psql -U $DBUSER $DB -h $DBHOST \
-      -f ./db/migrations/manual/0003_screen_status.sql >>"$LOGFILE" 2>&1 || error "manual script 0003 failed: $?"
+    psql -U $DBUSER $DB -h $DBHOST -a  \
+      -f ./db/migrations/manual/0004_screen_status.sql >>"$LOGFILE" 2>&1 || error "manual script 0003 failed: $?"
   
     # run the rest of the migrations
     $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
   fi
   
-  migration='0004'
+  migration='0005'
   if [[ ! $completed_migrations =~ $migration ]]; then
     $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
   fi
@@ -246,40 +256,32 @@ function migratedb {
   if [[ ! $completed_migrations =~ $migration ]]; then
     $DJANGO_CMD migrate db 0008 >>"$LOGFILE" 2>&1 || error "db 0008 failed: $?"
   fi
-  migration='0009'
-  if [[ ! $completed_migrations =~ $migration ]]; then
-    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-  fi
-  migration='0010'
-  if [[ ! $completed_migrations =~ $migration ]]; then
-    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-  fi
   migration='0011'
   if [[ ! $completed_migrations =~ $migration ]]; then
-    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-  fi
-  migration='0012'
-  if [[ ! $completed_migrations =~ $migration ]]; then
-    echo "migration $migration" >> "$LOGFILE"
     $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
   fi
   if [[ $DB_FULL_MIGRATION -eq 1 ]]; then
     migration='0013'
     if [[ ! $completed_migrations =~ $migration ]]; then
-        echo "migration $migration" >> "$LOGFILE"
+        echo "migration $migration: $(ts) ... " >> "$LOGFILE"
         $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+        psql -U $DBUSER $DB -h $DBHOST -a \
+          -f ./db/migrations/manual/0013_create_substance_ids.sql >>"$LOGFILE" 2>&1 || error "manual script 0013 failed: $?"
+        echo "migration $migration complete: $(ts)" >> "$LOGFILE"
     fi
     migration='0014'
     if [[ ! $completed_migrations =~ $migration ]]; then
-      echo "migration $migration" >> "$LOGFILE"
+      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
       $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
     fi
     migration='0015'
     if [[ ! $completed_migrations =~ $migration ]]; then
-      echo "migration $migration" >> "$LOGFILE"
-      psql -U $DBUSER $DB -h $DBHOST \
+      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+      psql -U $DBUSER $DB -h $DBHOST -a  \
         -f ./db/migrations/manual/0015_manual_convert_gene_symbol.sql >>"$LOGFILE" 2>&1 || error "manual script 0015 failed: $?"
       $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
     fi
   fi
     
@@ -360,8 +362,10 @@ function frontend_setup {
   
   cd ../..
   
-  $DJANGO_CMD collectstatic --noinput --ignore="*node_modules*" --ignore="*bower_components*" || error "collectstatic failed: $?"
-
+  if [[ $IS_DEV_SERVER -ne 1 ]]; then
+    $DJANGO_CMD collectstatic --noinput --ignore="*node_modules*" --ignore="*bower_components*" || error "collectstatic failed: $?"
+  fi
+  
   echo "frontend_setup done: $(ts)" >> "$LOGFILE"
   
 }
@@ -403,6 +407,12 @@ function main {
   # the later migrations require the bootstrapped data
   migratedb
   
+  if [[ $IS_DEV_SERVER -ne 1 ]]; then
+    tail -400 migration.log | mail sean.erickson.hms@gmail.com -s "Migration completed $(ts)"
+  fi  
+  # put this here to see if LSF will start reporting results
+  exit 0
+    
   # Integration test: run some grunt-mocha chai-jquery to test the UI?  
 }
 
@@ -445,11 +455,18 @@ echo "start migration: $(ts) ..."
 
 main "$@"
 
-#restoredb_data
+# maybe_activate_virtualenv
+# migratedb
+# restoredb
+# maybe_activate_virtualenv
+# django_syncdb
+# premigratedb
+
+# restoredb_data
 
 # code_bootstrap "$@"
   
-# frontend_setup "$@"
+#frontend_setup "$@"
 
 # bootstrap "$@"
 

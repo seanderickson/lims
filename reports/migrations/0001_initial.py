@@ -7,10 +7,6 @@ from django.db import models
 
 class Migration(SchemaMigration):
 
-#     needed_by = (
-#         ("db", "0011_lib_content_diff_prep"),
-#     )
-    
     def forwards(self, orm):
         # Adding model 'ApiLog'
         db.create_table(u'reports_apilog', (
@@ -34,6 +30,19 @@ class Migration(SchemaMigration):
         # Adding unique constraint on 'ApiLog', fields ['ref_resource_name', 'key', 'date_time']
         db.create_unique(u'reports_apilog', ['ref_resource_name', 'key', 'date_time'])
 
+        # Adding model 'ListLog'
+        db.create_table(u'reports_listlog', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('apilog', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['reports.ApiLog'])),
+            ('ref_resource_name', self.gf('django.db.models.fields.CharField')(max_length=35)),
+            ('key', self.gf('django.db.models.fields.CharField')(max_length=128)),
+            ('uri', self.gf('django.db.models.fields.TextField')()),
+        ))
+        db.send_create_signal(u'reports', ['ListLog'])
+
+        # Adding unique constraint on 'ListLog', fields ['apilog', 'ref_resource_name', 'key', 'uri']
+        db.create_unique(u'reports_listlog', ['apilog_id', 'ref_resource_name', 'key', 'uri'])
+
         # Adding model 'MetaHash'
         db.create_table(u'reports_metahash', (
             (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
@@ -43,6 +52,7 @@ class Migration(SchemaMigration):
             ('ordinal', self.gf('django.db.models.fields.IntegerField')()),
             ('json_field_type', self.gf('django.db.models.fields.CharField')(max_length=128, null=True, blank=True)),
             ('json_field', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('linked_field_type', self.gf('django.db.models.fields.CharField')(max_length=128, null=True, blank=True)),
         ))
         db.send_create_signal(u'reports', ['MetaHash'])
 
@@ -137,8 +147,50 @@ class Migration(SchemaMigration):
         ))
         db.create_unique(m2m_table_name, ['userprofile_id', 'permission_id'])
 
+        # Adding model 'Record'
+        db.create_table(u'reports_record', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('base_value1', self.gf('django.db.models.fields.TextField')()),
+            ('scope', self.gf('django.db.models.fields.CharField')(max_length=35, blank=True)),
+        ))
+        db.send_create_signal(u'reports', ['Record'])
+
+        # Adding model 'RecordValue'
+        db.create_table(u'reports_recordvalue', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('parent', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['reports.Record'])),
+            ('field_meta', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['reports.MetaHash'])),
+            ('value', self.gf('django.db.models.fields.TextField')(null=True)),
+        ))
+        db.send_create_signal(u'reports', ['RecordValue'])
+
+        # Adding model 'RecordMultiValue'
+        db.create_table(u'reports_recordmultivalue', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('parent', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['reports.Record'])),
+            ('field_meta', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['reports.MetaHash'])),
+            ('value', self.gf('django.db.models.fields.TextField')()),
+            ('ordinal', self.gf('django.db.models.fields.IntegerField')()),
+        ))
+        db.send_create_signal(u'reports', ['RecordMultiValue'])
+
+        # Adding unique constraint on 'RecordMultiValue', fields ['field_meta', 'parent', 'ordinal']
+        db.create_unique(u'reports_recordmultivalue', ['field_meta_id', 'parent_id', 'ordinal'])
+
+        # Adding model 'RecordValueComplex'
+        db.create_table(u'reports_recordvaluecomplex', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('parent', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['reports.Record'], unique=True)),
+            ('value1', self.gf('django.db.models.fields.TextField')(null=True)),
+            ('value2', self.gf('django.db.models.fields.TextField')(null=True)),
+        ))
+        db.send_create_signal(u'reports', ['RecordValueComplex'])
+
 
     def backwards(self, orm):
+        # Removing unique constraint on 'RecordMultiValue', fields ['field_meta', 'parent', 'ordinal']
+        db.delete_unique(u'reports_recordmultivalue', ['field_meta_id', 'parent_id', 'ordinal'])
+
         # Removing unique constraint on 'Permission', fields ['scope', 'key', 'type']
         db.delete_unique(u'reports_permission', ['scope', 'key', 'type'])
 
@@ -148,11 +200,17 @@ class Migration(SchemaMigration):
         # Removing unique constraint on 'MetaHash', fields ['scope', 'key']
         db.delete_unique(u'reports_metahash', ['scope', 'key'])
 
+        # Removing unique constraint on 'ListLog', fields ['apilog', 'ref_resource_name', 'key', 'uri']
+        db.delete_unique(u'reports_listlog', ['apilog_id', 'ref_resource_name', 'key', 'uri'])
+
         # Removing unique constraint on 'ApiLog', fields ['ref_resource_name', 'key', 'date_time']
         db.delete_unique(u'reports_apilog', ['ref_resource_name', 'key', 'date_time'])
 
         # Deleting model 'ApiLog'
         db.delete_table(u'reports_apilog')
+
+        # Deleting model 'ListLog'
+        db.delete_table(u'reports_listlog')
 
         # Deleting model 'MetaHash'
         db.delete_table(u'reports_metahash')
@@ -180,6 +238,18 @@ class Migration(SchemaMigration):
 
         # Removing M2M table for field permissions on 'UserProfile'
         db.delete_table(db.shorten_name(u'reports_userprofile_permissions'))
+
+        # Deleting model 'Record'
+        db.delete_table(u'reports_record')
+
+        # Deleting model 'RecordValue'
+        db.delete_table(u'reports_recordvalue')
+
+        # Deleting model 'RecordMultiValue'
+        db.delete_table(u'reports_recordmultivalue')
+
+        # Deleting model 'RecordValueComplex'
+        db.delete_table(u'reports_recordvaluecomplex')
 
 
     models = {
@@ -236,6 +306,14 @@ class Migration(SchemaMigration):
             'user_id': ('django.db.models.fields.IntegerField', [], {}),
             'username': ('django.db.models.fields.CharField', [], {'max_length': '35'})
         },
+        u'reports.listlog': {
+            'Meta': {'unique_together': "(('apilog', 'ref_resource_name', 'key', 'uri'),)", 'object_name': 'ListLog'},
+            'apilog': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.ApiLog']"}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'key': ('django.db.models.fields.CharField', [], {'max_length': '128'}),
+            'ref_resource_name': ('django.db.models.fields.CharField', [], {'max_length': '35'}),
+            'uri': ('django.db.models.fields.TextField', [], {})
+        },
         u'reports.metahash': {
             'Meta': {'unique_together': "(('scope', 'key'),)", 'object_name': 'MetaHash'},
             'alias': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
@@ -243,6 +321,7 @@ class Migration(SchemaMigration):
             'json_field': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'json_field_type': ('django.db.models.fields.CharField', [], {'max_length': '128', 'null': 'True', 'blank': 'True'}),
             'key': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
+            'linked_field_type': ('django.db.models.fields.CharField', [], {'max_length': '128', 'null': 'True', 'blank': 'True'}),
             'ordinal': ('django.db.models.fields.IntegerField', [], {}),
             'scope': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'})
         },
@@ -252,6 +331,34 @@ class Migration(SchemaMigration):
             'key': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
             'scope': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
             'type': ('django.db.models.fields.CharField', [], {'max_length': '15'})
+        },
+        u'reports.record': {
+            'Meta': {'object_name': 'Record'},
+            'base_value1': ('django.db.models.fields.TextField', [], {}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'scope': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'})
+        },
+        u'reports.recordmultivalue': {
+            'Meta': {'unique_together': "(('field_meta', 'parent', 'ordinal'),)", 'object_name': 'RecordMultiValue'},
+            'field_meta': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.MetaHash']"}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'ordinal': ('django.db.models.fields.IntegerField', [], {}),
+            'parent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.Record']"}),
+            'value': ('django.db.models.fields.TextField', [], {})
+        },
+        u'reports.recordvalue': {
+            'Meta': {'object_name': 'RecordValue'},
+            'field_meta': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.MetaHash']"}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'parent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.Record']"}),
+            'value': ('django.db.models.fields.TextField', [], {'null': 'True'})
+        },
+        u'reports.recordvaluecomplex': {
+            'Meta': {'object_name': 'RecordValueComplex'},
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'parent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.Record']", 'unique': 'True'}),
+            'value1': ('django.db.models.fields.TextField', [], {'null': 'True'}),
+            'value2': ('django.db.models.fields.TextField', [], {'null': 'True'})
         },
         u'reports.usergroup': {
             'Meta': {'object_name': 'UserGroup'},

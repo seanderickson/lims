@@ -33,6 +33,10 @@ class MetaManager(GetOrNoneManager):
     def get_and_parse(self, scope='', field_definition_scope='fields.metahash', 
                       clear=False):
         '''
+        @param scope - i.e. the table to get field definitions for
+        @param field_definition_scope - i.e. where the field properties are defined
+        @param clear to clear the cache
+
         Query the metahash table for data identified by "scope", and fields 
         defined by "field_definition_scope"
             e.g. "fields.screensaveruser", or "fields.screen"
@@ -112,12 +116,15 @@ API_ACTION_CHOICES = ((API_ACTION_POST,API_ACTION_POST),
                       (API_ACTION_PATCH,API_ACTION_PATCH),
                       (API_ACTION_DELETE,API_ACTION_DELETE))
 class ApiLog(models.Model):
+    
     objects = models.Manager()
     
     user_id = models.IntegerField(null=False, blank=False)
     username = models.CharField(null=False, max_length=35)
+
     # name of the resource, i.e. "apilog" or "screen", "user", etc.
     ref_resource_name = models.CharField(null=False, max_length=35)
+
     # full public key of the resource instance being logged (may be composite, 
     # separted by '/')
     key = models.CharField(null=False, max_length=128)
@@ -131,8 +138,10 @@ class ApiLog(models.Model):
     # the full uri of the resource instance being logged, so a combination of 
     # [base api uri]/[resource_name]/[key]
     uri = models.TextField(null=False)
+    
     # date and time of the update; this is the key for the apilog record
     date_time = models.DateTimeField(null=False)
+    
     api_action = models.CharField(
         max_length=10, null=False, choices=API_ACTION_CHOICES)
     
@@ -172,6 +181,34 @@ class ApiLog(models.Model):
             self.diffs = json_dumps(log['diffs'])
 
 
+class ListLog(models.Model):
+    '''
+    A model that holds the keys for the items created in a "put_list"
+    '''
+    
+    apilog = models.ForeignKey('ApiLog')
+
+    # name of the resource, i.e. "apilog" or "screen", "user", etc.
+    ref_resource_name = models.CharField(max_length=35)
+
+    # full public key of the resource instance being logged (may be composite, 
+    # separted by '/')
+    key = models.CharField(max_length=128)
+
+    uri = models.TextField()
+    
+    class Meta:
+        # TODO: must be apilog and either of(('ref_resource_name', 'key'),'uri')
+        # -- so probably better to handle in software
+        unique_together = (('apilog', 'ref_resource_name', 'key','uri'))    
+    
+    def __unicode__(self):
+        return unicode(
+            str((self.ref_resource_name, self.key, self.uri )))
+    
+    
+    
+    
 class MetaHash(models.Model):
     objects                 = MetaManager()
     #    objects                 = models.Manager() # default manager
@@ -181,13 +218,18 @@ class MetaHash(models.Model):
     alias = models.CharField(max_length=35, blank=True)
     ordinal = models.IntegerField();
 
-    # required if the field is a JSON field; choices are from the TastyPie 
+    # required if the record represents a JSON field; choices are from the TastyPie 
     # field types
     json_field_type = models.CharField(
         max_length=128, blank=True, null=True); 
     
     # This is the "meta" field, it contains "virtual" json fields
     json_field = models.TextField(blank=True) 
+
+    # required if the record represents a linked  field; choices are from the TastyPie 
+    # field types
+    linked_field_type = models.CharField(
+        max_length=128, blank=True, null=True); 
     
     loaded_field = None
     
@@ -467,3 +509,57 @@ class UserProfile(models.Model):
 #         return '%s %s' % (self.first_name, self.last_name)
 #     full_name = property(_get_full_name)    
 #  
+
+
+# 
+## proof-of-concept: Typed Record table with virtual field support:
+# 
+# This is a particular case of the Metahash:fields/resources tables.  
+# Instead of having "virtual" fields be in the json_field, in this case they will
+# stored in the child RecordValue table
+## There will be one "Record" or Parent table for every node in the schema graph.
+## Each RecordTable will have a RecordValue table
+class Record(models.Model):
+    # some fields will always be better to store on the Record table.  we'll want
+    # to indicate this as well in the Metahash.  
+    base_value1 = models.TextField()
+    
+    # the scope key points to the particular type of resource represented
+    # when joining with the RecordValue table, we will get the field key we 
+    # want by finding the "fields" for this scope in the Metahash:fields table
+    scope = models.CharField(max_length=35, blank=True)
+    
+class RecordValue(models.Model):
+    # name of the parent field will be stored in the meta hash
+    parent = models.ForeignKey('Record')
+    # this field links to the column definition
+    field_meta = models.ForeignKey('Metahash')
+    # name of the value field will be stored in the meta hash
+    value = models.TextField(null=True)
+
+    
+class RecordMultiValue(models.Model):
+    # name of the parent field will be stored in the meta hash
+    parent = models.ForeignKey('Record')
+    # this field links to the column definition
+    field_meta = models.ForeignKey('Metahash')
+    # name of the value field will be stored in the meta hash
+    value = models.TextField()
+    ordinal = models.IntegerField()
+
+    class Meta:
+        unique_together = (('field_meta', 'parent', 'ordinal'))    
+    
+class RecordValueComplex(models.Model):
+    '''
+    This class exists to model extant complex linked tables, i.e. SMR, RNAi
+    '''
+    
+    # name of the parent field will be stored in the meta hash
+    parent = models.ForeignKey('Record', unique=True)
+    # name of the value field will be stored in the meta hash
+    value1 = models.TextField(null=True)
+    value2 = models.TextField(null=True)
+
+    
+    

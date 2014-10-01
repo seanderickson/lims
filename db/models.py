@@ -960,7 +960,6 @@ class Substance(models.Model):
     def __unicode__(self):
         return str(self.id) 
 
-
 class Reagent(models.Model):
     # Note: migration scripts have converted this to use a sequence 
     # (essentially AutoField)
@@ -976,7 +975,7 @@ class Reagent(models.Model):
     library_contents_version = models.ForeignKey('LibraryContentsVersion', null=True)
 #     library = models.ForeignKey('Library', null=True)
     well = models.ForeignKey('Well', null=True) # , related_name='well_reagent')
-    facility_batch_id = models.IntegerField(null=True, blank=True)
+#     facility_batch_id = models.IntegerField(null=True, blank=True)
     vendor_batch_id = models.TextField(blank=True)
     class Meta:
         db_table = 'reagent'
@@ -1024,18 +1023,20 @@ class SmallMoleculeReagent(models.Model):
     reagent = models.OneToOneField(Reagent, primary_key=True)
     inchi = models.TextField(blank=True)
     molecular_formula = models.TextField(blank=True)
-    molecular_mass = models.DecimalField(null=True, max_digits=15, decimal_places=9, blank=True)
-    molecular_weight = models.DecimalField(null=True, max_digits=15, decimal_places=9, blank=True)
+#     molecular_mass = models.DecimalField(null=True, max_digits=15, decimal_places=9, blank=True)
+#     molecular_weight = models.DecimalField(null=True, max_digits=15, decimal_places=9, blank=True)
+    molecular_mass = models.FloatField(null=True, blank=True)
+    molecular_weight = models.FloatField(null=True, blank=True)
     smiles = models.TextField(blank=True)
-    salt_form_id = models.IntegerField(null=True, blank=True)
+#     salt_form_id = models.IntegerField(null=True, blank=True)
     is_restricted_structure = models.BooleanField(default=False)
     class Meta:
         db_table = 'small_molecule_reagent'
 
 class Molfile(models.Model):
     molfile = models.TextField()
-    ordinal = models.IntegerField() # TODO: legacy, get rid of this
-    reagent = models.OneToOneField('SmallMoleculeReagent', unique=True, primary_key=True)
+#     ordinal = models.IntegerField() # TODO: legacy, get rid of this
+    reagent = models.OneToOneField('Reagent', unique=True, primary_key=True)
     class Meta:
         db_table = 'molfile'
 
@@ -1057,13 +1058,13 @@ class StudyReagentLink(models.Model):
 #        db_table = 'silencing_reagent_non_targetted_genbank_accession_number'
 
 class SmallMoleculeChembankId(models.Model):
-    reagent = models.ForeignKey('SmallMoleculeReagent')
+    reagent = models.ForeignKey('Reagent')
     chembank_id = models.IntegerField()
     class Meta:
         db_table = 'small_molecule_chembank_id'
 
 class SmallMoleculeChemblId(models.Model):
-    reagent = models.ForeignKey('SmallMoleculeReagent')
+    reagent = models.ForeignKey('Reagent')
     chembl_id = models.IntegerField()
     class Meta:
         db_table = 'small_molecule_chembl_id'
@@ -1074,14 +1075,14 @@ class SmallMoleculeCherryPickRequest(models.Model):
         db_table = 'small_molecule_cherry_pick_request'
 
 class SmallMoleculeCompoundName(models.Model):
-    reagent = models.ForeignKey('SmallMoleculeReagent')
+    reagent = models.ForeignKey('Reagent')
     compound_name = models.TextField()
     ordinal = models.IntegerField()
     class Meta:
         db_table = 'small_molecule_compound_name'
 
 class SmallMoleculePubchemCid(models.Model):
-    reagent = models.ForeignKey('SmallMoleculeReagent')
+    reagent = models.ForeignKey('Reagent')
     pubchem_cid = models.IntegerField()
     class Meta:
         db_table = 'small_molecule_pubchem_cid'

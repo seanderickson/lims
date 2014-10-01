@@ -64,6 +64,11 @@ LOGGING = {
             'handlers': ['console'],
             'propagate': False,
             'level': 'INFO',
+        }, 
+        'db.api': {  # set a default handler
+            'handlers': ['console'],
+            'propagate': False,
+            'level': 'DEBUG',
         },        
         'lims': {  # set a default handler
             'handlers': ['console'],
@@ -80,6 +85,11 @@ LOGGING = {
             'propagate': False,
             'level': 'DEBUG',
         },
+        'reports.tests': {  # set a default handler
+            'handlers': ['console'],
+            'propagate': False,
+            'level': 'DEBUG',
+        },        
         'db.tests': {  # set a default handler
             'handlers': ['console'],
             'propagate': False,
@@ -90,11 +100,6 @@ LOGGING = {
             'propagate': False,
             'level': 'INFO',
         },               
-        'reports.tests': {  # set a default handler
-            'handlers': ['console'],
-            'propagate': False,
-            'level': 'INFO',
-        },        
         'django': {  # set a default handler
             'handlers': ['console'],
             'propagate': False,
@@ -103,7 +108,7 @@ LOGGING = {
         'utils': {  # for SQL
             'handlers': ['console'],
             'propagate': True,
-            'level': 'DEBUG',
+            'level': 'INFO',
         },        
         'tastypie': {  # set a default handler
             'handlers': ['console'],

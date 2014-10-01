@@ -12,6 +12,7 @@ def convert_well_data(
             'facility_reagent_id': 'facility_id',
             'vendor':'vendor_name',
             'vendor_reagent_id': 'vendor_identifier',
+            'chemical_name': 'compound_name'
         } ):
     '''
     MIGRATE "OLD" SS1 fields to new fields
@@ -19,11 +20,12 @@ def convert_well_data(
     '''
     for oldname,newname in field_mapping.items():
         if newname not in data:
-            data[newname] = next(
-                (val for (key,val) in data.items() if key.lower()==oldname),
-                [None])
-            if newname in value_converters:
-                data[newname] = value_converters[newname](data[newname])
+            val_old = next(
+                (val for (key,val) in data.items() if key.lower()==oldname),None)
+            if val_old: 
+                data[newname] = val_old
+                if newname in value_converters:
+                    data[newname] = value_converters[newname](data[newname])
     return data
 
 DEFAULT_CONVERTER=re.compile(r'[\W]+')

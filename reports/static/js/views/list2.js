@@ -295,10 +295,14 @@ define([
       self.listenTo(
           self.collection, "MyCollection:detail", 
           function (model) {
-            var id = Iccbl.getIdFromIdAttribute( model, schemaResult );
-            model.resource = self._options.resource;
-            appModel.router.navigate(model.resource.key + '/' + id, {trigger:true});
-           
+            if(!_.isUndefined(self._options.detailHandler)){
+              self._options.detailHandler(model);
+            }else{
+//            self.trigger('detail', model);
+              var id = Iccbl.getIdFromIdAttribute( model, schemaResult );
+              model.resource = self._options.resource;
+              appModel.router.navigate(model.resource.key + '/' + id, {trigger:true});
+            }
           });
 
       // TODO: not used

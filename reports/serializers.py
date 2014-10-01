@@ -144,8 +144,15 @@ class SDFSerializer(Serializer):
                 # http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip
                 # "only one blank line should terminate a data item"
                 if v:
-                    output.write(str(v))
-                    output.write('\n')
+                    # find iterables, but not strings
+                    if not hasattr(v, "strip") and hasattr(v, "__getitem__") or hasattr(v, "__iter__"): 
+                        for x in v:
+                            output.write(str(x))
+                            output.write('\n')
+                    else:
+                        output.write(str(v))
+                        output.write('\n')
+
                 output.write('\n')
             output.write('$$$$\n')
         return output.getvalue()
@@ -169,35 +176,64 @@ class SDFSerializer(Serializer):
         else:
             return objects
 
-# class MultiPartDeserializser():
+# class SmilesPNGSerializer(Serializer):
 #     
-#     def deserialize(self, content, format='application/json'):
-#     """
-#     Given some data and a format, calls the correct method to deserialize
-#     the data and returns the result.
-#     """
-#     desired_format = None
+#     def __init__(self, content_types=None, formats=None, **kwargs):
 # 
-#     format = format.split(';')[0]
+#         if not content_types:
+#             content_types = Serializer.content_types.copy();
+#         content_types['png'] = 'image/png'
+#         
+#         if not formats:
+#             _formats = Serializer.formats # or []
+#             _formats = copy.copy(_formats)
+#             formats = _formats
+#         formats.append('png')
+#             
+#         super(SmilesPNGSerializer,self).__init__(
+#             formats=formats, 
+#             content_types=content_types,**kwargs);
 # 
-#     for short_format, long_format in self.content_types.items():
-#         if format == long_format:
-#             if hasattr(self, "from_%s" % short_format):
-#                 desired_format = short_format
-#                 break
+#         
+#     def to_png(self, data, options=None):
+#         import rdkit.Chem
+#         import rdkit.Chem.AllChem
+#         import rdkit.Chem.Draw
+# #         import matplotlib
 # 
-#     if desired_format is None:
-#         raise UnsupportedFormat("The format indicated '%s' had no available 
-#             deserialization method. Please check your ``formats`` and
-#             ``content_types`` on your Serializer." % format)
 # 
-#     if isinstance(content, six.binary_type):
-#         content = force_text(content)
-# 
-#     deserialized = getattr(self, "from_%s" % desired_format)(content)
-#     return deserialized
+#         m = rdkit.Chem.MolFromSmiles('Cc1ccccc1')
+#         rdkit.Chem.AllChem.Compute2DCoords(m)
+#         im = rdkit.Chem.Draw.MolToImage(m)
+#         return im
+# #         matplotlib.pyplot.imshow(im)
+#         
+# #         response = HttpResponse(mimetype="image/png")
+# #         img.save(response, "PNG")
+# #         return response
 
-
+# class MultiPartDeserializer(Serializer):
+#      
+#     def __init__(self, content_types=None, formats=None, **kwargs):
+#         
+#         if not content_types:
+#             content_types = Serializer.content_types.copy();
+#         content_types['multipart_form_data'] = 'multipart/form-data'
+#         
+#         if not formats:
+#             _formats = Serializer.formats # or []
+#             _formats = copy.copy(_formats)
+#             formats = _formats
+#         formats.append('multipart_form_data')
+#             
+#         super(MultiPartDeserializer,self).__init__(
+#             formats=formats, 
+#             content_types=content_types,**kwargs);
+# 
+#     def from_multipart_form_data(self, content, **kwargs):
+# 
+#         logger.info(str(('content', content)))
+        
 
 class CSVSerializer(Serializer):
     
@@ -474,7 +510,8 @@ class CursorSerializer(Serializer):
 
 
 
-class LimsSerializer(PrettyJSONSerializer, BackboneSerializer,CSVSerializer, SDFSerializer):
+class LimsSerializer(PrettyJSONSerializer, BackboneSerializer,CSVSerializer, 
+                        SDFSerializer):
     ''' Combine all of the Serializers used by the API
     '''
 

@@ -48,6 +48,7 @@ from django.test.testcases import SimpleTestCase
 from django.test.simple import DjangoTestSuiteRunner
 from reports import dump_obj
 from reports.dump_obj import dumpObj
+from tastypie import fields
 
 
 logger = logging.getLogger(__name__)
@@ -102,6 +103,10 @@ def equivocal(val1, val2):
     
     if isinstance(val1, basestring):
         val1 = str(val1)
+        if hasattr(val2, "__getitem__") or hasattr(val2, "__iter__"): 
+            # allow single item lists to be equal to string
+            if len(val2) == 1:
+                val2 = val2[0]
         val2 = str(val2)
         if val1 != val2:
             if (is_boolean(val1) and 
@@ -109,8 +114,8 @@ def equivocal(val1, val2):
                 return True, ('val1', val1, 'val2', val2 )
             return False, ('val1', val1, 'val2', val2 )
     else: # better be a list
-        assert isinstance(val1, list) and isinstance(val2, list), \
-               str(('Must be a list if not a string', 'val1', val1, 'val2', val2))
+        if not isinstance(val1, list) and isinstance(val2, list):
+            return false, ('Must be a list if not a string', 'val1', val1, 'val2', val2)
         for v in val1:
             if not v: 
                 if val2 and len(val2) > 0:
@@ -176,7 +181,8 @@ def assert_obj1_to_obj2(
     for key in keys_to_search:
         result, msgs =  equivocal(obj1[key], obj2[key])
         if not result:
-            return False, ('key not equal', key, 'obj1', obj1, 'obj2', obj2, 'msgs', msgs)
+            return False, ('key not equal', key, obj1[key], obj2[key], 
+                'obj1', obj1, 'obj2', obj2, 'msgs', msgs)
             
     return True, ('obj1:', obj1, 'obj2:', obj2)
 
@@ -186,7 +192,7 @@ def find_obj_in_list(obj, item_list, **kwargs):
     for item in item_list:
         result, msgs = assert_obj1_to_obj2(obj, item, **kwargs)
         if result:
-            logger.debug(str(('found', obj, item)))
+#             logger.debug(str(('found', obj, item)))
             return True, (item)
         else:
             if not msgs in list_msgs:
@@ -198,7 +204,7 @@ def find_all_obj_in_list(list1, list2, **kwargs):
     for item in list1:
         result, msgs = find_obj_in_list(item, list2, **kwargs)
         if not result:
-            logger.debug(str(('-----not found', item, list2, msgs)))
+#             logger.debug(str(('-----not found', item, list2, msgs)))
             return False, msgs
     return True, msgs
 
@@ -330,19 +336,14 @@ M  END
             r'Solvent':r'DMSO',
             r'facility_batch_id':r'008',
             r'salt_form_id':r'101',
-            r'Chemical_Name':r'fake compound name 1',
+            r'Chemical_Name': [r'fake compound name 1',r'fake compound name 2'],
             r'smiles':r'O=C1CC(C)(C)CC(=O)C1C(c1ccccc1)C1=C(O)CC(C)(C)CC1=O',
             r'inchi':r'InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-23(3,4)13-18(21)27/h5-9,19-20,26H,10-13H2,1-4H3',
-            r'pubchem_cid':r'558309',
-            r'pubchem_cid':r'7335957',
-            r'chembank_id':r'1665724',
-            r'chembank_id':r'6066882',
+            r'pubchem_cid': [r'558309',r'7335957'],
+            r'chembank_id':[r'1665724',r'6066882'],
             r'concentration':r'111 nM',
-            r'chembl_id':r'100001',
-            r'chembl_id':r'100002',
-            r'chembl_id':r'111102',
-            r'pubmed_id':r'20653109',
-            r'pubmed_id':r'20653081' }
+            r'chembl_id':[r'100001',r'100002',r'111102'],
+            r'pubmed_id':[r'20653109',r'20653081'] }
 
         record_two = {
             r'Library': r'Biomol-TimTec1',
@@ -363,7 +364,7 @@ M  END
             r'CAS_Number': r'fake cas number 1',
             r'smiles':r'Clc1ccc(\\C=C/c2c(C)n(C)n(c3ccccc3)c2=O)c(Cl)c1',
             r'inchi':r'InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-23(3,4)13-18(21)27/h5-9,19-20,26H,10-13H2,1-4H3',
-            r'moldata':
+            MOLDATAKEY:
 r'''Structure89
 csChFnd70/04290511482D
 
@@ -446,14 +447,14 @@ M  END'''            }
  
             if logger.isEnabledFor(logging.DEBUG):
                 print 'record 1 expected:'
-                print input_data[1]['moldata']
+                print input_data[1][MOLDATAKEY]
                 print '====='
                 print 'record 2 read:'
-                print record_two['moldata']
+                print record_two[MOLDATAKEY]
             
-                for i,c in enumerate(input_data[1]['moldata']):
-                    if record_two['moldata'][i] != c:
-                        print 'i', i, c,record_two['moldata'][i]
+                for i,c in enumerate(input_data[1][MOLDATAKEY]):
+                    if record_two[MOLDATAKEY][i] != c:
+                        print 'i', i, c,record_two[MOLDATAKEY][i]
                         break 
 
             result, msgs = assert_obj1_to_obj2(record_two, input_data[1])
@@ -723,6 +724,13 @@ class HydrationTest(TestCase):
             result = field.convert(item)
             self.assertEqual(result, expected[i], 
                              str((i,' is not equal', item, result, expected[i])))
+    def test_hydrate_list(self):
+        test_data = ['one','two','three']
+        field = fields.ListField()
+        
+        result = field.convert(test_data)
+        
+        self.assertEqual(test_data, result)
   
     
 class MetaHashResourceBootstrap(ResourceTestCase):
@@ -757,18 +765,16 @@ class MetaHashResourceBootstrap(ResourceTestCase):
 #         self.api_client = TestApiClient(serializer=self.csv_serializer) 
 #         self.api_client = TestApiClient(serializer=self.csv_serializer) 
     
-    
     def get_resource_from_server(self, resource_name):
         '''
         Utility to get a resource description from the server
         '''
-        
         resource_uri = BASE_URI + '/resource/' + resource_name
         logger.debug(str(('Get the schema', resource_uri )))
-        
         return self.get_from_server(resource_uri)
         
     def get_from_server(self, resource_uri):
+        logger.debug(str(('get_from_server', resource_uri)))
         resp = self.api_client.get(
             resource_uri, format='json', authentication=self.get_credentials(), 
             data={ 'limit': 999 })
@@ -776,8 +782,6 @@ class MetaHashResourceBootstrap(ResourceTestCase):
         self.assertTrue(resp.status_code in [200], 
                         str((resp.status_code, resp.serialize())))
         return self.deserialize(resp)
-
-        
     
     def _patch_test(self,resource_name, filename, keys_not_to_check=[], 
                     id_keys_to_check=[], data_for_get={}):
@@ -798,9 +802,9 @@ class MetaHashResourceBootstrap(ResourceTestCase):
             resp = self.api_client.patch(
                 resource_uri, format='csv', data=input_data, 
                 authentication=self.get_credentials(), **data_for_get )
-            logger.debug(str(('Response: ' , resp.status_code)))
+            logger.debug(str(('Response: ' , resp.status_code, resp)))
             #            self.assertHttpAccepted(resp)
-            self.assertTrue(resp.status_code in [202, 204], str((resp)))
+            self.assertTrue(resp.status_code in [202, 204], str((self.deserialize(resp))))
             
             logger.debug(str(('check patched data for',resource_name,
                              'execute get on:',resource_uri)))
@@ -928,6 +932,10 @@ class MetaHashResourceBootstrap(ResourceTestCase):
         filename = os.path.join(self.directory,'metahash_fields_vocabularies.csv')
         self._patch_test('metahash', filename, keys_not_to_check=['resource_uri'], 
                          data_for_get={ 'scope':'fields.vocabularies' })
+
+        filename = os.path.join(self.directory,'metahash_fields_apilog.csv')
+        self._patch_test('metahash', filename, keys_not_to_check=['resource_uri'], 
+                         data_for_get={ 'scope':'fields.apilog' })
 
         # Note, once the resources are loaded, can start checking the 
         # resource_uri that is returned
@@ -1579,9 +1587,6 @@ class UserGroupResource(UserResource):
         self.assertTrue(resp.status_code in [200], 
                         str((resp.status_code, resp.serialize())))
         new_obj = self.deserialize(resp)
-        # TODO: review: TP returns all dict/keys as unicode
-#         new_obj = dict_strip_unicode_keys(new_obj)
-#         logger.info(str(('results from get', new_obj)))
         
         self.assertTrue(new_obj['all_users'])
         self.assertTrue('user/sde4' in new_obj['all_users'])
@@ -1589,3 +1594,360 @@ class UserGroupResource(UserResource):
         # TODO: could also test that testGroup2 now has super_group=testGroup5
         
         logger.debug(str(('==== Done: test6_usergroup_can_contain_group_users =====')))
+        
+
+class RecordResource(MetaHashResourceBootstrap):
+    
+    def setUp(self):
+        super(RecordResource, self).setUp()
+        
+    def test0_bootstrap_metahash(self):
+        
+        logger.debug('================ reports test0_bootstrap_metahash =============== ')
+        
+#         # TODO: fields for the "metahash:fields.metahash" definitions input file
+#         bootstrap_items = [   
+#             {
+#                 'key': 'linked_field_type',
+#                 'scope': 'fields.metahash',
+#                 'json_field_type': 'fields.CharField',
+#                 'ordinal': 4,
+#                 'description': 'The tastypie field used to serialize'    
+#             },
+#             {
+#                 'key': 'linked_field_module',
+#                 'scope': 'fields.metahash',
+#                 'json_field_type': 'fields.CharField',
+#                 'ordinal': 6,
+#                 'description': 'The table model used to hold the linked field',
+#                 'comment': 'Use the full Python style path, i.e. <module.module.Class>'
+#             },
+#             {
+#                 'key': 'linked_field_value_field',
+#                 'scope': 'fields.metahash',
+#                 'json_field_type': 'fields.CharField',
+#                 'ordinal': 7,
+#                 'description': 'The field name in the linked field module that holds the value'
+#             },
+#             {
+#                 'key': 'linked_field_parent',
+#                 'scope': 'fields.metahash',
+#                 'json_field_type': 'fields.CharField',
+#                 'ordinal': 6,
+#                 'description': 'The name of the field linking back to the parent table/resource'
+#             },
+#         ]
+#         resource_uri = BASE_URI + '/metahash'
+#         
+#         resp = self.api_client.patch(
+#             resource_uri, format='json', data={ 'objects': bootstrap_items }, 
+#             authentication=self.get_credentials())
+#         self.assertTrue(resp.status_code in [202,204], 
+#             str((resp.status_code, resp, 'resource_uri', self.resource_uri,
+#                 'item', bootstrap_items)))
+#             
+#         logger.debug('created items, now get them')
+#         resp = self.api_client.get(
+#             resource_uri, format='json', 
+#             authentication=self.get_credentials(), data={ 'limit': 999 })
+#         logger.debug(str(('--------resp to get:', resp, resp.status_code)))
+#         new_obj = self.deserialize(resp)
+#         self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+#         
+#         for inputobj in bootstrap_items:
+#             logger.debug(str(('testing:', inputobj)))
+#             result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
+#             self.assertTrue(result, str(('not found', inputobj, outputobj )) )
+
+
+        
+#         # TODO: add this to the "metahash:fields.resource" file 
+#         # for the complex linked table instance (SMR, RNAi)
+#         # Can use either the resource-level "linked_table_module" or the 
+#         # field level "linked_field_module"
+#         bootstrap_items = [   
+#             {
+#                 'key': 'linked_table_module',
+#                 'scope': 'fields.resource',
+#                 'ordinal': 4,    
+#                 'json_field_type': 'fields.CharField'    
+#             },
+#         ]
+#         resource_uri = BASE_URI + '/metahash'
+#         resp = self.api_client.patch(
+#             resource_uri, format='json', data={ 'objects': bootstrap_items }, 
+#             authentication=self.get_credentials())
+#         self.assertTrue(resp.status_code in [202,204], 
+#             str((resp.status_code, resp, 'resource_uri', self.resource_uri,
+#                 'item', bootstrap_items)))
+
+        # create a resource for the RecordResource
+        resource_data = [
+            {   'key':  'record',
+                'scope': 'resource',
+                'ordinal': '0',
+                'api_name': 'reports',
+                # TODO: use either this or the "linked_field_module" value on the field defs
+                # TODO: this is not used at the moment
+                'linked_table_module': 'reports.models.RecordValueComplex', 
+                'id_attribute': ['id'],
+            },
+        ]
+        resource_uri = BASE_URI + '/resource'
+        
+        for item in resource_data:         
+            resp = self.api_client.post(
+                resource_uri, format='json', data=item, 
+                authentication=self.get_credentials())
+            self.assertTrue(resp.status_code in [201], 
+                str((resp.status_code, resp, 'resource_uri', self.resource_uri,
+                    'item', item)))
+
+        logger.debug('created items, now get them')
+        resp = self.api_client.get(
+            resource_uri, format='json', 
+            authentication=self.get_credentials(), data={ 'limit': 999 })
+        logger.debug(str(('--------resp to get:', resp, resp.status_code)))
+        new_obj = self.deserialize(resp)
+        self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+
+        for inputobj in resource_data:
+            logger.debug(str(('testing:', inputobj)))
+            result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
+            self.assertTrue(result, str(('not found', inputobj, outputobj )) )
+ 
+        logger.debug('================ test0_bootstrap_metahash done ========== ')
+    
+    def test1_persist_to_store(self):
+    
+        logger.debug('================ setup =============== ')
+        self.test0_bootstrap_metahash()
+        
+        logger.debug('================ reports test1_persist_to_store =============== ')
+        
+        # simplest test, create the data manually, then try to retrieve it.
+        
+        # create field definitions in the metahash for the record resource
+        resource_uri = BASE_URI + '/metahash'
+        record_fields = [
+            {   'key':  'id',
+                'scope': 'fields.record',
+                'ordinal': '0',
+            },
+            {   'key':  'scope',
+                'scope': 'fields.record',
+                'ordinal': '1',
+                'filtering': 'true',
+            },
+            {   'key':  'base_value1',
+                'scope': 'fields.record',
+                'ordinal': '2',
+                'filtering': 'true',
+            },
+            {   'key':  'field1',
+                'scope': 'fields.record',
+                'ordinal': '2',
+                'linked_field_type': 'fields.CharField',
+                'linked_field_module': 'reports.models.RecordValue',
+                'linked_field_value_field': 'value',
+                'linked_field_parent': 'parent',
+                'linked_field_meta_field': 'field_meta',
+            },
+            {   'key':  'field2',
+                'scope': 'fields.record',
+                'ordinal': '2',
+                'linked_field_type': 'fields.CharField',
+                'linked_field_module': 'reports.models.RecordValue',
+                'linked_field_value_field': 'value',
+                'linked_field_parent': 'parent',
+                'linked_field_meta_field': 'field_meta',
+            },
+            {   'key':  'field3',
+                'scope': 'fields.record',
+                'ordinal': '3',
+                'linked_field_type': 'fields.ListField',
+                'linked_field_module': 'reports.models.RecordMultiValue',
+                'linked_field_value_field': 'value',
+                'linked_field_parent': 'parent',
+                'linked_field_meta_field': 'field_meta',
+            },
+            # complex type storing both field4 and field5
+            {   'key':  'field4',
+                'scope': 'fields.record',
+                'ordinal': '4',
+                'linked_field_type': 'fields.CharField',
+                # Omit the linked_field_modele, so that this will use the 
+                # "linked_table_module" value from the resource definition
+                # 'linked_field_module': 'reports.models.RecordMultiValue',
+                # also omit the 'linked_field_meta_field': 'field_meta', because
+                # the complex type will have only one entry per parent
+                'linked_field_value_field': 'value1',
+                'linked_field_parent': 'parent'
+            },
+            {   'key':  'field5',
+                'scope': 'fields.record',
+                'ordinal': '5',
+                'linked_field_type': 'fields.CharField',
+                # Omit the linked_field_module, so that this will use the 
+                # "linked_table_module" value from the resource definition
+                # 'linked_field_module': 'reports.models.RecordMultiValue',
+                # also omit the 'linked_field_meta_field': 'field_meta', because
+                # the complex type will have only one entry per parent
+                'linked_field_value_field': 'value2',
+                'linked_field_parent': 'parent'
+            },
+        ]
+
+        resp = self.api_client.patch(
+            resource_uri, format='json', data={ 'objects': record_fields}, 
+            authentication=self.get_credentials())
+        logger.debug(str(('===resp',self.deserialize(resp) )))
+        self.assertTrue(resp.status_code in [202,204], 
+            str((resp.status_code, resp, 'resource_uri', self.resource_uri,
+                'item', record_fields)))
+            #             self.assertHttpCreated(resp)
+            
+        logger.debug('created items, now get them')
+        resp = self.api_client.get(
+            resource_uri, format='json', 
+            authentication=self.get_credentials(), data={ 'limit': 999, 'scope':'fields.record' })
+        logger.debug(str(('--------resp to get:', resp, resp.status_code)))
+        new_obj = self.deserialize(resp)
+        logger.debug(str(('deserialized object:', json.dumps(new_obj))))
+        self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+        self.assertEqual(len(new_obj['objects']), len(record_fields), str((len(new_obj['objects']), new_obj)))
+        logger.debug(str(('=== returned objs', new_obj['objects'])))
+        
+        for inputobj in record_fields:
+            logger.debug(str(('=====testing:', inputobj)))
+            result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
+            self.assertTrue(result, str(('not found', inputobj, outputobj )) )
+        
+        logger.info(str(('==== now create datapoints in the record table')))
+        
+        datapoints = [
+            {   'scope': 'record',
+                'base_value1': 'base value 1 1',
+                'field1': 'test value to store/retrieve',
+                'field2': '2nd field test value to store/retrieve',
+                'field3': ['valueC','ValueE','ValueA'],
+                'field4': '1st recordvaluecomplex',
+                'field5': '2nd recordvaluecomplex',
+            },
+            {   'scope': 'record',  # vanilla 'record'
+                'field1': 'test value to store/retrieve',
+                'field2': '2b field test value to store/retrieve',
+                'field3': ['valueA','ValueB','ValueC'],
+                'field4': '1st recordvaluecomplex 2',
+                'field5': '2nd recordvaluecomplex 2',
+            }
+        ]
+        self.datapoints = datapoints
+        resource_uri = BASE_URI + '/record'
+        
+        for item in datapoints:         
+            resp = self.api_client.post(
+                resource_uri, format='json', data=item, 
+                authentication=self.get_credentials())
+            self.assertTrue(resp.status_code in [201], 
+                str((resp.status_code, resp, 'resource_uri', self.resource_uri,
+                    'item', item)))
+
+        logger.debug('=== get the datapoints created in the record table')
+        
+        resp = self.api_client.get(
+            resource_uri, format='json', 
+            authentication=self.get_credentials(), data={ 'limit': 999, }) #'scope':'record' })
+        
+        logger.debug(str(('--------resp to get:', resp, resp.status_code)))
+        
+        new_obj = self.deserialize(resp)
+#         logger.debug(str(('===deserialized object:', json.dumps(new_obj))))
+        
+        self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+        self.assertEqual(len(new_obj['objects']), len(datapoints), str((new_obj)))
+#         logger.debug(str(('=== returned objs', new_obj['objects'])))
+        
+        for inputobj in datapoints:
+            logger.debug(str(('=====testing:', inputobj)))
+            result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
+            self.assertTrue(result, str(('not found', inputobj, outputobj )) )
+            logger.debug(str(('===found: ', outputobj)))
+        
+        logger.debug('================ done: reports test1_persist_to_store =============== ')
+
+        #### NOTE: combining the two tests into one:
+        #### although the django.test.TransactionTestCase isolates the tests in transactions,
+        #### it does not rollback the sequence values; so the ID for the first and 
+        #### the second record are "1" and "2" on the first run, if test2 re-runs
+        #### test1, then the ID's for the second run will be "3" and "4"
+        #### since we don't know if test1 is run before test2, we'll need to find
+        #### the records before we can update them, unless we create a natural key for them.
+
+        logger.debug('================ reports test2_update =============== ')
+            
+        logger.info(str(('==== now update datapoints in the record table')))
+        
+        datapoints = [
+            {   'resource_uri':'record/2',
+                'base_value1': 'updated base value 1 1',
+                'field1': 'xxx updated',
+                'field3': ['valueA','ValueE','ValueC'],
+                'field4': 'xxx updated field 4 1',
+            },
+            {   'resource_uri':'record/1',
+                'field2': 'xxx updated',
+                'field3': ['valueA','ValueB','ValueC'],
+                'field5': 'xxx updated field 5 2',
+            }
+        ]
+        
+        resource_uri = BASE_URI + '/record'
+        resp = self.api_client.patch(
+            resource_uri, format='json', data={ 'objects': datapoints }, 
+            authentication=self.get_credentials())
+        self.assertTrue(resp.status_code in [202,204], 
+            str((resp.status_code, resp, 'resource_uri', self.resource_uri)))
+
+        logger.debug('=== get the datapoints patched in the record table')
+        
+        resp = self.api_client.get(
+            resource_uri, format='json', 
+            authentication=self.get_credentials(), data={ 'limit': 999, }) #'scope':'record' })
+        new_obj = self.deserialize(resp)
+        self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+        self.assertEqual(len(new_obj['objects']), len(datapoints), 
+            str((len(new_obj['objects']), len(datapoints),new_obj)))
+        
+        for inputobj in datapoints:
+            logger.debug(str(('=====testing:', inputobj)))
+            result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
+            self.assertTrue(result, str((outputobj,new_obj['objects'] )) )
+            logger.debug(str(('=== found: ', outputobj)))
+            self.assertTrue(inputobj['resource_uri'] in outputobj['resource_uri'],
+                str((inputobj['resource_uri'] ,outputobj['resource_uri'])))
+        
+        # test the logs
+        resource_uri = BASE_URI + '/apilog' #?ref_resource_name=record'
+        logger.info(str(('get', resource_uri)))
+        resp = self.api_client.get(
+            resource_uri, format='json', 
+            authentication=self.get_credentials(), 
+            data={ 'limit': 999, 'ref_resource_name': 'record' })
+        self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+        new_obj = self.deserialize(resp)
+        logger.debug(str(('===apilogs:', json.dumps(new_obj))))
+        
+        # look for 5 logs; 2 for create, two for update, one for patch list
+        self.assertEqual( len(new_obj['objects']), len(datapoints)*2+1, 
+            str((len(new_obj['objects']), len(datapoints)*2+1,new_obj)))
+        
+        logger.debug('================ done: reports test2_update =============== ')
+            
+#     
+#     def test3_linked_field_table(self):
+#         '''
+#         Test of a linked table containing more than one field.
+#         (this is like the SMR, RNAi)
+#         '''
+#         pass

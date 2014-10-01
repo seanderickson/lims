@@ -455,8 +455,9 @@ echo "start migration: $(ts) ..."
 
 main "$@"
 
-# maybe_activate_virtualenv
-# migratedb
+#maybe_activate_virtualenv
+#bootstrap
+#migratedb
 # restoredb
 # maybe_activate_virtualenv
 # django_syncdb

@@ -8,8 +8,9 @@ from django.db import models
 from reports.utils.gray_codes import create_substance_id
 from django.db import transaction
 from django.db.models.aggregates import Max
-
+import os.path
 import logging
+from lims.base_settings import PROJECT_ROOT
 logger = logging.getLogger(__name__)
 
 
@@ -20,7 +21,7 @@ class Migration(DataMigration):
         # SQL method - takes 14 min on laptop
         # so 5x faster
 
-        filename = APP_ROOT_DIR + '/new_substance_ids.csv'
+        filename = os.path.join(PROJECT_ROOT, '..','new_substance_ids.csv')
         import csv
         
         _count = 0

@@ -3,6 +3,6 @@ well_id,fields.well,/reports/api/v1/metahash/fields.well/well_id/,1,,string,TRUE
 plate_number,fields.well,/reports/api/v1/metahash/fields.well/plate_number/,2,,integer,TRUE,"Plate number",Plate,TRUE,,,"[list,detail]",,,,,,,,,,,
 library_short_name,fields.well,/reports/api/v1/metahash/fields.well/library_short_name/,3,,string,TRUE,"Library short name",Library,TRUE,,,"[list,detail]",,,,,,,TRUE,,,,
 library_well_type,fields.well,/reports/api/v1/metahash/fields.well/library_well_type/,4,,string,TRUE,"Library well type","Library Well Type",TRUE,,library.well_type,"[list,detail]",,,,,,,,,,,
-reagent,fields.well,/reports/api/v1/metahash/fields.well/reagent/,5,,nested,TRUE,Reagent,Reagent,TRUE,,,"[list,detail]",,,,,reagent,,,,,,
 well_name,fields.well,/reports/api/v1/metahash/fields.well/well_name/,6,,string,TRUE,"Library short name",Library,TRUE,,,"[list,detail]",,,,,,,,,,,
 library,fields.well,/reports/api/v1/metahash/fields.well/library/,6,,uri,TRUE,Library,Library,FALSE,,,,,,,,,,,,,,
+facility_id,fields.well,/reports/api/v1/metahash/fields.well/facility_id/,7,,string,TRUE,"ID assigned by the local authority","Facility ID",TRUE,,,"[list,detail]",,,,,,,,,,,

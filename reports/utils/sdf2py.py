@@ -2,18 +2,22 @@
 # Original version by Gabriel Barriz
 
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
 VERBOSE = False,
 ENCODING = u'utf8',
-MOLDATAKEY = u'moldata'
+MOLDATAKEY = u'molfile'
 COMMENTKEY = u'comment'
 COMMENTTAG = u'comment'
 
 # ---------------------------------------------------------------------------
 _moldata_re = re.compile(ur'M\s+END')
 _dos2unix = re.compile(ur'\r\n')
+_dos_unix_le = re.compile(ur'[\r\n]{1,2}')
 
 def parse_mol(data, _delimre=re.compile(ur'(>\s+<[^>]+>[^\r^\n]*[\r\n]*)')):
 
@@ -38,6 +42,10 @@ def parse_mol(data, _delimre=re.compile(ur'(>\s+<[^>]+>[^\r^\n]*[\r\n]*)')):
     for tag, val in zip(*[iter(parts)] * 2):
         key = tag[tag.find(u'<')+1:tag.rfind(u'>')]
         v = val.strip()
+
+        v = _dos_unix_le.split(v)
+        if len(v) == 1: v = v[0]
+        
         if key == COMMENTKEY:
             last_comment = v
             continue
@@ -66,12 +74,13 @@ def parse_sdf(data, _delimre=re.compile(ur'(?<=\n)\$\$\$\$')): #ur'(?<=\n)\$\$\$
             print (u'%s: %s' % (tag, value)).encode(_params.ENCODING)
         print
     """
-#     data = data.strip(u'\r\n')
-#     data = data.strip(u'\n')
+    #     data = data.strip(u'\r\n')
+    #     data = data.strip(u'\n')
     data = data.strip()
     data = data.strip(u'$')
     mols = _delimre.split(data)
-#     return tuple(dict(parse_mol(mol)) for mol in mols)
+    # original
+    #     return tuple(dict(parse_mol(mol)) for mol in mols)
 
     result = []
     for mol in mols:

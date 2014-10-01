@@ -4,6 +4,10 @@ from south.db import db
 from south.v2 import SchemaMigration
 from django.db import models
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class Migration(SchemaMigration):
     ''' 
@@ -103,6 +107,98 @@ class Migration(SchemaMigration):
 
         ## End
         ########################
+        
+        db.execute(
+            ( "ALTER TABLE {table} ALTER COLUMN {column} "
+              "drop not null").format(
+                  table='reagent', column='library_contents_version_id'))
+
+        db.execute(
+            ( "ALTER TABLE {table} DROP COLUMN {column} ").format(
+                  table='reagent', column='facility_batch_id'))
+        
+
+        ## FIXUP SMR related tables so that they now point to reagent, not smr:
+        # TODO: consider using raw SQL
+
+        db.execute(
+            ( "ALTER TABLE {table} DROP COLUMN {column} ").format(
+                  table='small_molecule_reagent', column='salt_form_id'))
+        
+        # change the fixed precision columns to float
+        db.execute(
+            ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
+                  table='small_molecule_reagent', column='molecular_weight'))
+        db.execute(
+            ( "ALTER TABLE {table} ADD COLUMN {column} double precision").format(
+                  table='small_molecule_reagent', column='molecular_weight'))
+        db.execute(
+            ( "update {table} set {column} = tmp_{column}").format(
+                  table='small_molecule_reagent', column='molecular_weight'))
+        db.execute(
+            ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
+                  table='small_molecule_reagent', column='molecular_weight'))
+        
+        db.execute(
+            ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
+                  table='small_molecule_reagent', column='molecular_mass'))
+        db.execute(
+            ( "ALTER TABLE {table} ADD COLUMN {column} double precision").format(
+                  table='small_molecule_reagent', column='molecular_mass'))
+        db.execute(
+            ( "update {table} set {column} = tmp_{column}").format(
+                  table='small_molecule_reagent', column='molecular_mass'))
+        db.execute(
+            ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
+                  table='small_molecule_reagent', column='molecular_mass'))
+        
+        db.execute(
+            ( "ALTER TABLE {table} DROP COLUMN {column} ").format(
+                  table='molfile', column='ordinal'))
+        
+        self._alter_table_parent('molfile', 'reagent_id', 'reagent', 'reagent_id')
+        self._alter_table_parent('small_molecule_compound_name', 'reagent_id', 'reagent', 'reagent_id')
+        self._alter_table_parent('small_molecule_pubchem_cid', 'reagent_id', 'reagent', 'reagent_id')
+        self._alter_table_parent('small_molecule_chembank_id', 'reagent_id', 'reagent', 'reagent_id')
+        self._alter_table_parent('small_molecule_chembl_id', 'reagent_id', 'reagent', 'reagent_id')
+        
+        ###############
+
+    def _alter_table_parent(self, sub_table, fk_column, new_parent, new_parent_column):
+        
+        # alter table molfile rename column reagent_id to smr_reagent_id;
+        # alter table molfile add column reagent_id integer;
+        # update molfile set reagent_id = smr_reagent_id;
+        # alter table molfile add constraint reagent_fk FOREIGN KEY (reagent_id) 
+        #     REFERENCES reagent (reagent_id);
+        # alter table molfile alter column reagent_id set NOT NULL;
+        # alter table molfile drop column smr_reagent_id;
+
+        ## NOTE: we are copying/deleting/making new foreign key because it is 
+        ## proving difficult to find the constraint for the extant foreign key
+        logger.info(str(('alter foreign key', sub_table, fk_column, new_parent, new_parent_column)))
+        db.execute(
+            ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
+                  table=sub_table, column=fk_column))
+        db.execute(
+            ( "ALTER TABLE {table} ADD COLUMN {column} integer").format(
+                  table=sub_table, column=fk_column))
+        db.execute(
+            ( "update {table} set {column} = tmp_{column}").format(
+                  table=sub_table, column=fk_column))
+        db.execute(
+            ("ALTER TABLE {table} ADD CONSTRAINT fk_{column} "
+                "FOREIGN KEY ({column}) "
+                "REFERENCES {other_table} ({other_column}) ").format(
+                    table=sub_table, column=fk_column, 
+                    other_table=new_parent, other_column=new_parent_column))
+        db.execute(
+            ( "ALTER TABLE {table} ALTER COLUMN {column} set NOT NULL").format(
+                  table=sub_table, column=fk_column))
+        db.execute(
+            ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
+                  table=sub_table, column=fk_column))
+
 
     def backwards(self, orm):
         # Deleting field 'Screen.status'

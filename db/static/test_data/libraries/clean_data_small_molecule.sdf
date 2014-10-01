@@ -48,6 +48,7 @@ DMSO
 
 >  <Chemical_Name> (5)
 fake compound name 1
+fake compound name 2
 
 >  <smiles> (10)
 O=C1CC(C)(C)CC(=O)C1C(c1ccccc1)C1=C(O)CC(C)(C)CC1=O
@@ -57,14 +58,10 @@ InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-
 
 >  <pubchem_cid>
 558309
-
->  <pubchem_cid>
 7335957
 
 >  <chembank_id>
 1665724
-
->  <chembank_id>
 6066882
 
 > <concentration>
@@ -72,17 +69,11 @@ InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-
 
 > <chembl_id>
 100001
-
-> <chembl_id>
 100002
-
-> <chembl_id>
 111102
 
 > <pubmed_id>
 20653109
-
-> <pubmed_id>
 20653081
 
 $$$$
@@ -382,14 +373,10 @@ InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-
 
 >  <pubchem_cid>
 558309
-
->  <pubchem_cid>
 7335957
 
 >  <chembank_id>
 1665724
-
->  <chembank_id>
 6066882
 
 $$$$
@@ -493,14 +480,10 @@ InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-
 
 >  <pubchem_cid>
 558309
-
->  <pubchem_cid>
 7335957
 
 >  <chembank_id>
 1665724
-
->  <chembank_id>
 6066882
 
 $$$$
@@ -599,14 +582,10 @@ InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-
 
 >  <pubchem_cid>
 558309
-
->  <pubchem_cid>
 7335957
 
 >  <chembank_id>
 1665724
-
->  <chembank_id>
 6066882
 
 $$$$
@@ -730,14 +709,10 @@ InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-
 
 >  <pubchem_cid>
 558309
-
->  <pubchem_cid>
 7335957
 
 >  <chembank_id>
 1665724
-
->  <chembank_id>
 6066882
 
 $$$$

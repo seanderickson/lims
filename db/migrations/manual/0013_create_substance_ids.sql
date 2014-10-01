@@ -13,8 +13,9 @@ current_timestamp,
 
 CREATE TEMP TABLE new_substance_ids ( 
   reagent_id integer, 
-  substance_id text
-  primary key (reagent_id) );
+  substance_id text,
+  primary key (reagent_id)
+);
 
 /** check the current path**/
 \! pwd

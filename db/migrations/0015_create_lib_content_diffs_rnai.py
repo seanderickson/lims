@@ -13,9 +13,9 @@ class Migration(SchemaMigration):
         
 
     def backwards(self, orm):
-        # Deleting field 'Reagent.library'
-        db.delete_column(u'reagent', 'library_id')
 
+        raise RuntimeError("Cannot reverse the Screensaver initial migrations: "
+            "re-import the database to restore")
 
     models = {
         u'auth.group': {
@@ -500,7 +500,7 @@ class Migration(SchemaMigration):
             'short_name': ('django.db.models.fields.TextField', [], {'unique': 'True'}),
             'solvent': ('django.db.models.fields.TextField', [], {}),
             'start_plate': ('django.db.models.fields.IntegerField', [], {'unique': 'True'}),
-            'version': ('django.db.models.fields.IntegerField', [], {}),
+            'version': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'version_number': ('django.db.models.fields.IntegerField', [], {'default': '0'})
         },
         u'db.librarycontentsversion': {
@@ -529,15 +529,12 @@ class Migration(SchemaMigration):
         },
         u'db.molfile': {
             'Meta': {'object_name': 'Molfile', 'db_table': "u'molfile'"},
-#             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'molfile': ('django.db.models.fields.TextField', [], {}),
-            'ordinal': ('django.db.models.fields.IntegerField', [], {}),
-#             'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SmallMoleculeReagent']", 'unique': 'True'})
-            'reagent': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.SmallMoleculeReagent']", 'primary_key': 'True'}),
+            'reagent': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.Reagent']", 'unique': 'True', 'primary_key': 'True'})
         },
         u'db.naturalproductreagent': {
             'Meta': {'object_name': 'NaturalProductReagent', 'db_table': "u'natural_product_reagent'"},
-            'reagent': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.Reagent']", 'primary_key': 'True'}),
+            'reagent': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.Reagent']", 'unique': 'True', 'primary_key': 'True'})
         },
         u'db.plate': {
             'Meta': {'object_name': 'Plate', 'db_table': "u'plate'"},
@@ -603,10 +600,9 @@ class Migration(SchemaMigration):
         },
         u'db.reagent': {
             'Meta': {'object_name': 'Reagent', 'db_table': "u'reagent'"},
-            'facility_batch_id': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'library_contents_version': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.LibraryContentsVersion']", 'null': 'True'}),
             'reagent_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UWPQEDDD'", 'unique': 'True', 'max_length': '8'}),
+            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UWPRH2ZD'", 'unique': 'True', 'max_length': '8'}),
             'vendor_batch_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_identifier': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_name': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -861,7 +857,7 @@ class Migration(SchemaMigration):
             'Meta': {'object_name': 'SilencingReagent', 'db_table': "u'silencing_reagent'"},
             'anti_sense_sequence': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'is_restricted_sequence': ('django.db.models.fields.BooleanField', [], {}),
-            'reagent': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.Reagent']", 'primary_key': 'True'}),
+            'reagent': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.Reagent']", 'unique': 'True', 'primary_key': 'True'}),
             'sequence': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'silencing_reagent_type': ('django.db.models.fields.TextField', [], {'blank': 'True'})
         },
@@ -875,13 +871,13 @@ class Migration(SchemaMigration):
             'Meta': {'object_name': 'SmallMoleculeChembankId', 'db_table': "u'small_molecule_chembank_id'"},
             'chembank_id': ('django.db.models.fields.IntegerField', [], {}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SmallMoleculeReagent']"})
+            'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Reagent']"})
         },
         u'db.smallmoleculechemblid': {
             'Meta': {'object_name': 'SmallMoleculeChemblId', 'db_table': "u'small_molecule_chembl_id'"},
             'chembl_id': ('django.db.models.fields.IntegerField', [], {}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SmallMoleculeReagent']"})
+            'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Reagent']"})
         },
         u'db.smallmoleculecherrypickrequest': {
             'Meta': {'object_name': 'SmallMoleculeCherryPickRequest', 'db_table': "u'small_molecule_cherry_pick_request'"},
@@ -892,23 +888,22 @@ class Migration(SchemaMigration):
             'compound_name': ('django.db.models.fields.TextField', [], {}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'ordinal': ('django.db.models.fields.IntegerField', [], {}),
-            'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SmallMoleculeReagent']"})
+            'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Reagent']"})
         },
         u'db.smallmoleculepubchemcid': {
             'Meta': {'object_name': 'SmallMoleculePubchemCid', 'db_table': "u'small_molecule_pubchem_cid'"},
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'pubchem_cid': ('django.db.models.fields.IntegerField', [], {}),
-            'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SmallMoleculeReagent']"})
+            'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Reagent']"})
         },
         u'db.smallmoleculereagent': {
             'Meta': {'object_name': 'SmallMoleculeReagent', 'db_table': "u'small_molecule_reagent'"},
             'inchi': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'is_restricted_structure': ('django.db.models.fields.BooleanField', [], {}),
+            'is_restricted_structure': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
             'molecular_formula': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'molecular_mass': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '15', 'decimal_places': '9', 'blank': 'True'}),
-            'molecular_weight': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '15', 'decimal_places': '9', 'blank': 'True'}),
-            'reagent': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.Reagent']", 'primary_key': 'True'}),
-            'salt_form_id': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
+            'molecular_mass': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
+            'molecular_weight': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
+            'reagent': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.Reagent']", 'unique': 'True', 'primary_key': 'True'}),
             'smiles': ('django.db.models.fields.TextField', [], {'blank': 'True'})
         },
         u'db.studyreagentlink': {
@@ -916,6 +911,11 @@ class Migration(SchemaMigration):
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Reagent']"}),
             'study': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Screen']"})
+        },
+        u'db.substance': {
+            'Meta': {'object_name': 'Substance'},
+            'comment': ('django.db.models.fields.TextField', [], {}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'})
         },
         u'db.transfectionagent': {
             'Meta': {'object_name': 'TransfectionAgent', 'db_table': "u'transfection_agent'"},
@@ -927,14 +927,14 @@ class Migration(SchemaMigration):
             'Meta': {'object_name': 'Well', 'db_table': "u'well'"},
             'deprecation_admin_activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AdministrativeActivity']", 'null': 'True', 'blank': 'True'}),
             'facility_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'is_deprecated': ('django.db.models.fields.BooleanField', [], {}),
+            'is_deprecated': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
             'latest_released_reagent': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "u'reagent_well'", 'null': 'True', 'to': u"orm['db.Reagent']"}),
             'library': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Library']"}),
             'library_well_type': ('django.db.models.fields.TextField', [], {}),
             'mg_ml_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '5', 'decimal_places': '3', 'blank': 'True'}),
             'molar_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '13', 'decimal_places': '12', 'blank': 'True'}),
             'plate_number': ('django.db.models.fields.IntegerField', [], {}),
-            'version': ('django.db.models.fields.IntegerField', [], {}),
+            'version': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'well_id': ('django.db.models.fields.TextField', [], {'primary_key': 'True'}),
             'well_name': ('django.db.models.fields.TextField', [], {})
         },

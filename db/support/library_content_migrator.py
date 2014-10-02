@@ -18,6 +18,8 @@ import logging
 from django.utils.timezone import make_aware, UTC
 from django.core.exceptions import ObjectDoesNotExist
 
+from reports.api import compare_dicts
+
 logger = logging.getLogger(__name__)
 
 class Migrator:
@@ -35,7 +37,7 @@ class Migrator:
         bundle1 = self.smrResource.full_dehydrate(Bundle(obj=r1))
         bundle2 = self.smrResource.full_dehydrate(Bundle(obj=r2))
         
-        diff_log = self.smrResource.compare_dicts(
+        diff_log = compare_dicts(
             bundle1.data, bundle2.data,
             excludes=['reagent_id', 'resource_uri'])
         return diff_log
@@ -45,7 +47,7 @@ class Migrator:
         bundle1 = self.silencingReagentResource.full_dehydrate(Bundle(obj=r1))
         bundle2 = self.silencingReagentResource.full_dehydrate(Bundle(obj=r2))
         
-        diff_log = self.silencingReagentResource.compare_dicts(
+        diff_log = compare_dicts(
             bundle1.data, bundle2.data,
             excludes=['reagent_id', 'resource_uri'])
         return diff_log
@@ -54,7 +56,7 @@ class Migrator:
         bundle1 = self.naturalProductResource.full_dehydrate(Bundle(obj=r1))
         bundle2 = self.naturalProductResource.full_dehydrate(Bundle(obj=r2))
         
-        diff_log = self.naturalProductResource.compare_dicts(
+        diff_log = compare_dicts(
             bundle1.data, bundle2.data,
             excludes=['reagent_id', 'resource_uri'])
         return diff_log

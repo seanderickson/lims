@@ -337,49 +337,63 @@ def log_obj_create(obj_create_func):
                             
     return _inner
 
+# TODO: make class decorator as follows
+# http://stackoverflow.com/questions/666216/decorator-classes-in-python
+# class NullDecl (object):
+#     def __init__ (self, func):
+#         self.func = func
+#         for n in set(dir(func)) - set(dir(self)):
+#             setattr(self, n, getattr(func, n))
+# 
+#     def __call__ (self, * args):
+#         return self.func (*args)
+#     def __repr__(self):
+#         return self.func
+
+def compare_dicts(dict1, dict2, excludes=[]):
+    original_keys = set(dict1.keys())-set(excludes)
+    updated_keys = set(dict2.keys())-set(excludes)
+    
+    intersect_keys = original_keys.intersection(updated_keys)
+    log = {}
+    
+    added_keys = list(updated_keys - intersect_keys)
+    if len(added_keys)>0: 
+        log['added_keys'] = added_keys
+    
+    removed_keys = list(original_keys- intersect_keys)
+    if len(removed_keys)>0: 
+        log['removed_keys'] = removed_keys
+    
+    diff_keys = list()
+    for key in intersect_keys:
+        val1 = dict1[key]
+        val2 = dict2[key]
+        # NOTE: Tastypie converts to tz naive on serialization; then it 
+        # forces it to the default tz upon deserialization (in the the 
+        # DateTimeField convert method); for the purpose of this comparison,
+        # then, make both naive.
+        if isinstance(val2, datetime.datetime):
+            val2 = make_naive(val2)
+        if val1 != val2: 
+            diff_keys.append(key)
+    # Note, simple equality not used, since the serialization isn't 
+    # symmetric, e.g. see datetimes, where tz naive dates look like UTC 
+    # upon serialization to the ISO 8601 format.
+    #         diff_keys = \
+    #             list( key for key in intersect_keys 
+    #                     if dict1[key] != dict2[key])
+
+    if len(diff_keys)>0: 
+        log['diff_keys'] = diff_keys
+        log['diffs'] = dict(zip(
+            diff_keys,([dict1[key],dict2[key]] for key in diff_keys) ))
+    
+    return log
+
 
 def log_obj_update(obj_update_func):
     
-    def compare_dicts(dict1, dict2, excludes=[]):
-        original_keys = set(dict1.keys())-set(excludes)
-        updated_keys = set(dict2.keys())-set(excludes)
-        
-        intersect_keys = original_keys.intersection(updated_keys)
-        log = {}
-        
-        added_keys = list(updated_keys - intersect_keys)
-        if len(added_keys)>0: 
-            log['added_keys'] = added_keys
-        
-        removed_keys = list(original_keys- intersect_keys)
-        if len(removed_keys)>0: 
-            log['removed_keys'] = removed_keys
-        
-        diff_keys = list()
-        for key in intersect_keys:
-            val1 = dict1[key]
-            val2 = dict2[key]
-            # NOTE: Tastypie converts to tz naive on serialization; then it 
-            # forces it to the default tz upon deserialization (in the the 
-            # DateTimeField convert method); for the purpose of this comparison,
-            # then, make both naive.
-            if isinstance(val2, datetime.datetime):
-                val2 = make_naive(val2)
-            if val1 != val2: 
-                diff_keys.append(key)
-        # Note, simple equality not used, since the serialization isn't 
-        # symmetric, e.g. see datetimes, where tz naive dates look like UTC 
-        # upon serialization to the ISO 8601 format.
-        #         diff_keys = \
-        #             list( key for key in intersect_keys 
-        #                     if dict1[key] != dict2[key])
-
-        if len(diff_keys)>0: 
-            log['diff_keys'] = diff_keys
-            log['diffs'] = dict(zip(
-                diff_keys,([dict1[key],dict2[key]] for key in diff_keys) ))
-        
-        return log
     
     @transaction.atomic()
     @wraps(obj_update_func)
@@ -3016,7 +3030,7 @@ class ManagedLinkedResource(ManagedModelResource):
                     query = query.order_by('ordinal')
                 values = query.values_list(
                         item['linked_field_value_field'], flat=True)
-                logger.info(str((key,'multifield values', values)))
+                logger.debug(str((key,'multifield values', values)))
                 if values and len(values)>0:
                     bundle.data[key] = list(values)
         return bundle

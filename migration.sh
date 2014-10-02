@@ -162,7 +162,7 @@ function restoredb_data {
       `ls -1 ${D}/screensaver*${filespec}.result_data.pg_dump`  >>"$LOGFILE" 2>&1 
   fi
   
-  if [[ ( $DB_LOAD_SCHEMA_ONLY -eq 0 && $DB_SKIP_BIG_FILES -eq 1 ) ]]; then
+  if [[ ( $DB_LOAD_TESTING_DATA -eq 1 ) ]]; then
     for x in `ls -1 ${TESTING_DATA_DIR}/result_value*`; do
       echo "importing: $x"
       psql -h $DBHOST -d $DB -U $DBUSER -c "\copy result_value from $x"
@@ -173,6 +173,7 @@ function restoredb_data {
     done          
   fi  
   
+  psql -h $DBHOST -d $DB -U $DBUSER -c "vacuum analyze;"
   
   # TODO: create a check to validate db imports
   

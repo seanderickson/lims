@@ -58,11 +58,6 @@ class Migration(SchemaMigration):
                 
         ### MISC changes - todo, organize
                 
-        db.execute(
-            ( "ALTER TABLE {table} ALTER COLUMN {column} "
-              "drop not null").format(
-                  table='reagent', column='library_contents_version_id'))
-
         db.delete_column(u'reagent', 'facility_batch_id')
         #         db.execute(
         #             ( "ALTER TABLE {table} DROP COLUMN {column} ").format(
@@ -113,11 +108,16 @@ class Migration(SchemaMigration):
         ### FIXUP Reagent related tables so that they now point to reagent, not smr:
         # TODO: consider using raw SQL
 
-        self._alter_table_parent('molfile', 'reagent_id', 'reagent', 'reagent_id')
-        self._alter_table_parent('small_molecule_compound_name', 'reagent_id', 'reagent', 'reagent_id')
-        self._alter_table_parent('small_molecule_pubchem_cid', 'reagent_id', 'reagent', 'reagent_id')
-        self._alter_table_parent('small_molecule_chembank_id', 'reagent_id', 'reagent', 'reagent_id')
-        self._alter_table_parent('small_molecule_chembl_id', 'reagent_id', 'reagent', 'reagent_id')
+        self._alter_table_parent(
+            'molfile', 'reagent_id','reagent_id', 'reagent', 'reagent_id')
+        self._alter_table_parent(
+            'small_molecule_compound_name', 'reagent_id,ordinal', 'reagent_id', 'reagent', 'reagent_id')
+        self._alter_table_parent(
+            'small_molecule_pubchem_cid', 'reagent_id,pubchem_cid','reagent_id', 'reagent', 'reagent_id')
+        self._alter_table_parent(
+            'small_molecule_chembank_id', 'reagent_id,chembank_id','reagent_id', 'reagent', 'reagent_id')
+        self._alter_table_parent(
+            'small_molecule_chembl_id', 'reagent_id,chembl_id','reagent_id', 'reagent', 'reagent_id')
         
 
 
@@ -163,7 +163,7 @@ class Migration(SchemaMigration):
                 table=table, column=column))
 
 
-    def _alter_table_parent(self, sub_table, fk_column, new_parent, new_parent_column):
+    def _alter_table_parent(self, sub_table, new_primary_key, fk_column, new_parent, new_parent_column):
         
         # alter table molfile rename column reagent_id to smr_reagent_id;
         # alter table molfile add column reagent_id integer;
@@ -172,6 +172,7 @@ class Migration(SchemaMigration):
         #     REFERENCES reagent (reagent_id);
         # alter table molfile alter column reagent_id set NOT NULL;
         # alter table molfile drop column smr_reagent_id;
+        # ALTER TABLE small_molecule_compound_name ADD PRIMARY KEY (reagent_id, ordinal);
 
         ## NOTE: we are copying/deleting/making new foreign key because it is 
         ## proving difficult to find the constraint for the extant foreign key
@@ -197,6 +198,9 @@ class Migration(SchemaMigration):
         db.execute(
             ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
                   table=sub_table, column=fk_column))
+        db.execute(
+            ( "ALTER TABLE {table} ADD PRIMARY KEY ({primary_key})").format(
+                  table=sub_table, primary_key=new_primary_key))
 
 
     def backwards(self, orm):

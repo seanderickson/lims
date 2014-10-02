@@ -11,6 +11,13 @@ class Migration(SchemaMigration):
         from db.support.library_content_migrator import Migrator
         Migrator().do_migration(orm, screen_type='rnai')
         
+        db.execute(
+            ( "ALTER TABLE {table} ALTER COLUMN {column} "
+              "drop not null").format(
+                  table='reagent', column='library_contents_version_id'))
+
+
+        
 
     def backwards(self, orm):
 

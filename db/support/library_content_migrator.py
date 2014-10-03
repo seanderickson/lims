@@ -19,6 +19,7 @@ from django.utils.timezone import make_aware, UTC
 from django.core.exceptions import ObjectDoesNotExist
 
 from reports.api import compare_dicts
+from db.models import SmallMoleculeReagent
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class Migrator:
     libraryResource = LibraryResource()
             
     def diff_smr(self,r1,r2):    
+        
         bundle1 = self.smrResource.full_dehydrate(Bundle(obj=r1))
         bundle2 = self.smrResource.full_dehydrate(Bundle(obj=r2))
         
@@ -43,7 +45,6 @@ class Migrator:
         return diff_log
 
     def diff_rnai(self,r1,r2):  
-#         print 'considering', r1.reagent.substance_id  
         bundle1 = self.silencingReagentResource.full_dehydrate(Bundle(obj=r1))
         bundle2 = self.silencingReagentResource.full_dehydrate(Bundle(obj=r2))
         
@@ -68,7 +69,8 @@ class Migrator:
         from django.db.models import Count
         query = orm.LibraryContentsVersion.objects.all()
         if screen_type:
-            query = query.filter(library__screen_type=screen_type)
+            query = (query.filter(library__screen_type=screen_type)
+                          .exclude(library__library_type='natural_products'))
         library_ids = [x['library'] for x in (query
                 .values('library')  # actually, library id's here
                 .annotate(count=Count('library'))
@@ -78,108 +80,8 @@ class Migrator:
     
         for library in (orm.Library.objects.all()
                         .filter(library_id__in=library_ids)):
-                        #                         .filter(screen_type='small_molecule')
-                        #                         .exclude(library_type='natural_products')):
-            versions = [x.version_number 
-                for x in (library.librarycontentsversion_set.all()
-                    .order_by('version_number')) ] 
-            if len(versions) < 2:
-                continue
-
-            logger.info(str(('processing: ', library.short_name, 
-                   'type', library.screen_type, library.library_type, 
-                   'versions',  versions,
-                   'experimental wells', library.experimental_well_count)) )
             
-            #build a hash of well->[reagents by version]
-            
-            base_query = None
-            diff_function = None      
-            if library.screen_type == 'rnai':
-                base_query = orm.SilencingReagent.objects.all()
-                diff_function = self.diff_rnai
-                attribute = 'silencingreagent'
-            else:
-                if library.library_type == 'natural_products':
-                    base_query = orm.NaturalProductReagent.objects.all()
-                    diff_function = self.diff_natural_product
-                    attribute = 'naturalproductreagent'
-                else:
-                    base_query = orm.SmallMoleculeReagent.objects.all()
-                    diff_function = self.diff_smr
-                    attribute = 'smallmoleculereagent'
-            logs_created = 0
-            
-# TODO: redo this based on reagent to speed up?            
-#             for reagent in library.well_set.all():
-#                 prev_version_reagent = None
-#                 for reagent in (
-#                     base_query
-#                     .filter(reagent__well=well)
-#                     .order_by('reagent__library_contents_version__version_number')):
-# 
-#                     if prev_version_reagent:
-#                         if self.create_diff_log(well, 
-#                                                 prev_version_reagent, reagent,
-#                                                 diff_function):
-#                             logs_created +=1
-#                     prev_version_reagent = reagent
-#                     if logs_created % 1000 == 0:
-#                         logger.info(str(('created ',logs_created, ' logs for ',library.short_name )))
-                        
-# Original way - 20140902                        
-            for well in library.well_set.all():
-                prev_version_reagent = None
-                for reagent in (
-                    base_query
-                    .filter(reagent__well=well)
-                    .order_by('reagent__library_contents_version__version_number')):
- 
-                    if prev_version_reagent:
-                        if self.create_diff_log(well, 
-                                                prev_version_reagent, reagent,
-                                                diff_function):
-                            logs_created +=1
-                    prev_version_reagent = reagent
-                if logs_created and logs_created % 1000 == 0:
-                    logger.info(str(('created ',logs_created, ' logs for ',library.short_name )))                        
-            logger.info(str(('library', library.short_name, 
-                             'logs_created', logs_created)) )
-
-            # new way - 20140903 - no benefit, 6 min                     
-#             prev_version = None
-#             for version in ( library.librarycontentsversion_set.all()
-#                                 .order_by('version_number')):
-#                 if prev_version:
-#                     for prev_reagent in ( prev_version.reagent_set.all()
-#                                             .order_by('well__well_id') ):
-#                         j = 0
-#                         try:
-#                             for reagent in ( version.reagent_set.all()
-#                                                 .order_by('well__well_id')
-#                                                 .filter(well=prev_reagent.well) ):
-#                                 if j > 1:
-#                                     logger.warn(str((
-#                                         'found more than one reagent for the well', 
-#                                         prev_reagent.well, version, version.library)))
-#                                 
-#                                 r1 = getattr(prev_reagent, attribute)
-#                                 r2 = getattr(reagent, attribute)
-#                                 if self.create_diff_log(reagent.well, 
-#                                                         r1, r2,
-#                                                         diff_function):
-#                                     logs_created +=1
-#                                 j += 1
-#                                     
-#                         except ObjectDoesNotExist, e:
-#                             logger.info(str(('no smr for r',prev_reagent,reagent)))
-#                         if logs_created and logs_created % 1000 == 0:
-#                             logger.info(str(('created ',logs_created, 
-#                                 ' logs for ',library.short_name )))                        
-#                 prev_version=version
-#             
-#             logger.info(str(('library', library.short_name, 
-#                              'logs_created', logs_created)) )
+            self.diff_library_wells(library, screen_type)            
             
             prev_version = None
             for version in (library.librarycontentsversion_set.all()
@@ -224,55 +126,173 @@ class Migrator:
             ## - set all the reagent.library values
             ## - prune out all the old reagents
 
-
-
-
-
-
-            
-#             wells = {}
-#             prev_version = None
-#             for version in (library.librarycontentsversion_set.all()
-#                             .order_by('version_number')):
-#                 
-#                 for reagent in (base_query
-#                             .filter(reagent__well__library=library)
-#                             .filter(reagent__library_contents_version=version)
-#                             .order_by('reagent__well__well_id')):
-#                     well = reagent.reagent.well
-#                     if well in wells:
-#                         wells[well].append(reagent)
-#                     else:
-#                         wells[well] = [reagent]
-# 
-#                 # create an apilog for the library
-#                 activity = (version.library_contents_loading_activity.activity)
-#                 log = ApiLog()
-#                 log.username = activity.performed_by.ecommons_id
-#                 log.user_id = activity.performed_by.user.id 
-#                 log.date_time = activity.date_created
-#                 log.ref_resource_name = self.libraryResource._meta.resource_name
-#                 # TODO: what types here? could also be a REST specifier, i.e. 'PATCH'
-#                 log.api_action = 'PUT'
-#                 log.json_field = json.dumps( {
-#                     'administrative_activity_type': 
-#                     version.library_contents_loading_activity.administrative_activity_type
-#                     })
-#                 log.uri = self.libraryResource.get_resource_uri(bundle_or_obj=library)
-#                 log.key = '/'.join([str(x) for x in (
-#                     self.libraryResource.detail_uri_kwargs(library).values()) ])
-#                 log.diff_keys = json.dumps(['version'])
-#                 log.diffs = json.dumps([prev_version, version.version_number])
-#                 log.comment = activity.comments
-#                 log.save()
-#                 print 'log', log
-#                 prev_version = version.version_number
-#             
-#             self.diff_versions(wells,diff_function)
     
         print 'processed: ', i, 'libraries'
 
-    def create_diff_log(self,well,a,b,diff_function):
+    def diff_library_wells(self, library, screen_type):
+        
+        versions = [x for x in (library.librarycontentsversion_set.all()
+                .order_by('version_number')) ] 
+        if len(versions) < 2:
+            return
+
+        logger.info(str(('processing: ', library.short_name, 
+           'type', library.screen_type, library.library_type, 
+           'versions',  [x.version_number for x in versions],
+           'experimental wells', library.experimental_well_count)) )
+        
+        if screen_type == 'rnai':
+            keys = [
+                'well_id', 'vendor_identifier', 'vendor_name', 'vendor_batch_id',
+                'vendor_name_synonym','substance_id',
+                'sequence', 'silencing_reagent_type',
+                'reagent_facility_genes','reagent_vendor_genes','silencing_reagent_duplex_wells'
+                ]
+            
+            sql = '''select 
+well_id, vendor_identifier, vendor_name, vendor_batch_id, vendor_name_synonym,substance_id,
+(select '[' || array_to_string(array_agg(entrezgene_id), ',') || ']' from reagent_facility_genes fg join gene using(gene_id) where fg.reagent_id=r.reagent_id) as reagent_facility_genes,
+(select '[' || array_to_string(array_agg(entrezgene_id), ',') || ']' from reagent_vendor_genes vg join gene using(gene_id) where vg.reagent_id=r.reagent_id) as reagent_vendor_genes,
+(select '[' || array_to_string(array_agg(well_id), ',') || ']' from silencing_reagent_duplex_wells dw where dw.silencing_reagent_id=r.reagent_id) as duplex_wells
+from reagent r join silencing_reagent using(reagent_id)
+where r.library_contents_version_id=%s order by well_id;
+'''
+        else:
+            # create hash: version->well->smr
+            keys = [
+                'well_id', 'vendor_identifier', 'vendor_name', 'vendor_batch_id',
+                'vendor_name_synonym','substance_id',
+                'inchi', 'smiles', 
+                'molecular_formula', 'molecular_mass', 'molecular_weight',
+                'compound_name', 'pubchem_cid', 'chembl_id', 'chembank_id',
+                ]
+            
+            sql = '''select 
+well_id, vendor_identifier, vendor_name, vendor_batch_id, vendor_name_synonym,substance_id,
+inchi, smiles, 
+molecular_formula, molecular_mass, molecular_weight,
+(select '[' || array_to_string(array_agg(compound_name), ',') || ']' from small_molecule_compound_name smr where smr.reagent_id=r.reagent_id) as compound_name,
+(select '[' || array_to_string(array_agg(pubchem_cid), ',') || ']' from small_molecule_pubchem_cid p where p.reagent_id=r.reagent_id) as pubchem_cid,
+(select '[' || array_to_string(array_agg(chembl_id), ',') || ']' from small_molecule_chembl_id cb where cb.reagent_id=r.reagent_id)   as chembl_id,
+(select '[' || array_to_string(array_agg(chembank_id), ',') || ']' from small_molecule_chembank_id cbk where cbk.reagent_id=r.reagent_id)  as chembank_id 
+from reagent r join small_molecule_reagent using(reagent_id)
+where r.library_contents_version_id=%s order by well_id;
+'''
+        prev_well_map = None
+        i = 0
+        for version in versions:
+            _list = db.execute(sql, [version.library_contents_version_id])
+            
+            if len(_list) == 0:
+                logger.error(str(('no wells for ', library.short_name, version.version)))
+                continue
+
+            well_map = dict((x[0], x) for x in _list)
+            if prev_well_map:
+                for key,row in prev_well_map.items():
+                    new_row = well_map.get(key, None)
+                    if new_row:
+                        prev_well = dict(zip(keys,row))
+                        new_well = dict(zip(keys,new_row))
+                        log = self.create_well_log(version, prev_well, new_well)
+                        if log:
+                            i += 1
+                    else:
+                        logger.error(str(('no new well/reagent entry found for', key)))
+            else:
+                prev_well_map = well_map
+                
+        logger.info(str(('===created logs for ', library.short_name, i)))
+
+    def create_well_log(self, version, prev_dict, current_dict):
+        
+        difflog = compare_dicts(
+            prev_dict, current_dict,
+            excludes=['reagent_id', 'resource_uri'])
+        activity = version.library_contents_loading_activity.activity
+        log = ApiLog()
+        #             log.username = activity.performed_by.ecommons_id
+        #             log.user_id = activity.performed_by.user.id 
+        
+        if getattr(activity.performed_by, 'ecommons_id', None):
+            log.username = activity.performed_by.ecommons_id
+        else:
+            log.username = 'sde'
+            
+        if getattr(activity.performed_by, 'login_id', None):
+            log.username = activity.performed_by.login_id
+        # FIXME
+        log.user_id = 1
+        
+        log.date_time = make_aware(activity.date_created,timezone.get_default_timezone())
+        log.ref_resource_name = self.wellResource._meta.resource_name
+        # TODO: what types here? could also be a REST specifier, i.e. 'PATCH'
+        log.api_action = 'MIGRATION'
+        log.uri = '/db/api/v1/well' # self.wellResource.get_resource_uri(bundle_or_obj=well)
+        log.key = prev_dict['well_id']
+        log.diff_dict_to_api_log(difflog)
+        
+        log.json_field = json.dumps({
+            'version': version.version_number })
+        log.save()
+        return log
+            
+    def diff_library_wells_old_orm_method(self, library):
+        
+        versions = [x.version_number 
+            for x in (library.librarycontentsversion_set.all()
+                .order_by('version_number')) ] 
+        if len(versions) < 2:
+            return
+
+        logger.info(str(('processing: ', library.short_name, 
+               'type', library.screen_type, library.library_type, 
+               'versions',  versions,
+               'experimental wells', library.experimental_well_count)) )
+        #build a hash of well->[reagents by version]
+            
+        base_query = None
+        diff_function = None      
+        if library.screen_type == 'rnai':
+            base_query = orm.SilencingReagent.objects.all()
+            diff_function = self.diff_rnai
+            attribute = 'silencingreagent'
+        else:
+            if library.library_type == 'natural_products':
+                base_query = orm.NaturalProductReagent.objects.all()
+                diff_function = self.diff_natural_product
+                attribute = 'naturalproductreagent'
+            else:
+                base_query = orm.SmallMoleculeReagent.objects.all()
+                diff_function = self.diff_smr
+                attribute = 'smallmoleculereagent'
+        logs_created = 0
+       
+        for well in library.well_set.all():
+            
+            prev_version_reagent = None
+        
+            for reagent in (
+                base_query
+                .filter(reagent__well=well)
+                .order_by('reagent__library_contents_version__version_number')):
+        
+                if prev_version_reagent:
+                    if self.create_diff_log(well, 
+                                            prev_version_reagent, reagent,
+                                            diff_function):
+                        logs_created +=1
+                        
+                prev_version_reagent = reagent
+                
+            if logs_created and logs_created % 1000 == 0:
+                logger.info(str(('created ',logs_created, ' logs for ',library.short_name )))                        
+        logger.info(str(('library', library.short_name, 
+                         'logs_created', logs_created)) )
+
+
+
+    def create_diff_log_old_orm(self,well,a,b,diff_function):
         '''
         @param a reagent a
         @param b reagent b
@@ -292,8 +312,6 @@ class Migrator:
             activity = (b.reagent.library_contents_version
                          .library_contents_loading_activity.activity)
             log = ApiLog()
-#             log.username = activity.performed_by.ecommons_id
-#             log.user_id = activity.performed_by.user.id 
 
             if getattr(activity.performed_by, 'ecommons_id', None):
                 log.username = activity.performed_by.ecommons_id
@@ -324,50 +342,3 @@ class Migrator:
             return log
         return None
     
-#     def diff_versions(self, wells, diff_function):
-#         print 'diff versions by well: ', len(wells)
-#         
-#         logs_created = 0
-#         skipped_log = 0
-#         for well, smrs in wells.items():
-#             b = None
-#             a = None
-#             for smr in smrs:
-#                 b = a
-#                 a = smr
-#                 if not b:
-#                     continue
-#                 difflog = diff_function(a,b)
-#                 if ( 'added_keys' in difflog or 
-#                      'removed_keys' in difflog or
-#                      'diff_keys' in difflog ):
-#                     diff_keys = difflog['diff_keys'] or []
-#                     diffs = difflog['diffs'] or {}
-#                     diff_keys.append('substance_id')
-#                     diffs['substance_id'] = [a.reagent.substance_id, 
-#                                              b.reagent.substance_id]
-#                     difflog['diff_keys'] = diff_keys
-#                     difflog['diffs'] = diffs
-#                     
-#                     activity = (b.reagent.library_contents_version
-#                                  .library_contents_loading_activity.activity)
-#                     log = ApiLog()
-#                     log.username = activity.performed_by.ecommons_id
-#                     log.user_id = activity.performed_by.user.id 
-#                     log.date_time = activity.date_created
-#                     log.ref_resource_name = self.wellResource._meta.resource_name
-#                     # TODO: what types here? could also be a REST specifier, i.e. 'PATCH'
-#                     log.api_action = 'MIGRATION'
-#                     log.uri = self.wellResource.get_resource_uri(bundle_or_obj=well)
-#                     log.key = '/'.join([str(x) for x in (
-#                         self.wellResource.detail_uri_kwargs(well).values()) ])
-#                     log.diff_dict_to_api_log(difflog)
-#                     
-#                     log.json_field = json.dumps({
-#                         'version': b.reagent.library_contents_version.version_number })
-#                     log.save()
-#                     logs_created += 1
-#                 else:
-#                     skipped_log += 1
-#         print 'logs created: ', logs_created, 'skipped_log', skipped_log
-            

@@ -219,6 +219,9 @@ class Migration(SchemaMigration):
         # Deleting model 'GeneOldEntrezgeneSymbol'
         db.delete_table(u'gene_old_entrezgene_symbol')
         
+        db.delete_table(u'silencing_reagent_non_targetted_genbank_accession_number')
+
+    
     def _update_table_autofield(self, table, column):
         
         ###

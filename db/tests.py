@@ -594,95 +594,93 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
             self.assertTrue(result, str((msgs, expected_data, outputobj)))
                     
 
-
-          
-class ReagentResource(DBMetaHashResourceBootstrap):
-            
-    def setUp(self):
-        logger.debug('============== ReagentResource setup ============')
-        
-        super(ReagentResource, self).setUp()
-
-        logger.debug('============== ReagentResource setup: begin ============')
-        
-        
-        self.db_resource_uri = BASE_URI + '/metahash'
-        self.db_directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
-        filename = os.path.join(self.db_directory,'metahash_fields_library.csv')
-        self._patch_test(
-            'metahash', filename, data_for_get={ 'scope':'fields.library'})
-        filename = os.path.join(self.db_directory,'metahash_fields_well.csv')
-        self._patch_test(
-            'metahash', filename, data_for_get={ 'scope':'fields.well'})
-#         filename = os.path.join(self.db_directory,'metahash_fields_reagent.csv')
+# class ReagentResource(DBMetaHashResourceBootstrap):
+#             
+#     def setUp(self):
+#         logger.debug('============== ReagentResource setup ============')
+#         
+#         super(ReagentResource, self).setUp()
+# 
+#         logger.debug('============== ReagentResource setup: begin ============')
+#         
+#         
+#         self.db_resource_uri = BASE_URI + '/metahash'
+#         self.db_directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
+#         filename = os.path.join(self.db_directory,'metahash_fields_library.csv')
 #         self._patch_test(
-#             'metahash', filename, data_for_get={ 'scope':'fields.reagent'})
-
-        filename = os.path.join(self.db_directory,'metahash_fields_smallmoleculereagent.csv')
-        self._patch_test(
-            'metahash', filename, data_for_get={ 'scope':'fields.smallmoleculereagent'})
-
-        library_item = LibraryFactory.attributes()
-        library_item.update({ 'start_plate': '1534', 'end_plate': '1534', 'plate_size': '384' })
-        
-        self.library1 = library_item # store for later use
-        
-        resource_uri = BASE_URI_DB + '/library'
-        logger.debug(str((library_item)))
-        resp = self.api_client.post(
-            resource_uri, format='json', data=library_item, 
-            authentication=self.get_credentials())
-        self.assertTrue(resp.status_code in [201], str((resp.status_code, resp)))
-
-        
-        logger.debug('============== done: ReagentResource setup ============')
-        
-    def test1_create_reagent(self):
-        logger.debug(str(('==== test1_create_reagent =====')))
-        
-        resource_uri = '/'.join([BASE_URI_DB,'library', self.library1['short_name'], 'reagent'])
-        reagent_item1 = ReagentFactory.attributes()
-        reagent_item1['well_id'] = '1534:A01'
-        logger.debug(str((reagent_item1)))
-        resp = self.api_client.patch(
-            resource_uri, format='json', data={'objects': [reagent_item1]}, 
-            authentication=self.get_credentials())
-        self.assertTrue(resp.status_code in [204], 
-            str((resp.status_code, self.deserialize(resp))))
-         
-        # create a second
-        reagent_item2 = ReagentFactory.attributes()
-        reagent_item2['well_id'] = '1534:A02'
-         
-        logger.debug(str((reagent_item1)))
-        
-        resp = self.api_client.patch(
-            resource_uri, format='json', data={'objects': [reagent_item2]}, 
-            authentication=self.get_credentials())
-        self.assertTrue(resp.status_code in [204], 
-            str((resp.status_code, self.deserialize(resp))))
-         
-        resp = self.api_client.get(
-            resource_uri, format='json', authentication=self.get_credentials(), 
-            data={ 'limit': 999 })
-        logger.debug(str(('--------resp to get:', resp.status_code)))
-        new_obj = self.deserialize(resp)
-        self.assertValidJSONResponse(resp)
-        self.assertEqual(len(new_obj['objects']), 2, str((new_obj)))
-         
-        result, obj = find_obj_in_list(reagent_item1, new_obj['objects'])
-        self.assertTrue(
-            result, str(('item not found', obj, 
-                         reagent_item1, new_obj['objects'])))
-        logger.debug(str(('item found', obj)))
- 
-        result, obj = find_obj_in_list(reagent_item2, new_obj['objects'])
-        self.assertTrue(
-            result, str(('bootstrap item2 not found', obj, 
-                         reagent_item2, new_obj['objects'])))
-        logger.debug(str(('item2 found', obj)))
- 
-        logger.debug(str(('==== done: test1_create_reagent =====')))
+#             'metahash', filename, data_for_get={ 'scope':'fields.library'})
+#         filename = os.path.join(self.db_directory,'metahash_fields_well.csv')
+#         self._patch_test(
+#             'metahash', filename, data_for_get={ 'scope':'fields.well'})
+# #         filename = os.path.join(self.db_directory,'metahash_fields_reagent.csv')
+# #         self._patch_test(
+# #             'metahash', filename, data_for_get={ 'scope':'fields.reagent'})
+# 
+#         filename = os.path.join(self.db_directory,'metahash_fields_smallmoleculereagent.csv')
+#         self._patch_test(
+#             'metahash', filename, data_for_get={ 'scope':'fields.smallmoleculereagent'})
+# 
+#         library_item = LibraryFactory.attributes()
+#         library_item.update({ 'start_plate': '1534', 'end_plate': '1534', 'plate_size': '384' })
+#         
+#         self.library1 = library_item # store for later use
+#         
+#         resource_uri = BASE_URI_DB + '/library'
+#         logger.debug(str((library_item)))
+#         resp = self.api_client.post(
+#             resource_uri, format='json', data=library_item, 
+#             authentication=self.get_credentials())
+#         self.assertTrue(resp.status_code in [201], str((resp.status_code, resp)))
+# 
+#         
+#         logger.debug('============== done: ReagentResource setup ============')
+#         
+#     def test1_create_reagent(self):
+#         logger.debug(str(('==== test1_create_reagent =====')))
+#         
+#         resource_uri = '/'.join([BASE_URI_DB,'library', self.library1['short_name'], 'reagent'])
+#         reagent_item1 = ReagentFactory.attributes()
+#         reagent_item1['well_id'] = '1534:A01'
+#         logger.debug(str((reagent_item1)))
+#         resp = self.api_client.patch(
+#             resource_uri, format='json', data={'objects': [reagent_item1]}, 
+#             authentication=self.get_credentials())
+#         self.assertTrue(resp.status_code in [204], 
+#             str((resp.status_code, self.deserialize(resp))))
+#          
+#         # create a second
+#         reagent_item2 = ReagentFactory.attributes()
+#         reagent_item2['well_id'] = '1534:A02'
+#          
+#         logger.debug(str((reagent_item1)))
+#         
+#         resp = self.api_client.patch(
+#             resource_uri, format='json', data={'objects': [reagent_item2]}, 
+#             authentication=self.get_credentials())
+#         self.assertTrue(resp.status_code in [204], 
+#             str((resp.status_code, self.deserialize(resp))))
+#          
+#         resp = self.api_client.get(
+#             resource_uri, format='json', authentication=self.get_credentials(), 
+#             data={ 'limit': 999 })
+#         logger.debug(str(('--------resp to get:', resp.status_code)))
+#         new_obj = self.deserialize(resp)
+#         self.assertValidJSONResponse(resp)
+#         self.assertEqual(len(new_obj['objects']), 2, str((new_obj)))
+#          
+#         result, obj = find_obj_in_list(reagent_item1, new_obj['objects'])
+#         self.assertTrue(
+#             result, str(('item not found', obj, 
+#                          reagent_item1, new_obj['objects'])))
+#         logger.debug(str(('item found', obj)))
+#  
+#         result, obj = find_obj_in_list(reagent_item2, new_obj['objects'])
+#         self.assertTrue(
+#             result, str(('bootstrap item2 not found', obj, 
+#                          reagent_item2, new_obj['objects'])))
+#         logger.debug(str(('item2 found', obj)))
+#  
+#         logger.debug(str(('==== done: test1_create_reagent =====')))
 
 
 

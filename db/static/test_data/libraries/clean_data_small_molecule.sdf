@@ -25,7 +25,7 @@ A01
 >  <well_name> (3)
 A01
 
->  <well_type> (3)
+>  <library_well_type> (3)
 EXPERIMENTAL
 
 >  <Row> (3)
@@ -46,7 +46,7 @@ DMSO
 > <salt_form_id>
 101
 
->  <chemical_name> (5)
+>  <compound_name> (5)
 fake compound name 1
 fake compound name 2
 
@@ -139,7 +139,7 @@ A01
 >  <well_name> (4)
 A02
 
->  <well_type> (3)
+>  <library_well_type> (3)
 EXPERIMENTAL
 
 >  <Row> (4)
@@ -157,7 +157,7 @@ DMSO
 >  <concentration> (4)
 5 nM
 
->  <chemical_name> (5)
+>  <compound_name> (5)
 fake compound name 1
 
 >  <CAS_Number> (5)
@@ -233,7 +233,7 @@ A02
 >  <well_name> (5)
 A03
 
->  <well_type> (3)
+>  <library_well_type> (3)
 EXPERIMENTAL
 
 >  <Row> (5)
@@ -254,7 +254,7 @@ DMSO
 >  <SaltData> (5)
 2C2H2O4
 
->  <chemical_name> (5)
+>  <compound_name> (5)
 fake compound name 2
 
 >  <CAS_number> (5)
@@ -344,7 +344,7 @@ A02
 >  <well_name> (6)
 A04
 
->  <well_type> (3)
+>  <library_well_type> (3)
 EXPERIMENTAL
 
 >  <Row> (6)
@@ -362,7 +362,7 @@ DMSO
 >  <concentration> (6)
 0.123 mg/ml
 
->  <chemical_name> (5)
+>  <compound_name> (5)
 fake compound name 3
 
 >  <smiles> (10)
@@ -451,7 +451,7 @@ A03
 >  <well_name> (7)
 A05
 
->  <well_type> (3)
+>  <library_well_type> (3)
 EXPERIMENTAL
 
 >  <Row> (7)
@@ -469,7 +469,7 @@ DMSO
 >  <concentration> (7)
 115 pM
 
->  <chemical_name> (5)
+>  <compound_name> (5)
 fake compound name 4
 
 >  <smiles> (10)
@@ -556,7 +556,7 @@ A03
 >  <well_name> (8)
 A06
 
->  <well_type> (3)
+>  <library_well_type> (3)
 EXPERIMENTAL
 
 >  <Row> (8)
@@ -674,7 +674,7 @@ A04
 >  <well_name> (10)
 A08
 
->  <well_type> (3)
+>  <library_well_type> (3)
 EXPERIMENTAL
 
 >  <Row> (10)
@@ -739,7 +739,7 @@ P24
 >  <well_name> (3)
 A09
 
->  <well_type> (3)
+>  <library_well_type> (3)
 EMPTY
 
 >  <Row> (3)
@@ -756,7 +756,7 @@ EMPTY
 >  <concentration> (3)
 
 
->  <chemical_name> (5)
+>  <compound_name> (5)
 
 
 >  <smiles> (10)

@@ -237,7 +237,7 @@ class SDFSerializerTest(SimpleTestCase):
         
         records = [{
             'smiles': 'Cl',
-            'chemical_name': 'HCl (hydrochloric acid)',
+            'compound_name': 'HCl (hydrochloric acid)',
             'molecular_mass': '35.976677742',
             MOLDATAKEY: '''
   SciTegic12121315112D
@@ -250,7 +250,7 @@ M  END
             {
             'smiles': 'C([C@@H](C(=O)O)O)C(=O)O',
             'inchi': 'InChI=1S/C4H6O5/c5-2(4(8)9)1-3(6)7/h2,5H,1H2,(H,6,7)(H,8,9)/t2-/m0/s1',
-            'chemical_name': 'malate',
+            'compound_name': 'malate',
             'molecular_mass': '134.021523292',
             MOLDATAKEY: '''
   SciTegic12121315112D
@@ -278,7 +278,7 @@ M  END
             },{
             'smiles': 'O.O.Cl',
             'inchi': 'InChI=1S/ClH.2H2O/h1H;2*1H2',
-            'chemical_name': 'hydrochloride hydrate',
+            'compound_name': 'hydrochloride hydrate',
             'molecular_mass': '71.99780711',
             MOLDATAKEY: '''
   SciTegic12121315112D
@@ -321,23 +321,15 @@ M  END
         logger.debug(str(('==== test2_clean_data_sdf =====')))
 
         record_one = {
-            r'Library': r'Biomol-TimTec1',
-            r'Source': r'Biomol-TimTec',
-            r'Vendor': r'Biomol-TimTec',
-            r'Vendor_Reagent_ID': r'SPL000058',
+            r'vendor': r'Biomol-TimTec',
+            r'vendor_reagent_id': r'SPL000058',
             r'vendor_batch_id': r'HM-001_TM-20090805',
-            r'OldWell': r'A01',
-            r'OldPlate': r'1',
-            r'Plate': r'1534',
-            r'Well': r'A01',
-            r'Well_type': r'EXPERIMENTAL',
-            r'Row': r'1',
-            r'Col':r'1',
-            r'Facility_Reagent_ID': r'ICCB-00589081',
-            r'Solvent':r'DMSO',
+            r'plate_number': r'1534',
+            r'well_name': r'A01',
+            r'library_well_type': r'EXPERIMENTAL',
+            r'facility_reagent_id': r'ICCB-00589081',
             r'facility_batch_id':r'008',
-            r'salt_form_id':r'101',
-            r'Chemical_Name': [r'fake compound name 1',r'fake compound name 2'],
+            r'compound_name': [r'fake compound name 1',r'fake compound name 2'],
             r'smiles':r'O=C1CC(C)(C)CC(=O)C1C(c1ccccc1)C1=C(O)CC(C)(C)CC1=O',
             r'inchi':r'InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-23(3,4)13-18(21)27/h5-9,19-20,26H,10-13H2,1-4H3',
             r'pubchem_cid': [r'558309',r'7335957'],
@@ -349,19 +341,16 @@ M  END
         record_two = {
             r'Library': r'Biomol-TimTec1',
             r'Source': r'Biomol-TimTec',
-            r'Vendor': r'Biomol-TimTec',
-            r'Vendor_Reagent_ID': r'ST001215',
-            r'OldWell': r'A01',
-            r'OldPlate': r'2',
-            r'Plate': r'1534',
-            r'Well': r'A02',
-            r'Well_type': r'EXPERIMENTAL',
+            r'vendor': r'Biomol-TimTec',
+            r'vendor_reagent_id': r'ST001215',
+            r'plate_number': r'1534',
+            r'well_name': r'A02',
+            r'library_well_type': r'EXPERIMENTAL',
             r'Row': r'1',
             r'Col':r'2',
-            r'Facility_Reagent_ID': r'ICCB-00589082',
-            r'Solvent':r'DMSO',
-            r'Concentration': r'5 nM',
-            r'Chemical_Name':r'fake compound name 1',
+            r'facility_reagent_id': r'ICCB-00589082',
+            r'concentration': r'5 nM',
+            r'compound_name':r'fake compound name 1',
             r'CAS_Number': r'fake cas number 1',
             r'smiles':r'Clc1ccc(\\C=C/c2c(C)n(C)n(c3ccccc3)c2=O)c(Cl)c1',
             r'inchi':r'InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-23(3,4)13-18(21)27/h5-9,19-20,26H,10-13H2,1-4H3',
@@ -407,19 +396,14 @@ M  END'''            }
         last_record = {
             'Library': 'Biomol-TimTec1',
             'Source': 'Biomol-TimTec',
-            'Vendor': 'Biomol-TimTec',
-            'Vendor_Reagent_ID': '',
-            'OldWell': 'P24',
-            'OldPlate': '2',
-            'Plate': '1534',
-            'Well': 'A09',
-            'Well_type': 'EMPTY',
-            'Row': '1',
-            'Col': '8',
-            'Facility_Reagent_ID': '',
-            'Solvent': '',
-            'Concentration': '',
-            'Chemical_Name': '',
+            'vendor': 'Biomol-TimTec',
+            'vendor_reagent_id': '',
+            'plate_number': '1534',
+            'well_name': 'A09',
+            'library_well_type': 'EMPTY',
+            'facility_reagent_id': '',
+            'concentration': '',
+            'compound_name': '',
             'smiles': '',
             'inchi': '',
             }

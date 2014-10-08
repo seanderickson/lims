@@ -118,15 +118,46 @@ class Migrator:
                 'well_id', 'vendor_identifier', 'vendor_name', 'vendor_batch_id',
                 'vendor_name_synonym','substance_id',
                 'sequence', 'silencing_reagent_type',
-                'reagent_facility_genes','reagent_vendor_genes','silencing_reagent_duplex_wells'
+                'vendor_entrezgene_id',
+                'vendor_entrezgene_symbols',
+                'vendor_gene_name',
+                'vendor_gene_species',
+                'vendor_genbank_accession_numbers',
+                'facility_entrezgene_id',
+                'facility_entrezgene_symbols',
+                'facility_gene_name',
+                'facility_gene_species',
+                'facility_genbank_accession_numbers',
+                'silencing_reagent_duplex_wells'
                 ]
             
             sql = '''select 
 well_id, vendor_identifier, vendor_name, vendor_batch_id, vendor_name_synonym,substance_id,
-(select '["' || array_to_string(array_agg(entrezgene_id), '","') || '"]' from reagent_facility_genes fg join gene using(gene_id) where fg.reagent_id=r.reagent_id) as reagent_facility_genes,
-(select '["' || array_to_string(array_agg(entrezgene_id), '","') || '"]' from reagent_vendor_genes vg join gene using(gene_id) where vg.reagent_id=r.reagent_id) as reagent_vendor_genes,
-(select '["' || array_to_string(array_agg(well_id), '","') || '"]' from silencing_reagent_duplex_wells dw where dw.silencing_reagent_id=r.reagent_id) as duplex_wells
-from reagent r join silencing_reagent using(reagent_id)
+vg.entrezgene_id as vendor_entrezgene_id,
+vg.gene_name as vendor_gene_name,
+vg.species_name as vendor_gene_species,
+(select '["' || array_to_string(array_agg(entrezgene_symbol), '","') || '"]'
+    from (select entrezgene_symbol from gene_symbol gs 
+          where gs.gene_id = sr.vendor_gene_id 
+          order by ordinal) a ) as vendor_entrezgene_symbols,
+(select '["' || array_to_string(array_agg(genbank_accession_number), '","') || '"]'
+    from gene_genbank_accession_number ga
+    where ga.gene_id = sr.vendor_gene_id ) as vendor_genbank_accession_numbers,
+fg.entrezgene_id as facility_entrezgene_id,
+fg.gene_name as facility_gene_name,
+fg.species_name as facility_gene_species,
+(select '["' || array_to_string(array_agg(entrezgene_symbol), '","') || '"]'
+    from (select entrezgene_symbol from gene_symbol gs 
+          where gs.gene_id = sr.facility_gene_id 
+          order by ordinal) a ) as facility_entrezgene_symbols,
+(select '["' || array_to_string(array_agg(genbank_accession_number), '","') || '"]'
+    from gene_genbank_accession_number ga
+    where ga.gene_id = sr.facility_gene_id ) as facility_genbank_accession_numbers,
+(select '["' || array_to_string(array_agg(well_id), '","') || '"]' 
+    from silencing_reagent_duplex_wells dw where dw.silencing_reagent_id=r.reagent_id) as duplex_wells
+from reagent r join silencing_reagent sr using(reagent_id)
+left join gene vg on(vendor_gene_id=vg.gene_id)
+left join gene fg on(facility_gene_id=fg.gene_id)
 where r.library_contents_version_id=%s order by well_id;
 '''
         else:
@@ -143,10 +174,15 @@ where r.library_contents_version_id=%s order by well_id;
 well_id, vendor_identifier, vendor_name, vendor_batch_id, vendor_name_synonym,substance_id,
 inchi, smiles, 
 molecular_formula, molecular_mass, molecular_weight,
-(select '["' || array_to_string(array_agg(compound_name), '","') || '"]' from small_molecule_compound_name smr where smr.reagent_id=r.reagent_id) as compound_name,
-(select '["' || array_to_string(array_agg(pubchem_cid), '","') || '"]' from small_molecule_pubchem_cid p where p.reagent_id=r.reagent_id) as pubchem_cid,
-(select '["' || array_to_string(array_agg(chembl_id), '","') || '"]' from small_molecule_chembl_id cb where cb.reagent_id=r.reagent_id)   as chembl_id,
-(select '["' || array_to_string(array_agg(chembank_id), '","') || '"]' from small_molecule_chembank_id cbk where cbk.reagent_id=r.reagent_id)  as chembank_id 
+(select '["' || array_to_string(array_agg(compound_name), '","') || '"]' 
+    from (select compound_name from small_molecule_compound_name smr 
+    where smr.reagent_id=r.reagent_id order by ordinal) a) as compound_name,
+(select '["' || array_to_string(array_agg(pubchem_cid), '","') || '"]' 
+    from small_molecule_pubchem_cid p where p.reagent_id=r.reagent_id) as pubchem_cid,
+(select '["' || array_to_string(array_agg(chembl_id), '","') || '"]' 
+    from small_molecule_chembl_id cb where cb.reagent_id=r.reagent_id)   as chembl_id,
+(select '["' || array_to_string(array_agg(chembank_id), '","') || '"]' 
+    from small_molecule_chembank_id cbk where cbk.reagent_id=r.reagent_id)  as chembank_id 
 from reagent r join small_molecule_reagent using(reagent_id)
 where r.library_contents_version_id=%s order by well_id;
 '''

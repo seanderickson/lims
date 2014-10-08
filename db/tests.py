@@ -8,7 +8,7 @@ from tastypie.test import ResourceTestCase, TestApiClient
 import db.models
 from test.factories import *
 from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, find_obj_in_list
-from reports.serializers import CSVSerializer
+from reports.serializers import CSVSerializer, XLSSerializer
 from reports.tests import MetaHashResourceBootstrap
 import reports.tests
 from db.models import Reagent, Substance, Library
@@ -199,9 +199,9 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
         filename = os.path.join(self.db_directory,'metahash_fields_well.csv')
         self._patch_test(
             'metahash', filename, data_for_get={ 'scope':'fields.well'})
-        filename = os.path.join(self.db_directory,'metahash_fields_reagent.csv')
-        self._patch_test(
-            'metahash', filename, data_for_get={ 'scope':'fields.reagent'})
+#         filename = os.path.join(self.db_directory,'metahash_fields_reagent.csv')
+#         self._patch_test(
+#             'metahash', filename, data_for_get={ 'scope':'fields.reagent'})
 
 #         self.testApiClient = TestApiClient(serializer=reports.serializers.SmallMoleculeSerializer()) 
 
@@ -395,11 +395,11 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
             authentication=self.get_credentials())
         self.assertTrue(resp.status_code in [201], str((resp.status_code, resp)))
 
-        resource_name = 'reagent'
+        resource_name = 'well'
         resource_uri = '/'.join([BASE_URI_DB,'library', self.library1['short_name'],resource_name])
         specific_schema = self.get_from_server(resource_uri + '/schema')
         fields = specific_schema['fields']
-        logger.debug(str(('=== reagent fields', fields.keys())))
+        logger.debug(str(('=== well-smr fields', fields.keys())))
         
         # look for a SMR field:
         self.assertTrue('molfile' in fields, str(('no molfile found', fields)))
@@ -413,7 +413,7 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
 
         logger.debug(str(('==== start: test6_load_small_molecule_file =====')))
 
-        resource_name = 'reagent'
+        resource_name = 'well'
         resource_uri = '/'.join([BASE_URI_DB,'library', self.library1['short_name'],resource_name])
         
         filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_small_molecule.sdf'
@@ -441,7 +441,8 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
             resp = self.api_client.put(
                 resource_uri, format='sdf', data=input_data, 
                 authentication=self.get_credentials(), **data_for_get )
-            self.assertTrue(resp.status_code in [200, 204], str((resp.status_code, resp)))
+            self.assertTrue(resp.status_code in [200, 204], 
+                str((resp.status_code, self.deserialize(resp))))
         
         logger.debug(str(('check patched data for',resource_name,
             'execute get on:',resource_uri)))
@@ -475,34 +476,124 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
                 len(returned_data), 'expected',expected_count,
                 'returned_data',returned_data)))
         
-        ## test returned data:
-        # "convert" the well data from SS1 keys/values
-        ## Discuss: the "old" SS1 format has different field naming conventions, 
-        # so we'll need to have a built in functionality to map them ##
-        from db.support.data_converter import convert_well_data
-        testable_input_data = [convert_well_data(x) for x in input_data]
-        
         # 1. test well keys
         specific_schema = self.get_from_server(resource_uri + '/schema')
         fields = specific_schema['fields']
         logger.debug(str(('=== well fields', fields.keys())))
         
-        for inputobj in testable_input_data:
+        for inputobj in input_data:
             # first just search for the well
             search = { 'well_id': '%s:%s' %(inputobj['plate_number'],inputobj['well_name']) }
             result, outputobj = find_obj_in_list(
                 search,returned_data) #, excludes=excludes )
-            self.assertTrue(
-                result, 
+            self.assertTrue(result, 
                 str(('not found', search,outputobj,'=== objects returned ===', 
                       returned_data )) ) 
             logger.debug(str(('found', search)))
             # second look at the found item
             expected_data = { key: inputobj[key] for key in fields.keys() if key in inputobj }
             result, msgs = assert_obj1_to_obj2(expected_data, outputobj)
+            logger.debug(str((result, msgs)))
             self.assertTrue(result, str((msgs, expected_data, outputobj)))
                     
         logger.debug(str(('==== done: test6_load_small_molecule_file =====')))
+
+    def test7_load_silencing_reagent_file(self):
+        logger.debug(str(('==== test7_load_silencing_reagent_file =====')))
+        
+        # TODO: don't use test5, just nest it's logic here:
+        self.test5_reagent_schema()
+        library_item = LibraryFactory.attributes()
+        library_item.update({ 
+            'start_plate': '50001', 
+            'end_plate': '50001', 
+            'plate_size': '384',
+            'screen_type': 'rnai' })
+        self.library1 = library_item # store for later use
+        
+        resource_uri = BASE_URI_DB + '/library'
+        logger.debug(str((library_item)))
+        resp = self.api_client.post(
+            resource_uri, format='json', data=library_item, 
+            authentication=self.get_credentials())
+        self.assertTrue(resp.status_code in [201], str((resp.status_code, resp)))
+
+        logger.debug(str(('==== start: test7_load_silencing_reagent_file =====')))
+
+        resource_name = 'well'
+        resource_uri = '/'.join([
+            BASE_URI_DB,'library', self.library1['short_name'],resource_name])
+        
+        filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_rnai.xls'
+
+        data_for_get={}
+        data_for_get.setdefault('limit', 999)
+        data_for_get.setdefault('HTTP_ACCEPT', 'application/xls' )
+        xls_serializer = XLSSerializer()
+        with open(filename) as input_file:
+            
+            ### NOTE: submit the data as an object, because the test framework
+            ### will convert it to the target format.
+            input_data = self.serializer.from_xls(input_file.read())
+            input_data = input_data['objects']
+            #logger.info(str(('===== input data', input_data)))
+        
+            expected_count = 5
+            self.assertEqual(len(input_data), expected_count, 
+                str(('initial serialization of ',filename,'found',
+                    len(input_data), 'expected',expected_count,
+                    'input_data',input_data)))
+            
+            logger.info(str(('======Submitting patch...', filename, resource_uri)))
+        
+            resp = self.api_client.put(
+                resource_uri, format='xls', data=input_data, 
+                authentication=self.get_credentials(), **data_for_get )
+            self.assertTrue(resp.status_code in [200, 204], 
+                str((resp.status_code, xls_serializer.from_xls(resp.content))))
+        
+        logger.debug(str(('check patched data for',resource_name,
+            'execute get on:',resource_uri)))
+
+        resource_name = 'well'
+        resource_uri = '/'.join([BASE_URI_DB,'library', self.library1['short_name'],resource_name])
+        resp = self.api_client.get(
+            resource_uri, format='sdf', authentication=self.get_credentials(), 
+            data=data_for_get)
+
+        logger.debug(str(('--------resp to get:', resp.status_code)))
+        self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+        new_obj = self.deserialize(resp)
+        returned_data = new_obj['objects']
+        expected_count = 384
+        self.assertEqual(len(returned_data), expected_count, 
+            str(('returned_data of ',filename,'found',
+                len(returned_data), 'expected',expected_count,
+                'returned_data',returned_data)))
+
+        # 1. test well keys
+        specific_schema = self.get_from_server(resource_uri + '/schema')
+        fields = specific_schema['fields']
+        logger.debug(str(('=== well fields', fields.keys())))
+        
+        for inputobj in input_data:
+            # first just search for the well
+            search = { 'well_id': '%s:%s' %(inputobj['plate_number'],inputobj['well_name']) }
+            result, outputobj = find_obj_in_list(search,returned_data)
+            self.assertTrue(result, 
+                str(('not found', search,outputobj,'=== objects returned ===', 
+                      returned_data )) ) 
+            logger.debug(str(('found', search)))
+            # second look at the found item
+            expected_data = { key: inputobj[key] for key in fields.keys() 
+                if key in inputobj }
+            logger.debug(str(('input_obj', inputobj)))
+            logger.debug(str(('expected_data', expected_data)))
+            result, msgs = assert_obj1_to_obj2(expected_data, outputobj)
+            logger.debug(str((result, msgs)))
+            self.assertTrue(result, str((msgs, expected_data, outputobj)))
+                    
+
 
           
 class ReagentResource(DBMetaHashResourceBootstrap):
@@ -523,9 +614,9 @@ class ReagentResource(DBMetaHashResourceBootstrap):
         filename = os.path.join(self.db_directory,'metahash_fields_well.csv')
         self._patch_test(
             'metahash', filename, data_for_get={ 'scope':'fields.well'})
-        filename = os.path.join(self.db_directory,'metahash_fields_reagent.csv')
-        self._patch_test(
-            'metahash', filename, data_for_get={ 'scope':'fields.reagent'})
+#         filename = os.path.join(self.db_directory,'metahash_fields_reagent.csv')
+#         self._patch_test(
+#             'metahash', filename, data_for_get={ 'scope':'fields.reagent'})
 
         filename = os.path.join(self.db_directory,'metahash_fields_smallmoleculereagent.csv')
         self._patch_test(

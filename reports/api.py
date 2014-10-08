@@ -42,11 +42,7 @@ from tastypie.utils.dict import dict_strip_unicode_keys
 from functools import wraps
 import six
 
-# # NOTE: reports.models is required for dynamic field instances using eval
-# import reports
-        
 logger = logging.getLogger(__name__)
-
 
 class UserGroupAuthorization(Authorization):
     
@@ -96,12 +92,6 @@ class UserGroupAuthorization(Authorization):
         # Instead, raise an immediate exception with the correct 403 error code
         raise ImmediateHttpResponse(response=HttpForbidden(
             str(('user',user ,'permission not found', permission_str))))
-
-        # NOTE: the tastypie lib creates the incorrect "Unauthorized" - 401 error, 
-        # - it should be a 403 "forbidden" code, but "Unauthorized" generates a 401
-        #         raise Unauthorized(
-        #             str(("User", user, " requires permission to read this resource.", resource_name)) )
-
     
     def read_list(self, object_list, bundle):
         if self._is_resource_authorized(
@@ -205,7 +195,7 @@ class PostgresSortingResource(ModelResource):
         non_null_fields = options.get('non_null_fields', [])
         new_ordering = []
 
-        logger.debug(str(('==== non null fields', non_null_fields))) 
+        logger.info(str(('==== non null fields', non_null_fields))) 
         for field in obj_list.query.order_by:
             original_field = field
             is_null_dir = '-'  # default nulls first for ascending
@@ -226,70 +216,12 @@ class PostgresSortingResource(ModelResource):
         
         return obj_list
 
-    
-#     def apply_sorting1(self, obj_list, options):
-#         """
-#         Create a none-too-pretty workaround for the postgresql null sorting
-#         issue - nulls sort higher than values, which is not desired.  
-#         We want nulls to sort lower than values.
-#         
-#         Caveat: this will not work with joined fields unless they have an alias.  
-#         This is because it creates a field like:
-#         (screensaver_user_id is null) AS "screensaver_user_id_null"
-#         - if this field is duplicated in two sides of a join, then it must be 
-#         referenced by an alias, or as "table".screensaver_user_id, 
-#         and we are not supporting table speciciations in this method, so if 
-#         joined fields are used, they must be referenced by alias only.
-# 
-#         @param non_null_fields list - fields to ignore
-#         """ 
-#         obj_list = super(PostgresSortingResource, self).apply_sorting(
-#             obj_list, options)
-#         logger.debug(str(('order_by', obj_list.query.order_by)))
-#         extra_select = {}
-#         extra_ordering = []
-#         
-#         non_null_fields = options.get('non_null_fields', [])
-#         logger.debug(str(('==== non null fields', non_null_fields))) 
-#         for field in obj_list.query.order_by:
-#             is_null_dir = '-'  # default nulls first for ascending
-#             if field.startswith('-'):
-#                 is_null_dir = ''
-#                 field = field[1:]
-#             if field in non_null_fields:
-#                 continue
-#             extra_select[field+"_null"]=field + ' is null'
-#             extra_ordering.append(is_null_dir + field+"_null")
-#         logger.debug(str(('extra_select', extra_select, 
-#                           'extra_ordering', extra_ordering)))
-#         obj_list = obj_list.extra(extra_select)
-# 
-#         # Note: the following doesn't work, something in the framework 
-#         # deletes the extra order_by clause when apply_sorting, or, if this is
-#         # run last, it deletes the sorting applied in apply_sorting...
-#         #        obj_list = obj_list.extra(order_by=['-comments_null'])
-# 
-#         # Note: this doesn't work because the "is null" field order by clauses
-#         # must be prepended so that they occur before their intended fields
-#         #        obj_list.query.add_ordering('comments_null')
-#         
-#         temp = obj_list.query.order_by;
-#         obj_list.query.clear_ordering(force_empty=True)
-#         temp1 = []
-#         for xfield in extra_ordering:
-#             temp1.append(xfield)
-#         
-#         temp1.extend(temp)
-#         logger.debug(str(('ordering', temp1)))
-#         obj_list.query.add_ordering(*temp1)
-#         
-#         return obj_list
 
 def log_obj_create(obj_create_func):
     @transaction.atomic()
     @wraps(obj_create_func)
     def _inner(self, bundle, **kwargs):
-        logger.debug(str(('decorator start; log_obj_create', self,bundle, kwargs)))
+        logger.debug(str(('decorator start; log_obj_create', kwargs)))
         if(logger.isEnabledFor(logging.DEBUG)):
             logger.debug(str(('----log obj_create', bundle)))
         
@@ -332,7 +264,7 @@ def log_obj_create(obj_create_func):
 #                 added_keys.append(log.key); # TODO: append the log.id too?
 #                 self.listlog.added_keys = json.dumps(added_keys)
         
-        logger.debug(str(('decorator done; log_obj_create', bundle)))
+        logger.debug(str(('decorator done; log_obj_create')))
         return bundle    
                             
     return _inner
@@ -394,7 +326,6 @@ def compare_dicts(dict1, dict2, excludes=[]):
 
 def log_obj_update(obj_update_func):
     
-    
     @transaction.atomic()
     @wraps(obj_update_func)
     def _inner(self, bundle, **kwargs):
@@ -411,16 +342,8 @@ def log_obj_update(obj_update_func):
         # the api logger is concerned with what's sent out of the system, i.e.
         # the dehydrated output, not the internal representations.
         
-#         original_bundle = super(LoggingMixin, self).full_dehydrate(original_bundle)
         original_bundle = self.full_dehydrate(original_bundle)
-        
-        
-#         updated_bundle = obj_update_func(bundle=bundle, **kwargs)
         updated_bundle = obj_update_func(self,bundle=bundle, **kwargs)
-#         updated_bundle = self.obj_update(bundle=bundle, **kwargs)
-
-        
-#         updated_bundle = super(LoggingMixin, self).full_dehydrate(updated_bundle)
         updated_bundle = self.full_dehydrate(updated_bundle)
         difflog = compare_dicts(original_bundle.data, updated_bundle.data)
 
@@ -476,45 +399,39 @@ def log_obj_delete(obj_delete_func):
         # TODO: abstract the form field name
         if 'HTTP_APILOG_COMMENT' in bundle.request.META:
             log.comment = bundle.request.META['HTTP_APILOG_COMMENT']
-#         if 'apilog_comment' in bundle.data:
-#             log.comment = bundle.data['apilog_comment']
             
         log.save()
         logger.debug(str(('delete, api log', log)) )
         
         return bundle
 
-# # TODO: cannot get this decorator to work - when compiled, debugger reports that
-# # the method for "patch_list" is None
-# def log_patch_list(patch_list_func):    
-#      
-#     @transaction.atomic()
-#     def _inner(self, request, **kwargs):
-#         logger.info(str(('create an apilog for the patch list')))
-#         listlog = self.listlog = ApiLog()
-#         listlog.username = request.user.username 
-#         listlog.user_id = request.user.id 
-#         listlog.date_time = timezone.now()
-#         listlog.ref_resource_name = self._meta.resource_name
-#         listlog.api_action = 'PATCH_LIST'
-#         listlog.uri = self.get_resource_uri()
-#         # TODO: how do we feel about passing form data in the headers?
-#         # TODO: abstract the form field name
-#         if 'HTTP_APILOG_COMMENT' in request.META:
-#             listlog.comment = request.META['HTTP_APILOG_COMMENT']
-#         
-#         response = patch_list_func(self, request, **kwargs) 
-#         
-#         listlog.save();
-#         listlog.key = listlog.id
-#         listlog.save()
-#         self.listlog = None
-#         
-#         return response        
-    
-# def log_patch_list(patch_list_func):    
-#     def _inner(*args, **kwargs):
-#         logger.info('---log patch_list')
+
+def log_patch_list(patch_list_func):    
+      
+    @transaction.atomic()
+    def _inner(self, request, **kwargs):
+        logger.info(str(('create an apilog for the patch list')))
+        listlog = self.listlog = ApiLog()
+        listlog.username = request.user.username 
+        listlog.user_id = request.user.id 
+        listlog.date_time = timezone.now()
+        listlog.ref_resource_name = self._meta.resource_name
+        listlog.api_action = 'PATCH_LIST'
+        listlog.uri = self.get_resource_uri()
+        # TODO: how do we feel about passing form data in the headers?
+        # TODO: abstract the form field name
+        if 'HTTP_APILOG_COMMENT' in request.META:
+            listlog.comment = request.META['HTTP_APILOG_COMMENT']
+         
+        response = patch_list_func(self, request, **kwargs) 
+         
+        listlog.save();
+        listlog.key = listlog.id
+        listlog.save()
+        self.listlog = None
+         
+        return response        
+    return _inner
 
 
 class LoggingMixin(Resource):
@@ -558,79 +475,17 @@ class LoggingMixin(Resource):
     def obj_delete(self, bundle, **kwargs):
         return super(LoggingMixin, self).obj_delete(bundle, **kwargs) 
     
-# # FIXME: cannot get this decorator to work - always results in "None" type for method patch_list???
-#     @log_patch_list
-#     def patch_list(self, request, **kwargs):
-#         return Resource.patch_list(self,request, **kwargs) 
-         
-    @transaction.atomic()
+    @log_patch_list
     def patch_list(self, request, **kwargs):
-        ''' Override
-        '''
-        # create an apilog for the patch list
-#         listlog = self.listlog = ApiLog()
-        listlog = ApiLog()
-        listlog.username = request.user.username 
-        listlog.user_id = request.user.id 
-        listlog.date_time = timezone.now()
-        listlog.ref_resource_name = self._meta.resource_name
-        listlog.api_action = 'PATCH_LIST'
-        listlog.uri = self.get_resource_uri()
-        # TODO: how do we feel about passing form data in the headers?
-        # TODO: abstract the form field name
-        if 'HTTP_APILOG_COMMENT' in request.META:
-            listlog.comment = request.META['HTTP_APILOG_COMMENT']
-            
-        response =  Resource.patch_list(self, request, **kwargs) 
+        return Resource.patch_list(self,request, **kwargs) 
          
-        returned_objects = self._meta.serializer.deserialize(response.content, response['Content-Type'])
- 
-        uris = [ obj['resource_uri'] for obj in returned_objects['objects']]
-        listlog.save();
- 
-        logger.debug(str(('adding created obj to list', uris)))
-#         # TODO: this should be a linked to many field?
-#         listlog.added_keys = json.dumps(uris)
-        for uri in uris:
-             
-            ## Convert uri to ref_resource_name, key
-            ref_resource_name = listlog.ref_resource_name
-            key = None
-            if ref_resource_name in uri:
-                index = uri.find(ref_resource_name)+len(ref_resource_name)+1
-                if len(uri) >= index:
-                    key = uri[index:]
-             
-            if not key:
-                logger.warn(str((
-                    "returned patch_list uris don't contain the resource name/key",
-                    ref_resource_name, uri)))
-            sub = ListLog(uri=uri, ref_resource_name=ref_resource_name, key=key, apilog=listlog)
-            sub.save()
-         
-        listlog.key = listlog.id
-        listlog.save()
-#         self.listlog = None
-    
-        return response        
-    
-    
-# class LoggingMixin(Resource):
-#     '''
-#     intercepts obj_create, obj_update and creates an ApiLog entry for the action
-#     Note: whatever is being extended with the LoggingMixin must also define a
-#     "detail_uri_kwargs" method that returns an _ordered_dict_, since we log the 
-#     kwargs as ordered args.
-#     ** note: "detail_uri_kwargs" returns the set of lookup keys for the resource 
-#     URI construction.
-#     '''
-#         
 #     @transaction.atomic()
 #     def patch_list(self, request, **kwargs):
 #         ''' Override
 #         '''
 #         # create an apilog for the patch list
-#         listlog = self.listlog = ApiLog()
+# #         listlog = self.listlog = ApiLog()
+#         listlog = ApiLog()
 #         listlog.username = request.user.username 
 #         listlog.user_id = request.user.id 
 #         listlog.date_time = timezone.now()
@@ -641,388 +496,40 @@ class LoggingMixin(Resource):
 #         # TODO: abstract the form field name
 #         if 'HTTP_APILOG_COMMENT' in request.META:
 #             listlog.comment = request.META['HTTP_APILOG_COMMENT']
-#         
-#         
-#         response =  super(LoggingMixin, self).patch_list(request, **kwargs) 
-#         
+#             
+#         response =  Resource.patch_list(self, request, **kwargs) 
+#          
+#         returned_objects = self._meta.serializer.deserialize(response.content, response['Content-Type'])
+#  
+#         uris = [ obj['resource_uri'] for obj in returned_objects['objects']]
 #         listlog.save();
+#  
+#         logger.debug(str(('adding created obj to list', uris)))
+# #         # TODO: this should be a linked to many field?
+# #         listlog.added_keys = json.dumps(uris)
+#         for uri in uris:
+#              
+#             ## Convert uri to ref_resource_name, key
+#             ref_resource_name = listlog.ref_resource_name
+#             key = None
+#             if ref_resource_name in uri:
+#                 index = uri.find(ref_resource_name)+len(ref_resource_name)+1
+#                 if len(uri) >= index:
+#                     key = uri[index:]
+#              
+#             if not key:
+#                 logger.warn(str((
+#                     "returned patch_list uris don't contain the resource name/key",
+#                     ref_resource_name, uri)))
+#             sub = ListLog(uri=uri, ref_resource_name=ref_resource_name, key=key, apilog=listlog)
+#             sub.save()
+#          
 #         listlog.key = listlog.id
 #         listlog.save()
-#         self.listlog = None
-# 
+# #         self.listlog = None
+#     
 #         return response        
     
-    
-#     @transaction.atomic()
-#     def obj_create(self, bundle, **kwargs):
-#         try:
-#             if(logger.isEnabledFor(logging.DEBUG)):
-#                 logger.debug(str(('----log obj_create', bundle)))
-#             
-#             bundle = super(LoggingMixin, self).obj_create(bundle=bundle, **kwargs)
-#             if(logger.isEnabledFor(logging.DEBUG)):
-#                 logger.debug(str(('object created', bundle.obj )))
-#             log = ApiLog()
-#             log.username = bundle.request.user.username 
-#             log.user_id = bundle.request.user.id 
-#             log.date_time = timezone.now()
-#             log.ref_resource_name = self._meta.resource_name
-#             log.api_action = str((bundle.request.method)).upper()
-#             #        log.diffs = json.dumps(bundle.obj)
-#                 
-#             # user can specify any valid, escaped json for this field
-#             # FIXME: untested
-#             if 'apilog_json_field' in bundle.data:
-#                 log.json_field = json.dumps(bundle.data['apilog_json_field'])
-#                 
-#             log.uri = self.get_resource_uri(bundle)
-#             log.key = '/'.join([str(x) for x in self.detail_uri_kwargs(bundle).values()])
-#     
-#             # TODO: how do we feel about passing form data in the headers?
-#             # TODO: abstract the form field name
-#             if 'HTTP_APILOG_COMMENT' in bundle.request.META:
-#                 log.comment = bundle.request.META['HTTP_APILOG_COMMENT']
-#     # 
-#     #         if 'apilog_comment' in bundle.data:
-#     #             log.comment = bundle.data['apilog_comment']
-#                 
-#             log.save()
-#             if(logger.isEnabledFor(logging.DEBUG)):
-#                 logger.debug(str(('create, api log', log)) )
-#     
-#     
-#             # TODO: create an analog of this in delete, update
-#             # if there is a listlog, it means "patch_list", or "put_list" were called
-#             if hasattr(self, 'listlog') and self.listlog:
-#                 if(logger.isEnabledFor(logging.DEBUG)):
-#                     logger.debug(str(('update listlog', self.listlog)))
-#                 added_keys = []
-#                 if self.listlog.added_keys:
-#                     added_keys = json.loads(self.listlog.added_keys)
-#                 added_keys.append(log.key); # TODO: append the log.id too?
-#                 self.listlog.added_keys = json.dumps(added_keys)
-#             
-#             return bundle    
-#         except Exception, e:
-#             extype, ex, tb = sys.exc_info()
-#             msg = str(e)
-#             if isinstance(e, ImmediateHttpResponse):
-#                 msg = str(e.response)
-#             logger.warn(str((
-#                 'throw', e, msg, tb.tb_frame.f_code.co_filename, 'error line', 
-#                 tb.tb_lineno, extype, ex)))
-#             raise e    
-        
-#     # TODO: not tested
-#     @transaction.atomic()
-#     def obj_delete(self, bundle, **kwargs):
-#         logger.info('---log obj_delete')
-#         
-#         super(LoggingMixin, self).obj_delete(bundle=bundle, **kwargs)
-#         
-#         log = ApiLog()
-#         log.username = bundle.request.user.username 
-#         log.user_id = bundle.request.user.id 
-#         log.date_time = timezone.now()
-#         log.ref_resource_name = self._meta.resource_name
-#         log.api_action = str((bundle.request.method)).upper()
-#                     
-#         # user can specify any valid, escaped json for this field
-#         if 'apilog_json_field' in bundle.data:
-#             log.json_field = json.dumps(bundle.data['apilog_json_field'])
-#         log.uri = self.get_resource_uri(bundle)
-#         log.key = '/'.join([str(x) for x in self.detail_uri_kwargs(bundle).values()])
-# 
-#         # TODO: how do we feel about passing form data in the headers?
-#         # TODO: abstract the form field name
-#         if 'HTTP_APILOG_COMMENT' in bundle.request.META:
-#             log.comment = bundle.request.META['HTTP_APILOG_COMMENT']
-# #         if 'apilog_comment' in bundle.data:
-# #             log.comment = bundle.data['apilog_comment']
-#             
-#         log.save()
-#         logger.info(str(('delete, api log', log)) )
-#         
-#         return bundle
-    
-    
-#     def _locate_obj(self, bundle, **kwargs):
-#         # lookup the object, the same way that it would be looked up in 
-#         # ModelResource.obj_update
-#         if not bundle.obj or not self.get_bundle_detail_data(bundle):
-#             try:
-#                 lookup_kwargs = self.lookup_kwargs_with_identifiers(bundle, kwargs)
-#             except:
-#                 # if there is trouble hydrating the data, fall back to just
-#                 # using kwargs by itself (usually it only contains a "pk" key
-#                 # and this will work fine.
-#                 lookup_kwargs = kwargs
-# 
-#             try:
-#                 bundle.obj = self.obj_get(bundle=bundle, **lookup_kwargs)
-#             except ObjectDoesNotExist:
-#                 raise NotFound(("A model instance matching the provided "
-#                                 " arguments could not be found: ", lookup_kwargs))
-#         return bundle
-# 
-#     def compare_dicts(self, dict1, dict2, excludes=[]):
-#         original_keys = set(dict1.keys())-set(excludes)
-#         updated_keys = set(dict2.keys())-set(excludes)
-#         
-#         intersect_keys = original_keys.intersection(updated_keys)
-#         log = {}
-#         
-#         added_keys = list(updated_keys - intersect_keys)
-#         if len(added_keys)>0: 
-#             log['added_keys'] = added_keys
-#         
-#         removed_keys = list(original_keys- intersect_keys)
-#         if len(removed_keys)>0: 
-#             log['removed_keys'] = removed_keys
-#         
-#         diff_keys = list()
-#         
-#         s = self._meta.serializer
-#         for key in intersect_keys:
-#             val1 = dict1[key]
-#             val2 = dict2[key]
-#             # NOTE: Tastypie converts to tz naive on serialization; then it 
-#             # forces it to the default tz upon deserialization (in the the 
-#             # DateTimeField convert method); for the purpose of this comparison,
-#             # then, make both naive.
-#             if isinstance(val2, datetime.datetime):
-#                 val2 = make_naive(val2)
-#             if val1 != val2: 
-#                 diff_keys.append(key)
-#         # Note, simple equality not used, since the serialization isn't 
-#         # symmetric, e.g. see datetimes, where tz naive dates look like UTC 
-#         # upon serialization to the ISO 8601 format.
-#         #         diff_keys = \
-#         #             list( key for key in intersect_keys 
-#         #                     if dict1[key] != dict2[key])
-# 
-#         if len(diff_keys)>0: 
-#             log['diff_keys'] = diff_keys
-#             log['diffs'] = dict(
-#                 zip(diff_keys, 
-#                     ([dict1[key],dict2[key]] 
-#                         for key in diff_keys )  ))
-#         
-#         return log
-    
-#     def update_in_place(self, request, original_bundle, new_data):
-#         """
-#         Update the object in original_bundle in-place using new_data.
-#         """
-#         original_bundle.data.update(**dict_strip_unicode_keys(new_data))
-#  
-#         # Now we've got a bundle with the new data sitting in it and we're
-#         # we're basically in the same spot as a PUT request. SO the rest of this
-#         # function is cribbed from put_detail.
-#         self.alter_deserialized_detail_data(request, original_bundle.data)
-#         kwargs = {
-#             self._meta.detail_uri_name: self.get_bundle_detail_data(original_bundle),
-#             'request': request,
-#         }
-#         bundle = self.log_obj_update(bundle=original_bundle, **kwargs)
-#         
-#         return bundle
-
-#     def put_detail(self, request, **kwargs):
-#         """
-#         Override to log
-#         """
-#         deserialized = self.deserialize(request, request.body, format=request.META.get('CONTENT_TYPE', 'application/json'))
-#         deserialized = self.alter_deserialized_detail_data(request, deserialized)
-#         bundle = self.build_bundle(data=dict_strip_unicode_keys(deserialized), request=request)
-# 
-#         try:
-#             updated_bundle = self.log_obj_update(bundle=bundle, **self.remove_api_resource_names(kwargs))
-# 
-#             if not self._meta.always_return_data:
-#                 return http.HttpNoContent()
-#             else:
-#                 updated_bundle = self.full_dehydrate(updated_bundle)
-#                 updated_bundle = self.alter_detail_data_to_serialize(request, updated_bundle)
-#                 return self.create_response(request, updated_bundle)
-#         except (NotFound, MultipleObjectsReturned):
-#             updated_bundle = self.obj_create(bundle=bundle, **self.remove_api_resource_names(kwargs))
-#             location = self.get_resource_uri(updated_bundle)
-# 
-#             if not self._meta.always_return_data:
-#                 return http.HttpCreated(location=location)
-#             else:
-#                 updated_bundle = self.full_dehydrate(updated_bundle)
-#                 updated_bundle = self.alter_detail_data_to_serialize(request, updated_bundle)
-#                 return self.create_response(request, updated_bundle, response_class=http.HttpCreated, location=location)
-
-#     @transaction.atomic()
-#     def log_obj_update(self, bundle, **kwargs):
-#         logger.info('--- log obj_update')
-#         
-#         original_bundle = Bundle(
-#             data=deepcopy(bundle.data),
-#             request=bundle.request)
-#         if hasattr(bundle,'obj'): 
-#             original_bundle.obj = bundle.obj
-#         else:
-#             original_bundle = self._locate_obj(original_bundle, **kwargs)
-#         
-#         # store and compare dehydrated outputs: 
-#         # the api logger is concerned with what's sent out of the system, i.e.
-#         # the dehydrated output, not the internal representations.
-#         
-# #         original_bundle = super(LoggingMixin, self).full_dehydrate(original_bundle)
-#         original_bundle = self.full_dehydrate(original_bundle)
-#         
-#         
-# #         updated_bundle = super(LoggingMixin, self).obj_update(bundle=bundle, **kwargs)
-# #         updated_bundle = LoggingMixin.obj_update(self,bundle=bundle, **kwargs)
-#         updated_bundle = self.obj_update(bundle=bundle, **kwargs)
-# 
-#         
-# #         updated_bundle = super(LoggingMixin, self).full_dehydrate(updated_bundle)
-#         updated_bundle = self.full_dehydrate(updated_bundle)
-#         difflog = self.compare_dicts(original_bundle.data, updated_bundle.data)
-# 
-#         log = ApiLog()
-#         log.username = bundle.request.user.username 
-#         log.user_id = bundle.request.user.id 
-#         log.date_time = timezone.now()
-#         log.ref_resource_name = self._meta.resource_name
-#         log.api_action = str((bundle.request.method)).upper()
-#         log.uri = self.get_resource_uri(bundle)
-#         log.key = '/'.join([str(x) for x in self.detail_uri_kwargs(bundle).values()])
-#         
-#         log.diff_dict_to_api_log(difflog)
-# 
-#         # user can specify any valid, escaped json for this field
-#         if 'apilog_json_field' in bundle.data:
-#             log.json_field = bundle.data['apilog_json_field']
-#         
-#         # TODO: abstract the form field name
-#         if 'HTTP_APILOG_COMMENT' in bundle.request.META:
-#             log.comment = bundle.request.META['HTTP_APILOG_COMMENT']
-#             logger.info(str(('log comment', log.comment)))
-#         log.save()
-#         logger.info(str(('update, api log', log)) )
-#         
-#         return updated_bundle
-# 
-#     
-# #     ## TODO: 
-# #     ## obj_update is only called from update_in_place and "put_detail"
-# #     ## 
-# #     @transaction.atomic()
-# #     def obj_update(self, bundle, skip_errors=False, **kwargs):
-# #         logger.info('--- log obj_update')
-# #         
-# #         original_bundle = Bundle(data=deepcopy(bundle.data))
-# #         original_bundle.request = bundle.request;
-# #         if hasattr(bundle,'obj'): original_bundle.obj = bundle.obj
-# #         original_bundle = self._locate_obj(original_bundle, **kwargs)
-# #         
-# #         # store and compare dehydrated outputs: 
-# #         # the api logger is concerned with what's sent out of the system, i.e.
-# #         # the dehydrated output, not the internal representations.
-# #         
-# #         original_bundle = super(LoggingMixin, self).full_dehydrate(original_bundle)
-# #         updated_bundle = super(LoggingMixin, self).obj_update(bundle=bundle, **kwargs)
-# #         updated_bundle = super(LoggingMixin, self).full_dehydrate(updated_bundle)
-# #         difflog = self.compare_dicts(original_bundle.data, updated_bundle.data)
-# # 
-# #         log = ApiLog()
-# #         log.username = bundle.request.user.username 
-# #         log.user_id = bundle.request.user.id 
-# #         log.date_time = timezone.now()
-# #         log.ref_resource_name = self._meta.resource_name
-# #         log.api_action = str((bundle.request.method)).upper()
-# #         log.uri = self.get_resource_uri(bundle)
-# #         log.key = '/'.join([str(x) for x in self.detail_uri_kwargs(bundle).values()])
-# #         
-# #         log.diff_dict_to_api_log(difflog)
-# # 
-# #         # user can specify any valid, escaped json for this field
-# #         if 'apilog_json_field' in bundle.data:
-# #             log.json_field = bundle.data['apilog_json_field']
-# #         
-# #         # TODO: abstract the form field name
-# #         if 'HTTP_APILOG_COMMENT' in bundle.request.META:
-# #             log.comment = bundle.request.META['HTTP_APILOG_COMMENT']
-# #             logger.info(str(('log comment', log.comment)))
-# #         log.save()
-# #         logger.info(str(('update, api log', log)) )
-# #         
-# #         return updated_bundle
-# # 
-# #         
-# # #         original_keys = set(original_bundle.data.keys())
-# # #         updated_keys = set(updated_bundle.data.keys())
-# # #         
-# # #         intersect_keys = original_keys.intersection(updated_keys)
-# # #         
-# # #         log = ApiLog()
-# # #         log.username = bundle.request.user.username 
-# # #         log.user_id = bundle.request.user.id 
-# # #         log.date_time = timezone.now()
-# # #         log.ref_resource_name = self._meta.resource_name
-# # #         log.api_action = str((bundle.request.method)).upper()
-# # #         log.uri = self.get_resource_uri(bundle)
-# # #         log.key = '/'.join([str(x) for x in self.detail_uri_kwargs(bundle).values()])
-# # #         
-# # #         added_keys = list(updated_keys - intersect_keys)
-# # #         if len(added_keys)>0: 
-# # #             log.added_keys = json.dumps(added_keys)
-# # #         
-# # #         removed_keys = list(original_keys- intersect_keys)
-# # #         if len(removed_keys)>0: 
-# # #             log.removed_keys = json.dumps(removed_keys)
-# # #         
-# # #         diff_keys = list()
-# # #         
-# # #         for key in intersect_keys:
-# # #             val1 = original_bundle.data[key]
-# # #             val2 = updated_bundle.data[key]
-# # #             # NOTE: Tastypie converts to tz naive on serialization; then it 
-# # #             # forces it to the default tz upon deserialization (in the the 
-# # #             # DateTimeField convert method); for the purpose of this comparison,
-# # #             # then, make both naive.
-# # #             if isinstance(val2, datetime.datetime):
-# # #                 val2 = make_naive(val2)
-# # #             if val1 != val2: 
-# # #                 diff_keys.append(key)
-# # #                 
-# # #         # Note, simple equality not used, since the serialization isn't 
-# # #         # symmetric, e.g. see datetimes, where tz naive dates look like UTC 
-# # #         # upon serialization to the ISO 8601 format.
-# # #         #         diff_keys = \
-# # #         #             list( key for key in intersect_keys 
-# # #         #                     if original_bundle.data[key] != updated_bundle.data[key])
-# # # 
-# # #         if len(diff_keys)>0: 
-# # #             log.diff_keys = json.dumps(diff_keys)
-# # #             log.diffs = json.dumps(dict(
-# # #                 zip(diff_keys, 
-# # #                     ([original_bundle.data[key],updated_bundle.data[key]] 
-# # #                         for key in diff_keys )  )))
-# # #             
-# # #         # user can specify any valid, escaped json for this field
-# # #         # FIXME: untested
-# # #         if 'apilog_json_field' in bundle.data:
-# # # #             log.json_field = json.dumps(bundle.data['apilog_json_field'])
-# # #             log.json_field = bundle.data['apilog_json_field']
-# # #         
-# # #         # TODO: how do we feel about passing form data in the headers?
-# # #         # TODO: abstract the form field name
-# # #         if 'HTTP_APILOG_COMMENT' in bundle.request.META:
-# # #             log.comment = bundle.request.META['HTTP_APILOG_COMMENT']
-# # #             logger.info(str(('log comment', log.comment)))
-# # # 
-# # #         log.save()
-# # #         logger.info(str(('update, api log', log)) )
-# # #         
-# # #         return updated_bundle
-
 
 # NOTE if using this class, must implement the "not implemented error" methods
 # on Resource (these are implemented with ModelResource):
@@ -1095,7 +602,6 @@ class ManagedResource(LoggingMixin):
         logger.info('clear cache')
         cache.delete(self._meta.resource_name + ':schema')
 
-    
     # local method    
     # TODO: allow turn on/off of the reset methods for faster loading.
     def reset_filtering_and_ordering(self):
@@ -1174,6 +680,8 @@ class ManagedResource(LoggingMixin):
         '''
         schema = cache.get(self._meta.resource_name + ":schema")
         if schema:
+            #if logger.isEnabledFor(logging.DEBUG):
+            #    logger.debug(str(('====schema:', self._meta.resource_name, schema['fields'])))
             return schema
         
         logger.debug('------build_schema: ' + self.scope)
@@ -1210,7 +718,9 @@ class ManagedResource(LoggingMixin):
                 msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e
             
-        logger.debug('------build_schema,done: ' + self.scope ) # + ', ' + str((schema['fields'])))
+        logger.debug('------build_schema,done: ' + self.scope ) 
+#         if logger.isEnabledFor(logging.DEBUG):
+#             logger.debug(str((schema['fields'])))
         
         cache.set(self._meta.resource_name + ':schema', schema)
         return schema

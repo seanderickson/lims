@@ -20,9 +20,9 @@ from db.models import ScreensaverUser,Screen, LabHead, LabAffiliation, \
     ScreeningRoomUser, ScreenResult, DataColumn, Library, Plate, Copy,\
     PlateLocation, Reagent, Well, LibraryContentsVersion, Activity,\
     AdministrativeActivity, SmallMoleculeReagent, SilencingReagent, GeneSymbol,\
-    NaturalProductReagent, Molfile
+    NaturalProductReagent, Molfile, Gene, GeneGenbankAccessionNumber
 from db.support import lims_utils
-from reports.serializers import CursorSerializer, LimsSerializer
+from reports.serializers import CursorSerializer, LimsSerializer, XLSSerializer
 from reports.models import MetaHash, Vocabularies, ApiLog
 from reports.api import ManagedModelResource, ManagedResource, ApiLogResource,\
     UserGroupAuthorization, ManagedLinkedResource
@@ -997,12 +997,32 @@ class NaturalProductReagentResource(ManagedModelResource):
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),]    
 
 
-class SilencingReagentResource(ManagedModelResource):
+# 
+# class GeneResource(ManagedLinkedResource):
+# 
+#     class Meta:
+#         queryset = Gene.objects.all() 
+#         authentication = MultiAuthentication(
+#             BasicAuthentication(), SessionAuthentication())
+#         authorization= UserGroupAuthorization()
+# 
+#         ordering = []
+#         filtering = {}
+#         serializer = LimsSerializer()
+#         excludes = [] #['json_field']
+#         always_return_data = True # this makes Backbone happy
+#         resource_name='gene' 
+# 
+#     def __init__(self, **kwargs):
+#         super(SmallMoleculeReagentResource,self).__init__(**kwargs)
+
+
+class SilencingReagentResource(ManagedLinkedResource):
     
     library_short_name = fields.CharField('library__short_name',  null=True)
 
     class Meta:
-        queryset = SilencingReagent.objects.all()
+        queryset = Reagent.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
         authorization= UserGroupAuthorization()
@@ -1015,46 +1035,112 @@ class SilencingReagentResource(ManagedModelResource):
     def __init__(self, **kwargs):
         super(SilencingReagentResource,self).__init__(**kwargs)
 
+    def obj_create(self, bundle, **kwargs):
+        
+        bundle = super(SilencingReagentResource, self).obj_create(bundle, **kwargs)
+        
+        # Now do the gene tables
+        ## nastiness ensues!
+        
+        gene_key = 'entrezgene_id'
+        if bundle.data.get('vendor_%s'%gene_key, None):
+            bundle.obj.silencingreagent.vendor_gene = \
+                self._create_gene(bundle.data, 'vendor')
+        if bundle.data.get('facility_%s'%gene_key, None):
+            bundle.obj.silencingreagent.facility_gene = \
+                self._create_gene(bundle.data, 'facility')
+        bundle.obj.silencingreagent.save()
+        
+        return bundle
+    
+    def _create_gene(self, data, source_type):
+        gene_keys = ['entrezgene_id', 'gene_name', 'species_name']
+        gene = Gene()
+        for key in gene_keys:
+            api_key = '%s_%s' % (source_type,key)
+            val = data.get(api_key, None)
+            if val:
+                setattr(gene,key,val)
+        gene.save()
+        logger.info(str(('saved gene', gene)))
+        
+        _key = 'entrezgene_symbols'
+        if data.get('%s_%s' % (source_type,_key), None):
+            symbol_list = data['%s_%s' % (source_type,_key)].split(';')
+            for i,symbol in enumerate(symbol_list):
+                gene_symbol = GeneSymbol()
+                setattr(gene_symbol, 'entrezgene_symbol', symbol)
+                setattr(gene_symbol, 'ordinal', i)
+                setattr(gene_symbol, 'gene', gene)
+                gene_symbol.save()
+    
+        _key = 'genbank_accession_numbers'
+        if data.get('%s_%s' % (source_type,_key), None):
+            _list = data['%s_%s' % (source_type,_key)].split(';')
+            for i,num in enumerate(_list):
+                accession_number = GeneGenbankAccessionNumber()
+                setattr(accession_number, 'genbank_accession_number', num)
+                setattr(accession_number, 'gene', gene)
+                accession_number.save()
+        
+        return gene
+    
     def dehydrate(self, bundle):
-        gene = bundle.obj.reagentfacilitygenes_set.all()[0]
-        if gene:
-            gene = gene.gene
-            bundle.data['facility_gene_id'] = gene.entrezgene_id
-            bundle.data['facility_gene_name'] = gene.gene_name
-            # NOTE: Requires db/migrations/manual/0013 to convert gene_symbol
-            bundle.data['facility_gene_symbols'] = [
-                x.entrezgene_symbol for x in 
-                    GeneSymbol.objects.all()
-                              .filter(gene=gene).order_by('ordinal')]
-        gene = bundle.obj.reagentvendorgenes_set.all()[0]
-        if gene:
-            gene = gene.gene
-            bundle.data['vendor_gene_id'] = gene.entrezgene_id
-            bundle.data['vendor_gene_name'] = gene.gene_name
-            # NOTE: Requires db/migrations/manual/0013 to convert gene_symbol
-            bundle.data['vendor_gene_symbols'] = [
-                x.entrezgene_symbol for x in 
-                    GeneSymbol.objects.all()
-                              .filter(gene=gene).order_by('ordinal')]
+        bundle = super(SilencingReagentResource, self).dehydrate(bundle)
+        
+        if bundle.obj.silencingreagent.vendor_gene:
+            gene = bundle.obj.silencingreagent.vendor_gene
+            type = 'vendor'
+            self._dehydrate_gene(gene, type, bundle)
+        
+        if bundle.obj.silencingreagent.facility_gene:
+            gene = bundle.obj.silencingreagent.facility_gene
+            type = 'facility'
+            self._dehydrate_gene(gene, type, bundle)
             
         return bundle
+        
+    def _dehydrate_gene(self, gene, type, bundle):
+        gene_keys = ['entrezgene_id', 'gene_name', 'species_name']
 
-    def prepend_urls(self):
-        # NOTE: this match "((?=(schema))__|(?!(schema))[^/]+)" 
-        # allows us to match any word (any char except forward slash), 
-        # except "schema", and use it as the key value to search for.
-        # also note the double underscore "__" is because we also don't want to 
-        # match in the first clause.
-        # We don't want "schema" since that reserved word is used by tastypie 
-        # for the schema definition for the resource (used by the UI)
-        return [
-            url((r"^(?P<resource_name>%s)/(?P<reagent__substance_id>((?=(schema))__|(?!(schema))[^/]+))%s$"
-                )  % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),]
+        for key in gene_keys:
+            bundle.data['%s_%s' %(type,key)] = getattr(gene, key)
+        
+        _key = 'entrezgene_symbols'
+        if gene.genesymbol_set.exists():
+            bundle.data['%s_%s'%(type,_key)] = ';'.join(
+                [x.entrezgene_symbol for x in gene.genesymbol_set.all().order_by('ordinal')])
+        _key = 'genbank_accession_numbers'
+        if gene.genegenbankaccessionnumber_set.exists():
+            bundle.data['%s_%s'%(type,_key)] = ';'.join(
+                [x.genbank_accession_number for x in gene.genegenbankaccessionnumber_set.all()])
+        
+#         gene = bundle.obj.reagentfacilitygenes_set.all()[0]
+#         if gene:
+#             gene = gene.gene
+#             bundle.data['facility_gene_id'] = gene.entrezgene_id
+#             bundle.data['facility_gene_name'] = gene.gene_name
+#             # NOTE: Requires db/migrations/manual/0013 to convert gene_symbol
+#             bundle.data['facility_gene_symbols'] = [
+#                 x.entrezgene_symbol for x in 
+#                     GeneSymbol.objects.all()
+#                               .filter(gene=gene).order_by('ordinal')]
+#         gene = bundle.obj.reagentvendorgenes_set.all()[0]
+#         if gene:
+#             gene = gene.gene
+#             bundle.data['vendor_gene_id'] = gene.entrezgene_id
+#             bundle.data['vendor_gene_name'] = gene.gene_name
+#             # NOTE: Requires db/migrations/manual/0013 to convert gene_symbol
+#             bundle.data['vendor_gene_symbols'] = [
+#                 x.entrezgene_symbol for x in 
+#                     GeneSymbol.objects.all()
+#                               .filter(gene=gene).order_by('ordinal')]
+
 
 class SmallMoleculeReagentResource(ManagedLinkedResource):
     ''' poc: store resource virtual fields in a related table
     '''
+    
     class Meta:
         queryset = Reagent.objects.all() 
         authentication = MultiAuthentication(
@@ -1072,17 +1158,38 @@ class SmallMoleculeReagentResource(ManagedLinkedResource):
         super(SmallMoleculeReagentResource,self).__init__(**kwargs)
 
 
-class ReagentResource(ManagedLinkedResource):
 
-    well = fields.CharField(null=True)
-    substance_id = fields.CharField(null=True)
+class WellResource(ManagedModelResource):
+
+    library_short_name = fields.CharField('library__short_name',  null=True)
+    library = fields.CharField(null=True)
     
+    class Meta:
+        queryset = Well.objects.all() #.order_by('facility_id')
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= UserGroupAuthorization()
+        resource_name = 'well'
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+        xls_serializer = XLSSerializer()
+        # Backbone/JQuery likes to JSON.parse the returned data
+        always_return_data = True 
+
+    def __init__(self, **kwargs):
+        self.library_resource = None
+        self.sr_resource = None
+        self.smr_resource = None
+        self.npr_resource = None
+        super(WellResource,self).__init__(**kwargs)
+
     def deserialize(self, request, data=None, format=None):
         '''
         Override deserialize so we can pull apart the multipart form and get the 
         uploaded content.
-        Note: native TP doesn't support multipart uploads, but we need this because
-        that is how the HTML UI sends files. 20140912, sde
+        Note: native TP doesn't support multipart uploads, this will support
+        standard multipart form uploads in modern browsers
         '''
         if not format:
             format = request.META.get('CONTENT_TYPE', 'application/json')
@@ -1093,7 +1200,7 @@ class ReagentResource(ManagedLinkedResource):
                     response=self.error_response(request, 
                         { 'FILES', 'File upload supports only one file at a time'}))
             
-            if 'sdf' in request.FILES.keys():  
+            if 'sdf' in request.FILES:  
                 # process *only* the first file
                 file = request.FILES['sdf']
                 format = 'chemical/x-mdl-sdfile'
@@ -1106,32 +1213,22 @@ class ReagentResource(ManagedLinkedResource):
                 
                 # TODO/FIXME: how to stream input instead of using in-memory representation?
                 return self._meta.serializer.deserialize(file.read(), format=format)
+
+            elif 'xls' in request.FILES:
+                # TP cannot handle binary file formats - it is calling 
+                # django.utils.encoding.force_text on all input
+                file = request.FILES['sdf']
+                return self._meta.xls_serializer.from_xls(file.read())
                
             else:
-                response=self.error_response(request, 
-                    { 'FILES', str(('Unknown file type: ', request.FILES.keys())) })
-                
-        return super(ReagentResource, self).deserialize(request, request.body, format)    
-    
-    class Meta:
-        queryset = Reagent.objects.all()
-        authentication = MultiAuthentication(BasicAuthentication(), 
-                                             SessionAuthentication())
-        authorization= UserGroupAuthorization()
-        resource_name = 'reagent'
+                raise UnsupportedFormat(str(('Unknown file type: ', request.FILES.keys()) ) )
         
-        ordering = []
-        filtering = {}
-        serializer = LimsSerializer()
-        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
-        always_return_data = True 
-
-    def __init__(self, **kwargs):
-        self.sr_resource = None
-        self.smr_resource = None
-        self.npr_resource = None
-        self.well_resource = None
-        super(ReagentResource,self).__init__(**kwargs)
+        elif format == 'application/xls':
+            # TP cannot handle binary file formats - it is calling 
+            # django.utils.encoding.force_text on all input
+            return self._meta.xls_serializer.from_xls(request.body)
+            
+        return super(WellResource, self).deserialize(request, request.body, format)    
 
     def get_sr_resource(self):
         if not self.sr_resource:
@@ -1148,12 +1245,7 @@ class ReagentResource(ManagedLinkedResource):
             npr_resource = NaturalProductReagentResource()
         return self.npr_resource
     
-    def get_well_resource(self):
-        if not self.well_resource:
-            self.well_resource = WellResource()
-        return self.well_resource
-    
-    def get_sub_resource(self, library):
+    def get_reagent_resource(self, library):
         # FIXME: we should store the "type" on the entity
         
         if library.screen_type == 'rnai':
@@ -1163,214 +1255,6 @@ class ReagentResource(ManagedLinkedResource):
                 return self.get_npr_resource()
             else:
                 return self.get_smr_resource()
-
-    def get_sub_reagent(self, reagent, library):
-        # FIXME: we should store the "type" on the entity
-        if library.screen_type == 'rnai':
-            if hasattr(reagent, 'silencingreagent'):
-                return reagent.silencingreagent
-        else:
-            if library.library_type == 'natural_products':
-                if hasattr(reagent, 'naturalproductreagent'):
-                    return  reagent.naturalproductreagent
-            else:
-                if hasattr(reagent, 'smallmoleculereagent'):
-                    return reagent.smallmoleculereagent
-        return None
-                                                 
-    def get_schema(self, request, **kwargs):
-        if not 'library_short_name' in kwargs:
-            return self.create_response(request, self.build_schema())
-        
-        library_short_name = kwargs.pop('library_short_name')
-        try:
-            library = Library.objects.get(short_name=library_short_name)
-            return self.create_response(request, self.get_sub_resource(library).build_schema())
-        except Library.DoesNotExist, e:
-            raise Http404(unicode((
-                'no library found for short_name', library_short_name)))
-
-    def build_schema(self, library=None):
-        logger.debug(str(('==========build schema for library reagent', library)))
-        data = super(ReagentResource,self).build_schema()
-        
-        if library:
-            sub_data = self.get_sub_resource(library).build_schema()
-            data['fields'].update(sub_data['fields'])
-
-        return data
-    
-    def dehydrate(self, bundle):
-
-        reagent = bundle.obj
-        if not reagent.well:
-            return bundle
-        library = reagent.well.library
-        if not library:
-            return bundle
-
-        bundle.data['well_id'] = reagent.well.well_id
-        logger.debug(str(('===well_id', reagent.well.well_id)))
-        
-        sub_resource = self.get_sub_resource(library)
-        sub_bundle = sub_resource.build_bundle(
-            obj=reagent, request=bundle.request)
-        sub_bundle = sub_resource.full_dehydrate(sub_bundle)
-        bundle.data.update(sub_bundle.data)
-
-        return bundle
-
-    def prepend_urls(self):
-        # NOTE: this match "((?=(schema))__|(?!(schema))[^/]+)" 
-        # allows us to match any word (any char except forward slash), 
-        # except "schema", and use it as the key value to search for.
-        # also note the double underscore "__" is because we also don't want to 
-        # match in the first clause.
-        # We don't want "schema" since that reserved word is used by tastypie 
-        # for the schema definition for the resource (used by the UI)
-        return [
-            url((r"^(?P<resource_name>%s)/(?P<substance_id>((?=(schema))__|(?!(schema))[^/]+))%s$"
-                )  % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),]
-     
-    def post_list(self, request, **kwargs):
-        raise NotImplementedError("Post is not implemented for ReagentResource, use patch instead")
-    
-    def patch_list(self, request, **kwargs):
-        # TODO: NOT TESTED
-        return self.put_list(request, **kwargs)
-    
-    def put_list(self, request, **kwargs):
-
-        if 'library_short_name' not in kwargs:
-            raise BadRequest('library_short_name is required')
-        
-        deserialized = self.deserialize(
-            request, 
-            format=request.META.get('CONTENT_TYPE', 'application/json'))
-        logger.info(str(('deserialized', deserialized)))
-        if not self._meta.collection_name in deserialized:
-            raise BadRequest(str(("Invalid data sent. missing: " , self._meta.collection_name)))
-        
-        basic_bundle = self.build_bundle(request=request)
- 
-        library = Library.objects.get(short_name=kwargs['library_short_name'])
-                          
-        well_resource = self.get_well_resource()  
-        
-        # Cache all the wells on the library for use with this process 
-        wellMap = dict( (well.well_id, well) for well in library.well_set.all())
-        if len(wellMap)==0:
-            raise BadRequest(str(('library has not been created, no wells', library)))
-        
-        i=0
-        for well_data in deserialized[self._meta.collection_name]:
-            
-            ## TODO: use a class in line with the serializers to do this
-            # MIGRATE "OLD" SS1 fields to new fields
-            from db.support.data_converter import convert_well_data
-            well_data = convert_well_data(well_data)
-            
-            well_data['library_short_name']=kwargs['library_short_name']
-            
-            logger.debug(str(('well_data', well_data)))
-            well_id = well_data.get('well_id', None)
-            if not well_id:
-                well_name = well_data.get('well_name', None)
-                plate_number = well_data.get('plate_number',None)
-                if well_name and plate_number:                
-                    well_id = '%s:%s' %(plate_number, well_name)
-
-            if not well_id:
-                raise ImmediateHttpResponse(
-                    response=self.error_response(request, {'well_id': 'required'}))
-            
-            well = wellMap.get(well_id, None)
-            if not well:
-                raise ImmediateHttpResponse(
-                    response=self.error_response(request, {
-                        'well_id': str(('well not found for this library', well_id))}))
-                
-            well_bundle = well_resource.build_bundle(obj=well, data=well_data, request=request);
-            well_bundle = well_resource.full_hydrate(well_bundle)
-            well_bundle.obj.save()
-            
-            logger.debug(str(('updated well', well_bundle.obj)))
-
-            # lookup/create the reagent
-            sub_resource = self.get_sub_resource(library)
-            
-            if not 'resource_uri' in well_data:
-                reagent_bundle = sub_resource.build_bundle(data=well_data, request=request)
-                sub_resource.obj_create(reagent_bundle, **{ 'well': well, 'library': library })
-            else:
-                # FIXME: untested, not complete
-                # lookup and update the reagent
-                sub_resource.obj_update(reagent_bundle)
-                logger.debug(str(('updated reagent', reagent_bundle.obj)))
-            i = i+1
-        
-        logger.info(str(('put reagent', i)))
-
-# 
-#     def hydrate(self, bundle):
-#         logger.debug(str(('==== hydrating the reagent for bundle ', bundle.data)))
-#         
-#         if ( not hasattr(bundle.obj,'well') or
-#                 not getattr(bundle.obj,'well')):
-#             well_id = bundle.data.get('well_id', None)
-#             if not well_id:
-#                 well_name = bundle.data.get('well_name', None)
-#                 plate_number = bundle.data.get('plate_number',None)
-#                 if well_name and plate_number:                
-#                     well_id = '%s:%s' %(plate_number, well_name)
-#             if not well_id:
-#                 raise ImmediateHttpResponse(
-#                     response=self.error_response(bundle.request, {'well_id': 'required'}))
-# 
-#             well = Well.objects.get(well_id=well_id)
-#         else:
-#             well = bundle.obj.well
-# 
-#         bundle.obj.well = well
-#         
-#         return bundle
-
-
-
-class WellResource(ManagedModelResource):
-
-    library_short_name = fields.CharField('library__short_name',  null=True)
-#     reagent = fields.ToOneField('db.api.ReagentResource', 
-#                                         attribute='latest_released_reagent', 
-#                                         full=True, full_detail=True, full_list=True,
-#                                         null=True)
-    library = fields.CharField(null=True)
-    
-    class Meta:
-        queryset = Well.objects.all() #.order_by('facility_id')
-        authentication = MultiAuthentication(BasicAuthentication(), 
-                                             SessionAuthentication())
-        authorization= UserGroupAuthorization()
-        resource_name = 'well'
-        allowed_methods = ['get']        
-        
-        ordering = []
-        filtering = {}
-        serializer = LimsSerializer()
-        
-        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
-        always_return_data = True 
-
-    def __init__(self, **kwargs):
-        self.reagent_resource = None
-        self.library_resource = None
-        super(WellResource,self).__init__(**kwargs)
-
-    def get_reagent_resource(self):
-        if not self.reagent_resource:
-            self.reagent_resource = ReagentResource()
-        return self.reagent_resource
 
     def get_library_resource(self):
         if not self.library_resource:
@@ -1401,7 +1285,7 @@ class WellResource(ManagedModelResource):
         data = super(WellResource,self).build_schema()
         
         if library:
-            sub_data = self.get_reagent_resource().build_schema(library=library)
+            sub_data = self.get_reagent_resource(library).build_schema()
             
 #             data['fields'] = dict(data.fields, **sub_data['fields'])
             newfields = {}
@@ -1437,10 +1321,11 @@ class WellResource(ManagedModelResource):
         
         # FIXME: migrate to using "well.reagent", and later, "well.reagents"
         if bundle.obj.reagent_set.exists():
+            reagent_resource = self.get_reagent_resource(library)
             reagent = bundle.obj.reagent_set.all()[0]            
-            sub_bundle = self.get_reagent_resource().build_bundle(
+            sub_bundle = reagent_resource.build_bundle(
                 obj=reagent, request=bundle.request)
-            sub_bundle = self.get_reagent_resource().full_dehydrate(sub_bundle)
+            sub_bundle = reagent_resource.full_dehydrate(sub_bundle)
             bundle.data.update(sub_bundle.data)
         else:
             #             logger.debug(str(('==== no well reagent', bundle.obj)))
@@ -1452,151 +1337,97 @@ class WellResource(ManagedModelResource):
         return self.get_library_resource().get_resource_uri(
             bundle_or_obj=bundle, url_name='api_dispatch_list')
 
-    ## ALL MUTATION OPERATIONS FOR WELLS ARE PERFORMED THROUGH THE REAGENT RESOURCE
 
-#     def patch_list(self, request, **kwargs):
-#         # TODO: NOT TESTED
-#         return self.put_list(request, **kwargs)
-#     
-#     def put_list(self, request, **kwargs):
-# 
-#         if 'library_short_name' not in kwargs:
-#             raise BadRequest('library_short_name is required')
-#         
-#         deserialized = self.deserialize(
-#             request, 
-#             format=request.META.get('CONTENT_TYPE', 'application/json'))
-#         basic_bundle = self.build_bundle(request=request)
-#  
-#         library = Library.objects.get(short_name=kwargs['library_short_name'])
-#                           
-#         # Cache all the wells on the library for use with this process 
-#         wellMap = dict( (well.well_id, well) for well in library.well_set.all())
-#         if len(wellMap)==0:
-#             raise BadRequest(str(('library has not been created, no wells', library)))
-#         
-#         i=0
-#         for well_data in deserialized[self._meta.collection_name]:
-#             
+    def post_list(self, request, **kwargs):
+        raise NotImplementedError("Post is not implemented for ReagentResource, use patch instead")
+    
+    def patch_list(self, request, **kwargs):
+        # TODO: NOT TESTED
+        return self.put_list(request, **kwargs)
+    
+    def put_list(self, request, **kwargs):
+
+        if 'library_short_name' not in kwargs:
+            raise BadRequest('library_short_name is required')
+        
+        deserialized = self.deserialize(
+            request, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'))
+        logger.info(str(('deserialized', deserialized)))
+        if not self._meta.collection_name in deserialized:
+            raise BadRequest(str(("Invalid data sent. missing: " , self._meta.collection_name)))
+        
+        basic_bundle = self.build_bundle(request=request)
+ 
+        library = Library.objects.get(short_name=kwargs['library_short_name'])
+                          
+        # Cache all the wells on the library for use with this process 
+        wellMap = dict( (well.well_id, well) for well in library.well_set.all())
+        if len(wellMap)==0:
+            raise BadRequest(str(('library has not been created, no wells', library)))
+        
+        i=0
+        bundles_seen = []
+        for well_data in deserialized[self._meta.collection_name]:
+            
+#             ## TODO: use a class in line with the serializers to do this
+#             # MIGRATE "OLD" SS1 fields to new fields
 #             from db.support.data_converter import convert_well_data
 #             well_data = convert_well_data(well_data)
-#             
-#             well_data['library_short_name']=kwargs['library_short_name']
-#             
-#             logger.debug(str(('well_data', well_data)))
-#             well_id = well_data.get('well_id', None)
-#             if not well_id:
-#                 well_name = well_data.get('well_name', None)
-#                 plate_number = well_data.get('plate_number',None)
-#                 if well_name and plate_number:                
-#                     well_id = '%s:%s' %(plate_number, well_name)
-# 
-#             if not well_id:
-#                 raise ImmediateHttpResponse(
-#                     response=self.error_response(request, {'well_id': 'required'}))
-#             
-#             well = wellMap.get(well_id, None)
-#             if not well:
-#                 raise ImmediateHttpResponse(
-#                     response=self.error_response(request, {
-#                         'well_id': str(('well not found for this library', well_id))}))
-#                 
-#             well_bundle = self.build_bundle(obj=well, data=well_data, request=request);
-#             well_bundle = self.full_hydrate(well_bundle)
-#             well_bundle.obj.save()
-#             
-#             logger.debug(str(('updated well', well_bundle.obj)))
-# 
-#             # lookup/create the reagent
-#             sub_resource = self.get_reagent_resource() #.get_sub_resource(library)
-#             
-#             if not 'resource_uri' in well_data:
-#                 reagent_bundle = sub_resource.build_bundle(data=well_data, request=request)
-#                 sub_resource.obj_create(reagent_bundle, **{ 'well': well, 'library': library })
-#             else:
-#                 # FIXME: untested, not complete
-#                 # lookup and update the reagent
-#                 sub_resource.obj_update(reagent_bundle)
-#                 logger.debug(str(('updated reagent', reagent_bundle.obj)))
-#             i = i+1
-#         
-#         logger.info(str(('put reagent', i)))
-    
-#     def obj_create(self, bundle, **kwargs):
-#         '''
-#         patch_list:
-#         put_list:
-#         post_list:
-#         put_detail:
-#         
-#         obj_create{ 
-#             full_hydrate{ hydrate, hydrate_foo }, 
-#             save{ is_valid, save_related, save, save_m2m }}
-#         
-#         '''
-#         
-#         logger.info(str(('kwargs', kwargs)))
-#         if 'library_short_name' in kwargs:
-#             bundle.data['library_short_name'] = kwargs['library_short_name']
-#                     
-#         bundle = super(WellResource, self).obj_create(bundle, **kwargs)
-#         
-#         logger.info(str(('created well', bundle.obj)))
-#         return bundle
+            
+            well_data['library_short_name']=kwargs['library_short_name']
+            
+            logger.debug(str(('well_data', well_data)))
+            well_id = well_data.get('well_id', None)
+            if not well_id:
+                well_name = well_data.get('well_name', None)
+                plate_number = well_data.get('plate_number',None)
+                if well_name and plate_number:                
+                    well_id = '%s:%s' %(plate_number, well_name)
+
+            if not well_id:
+                raise ImmediateHttpResponse(
+                    response=self.error_response(request, {'well_id': 'required'}))
+            
+            well = wellMap.get(well_id, None)
+            if not well:
+                raise ImmediateHttpResponse(
+                    response=self.error_response(request, {
+                        'well_id': str(('well not found for this library', well_id))}))
+                
+            well_bundle = self.build_bundle(
+                obj=well, data=well_data, request=request);
+            well_bundle = self.full_hydrate(well_bundle)
+            well_bundle.obj.save()
+            
+            logger.debug(str(('updated well', well_bundle.obj)))
+
+            # lookup/create the reagent
+            sub_resource = self.get_reagent_resource(library)
+            
+            if not 'resource_uri' in well_data:
+                reagent_bundle = sub_resource.build_bundle(
+                    data=well_data, request=request)
+                sub_resource.obj_create(
+                    reagent_bundle, **{ 'well': well, 'library': library })
+            else:
+                # FIXME: untested, not complete
+                # lookup and update the reagent
+                sub_resource.obj_update(reagent_bundle)
+                logger.debug(str(('updated reagent', reagent_bundle.obj)))
+            i = i+1
+            bundles_seen.append(well_bundle)
         
-#     def hydrate(self, bundle):
-#         """
-#         obj_create{ full_hydrate{ hydrate, hydrate_foo, field.hydrate }, 
-#                     save{ is_valid, save_related, save, save_m2m }}
-#          
-#         A hook to allow an initial manipulation of data before all methods/fields
-#         have built out the hydrated data.
-# 
-#         Useful if you need to access more than one hydrated field or want
-#         to annotate on additional data.
-# 
-#         Must return the modified bundle.
-#         """
-#         bundle.data['date_created'] = timezone.now()
-#         
-# #         bundle.data['version'] = 1
-# 
-#         # MIGRATE "OLD" SS1 fields to new fields
-#         from db.support.data_converter import convert_well_data
-#         bundle.data = convert_well_data(bundle.data)
-# 
-#         logger.debug(str(('===hydrating well', bundle.data)))
-# 
-#         if 'library_short_name' not in bundle.data:
-#             raise ImmediateHttpResponse(
-#                 response=self.error_response(
-#                     bundle.request, {'library_short_name': 'required'}))
-# 
-#         # TODO: drive the key value from the schema
-#         # TODO: we may do this manually, for performance reasons, particularly
-#         # if we can signal that we are loading *many* wells for a particular library
-#         bundle.data['library'] = 'library/' + bundle.data['library_short_name']
-# 
-#         # Nest the whole dict to reprocess on the reagent
-#         # NOTE: this method uses TP to create/update the related reagent
-#         # TODO: need to test if contains a reagent:
-#         #         if 'substance_id' in bundle[data].keys():
-#         bundle.data['reagent'] = bundle.data 
-#                 
-#         # other manual construction, grab the plate_number, well_name to make the well_id
-#         plate_number = bundle.data.get('plate_number', None)
-#         if not plate_number:
-#             raise ImmediateHttpResponse(
-#                 response=self.error_response(
-#                     bundle.request, {'plate_number': 'required'}))
-#         well_name = bundle.data.get('well_name', None)
-#         if not well_name:
-#             raise ImmediateHttpResponse(
-#                 response=self.error_response(
-#                     bundle.request, {'well_name': 'required'}))
-#         bundle.data['well_id'] = '%s:%s' % (plate_number, well_name)
-#         
-#         return bundle
+        logger.info(str(('put reagents', i)))
+
+        if not self._meta.always_return_data:
+            return http.HttpNoContent()
+        else:
+            to_be_serialized = {}
+            to_be_serialized[self._meta.collection_name] = [self.full_dehydrate(bundle, for_list=True) for bundle in bundles_seen]
+            to_be_serialized = self.alter_list_data_to_serialize(request, to_be_serialized)
+            return self.create_response(request, to_be_serialized)
+
 
 
 # FIXME: will replace this with the ApiLog resource?
@@ -1720,15 +1551,15 @@ class LibraryResource(ManagedModelResource):
                 self.wrap_view('dispatch_library_wellview'), 
                 name="api_dispatch_library_wellview"),
             
-            url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
-                 r"/reagent%s$" ) % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_library_reagentview'), 
-                name="api_dispatch_library_reagentview"),
+#             url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
+#                  r"/reagent%s$" ) % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('dispatch_library_reagentview'), 
+#                 name="api_dispatch_library_reagentview"),
             
-            url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
-                 r"/reagent/schema%s$") 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('get_reagent_schema'), name="api_get_reagent_schema"),
+#             url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
+#                  r"/reagent/schema%s$") 
+#                     % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('get_reagent_schema'), name="api_get_reagent_schema"),
             
             url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
                  r"/well/schema%s$") 
@@ -1768,13 +1599,13 @@ class LibraryResource(ManagedModelResource):
         kwargs['library_short_name'] = kwargs.pop('short_name')
         return WellResource().get_schema(request, **kwargs)    
  
-    def get_reagent_schema(self, request, **kwargs):
-        if not 'short_name' in kwargs:
-            raise Http404(unicode((
-                'The well schema requires a library short name'
-                ' in the URI, as in /library/[short_name]/well/schema/')))
-        kwargs['library_short_name'] = kwargs.pop('short_name')
-        return ReagentResource().get_schema(request, **kwargs)    
+#     def get_reagent_schema(self, request, **kwargs):
+#         if not 'short_name' in kwargs:
+#             raise Http404(unicode((
+#                 'The well schema requires a library short name'
+#                 ' in the URI, as in /library/[short_name]/well/schema/')))
+#         kwargs['library_short_name'] = kwargs.pop('short_name')
+#         return ReagentResource().get_schema(request, **kwargs)    
  
     def dispatch_librarycopyview(self, request, **kwargs):
         kwargs['library_short_name'] = kwargs.pop('short_name')
@@ -2008,3 +1839,284 @@ class LibraryContentsVersionResource(ManagedModelResource):
 #         bundle.obj.version_number = version_number + 1
 #         
 #         return bundle
+
+
+
+# class ReagentResource(ManagedLinkedResource):
+# 
+#     well = fields.CharField(null=True)
+#     substance_id = fields.CharField(null=True)
+#     
+#     def deserialize(self, request, data=None, format=None):
+#         '''
+#         Override deserialize so we can pull apart the multipart form and get the 
+#         uploaded content.
+#         Note: native TP doesn't support multipart uploads, but we need this because
+#         that is how the HTML UI sends files. 20140912, sde
+#         '''
+#         
+#         
+#         
+#         if not format:
+#             format = request.META.get('CONTENT_TYPE', 'application/json')
+# 
+#         if format.startswith('multipart'):
+#             if len(request.FILES.keys()) != 1:
+#                 raise ImmediateHttpResponse(
+#                     response=self.error_response(request, 
+#                         { 'FILES', 'File upload supports only one file at a time'}))
+#             
+#             if 'sdf' in request.FILES.keys():  
+#                 # process *only* the first file
+#                 file = request.FILES['sdf']
+#                 format = 'chemical/x-mdl-sdfile'
+#                 
+#                 # NOTE: have to override super, because it ignores the format and 
+#                 # grabs it again from the Request headers (which is "multipart...")
+#                 #  return super(ReagentResource, self).deserialize(request, file, format) 
+#                 # i.e. self._meta.serializer.deserialize(
+#                 #          data, format=request.META.get('CONTENT_TYPE', 'application/json'))
+#                 
+#                 # TODO/FIXME: how to stream input instead of using in-memory representation?
+#                 return self._meta.serializer.deserialize(file.read(), format=format)
+# 
+#             elif 'xls' in request.FILES.keys():
+#                 # TP cannot handle binary file formats - it is calling 
+#                 # django.utils.encoding.force_text on all input
+#                 file = request.FILES['sdf']
+#                 return self._meta.xls_serializer.from_xls(file.read())
+#                
+#             else:
+#                 raise UnsupportedFormat(str(('Unknown file type: ', request.FILES.keys()) ) )
+#         
+#         elif format == 'application/xls':
+#             # TP cannot handle binary file formats - it is calling 
+#             # django.utils.encoding.force_text on all input
+#             return self._meta.xls_serializer.from_xls(request.body)
+#             
+#         return super(ReagentResource, self).deserialize(request, request.body, format)    
+#     
+#     class Meta:
+#         queryset = Reagent.objects.all()
+#         authentication = MultiAuthentication(BasicAuthentication(), 
+#                                              SessionAuthentication())
+#         authorization= UserGroupAuthorization()
+#         resource_name = 'reagent'
+#         
+#         ordering = []
+#         filtering = {}
+#         serializer = LimsSerializer()
+#         xls_serializer = XLSSerializer()
+#         # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
+#         always_return_data = True 
+# 
+#     def __init__(self, **kwargs):
+#         self.sr_resource = None
+#         self.smr_resource = None
+#         self.npr_resource = None
+#         self.well_resource = None
+#         super(ReagentResource,self).__init__(**kwargs)
+# 
+#     def get_sr_resource(self):
+#         if not self.sr_resource:
+#             self.sr_resource = SilencingReagentResource()
+#         return self.sr_resource
+#     
+#     def get_smr_resource(self):
+#         if not self.smr_resource:
+#             self.smr_resource = SmallMoleculeReagentResource()
+#         return self.smr_resource
+#     
+#     def get_npr_resource(self):
+#         if not self.npr_resource:
+#             npr_resource = NaturalProductReagentResource()
+#         return self.npr_resource
+#     
+#     def get_well_resource(self):
+#         if not self.well_resource:
+#             self.well_resource = WellResource()
+#         return self.well_resource
+#     
+#     def get_sub_resource(self, library):
+#         # FIXME: we should store the "type" on the entity
+#         
+#         if library.screen_type == 'rnai':
+#             return self.get_sr_resource()
+#         else:
+#             if library.library_type == 'natural_products':
+#                 return self.get_npr_resource()
+#             else:
+#                 return self.get_smr_resource()
+# 
+#     def get_schema(self, request, **kwargs):
+#         if not 'library_short_name' in kwargs:
+#             return self.create_response(request, self.build_schema())
+#         
+#         library_short_name = kwargs.pop('library_short_name')
+#         try:
+#             library = Library.objects.get(short_name=library_short_name)
+#             return self.create_response(request, self.get_sub_resource(library).build_schema())
+#         except Library.DoesNotExist, e:
+#             raise Http404(unicode((
+#                 'no library found for short_name', library_short_name)))
+# 
+#     def build_schema(self, library=None):
+#         logger.debug(str(('==========build schema for library reagent', library)))
+#         data = super(ReagentResource,self).build_schema()
+#         
+#         if library:
+#             sub_data = self.get_sub_resource(library).build_schema()
+#             data['fields'].update(sub_data['fields'])
+# 
+#         return data
+#     
+#     def dehydrate(self, bundle):
+# 
+#         reagent = bundle.obj
+#         if not reagent.well:
+#             return bundle
+#         library = reagent.well.library
+#         if not library:
+#             return bundle
+# 
+#         bundle.data['well_id'] = reagent.well.well_id
+#         logger.debug(str(('===well_id', reagent.well.well_id)))
+#         
+#         sub_resource = self.get_sub_resource(library)
+#         sub_bundle = sub_resource.build_bundle(
+#             obj=reagent, request=bundle.request)
+#         sub_bundle = sub_resource.full_dehydrate(sub_bundle)
+#         bundle.data.update(sub_bundle.data)
+# 
+#         return bundle
+# 
+#     def prepend_urls(self):
+#         # NOTE: this match "((?=(schema))__|(?!(schema))[^/]+)" 
+#         # allows us to match any word (any char except forward slash), 
+#         # except "schema", and use it as the key value to search for.
+#         # also note the double underscore "__" is because we also don't want to 
+#         # match in the first clause.
+#         # We don't want "schema" since that reserved word is used by tastypie 
+#         # for the schema definition for the resource (used by the UI)
+#         return [
+#             url((r"^(?P<resource_name>%s)/(?P<substance_id>((?=(schema))__|(?!(schema))[^/]+))%s$"
+#                 )  % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),]
+#      
+#     def post_list(self, request, **kwargs):
+#         raise NotImplementedError("Post is not implemented for ReagentResource, use patch instead")
+#     
+#     def patch_list(self, request, **kwargs):
+#         # TODO: NOT TESTED
+#         return self.put_list(request, **kwargs)
+#     
+#     def put_list(self, request, **kwargs):
+# 
+#         if 'library_short_name' not in kwargs:
+#             raise BadRequest('library_short_name is required')
+#         
+#         deserialized = self.deserialize(
+#             request, 
+#             format=request.META.get('CONTENT_TYPE', 'application/json'))
+#         logger.info(str(('deserialized', deserialized)))
+#         if not self._meta.collection_name in deserialized:
+#             raise BadRequest(str(("Invalid data sent. missing: " , self._meta.collection_name)))
+#         
+#         basic_bundle = self.build_bundle(request=request)
+#  
+#         library = Library.objects.get(short_name=kwargs['library_short_name'])
+#                           
+#         well_resource = self.get_well_resource()  
+#         
+#         # Cache all the wells on the library for use with this process 
+#         wellMap = dict( (well.well_id, well) for well in library.well_set.all())
+#         if len(wellMap)==0:
+#             raise BadRequest(str(('library has not been created, no wells', library)))
+#         
+#         i=0
+#         bundles_seen = []
+#         for well_data in deserialized[self._meta.collection_name]:
+#             
+#             ## TODO: use a class in line with the serializers to do this
+#             # MIGRATE "OLD" SS1 fields to new fields
+#             from db.support.data_converter import convert_well_data
+#             well_data = convert_well_data(well_data)
+#             
+#             well_data['library_short_name']=kwargs['library_short_name']
+#             
+#             logger.debug(str(('well_data', well_data)))
+#             well_id = well_data.get('well_id', None)
+#             if not well_id:
+#                 well_name = well_data.get('well_name', None)
+#                 plate_number = well_data.get('plate_number',None)
+#                 if well_name and plate_number:                
+#                     well_id = '%s:%s' %(plate_number, well_name)
+# 
+#             if not well_id:
+#                 raise ImmediateHttpResponse(
+#                     response=self.error_response(request, {'well_id': 'required'}))
+#             
+#             well = wellMap.get(well_id, None)
+#             if not well:
+#                 raise ImmediateHttpResponse(
+#                     response=self.error_response(request, {
+#                         'well_id': str(('well not found for this library', well_id))}))
+#                 
+#             well_bundle = well_resource.build_bundle(
+#                 obj=well, data=well_data, request=request);
+#             well_bundle = well_resource.full_hydrate(well_bundle)
+#             well_bundle.obj.save()
+#             
+#             logger.debug(str(('updated well', well_bundle.obj)))
+# 
+#             # lookup/create the reagent
+#             sub_resource = self.get_sub_resource(library)
+#             
+#             if not 'resource_uri' in well_data:
+#                 reagent_bundle = sub_resource.build_bundle(
+#                     data=well_data, request=request)
+#                 sub_resource.obj_create(
+#                     reagent_bundle, **{ 'well': well, 'library': library })
+#             else:
+#                 # FIXME: untested, not complete
+#                 # lookup and update the reagent
+#                 sub_resource.obj_update(reagent_bundle)
+#                 logger.debug(str(('updated reagent', reagent_bundle.obj)))
+#             i = i+1
+#             bundles_seen.append(reagent_bundle)
+#         
+#         logger.info(str(('put reagents', i)))
+# 
+#         if not self._meta.always_return_data:
+#             return http.HttpNoContent()
+#         else:
+#             to_be_serialized = {}
+#             to_be_serialized[self._meta.collection_name] = [self.full_dehydrate(bundle, for_list=True) for bundle in bundles_seen]
+#             to_be_serialized = self.alter_list_data_to_serialize(request, to_be_serialized)
+#             return self.create_response(request, to_be_serialized)
+# 
+# # 
+# #     def hydrate(self, bundle):
+# #         logger.debug(str(('==== hydrating the reagent for bundle ', bundle.data)))
+# #         
+# #         if ( not hasattr(bundle.obj,'well') or
+# #                 not getattr(bundle.obj,'well')):
+# #             well_id = bundle.data.get('well_id', None)
+# #             if not well_id:
+# #                 well_name = bundle.data.get('well_name', None)
+# #                 plate_number = bundle.data.get('plate_number',None)
+# #                 if well_name and plate_number:                
+# #                     well_id = '%s:%s' %(plate_number, well_name)
+# #             if not well_id:
+# #                 raise ImmediateHttpResponse(
+# #                     response=self.error_response(bundle.request, {'well_id': 'required'}))
+# # 
+# #             well = Well.objects.get(well_id=well_id)
+# #         else:
+# #             well = bundle.obj.well
+# # 
+# #         bundle.obj.well = well
+# #         
+# #         return bundle
+
+

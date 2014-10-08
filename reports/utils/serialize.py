@@ -21,7 +21,7 @@ def from_csv_iterate(iterable):
     list_keys = [] # cache
     for row in iterable:
         if i == 0:
-            keys = row
+            keys = [x for x in row]
         else:
             item = dict(zip(keys,row))
             for key in item.keys():
@@ -39,3 +39,4 @@ def from_csv_iterate(iterable):
         i += 1
     logger.debug('read in data, count: ' + str(len(data_result)) )   
     return data_result
+

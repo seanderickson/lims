@@ -66,7 +66,7 @@ LOGGING = {
             'propagate': False,
         },
         'db': {  # set a default handler
-            'handlers': ['logfile'],
+            'handlers': ['console'],
             'propagate': False,
             'level': 'INFO',
         },        

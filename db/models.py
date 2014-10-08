@@ -70,12 +70,6 @@ class AttachedFileUpdateActivity(models.Model):
     class Meta:
         db_table = 'attached_file_update_activity'
 
-class CellUpdateActivity(models.Model):
-    cell = models.ForeignKey('Cell')
-    update_activity = models.ForeignKey(AdministrativeActivity, unique=True)
-    class Meta:
-        db_table = 'cell_update_activity'
-
 class ChecklistItemEventUpdateActivity(models.Model):
     checklist_item_event = models.ForeignKey('ChecklistItemEvent')
     update_activity = models.ForeignKey(AdministrativeActivity)
@@ -266,94 +260,6 @@ class AttachedFileType(models.Model):
     value = models.TextField()
     class Meta:
         db_table = 'attached_file_type'
-#class AuthGroup(models.Model):
-#    id = models.IntegerField(primary_key=True)
-#    name = models.CharField(max_length=80, unique=True)
-#    class Meta:
-#        db_table = 'auth_group'
-#
-#class AuthGroupPermissions(models.Model):
-#    id = models.IntegerField(primary_key=True)
-#    group = models.ForeignKey(AuthGroup)
-#    permission = models.ForeignKey('AuthPermission')
-#    class Meta:
-#        db_table = 'auth_group_permissions'
-#
-#class AuthPermission(models.Model):
-#    id = models.IntegerField(primary_key=True)
-#    name = models.CharField(max_length=50)
-#    content_type = models.ForeignKey('DjangoContentType')
-#    codename = models.CharField(max_length=100)
-#    class Meta:
-#        db_table = 'auth_permission'
-#
-#class AuthUser(models.Model):
-#    id = models.IntegerField(primary_key=True)
-#    password = models.CharField(max_length=128)
-#    last_login = models.DateTimeField()
-#    is_superuser = models.BooleanField()
-#    username = models.CharField(max_length=30, unique=True)
-#    first_name = models.CharField(max_length=30)
-#    last_name = models.CharField(max_length=30)
-#    email = models.CharField(max_length=75)
-#    is_staff = models.BooleanField()
-#    is_active = models.BooleanField()
-#    date_joined = models.DateTimeField()
-#    class Meta:
-#        db_table = 'auth_user'
-#
-#class AuthUserGroups(models.Model):
-#    id = models.IntegerField(primary_key=True)
-#    user = models.ForeignKey(AuthUser)
-#    group = models.ForeignKey(AuthGroup)
-#    class Meta:
-#        db_table = 'auth_user_groups'
-#
-#class AuthUserUserPermissions(models.Model):
-#    id = models.IntegerField(primary_key=True)
-#    user = models.ForeignKey(AuthUser)
-#    permission = models.ForeignKey(AuthPermission)
-#    class Meta:
-#        db_table = 'auth_user_user_permissions'
-
-class Cell(models.Model):
-    cell_id = models.IntegerField(primary_key=True)
-    alternate_id = models.CharField(max_length=255, blank=True)
-    alternate_name = models.CharField(max_length=255, blank=True)
-    batch_id = models.CharField(max_length=255, blank=True)
-    cell_type = models.CharField(max_length=255, blank=True)
-    cell_type_detail = models.TextField(blank=True)
-    center_name = models.CharField(max_length=255, blank=True)
-    center_specific_id = models.CharField(max_length=255, blank=True)
-    clo_id = models.CharField(max_length=255, blank=True)
-    disease = models.CharField(max_length=255, blank=True)
-    disease_detail = models.TextField(blank=True)
-    facility_id = models.CharField(max_length=255, unique=True)
-    genetic_modification = models.CharField(max_length=255, blank=True)
-    mutations_explicit = models.TextField(blank=True)
-    mutations_reference = models.TextField(blank=True)
-    name = models.CharField(max_length=255, blank=True)
-    organ = models.CharField(max_length=255, blank=True)
-    organism = models.CharField(max_length=255, blank=True)
-    organism_gender = models.CharField(max_length=255, blank=True)
-    recommended_culture_conditions = models.TextField(blank=True)
-    tissue = models.CharField(max_length=255, blank=True)
-    vendor = models.CharField(max_length=255, blank=True)
-    vendor_catalog_id = models.CharField(max_length=255, blank=True)
-    verification = models.TextField(blank=True)
-    verification_reference_profile = models.TextField(blank=True)
-    date_created = models.DateTimeField()
-    date_loaded = models.DateTimeField(null=True, blank=True)
-    date_publicly_available = models.DateTimeField(null=True, blank=True)
-    created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
-    class Meta:
-        db_table = 'cell'
-
-class CellGrowthProperties(models.Model):
-    cell = models.ForeignKey(Cell)
-    growth_property = models.TextField()
-    class Meta:
-        db_table = 'cell_growth_properties'
 
 class CellLine(models.Model):
     cell_line_id = models.IntegerField(primary_key=True)
@@ -361,24 +267,6 @@ class CellLine(models.Model):
     version = models.IntegerField()
     class Meta:
         db_table = 'cell_line'
-
-class CellLineage(models.Model):
-    cell = models.ForeignKey(Cell, primary_key=True)
-    class Meta:
-        db_table = 'cell_lineage'
-
-class CellMarkers(models.Model):
-    cell = models.ForeignKey('PrimaryCell')
-    cell_markers = models.TextField()
-    class Meta:
-        db_table = 'cell_markers'
-
-class CellRelatedProjects(models.Model):
-    cell = models.ForeignKey(Cell)
-    related_project = models.TextField()
-    class Meta:
-        db_table = 'cell_related_projects'
-
 class ChecklistItem(models.Model):
     checklist_item_id = models.IntegerField(primary_key=True)
     checklist_item_group = models.TextField()
@@ -461,87 +349,11 @@ class CollaboratorLink(models.Model):
     class Meta:
         db_table = 'collaborator_link'
 
-
-#class DjangoAdminLog(models.Model):
-#    id = models.IntegerField(primary_key=True)
-#    action_time = models.DateTimeField()
-#    user = models.ForeignKey(AuthUser)
-#    content_type = models.ForeignKey('DjangoContentType', null=True, blank=True)
-#    object_id = models.TextField(blank=True)
-#    object_repr = models.CharField(max_length=200)
-#    action_flag = models.SmallIntegerField()
-#    change_message = models.TextField()
-#    class Meta:
-#        db_table = 'django_admin_log'
-#
-#class DjangoContentType(models.Model):
-#    id = models.IntegerField(primary_key=True)
-#    name = models.CharField(max_length=100)
-#    app_label = models.CharField(max_length=100)
-#    model = models.CharField(max_length=100)
-#    class Meta:
-#        db_table = 'django_content_type'
-#
-#class DjangoSession(models.Model):
-#    session_key = models.CharField(max_length=40, primary_key=True)
-#    session_data = models.TextField()
-#    expire_date = models.DateTimeField()
-#    class Meta:
-#        db_table = 'django_session'
-#
-#class DjangoSite(models.Model):
-#    id = models.IntegerField(primary_key=True)
-#    domain = models.CharField(max_length=100)
-#    name = models.CharField(max_length=50)
-#    class Meta:
-#        db_table = 'django_site'
-
-class ExperimentalCellInformation(models.Model):
-    experimental_cell_information_id = models.IntegerField(primary_key=True)
-    cell = models.ForeignKey(Cell)
-    screen = models.ForeignKey('Screen')
-    class Meta:
-        db_table = 'experimental_cell_information'
-
 class FundingSupport(models.Model):
     funding_support_id = models.IntegerField(primary_key=True)
     value = models.TextField(unique=True, blank=True)
     class Meta:
         db_table = 'funding_support'
-
-class Gene(models.Model):
-    gene_id = models.IntegerField(primary_key=True)
-    entrezgene_id = models.IntegerField(null=True, blank=True)
-    gene_name = models.TextField(blank=True)
-    species_name = models.TextField(blank=True)
-    class Meta:
-        db_table = 'gene'
-
-class GeneGenbankAccessionNumber(models.Model):
-    gene_id = models.IntegerField()
-    genbank_accession_number = models.TextField()
-    class Meta:
-        db_table = 'gene_genbank_accession_number'
-
-class GeneOldEntrezgeneId(models.Model):
-    old_entrezgene_id = models.IntegerField()
-    gene_id = models.IntegerField()
-    class Meta:
-        db_table = 'gene_old_entrezgene_id'
-
-class GeneOldEntrezgeneSymbol(models.Model):
-    old_entrezgene_symbol = models.TextField()
-    gene_id = models.IntegerField()
-    class Meta:
-        db_table = 'gene_old_entrezgene_symbol'
-
-class GeneSymbol(models.Model):
-    gene = models.ForeignKey(Gene)
-    entrezgene_symbol = models.TextField()
-    ordinal = models.IntegerField()
-    class Meta:
-        unique_together = (('entrezgene_symbol', 'ordinal'))    
-        db_table = 'gene_symbol'
 
 class LabAffiliation(models.Model):
     version = models.IntegerField()
@@ -568,15 +380,6 @@ class LabCherryPick(models.Model):
 #    lab_affiliation = models.ForeignKey(LabAffiliation, null=True, blank=True)
 #    class Meta:
 #        db_table = 'lab_head'
-
-class PrimaryCell(models.Model):
-    age_in_years = models.IntegerField()
-    donor_ethnicity = models.CharField(max_length=255, blank=True)
-    donor_health_status = models.CharField(max_length=255, blank=True)
-    passage_number = models.IntegerField()
-    cell = models.ForeignKey(Cell, primary_key=True)
-    class Meta:
-        db_table = 'primary_cell'
 
 class Publication(models.Model):
     publication_id = models.IntegerField(primary_key=True)
@@ -991,32 +794,76 @@ class SilencingReagent(models.Model):
     sequence = models.TextField(blank=True)
     anti_sense_sequence = models.TextField(blank=True)
     silencing_reagent_type = models.TextField(blank=True)
-#     vendor_gene = models.ForeignKey(Gene, unique=True, null=True, blank=True, related_name='vendor_reagent')
-#     facility_gene = models.ForeignKey(Gene, unique=True, null=True, blank=True, related_name='facility_reagent')
-    is_restricted_sequence = models.BooleanField()
+    vendor_gene = models.ForeignKey(
+        'Gene', unique=True, null=True, blank=True, related_name='vendor_reagent')
+    facility_gene = models.ForeignKey(
+        'Gene', unique=True, null=True, blank=True, related_name='facility_reagent')
+    
+    duplex_wells = models.ManyToManyField('Well')
+    is_restricted_sequence = models.BooleanField(default=False)
     class Meta:
         db_table = 'silencing_reagent'
 
-class ReagentFacilityGenes(models.Model):
-    reagent = models.ForeignKey(SilencingReagent, primary_key=True)
-    gene = models.ForeignKey(Gene, unique=True)
+class Gene(models.Model):
+    gene_id = models.AutoField(primary_key=True)
+    entrezgene_id = models.IntegerField(null=True, blank=True)
+    gene_name = models.TextField(blank=True)
+    species_name = models.TextField(blank=True)
+    class Meta:
+        db_table = 'gene'
+
+    def __unicode__(self):
+        return str((self.entrezgene_id, self.gene_name)) 
+
+# class ReagentFacilityGenes(models.Model):
+#     reagent = models.ForeignKey(SilencingReagent, primary_key=True)
+#     gene = models.ForeignKey(Gene, unique=True)
+#     ordinal = models.IntegerField()
+#     class Meta:
+#         managed = False
+#         db_table = 'reagent_facility_genes'
+#  
+# class ReagentVendorGenes(models.Model):
+#     reagent = models.ForeignKey(SilencingReagent, primary_key=True)
+#     gene = models.ForeignKey(Gene, unique=True)
+#     ordinal = models.IntegerField()
+#     class Meta:
+#         managed = False
+#         db_table = 'reagent_vendor_genes'
+
+class GeneGenbankAccessionNumber(models.Model):
+    gene = models.ForeignKey(Gene)
+    genbank_accession_number = models.TextField()
+    class Meta:
+        unique_together = (('gene', 'genbank_accession_number'))    
+        db_table = 'gene_genbank_accession_number'
+
+# class GeneOldEntrezgeneId(models.Model):
+#     old_entrezgene_id = models.IntegerField()
+#     gene_id = models.IntegerField()
+#     class Meta:
+#         db_table = 'gene_old_entrezgene_id'
+# 
+# class GeneOldEntrezgeneSymbol(models.Model):
+#     old_entrezgene_symbol = models.TextField()
+#     gene_id = models.IntegerField()
+#     class Meta:
+#         db_table = 'gene_old_entrezgene_symbol'
+
+class GeneSymbol(models.Model):
+    gene = models.ForeignKey(Gene)
+    entrezgene_symbol = models.TextField()
     ordinal = models.IntegerField()
     class Meta:
-        managed = False
-        db_table = 'reagent_facility_genes'
- 
-class ReagentVendorGenes(models.Model):
-    reagent = models.ForeignKey(SilencingReagent, primary_key=True)
-    gene = models.ForeignKey(Gene, unique=True)
-    ordinal = models.IntegerField()
-    class Meta:
-        managed = False
-        db_table = 'reagent_vendor_genes'
+        unique_together = (('gene', 'ordinal'))    
+        db_table = 'gene_symbol'
+
 
 class SilencingReagentDuplexWells(models.Model):
     silencing_reagent = models.ForeignKey(SilencingReagent)
     well = models.ForeignKey('Well')
     class Meta:
+        unique_together = (('silencing_reagent', 'well'))    
         db_table = 'silencing_reagent_duplex_wells'
 
 class SmallMoleculeReagent(models.Model):
@@ -1223,3 +1070,84 @@ class WellVolumeAdjustment(models.Model):
     copy = models.ForeignKey(Copy)
     class Meta:
         db_table = 'well_volume_adjustment'
+
+
+# this is a LINCS table
+# class Cell(models.Model):
+#     cell_id = models.IntegerField(primary_key=True)
+#     alternate_id = models.CharField(max_length=255, blank=True)
+#     alternate_name = models.CharField(max_length=255, blank=True)
+#     batch_id = models.CharField(max_length=255, blank=True)
+#     cell_type = models.CharField(max_length=255, blank=True)
+#     cell_type_detail = models.TextField(blank=True)
+#     center_name = models.CharField(max_length=255, blank=True)
+#     center_specific_id = models.CharField(max_length=255, blank=True)
+#     clo_id = models.CharField(max_length=255, blank=True)
+#     disease = models.CharField(max_length=255, blank=True)
+#     disease_detail = models.TextField(blank=True)
+#     facility_id = models.CharField(max_length=255, unique=True)
+#     genetic_modification = models.CharField(max_length=255, blank=True)
+#     mutations_explicit = models.TextField(blank=True)
+#     mutations_reference = models.TextField(blank=True)
+#     name = models.CharField(max_length=255, blank=True)
+#     organ = models.CharField(max_length=255, blank=True)
+#     organism = models.CharField(max_length=255, blank=True)
+#     organism_gender = models.CharField(max_length=255, blank=True)
+#     recommended_culture_conditions = models.TextField(blank=True)
+#     tissue = models.CharField(max_length=255, blank=True)
+#     vendor = models.CharField(max_length=255, blank=True)
+#     vendor_catalog_id = models.CharField(max_length=255, blank=True)
+#     verification = models.TextField(blank=True)
+#     verification_reference_profile = models.TextField(blank=True)
+#     date_created = models.DateTimeField()
+#     date_loaded = models.DateTimeField(null=True, blank=True)
+#     date_publicly_available = models.DateTimeField(null=True, blank=True)
+#     created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
+#     class Meta:
+#         db_table = 'cell'
+#
+# class CellGrowthProperties(models.Model):
+#     cell = models.ForeignKey(Cell)
+#     growth_property = models.TextField()
+#     class Meta:
+#         db_table = 'cell_growth_properties'
+# 
+# class CellLineage(models.Model):
+#     cell = models.ForeignKey(Cell, primary_key=True)
+#     class Meta:
+#         db_table = 'cell_lineage'
+# 
+# class CellMarkers(models.Model):
+#     cell = models.ForeignKey('PrimaryCell')
+#     cell_markers = models.TextField()
+#     class Meta:
+#         db_table = 'cell_markers'
+# 
+# class CellRelatedProjects(models.Model):
+#     cell = models.ForeignKey(Cell)
+#     related_project = models.TextField()
+#     class Meta:
+#         db_table = 'cell_related_projects'
+# 
+# class PrimaryCell(models.Model):
+#     age_in_years = models.IntegerField()
+#     donor_ethnicity = models.CharField(max_length=255, blank=True)
+#     donor_health_status = models.CharField(max_length=255, blank=True)
+#     passage_number = models.IntegerField()
+#     cell = models.ForeignKey(Cell, primary_key=True)
+#     class Meta:
+#         db_table = 'primary_cell'
+# LINCS table
+# class ExperimentalCellInformation(models.Model):
+#     experimental_cell_information_id = models.IntegerField(primary_key=True)
+#     cell = models.ForeignKey(Cell)
+#     screen = models.ForeignKey('Screen')
+#     class Meta:
+#         db_table = 'experimental_cell_information'
+# 
+# class CellUpdateActivity(models.Model):
+#     cell = models.ForeignKey('Cell')
+#     update_activity = models.ForeignKey(AdministrativeActivity, unique=True)
+#     class Meta:
+#         db_table = 'cell_update_activity'
+

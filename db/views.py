@@ -1,6 +1,6 @@
 import logging
 from django.shortcuts import render
-from db.models import ScreensaverUser
+from db.models import ScreensaverUser, Reagent
 from django.http import HttpResponse
 import json
 from django.utils.encoding import smart_str
@@ -12,6 +12,32 @@ def main(request):
     search = request.GET.get('search', '')
     logger.debug(str(('main search: ', search)))
     return render(request, 'db/index.html', {'search': search})
+
+
+def smiles_image(request, well_id):
+        import rdkit.Chem
+        import rdkit.Chem.AllChem
+        import rdkit.Chem.Draw
+#         import matplotlib
+# 
+# 
+        reagent = Reagent.objects.get(well_id=well_id)
+        smiles = reagent.smallmoleculereagent.smiles
+        logger.info(str((well_id, str(smiles) )))
+        m = rdkit.Chem.MolFromSmiles(str(smiles))
+#         m = reagent.smallmoleculereagent.molfile.molfile
+#         logger.info(str(('molfile', m)))
+        rdkit.Chem.AllChem.Compute2DCoords(m)
+        im = rdkit.Chem.Draw.MolToImage(m)
+#         return im
+# #         matplotlib.pyplot.imshow(im)
+#         
+        response = HttpResponse(mimetype="image/png")
+        im.save(response, "PNG")
+        return response
+    
+
+
 
 def screeners(request):
     search = request.GET.get('search', '')

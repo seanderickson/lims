@@ -217,16 +217,14 @@ function premigratedb {
   migration='0002'
   if [[ ! $completed_migrations =~ $migration ]]; then
     $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-  fi
-  migration='0003'
-  if [[ ! $completed_migrations =~ $migration ]]; then
 
-    psql -U $DBUSER $DB -h $DBHOST -a  \
+    psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
+      -f ./db/migrations/manual/0002_initial_django_prep.sql \
+      >>"$LOGFILE" 2>&1 || error "manual script 0002 failed: $?"
+
+    psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
       -f ./db/migrations/manual/0003_controlled_vocabularies.sql \
-      >>"$LOGFILE" 2>&1 || error "manual script 0003 failed: $?"
-
-
-    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+      >>"$LOGFILE" 2>&1 || error "manual script 0002 failed: $?"
   fi
   
   echo "pre migrations completed: $(ts) " >> "$LOGFILE"
@@ -242,31 +240,19 @@ function migratedb {
   
   migration='0004'
   if [[ ! $completed_migrations =~ $migration ]]; then
-    psql -U $DBUSER $DB -h $DBHOST -a  \
-      -f ./db/migrations/manual/0004_screen_status.sql >>"$LOGFILE" 2>&1 || error "manual script 0003 failed: $?"
-  
-    # run the rest of the migrations
     $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
   fi
   
-  migration='0005'
-  if [[ ! $completed_migrations =~ $migration ]]; then
-    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-  fi
   migration='0008'
   if [[ ! $completed_migrations =~ $migration ]]; then
     $DJANGO_CMD migrate db 0008 >>"$LOGFILE" 2>&1 || error "db 0008 failed: $?"
-  fi
-  migration='0011'
-  if [[ ! $completed_migrations =~ $migration ]]; then
-    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
   fi
   if [[ $DB_FULL_MIGRATION -eq 1 ]]; then
     migration='0013'
     if [[ ! $completed_migrations =~ $migration ]]; then
         echo "migration $migration: $(ts) ... " >> "$LOGFILE"
         $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-        psql -U $DBUSER $DB -h $DBHOST -a \
+        psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
           -f ./db/migrations/manual/0013_create_substance_ids.sql >>"$LOGFILE" 2>&1 || error "manual script 0013 failed: $?"
         echo "migration $migration complete: $(ts)" >> "$LOGFILE"
     fi
@@ -279,17 +265,11 @@ function migratedb {
     migration='0015'
     if [[ ! $completed_migrations =~ $migration ]]; then
       echo "migration $migration: $(ts) ..." >> "$LOGFILE"
-      psql -U $DBUSER $DB -h $DBHOST -a  \
-        -f ./db/migrations/manual/0015_manual_convert_gene_symbol.sql >>"$LOGFILE" 2>&1 || error "manual script 0015 failed: $?"
       $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
       echo "migration $migration complete: $(ts)" >> "$LOGFILE"
     fi
   fi
     
-# TODO, not working:
-#  $DJANGO_CMD migrate db 0014 >>"$LOGFILE" 2>&1 || error "db 0014 failed: $?"
-#  $DJANGO_CMD migrate db 0015 >>"$LOGFILE" 2>&1 || error "db 0015 failed: $?"
-
   echo "migrations completed: $(ts) " >> "$LOGFILE"
 
 }

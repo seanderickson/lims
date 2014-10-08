@@ -17,8 +17,14 @@ from tastypie.serializers import Serializer
 
 import reports.utils.sdf2py as s2p
 import reports.utils.serialize
+import xlwt
+import xlrd
+from reports.utils.serialize import from_csv_iterate
 
 logger = logging.getLogger(__name__)
+
+
+
 
 class CsvBooleanField(fields.ApiField):
     """
@@ -92,6 +98,7 @@ class PrettyJSONSerializer(Serializer):
         data = self.to_simple(data, options)
         return json.dumps(data, cls=DjangoJSONEncoder,
                 sort_keys=True, ensure_ascii=False, indent=self.json_indent)
+
 
 class SDFSerializer(Serializer):
     
@@ -233,8 +240,122 @@ class SDFSerializer(Serializer):
 #     def from_multipart_form_data(self, content, **kwargs):
 # 
 #         logger.info(str(('content', content)))
-        
 
+def csv_convert(val):
+    if isinstance(val, (list,tuple)):
+        return '[' + ','.join([smart_str(x) for x in val]) + ']' 
+    elif val != None:
+        if type(val) == bool:
+            if val:
+                return 'TRUE'
+            else:
+                return 'FALSE'
+        else:
+            return smart_str(val)
+    else:
+        return None
+
+class XLSSerializer(Serializer):
+    
+    def __init__(self,content_types=None, formats=None, **kwargs):
+        if not content_types:
+            content_types = Serializer.content_types.copy();
+        content_types['xls'] = 'application/xls'
+        
+        if not formats:
+            _formats = Serializer.formats # or []
+            _formats = copy.copy(_formats)
+            formats = _formats
+        formats.append('xls')
+            
+        super(XLSSerializer,self).__init__(
+            formats=formats, 
+            content_types=content_types,**kwargs);
+
+
+    def to_xls(self, data, options=None):
+
+        options = options or {}
+        data = self.to_simple(data, options)
+        
+        raw_data = StringIO.StringIO()
+        book = xlwt.Workbook(encoding='utf8')
+        
+        if 'error' in data:
+            sheet = book.add_sheet('error')
+            sheet.write(0, 0, 'error')
+            sheet.write(1, 0, data['error'])
+            book.save(raw_data)
+            return raw_data.getvalue()
+        
+        # TODO: smarter way to ignore 'objects'
+        if 'objects' in data:
+            data = data['objects']
+        if len(data) == 0:
+            return raw_data
+
+        sheet = book.add_sheet('objects')
+
+        if isinstance(data, dict):
+            # usually, this happens when the data is actually an error message;
+            # but also, it could be just one item being returned
+            for i,(key,item) in enumerate(data.items()):
+                sheet.write(0,i,smart_str(key))
+                sheet.write(1,i,csv_convert(item))
+        else:    
+            # default 
+            keys = None
+            for row,item in enumerate(data):
+                if row == 0:
+                    for i, key in enumerate(item.keys()):
+                        sheet.write(0,i,smart_str(key))
+                for i, val in enumerate(item.values()):
+                    sheet.write(row+1,i,csv_convert(val))
+        
+        book.save(raw_data)
+        
+        return raw_data.getvalue()
+
+    def from_xls(self, content, root='objects'):
+        
+        wb = xlrd.open_workbook(file_contents=content)
+        
+        if wb.nsheets > 1:
+            logger.warn('only first page of workbooks supported')
+        
+        # TODO: if root is specified, then get the sheet by name
+        sheet = wb.sheet_by_index(0)
+
+        # convert sheet to a flat array
+#         rows = []
+#         for row in range(sheet.nrows):
+#             values = []
+#             for col in range(sheet.ncols):
+#                 values.append(sheet.cell(row,col).value)
+#             rows.append(values)
+
+        def read_sheet(sheet):
+            def read_row(row):
+                for col in range(sheet.ncols):
+                    cell = sheet.cell(row,col)
+                    value = cell.value
+                    if cell.ctype == xlrd.XL_CELL_NUMBER:
+                        ival = int(value)
+                        if value == ival:
+                            value = ival
+                    yield str(value)
+            for row in range(sheet.nrows):
+                yield read_row(row)
+
+        # because workbooks are treated like sets of csv sheets, now convert
+        # as if this were a csv sheet
+        data = from_csv_iterate(read_sheet(sheet))
+
+        if root:
+            return { root: data }
+        else:
+            return data
+                
 class CSVSerializer(Serializer):
     
     def __init__(self, content_types=None, formats=None, **kwargs):
@@ -299,6 +420,7 @@ class CSVSerializer(Serializer):
 
         return raw_data.getvalue()
     
+        
     def get_list(self,item):
         '''
         Convert a csv row into a list of values
@@ -306,20 +428,21 @@ class CSVSerializer(Serializer):
         _list = []
         for key in item:
             logger.debug(str(('item', item)))
-            if item[key] and isinstance(item[key], (list, tuple)):
-                _list.append(
-                    '[' + ','.join([smart_str(x) for x in item[key]]) + ']' )
-            elif item[key] != None:
-                val = item[key]
-                if type(val) == bool:
-                    if val:
-                        _list.append('TRUE')
-                    else:
-                        _list.append('FALSE')
-                else:
-                    _list.append(smart_str(item[key]))
-            else:
-                _list.append(None)
+            _list.append(csv_convert(item[key]))
+#             if item[key] and isinstance(item[key], (list, tuple)):
+#                 _list.append(
+#                     '[' + ','.join([smart_str(x) for x in item[key]]) + ']' )
+#             elif item[key] != None:
+#                 val = item[key]
+#                 if type(val) == bool:
+#                     if val:
+#                         _list.append('TRUE')
+#                     else:
+#                         _list.append('FALSE')
+#                 else:
+#                     _list.append(smart_str(item[key]))
+#             else:
+#                 _list.append(None)
         return _list
     
     def from_csv(self, content, root='objects'):
@@ -511,9 +634,11 @@ class CursorSerializer(Serializer):
 
 
 class LimsSerializer(PrettyJSONSerializer, BackboneSerializer,CSVSerializer, 
-                        SDFSerializer):
+                        SDFSerializer, XLSSerializer):
     ''' Combine all of the Serializers used by the API
     '''
+    
+    
 
 # class SmallMoleculeSerializer(LimsSerializer, SDFSerializer):
 #     ''' Combine all of the Serializers used by the API

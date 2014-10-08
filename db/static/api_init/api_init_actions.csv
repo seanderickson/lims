@@ -10,7 +10,6 @@ patch,metahash,metahash_fields_datacolumn.csv
 patch,metahash,metahash_fields_librarycopy.csv
 patch,metahash,metahash_fields_librarycopyplate.csv
 patch,metahash,metahash_fields_platelocation.csv
-patch,metahash,metahash_fields_reagent.csv
 patch,metahash,metahash_fields_well.csv
 patch,metahash,metahash_fields_librarycontentsversion.csv
 patch,metahash,metahash_fields_activity.csv

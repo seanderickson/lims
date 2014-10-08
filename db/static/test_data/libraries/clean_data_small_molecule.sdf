@@ -4,10 +4,10 @@ Biomol-TimTec1
 >  <Source> (3)
 Biomol-TimTec
 
->  <Vendor> (3)
+>  <vendor> (3)
 Biomol-TimTec
 
->  <Vendor_Reagent_ID> (3)
+>  <vendor_reagent_id> (3)
 SPL000058
 
 > <vendor_batch_id>
@@ -16,16 +16,16 @@ HM-001_TM-20090805
 >  <OldWell> (3)
 A01
 
->  <OldPlate> (3)
+>  <Oldplate_number> (3)
 1
 
->  <Plate> (3)
+>  <plate_number> (3)
 1534
 
->  <Well> (3)
+>  <well_name> (3)
 A01
 
->  <Well_type> (3)
+>  <well_type> (3)
 EXPERIMENTAL
 
 >  <Row> (3)
@@ -34,10 +34,10 @@ EXPERIMENTAL
 >  <Col> (3)
 1
 
->  <Facility_Reagent_ID> (3)
+>  <facility_reagent_id> (3)
 ICCB-00589081
 
->  <Solvent> (3)
+>  <solvent> (3)
 DMSO
 
 > <facility_batch_id>
@@ -46,7 +46,7 @@ DMSO
 > <salt_form_id>
 101
 
->  <Chemical_Name> (5)
+>  <chemical_name> (5)
 fake compound name 1
 fake compound name 2
 
@@ -121,25 +121,25 @@ Biomol-TimTec1
 >  <Source> (4)
 Biomol-TimTec
 
->  <Vendor> (4)
+>  <vendor> (4)
 Biomol-TimTec
 
->  <Vendor_Reagent_ID> (4)
+>  <vendor_reagent_id> (4)
 ST001215
 
 >  <OldWell> (4)
 A01
 
->  <OldPlate> (4)
+>  <Oldplate_number> (4)
 2
 
->  <Plate> (4)
+>  <plate_number> (4)
 1534
 
->  <Well> (4)
+>  <well_name> (4)
 A02
 
->  <Well_type> (3)
+>  <well_type> (3)
 EXPERIMENTAL
 
 >  <Row> (4)
@@ -148,16 +148,16 @@ EXPERIMENTAL
 >  <Col> (4)
 2
 
->  <Facility_Reagent_ID> (4)
+>  <facility_reagent_id> (4)
 ICCB-00589082
 
->  <Solvent> (4)
+>  <solvent> (4)
 DMSO
 
->  <Concentration> (4)
+>  <concentration> (4)
 5 nM
 
->  <Chemical_Name> (5)
+>  <chemical_name> (5)
 fake compound name 1
 
 >  <CAS_Number> (5)
@@ -215,25 +215,25 @@ Biomol-TimTec1
 >  <Source> (5)
 Biomol-TimTec
 
->  <Vendor> (5)
+>  <vendor> (5)
 Biomol-TimTec
 
->  <Vendor_Reagent_ID> (5)
+>  <vendor_reagent_id> (5)
 ST000077
 
 >  <OldWell> (5)
 A02
 
->  <OldPlate> (5)
+>  <Oldplate_number> (5)
 1
 
->  <Plate> (5)
+>  <plate_number> (5)
 1534
 
->  <Well> (5)
+>  <well_name> (5)
 A03
 
->  <Well_type> (3)
+>  <well_type> (3)
 EXPERIMENTAL
 
 >  <Row> (5)
@@ -245,16 +245,16 @@ EXPERIMENTAL
 >  <ICCB_Num> (5)
 ICCB-00589083
 
->  <Solvent> (5)
+>  <solvent> (5)
 DMSO
 
->  <Concentration> (5)
+>  <concentration> (5)
 2.46 mg/ml
 
 >  <SaltData> (5)
 2C2H2O4
 
->  <Chemical_Name> (5)
+>  <chemical_name> (5)
 fake compound name 2
 
 >  <CAS_number> (5)
@@ -326,25 +326,25 @@ Biomol-TimTec1
 >  <Source> (6)
 Biomol-TimTec
 
->  <Vendor> (6)
+>  <vendor> (6)
 Biomol-TimTec
 
->  <Vendor_Reagent_ID> (6)
+>  <vendor_reagent_id> (6)
 ST001243
 
 >  <OldWell> (6)
 A02
 
->  <OldPlate> (6)
+>  <Oldplate_number> (6)
 2
 
->  <Plate> (6)
+>  <plate_number> (6)
 1534
 
->  <Well> (6)
+>  <well_name> (6)
 A04
 
->  <Well_type> (3)
+>  <well_type> (3)
 EXPERIMENTAL
 
 >  <Row> (6)
@@ -353,16 +353,16 @@ EXPERIMENTAL
 >  <Col> (6)
 4
 
->  <Facility_Reagent_ID> (6)
+>  <facility_reagent_id> (6)
 ICCB-00589084
 
->  <Solvent> (6)
+>  <solvent> (6)
 DMSO
 
->  <Concentration> (6)
+>  <concentration> (6)
 0.123 mg/ml
 
->  <Chemical_Name> (5)
+>  <chemical_name> (5)
 fake compound name 3
 
 >  <smiles> (10)
@@ -433,25 +433,25 @@ Biomol-TimTec1
 >  <Source> (7)
 Biomol-TimTec
 
->  <Vendor> (7)
+>  <vendor> (7)
 Biomol-TimTec
 
->  <Vendor_Reagent_ID> (7)
+>  <vendor_reagent_id> (7)
 ST000202
 
 >  <OldWell> (7)
 A03
 
->  <OldPlate> (7)
+>  <Oldplate_number> (7)
 1
 
->  <Plate> (7)
+>  <plate_number> (7)
 1534
 
->  <Well> (7)
+>  <well_name> (7)
 A05
 
->  <Well_type> (3)
+>  <well_type> (3)
 EXPERIMENTAL
 
 >  <Row> (7)
@@ -460,16 +460,16 @@ EXPERIMENTAL
 >  <Col> (7)
 5
 
->  <Facility_Reagent_ID> (7)
+>  <facility_reagent_id> (7)
 ICCB-00589085
 
->  <Solvent> (7)
+>  <solvent> (7)
 DMSO
 
->  <Concentration> (7)
+>  <concentration> (7)
 115 pM
 
->  <Chemical_Name> (5)
+>  <chemical_name> (5)
 fake compound name 4
 
 >  <smiles> (10)
@@ -538,25 +538,25 @@ Biomol-TimTec1
 >  <Source> (8)
 Biomol-TimTec
 
->  <Vendor> (8)
+>  <vendor> (8)
 Biomol-TimTec
 
->  <Vendor_Reagent_ID> (8)
+>  <vendor_reagent_id> (8)
 ST001344
 
 >  <OldWell> (8)
 A03
 
->  <OldPlate> (8)
+>  <Oldplate_number> (8)
 2
 
->  <Plate> (8)
+>  <plate_number> (8)
 1534
 
->  <Well> (8)
+>  <well_name> (8)
 A06
 
->  <Well_type> (3)
+>  <well_type> (3)
 EXPERIMENTAL
 
 >  <Row> (8)
@@ -565,13 +565,13 @@ EXPERIMENTAL
 >  <Col> (8)
 6
 
->  <Facility_Reagent_ID> (8)
+>  <facility_reagent_id> (8)
 ICCB-00589086
 
->  <Solvent> (8)
+>  <solvent> (8)
 DMSO
 
->  <Concentration> (8)
+>  <concentration> (8)
 2.46 mg/ml
 
 >  <smiles> (10)
@@ -656,25 +656,25 @@ Biomol-TimTec1
 >  <Source> (10)
 Biomol-TimTec
 
->  <Vendor> (10)
+>  <vendor> (10)
 Biomol-TimTec
 
->  <Vendor_Reagent_ID> (10)
+>  <vendor_reagent_id> (10)
 ST001467
 
 >  <OldWell> (10)
 A04
 
->  <OldPlate> (10)
+>  <Oldplate_number> (10)
 2
 
->  <Plate> (10)
+>  <plate_number> (10)
 1534
 
->  <Well> (10)
+>  <well_name> (10)
 A08
 
->  <Well_type> (3)
+>  <well_type> (3)
 EXPERIMENTAL
 
 >  <Row> (10)
@@ -683,13 +683,13 @@ EXPERIMENTAL
 >  <Col> (10)
 8
 
->  <Facility_Reagent_ID> (10)
+>  <facility_reagent_id> (10)
 ICCB-00589088
 
->  <Solvent> (10)
+>  <solvent> (10)
 DMSO
 
->  <Concentration> (10)
+>  <concentration> (10)
 115 nM
 
 >  <smiles> (10)
@@ -722,24 +722,24 @@ Biomol-TimTec1
 >  <Source> (3)
 Biomol-TimTec
 
->  <Vendor> (3)
+>  <vendor> (3)
 Biomol-TimTec
 
->  <Vendor_Reagent_ID> (3)
+>  <vendor_reagent_id> (3)
 
 >  <OldWell> (3)
 P24
 
->  <OldPlate> (3)
+>  <Oldplate_number> (3)
 2
 
->  <Plate> (3)
+>  <plate_number> (3)
 1534
 
->  <Well> (3)
+>  <well_name> (3)
 A09
 
->  <Well_type> (3)
+>  <well_type> (3)
 EMPTY
 
 >  <Row> (3)
@@ -748,15 +748,15 @@ EMPTY
 >  <Col> (3)
 8
 
->  <Facility_Reagent_ID> (3)
+>  <facility_reagent_id> (3)
 
->  <Solvent> (3)
-
-
->  <Concentration> (3)
+>  <solvent> (3)
 
 
->  <Chemical_Name> (5)
+>  <concentration> (3)
+
+
+>  <chemical_name> (5)
 
 
 >  <smiles> (10)

@@ -41,7 +41,7 @@ from tastypie.test import ResourceTestCase, TestApiClient
 from tastypie.fields import BooleanField
 
 from reports.serializers import CsvBooleanField,CSVSerializer, SDFSerializer,\
-    LimsSerializer
+    LimsSerializer, XLSSerializer
 from reports.utils.sdf2py import MOLDATAKEY
 from tastypie.utils.dict import dict_strip_unicode_keys
 from django.test.testcases import SimpleTestCase
@@ -228,6 +228,7 @@ class NoDbTestRunner(DjangoTestSuiteRunner):
     """ Override the database teardown defined in parent class """
     pass
 
+        
 
 class SDFSerializerTest(SimpleTestCase):
     
@@ -697,6 +698,51 @@ class SerializerTest(TestCase):
         
         # TODO: delete the file
         logger.debug(str(('======== test_csv done =========')))
+
+
+
+class XLSSerializerTest(SimpleTestCase):
+    
+    def test1_read(self):
+        logger.debug('==== test1 XLS read')
+        
+        records = [{
+            'key1': 'aval1',
+            'key2': 'aval2',
+            'key3': 'aval3'            
+            },{
+            'key1': 'bval1',
+            'key2': 'bval2',
+            'key3': 'bval3'            
+            },
+            ]
+
+        serializer = XLSSerializer()
+        filename = "lims/static/test_data/test1_output.xls"
+        _data = serializer.to_xls(records)
+        with open(os.path.join(APP_ROOT_DIR, filename), 'w') as fout:    
+            fout.write(_data)
+            
+        fout.close()
+    
+        with open(os.path.join(APP_ROOT_DIR, filename)) as fin:    
+            _data = serializer.from_xls(fin.read(), root=None)
+            final_data = _data
+            logger.debug(str(('final_data', final_data)))
+            
+            self.assertTrue(
+                len(final_data)==len(records), 
+                str(('len is', len(final_data),len(records))))
+            for obj in final_data:
+                logger.debug(str(('object: ', obj)))
+                
+                for record in records:
+                    if record['key1'] == obj['key1']:
+                        for k,v in record.items():
+                            self.assertTrue(
+                                obj[k] == v.strip(), 
+                                str(('values not equal', k, record[k], 'read:', v)))
+
 
 class HydrationTest(TestCase):
     
@@ -1862,11 +1908,9 @@ class RecordResource(MetaHashResourceBootstrap):
         logger.debug(str(('--------resp to get:', resp, resp.status_code)))
         
         new_obj = self.deserialize(resp)
-#         logger.debug(str(('===deserialized object:', json.dumps(new_obj))))
         
         self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
         self.assertEqual(len(new_obj['objects']), len(datapoints), str((new_obj)))
-#         logger.debug(str(('=== returned objs', new_obj['objects'])))
         
         for inputobj in datapoints:
             logger.debug(str(('=====testing:', inputobj)))
@@ -1944,10 +1988,3 @@ class RecordResource(MetaHashResourceBootstrap):
         
         logger.debug('================ done: reports test2_update =============== ')
             
-#     
-#     def test3_linked_field_table(self):
-#         '''
-#         Test of a linked table containing more than one field.
-#         (this is like the SMR, RNAi)
-#         '''
-#         pass

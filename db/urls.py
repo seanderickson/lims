@@ -6,7 +6,7 @@ from db.api import ScreensaverUserResource, ScreenResource, \
     ScreenSummaryResource, ScreenResultResource, LabHeadResource, \
     LabAffiliationResource, ScreeningRoomUserResource, DataColumnResource, LibraryResource,\
     LibraryCopyResource, LibraryCopyPlateResource, PlateLocationResource,\
-    WellResource, ReagentResource, ActivityResource, LibraryContentsVersionResource,\
+    WellResource, ActivityResource, LibraryContentsVersionResource,\
     SmallMoleculeReagentResource, SilencingReagentResource, NaturalProductReagentResource
 
 v1_api = Api(api_name='v1')
@@ -23,7 +23,6 @@ v1_api.register(LibraryCopyResource())
 v1_api.register(LibraryCopyPlateResource())
 v1_api.register(PlateLocationResource())
 v1_api.register(WellResource())
-v1_api.register(ReagentResource())
 v1_api.register(ActivityResource())
 v1_api.register(LibraryContentsVersionResource())
 v1_api.register(SmallMoleculeReagentResource())
@@ -32,5 +31,6 @@ v1_api.register(NaturalProductReagentResource())
 
 urlpatterns = patterns('',
     url(r'^$', views.main, name="home"),
+    url(r'^well_image/(?P<well_id>\S+)$','db.views.smiles_image', name="smiles_image" ),
     (r'^api/', include(v1_api.urls)),
 )

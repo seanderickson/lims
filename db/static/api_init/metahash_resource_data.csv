@@ -11,7 +11,6 @@ platelocation,resource,"[room,freezer,shelf,bin]","[room,, ,freezer,, ,shelf,, ,
 well,resource,[well_id],[well_id],/reports/api/v1/resource/well/,0,,"A well on a library source plate","Library Well","[list,detail]",,,db,
 librarycontentsversion,resource,"[library_short_name,version_number]","[library_short_name,version_number]",/reports/api/v1/resource/librarycontentsversion/,0,,"The Library Contents Version","Library Contents Version","[list,detail]",,,db,
 activity,resource,[activity_id],[activity_id],/reports/api/v1/resource/activity/,0,,"Log of an administrative activity",Activity,"[list,detail]",,,db,
-reagent,resource,[substance_id],"[vendor_name,vendor_id]",/reports/api/v1/resource/reagent/,0,,"A reagent in a library well.",Reagent,"[list,detail]",,,db,
-smallmoleculereagent,resource,[reagent.substance_id],"[vendor_name,vendor_id]",/reports/api/v1/resource/smallmoleculereagent/,0,,"A reagent in a library well.","Small Molecule Reagent","[list,detail]",,,db,db.models.SmallMoleculeReagent
-silencingreagent,resource,[reagent.substance_id],"[vendor_name,vendor_id]",/reports/api/v1/resource/silencingreagent/,0,,"A reagent in a library well.","Silencing Reagent","[list,detail]",,,db,
-naturalproductreagent,resource,[reagent.substance_id],"[vendor_name,vendor_id]",/reports/api/v1/resource/naturalproductreagent/,0,,"A reagent in a library well.","Natural Product Reagent","[list,detail]",,,db,
+smallmoleculereagent,resource,[substance_id],"[vendor_name,vendor_id]",/reports/api/v1/resource/smallmoleculereagent/,0,,"A reagent in a library well.","Small Molecule Reagent","[list,detail]",,,db,db.models.SmallMoleculeReagent
+silencingreagent,resource,[substance_id],"[vendor_name,vendor_id]",/reports/api/v1/resource/silencingreagent/,0,,"A reagent in a library well.","Silencing Reagent","[list,detail]",,,db,db.models.SilencingReagent
+naturalproductreagent,resource,[substance_id],"[vendor_name,vendor_id]",/reports/api/v1/resource/naturalproductreagent/,0,,"A reagent in a library well.","Natural Product Reagent","[list,detail]",,,db,db.models.NaturalProductReagent

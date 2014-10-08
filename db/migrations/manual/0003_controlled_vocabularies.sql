@@ -2,7 +2,7 @@ BEGIN;
 
 INSERT INTO schema_history (screensaver_revision, date_updated, comment)
 SELECT
-20140005,
+20140003,
 current_timestamp,
 'migrate different controlled vocabularies';
 
@@ -11,7 +11,6 @@ current_timestamp,
   * newer names have no spaces, and only alphanumeric and "_","." chars
   * for simplicity in URI construction & parsing
 **/
-
 
 /**
  library_well_type 
@@ -23,13 +22,9 @@ current_timestamp,
  DMSO
  library control
 **/
-update well set library_well_type='library_control' where library_well_type='library control'
-update well set library_well_type='undefined' where library_well_type='<undefined>'
-update well set library_well_type='rnai_buffer' where library_well_type='RNAi buffer'
-update well set library_well_type='dmso' where library_well_type='DMSO'
-
-
-
-
+update well set library_well_type='library_control' where library_well_type='library control';
+update well set library_well_type='undefined' where library_well_type='<undefined>';
+update well set library_well_type='rnai_buffer' where library_well_type='RNAi buffer';
+update well set library_well_type='dmso' where library_well_type='DMSO';
 
 COMMIT;

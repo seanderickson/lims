@@ -107,6 +107,8 @@ alter sequence silencing_reagent_duplex_wells_sequence
     owned by silencing_reagent_duplex_wells.id;
 
 
+alter table silencing_reagent_duplex_wells 
+    RENAME COLUMN silencing_reagent_id to silencingreagent_id;
 /** 
   *** Copy the silencing reagent gene information from the link tables
   These tables were created to allow multiple genes to be associated with the

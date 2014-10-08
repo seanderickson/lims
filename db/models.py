@@ -858,13 +858,13 @@ class GeneSymbol(models.Model):
         unique_together = (('gene', 'ordinal'))    
         db_table = 'gene_symbol'
 
-
-class SilencingReagentDuplexWells(models.Model):
-    silencing_reagent = models.ForeignKey(SilencingReagent)
-    well = models.ForeignKey('Well')
-    class Meta:
-        unique_together = (('silencing_reagent', 'well'))    
-        db_table = 'silencing_reagent_duplex_wells'
+# 
+# class SilencingReagentDuplexWells(models.Model):
+#     silencing_reagent = models.ForeignKey(SilencingReagent)
+#     well = models.ForeignKey('Well')
+#     class Meta:
+#         unique_together = (('silencing_reagent', 'well'))    
+#         db_table = 'silencing_reagent_duplex_wells'
 
 class SmallMoleculeReagent(models.Model):
     reagent = models.OneToOneField(Reagent, primary_key=True)

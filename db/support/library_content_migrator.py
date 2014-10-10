@@ -154,7 +154,7 @@ fg.species_name as facility_gene_species,
     from gene_genbank_accession_number ga
     where ga.gene_id = sr.facility_gene_id ) as facility_genbank_accession_numbers,
 (select '["' || array_to_string(array_agg(well_id), '","') || '"]' 
-    from silencing_reagent_duplex_wells dw where dw.silencing_reagent_id=r.reagent_id) as duplex_wells
+    from silencing_reagent_duplex_wells dw where dw.silencingreagent_id=r.reagent_id) as duplex_wells
 from reagent r join silencing_reagent sr using(reagent_id)
 left join gene vg on(vendor_gene_id=vg.gene_id)
 left join gene fg on(facility_gene_id=fg.gene_id)

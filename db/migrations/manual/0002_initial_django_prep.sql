@@ -109,6 +109,7 @@ alter sequence silencing_reagent_duplex_wells_sequence
 
 alter table silencing_reagent_duplex_wells 
     RENAME COLUMN silencing_reagent_id to silencingreagent_id;
+
 /** 
   *** Copy the silencing reagent gene information from the link tables
   These tables were created to allow multiple genes to be associated with the
@@ -125,5 +126,13 @@ update silencing_reagent si
 
 drop table reagent_facility_genes cascade;
 drop table reagent_vendor_genes cascade;
+
+/**
+  Make the well concentration fields units specific
+**/
+
+update well set molar_concentration = molar_concentration*1000000;
+alter table well rename COLUMN molar_concentration to micro_molar_concentration;
+
 
 COMMIT;

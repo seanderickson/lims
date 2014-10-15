@@ -294,11 +294,11 @@ class Vocabularies(models.Model):
     objects                 = MetaManager()
     #    objects                 = models.Manager() # default manager
     
-    scope                   = models.CharField(max_length=35, blank=True)
-    key                     = models.CharField(max_length=35, blank=True)
+    scope                   = models.CharField(max_length=128, blank=True)
+    key                     = models.CharField(max_length=128, blank=True)
     alias                   = models.CharField(max_length=35, blank=True)
     ordinal                 = models.IntegerField();
-    title                   = models.CharField(max_length=100, blank=True)
+    title                   = models.CharField(max_length=512, blank=True)
     
     # All other fields are "virtual" JSON stored fields, (unless we decide to 
     # migrate them out to real fields for rel db use cases)

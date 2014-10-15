@@ -45,7 +45,11 @@ def parse_mol(data, _delimre=re.compile(ur'(>\s+<[^>]+>[^\r^\n]*[\r\n]*)')):
 
         v = _dos_unix_le.split(v)
         if len(v) == 1: v = v[0]
+        if len(v) == 0:
+            v = None
         
+        # TODO: review spec for comments:
+        # http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip
         if key == COMMENTKEY:
             last_comment = v
             continue

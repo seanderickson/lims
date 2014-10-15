@@ -61,6 +61,7 @@ class TextIntegerField(fields.IntegerField):
             return None
         return val
 
+
 class BackboneSerializer(Serializer):
     
     def from_json(self, content):
@@ -74,6 +75,7 @@ class BackboneSerializer(Serializer):
         if(logger.isEnabledFor(logging.DEBUG)):
             logger.debug(str(("loading content:", content)))
         return json.loads(content)
+
 
 # NOTE: removed this class as this is the stock behavior in newer tastypie
 # class TimeZoneAwareDateSerializer(Serializer):
@@ -90,6 +92,7 @@ class BackboneSerializer(Serializer):
 #  
 #         return data.isoformat()
 
+
 class PrettyJSONSerializer(Serializer):
     json_indent = 2
 
@@ -102,6 +105,8 @@ class PrettyJSONSerializer(Serializer):
 
 class SDFSerializer(Serializer):
     
+    # FIXME: init could call super.__init__ first, then just modify
+    # "self.content_types" and "self.formats"
     def __init__(self, content_types=None, formats=None, **kwargs):
 
         if not content_types:
@@ -131,7 +136,7 @@ class SDFSerializer(Serializer):
         if 'objects' in data:
             data = data['objects']
         if len(data) == 0:
-            return output
+            return data
         
         if isinstance(data,dict):
             data = [data]
@@ -142,7 +147,9 @@ class SDFSerializer(Serializer):
             if d.get(MOLDATAKEY, None):
                 output.write(str(d[MOLDATAKEY]))
                 output.write('\n') 
-#                 del d[MOLDATAKEY]
+                # because we've not copied the data, don't delete it
+                # future optimize: implement data as iterable
+                #                 del d[MOLDATAKEY]
             for k,v in d.items():
                 if k == MOLDATAKEY: 
                     continue
@@ -151,8 +158,10 @@ class SDFSerializer(Serializer):
                 # http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip
                 # "only one blank line should terminate a data item"
                 if v:
-                    # find iterables, but not strings
-                    if not hasattr(v, "strip") and hasattr(v, "__getitem__") or hasattr(v, "__iter__"): 
+                    # find lists, but not strings (or dicts)
+                    # Note: a dict here will be non-standard; probably an error 
+                    # report, so just stringify dicts as is.
+                    if not hasattr(v, "strip") and isinstance(v, (list,tuple)): 
                         for x in v:
                             output.write(str(x))
                             output.write('\n')
@@ -292,7 +301,7 @@ class XLSSerializer(Serializer):
         if 'objects' in data:
             data = data['objects']
         if len(data) == 0:
-            return raw_data
+            return data
 
         sheet = book.add_sheet('objects')
 
@@ -339,11 +348,15 @@ class XLSSerializer(Serializer):
                 for col in range(sheet.ncols):
                     cell = sheet.cell(row,col)
                     value = cell.value
-                    if cell.ctype == xlrd.XL_CELL_NUMBER:
+                    if not value:
+                        yield None
+                    elif cell.ctype == xlrd.XL_CELL_NUMBER:
                         ival = int(value)
                         if value == ival:
                             value = ival
-                    yield str(value)
+                        yield str(value)
+                    else:
+                        yield str(value)
             for row in range(sheet.nrows):
                 yield read_row(row)
 
@@ -399,7 +412,7 @@ class CSVSerializer(Serializer):
         if 'objects' in data:
             data = data['objects']
         if len(data) == 0:
-            return raw_data
+            return data
 
         if isinstance(data, dict):
             # usually, this happens when the data is actually an error message;
@@ -632,12 +645,11 @@ class CursorSerializer(Serializer):
         logger.info('done, wrote: %d' % i)
 
 
-
 class LimsSerializer(PrettyJSONSerializer, BackboneSerializer,CSVSerializer, 
                         SDFSerializer, XLSSerializer):
-    ''' Combine all of the Serializers used by the API
+    ''' 
+    Combine all of the Serializers used by the API
     '''
-    
     
 
 # class SmallMoleculeSerializer(LimsSerializer, SDFSerializer):

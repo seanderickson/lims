@@ -67,3 +67,5 @@ empty,library.well_type,/reports/api/v1/vocabularies/library.well_type/empty/,3,
 dmso,library.well_type,/reports/api/v1/vocabularies/library.well_type/dmso/,4,"Small molecule libraries only",DMSO,DMSO
 library_control,library.well_type,/reports/api/v1/vocabularies/library.well_type/library_control/,5,"RNAi libraries only","Library Control","Library Control"
 rnai_buffer,library.well_type,/reports/api/v1/vocabularies/library.well_type/rnai_buffer/,6,,"RNAi Buffer","RNAi Buffer"
+sirna,silencing_reagent.type,vocabularies/silencing_reagent.silencing_reagent_type/sirna/,1,,"Small Interfering RNA",siRNA
+mirna,silencing_reagent.type,vocabularies/silencing_reagent.silencing_reagent_type/mirna/,2,,microRNA,miRNA

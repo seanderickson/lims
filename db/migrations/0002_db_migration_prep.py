@@ -104,6 +104,34 @@ class Migration(SchemaMigration):
             self.gf('django.db.models.fields.IntegerField')(null=True))
         
 
+        ### Change Well fixed precision columns to float
+
+        db.execute(
+            ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
+                  table='well', column='molar_concentration'))
+        db.execute(
+            ( "ALTER TABLE {table} ADD COLUMN {column} double precision").format(
+                  table='well', column='molar_concentration'))
+        db.execute(
+            ( "update {table} set {column} = tmp_{column}").format(
+                  table='well', column='molar_concentration'))
+        db.execute(
+            ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
+                  table='well', column='molar_concentration'))
+        
+        db.execute(
+            ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
+                  table='well', column='mg_ml_concentration'))
+        db.execute(
+            ( "ALTER TABLE {table} ADD COLUMN {column} double precision").format(
+                  table='well', column='mg_ml_concentration'))
+        db.execute(
+            ( "update {table} set {column} = tmp_{column}").format(
+                  table='well', column='mg_ml_concentration'))
+        db.execute(
+            ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
+                  table='well', column='mg_ml_concentration'))
+        
         ### Change SMR fixed precision columns to float
         
         db.execute(
@@ -132,10 +160,6 @@ class Migration(SchemaMigration):
             ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
                   table='small_molecule_reagent', column='molecular_mass'))
         
-        db.execute(
-            ( "ALTER TABLE {table} DROP COLUMN {column} ").format(
-                  table='molfile', column='ordinal'))
-        
         ### FIXUP Reagent related tables so that they now point to reagent, not smr:
         # TODO: consider using raw SQL
 
@@ -153,8 +177,13 @@ class Migration(SchemaMigration):
         self._alter_table_parent(
             'small_molecule_chembl_id', 'reagent_id,chembl_id',
             'reagent_id', 'reagent', 'reagent_id')
-        
 
+        # Since there's only ever one molfile, don't need the ordinal
+        
+        db.execute(
+            ( "ALTER TABLE {table} DROP COLUMN {column} ").format(
+                  table='molfile', column='ordinal'))
+        
         ### Update screensaver user sub tables
         # TODO: REDO This based on reports.User - 20140409 - sde4
         

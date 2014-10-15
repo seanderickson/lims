@@ -50,7 +50,8 @@ from reports import dump_obj
 from reports.dump_obj import dumpObj
 from tastypie import fields
 
-
+import reports.utils.serialize
+    
 logger = logging.getLogger(__name__)
 
 BASE_URI = '/reports/api/v1'
@@ -71,6 +72,14 @@ def is_boolean(field):
     return False
     
 csvBooleanField = CsvBooleanField()
+
+def numerical_equivalency(val, val2):
+    try:
+        if float(val) == float(val2):
+            return True
+    except:
+        pass
+    return False
 
 ####
 # NOTE: equivocal, and other equivalency methods are for end-to-end testing 
@@ -95,6 +104,9 @@ def equivocal(val1, val2):
         return True, ('val1', val1, 'val2', val2 )
 
     if isinstance(val1, (int, long, float, complex)):
+        if numerical_equivalency(val1, val2):
+            return True, ('val1', val1, 'val2', val2 )
+
         val1 = str(val1)
         val2 = str(val2)
         if val1 != val2:
@@ -112,6 +124,9 @@ def equivocal(val1, val2):
             if (is_boolean(val1) and 
                     csvBooleanField.convert(val1)==csvBooleanField.convert(val2)):
                 return True, ('val1', val1, 'val2', val2 )
+            elif numerical_equivalency(val1,val2):
+                return True, ('val1', val1, 'val2', val2 )
+                
             return False, ('val1', val1, 'val2', val2 )
     else: # better be a list
         if not isinstance(val1, list) and isinstance(val2, list):
@@ -192,7 +207,6 @@ def find_obj_in_list(obj, item_list, **kwargs):
     for item in item_list:
         result, msgs = assert_obj1_to_obj2(obj, item, **kwargs)
         if result:
-#             logger.debug(str(('found', obj, item)))
             return True, (item)
         else:
             if not msgs in list_msgs:
@@ -204,11 +218,10 @@ def find_all_obj_in_list(list1, list2, **kwargs):
     for item in list1:
         result, msgs = find_obj_in_list(item, list2, **kwargs)
         if not result:
-#             logger.debug(str(('-----not found', item, list2, msgs)))
             return False, msgs
     return True, msgs
 
-# Run tests without a database:
+# To Run tests without a database:
 # Example:
 # ./manage.py test reports.SDFSerializerTest.test2_clean_data_sdf \
 #      --settings=lims.settings_testing_debug --verbosity=2 --testrunner=reports.tests.NoDbTestRunner
@@ -228,257 +241,6 @@ class NoDbTestRunner(DjangoTestSuiteRunner):
     """ Override the database teardown defined in parent class """
     pass
 
-        
-
-class SDFSerializerTest(SimpleTestCase):
-    
-    def test1_read(self):
-        logger.debug('=== test1 SDF read')
-        
-        records = [{
-            'smiles': 'Cl',
-            'compound_name': 'HCl (hydrochloric acid)',
-            'molecular_mass': '35.976677742',
-            MOLDATAKEY: '''
-  SciTegic12121315112D
-
-  1  0  0  0  0  0            999 V2000
-    0.0000    0.0000    0.0000 Cl  0  0  0  0  0  0  0  0  0  0  0  0
-M  END
-'''
-            },
-            {
-            'smiles': 'C([C@@H](C(=O)O)O)C(=O)O',
-            'inchi': 'InChI=1S/C4H6O5/c5-2(4(8)9)1-3(6)7/h2,5H,1H2,(H,6,7)(H,8,9)/t2-/m0/s1',
-            'compound_name': 'malate',
-            'molecular_mass': '134.021523292',
-            MOLDATAKEY: '''
-  SciTegic12121315112D
-
-  9  8  0  0  1  0            999 V2000
-    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
-    0.0000    0.0000    0.0000 C   0  0  1  0  0  0  0  0  0  0  0  0
-    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
-    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
-    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
-    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
-    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
-    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
-    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
-  1  2  1  0  0  0  0
-  2  3  1  0  0  0  0
-  3  4  2  0  0  0  0
-  3  5  1  0  0  0  0
-  2  6  1  1  0  0  0
-  1  7  1  0  0  0  0
-  7  8  2  0  0  0  0
-  7  9  1  0  0  0  0
-M  END
-'''                
-            },{
-            'smiles': 'O.O.Cl',
-            'inchi': 'InChI=1S/ClH.2H2O/h1H;2*1H2',
-            'compound_name': 'hydrochloride hydrate',
-            'molecular_mass': '71.99780711',
-            MOLDATAKEY: '''
-  SciTegic12121315112D
-
-  3  0  0  0  0  0            999 V2000
-    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
-    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
-    0.0000    0.0000    0.0000 Cl  0  0  0  0  0  0  0  0  0  0  0  0
-M  END
-'''
-            }]
-        
-        serializer = SDFSerializer()
-        filename = "lims/static/test_data/test1_output.sdf"
-        sdf_data = serializer.to_sdf(records)
-        with open(os.path.join(APP_ROOT_DIR, filename), 'w') as fout:    
-            fout.write(sdf_data)
-            
-        fout.close()
-    
-        with open(os.path.join(APP_ROOT_DIR, filename)) as fin:    
-            _data = serializer.from_sdf(fin.read(), root=None)
-            final_data = _data
-            logger.debug(str(('final_data', final_data)))
-            
-            self.assertTrue(
-                len(final_data)==len(records), 
-                str(('len is', len(final_data),len(records))))
-            for obj in final_data:
-                logger.debug(str(('object: ', obj)))
-                
-                for record in records:
-                    if record['smiles'] == obj['smiles']:
-                        for k,v in record.items():
-                            self.assertTrue(
-                                obj[k] == v.strip(), 
-                                str(('values not equal', k, record[k], 'read:', v)))
-
-    def test2_clean_data_sdf(self):
-        logger.debug(str(('==== test2_clean_data_sdf =====')))
-
-        record_one = {
-            r'vendor': r'Biomol-TimTec',
-            r'vendor_reagent_id': r'SPL000058',
-            r'vendor_batch_id': r'HM-001_TM-20090805',
-            r'plate_number': r'1534',
-            r'well_name': r'A01',
-            r'library_well_type': r'EXPERIMENTAL',
-            r'facility_reagent_id': r'ICCB-00589081',
-            r'facility_batch_id':r'008',
-            r'compound_name': [r'fake compound name 1',r'fake compound name 2'],
-            r'smiles':r'O=C1CC(C)(C)CC(=O)C1C(c1ccccc1)C1=C(O)CC(C)(C)CC1=O',
-            r'inchi':r'InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-23(3,4)13-18(21)27/h5-9,19-20,26H,10-13H2,1-4H3',
-            r'pubchem_cid': [r'558309',r'7335957'],
-            r'chembank_id':[r'1665724',r'6066882'],
-            r'concentration':r'111 nM',
-            r'chembl_id':[r'100001',r'100002',r'111102'],
-            r'pubmed_id':[r'20653109',r'20653081'] }
-
-        record_two = {
-            r'Library': r'Biomol-TimTec1',
-            r'Source': r'Biomol-TimTec',
-            r'vendor': r'Biomol-TimTec',
-            r'vendor_reagent_id': r'ST001215',
-            r'plate_number': r'1534',
-            r'well_name': r'A02',
-            r'library_well_type': r'EXPERIMENTAL',
-            r'Row': r'1',
-            r'Col':r'2',
-            r'facility_reagent_id': r'ICCB-00589082',
-            r'concentration': r'5 nM',
-            r'compound_name':r'fake compound name 1',
-            r'CAS_Number': r'fake cas number 1',
-            r'smiles':r'Clc1ccc(\\C=C/c2c(C)n(C)n(c3ccccc3)c2=O)c(Cl)c1',
-            r'inchi':r'InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-23(3,4)13-18(21)27/h5-9,19-20,26H,10-13H2,1-4H3',
-            MOLDATAKEY:
-r'''Structure89
-csChFnd70/04290511482D
-
- 16 17  0  0  0  0  0  0  0  0999 V2000
-    4.8373    2.0813    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
-    4.8373    0.7093    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
-    3.6256    2.7850    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
-    0.0000    0.7093    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
-    6.0491    2.7850    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
-    2.4179    2.0813    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
-    2.4179    0.7093    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
-    0.0000    2.0813    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
-    7.2308    6.2888    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
-    7.2308    4.9141    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
-    1.2076    2.7850    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
-    1.2076    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
-    6.0491    4.2034    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
-    7.2308    2.1223    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
-    6.0491    0.0000    0.0000 N   0  0  0  0  0  0  0  0  0  0  0  0
-    3.6256    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
-  2  1  1  0  0  0  0
-  3  1  2  0  0  0  0
- 16  2  1  0  0  0  0
-  5  1  1  0  0  0  0
-  6  3  1  0  0  0  0
-  7  6  2  0  0  0  0
- 15  2  2  0  0  0  0
- 14  5  2  0  0  0  0
- 13  5  1  0  0  0  0
- 11  6  1  0  0  0  0
- 12  7  1  0  0  0  0
- 10 13  1  0  0  0  0
-  9 10  1  0  0  0  0
-  8 11  2  0  0  0  0
-  4  8  1  0  0  0  0
- 16  7  1  0  0  0  0
-  4 12  2  0  0  0  0
-M  END'''            }
-        last_record = {
-            'Library': 'Biomol-TimTec1',
-            'Source': 'Biomol-TimTec',
-            'vendor': 'Biomol-TimTec',
-            'vendor_reagent_id': '',
-            'plate_number': '1534',
-            'well_name': 'A09',
-            'library_well_type': 'EMPTY',
-            'facility_reagent_id': '',
-            'concentration': '',
-            'compound_name': '',
-            'smiles': '',
-            'inchi': '',
-            }
-        
-        
-        serializer = SDFSerializer()
-        filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_small_molecule.sdf'
-
-        with open(os.path.join(APP_ROOT_DIR, filename)) as fin:    
-            _data = serializer.from_sdf(fin.read(), root=None)
-            input_data = _data
-            
-            if logger.isEnabledFor(logging.DEBUG):
-                print 'data read in'
-                for x in input_data:
-                    print x, '\n'
-            
-            expected_count = 8
-            self.assertEqual(len(input_data), expected_count, 
-                str(('initial serialization of ',filename,'found',
-                    len(input_data), 'expected',expected_count,
-                    'input_data',input_data)))
-            
-            result, msgs = assert_obj1_to_obj2(record_one, input_data[0])
-            self.assertTrue(result, msgs)
- 
-            if logger.isEnabledFor(logging.DEBUG):
-                print 'record 1 expected:'
-                print input_data[1][MOLDATAKEY]
-                print '====='
-                print 'record 2 read:'
-                print record_two[MOLDATAKEY]
-            
-                for i,c in enumerate(input_data[1][MOLDATAKEY]):
-                    if record_two[MOLDATAKEY][i] != c:
-                        print 'i', i, c,record_two[MOLDATAKEY][i]
-                        break 
-
-            result, msgs = assert_obj1_to_obj2(record_two, input_data[1])
-            self.assertTrue(result, msgs)
- 
-            result, msgs = assert_obj1_to_obj2(last_record, input_data[-1])
-            self.assertTrue(result, msgs)
- 
-            # Now test the whole system by writing back out and reading back in
-            
-            out_filename = os.path.join(APP_ROOT_DIR, filename + 'out')
-            sdf_data = serializer.to_sdf(input_data)
-            with open(out_filename, 'w') as fout:    
-                fout.write(sdf_data)
-            fout.close()
-
-            with open(out_filename) as fin:    
-                _fdata = serializer.from_sdf(fin.read(), root=None)
-                final_data = _fdata
-                
-                self.assertEqual(len(input_data), len(final_data), 
-                    str(('initial serialization of ',out_filename,'found',
-                        len(final_data), 'expected',len(input_data),
-                        'final_data',final_data)))
-                
-                keys_not_to_check=[]
-                for i,inputobj in enumerate(input_data):
-                    result, outputobj = find_obj_in_list(
-                        inputobj,final_data, excludes=keys_not_to_check )
-                    if not result:
-                        print 'input obj not found'
-                        print inputobj, '\n'
-                        print 'final data read in:'
-                        for x in final_data:
-                            print x , '\n'
-                        print 'messages'
-                        print_find_errors(outputobj)
-                        
-                        self.fail('input object not found')
 
 
 # TODO searching for a recursive way here...
@@ -643,8 +405,6 @@ class BaselineTest(TestCase):
         logger.debug(str(('====== test4_user_example done ===='))) 
     
     
-import reports.utils.serialize
-    
 class SerializerTest(TestCase):
 
     def test_csv(self):
@@ -683,6 +443,254 @@ class SerializerTest(TestCase):
         # TODO: delete the file
         logger.debug(str(('======== test_csv done =========')))
 
+class SDFSerializerTest(SimpleTestCase):
+    
+    def test1_read(self):
+        logger.debug('=== test1 SDF read')
+        
+        records = [{
+            'smiles': 'Cl',
+            'compound_name': 'HCl (hydrochloric acid)',
+            'molecular_mass': '35.976677742',
+            MOLDATAKEY: '''
+  SciTegic12121315112D
+
+  1  0  0  0  0  0            999 V2000
+    0.0000    0.0000    0.0000 Cl  0  0  0  0  0  0  0  0  0  0  0  0
+M  END
+'''
+            },
+            {
+            'smiles': 'C([C@@H](C(=O)O)O)C(=O)O',
+            'inchi': 'InChI=1S/C4H6O5/c5-2(4(8)9)1-3(6)7/h2,5H,1H2,(H,6,7)(H,8,9)/t2-/m0/s1',
+            'compound_name': 'malate',
+            'molecular_mass': '134.021523292',
+            MOLDATAKEY: '''
+  SciTegic12121315112D
+
+  9  8  0  0  1  0            999 V2000
+    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    0.0000    0.0000 C   0  0  1  0  0  0  0  0  0  0  0  0
+    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+  1  2  1  0  0  0  0
+  2  3  1  0  0  0  0
+  3  4  2  0  0  0  0
+  3  5  1  0  0  0  0
+  2  6  1  1  0  0  0
+  1  7  1  0  0  0  0
+  7  8  2  0  0  0  0
+  7  9  1  0  0  0  0
+M  END
+'''                
+            },{
+            'smiles': 'O.O.Cl',
+            'inchi': 'InChI=1S/ClH.2H2O/h1H;2*1H2',
+            'compound_name': 'hydrochloride hydrate',
+            'molecular_mass': '71.99780711',
+            MOLDATAKEY: '''
+  SciTegic12121315112D
+
+  3  0  0  0  0  0            999 V2000
+    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    0.0000    0.0000 Cl  0  0  0  0  0  0  0  0  0  0  0  0
+M  END
+'''
+            }]
+        
+        serializer = SDFSerializer()
+        filename = "lims/static/test_data/test1_output.sdf"
+        sdf_data = serializer.to_sdf(records)
+        with open(os.path.join(APP_ROOT_DIR, filename), 'w') as fout:    
+            fout.write(sdf_data)
+            
+        fout.close()
+    
+        with open(os.path.join(APP_ROOT_DIR, filename)) as fin:    
+            _data = serializer.from_sdf(fin.read(), root=None)
+            final_data = _data
+            logger.debug(str(('final_data', final_data)))
+            
+            self.assertTrue(
+                len(final_data)==len(records), 
+                str(('len is', len(final_data),len(records))))
+            for obj in final_data:
+                logger.debug(str(('object: ', obj)))
+                
+                for record in records:
+                    if record['smiles'] == obj['smiles']:
+                        for k,v in record.items():
+                            self.assertTrue(
+                                obj[k] == v.strip(), 
+                                str(('values not equal', k, record[k], 'read:', v)))
+
+    def test2_clean_data_sdf(self):
+        logger.debug(str(('==== test2_clean_data_sdf =====')))
+
+        record_one = {
+            r'vendor': r'Biomol-TimTec',
+            r'vendor_reagent_id': r'SPL000058',
+            r'vendor_batch_id': r'HM-001_TM-20090805',
+            r'plate_number': r'1534',
+            r'well_name': r'A01',
+            r'library_well_type': r'experimental',
+            r'facility_reagent_id': r'ICCB-00589081',
+            r'facility_batch_id':r'008',
+            r'compound_name': [r'fake compound name 1',r'fake compound name 2'],
+            r'smiles':r'O=C1CC(C)(C)CC(=O)C1C(c1ccccc1)C1=C(O)CC(C)(C)CC1=O',
+            r'inchi':r'InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-23(3,4)13-18(21)27/h5-9,19-20,26H,10-13H2,1-4H3',
+            r'pubchem_cid': [r'558309',r'7335957'],
+            r'chembank_id':[r'1665724',r'6066882'],
+            r'mg_ml_concentration':r'.111',
+            r'chembl_id':[r'100001',r'100002',r'111102'],
+            r'pubmed_id':[r'20653109',r'20653081'] }
+
+        record_two = {
+            r'Library': r'Biomol-TimTec1',
+            r'Source': r'Biomol-TimTec',
+            r'vendor': r'Biomol-TimTec',
+            r'vendor_reagent_id': r'ST001215',
+            r'plate_number': r'1534',
+            r'well_name': r'A02',
+            r'library_well_type': r'experimental',
+            r'Row': r'1',
+            r'Col':r'2',
+            r'facility_reagent_id': r'ICCB-00589082',
+            r'micro_molar_concentration': r'.005',
+            r'compound_name':r'fake compound name 1',
+            r'CAS_Number': r'fake cas number 1',
+            r'smiles':r'Clc1ccc(\\C=C/c2c(C)n(C)n(c3ccccc3)c2=O)c(Cl)c1',
+            r'inchi':r'InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-23(3,4)13-18(21)27/h5-9,19-20,26H,10-13H2,1-4H3',
+            MOLDATAKEY:
+r'''Structure89
+csChFnd70/04290511482D
+
+ 16 17  0  0  0  0  0  0  0  0999 V2000
+    4.8373    2.0813    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    4.8373    0.7093    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    3.6256    2.7850    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    0.7093    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    6.0491    2.7850    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    2.4179    2.0813    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    2.4179    0.7093    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    2.0813    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    7.2308    6.2888    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    7.2308    4.9141    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    1.2076    2.7850    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    1.2076    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    6.0491    4.2034    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+    7.2308    2.1223    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+    6.0491    0.0000    0.0000 N   0  0  0  0  0  0  0  0  0  0  0  0
+    3.6256    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+  2  1  1  0  0  0  0
+  3  1  2  0  0  0  0
+ 16  2  1  0  0  0  0
+  5  1  1  0  0  0  0
+  6  3  1  0  0  0  0
+  7  6  2  0  0  0  0
+ 15  2  2  0  0  0  0
+ 14  5  2  0  0  0  0
+ 13  5  1  0  0  0  0
+ 11  6  1  0  0  0  0
+ 12  7  1  0  0  0  0
+ 10 13  1  0  0  0  0
+  9 10  1  0  0  0  0
+  8 11  2  0  0  0  0
+  4  8  1  0  0  0  0
+ 16  7  1  0  0  0  0
+  4 12  2  0  0  0  0
+M  END'''            }
+        last_record = {
+            'Library': 'Biomol-TimTec1',
+            'Source': 'Biomol-TimTec',
+            'vendor': 'Biomol-TimTec',
+            'vendor_reagent_id': '',
+            'plate_number': '1534',
+            'well_name': 'A09',
+            'library_well_type': 'empty',
+            'facility_reagent_id': '',
+            'compound_name': '',
+            'smiles': '',
+            'inchi': '',
+            }
+        
+        
+        serializer = SDFSerializer()
+        filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_small_molecule.sdf'
+
+        with open(os.path.join(APP_ROOT_DIR, filename)) as fin:    
+            _data = serializer.from_sdf(fin.read(), root=None)
+            input_data = _data
+            
+            if logger.isEnabledFor(logging.DEBUG):
+                print 'data read in'
+                for x in input_data:
+                    print x, '\n'
+            
+            expected_count = 8
+            self.assertEqual(len(input_data), expected_count, 
+                str(('initial serialization of ',filename,'found',
+                    len(input_data), 'expected',expected_count,
+                    'input_data',input_data)))
+            
+            result, msgs = assert_obj1_to_obj2(record_one, input_data[0])
+            self.assertTrue(result, msgs)
+ 
+            if logger.isEnabledFor(logging.DEBUG):
+                print 'record 1 expected:'
+                print input_data[1][MOLDATAKEY]
+                print '====='
+                print 'record 2 read:'
+                print record_two[MOLDATAKEY]
+            
+                for i,c in enumerate(input_data[1][MOLDATAKEY]):
+                    if record_two[MOLDATAKEY][i] != c:
+                        print 'i', i, c,record_two[MOLDATAKEY][i]
+                        break 
+
+            result, msgs = assert_obj1_to_obj2(record_two, input_data[1])
+            self.assertTrue(result, msgs)
+ 
+            result, msgs = assert_obj1_to_obj2(last_record, input_data[-1])
+            self.assertTrue(result, msgs)
+ 
+            # Now test the whole system by writing back out and reading back in
+            
+            out_filename = os.path.join(APP_ROOT_DIR, filename + 'out')
+            sdf_data = serializer.to_sdf(input_data)
+            with open(out_filename, 'w') as fout:    
+                fout.write(sdf_data)
+            fout.close()
+
+            with open(out_filename) as fin:    
+                _fdata = serializer.from_sdf(fin.read(), root=None)
+                final_data = _fdata
+                
+                self.assertEqual(len(input_data), len(final_data), 
+                    str(('initial serialization of ',out_filename,'found',
+                        len(final_data), 'expected',len(input_data),
+                        'final_data',final_data)))
+                
+                keys_not_to_check=[]
+                for i,inputobj in enumerate(input_data):
+                    result, outputobj = find_obj_in_list(
+                        inputobj,final_data, excludes=keys_not_to_check )
+                    if not result:
+                        print 'input obj not found'
+                        print inputobj, '\n'
+                        print 'final data read in:'
+                        for x in final_data:
+                            print x , '\n'
+                        print 'messages'
+                        print_find_errors(outputobj)
+                        
+                        self.fail('input object not found')
 
 
 class XLSSerializerTest(SimpleTestCase):
@@ -726,6 +734,74 @@ class XLSSerializerTest(SimpleTestCase):
                             self.assertTrue(
                                 obj[k] == v.strip(), 
                                 str(('values not equal', k, record[k], 'read:', v)))
+
+    def test2_clean_data(self):
+
+        serializer = XLSSerializer()
+        
+        test_input_data = [
+            {
+                'plate_number': '50001', 
+                'well_name': 'A05', 
+                'library_well_type': 'experimental', 
+                'micro_molar_concentration': '1', 
+                'mg_ml_concentration': '.115', 
+                'vendor': 'vendorX', 
+                'vendor_reagent_id': 'M-005300-00', 
+                'facility_reagent_id': 'F-005300-00', 
+                'silencing_reagent_type': 'sirna', 
+                'sequence': 'GACAUGCACUGCCUAAUUA;GUACAGAACUCUCCCAUUC;GAUGAAAUGUGCCUUGAAA;GAAGGUGGAUUUGCUAUUG', 
+                'anti_sense_sequence': 'GACAUGCACUGCCUAAUUA;GUACAGAACUCUCCCAUUC;GAUGAAAUGUGCCUUGAAA;GAAGGUGGAUUUGCUAUUA', 
+                'vendor_entrezgene_id': '22848', 
+                'vendor_entrezgene_symbols': 'AAK1;AAK2', 
+                'vendor_gene_name': 'VendorGeneNameX', 
+                'vendor_genbank_accession_numbers': 'NM_014911;NM_014912', 
+                'vendor_species': 'VendorSpeciesX', 
+                'facility_entrezgene_id': '1111', 
+                'facility_entrezgene_symbols': 'AAK3; AAK4', 
+                'facility_gene_name': 'FacilityGeneNameX',
+                'facility_genbank_accession_numbers': 'F_014911; F_014914', 
+                'facility_species': 'FacilitySpeciesX', 
+                },{
+                'plate_number': '50001', 
+                'well_name': 'A07', 
+                'library_well_type': 'library_control', 
+                'vendor': 'vendorX', 
+                'vendor_reagent_id': 'M-000000-00', 
+                'silencing_reagent_type': 'sirna', 
+                'sequence': 'GUACAGAGAGGACUACUUC;GGUACGAGGUGAUGCAGUU;UCAGUGGCCUCAACGAGAA;GCAAGUACAGAGAGGACUA', 
+                'anti_sense_sequence': 'GUACAGAGAGGACUACUUC;GGUACGAGGUGAUGCAGUU;UCAGUGGCCUCAACGAGAA;GCAAGUACAGAGAGGACUG', 
+                'vendor_entrezgene_id': '9625', 
+                'vendor_entrezgene_symbols': 'AATK', 
+                'vendor_genbank_accession_numbers': 'XM_375495', 
+                },            
+            ]
+        
+        filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_rnai.xls'
+        with open(os.path.join(APP_ROOT_DIR, filename)) as fin:    
+            _data = serializer.from_xls(fin.read(), root=None)
+            logger.debug(str(('final_data', _data)))
+            
+            expected_count = 5
+            self.assertTrue(
+                len(_data)==expected_count, 
+                str(('len is', len(_data),expected_count)))
+
+            keys_not_to_check=[]
+            for i,inputobj in enumerate(test_input_data):
+                result, outputobj = find_obj_in_list(
+                    inputobj,_data, excludes=keys_not_to_check )
+                if not result:
+                    print '========input obj not found==========='
+                    print inputobj, '\n'
+                    print 'messages'
+                    print outputobj
+                    print 'final data read in:'
+                    for x in _data:
+                        print x , '\n'
+                    print_find_errors(outputobj)
+                    
+                    self.fail('input object not found')
 
 
 class HydrationTest(TestCase):
@@ -827,7 +903,11 @@ class MetaHashResourceBootstrap(ResourceTestCase):
             # NOTE / TODO: we have to deserialize the input, because the TP test method 
             # will expect a python data object, which it will serialize!
             input_data = self.csv_serializer.from_csv(bootstrap_file.read())
-
+            
+#             if not 'objects' in input_data or len(input_data['objects']) == 0:
+#                 logger.warn(str(('the file contains no data', filename)))
+#                 return
+            
             logger.debug(str(('Submitting patch...', bootstrap_file)))
             resp = self.api_client.patch(
                 resource_uri, format='csv', data=input_data, 
@@ -1853,7 +1933,7 @@ class RecordResource(MetaHashResourceBootstrap):
             result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
             self.assertTrue(result, str(('not found', inputobj, outputobj )) )
         
-        logger.info(str(('==== now create datapoints in the record table')))
+        logger.debug(str(('==== now create datapoints in the record table')))
         
         datapoints = [
             {   'scope': 'record',
@@ -1914,7 +1994,7 @@ class RecordResource(MetaHashResourceBootstrap):
 
         logger.debug('================ reports test2_update =============== ')
             
-        logger.info(str(('==== now update datapoints in the record table')))
+        logger.debug(str(('==== now update datapoints in the record table')))
         
         datapoints = [
             {   'resource_uri':'record/2',
@@ -1957,7 +2037,7 @@ class RecordResource(MetaHashResourceBootstrap):
         
         # test the logs
         resource_uri = BASE_URI + '/apilog' #?ref_resource_name=record'
-        logger.info(str(('get', resource_uri)))
+        logger.debug(str(('get', resource_uri)))
         resp = self.api_client.get(
             resource_uri, format='json', 
             authentication=self.get_credentials(), 

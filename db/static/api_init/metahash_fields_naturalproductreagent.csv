@@ -1,2 +1,1 @@
-key,scope,resource_uri,ordinal,comment,ui_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,backgrid_cell_type,backgrid_cell_options,is_restricted
-reagent_substance_id,fields.naturalproductreagent,/reports/api/v1/metahash/fields.naturalproductreagent/reagent_substance_id/,1,,integer,TRUE,"Reagent ID","Reagent ID",TRUE,,,"[list,detail]",,Iccbl.EditCell,,
+key,scope,resource_uri,ordinal,comment,linked_field_type,linked_field_module,linked_field_value_field,linked_field_parent,linked_field_meta_field,ui_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,backgrid_cell_type,backgrid_cell_options,is_restricted,required

@@ -85,6 +85,11 @@ LOGGING = {
             'propagate': False,
             'level': 'DEBUG',
         },
+        'reports.api.detail_uri_kwargs': {  # set a default handler
+            'handlers': ['console'],
+            'propagate': False,
+            'level': 'WARN',
+        },
         'reports.tests': {  # set a default handler
             'handlers': ['console'],
             'propagate': False,

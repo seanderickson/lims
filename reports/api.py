@@ -601,7 +601,9 @@ class ManagedResource(LoggingMixin):
         # provisional 20140825
         logger.info('clear cache')
         cache.delete(self._meta.resource_name + ':schema')
-
+        self.field_alias_map = {}
+        
+        
     # local method    
     # TODO: allow turn on/off of the reset methods for faster loading.
     def reset_filtering_and_ordering(self):
@@ -617,9 +619,9 @@ class ManagedResource(LoggingMixin):
                 self._meta.ordering.append(key)
         logger.debug(str(('meta filtering', self._meta.filtering)))
     
-    # locally defined
-    def get_field_def(self, name):
-        return self.local_field_defs[name]
+#     # locally defined
+#     def get_field_def(self, name):
+#         return self.local_field_defs[name]
     
     # local method
     def create_fields(self):
@@ -628,15 +630,45 @@ class ManagedResource(LoggingMixin):
             self.scope, 'original fields', self.original_fields.keys() )))
         if hasattr(self._meta, 'bootstrap_fields'):
             logger.debug(str(('bootstrap fields', self._meta.bootstrap_fields)))
-        
-        
-        self.local_field_defs = local_field_defs = \
-            MetaHash.objects.get_and_parse(scope=self.scope, 
-                field_definition_scope='fields.metahash', clear=True)
-        logger.debug(str(('managed fields to create', local_field_defs.keys())))
+
+#         try:        
+#             _fields = self.build_schema()['fields']
+#         except Exception, e:
+#             logger.info(str(('in create_fields: resource information not available', e)))
+        _fields = MetaHash.objects.get_and_parse(scope=self.scope, 
+                    field_definition_scope='fields.metahash', clear=True)
+
+#         self.local_field_defs = _fields
+        logger.debug(str(('managed fields to create', _fields.keys())))
+
+        ## Get the supertype fields
+        try:
+            logger.info(str(('========= supertype fields', self._meta.resource_name)))
+            resource_def = MetaHash.objects.get(
+                scope='resource', key=self._meta.resource_name)
+            resource_definition = resource_def.model_to_dict(scope='fields.resource')
+            # TODO: -could- get the schema from the supertype resource
+            supertype = resource_definition.get('supertype', '')
+            if supertype:
+                supertype_fields = deepcopy(
+                    MetaHash.objects.get_and_parse(
+                        scope='fields.' + supertype, field_definition_scope='fields.metahash'))
+                logger.info(str(('======= supertype fields', supertype, supertype_fields.keys())))
+                supertype_fields.update(_fields)
+                _fields = supertype_fields
+        except Exception, e:
+            logger.info(str(('in create_fields: resource information not available',self._meta.resource_name, e)))
+
+        ## build field alias table
+        self.field_alias_map = {}
+        for field_name, item in _fields.items():
+            alias = item.get('alias', None)
+            if alias:
+                self.field_alias_map[alias] = field_name
+
         new_fields = {}
         for field_name, field_obj in self.original_fields.items():
-            if field_name in local_field_defs:
+            if field_name in _fields:
                 new_fields[field_name] = deepcopy(field_obj)
             elif ( hasattr(self._meta, 'bootstrap_fields') 
                     and field_name in self._meta.bootstrap_fields ):
@@ -645,10 +677,10 @@ class ManagedResource(LoggingMixin):
             elif field_name in self.meta_bootstrap_fields:
                 new_fields[field_name] = deepcopy(field_obj)
 
-        unknown_keys = set(local_field_defs.keys()) - set(new_fields.keys())
+        unknown_keys = set(_fields.keys()) - set(new_fields.keys())
         logger.debug(str(('managed keys not yet defined', unknown_keys)))
         for field_name in unknown_keys:
-            field_def = local_field_defs[field_name]
+            field_def = _fields[field_name]
             if 'json_field_type' in field_def and field_def['json_field_type']:
                 # TODO: use type to create class instances
                 # JSON fields are read only because they are hydrated in the 
@@ -667,13 +699,23 @@ class ManagedResource(LoggingMixin):
                 logger.debug('creating unknown field as a char: ' + field_name)
                 new_fields[field_name] = fields.CharField(
                     attribute=field_name, readonly=True, blank=True, null=True)
-                
+
         logger.debug(str((
             'resource', self._meta.resource_name, self.scope, 
             'create_fields done: fields created', new_fields.keys() )))
         self.fields = new_fields
         return self.fields
 
+    def create_aliasmapping_iterator(self, data):
+        logger.info(str(('====testing data', data)))
+        if self.field_alias_map:
+            for item in data:
+                yield dict(zip(
+                    (self.field_alias_map.get(key, key),val) 
+                    for (key,val) in item.items()))
+        else:
+            yield data 
+        
     def build_schema(self):
         '''
         Override
@@ -718,6 +760,22 @@ class ManagedResource(LoggingMixin):
                 msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e
             
+        try:
+            resource_def = MetaHash.objects.get(
+                scope='resource', key=self._meta.resource_name)
+            schema['resource_definition'] = resource_def.model_to_dict(scope='fields.resource')
+            # TODO: -could- get the schema from the supertype resource
+            supertype = schema['resource_definition'].get('supertype', '')
+            if supertype:
+                supertype_fields = deepcopy(
+                    MetaHash.objects.get_and_parse(
+                        scope=self.scope, field_definition_scope='fields.metahash'))
+                supertype_fields.update(schema['fields'])
+                schema['fields'] = supertype_fields
+        except Exception, e:
+            logger.info(str(('in create_fields: resource information not available',self._meta.resource_name, e)))
+
+        
         logger.debug('------build_schema,done: ' + self.scope ) 
 #         if logger.isEnabledFor(logging.DEBUG):
 #             logger.debug(str((schema['fields'])))
@@ -764,7 +822,6 @@ class ManagedResource(LoggingMixin):
         for name, field in fields.items():
             keyerrors = []
             value = data.get(name, None)
-            logger.debug(str((self._meta.resource_name, 'validating field', name, value)))
             
             if field.get('required', False):
                 logger.debug(str(('check required: ', name, value)))
@@ -780,6 +837,7 @@ class ManagedResource(LoggingMixin):
                     errors[name] = keyerrors            
                 continue
             
+            ##FIXME: some vocab fields are not choices fields
             if 'choices' in field and field['choices']:
                 logger.debug(str(('check choices: ', name, value, field['choices'])))
                 if field['ui_type'] != 'Checkboxes':
@@ -820,10 +878,12 @@ class ManagedResource(LoggingMixin):
         '''
         if len(bundle.data) == 0 : return bundle
         
-        local_field_defs = MetaHash.objects.get_and_parse(
+#         schema = self.build_schema()
+#         _fields = schema['fields']
+        _fields = MetaHash.objects.get_and_parse(
             scope=self.scope, field_definition_scope='fields.metahash')
         for key in [ 
-                x for x,y in local_field_defs.items() if y.get('json_field_type') ]:
+                x for x,y in _fields.items() if y.get('json_field_type') ]:
             bundle.data[key] = bundle.obj.get_field(key);
         
         bundle.data['json_field'] = ''
@@ -1326,6 +1386,7 @@ class VocabulariesResource(ManagedModelResource):
         excludes = [] #['json_field']
         always_return_data = True # this makes Backbone happy
         resource_name = 'vocabularies'
+        max_limit = 10000
     
     def build_schema(self):
         schema = super(VocabulariesResource,self).build_schema()
@@ -1431,6 +1492,7 @@ class ApiLogResource(ManagedModelResource):
         excludes = [] #['json_field']
         always_return_data = True # this makes Backbone happy
         resource_name='apilog' 
+        max_limit = 10000
     
     def __init__(self, **kwargs):
         self.scope = 'fields.apilog'
@@ -2246,11 +2308,11 @@ class ManagedLinkedResource(ManagedModelResource):
         if not self.linked_field_defs:
             
             schema = self.build_schema()
-            local_field_defs = schema['fields']
+            _fields = schema['fields']
             resource = schema['resource_definition']
             
-            self.linked_field_defs = { x: local_field_defs[x] 
-                for x,y in local_field_defs.items() 
+            self.linked_field_defs = { x: _fields[x] 
+                for x,y in _fields.items() 
                     if y.get('linked_field_type',None) }
 
             logger.info(str(('lookup the module.model for each linked field', 
@@ -2320,12 +2382,12 @@ class ManagedLinkedResource(ManagedModelResource):
         
         bundle = self.save(bundle)
 
-        logger.info(str(('==== save_linked_fields', self.get_linked_fields().keys() )))
+        logger.debug(str(('==== save_linked_fields', self.get_linked_fields().keys() )))
         
         simple_linked_fields = {
             k:v for (k,v) in self.get_linked_fields().items() if v.get('linked_field_module',None)}
         for key,item in simple_linked_fields.items():
-            logger.debug(str(('populating simple linked field', item)))
+#             logger.debug(str(('populating simple linked field', item)))
             linkedModel = item.get('linked_field_model')
             val = bundle.data.get(key,None)
             field = self.fields[key]
@@ -2349,7 +2411,6 @@ class ManagedLinkedResource(ManagedModelResource):
             setattr( linkedObj, complex_linked_fields.values()[0]['linked_field_parent'], bundle.obj)
             
             for key,item in complex_linked_fields.items():
-                logger.debug(str(('populating complex linked field', item)))
                 val = bundle.data.get(key,None)
                 field = self.fields[key]
                 if val:
@@ -2390,7 +2451,7 @@ class ManagedLinkedResource(ManagedModelResource):
     def _set_value_field(self, linkedObj, parent, item, val):
         ## TODO: updates should be able to set fields to None
         
-        logger.debug(str(('_set_value_field', linkedObj, parent, item['key'], val)))
+#         logger.debug(str(('_set_value_field', linkedObj, parent, item['key'], val)))
         setattr( linkedObj, item['linked_field_parent'], parent)
         
         if item.get('linked_field_meta_field', None):
@@ -2400,7 +2461,7 @@ class ManagedLinkedResource(ManagedModelResource):
         linkedObj.save()
 
     def _set_multivalue_field(self, linkedModel, parent, item, val):
-        logger.debug(str(('_set_multivalue_field', item['key'], val)))
+#         logger.debug(str(('_set_multivalue_field', item['key'], val)))
         if isinstance(val, six.string_types):
             val = (val) 
         for i,entry in enumerate(val):
@@ -2422,6 +2483,9 @@ class ManagedLinkedResource(ManagedModelResource):
         
         bundle = self.full_hydrate(bundle)
         self.is_valid(bundle)
+        if bundle.errors and not skip_errors:
+            raise ImmediateHttpResponse(response=self.error_response(bundle.request, bundle.errors))
+
         bundle.obj.save()
         
         logger.info(str(('==== update_linked_fields', self.get_linked_fields().keys() )))
@@ -2429,7 +2493,7 @@ class ManagedLinkedResource(ManagedModelResource):
         simple_linked_fields = {
             k:v for (k,v) in self.get_linked_fields().items() if v.get('linked_field_module',None)}
         for key,item in simple_linked_fields.items():
-            logger.debug(str(('populating simple linked field', item)))
+#             logger.debug(str(('populating simple linked field', item)))
             val = bundle.data.get(key,None)
             field = self.fields[key]
             
@@ -2482,7 +2546,7 @@ class ManagedLinkedResource(ManagedModelResource):
                 setattr( linkedObj, item['linked_field_parent'], bundle.obj)
             
             for key,item in complex_linked_fields.items():
-                logger.debug(str(('populating complex linked field', item)))
+#                 logger.debug(str(('populating complex linked field', item)))
                 val = bundle.data.get(key,None)
                 field = self.fields[key]
                 if val:
@@ -2521,7 +2585,6 @@ class ManagedLinkedResource(ManagedModelResource):
         Note - dehydrate only to be used for small sets.
         (TODO: we will implement obj-get-list methods)
         '''
-        logger.debug(str(('dehydrate', bundle.data, self.get_linked_fields().keys())))
         for key,item in self.get_linked_fields().items():
             bundle.data[key] = None
             linkedModel = item.get('linked_field_model')
@@ -2540,7 +2603,7 @@ class ManagedLinkedResource(ManagedModelResource):
                     query = query.order_by('ordinal')
                 values = query.values_list(
                         item['linked_field_value_field'], flat=True)
-                logger.debug(str((key,'multifield values', values)))
+#                 logger.debug(str((key,'multifield values', values)))
                 if values and len(values)>0:
                     bundle.data[key] = list(values)
         return bundle

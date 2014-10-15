@@ -375,12 +375,6 @@ class LabCherryPick(models.Model):
     class Meta:
         db_table = 'lab_cherry_pick'
 
-#class LabHead(models.Model):
-#    screensaver_user = models.ForeignKey('ScreeningRoomUser', primary_key=True)
-#    lab_affiliation = models.ForeignKey(LabAffiliation, null=True, blank=True)
-#    class Meta:
-#        db_table = 'lab_head'
-
 class Publication(models.Model):
     publication_id = models.IntegerField(primary_key=True)
     authors = models.TextField(blank=True)
@@ -596,10 +590,6 @@ class ScreenerCherryPick(models.Model):
 
 
 
-
-
-
-
 from django.contrib.auth.models import User
 from django.conf import settings
 class ScreensaverUser(models.Model):
@@ -750,8 +740,10 @@ class Well(models.Model):
 #     reagent = models.ForeignKey('Reagent', null=True, related_name='wells')
 #     reagent = models.ForeignKey('Reagent', to_field='substance_id')
     
-    molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
-    mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
+#     molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
+#     mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
+    micro_molar_concentration = models.FloatField(null=True, blank=True)
+    mg_ml_concentration = models.FloatField(null=True, blank=True)
     class Meta:
         db_table = 'well'
     def __unicode__(self):

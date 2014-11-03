@@ -155,7 +155,14 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           throw msg;
         }
       }
-      this.$('#content_title').html(resource.title + ' listing');
+      if(uriStack.length > 1 && uriStack[0] == 'children'){
+//        var subresource = appModel.getResource(uriStack[1]);
+        var substack = _.rest(uriStack,1);
+        var _key = Iccbl.popKeyFromStack(resource, substack, []);
+        this.$('#content_title').html('Child logs for: ' + _key);
+      }else{
+        this.$('#content_title').html(resource.title + ' listing');
+      }
       
       view = new viewClass({ model: appModel, 
         options: { 

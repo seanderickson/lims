@@ -36,6 +36,9 @@ define([
       });
       console.log('check1');
       _.bindAll(this, 'click_tab');
+      _.bindAll(this, 'saveFile');
+      
+  
     },
     
     template: _.template(libraryTemplate),
@@ -71,8 +74,52 @@ define([
       // (it is also catching clicks on the table paginator)
       //          'click .tabbable li': 'click_tab', 
         'click li': 'click_tab',
+        'click button#upload': 'upload'        
     },
     
+    upload: function(event){
+      appModel.showModal({
+          ok: this.saveFile,
+          body: '<input type="file" name="fileInput" />',
+          title: 'Select a SDF file to upload'  });
+    },
+    
+    saveFile: function() {
+      var file = $('input[name="fileInput"]')[0].files[0]; 
+      var data = new FormData();
+      var url = _.result(this.model, 'url') + '/well';
+      // NOTE: 'sdf' is sent as the key to the FILE object in the upload.
+      // We are using this as a non-standard way to signal the upload type to the 
+      // serializer. (TP doesn't support mulitpart uploads, so this is patched in).
+      data.append('sdf', file);
+//      data.append('file', file, {'Content-type': 'chemical/x-mdl-sdfile'});
+//      data.append('Content-type','chemical/x-mdl-sdfile');
+      $.ajax({
+        url: url,    
+        data: data,
+        cache: false,
+        contentType: false,
+        processData: false,
+        type: 'PUT',
+        headers: {
+          'APILOG_COMMENT': 'TODO: comment for library content load'
+        },        
+        success: function(data){
+          // FIXME: should be showing a regular message
+          appModel.error('success');
+          // FIXME: should reload the library view to reflect new comments/etc.
+        },
+        done: function(model, resp){
+          // TODO: done replaces success as of jq 1.8
+          console.log('done');
+        },
+        error: appModel.jqXHRFail
+//        error: function(data){
+//          alert('no upload');
+//          $('#loadingModal').modal('hide');
+//        }
+      });
+    },
     /**
      * Child view bubble up URI stack change event
      */
@@ -148,7 +195,8 @@ define([
       var delegateStack = _.clone(this.uriStack);
       var view = new DetailLayout({
         model: self.model,
-        uriStack: delegateStack
+        uriStack: delegateStack, 
+        buttons: ['download', 'upload']
       });
       Backbone.Layout.setupView(view);
 
@@ -190,7 +238,8 @@ define([
       if ( !view ) {
         view = new DetailLayout({ 
           model: this.model,
-          uriStack: delegateStack });
+          uriStack: delegateStack, 
+          buttons: ['download', 'upload'] });
         this.tabViews[key] = view;
       } 
       // NOTE: have to re-listen after removing a view

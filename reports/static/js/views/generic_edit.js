@@ -2,14 +2,14 @@ define([
     'jquery',
     'underscore',
     'backbone',
-    'backbone_stickit',
+//    'backbone_stickit',
     'backbone_forms',
     'iccbl_backgrid',
     'models/app_state',
     'text!templates/generic-edit.html',
     'text!templates/modal_ok_cancel.html',
 
-], function( $, _, Backbone, stickit, backbone_forms, Iccbl, appModel,
+], function( $, _, Backbone, backbone_forms, Iccbl, appModel,
             editTemplate, modalOkCancel ) {
 	
   // like 'Select' editor, but will always return a boolean (true or false)
@@ -148,7 +148,60 @@ define([
           // validation stuff
           if(option.ui_type == 'integer' || option.ui_type == 'float'){
             editSchema[key]['type'] = 'Number';
-            // TODO: check for the "min" "max" validation properties and implement
+            
+            // TODO: check for the "min" "max","range" validation properties and implement
+            if( !_.isUndefined(option.min)){
+              var validator = function checkMin(value, formValues) {
+                var err = {
+                    type: 'Min',
+                    message: 'must be >= ' + option.min
+                };
+
+                if (value <= option.min ) return err;
+              };
+              validators.unshift(validator);
+            }
+            if( !_.isUndefined(option.range)){
+              var validator = function checkRange(value, formValues) {
+                
+                var last = '';
+                var rangeMsg = '';
+                var value_ok = false;
+                var schema_lower = 0, schema_upper = 0
+                for(var i=0; i<option.range.length; i++){
+                  var schema_val = option.range[i]
+                  if(i>0) rangeMsg += ', ';
+                  if(i%2 == 0){
+                    rangeMsg += '> ' + schema_val
+                  }else{
+                    rangeMsg += '< ' + schema_val
+                  }
+                }
+                // compare range in pairs
+                for(var i=0; i<option.range.length; i+=2){
+                  schema_lower = parseInt(option.range[i])
+                  if(option.range.length > i+1){
+                    schema_upper = parseInt(option.range[i+1])
+                    if(value >schema_lower && value<schema_upper){
+                      value_ok = true;
+                      break;
+                    }
+                  }else{
+                    if(value > schema_lower){
+                      value_ok = true;
+                      break; // not nec
+                    }
+                  }
+                }
+                var result = {
+                    type: 'Range',
+                    message: 'value not in range: ' + value + ' range: ' + rangeMsg
+                };
+
+                if (!value_ok) return result;
+              };
+              validators.unshift(validator);
+            }
           }
           if(option.required){
             validators.unshift('required');

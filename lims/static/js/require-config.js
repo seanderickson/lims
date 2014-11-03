@@ -6,7 +6,8 @@ require.config({
     jquery: 'libs/jquery',
     underscore: 'libs/underscore',
     backbone: 'libs/backbone',
-    backbone_pageable: 'libs/backbone-pageable',
+//    backbone_pageable: 'libs/backbone.paginator',
+    'backbone.paginator' : 'libs/backbone.paginator',
     backgrid: 'libs/backgrid',
     backgrid_filter: 'libs/backgrid-filter',
     backgrid_paginator: 'libs/backgrid-paginator',
@@ -30,7 +31,7 @@ require.config({
       deps: ['underscore', 'jquery'],
       exports: 'Backbone'
     },
-    backbone_pageable: {
+    'backbone.paginator' : {
       deps: ['backbone', 'underscore', 'jquery'],
       exports: 'BackbonePageableCollection'
       // Note, object naming rules won't allow the dot separator, 
@@ -46,10 +47,10 @@ require.config({
       deps: ['backgrid', 'backbone', 'underscore', 'jquery'],
       exports: 'BackgridFilter'
     },
-    backgrid_paginator: {
-      deps: ['backgrid', 'backbone', 'underscore', 'jquery'],
-      exports: 'BackgridPaginator'
-    },
+//    backgrid_paginator: {
+//      deps: ['backgrid', 'backbone', 'underscore', 'jquery', 'backbone.paginator'],
+//      exports: 'BackgridPaginator'
+//    },
     backgrid_select_all: {
         deps: ['backgrid', 'backbone', 'underscore', 'jquery'],
       exports: 'BackgridSelectAll'

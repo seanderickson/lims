@@ -3,7 +3,7 @@ define([
   'jquery',
   'underscore',
   'backbone',
-  'backbone_pageable',
+//  'backbone_pageable',
   'backgrid',
   'iccbl_backgrid',
   'models/app_state',
@@ -12,14 +12,14 @@ define([
   'text!templates/list2.html',
   'text!templates/modal_ok_cancel.html'
 ], function(
-      $, _, Backbone, BackbonePageableCollection, Backgrid,  
+      $, _, Backbone, Backgrid,  
       Iccbl, appModel, genericSelector,
       rowsPerPageTemplate, listTemplate, modalTemplate) {
 
-  // for compatibility with require.js, attach PageableCollection in the right 
-  // place on the Backbone object
-  // see https://github.com/wyuenho/backbone-pageable/issues/62
-  Backbone.PageableCollection = BackbonePageableCollection;
+//  // for compatibility with require.js, attach PageableCollection in the right 
+//  // place on the Backbone object
+//  // see https://github.com/wyuenho/backbone-pageable/issues/62
+//  Backbone.PageableCollection = BackbonePageableCollection;
 
   var ajaxStart = function(){
       $('#loading').fadeIn({duration:100});
@@ -77,6 +77,16 @@ define([
           if(key == 'log'){
             self.urlSuffix = key + '/' + value;
             continue;
+          }
+          if(key == 'children'){
+            // This is a hack to show the children of an apilog, see 
+            // reports.api.ApiLogResource.prepend_urls for further details
+            var substack = _.rest(stack,i)
+            var substack_consumed = []
+            var _key = Iccbl.popKeyFromStack(resource, substack, substack_consumed);
+            i += substack_consumed.length;
+            self.urlSuffix = key + '/' + _key;
+            console.log('urlSuffix: ' + self.urlSuffix);
           }
           
           if(_.contains(this.LIST_ROUTE_ORDER, key)){
@@ -185,7 +195,7 @@ define([
       this.buildGrid( columns, self._options.schemaResult );
     },
     
-    getCollectionUrl: function() {
+    getCollectionUrl: function(limit) {
       var self = this;
       var urlparams = '';
       _.each(self.LIST_ROUTE_ORDER, function(route){
@@ -208,9 +218,17 @@ define([
           }
         }
       });
+      if(_.isUndefined(limit)){
+        var limit = self.collection.state.totalRecords;
+        if(!_.isNumber(limit)){
+          limit = 0;
+        }
+      }
+      
       var url = self.collection.url + '?format=csv' + 
-                '&limit=' +self.collection.state.totalRecords;
+                '&limit=' + limit;
       if(!_.isEmpty(urlparams)) url += '&' + urlparams;
+      console.log('collection url: ' + url)
       return url;
       
     },
@@ -252,7 +270,8 @@ define([
       // FIXME: TODO: see reports.ManagedResource.create_response:
       // We need to set the "Content-Disposition" header to trigger the server to 
       // bounce it back 
-      $('#download_link').attr('href', self.getCollectionUrl());
+      var limitForDownload = 0;
+      $('#download_link').attr('href', self.getCollectionUrl(limitForDownload));
     },
     
     checkState: function(){
@@ -295,6 +314,7 @@ define([
       self.listenTo(
           self.collection, "MyCollection:detail", 
           function (model) {
+            console.log('detail handler for' + model.get('toString'));
             if(!_.isUndefined(self._options.detailHandler)){
               self._options.detailHandler(model);
             }else{
@@ -557,7 +577,7 @@ define([
         msg += 'Page ' + self.collection.state.currentPage + 
                ' of ' + ( self.collection.state.lastPage ? self.collection.state.lastPage:1 ) + 
                ' pages, ' + self.collection.state.totalRecords + 
-               ' ' + self._options.resource.title + ' records';
+               ' ' + self._options.resource.title  + ' records';
         self.$('#header_message').html(msg);
       });
       
@@ -569,9 +589,14 @@ define([
       // Note: replace: true - to suppress router history:
       // at this point, reportState is modifying the URL to show rpp, pagesSize, etc.
       appModel.set('routing_options', {replace: true});  
-      self.reportState();
       return this;
-    }
+    },
+    
+    afterRender: function() {
+      this.reportState();
+    },
+    
+    
 
   });
 

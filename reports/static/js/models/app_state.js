@@ -11,7 +11,6 @@ define([
   var DB_API_URI = '/db/' + API_VERSION;
   var DEBUG = true;
   
-
   var SchemaClass = function() {};
   SchemaClass.prototype.detailKeys = function()
   {
@@ -306,12 +305,41 @@ define([
 //      var resources = this.get('resources');
       if(!_.has(uiResources, resourceId)) {
 //        if(!_.has(resources, resourceId)) {
-          this.error('Unknown resource: ' + resourceId);
+//          this.error('Unknown resource: ' + resourceId);
           throw "Unknown resource: " + resourceId;
 //        }
         return resources[resourceId];
       }
       return uiResources[resourceId];
+    },
+        
+    getResourceFromUrl: function(resourceId, schemaUrl, callback){
+      
+      // NOTE: building a "resource" by getting the "schema" which has a "resource" member
+      var uiResources = this.get('ui_resources');
+      var ui_resource = {};
+      if(_.has(uiResources, resourceId)) {
+        ui_resource = uiResources[resourceId];
+      }
+      
+      var ModelClass = Backbone.Model.extend({
+        url : schemaUrl,
+        defaults : {}
+      });
+      var instance = new ModelClass();
+      instance.fetch({
+          success : function(model) {
+            console.log('resource schema model', model.toJSON());
+            schema = model.toJSON();
+            ui_resource = _.extend({}, ui_resource, schema.resource_definition);
+            var schemaClass = new SchemaClass();
+            ui_resource.schema = _.extend(schema, schemaClass);
+            
+            callback(ui_resource)
+          },
+          error: this.jqXHRerror
+      });      
+      
     },
     
     jqXHRerror: function(model, response, options) {
@@ -338,7 +366,7 @@ define([
       var self = this;
       
       var msg = message;
-      if ( _.has(xhr,'responseJSON' ) ) {
+      if ( _.has(xhr,'responseJSON') && !_.isEmpty(xhr.responseJSON) ) {
         
         if ( _.has( xhr.responseJSON, 'error_message') ) {
           msg += ': ' + xhr.responseJSON.error_message;
@@ -454,12 +482,17 @@ define([
       var self = this;
       var callbackOk = (options && options.ok)? options.ok : function(){};
       var callbackCancel = (options && options.cancel)? options.cancel: function(){};
+      var body = (options && options.body) ?
+          options.body : "Pending changes in the page: continue anyway?";
+          
+      var title = (options && options.title) ?
+          options.title : 'Please confirm';
       
       console.log('showModal: ' + options);
       var modalDialog = new Backbone.View({
           el: _.template(modalOkCancelTemplate, { 
-            body: "Pending changes in the page: continue anyway?",
-            title: "Please confirm" } ),
+            body: body,
+            title: title } ),
           events: {
               'click #modal-cancel':function(event) {
                   console.log('cancel button click event, '); 
@@ -488,12 +521,14 @@ define([
 
   var appState = new AppState();
   
+  appState.schemaClass = new SchemaClass(); // make accessible to outside world
+  
   appState.resources = {};   // TO be retrieved from the server 
   
   appState.apiVersion = API_VERSION;
   appState.reportsApiUri = REPORTS_API_URI;
   appState.dbApiUri = DB_API_URI;
-  appState.LIST_ARGS = ['page','rpp','order','search','log'];      
+  appState.LIST_ARGS = ['page','rpp','order','search','log', 'children'];      
   
   
   return appState;

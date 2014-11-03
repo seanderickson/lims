@@ -2,19 +2,19 @@ define([
   'jquery',
   'underscore',
   'backbone',
-  'backbone_pageable',
+//  'backbone_pageable',
   'backgrid',
   'iccbl_backgrid',
   'text!templates/rows-per-page.html',
   'text!templates/list.html',
   'text!templates/modal_ok_cancel.html',
-], function($, _, Backbone, BackbonePageableCollection, Backgrid,  Iccbl, 
+], function($, _, Backbone, Backgrid,  Iccbl, 
 	rowsPerPageTemplate, listTemplate, modalTemplate ){
 
-  // for compatibility with require.js, attach PageableCollection in the right 
-// place on the Backbone object
-  // see https://github.com/wyuenho/backbone-pageable/issues/62
-  Backbone.PageableCollection = BackbonePageableCollection;
+//  // for compatibility with require.js, attach PageableCollection in the right 
+//// place on the Backbone object
+//  // see https://github.com/wyuenho/backbone-pageable/issues/62
+//  Backbone.PageableCollection = BackbonePageableCollection;
 
   var ajaxStart = function(){
       $('#loading').fadeIn({duration:100});

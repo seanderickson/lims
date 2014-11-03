@@ -47,7 +47,8 @@ module.exports = function (grunt) {
           'jquery.js' : 'jquery/dist/jquery.js',
           'underscore.js' : 'underscore/underscore.js', 
           'backbone.js' : 'backbone-amd/backbone.js', 
-          'backbone-pageable.js' : 'backbone-pageable/lib/backbone-pageable.js',
+//          'backbone-pageable.js' : 'backbone-pageable/lib/backbone-pageable.js',
+          'backbone.paginator': 'backbone.paginator/lib/backbone.paginator.js'
           'backgrid.js' : 'backgrid/lib/backgrid.js',
           'backgrid-filter.js' : 'backgrid-filter/backgrid-filter.js',
           'backgrid-paginator.js' : 'backgrid-paginator/backgrid-paginator.js',

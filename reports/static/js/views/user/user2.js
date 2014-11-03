@@ -2,7 +2,7 @@ define([
     'jquery',
     'underscore',
     'backbone',
-    'backbone_pageable',
+//    'backbone_pageable',
     'iccbl_backgrid',
     'layoutmanager',
     'models/app_state',
@@ -12,14 +12,14 @@ define([
     'views/user/groups',
     'views/user/permissions',
     'text!templates/generic-tabbed.html',
-], function($, _, Backbone, BackbonePageableCollection, Iccbl, layoutmanager, 
+], function($, _, Backbone, Iccbl, layoutmanager, 
             appModel, DetailLayout, 
             ListView, SimpleListView, GroupsView, PermissionsView, layout) {
 
-  // for compatibility with require.js, attach PageableCollection in the 
-  // right place on the Backbone object
-  // see https://github.com/wyuenho/backbone-pageable/issues/62
-  Backbone.PageableCollection = BackbonePageableCollection;
+//  // for compatibility with require.js, attach PageableCollection in the 
+//  // right place on the Backbone object
+//  // see https://github.com/wyuenho/backbone-pageable/issues/62
+//  Backbone.PageableCollection = BackbonePageableCollection;
 
   // TODO: create a genericTabbedLayout base class?
   var UserView = Backbone.Layout.extend({

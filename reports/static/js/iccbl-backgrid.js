@@ -23,17 +23,12 @@
 // FIXME: lunr should not be a requirement - for server side filtering,
 // and backgrid_filter is requiring it.
 
-define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid', 
+define(['jquery', 'underscore', 'backbone', 'backgrid', 
         'backgrid_filter', 'backgrid_paginator', 'backgrid_select_all', 'lunr',
         'layoutmanager'],
-    function($, _, Backbone, BackbonePageableCollection, Backgrid, 
+    function($, _, Backbone, Backgrid, 
              BackgridFilter, BackgridPaginator, BackgridSelectAll, lunr,
              layoutmanager ) {
-
-  // Attach PageableCollection to the right place on the Backbone object
-  // for compatibility with require.js
-	// see https://github.com/wyuenho/backbone-pageable/issues/62
-  Backbone.PageableCollection = BackbonePageableCollection;
 
   var root = window;
   
@@ -660,6 +655,7 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
       },
 
       initialize : function(options) {
+          this.options = options;
           Backgrid.Cell.prototype.initialize.apply(this, arguments);
       },
 
@@ -679,7 +675,11 @@ define(['jquery', 'underscore', 'backbone', 'backbone_pageable', 'backgrid',
 
       editDetail : function(e) {
           e.preventDefault();
-          this.model.collection.trigger("MyCollection:detail", this.model);
+          if(_.has(this.model, 'clickHandler')){
+            this.model.clickHandler(this.model);
+          }else{
+            this.model.collection.trigger("MyCollection:detail", this.model);
+          }
       },
   });
 
@@ -1203,15 +1203,6 @@ var MyHeaderCell = Iccbl.MyHeaderCell = Backgrid.HeaderCell.extend({
       });
     },
     
-    /**
-     Event handler for the collection's `sort` event. Removes all the CSS
-     direction classes.
-    */
-    removeCellDirection: function () {
-      //   this.$el.removeClass("ascending").removeClass("descending");
-      //   this.column.set("direction", null);
-    },
-
     /**
       Event handler for the column's `change:direction` event. If this
       HeaderCell's column is being sorted on, it applies the direction given as a

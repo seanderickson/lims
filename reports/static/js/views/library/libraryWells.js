@@ -40,23 +40,77 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
 
     // layoutmanager hook
     afterRender: function() {
+      var self = this;
+      
       var uriStack = this.uriStack;
       var library = this.library;
 
-      var url = library.resource.apiUri +'/' + library.key + '/well/';
-      var resourceId = 'well';
-      var resource = appModel.getResource(resourceId);
-
-      // Test for list args, if not found, then it's a detail view
-      if (!_.isEmpty(uriStack) && !_.isEmpty(uriStack[0]) &&
-              !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
-        var _key = Iccbl.popKeyFromStack(resource,uriStack,this.consumedStack);
-
-        appModel.getModel(resourceId, _key, this.showDetail );
-      } else {
-        this.consumedStack = [];
-        this.showList(resource, url);
+      var url = library.resource.apiUri +'/' + library.key + '/well';
+      
+      var setupFunction = function(resource){
+        console.log('setupFunction: ' + resource);
+        // Test for list args, if not found, then it's a detail view
+        if (!_.isEmpty(uriStack) && !_.isEmpty(uriStack[0]) &&
+                !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
+          var _key = Iccbl.popKeyFromStack(resource,uriStack,self.consumedStack);
+  
+          appModel.getModel(resource.key, _key, function(model){
+            model.resource = resource;
+            self.showDetail(model);
+          } );
+        } else {
+          self.consumedStack = [];
+          self.showList(resource, url);
+        }
+        
+      };
+      
+      // get the library well specific resource
+      // TODO: the well view should also get it itself so that the well view looks correct?
+      // -or- the libary-specific well view has it's own schema and url: i.e.:
+      // library/short_name/well/schema
+      // library/short_name/well/well_id
+      var wellSpecificResource;
+      var wellResourceId = library.key + '-wells';
+      try{
+        // try to get cached resource
+        setupFunction(appModel.getResource(wellResourceId));
+      } catch(e) {
+        console.log('get resource from server ' + appModel);
+        appModel.getResourceFromUrl(wellResourceId, url+'/schema', setupFunction );
       }
+      
+//      var ModelClass = Backbone.Model.extend({
+//        url : url + 'schema',
+//        defaults : {}
+//      });
+//      var instance = new ModelClass();
+//      instance.fetch({
+//          success : function(model) {
+//            
+//            var resourceId = 'well';
+//            var resource = appModel.getResource(resourceId);
+//            
+//            resource.schema = model.toJSON();
+//            resource.schema = _.extend(resource.schema, appModel.schemaClass);
+//            
+//            // Test for list args, if not found, then it's a detail view
+//            if (!_.isEmpty(uriStack) && !_.isEmpty(uriStack[0]) &&
+//                    !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
+//              var _key = Iccbl.popKeyFromStack(resource,uriStack,self.consumedStack);
+//      
+//              appModel.getModel(resourceId, _key, function(model){
+//                model.resource = resource;
+//                self.showDetail(model);
+//              } );
+//            } else {
+//              self.consumedStack = [];
+//              self.showList(resource, url);
+//            }
+//          },
+//          error: appModel.jqXHRerror
+//      });      
+          
     },    
     
     showDetail: function(model) {
@@ -68,26 +122,32 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
 
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView('#content', view).render();
+      
+      
+      self.$('#content').append(
+          '<img style="position: absolute; top: 8em; right: 3em; height: 16em;" src="/db/well_image/' 
+          + model.get('well_id') + '" alt="image" />')
     },
     
     showList: function(resource, url) {
 
       var self = this;
       var uriStack = _.clone(this.uriStack);
-      var view = new ListView({ options: {
-        uriStack: uriStack,
-        schemaResult: resource.schema,
-        resource: resource,
-        url: url
-      }});
-      self.listenTo(view, 'detail', function(model) {
+      var detailHandler = function(model) {
         var key = Iccbl.getIdFromIdAttribute(model,resource.schema);
         model.resource = resource;
         model.key = key;
         var keysToReport = Iccbl.getIdKeys(model,resource.schema);
         self.consumedStack = keysToReport;
         self.showDetail(model);
-      });
+      };
+      var view = new ListView({ options: {
+        uriStack: uriStack,
+        schemaResult: resource.schema,
+        resource: resource,
+        url: url, 
+        detailHandler: detailHandler
+      }});
     
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       Backbone.Layout.setupView(view);

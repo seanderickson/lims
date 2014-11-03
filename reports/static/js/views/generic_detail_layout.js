@@ -20,6 +20,7 @@ define([
       this.uriStack = args.uriStack;
       this.consumedStack = [];
 	    this.subviews = {};
+	    this.args = args;
       _.bindAll(this, 'showDetail');
       _.bindAll(this, 'showEdit');
 	  },
@@ -44,9 +45,10 @@ define([
     template: _.template(layoutTemplate),
     
     showDetail: function() {
+      var self = this;
       var view = this.subviews['detail'];
       if (!view) {
-        view = new DetailView({ model: this.model});
+        view = new DetailView(_.extend({}, self.args, { model: this.model }));
         this.subviews['detail'] = view;
       }
       this.setView("#detail_content", view ).render();

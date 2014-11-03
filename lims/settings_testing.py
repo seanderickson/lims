@@ -100,8 +100,8 @@ LOGGING = {
             'propagate': False,
             'level': 'INFO',
         },        
-        'utils': {  # for SQL
-            'handlers': ['logfile'],
+        'django.db.backends': {  # for SQL
+            'handlers': ['console'],
             'propagate': True,
             'level': 'INFO',
         },        

@@ -153,6 +153,10 @@ SOUTH_TESTS_MIGRATE = False
 # Default if "next" is not given as a request param
 LOGIN_REDIRECT_URL='/lims'
 
+# base path for profiling
+PROFILE_LOG_BASE='/tmp'
+
+
 # A sample logging configuration. The only tangible logging
 # performed by this configuration is to send an email to
 # the site admins on every HTTP 500 error when DEBUG=False.

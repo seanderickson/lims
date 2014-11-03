@@ -83,6 +83,93 @@ alter sequence gene_genbank_accession_number_sequence owned by gene_genbank_acce
 
 
 /**
+  *** Add id field to small_molecule sub-tables***
+  Purpose: add an id;
+  because the table has no ID, Django ORM doesn't know what to do with it -
+  and the South migration cannot do it either.
+**/
+
+\set _table small_molecule_pubchem_cid
+\set _unique_constraint reagent_id,pubchem_cid
+
+\set _unique_constraint_name :_table _unique
+\set _table_sequence :_table _sequence
+\set _table_pkey :_table _pkey
+\set _quoted_sequence '\'' :_table_sequence '\''
+
+alter table :_table drop constraint :_table_pkey;
+alter table :_table add constraint :_unique_constraint_name UNIQUE(:_unique_constraint);
+alter table :_table add column id integer;
+create sequence :_table_sequence;
+update :_table set id=nextval(:_quoted_sequence);
+/** since this table will still be used, make the changes for the autofield **/
+alter table :_table add primary key(id);
+/** Set the default nextval for Django ORM (AutoField) usage. **/
+alter table :_table alter column id set default nextval(:_quoted_sequence::regclass);
+alter sequence :_table_sequence owned by :_table.id;
+
+
+\set _table small_molecule_chembl_id
+\set _unique_constraint reagent_id,chembl_id
+
+\set _unique_constraint_name :_table _unique
+\set _table_sequence :_table _sequence
+\set _table_pkey :_table _pkey
+\set _quoted_sequence '\'' :_table_sequence '\''
+
+alter table :_table drop constraint :_table_pkey;
+alter table :_table add constraint :_unique_constraint_name UNIQUE(:_unique_constraint);
+alter table :_table add column id integer;
+create sequence :_table_sequence;
+update :_table set id=nextval(:_quoted_sequence);
+/** since this table will still be used, make the changes for the autofield **/
+alter table :_table add primary key(id);
+/** Set the default nextval for Django ORM (AutoField) usage. **/
+alter table :_table alter column id set default nextval(:_quoted_sequence::regclass);
+alter sequence :_table_sequence owned by :_table.id;
+
+
+\set _table small_molecule_chembank_id
+\set _unique_constraint reagent_id,chembank_id
+
+\set _unique_constraint_name :_table _unique
+\set _table_sequence :_table _sequence
+\set _table_pkey :_table _pkey
+\set _quoted_sequence '\'' :_table_sequence '\''
+
+alter table :_table drop constraint :_table_pkey;
+alter table :_table add constraint :_unique_constraint_name UNIQUE(:_unique_constraint);
+alter table :_table add column id integer;
+create sequence :_table_sequence;
+update :_table set id=nextval(:_quoted_sequence);
+/** since this table will still be used, make the changes for the autofield **/
+alter table :_table add primary key(id);
+/** Set the default nextval for Django ORM (AutoField) usage. **/
+alter table :_table alter column id set default nextval(:_quoted_sequence::regclass);
+alter sequence :_table_sequence owned by :_table.id;
+
+
+\set _table small_molecule_compound_name
+\set _unique_constraint reagent_id,ordinal
+
+\set _unique_constraint_name :_table _unique
+\set _table_sequence :_table _sequence
+\set _table_pkey :_table _pkey
+\set _quoted_sequence '\'' :_table_sequence '\''
+
+alter table :_table drop constraint :_table_pkey;
+alter table :_table add constraint :_unique_constraint_name UNIQUE(:_unique_constraint);
+alter table :_table add column id integer;
+create sequence :_table_sequence;
+update :_table set id=nextval(:_quoted_sequence);
+/** since this table will still be used, make the changes for the autofield **/
+alter table :_table add primary key(id);
+/** Set the default nextval for Django ORM (AutoField) usage. **/
+alter table :_table alter column id set default nextval(:_quoted_sequence::regclass);
+alter sequence :_table_sequence owned by :_table.id;
+
+
+/**
   *** Add id field to silencing_reagent_duplex_wells ***
   Purpose: add an id to silencing_reagent_duplex_wells table; 
   because the table has no ID, Django ORM doesn't know what to do with it -
@@ -133,6 +220,18 @@ drop table reagent_vendor_genes cascade;
 
 update well set molar_concentration = molar_concentration*1000000;
 alter table well rename COLUMN molar_concentration to micro_molar_concentration;
+
+
+/** change timestamp fields to use timezone information **/
+alter table library alter column date_created SET DATA TYPE timestamp with time zone;
+alter table library alter column date_loaded SET DATA TYPE timestamp with time zone; 
+alter table library alter column date_publicly_available SET DATA TYPE timestamp with time zone;
+
+alter table screen alter column date_created SET DATA TYPE timestamp with time zone;
+alter table screen alter column date_loaded SET DATA TYPE timestamp with time zone; 
+alter table screen alter column date_publicly_available SET DATA TYPE timestamp with time zone;
+
+
 
 
 COMMIT;

@@ -30,7 +30,7 @@ from tastypie import fields
 from tastypie.resources import Resource, ModelResource
 from tastypie.utils.urls import trailing_slash
 
-from reports.serializers import LimsSerializer, CsvBooleanField
+from reports.serializers import LimsSerializer, CsvBooleanField, CSVSerializer
 from reports.models import MetaHash, Vocabularies, ApiLog, ListLog, Permission, \
                            UserGroup, UserProfile, Record
 # import lims.settings 
@@ -41,6 +41,9 @@ from reports.dump_obj import dumpObj
 from tastypie.utils.dict import dict_strip_unicode_keys
 from functools import wraps
 import six
+from django.http.response import HttpResponse
+import csv
+from tastypie.utils.mime import build_content_type
 
 logger = logging.getLogger(__name__)
 
@@ -224,6 +227,13 @@ def log_obj_create(obj_create_func):
         logger.debug(str(('decorator start; log_obj_create', kwargs)))
         if(logger.isEnabledFor(logging.DEBUG)):
             logger.debug(str(('----log obj_create', bundle)))
+
+        kwargs = kwargs or {}    
+        
+        # Note: "full" logs would log all of the created data in the resource;
+        # whereas "not full" only logs the creation; with this strategy, logs 
+        # must be played backwards to recreate an entity state.
+        full = False
         
         bundle = obj_create_func(self, bundle=bundle, **kwargs)
         if(logger.isEnabledFor(logging.DEBUG)):
@@ -234,7 +244,8 @@ def log_obj_create(obj_create_func):
         log.date_time = timezone.now()
         log.ref_resource_name = self._meta.resource_name
         log.api_action = str((bundle.request.method)).upper()
-        #        log.diffs = json.dumps(bundle.obj)
+        if full:
+            log.diffs = json.dumps(bundle.obj)
             
         # user can specify any valid, escaped json for this field
         # FIXME: untested
@@ -249,21 +260,13 @@ def log_obj_create(obj_create_func):
         if 'HTTP_APILOG_COMMENT' in bundle.request.META:
             log.comment = bundle.request.META['HTTP_APILOG_COMMENT']
             
+        if 'parent_log' in kwargs:
+            log.parent_log = kwargs.get('parent_log', None)
+        
         log.save()
         if(logger.isEnabledFor(logging.DEBUG)):
             logger.debug(str(('create, api log', log)) )
 
-#             # TODO: create an analog of this in delete, update
-#             # if there is a listlog, it means "patch_list", or "put_list" were called
-#             if hasattr(self, 'listlog') and self.listlog:
-#                 if(logger.isEnabledFor(logging.DEBUG)):
-#                     logger.debug(str(('update listlog', self.listlog)))
-#                 added_keys = []
-#                 if self.listlog.added_keys:
-#                     added_keys = json.loads(self.listlog.added_keys)
-#                 added_keys.append(log.key); # TODO: append the log.id too?
-#                 self.listlog.added_keys = json.dumps(added_keys)
-        
         logger.debug(str(('decorator done; log_obj_create')))
         return bundle    
                             
@@ -282,20 +285,43 @@ def log_obj_create(obj_create_func):
 #     def __repr__(self):
 #         return self.func
 
-def compare_dicts(dict1, dict2, excludes=[]):
+def is_empty_diff(difflog):
+    if not difflog:
+     return True
+    
+    empty = True;
+    for key, value in difflog.items():
+        if value:
+            empty = False;
+    return empty
+
+def compare_dicts(dict1, dict2, excludes=['resource_uri'], full=False):
+    '''
+    @param full (default False) - a full compare shows added keys as well as diff keys
+    
+    Note: "full" logs would log all of the created data in the resource;
+    whereas "not full" only logs the creation; with this strategy, logs 
+    must be played backwards to recreate an entity state.
+    '''
     original_keys = set(dict1.keys())-set(excludes)
     updated_keys = set(dict2.keys())-set(excludes)
     
     intersect_keys = original_keys.intersection(updated_keys)
-    log = {}
+    log = {'diffs': {}}
     
     added_keys = list(updated_keys - intersect_keys)
     if len(added_keys)>0: 
         log['added_keys'] = added_keys
+        if full:
+            log['diffs'].update( 
+                dict(zip( added_keys,([None,dict2[key]] for key in added_keys if dict2[key]) )) )
     
     removed_keys = list(original_keys- intersect_keys)
     if len(removed_keys)>0: 
         log['removed_keys'] = removed_keys
+        if full:
+            log['diffs'].update(
+                dict(zip(removed_keys,([dict1[key],None] for key in removed_keys if dict1[key]) )) )
     
     diff_keys = list()
     for key in intersect_keys:
@@ -318,8 +344,9 @@ def compare_dicts(dict1, dict2, excludes=[]):
 
     if len(diff_keys)>0: 
         log['diff_keys'] = diff_keys
-        log['diffs'] = dict(zip(
-            diff_keys,([dict1[key],dict2[key]] for key in diff_keys) ))
+        log['diffs'].update(
+            dict(zip(diff_keys,([dict1[key],dict2[key]] for key in diff_keys ) )))
+#             dict(zip(diff_keys,([dict1[key],dict2[key]] for key in diff_keys if (full or dict1[key]) ) )))
     
     return log
 
@@ -329,21 +356,30 @@ def log_obj_update(obj_update_func):
     @transaction.atomic()
     @wraps(obj_update_func)
     def _inner(self, bundle, **kwargs):
-        logger.debug(str(('decorator start; log_obj_update', self,self._meta.resource_name)))
+        logger.debug(str(('decorator start; log_obj_update', 
+            self,self._meta.resource_name)))
+        kwargs = kwargs or {}    
+        
         original_bundle = Bundle(
-            data=deepcopy(bundle.data),
+            data={},
             request=bundle.request)
         if hasattr(bundle,'obj'): 
             original_bundle.obj = bundle.obj
         else:
-            original_bundle = self._locate_obj(original_bundle, **kwargs)
+            bundle = self._locate_obj(bundle, **kwargs)
+            original_bundle.obj = bundle.obj
         
         # store and compare dehydrated outputs: 
         # the api logger is concerned with what's sent out of the system, i.e.
         # the dehydrated output, not the internal representations.
         
+        ## filter out the fields that aren't actually on this resource
+        schema = self.build_schema()
+        fields = schema['fields']
+        original_bundle.data = { key: original_bundle.data[key] 
+            for key in original_bundle.data.keys() if key in fields.keys() }
         original_bundle = self.full_dehydrate(original_bundle)
-        updated_bundle = obj_update_func(self,bundle=bundle, **kwargs)
+        updated_bundle = obj_update_func(self,bundle, **kwargs)
         updated_bundle = self.full_dehydrate(updated_bundle)
         difflog = compare_dicts(original_bundle.data, updated_bundle.data)
 
@@ -366,8 +402,13 @@ def log_obj_update(obj_update_func):
         if 'HTTP_APILOG_COMMENT' in bundle.request.META:
             log.comment = bundle.request.META['HTTP_APILOG_COMMENT']
             logger.info(str(('log comment', log.comment)))
+
+        if 'parent_log' in kwargs:
+            log.parent_log = kwargs.get('parent_log', None)
+        
         log.save()
-        logger.info(str(('update, api log', log)) )
+        if(logger.isEnabledFor(logging.DEBUG)):
+            logger.debug(str(('update, api log', log)) )
         
         return updated_bundle
     
@@ -379,6 +420,7 @@ def log_obj_delete(obj_delete_func):
     @wraps(obj_delete_func)
     def _inner(self, bundle, **kwargs):
         logger.debug('---log obj_delete')
+        kwargs = kwargs or {}    
         
         obj_delete_func(self,bundle=bundle, **kwargs)
         
@@ -399,6 +441,9 @@ def log_obj_delete(obj_delete_func):
         # TODO: abstract the form field name
         if 'HTTP_APILOG_COMMENT' in bundle.request.META:
             log.comment = bundle.request.META['HTTP_APILOG_COMMENT']
+
+        if 'parent_log' in kwargs:
+            log.parent_log = kwargs.get('parent_log', None)
             
         log.save()
         logger.debug(str(('delete, api log', log)) )
@@ -411,7 +456,7 @@ def log_patch_list(patch_list_func):
     @transaction.atomic()
     def _inner(self, request, **kwargs):
         logger.info(str(('create an apilog for the patch list')))
-        listlog = self.listlog = ApiLog()
+        listlog = ApiLog()
         listlog.username = request.user.username 
         listlog.user_id = request.user.id 
         listlog.date_time = timezone.now()
@@ -423,12 +468,17 @@ def log_patch_list(patch_list_func):
         if 'HTTP_APILOG_COMMENT' in request.META:
             listlog.comment = request.META['HTTP_APILOG_COMMENT']
          
-        response = patch_list_func(self, request, **kwargs) 
-         
         listlog.save();
         listlog.key = listlog.id
         listlog.save()
-        self.listlog = None
+        
+        kwargs = kwargs or {}    
+        if not kwargs.get('parent_log', None):
+            kwargs['parent_log'] = listlog
+                  
+        response = patch_list_func(self, request, **kwargs) 
+        
+#         self.listlog = None
          
         return response        
     return _inner
@@ -444,6 +494,26 @@ class LoggingMixin(Resource):
     ** note: "detail_uri_kwargs" returns the set of lookup keys for the resource 
     URI construction.
     '''
+
+    def make_log(self, request, **kwargs):
+        log = ApiLog()
+        log.username = request.user.username 
+        log.user_id = request.user.id 
+        log.date_time = timezone.now()
+        log.api_action = str((request.method)).upper()
+
+        # TODO: how do we feel about passing form data in the headers?
+        # TODO: abstract the form field name
+        if 'HTTP_APILOG_COMMENT' in request.META:
+            log.comment = request.META['HTTP_APILOG_COMMENT']
+    
+        if kwargs:
+            for key, value in kwargs.items():
+                if hasattr(log, key):
+                    setattr(log, key, value)
+        
+        return log
+    
     def _locate_obj(self,bundle, **kwargs):
         # lookup the object, the same way that it would be looked up in 
         # ModelResource.obj_update
@@ -530,6 +600,149 @@ class LoggingMixin(Resource):
 #     
 #         return response        
     
+from reports.utils.profile_decorator import profile
+
+class UnlimitedDownloadResource(Resource):
+    ''' 
+    Resource that will stream the entire endpoint (with params):
+    - instead of paginating it
+    - instead of doing it in memory
+    - will set a filename to the response header if specified
+    '''
+    @profile("unlimited_get_list.prof")
+    def get_list(self, request, **kwargs):
+        from reports.serializers import csv_convert
+        from django.utils.encoding import smart_str
+        
+        try:
+            limit = request.GET.get('limit', None)
+            if limit == '0':
+                logger.error(str(('using download specific get_list')))
+                base_bundle = self.build_bundle(request=request)
+                objects = self.obj_get_list(bundle=base_bundle, **self.remove_api_resource_names(kwargs))
+                sorted_objects = self.apply_sorting(objects, options=request.GET)
+            
+                desired_format = self.determine_format(request)
+                
+                content_type=build_content_type(desired_format)
+    
+                response = HttpResponse(content_type=content_type)
+                name = self._meta.resource_name
+                response['Content-Disposition'] = \
+                    'attachment; filename=%s.csv' % unicode(name).replace('.', '_')
+                
+                if desired_format == 'application/json':
+                    pass;
+                elif desired_format == 'application/xls':
+                    pass;
+                elif desired_format == 'text/csv':
+                    csvwriter = csv.writer(response)
+                    i = 0
+                    keys = None
+                    for obj in sorted_objects.iterator():
+                        bundle = self.build_bundle(obj=obj, request=request)
+                        bundle = self.full_dehydrate(bundle, for_list=True)
+                        item = bundle.data
+                        if i == 0:
+                            keys = item.keys()
+                            logger.info(str(('create the header row', [smart_str(key) for key in keys])))
+                            csvwriter.writerow([smart_str(key) for key in keys])
+                        i += 1
+                        _list = []
+                        for key in keys:
+                            if key in item:
+                                _list.append(csv_convert(item[key]))
+                        csvwriter.writerow(_list)
+                        if i % 1000 == 0:
+                            logger.info(str(('logged', i)))
+                    logger.error(str(('return response')))
+                else:
+                    raise Exception(str(('unknown format', desired_format)))
+                
+                
+    #             serialized = self.serialize(request, data, desired_format)
+    
+                return response
+            
+            else:
+                logger.info('using superclass get_list')
+                return super(UnlimitedDownloadResource, self).get_list(request, **kwargs)
+
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on build_schema()', self._meta.resource_name, 
+                msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e
+
+
+    def get_list2(self, request, **kwargs):
+        """
+        Returns the entire collection specified by the URI & params
+        """
+        from reports.serializers import csv_convert
+        from django.utils.encoding import smart_str
+        
+        limit = request.GET.get('limit', None)
+        if limit == '0':
+            logger.error(str(('using download specific get_list')))
+            base_bundle = self.build_bundle(request=request)
+            objects = self.obj_get_list(bundle=base_bundle, **self.remove_api_resource_names(kwargs))
+            sorted_objects = self.apply_sorting(objects, options=request.GET)
+            
+            response = HttpResponse(mimetype='text/csv')
+            name = self._meta.resource_name
+            response['Content-Disposition'] = \
+                'attachment; filename=%s.csv' % unicode(name).replace('.', '_')
+    
+            csvwriter = csv.writer(response)
+            
+            i = 0
+            keys = None
+            for obj in sorted_objects.iterator():
+                bundle = self.build_bundle(obj=obj, request=request)
+                bundle = self.full_dehydrate(bundle, for_list=True)
+                item = bundle.data
+                if i == 0:
+                    keys = item.keys()
+                    logger.info(str(('create the header row', [smart_str(key) for key in keys])))
+                    csvwriter.writerow([smart_str(key) for key in keys])
+                i += 1
+                _list = []
+                for key in item:
+                    _list.append(csv_convert(item[key]))
+                csvwriter.writerow(_list)
+                if i % 1000 == 0:
+                    logger.info(str(('logged', i)))
+            logger.error(str(('return response')))
+            
+            return response
+        else:
+            logger.info('using superclass get_list')
+            return super(UnlimitedDownloadResource, self).get_list(request, **kwargs)
+        
+def download_tmp_file(path, filename):
+    """                                                                         
+    Send a file through Django without loading the whole file into              
+    memory at once. The FileWrapper will turn the file object into an           
+    iterator for chunks of 8KB.                                                 
+    """
+    try:
+        _file = file(_path)
+        logger.debug(str(('download_attached_file',_path,_file)))
+        wrapper = FileWrapper(_file)
+        # use the same type for all files
+        response = HttpResponse(wrapper, content_type='text/plain') 
+        response['Content-Disposition'] = \
+            'attachment; filename=%s' % unicode(filename)
+        response['Content-Length'] = os.path.getsize(_path)
+        return response
+    except Exception,e:
+        logger.error(str(('could not find attached file object for id', id, e)))
+        raise e
+
+
 
 # NOTE if using this class, must implement the "not implemented error" methods
 # on Resource (these are implemented with ModelResource):
@@ -619,10 +832,6 @@ class ManagedResource(LoggingMixin):
                 self._meta.ordering.append(key)
         logger.debug(str(('meta filtering', self._meta.filtering)))
     
-#     # locally defined
-#     def get_field_def(self, name):
-#         return self.local_field_defs[name]
-    
     # local method
     def create_fields(self):
         
@@ -706,20 +915,31 @@ class ManagedResource(LoggingMixin):
         self.fields = new_fields
         return self.fields
 
+    def alias_item(self, item):
+        if self.field_alias_map:
+            new_dict =  dict(zip(
+                (self.field_alias_map.get(key, key),val) 
+                for (key,val) in item.items()))
+            return new_dict
+        else:
+            return item 
+        
     def create_aliasmapping_iterator(self, data):
         logger.info(str(('====testing data', data)))
-        if self.field_alias_map:
+        def data_generator(data):
             for item in data:
-                yield dict(zip(
-                    (self.field_alias_map.get(key, key),val) 
-                    for (key,val) in item.items()))
+                yield alias_item(data)
+            
+        if self.field_alias_map:
+            data_generator(data)
         else:
-            yield data 
+            return data 
         
     def build_schema(self):
         '''
         Override
         '''
+        # FIXME: consider using the cache decorator?
         schema = cache.get(self._meta.resource_name + ":schema")
         if schema:
             #if logger.isEnabledFor(logging.DEBUG):
@@ -742,12 +962,13 @@ class ManagedResource(LoggingMixin):
             if not 'id' in schema['fields']:
                 schema['fields']['id'] = { 'visibility':[] }
             
-            # FIXME: schema.resource_definition <=> resource.schema, which one?
+            # FIXME: WHY IS THIS HERE (1) and below (2)
             logger.debug(str((
                 'trying to locate resource information', 
                 self._meta.resource_name, self.scope)))
             resource_def = MetaHash.objects.get(
                 scope='resource', key=self._meta.resource_name)
+            # FIXME in the UI: change the name to just "resource"
             schema['resource_definition'] = resource_def.model_to_dict(scope='fields.resource')
 
         except Exception, e:
@@ -761,6 +982,7 @@ class ManagedResource(LoggingMixin):
             raise e
             
         try:
+            # FIXME: above (1) and here (2)
             resource_def = MetaHash.objects.get(
                 scope='resource', key=self._meta.resource_name)
             schema['resource_definition'] = resource_def.model_to_dict(scope='fields.resource')
@@ -772,13 +994,22 @@ class ManagedResource(LoggingMixin):
                         scope=self.scope, field_definition_scope='fields.metahash'))
                 supertype_fields.update(schema['fields'])
                 schema['fields'] = supertype_fields
+                
+            # pick apart the ORM to find DB particulars for read optimizations
+            sql = schema.get('sql', {})
+            model_meta = self._meta.model._meta
+            sql['db_table'] = getattr(model_meta, 'db_table')
+            
+            
+
         except Exception, e:
             logger.info(str(('in create_fields: resource information not available',self._meta.resource_name, e)))
-
         
         logger.debug('------build_schema,done: ' + self.scope ) 
-#         if logger.isEnabledFor(logging.DEBUG):
-#             logger.debug(str((schema['fields'])))
+        
+        
+        # pick apart the query model to get the information about the db schema particulars
+        
         
         cache.set(self._meta.resource_name + ':schema', schema)
         return schema
@@ -871,6 +1102,25 @@ class ManagedResource(LoggingMixin):
             return False
         return True
         
+    def deserialize(self, *args, **kwargs):
+        '''
+        Because field alias mapping is specific to each resource, override the 
+        deserialize method here to patch in an iterator that will use the alias
+        map to convert posted fields to mapped fields.
+         
+        ## TODO: implement tests for this
+        '''
+        deserialized = super(ManagedResource, self).deserialize(*args, **kwargs)
+        
+        if self._meta.collection_name in deserialized: 
+            # this is a list of data
+            deserialized[self._meta.collection_name] = \
+                self.create_aliasmapping_iterator(deserialized[self._meta.collection_name])
+        else:   
+            # this is a single item of data
+            deserialized = self.alias_item(deserialized)
+        return deserialized
+        
     def dehydrate(self, bundle):
         ''' 
         Implementation hook method, override to augment bundle, post dehydrate
@@ -960,10 +1210,14 @@ class ManagedResource(LoggingMixin):
             bundle = super(ManagedResource, self).obj_get(bundle, **kwargs);
             return bundle
         except Exception, e:
+            extype, ex, tb = sys.exc_info()
+            logger.warn(str((
+                'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
+                tb.tb_lineno, extype, ex)))
             msg = str((e));
             if hasattr(e, 'response'): 
                 msg = str(e.response)
-            logger.warn(str(('==ex on update',bundle.request.path,e, msg )))
+            logger.warn(str(('==ex on get',bundle.request.path,e, msg )))
             raise e
 #             extype, ex, tb = sys.exc_info()
 #             logger.warn(str((
@@ -1010,8 +1264,11 @@ class ManagedResource(LoggingMixin):
 
         By default, it uses the model's ``pk`` in order to create the URI.
         """
+        if bundle_or_obj is None:
+            return {}
 
         resource_name = self._meta.resource_name
+        id_attribute = None
         try:
             schema = self.build_schema()
             resource = schema['resource_definition']
@@ -1020,8 +1277,8 @@ class ManagedResource(LoggingMixin):
             # note use an ordered dict here so that the args can be returned as
             # a positional array for 
             kwargs = OrderedDict() 
-
-            for x in resource['id_attribute']:
+            id_attribute = resource['id_attribute']
+            for x in id_attribute:
                 val = ''
                 if isinstance(bundle_or_obj, Bundle):
 #                     val = getattr(bundle_or_obj.obj,x)
@@ -1030,15 +1287,27 @@ class ManagedResource(LoggingMixin):
                     if hasattr(bundle_or_obj, x):
 #                         val = getattr(bundle_or_obj,x)  
                         val = self._get_attribute(bundle_or_obj,x)  
-                    else:
+                    elif isinstance(bundle_or_obj, dict):
 #                         val = bundle_or_obj[x] # allows simple dicts
                         val = self._get_hashvalue(bundle_or_obj, x) # allows simple dicts
-                kwargs[x] = str(val)
+                    else:
+                        raise Exception(str(('obj', type(obj), obj, 'does not contain', x)))
+                if isinstance(val, datetime.datetime):
+                    val = val.isoformat()
+                else:
+                    val = str(val)
+                
+                kwargs[x] = val
             
             return kwargs
             
         except Exception, e:
-            logger.warn(str(('cannot grab id_attribute for', resource_name, e)))
+            #             extype, ex, tb = sys.exc_info()
+            #             logger.warn(str((
+            #                 'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
+            #                 tb.tb_lineno, extype, ex)))
+            #             logger.warn(str(('==cannot grab id_attribute', bundle_or_obj, id_attribute, e)))
+            logger.warn(str(('cannot grab id_attribute for', resource_name,bundle_or_obj, id_attribute,  e)))
             
             try:
                 if logger.isEnabledFor(logging.INFO):
@@ -1048,7 +1317,7 @@ class ManagedResource(LoggingMixin):
                         'also note that this may not work with south, since model methods',
                         'are not available: ', e, 
                         'type', type(bundle_or_obj),
-                        'bundle', bundle_or_obj,
+                        'bundle', bundle_or_obj,id_attribute,
                          )))
             except Exception, e:
                 logger.info(str(('reporting exception', e)))
@@ -1492,24 +1761,53 @@ class ApiLogResource(ManagedModelResource):
         excludes = [] #['json_field']
         always_return_data = True # this makes Backbone happy
         resource_name='apilog' 
-        max_limit = 10000
+        max_limit = 100000
     
     def __init__(self, **kwargs):
         self.scope = 'fields.apilog'
         super(ApiLogResource,self).__init__(**kwargs)
+
+    def get_resource_uri(self,bundle_or_obj=None):
+        '''
+        for efficiency, return a localized URI:
+        /apilog/k1/k2/.../kn
+        '''
+        parts = [self._meta.resource_name]
+        if bundle_or_obj is not None:
+            id_kwarg_ordered = self.detail_uri_kwargs(bundle_or_obj)
+            parts.extend(id_kwarg_ordered.values())
+        return '/'.join(parts)
         
-    def dehydrate_added_keys(self, bundle):
+    def dehydrate_child_logs(self, bundle):
         
-        if ( not bundle.data.get('added_keys', None) and
-             bundle.obj.listlog_set.exists()):
-            keys = list()
-            for x in bundle.obj.listlog_set.all():
-                if x.key and x.ref_resource_name:
-                    keys.append("%s/%s" % (x.ref_resource_name,x.key) )
-                elif x.uri:
-                    keys.append(x.uri)
-            return keys
+        if bundle.obj.child_logs.exists():
+            return len(bundle.obj.child_logs.all())
+#             uris = list()
+#             for child_log in bundle.obj.child_logs.all():
+#                 uris.append(self.get_resource_uri(child_log)) 
+#             return uris
         return None
+    
+    def dehydrate_parent_log_uri(self, bundle):
+        parent_log = bundle.obj.parent_log
+        if parent_log:
+            id_kwarg_ordered = self.detail_uri_kwargs(parent_log)
+            return '/'.join(id_kwarg_ordered.values())
+        return None
+    
+#     def dehydrate_added_keys(self, bundle):
+#         
+#         if ( not getattr(bundle.obj, 'added_keys', None) and
+#              bundle.obj.listlog_set.exists()):
+#             keys = list()
+#             for x in bundle.obj.listlog_set.all():
+#                 if x.key and x.ref_resource_name:
+#                     keys.append("%s/%s" % (x.ref_resource_name,x.key) )
+#                 elif x.uri:
+#                     keys.append(x.uri)
+#             return keys
+#         else:
+#             return bundle.obj.added_keys
     
     def build_schema(self):
         schema = super(ApiLogResource,self).build_schema()
@@ -1525,12 +1823,34 @@ class ApiLogResource(ManagedModelResource):
             url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)/children%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_apilog_childview'), name="api_dispatch_apilog_childview"),
+            url((r"^(?P<resource_name>%s)/children/(?P<ref_resource_name>[\w\d_.\-:]+)"
+                 r"/(?P<key>[\w\d_.\-\+: ]+)"
+                 r"/(?P<date_time>[\w\d_.\-\+:]+)%s$")
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_apilog_childview2'), name="api_dispatch_apilog_childview2"),
             url((r"^(?P<resource_name>%s)/(?P<ref_resource_name>[\w\d_.\-:]+)"
-                 r"/(?P<key>[\w\d_.\-\+:]+)"
+                 r"/(?P<key>[\w\d_.\-\+: ]+)"
                  r"/(?P<date_time>[\w\d_.\-\+:]+)%s$")
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
+
+    def dispatch_apilog_childview(self, request, **kwargs):
+        kwargs['parent_log_id'] = kwargs.pop('id')
+        return ApiLogResource().dispatch('list', request, **kwargs)    
+
+    def dispatch_apilog_childview2(self, request, **kwargs):
+        logger.info(str(('kwargs', kwargs)))
+        ref_resource_name = kwargs.pop('ref_resource_name')
+        key = kwargs.pop('key')
+        date_time = kwargs.pop('date_time')
+        logger.info(str(('childview2', ref_resource_name, key, date_time)))
+        parent_log = ApiLog.objects.get(ref_resource_name=ref_resource_name, key=key, date_time=date_time)
+        kwargs['parent_log_id'] = parent_log.id
+        return ApiLogResource().dispatch('list', request, **kwargs)    
 
 
 class UserResource(ManagedModelResource):
@@ -2315,7 +2635,7 @@ class ManagedLinkedResource(ManagedModelResource):
                 for x,y in _fields.items() 
                     if y.get('linked_field_type',None) }
 
-            logger.info(str(('lookup the module.model for each linked field', 
+            logger.debug(str(('lookup the module.model for each linked field', 
                 self.linked_field_defs.keys() )))
             for key,field_def in self.linked_field_defs.items():
                 
@@ -2338,7 +2658,7 @@ class ManagedLinkedResource(ManagedModelResource):
                     # Try to import.
                     module_bits = linked_field_module.split('.')
                     module_path, class_name = '.'.join(module_bits[:-1]), module_bits[-1]
-                    logger.info(str(('====linked: ' , linked_field_module,'gives: ', module_path, class_name)))
+#                     logger.info(str(('====linked: ' , linked_field_module,'gives: ', module_path, class_name)))
                     module = importlib.import_module(module_path)
                 else:
                     # We've got a bare class name here, which won't work (No AppCache
@@ -2461,7 +2781,7 @@ class ManagedLinkedResource(ManagedModelResource):
         linkedObj.save()
 
     def _set_multivalue_field(self, linkedModel, parent, item, val):
-#         logger.debug(str(('_set_multivalue_field', item['key'], val)))
+        logger.info(str(('_set_multivalue_field', item['key'], linkedModel, parent, item, val)))
         if isinstance(val, six.string_types):
             val = (val) 
         for i,entry in enumerate(val):
@@ -2582,33 +2902,44 @@ class ManagedLinkedResource(ManagedModelResource):
     
     def dehydrate(self, bundle):
         '''
-        Note - dehydrate only to be used for small sets.
+        Note - dehydrate only to be used for small sets. 
+        Looks each of the the fields up as separare query; should be able to modify
+        the parent query and find these fields in it using ORM methods 
         (TODO: we will implement obj-get-list methods)
         '''
-        for key,item in self.get_linked_fields().items():
-            bundle.data[key] = None
-            linkedModel = item.get('linked_field_model')
-            queryparams = { item['linked_field_parent']: bundle.obj }
-            if item.get('linked_field_meta_field', None):
-                queryparams[item['linked_field_meta_field']] = item['meta_field_instance']
-            if item['linked_field_type'] != 'fields.ListField':
-                try:
-                    linkedObj = linkedModel.objects.get(**queryparams)
-                    bundle.data[key] = getattr( linkedObj, item['linked_field_value_field'])
-                except ObjectDoesNotExist:
-                    pass
-            else:
-                query = linkedModel.objects.filter(**queryparams)
-                if hasattr(linkedModel, 'ordinal'):
-                    query = query.order_by('ordinal')
-                values = query.values_list(
-                        item['linked_field_value_field'], flat=True)
-#                 logger.debug(str((key,'multifield values', values)))
-                if values and len(values)>0:
-                    bundle.data[key] = list(values)
+        try:
+            for key,item in self.get_linked_fields().items():
+                bundle.data[key] = None
+                linkedModel = item.get('linked_field_model')
+                queryparams = { item['linked_field_parent']: bundle.obj }
+                if item.get('linked_field_meta_field', None):
+                    queryparams[item['linked_field_meta_field']] = item['meta_field_instance']
+                if item['linked_field_type'] != 'fields.ListField':
+                    try:
+                        linkedObj = linkedModel.objects.get(**queryparams)
+                        bundle.data[key] = getattr( linkedObj, item['linked_field_value_field'])
+                    except ObjectDoesNotExist:
+                        pass
+                else:
+                    query = linkedModel.objects.filter(**queryparams)
+                    if hasattr(linkedModel, 'ordinal'):
+                        query = query.order_by('ordinal')
+                    values = query.values_list(
+                            item['linked_field_value_field'], flat=True)
+    #                 logger.debug(str((key,'multifield values', values)))
+                    if values and len(values)>0:
+                        bundle.data[key] = list(values)
+            return bundle
+        except Exception, e:
+            extype, ex, tb = sys.exc_info()
+            msg = str(e)
+            if isinstance(e, ImmediateHttpResponse):
+                msg = str(e.response)
+            logger.warn(str((
+                'throw', e, msg, tb.tb_frame.f_code.co_filename, 'error line', 
+                tb.tb_lineno, extype, ex)))
         return bundle
-
-
+    
 class RecordResource(ManagedLinkedResource):
     ''' poc: store resource virtual fields in a related table
     '''

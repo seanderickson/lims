@@ -12,6 +12,15 @@ import os.path
 
 print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
 
+
+### uncomment to turn datetime warnings into a runtime exception with traceback
+import warnings
+warnings.filterwarnings(
+        'error', r"DateTimeField .* received a naive datetime",
+        RuntimeWarning, r'django\.db\.models\.fields')
+
+
+
 # todo: does this exist?
 # TEST_RUNNER='test_utils.test_runners.keep_database'
 
@@ -110,10 +119,10 @@ LOGGING = {
             'propagate': False,
             'level': 'INFO',
         },        
-        'utils': {  # for SQL
+        'django.db.backends': {  # for SQL
             'handlers': ['console'],
-            'propagate': True,
-            'level': 'INFO',
+            'propagate': False,
+            'level': 'DEBUG',
         },        
         'tastypie': {  # set a default handler
             'handlers': ['console'],

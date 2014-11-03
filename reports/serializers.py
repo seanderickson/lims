@@ -432,7 +432,34 @@ class CSVSerializer(Serializer):
                 writer.writerow(self.get_list(item))
 
         return raw_data.getvalue()
-    
+
+    def to_csv_stream(self, query, options=None, outputstream=None):
+        '''
+        @param root ignored for csv!
+        
+        '''
+        
+        options = options or {}
+        data = self.to_simple(data, options)
+        
+        # default: delimiter = ',' quotechar='"'
+        writer = csv.writer(raw_data) 
+
+        if 'error' in data:
+            writer.writerow(['error'])
+            writer.writerow([data['error']])
+            logger.warn(str(('error', data)))
+            return raw_data.getvalue()
+            
+        i = 0
+        keys = None
+        for item in query:
+            if i == 0:
+                keys = item.keys()
+                writer.writerow([smart_str(key) for key in keys])
+            i += 1
+            writer.writerow(self.get_list(item))
+
         
     def get_list(self,item):
         '''
@@ -440,22 +467,7 @@ class CSVSerializer(Serializer):
         '''
         _list = []
         for key in item:
-            logger.debug(str(('item', item)))
             _list.append(csv_convert(item[key]))
-#             if item[key] and isinstance(item[key], (list, tuple)):
-#                 _list.append(
-#                     '[' + ','.join([smart_str(x) for x in item[key]]) + ']' )
-#             elif item[key] != None:
-#                 val = item[key]
-#                 if type(val) == bool:
-#                     if val:
-#                         _list.append('TRUE')
-#                     else:
-#                         _list.append('FALSE')
-#                 else:
-#                     _list.append(smart_str(item[key]))
-#             else:
-#                 _list.append(None)
         return _list
     
     def from_csv(self, content, root='objects'):

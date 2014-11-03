@@ -133,7 +133,6 @@ class ApiLog(models.Model):
 #     ref_containing_resource = models.CharField(null=False, max_length=105)
 #     containing_key = models.CharField(null=False, max_length=128)
 #     contained_keys = models.ListField(...)
-    
         
     # the full uri of the resource instance being logged, so a combination of 
     # [base api uri]/[resource_name]/[key]
@@ -151,6 +150,8 @@ class ApiLog(models.Model):
     diffs = models.TextField(blank=True, null=True)
     comment = models.TextField(blank=True, null=True)
     
+    parent_log = models.ForeignKey('self', related_name='child_logs', null=True)
+    
     # This is the "meta" field, it contains "virtual" json fields, defined in 
     # the metahash
     json_field = models.TextField(blank=True, null=True)
@@ -161,7 +162,8 @@ class ApiLog(models.Model):
     def __unicode__(self):
         return unicode(
             str((self.api_action, self.ref_resource_name, self.key, 
-            str(self.date_time), self.username, self.diff_keys, self.diffs, 
+            str(self.date_time), self.username, self.added_keys, self.removed_keys, 
+            self.diff_keys, self.diffs, 
                 self.comment, self.json_field)))
     
     def diff_dict_to_api_log(self, log):

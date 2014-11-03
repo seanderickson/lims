@@ -1,3 +1,5 @@
+import math
+import sys
 import logging
 from collections import defaultdict
 
@@ -6,7 +8,11 @@ from django.forms.models import model_to_dict
 from django.http import Http404
 from django.db import connection
 from django.db import transaction
+from django.contrib.auth.models import User
+from django.core.cache import cache
+from django.db.models.aggregates import Max, Min
 
+from tastypie.validation import Validation
 from tastypie.utils import timezone
 from tastypie.exceptions import BadRequest, ImmediateHttpResponse
 from tastypie.utils.urls import trailing_slash
@@ -25,12 +31,8 @@ from db.support import lims_utils
 from reports.serializers import CursorSerializer, LimsSerializer, XLSSerializer
 from reports.models import MetaHash, Vocabularies, ApiLog
 from reports.api import ManagedModelResource, ManagedResource, ApiLogResource,\
-    UserGroupAuthorization, ManagedLinkedResource
-from django.contrib.auth.models import User
-from tastypie.validation import Validation
-import math
-from django.db.models.aggregates import Max, Min
-import sys
+    UserGroupAuthorization, ManagedLinkedResource, log_obj_update, UnlimitedDownloadResource
+import json
 
         
 logger = logging.getLogger(__name__)
@@ -754,6 +756,7 @@ class LibraryCopyResource(ManagedModelResource):
         return bundle
     
     def build_schema(self):
+        # FIXME: these options should be defined automatically from a vocabulary in build_schema
         schema = super(LibraryCopyResource,self).build_schema()
 #         temp = [ x.usage_type for x in self.Meta.queryset.distinct('usage_type')]
 #         schema['extraSelectorOptions'] = { 
@@ -941,11 +944,15 @@ class LibraryCopyPlateResource(ManagedModelResource):
             bundle.data['created_by'] =  user.first_name + ' ' + user.last_name
         return bundle
     
+    
     def build_schema(self):
-        schema = super(LibraryCopyPlateResource,self).build_schema()
-        temp = [ x.status for x in self.Meta.queryset.distinct('status')]
-        schema['extraSelectorOptions'] = { 
-            'label': 'Type', 'searchColumn': 'status', 'options': temp }
+        schema = cache.get(self._meta.resource_name + ":schema")
+        if not schema:
+            # FIXME: these options should be defined automatically from a vocabulary in build_schema
+            schema = super(LibraryCopyPlateResource,self).build_schema()
+            temp = [ x.status for x in self.Meta.queryset.distinct('status')]
+            schema['extraSelectorOptions'] = { 
+                'label': 'Type', 'searchColumn': 'status', 'options': temp }
         return schema
     
     def obj_create(self, bundle, **kwargs):
@@ -1015,7 +1022,7 @@ class NaturalProductReagentResource(ManagedLinkedResource):
 
 
 class SilencingReagentResource(ManagedLinkedResource):
-
+    reagent_id = fields.IntegerField(default=None)
     class Meta:
         queryset = Reagent.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), 
@@ -1085,19 +1092,20 @@ class SilencingReagentResource(ManagedLinkedResource):
     def dehydrate(self, bundle):
         bundle = super(SilencingReagentResource, self).dehydrate(bundle)
         
-        if bundle.obj.silencingreagent.vendor_gene:
-            gene = bundle.obj.silencingreagent.vendor_gene
-            type = 'vendor'
-            self._dehydrate_gene(gene, type, bundle)
-        
-        if bundle.obj.silencingreagent.facility_gene:
-            gene = bundle.obj.silencingreagent.facility_gene
-            type = 'facility'
-            self._dehydrate_gene(gene, type, bundle)
-        
-        if bundle.obj.silencingreagent.duplex_wells.exists():
-            bundle.data['duplex_wells'] = ';'.join(
-                [x.well_id for x in bundle.obj.silencingreagent.duplex_wells.all().order_by('well_id') ])
+        if bundle.obj and hasattr(bundle.obj,'silencingreagent'):
+            if bundle.obj.silencingreagent.vendor_gene:
+                gene = bundle.obj.silencingreagent.vendor_gene
+                type = 'vendor'
+                self._dehydrate_gene(gene, type, bundle)
+            
+            if bundle.obj.silencingreagent.facility_gene:
+                gene = bundle.obj.silencingreagent.facility_gene
+                type = 'facility'
+                self._dehydrate_gene(gene, type, bundle)
+            
+            if bundle.obj.silencingreagent.duplex_wells.exists():
+                bundle.data['duplex_wells'] = ';'.join(
+                    [x.well_id for x in bundle.obj.silencingreagent.duplex_wells.all().order_by('well_id') ])
         return bundle
         
     def _dehydrate_gene(self, gene, type, bundle):
@@ -1117,6 +1125,70 @@ class SilencingReagentResource(ManagedLinkedResource):
         
 
 class SmallMoleculeReagentResource(ManagedLinkedResource):
+ 
+    sm_sql = '''select 
+well_id, vendor_identifier, vendor_name, vendor_batch_id, vendor_name_synonym,
+inchi, smiles, 
+molecular_formula, molecular_mass, molecular_weight,
+(select '["' || array_to_string(array_agg(compound_name), '","') || '"]' 
+    from (select compound_name from small_molecule_compound_name smr 
+    where smr.reagent_id=r.reagent_id order by ordinal) a) as compound_name,
+(select '["' || array_to_string(array_agg(pubchem_cid), '","') || '"]' 
+    from ( select pubchem_cid from small_molecule_pubchem_cid p 
+           where p.reagent_id=r.reagent_id order by id ) a ) as pubchem_cid,
+(select '["' || array_to_string(array_agg(chembl_id), '","') || '"]' 
+    from (select chembl_id from small_molecule_chembl_id cb 
+          where cb.reagent_id=r.reagent_id order by id ) a )   as chembl_id,
+(select '["' || array_to_string(array_agg(chembank_id), '","') || '"]' 
+    from (select chembank_id from small_molecule_chembank_id cbk 
+          where cbk.reagent_id=r.reagent_id order by id ) a ) as chembank_id 
+from reagent r join small_molecule_reagent using(reagent_id)
+where r.library_contents_version_id=%s order by well_id;
+'''
+    
+#     def update_query(self, query):
+#          
+#         query.select_related('smallmoleculereagent')
+#         
+#         Hmmm, problem here, because what they really mean when they say "well", 
+#         is "reagent in the well"; so this perhaps should be reversed, so that well
+#         is joined in to a reagents query, expanding it.
+#     
+#     def dehydrate(self, bundle):
+#         # overridde inefficient ManagedLinkedResource.dehydrate
+#         try:
+#             for key,item in self.get_linked_fields().items():
+#                 bundle.data[key] = None
+#                 linkedModel = item.get('linked_field_model')
+#                 queryparams = { item['linked_field_parent']: bundle.obj }
+#                 if item.get('linked_field_meta_field', None):
+#                     queryparams[item['linked_field_meta_field']] = item['meta_field_instance']
+#                 if item['linked_field_type'] != 'fields.ListField':
+#                     try:
+#                         linkedObj = linkedModel.objects.get(**queryparams)
+#                         bundle.data[key] = getattr( linkedObj, item['linked_field_value_field'])
+#                     except ObjectDoesNotExist:
+#                         pass
+#                 else:
+#                     query = linkedModel.objects.filter(**queryparams)
+#                     if hasattr(linkedModel, 'ordinal'):
+#                         query = query.order_by('ordinal')
+#                     values = query.values_list(
+#                             item['linked_field_value_field'], flat=True)
+#     #                 logger.debug(str((key,'multifield values', values)))
+#                     if values and len(values)>0:
+#                         bundle.data[key] = list(values)
+#             return bundle
+#         except Exception, e:
+#             extype, ex, tb = sys.exc_info()
+#             msg = str(e)
+#             if isinstance(e, ImmediateHttpResponse):
+#                 msg = str(e.response)
+#             logger.warn(str((
+#                 'throw', e, msg, tb.tb_frame.f_code.co_filename, 'error line', 
+#                 tb.tb_lineno, extype, ex)))
+#         return bundle
+        
     
     class Meta:
         queryset = Reagent.objects.all() 
@@ -1134,8 +1206,13 @@ class SmallMoleculeReagentResource(ManagedLinkedResource):
     def __init__(self, **kwargs):
         super(SmallMoleculeReagentResource,self).__init__(**kwargs)
 
+    def get_object_list(self,request):
+        from django.db import connection
+        cursor = connection.cursor()
+        cursor.execute(self.sql)
+        return cursor;
 
-class WellResource(ManagedModelResource):
+class WellResource(ManagedModelResource, UnlimitedDownloadResource):
 
     library_short_name = fields.CharField('library__short_name',  null=True)
     library = fields.CharField(null=True)
@@ -1186,22 +1263,13 @@ class WellResource(ManagedModelResource):
                 # NOTE: have to override super, because it ignores the format and 
                 # grabs it again from the Request headers (which is "multipart...")
                 #  return super(ReagentResource, self).deserialize(request, file, format) 
-                # i.e. self._meta.serializer.deserialize(
-                #          data, format=request.META.get('CONTENT_TYPE', 'application/json'))
-                
-                # TODO/FIXME: how to stream input instead of using in-memory representation?
                 deserialized = self._meta.serializer.deserialize(file.read(), format=format)
-                deserialized['objects'] = self.create_aliasmapping_iterator(deserialized['objects'])
-                return deserialized
 
             elif 'xls' in request.FILES:
                 # TP cannot handle binary file formats - it is calling 
                 # django.utils.encoding.force_text on all input
                 file = request.FILES['sdf']
                 deserialized = self._meta.xls_serializer.from_xls(file.read())
-#                 deserialized['objects'] = self.create_aliasmapping_iterator(deserialized['objects'])
-                return deserialized
-               
             else:
                 raise UnsupportedFormat(str(('Unknown file type: ', request.FILES.keys()) ) )
         
@@ -1209,11 +1277,20 @@ class WellResource(ManagedModelResource):
             # TP cannot handle binary file formats - it is calling 
             # django.utils.encoding.force_text on all input
             deserialized = self._meta.xls_serializer.from_xls(request.body)
-#             deserialized['objects'] = self.create_aliasmapping_iterator(deserialized['objects'])
-            return deserialized
             
-        return super(WellResource, self).deserialize(request, request.body, format)    
-
+        else:
+            deserialized = super(WellResource, self).deserialize(request, request.body, format)    
+        
+        if self._meta.collection_name in deserialized: 
+            # this is a list of data
+            deserialized[self._meta.collection_name] = \
+                self.create_aliasmapping_iterator(deserialized[self._meta.collection_name])
+        else:   
+            # this is a single item of data
+            deserialized = self.alias_item(deserialized)
+            
+        return deserialized
+    
     def get_sr_resource(self):
         if not self.sr_resource:
             self.sr_resource = SilencingReagentResource()
@@ -1271,7 +1348,6 @@ class WellResource(ManagedModelResource):
         if library:
             sub_data = self.get_reagent_resource(library).build_schema()
             
-#             data['fields'] = dict(data.fields, **sub_data['fields'])
             newfields = {}
             newfields.update(sub_data['fields'])
             newfields.update(data['fields'])
@@ -1293,6 +1369,18 @@ class WellResource(ManagedModelResource):
         '''
         query = super(WellResource, self).get_object_list(request);
         
+        library = Library.objects.get(short_name=kwargs['library_short_name'])
+        
+#         sub_resource = self.get_reagent_resource(library)
+#         sub_resource.update_query(query)
+#         
+        
+        ## test, just for smr
+        
+        ## TODO:
+        # 1. modify the query to include reagent and sub-reagent columns
+        # 2. override the reports.api.ManagedLinkedResource dehydrate methods
+        
         if library_short_name:
             query = query.filter(library__short_name=library_short_name)
             logger.debug(str(('get well list', library_short_name, len(query))))
@@ -1304,16 +1392,24 @@ class WellResource(ManagedModelResource):
         library = bundle.obj.library
         
         # TODO: migrate to using "well.reagents"
+        # FIXME: need to create a migration script that will invalidate all of the
+        # reagent.well_id's for reagents other than the "latest released reagent"
+        reagent_resource = self.get_reagent_resource(library)
         if bundle.obj.reagent_set.exists():
-            reagent_resource = self.get_reagent_resource(library)
             reagent = bundle.obj.reagent_set.all()[0]            
             sub_bundle = reagent_resource.build_bundle(
                 obj=reagent, request=bundle.request)
             sub_bundle = reagent_resource.full_dehydrate(sub_bundle)
+            if 'resource_uri' in sub_bundle.data:
+                del sub_bundle.data['resource_uri'] 
             bundle.data.update(sub_bundle.data)
         else:
-            #             logger.debug(str(('==== no well reagent', bundle.obj)))
-            pass
+            sub_bundle = reagent_resource.build_bundle(
+                obj=Reagent(), request=bundle.request)
+            sub_bundle = reagent_resource.full_dehydrate(sub_bundle)
+            if 'resource_uri' in sub_bundle.data:
+                del sub_bundle.data['resource_uri'] 
+            bundle.data.update(sub_bundle.data)
         return bundle
     
     def dehydrate_library(self, bundle):
@@ -1329,6 +1425,7 @@ class WellResource(ManagedModelResource):
         # TODO: NOT TESTED
         return self.put_list(request, **kwargs)
     
+    @transaction.atomic()
     def put_list(self, request, **kwargs):
 
         if 'library_short_name' not in kwargs:
@@ -1343,7 +1440,24 @@ class WellResource(ManagedModelResource):
         basic_bundle = self.build_bundle(request=request)
  
         library = Library.objects.get(short_name=kwargs['library_short_name'])
-                          
+        prev_version = library.version_number
+        if library.version_number:
+            library.version_number += 1
+        else:
+            library.version_number = 1
+        library.save()
+        
+        library_log = self.make_log(request)
+        library_log.diff_keys = ['version_number']
+        library_log.diffs = {
+            'version_number': [prev_version, library.version_number]}
+        library_log.ref_resource_name = 'library'
+        library_log.uri = self.get_library_resource().get_resource_uri(library)
+        library_log.key = '/'.join(
+            [str(x) for x in self.get_library_resource().detail_uri_kwargs(library).values()])
+        library_log.save()
+        
+                               
         # Cache all the wells on the library for use with this process 
         wellMap = dict( (well.well_id, well) for well in library.well_set.all())
         if len(wellMap)==0:
@@ -1353,11 +1467,6 @@ class WellResource(ManagedModelResource):
         bundles_seen = []
         skip_errors=False
         for well_data in deserialized[self._meta.collection_name]:
-            
-#             ## TODO: use a class in line with the serializers to do this
-#             # MIGRATE "OLD" SS1 fields to new fields
-#             from db.support.data_converter import convert_well_data
-#             well_data = convert_well_data(well_data)
             
             well_data['library_short_name']=kwargs['library_short_name']
             
@@ -1381,58 +1490,78 @@ class WellResource(ManagedModelResource):
                 
             well_bundle = self.build_bundle(
                 obj=well, data=well_data, request=request);
-            well_bundle = self.full_hydrate(well_bundle)
-            self.is_valid(well_bundle)
-            if well_bundle.errors and not skip_errors:
-                raise ImmediateHttpResponse(response=self.error_response(
-                    well_bundle.request, well_bundle.errors))
-            well_bundle.obj.save()
             
-            duplex_wells = []
-            if well_data.get('duplex_wells', None):
-                if not library.is_pool:
-                    raise ImmediateHttpResponse(
-                        response=self.error_response(request, {
-                            'duplex_wells': str(('library is not a pool libary', library))}))
-                well_ids = well_data['duplex_wells'].split(';')
-                for well_id in well_ids:
-                    try:
-                        duplex_wells.append(Well.objects.get(well_id=well_id))
-                    except:
-                        raise ImmediateHttpResponse(
-                            response=self.error_response(request, {
-                                'duplex_well not found': str(('pool well', well, well_id))}))
-                        
-            logger.debug(str(('updated well', well_bundle.obj)))
-
-            # lookup/create the reagent
-            sub_resource = self.get_reagent_resource(library)
-            
-            if not 'resource_uri' in well_data:
-                reagent_bundle = sub_resource.build_bundle(
-                    data=well_data, request=request)
-                sub_resource.obj_create(
-                    reagent_bundle, 
-                    **{ 'well': well, 'library': library, 'duplex_wells': duplex_wells })
-            else:
-                # FIXME: untested, not complete
-                # lookup and update the reagent
-                sub_resource.obj_update(reagent_bundle)
-                logger.debug(str(('updated reagent', reagent_bundle.obj)))
+            kwargs.update({ 'library': library })
+            kwargs.update({ 'parent_log': library_log })
+            well_bundle = self.obj_update(well_bundle, **kwargs)
+                
             i = i+1
             bundles_seen.append(well_bundle)
         
-        logger.debug(str(('put reagents', i)))
-
+        logger.debug(str(('put reagents', i, library_log)))
+        
         if not self._meta.always_return_data:
             return http.HttpNoContent()
         else:
             to_be_serialized = {}
-            to_be_serialized[self._meta.collection_name] = [self.full_dehydrate(bundle, for_list=True) for bundle in bundles_seen]
+            to_be_serialized[self._meta.collection_name] = [
+                self.full_dehydrate(bundle, for_list=True) for bundle in bundles_seen]
             to_be_serialized = self.alter_list_data_to_serialize(request, to_be_serialized)
             return self.create_response(request, to_be_serialized)
 
+    @log_obj_update      
+    @transaction.atomic()
+    def obj_update(self, well_bundle, **kwargs):
+        # called only from local put_list  
+            
+        library = kwargs.pop('library')
+        well_data = well_bundle.data
+        
+        well_bundle = self.full_hydrate(well_bundle)
+        self.is_valid(well_bundle)
+        if well_bundle.errors and not skip_errors:
+            raise ImmediateHttpResponse(response=self.error_response(
+                well_bundle.request, well_bundle.errors))
+        well_bundle.obj.save()
+        
+        duplex_wells = []
+        if well_data.get('duplex_wells', None):
+            if not library.is_pool:
+                raise ImmediateHttpResponse(
+                    response=self.error_response(request, {
+                        'duplex_wells': str(('library is not a pool libary', library))}))
+            well_ids = well_data['duplex_wells'].split(';')
+            for well_id in well_ids:
+                try:
+                    duplex_wells.append(Well.objects.get(well_id=well_id))
+                except:
+                    raise ImmediateHttpResponse(
+                        response=self.error_response(request, {
+                            'duplex_well not found': str(('pool well', well, well_id))}))
+                    
+        logger.debug(str(('updated well', well_bundle.obj)))
 
+        # lookup/create the reagent
+        sub_resource = self.get_reagent_resource(library)
+        
+        reagent_bundle = sub_resource.build_bundle(
+            data=well_data, request=well_bundle.request)
+        if not well_bundle.obj.reagent_set.exists():
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(str(('==== creating reagent for ', well_bundle.obj)) )
+            sub_resource.obj_create(
+                reagent_bundle, 
+                **{ 'well': well_bundle.obj, 'library': library, 'duplex_wells': duplex_wells })
+        else:
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(str(('==== updating reagent for ', well_bundle.obj)) )
+            # FIXME: untested
+            # lookup and update the reagent
+            reagent_bundle.obj = well_bundle.obj.reagent_set.all()[0]
+            sub_resource.obj_update(reagent_bundle)
+            logger.debug(str(('updated reagent', reagent_bundle.obj)))
+        
+        return well_bundle
 
 # FIXME: will replace this with the ApiLog resource?
 class ActivityResource(ManagedModelResource):
@@ -1602,15 +1731,7 @@ class LibraryResource(ManagedModelResource):
                 ' in the URI, as in /library/[short_name]/well/schema/')))
         kwargs['library_short_name'] = kwargs.pop('short_name')
         return WellResource().get_schema(request, **kwargs)    
- 
-#     def get_reagent_schema(self, request, **kwargs):
-#         if not 'short_name' in kwargs:
-#             raise Http404(unicode((
-#                 'The well schema requires a library short name'
-#                 ' in the URI, as in /library/[short_name]/well/schema/')))
-#         kwargs['library_short_name'] = kwargs.pop('short_name')
-#         return ReagentResource().get_schema(request, **kwargs)    
- 
+  
     def dispatch_librarycopyview(self, request, **kwargs):
         kwargs['library_short_name'] = kwargs.pop('short_name')
         return LibraryCopyResource().dispatch('list', request, **kwargs)    
@@ -1638,50 +1759,64 @@ class LibraryResource(ManagedModelResource):
     def dehydrate(self, bundle):
         # get the api comments
         
+        
         # FIXME: just poc: gets_all_ apilog comments, at this time
         # TODO: how to limit the number of comments?
         # FIXME: how to bypass hydrating comments when in the LoggingMixin on update?
         comments = self.get_apilog_resource().obj_get_list(
-            bundle, ref_resource_name='library', key=bundle.obj.short_name,
-            comment__isnull=False)
+            bundle, ref_resource_name='library', key=bundle.obj.short_name)
         comment_list = []
         if len(comments) > 0:
             for comment in comments[:10]:
-                comment_bundle = self.get_apilog_resource().build_bundle(obj=comment)
-                comment_bundle = self.get_apilog_resource().full_dehydrate(comment_bundle);
-                comment_list.append(comment_bundle.data);
+                # manually build the comment bundle, 
+                # because the apilog.dehydrate_child_logs is non-performant
+                
+                comment_bundle = {
+                    'username': comment.username,
+                    'date_time': comment.date_time,
+                    'comment': comment.comment,
+                    'ref_resource_name': comment.ref_resource_name,
+                    'key': comment.key,
+                    }
+#                 comment_bundle = self.get_apilog_resource().build_bundle(obj=comment)
+#                 comment_bundle = self.get_apilog_resource().full_dehydrate(comment_bundle);
+#                 comment_list.append(comment_bundle.data);
+                comment_list.append(comment_bundle)
         bundle.data['comments'] = comment_list;
         return bundle
     
     def build_schema(self, librarytype=None):
-        schema = super(LibraryResource,self).build_schema()
-        
-        if 'start_plate' in schema['fields'] and 'end_plate' in schema['fields']:
-            # (only run if library fields already initialized)
-            # Exemplary section - set start/end plate ranges
-            maxsmr = ( 
-                Library.objects
-                    .filter(screen_type='small_molecule')
-                    .exclude(library_type='natural_products')
-                    .aggregate(Max('end_plate')) )
-            maxsmr = maxsmr['end_plate__max']      
-            minrnai = ( 
-                Library.objects
-                    .filter(screen_type='rnai')
-                    .aggregate(Min('end_plate')) )
-            minrnai = minrnai['end_plate__min']
-            maxrnai = ( 
-                Library.objects
-                    .filter(screen_type='rnai')
-                    .aggregate(Max('end_plate')) )
-            maxrnai = maxrnai['end_plate__max']
-            schema['library_plate_range'] = [maxsmr,minrnai,maxrnai]
-            schema['fields']['start_plate']['range'] = [maxsmr,minrnai,maxrnai]
-            schema['fields']['end_plate']['range'] = [maxsmr,minrnai,maxrnai]
-        
-        temp = [ x.library_type for x in self.Meta.queryset.distinct('library_type')]
-        schema['extraSelectorOptions'] = { 
-            'label': 'Type', 'searchColumn': 'library_type', 'options': temp }
+        schema = cache.get(self._meta.resource_name + ":schema")
+        if not schema:
+            # FIXME: these options should be defined automatically from a vocabulary in build_schema
+            schema = super(LibraryResource,self).build_schema()
+            
+            if 'start_plate' in schema['fields'] and 'end_plate' in schema['fields']:
+                # (only run if library fields already initialized)
+                # Exemplary section - set start/end plate ranges
+                maxsmr = ( 
+                    Library.objects
+                        .filter(screen_type='small_molecule')
+                        .exclude(library_type='natural_products')
+                        .aggregate(Max('end_plate')) )
+                maxsmr = maxsmr['end_plate__max']      
+                minrnai = ( 
+                    Library.objects
+                        .filter(screen_type='rnai')
+                        .aggregate(Min('end_plate')) )
+                minrnai = minrnai['end_plate__min']
+                maxrnai = ( 
+                    Library.objects
+                        .filter(screen_type='rnai')
+                        .aggregate(Max('end_plate')) )
+                maxrnai = maxrnai['end_plate__max']
+                schema['library_plate_range'] = [maxsmr,minrnai,maxrnai]
+                schema['fields']['start_plate']['range'] = [maxsmr,minrnai,maxrnai]
+                schema['fields']['end_plate']['range'] = [maxsmr,minrnai,maxrnai]
+            
+            temp = [ x.library_type for x in self.Meta.queryset.distinct('library_type')]
+            schema['extraSelectorOptions'] = { 
+                'label': 'Type', 'searchColumn': 'library_type', 'options': temp }
         return schema
     
     ##
@@ -1700,6 +1835,9 @@ class LibraryResource(ManagedModelResource):
         logger.debug(str(('===creating library', bundle.data)))
 
         bundle = super(LibraryResource, self).obj_create(bundle, **kwargs)
+
+        # clear the cached schema because plate range have updated
+        cache.delete(self._meta.resource_name + ':schema')
         
         # now create the wells
         
@@ -1707,8 +1845,6 @@ class LibraryResource(ManagedModelResource):
         logger.debug(str((
             'created library', library, library.start_plate, type(library.start_plate))))
         plate_size = int(library.plate_size)
-#         rows = lims_utils.get_rows(plate_size)
-#         cols = lims_utils.get_cols(plate_size)
 
         try:
             for plate in range(int(library.start_plate), int(library.end_plate)+1):
@@ -1720,6 +1856,7 @@ class LibraryResource(ManagedModelResource):
                     well.well_id = lims_utils.well_id(plate,well.well_name)
                     well.library = library
                     well.plate_number = plate
+                    # FIXME: use vocabularies for well type
                     well.library_well_type = 'undefined'
                     well.save()
             
@@ -1742,7 +1879,13 @@ class LibraryResource(ManagedModelResource):
             logger.warn(errMsg)
             raise ImmediateHttpResponse(response=self.error_response(
                 bundle.request, { 'errMsg': errMsg }))
-        
+
+#     def obj_update(self, bundle, **kwargs):
+#         bundle = super(LibraryResource, self).object_update(bundle, **kwargs)
+#         # clear the cached schema because plate range have updated
+#         cache.delete(self._meta.resource_name + ':schema')
+# 
+#         return bundle;
 
 class LibraryContentsVersionResource(ManagedModelResource):
 

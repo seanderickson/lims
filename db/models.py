@@ -769,6 +769,9 @@ class Reagent(models.Model):
     vendor_name = models.TextField(blank=True)
     library_contents_version = models.ForeignKey('LibraryContentsVersion', null=True)
 #     library = models.ForeignKey('Library', null=True)
+
+    # FIXME: need to create a migration script that will invalidate all of the
+    # reagent.well_id's for reagents other than the "latest released reagent"
     well = models.ForeignKey('Well', null=True) # , related_name='well_reagent')
 #     facility_batch_id = models.IntegerField(null=True, blank=True)
     vendor_batch_id = models.TextField(blank=True)
@@ -908,11 +911,6 @@ class SmallMoleculeChemblId(models.Model):
     class Meta:
         db_table = 'small_molecule_chembl_id'
 
-class SmallMoleculeCherryPickRequest(models.Model):
-    cherry_pick_request = models.ForeignKey(CherryPickRequest, primary_key=True)
-    class Meta:
-        db_table = 'small_molecule_cherry_pick_request'
-
 class SmallMoleculeCompoundName(models.Model):
     reagent = models.ForeignKey('Reagent')
     compound_name = models.TextField()
@@ -926,6 +924,11 @@ class SmallMoleculePubchemCid(models.Model):
     class Meta:
         db_table = 'small_molecule_pubchem_cid'
 
+
+class SmallMoleculeCherryPickRequest(models.Model):
+    cherry_pick_request = models.ForeignKey(CherryPickRequest, primary_key=True)
+    class Meta:
+        db_table = 'small_molecule_cherry_pick_request'
 
 
 
@@ -960,7 +963,11 @@ class Library(models.Model):
     date_screenable = models.DateField(null=True, blank=True)
     date_created = models.DateTimeField()
     plate_size = models.TextField()
+
+    # FIXME: need to create a migration script that will invalidate all of the
+    # reagent.well_id's for reagents other than the "latest released reagent"
     latest_released_contents_version_id = models.IntegerField(null=True, blank=True)
+    
     experimental_well_count = models.IntegerField(null=True, blank=True)
     is_pool = models.NullBooleanField(null=True, blank=True)
     created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)

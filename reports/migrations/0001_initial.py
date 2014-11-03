@@ -23,6 +23,7 @@ class Migration(SchemaMigration):
             ('diff_keys', self.gf('django.db.models.fields.TextField')(null=True, blank=True)),
             ('diffs', self.gf('django.db.models.fields.TextField')(null=True, blank=True)),
             ('comment', self.gf('django.db.models.fields.TextField')(null=True, blank=True)),
+            ('parent_log', self.gf('django.db.models.fields.related.ForeignKey')(related_name='child_logs', null=True, to=orm['reports.ApiLog'])),
             ('json_field', self.gf('django.db.models.fields.TextField')(null=True, blank=True)),
         ))
         db.send_create_signal(u'reports', ['ApiLog'])
@@ -62,11 +63,11 @@ class Migration(SchemaMigration):
         # Adding model 'Vocabularies'
         db.create_table(u'reports_vocabularies', (
             (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('scope', self.gf('django.db.models.fields.CharField')(max_length=35, blank=True)),
-            ('key', self.gf('django.db.models.fields.CharField')(max_length=35, blank=True)),
+            ('scope', self.gf('django.db.models.fields.CharField')(max_length=128, blank=True)),
+            ('key', self.gf('django.db.models.fields.CharField')(max_length=128, blank=True)),
             ('alias', self.gf('django.db.models.fields.CharField')(max_length=35, blank=True)),
             ('ordinal', self.gf('django.db.models.fields.IntegerField')()),
-            ('title', self.gf('django.db.models.fields.CharField')(max_length=100, blank=True)),
+            ('title', self.gf('django.db.models.fields.CharField')(max_length=512, blank=True)),
             ('json_field', self.gf('django.db.models.fields.TextField')(blank=True)),
         ))
         db.send_create_signal(u'reports', ['Vocabularies'])
@@ -300,6 +301,7 @@ class Migration(SchemaMigration):
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'json_field': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
             'key': ('django.db.models.fields.CharField', [], {'max_length': '128'}),
+            'parent_log': ('django.db.models.fields.related.ForeignKey', [], {'related_name': "'child_logs'", 'null': 'True', 'to': u"orm['reports.ApiLog']"}),
             'ref_resource_name': ('django.db.models.fields.CharField', [], {'max_length': '35'}),
             'removed_keys': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
             'uri': ('django.db.models.fields.TextField', [], {}),
@@ -390,10 +392,10 @@ class Migration(SchemaMigration):
             'alias': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'json_field': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'key': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
+            'key': ('django.db.models.fields.CharField', [], {'max_length': '128', 'blank': 'True'}),
             'ordinal': ('django.db.models.fields.IntegerField', [], {}),
-            'scope': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
-            'title': ('django.db.models.fields.CharField', [], {'max_length': '100', 'blank': 'True'})
+            'scope': ('django.db.models.fields.CharField', [], {'max_length': '128', 'blank': 'True'}),
+            'title': ('django.db.models.fields.CharField', [], {'max_length': '512', 'blank': 'True'})
         }
     }
 

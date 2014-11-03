@@ -298,57 +298,6 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
 
         logger.debug(str(('==== done: test1_create_library =====')))
 
-    def test2_create_library_invalid_library_type(self):
-        logger.debug(str(('==== test2_create_library_invalid_library_type =====')))
-        
-        resource_uri = BASE_URI_DB + '/library'
-        
-        library_item = LibraryFactory.attributes()
-        library_item['library_type'] = 'invalid_type'
-        
-        logger.debug(str(('try to create an invalid library_type:', library_item)))
-        resp = self.api_client.post(
-            resource_uri, format='json', data=library_item, 
-            authentication=self.get_credentials())
-        
-        self.assertTrue(resp.status_code in [400], str((resp.status_code, resp)))
-        
-        logger.debug(str(('response.content.library message', 
-                         getattr(resp, 'content'))))
-        
-        obj = json.loads(getattr(resp, 'content'))
-        logger.debug(str(('content', obj)))    
-        self.assertTrue('library_type' in obj['library'], 
-            str(('content should have an entry for the faulty "name"', obj)))
-        logger.debug(str(('==== done: test2_create_library_invalid_library_type =====')))
-
-    def test3_create_library_invalid_library_name(self):
-        logger.debug(str(('==== test3_create_library_invalid_library_name =====')))
-        
-        resource_uri = BASE_URI_DB + '/library'
-        
-        library_item = LibraryFactory.attributes()
-        library_item['library_name'] = 'invalid & name'
-        
-        logger.debug(str(('try to create an invalid library name:', library_item)))
-        resp = self.api_client.post(
-            resource_uri, format='json', data=library_item, 
-            authentication=self.get_credentials())
-        
-        self.assertTrue(resp.status_code in [400], str((resp.status_code, resp)))
-        
-        logger.debug(str(('response.content.library message', 
-                         getattr(resp, 'content'))))
-        
-        obj = json.loads(getattr(resp, 'content'))
-        logger.debug(str(('content', obj)))    
-        self.assertTrue('library_name' in obj['library'], 
-            str(('content should have an entry for the faulty "name"', obj)))
-        
-        # TODO: test the error message
-        
-        logger.debug(str(('==== done: test3_create_library_invalid_library_name =====')))
-
     def test4_create_library_invalids(self):
         '''
         Test the schema "required" validations 
@@ -386,7 +335,45 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
                 logger.debug(str(('==========content', obj)))
                 self.assertTrue(key in obj['library'], 
                     str(('error content should have an entry for the faulty key:',key, obj)))
-                
+
+        # another test                
+        library_item = LibraryFactory.attributes()
+        library_item['library_name'] = 'invalid & name'
+        
+        logger.debug(str(('try to create an invalid library name:', library_item)))
+        resp = self.api_client.post(
+            resource_uri, format='json', data=library_item, 
+            authentication=self.get_credentials())
+        
+        self.assertTrue(resp.status_code in [400], str((resp.status_code, resp)))
+        
+        logger.debug(str(('response.content.library message', 
+                         getattr(resp, 'content'))))
+        
+        obj = json.loads(getattr(resp, 'content'))
+        logger.debug(str(('content', obj)))    
+        self.assertTrue('library_name' in obj['library'], 
+            str(('content should have an entry for the faulty "name"', obj)))
+
+        # another test
+        library_item = LibraryFactory.attributes()
+        library_item['library_type'] = 'invalid_type'
+        
+        logger.debug(str(('try to create an invalid library_type:', library_item)))
+        resp = self.api_client.post(
+            resource_uri, format='json', data=library_item, 
+            authentication=self.get_credentials())
+        
+        self.assertTrue(resp.status_code in [400], str((resp.status_code, resp)))
+        
+        logger.debug(str(('response.content.library message', 
+                         getattr(resp, 'content'))))
+        
+        obj = json.loads(getattr(resp, 'content'))
+        logger.debug(str(('content', obj)))    
+        self.assertTrue('library_type' in obj['library'], 
+            str(('content should have an entry for the faulty "name"', obj)))
+
                 
         # TODO: test regex and number: min/max, vocabularies
         logger.debug(str(('==== done: test4_create_library_invalids =====')))
@@ -484,9 +471,102 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
                     
         logger.debug(str(('==== done: test6_load_small_molecule_file =====')))
     
-#     def test6a_small_molecule_errors(self):
-#         ## TODO: test validations
-#         pass
+        ########
+        # Next: update some wells, check results, and api logs
+        filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_small_molecule_update.sdf'
+
+        data_for_get={}
+        data_for_get.setdefault('limit', 999)
+        data_for_get.setdefault('HTTP_ACCEPT', 'chemical/x-mdl-sdfile' )
+#         data_for_get.setdefault('HTTP_ACCEPT', 'application/json' )
+
+        with open(filename) as input_file:
+            
+            input_data = self.serializer.from_sdf(input_file.read())
+            input_data = input_data['objects']
+            #logger.info(str(('===== input data', input_data)))
+        
+            expected_count = 4
+            self.assertEqual(len(input_data), expected_count, 
+                str(('initial serialization of ',filename,'found',
+                    len(input_data), 'expected',expected_count,
+                    'input_data',input_data)))
+            
+            logger.debug(str(('======Submitting patch...', filename, resource_uri)))
+        
+            resp = self.api_client.put(
+                resource_uri, format='sdf', data=input_data, 
+                authentication=self.get_credentials(), **data_for_get )
+            self.assertTrue(resp.status_code in [200, 204], 
+                str((resp.status_code, self.deserialize(resp))))
+        
+            logger.debug(str(('check updated/patched data for',resource_name,
+                'execute get on:',resource_uri)))
+    
+            resource_name = 'well'
+            resource_uri = '/'.join([BASE_URI_DB,'library', library_item['short_name'],resource_name])
+            resp = self.api_client.get(
+                resource_uri, format='sdf', authentication=self.get_credentials(), 
+                data=data_for_get)
+    
+            logger.debug(str(('--------resp to get:', resp.status_code)))
+            self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+            new_obj = self.deserialize(resp)
+            returned_data = new_obj['objects']
+            expected_count = 384
+            self.assertEqual(len(returned_data), expected_count, 
+                str(('returned_data of ',filename,'found',
+                    len(returned_data), 'expected',expected_count,
+                    'returned_data',returned_data)))
+        
+            # 1. test the specific wells
+            well_ids_to_check = input_data
+    
+            for update_well in well_ids_to_check:
+                search = { 'well_name': update_well['well_name'], 'plate_number': update_well['plate_number']}
+                result, outputobj = find_obj_in_list(
+                    search,returned_data) #, excludes=excludes )
+                self.assertTrue(result, 
+                    str(('not found', search,outputobj,'=== objects returned ===', 
+                          returned_data )) ) 
+                logger.debug(str(('found', search)))
+                
+                result, msgs = assert_obj1_to_obj2(update_well, outputobj)
+                logger.debug(str((result, msgs)))
+                self.assertTrue(result, str((msgs, update_well, outputobj)))
+
+            # 2. check the apilogs - library
+            resource_uri = BASE_REPORTS_URI + '/apilog' #?ref_resource_name=record'
+            resp = self.api_client.get(
+                resource_uri, format='json', 
+                authentication=self.get_credentials(), 
+                data={ 'limit': 999, 'ref_resource_name': 'library' })
+            self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+            new_obj = self.deserialize(resp)
+            logger.debug(str(('===library apilogs:', json.dumps(new_obj))))
+            
+            expected_count = 3 # create, post, update
+            self.assertEqual( len(new_obj['objects']), expected_count , 
+                str((len(new_obj['objects']), expected_count)))
+
+            
+            # 2. check the apilogs
+            resource_uri = BASE_REPORTS_URI + '/apilog' #?ref_resource_name=record'
+            resp = self.api_client.get(
+                resource_uri, format='json', 
+                authentication=self.get_credentials(), 
+                data={ 'limit': 999, 'ref_resource_name': 'well' })
+            self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+            new_obj = self.deserialize(resp)
+            logger.debug(str(('===apilogs:', json.dumps(new_obj))))
+            
+            # look for 12 logs; 8 for create, 4 for update
+            expected_count = 12
+            self.assertEqual( len(new_obj['objects']), expected_count , 
+                str((len(new_obj['objects']), expected_count)))
+        
+ 
+
 
     def test7_load_sirnai(self):
 
@@ -547,7 +627,9 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
         self.assertTrue(resp.status_code in [201], str((resp.status_code, resp)))
         
         self._load_xls_reagent_file(filename,library_item, 133 )
-
+        
+        ## TODO: test the duplex wells are set on the pool well
+        
     def test9_natural_product(self):
         
         filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_natural_product.xls'

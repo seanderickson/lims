@@ -838,6 +838,40 @@ class HydrationTest(TestCase):
         
         self.assertEqual(test_data, result)
   
+class LogCompareTest(TestCase):
+    
+    def test_compare_dicts(self):
+        
+        from reports.api import compare_dicts
+        
+        dict1 = {
+            'one': None,
+            'two': 'value2a',
+            'four': 'value4',
+            'five': 'unchanged',
+            'six': 'removed',
+        }
+        
+        dict2 = {
+            'one': 'value1',
+            'two': 'value2b',
+            'three': 'added',
+            'four': None,
+            'five': 'unchanged',
+             }
+        
+        diff_dict = compare_dicts(dict1, dict2)
+        
+        self.assertTrue(diff_dict['added_keys'] == ['three'], diff_dict['added_keys'])
+        self.assertTrue(diff_dict['removed_keys'] == ['six'], diff_dict['removed_keys'])
+        self.assertTrue(set(diff_dict['diff_keys']) == set(['one','two','four']), diff_dict['diff_keys'])
+
+        # because it's not "full", diff_dict doesn't show diffs added
+        self.assertTrue('three' not in diff_dict['diffs'], diff_dict['diffs'])
+        self.assertTrue(diff_dict['diffs']['two']==['value2a', 'value2b'])
+        
+        
+        
     
 class MetaHashResourceBootstrap(ResourceTestCase):
     # TODO: this class is a utility, not a TestCase

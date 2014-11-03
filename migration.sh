@@ -266,6 +266,8 @@ function migratedb {
     if [[ ! $completed_migrations =~ $migration ]]; then
       echo "migration $migration: $(ts) ..." >> "$LOGFILE"
       $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+      psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
+          -f ./db/migrations/manual/0015_post_migrate.sql >>"$LOGFILE" 2>&1 || error "manual script 0013 failed: $?"
       echo "migration $migration complete: $(ts)" >> "$LOGFILE"
     fi
   fi

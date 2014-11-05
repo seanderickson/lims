@@ -942,7 +942,7 @@ class MetaHashResourceBootstrap(ResourceTestCase):
 #                 logger.warn(str(('the file contains no data', filename)))
 #                 return
             
-            logger.debug(str(('Submitting patch...', bootstrap_file)))
+            logger.debug(str(('Submitting patch...', filename)))
             resp = self.api_client.patch(
                 resource_uri, format='csv', data=input_data, 
                 authentication=self.get_credentials(), **data_for_get )
@@ -969,12 +969,12 @@ class MetaHashResourceBootstrap(ResourceTestCase):
                          new_obj['objects'] )) ) 
                 self.assertTrue(
                     resource_name in outputobj['resource_uri'], 
-                    str(('wrong resource_uri returned:', outputobj,
+                    str(('wrong resource_uri returned:', filename, outputobj['resource_uri'],
                          'should contain', resource_name)))
                 for id_key in id_keys_to_check:
                     self.assertTrue(
                         inputobj[id_key] in outputobj['resource_uri'], 
-                        str(('wrong resource_uri returned:', outputobj,
+                        str(('wrong resource_uri returned:', filename, outputobj['resource_uri'],
                              'should contain id key', id_key, 'val', inputobj[id_key])))
             #TODO: GET the apilogs expected and test them
             
@@ -1000,7 +1000,7 @@ class MetaHashResourceBootstrap(ResourceTestCase):
             # will expect a python data object, which it will serialize!
             input_data = self.csv_serializer.from_csv(bootstrap_file.read())
             
-            logger.debug(str(('Submitting put...', bootstrap_file)))
+            logger.debug(str(('Submitting put...', filename)))
             resp = self.api_client.put(
                 resource_uri, format='csv', data=input_data, 
                 authentication=self.get_credentials(), **data_for_get )
@@ -1027,7 +1027,7 @@ class MetaHashResourceBootstrap(ResourceTestCase):
                 self.assertTrue(result, str(('not found', outputobj, 
                                              new_obj['objects'] )) )
                 self.assertTrue(resource_name in outputobj['resource_uri'], 
-                    str(('wrong resource_uri returned:', outputobj,
+                    str(('wrong resource_uri returned:', filename, outputobj['resource_uri'],
                          'should contain', resource_name)))
 #                 for id_key in id_keys_to_check:
 #                     self.assertTrue(inputobj[id_key] in outputobj['resource_uri'], 
@@ -1036,8 +1036,8 @@ class MetaHashResourceBootstrap(ResourceTestCase):
                 for id_key in id_keys_to_check:
                     self.assertTrue(id_key in outputobj and 
                         inputobj[id_key] == outputobj[id_key], 
-                        str(('wrong id_key returned:', outputobj,
-                             'should contain id key', id_key, 'val', inputobj[id_key])))
+                        str(('wrong id_key returned:', filename, outputobj[id_key],
+                             'should equal id key', id_key, 'val', inputobj[id_key])))
                 
             #TODO: GET the apilogs expected and test them
             

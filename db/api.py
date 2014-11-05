@@ -1217,6 +1217,32 @@ class ReagentResource(ManagedModelResource):
         bundle = sub_resource.full_dehydrate(bundle, for_list=for_list)
         
         return bundle
+                
+    def get_schema(self, request, **kwargs):
+        if not 'library_short_name' in kwargs:
+            return self.create_response(request, self.build_schema())
+        
+        library_short_name = kwargs.pop('library_short_name')
+        try:
+            library = Library.objects.get(short_name=library_short_name)
+            return self.create_response(request, self.build_schema(library))
+            
+        except Library.DoesNotExist, e:
+            raise Http404(unicode(( 'cannot build schema - library def needed'
+                'no library found for short_name', library_short_name)))
+                
+    def build_schema(self, library=None):
+        data = super(ReagentResource,self).build_schema()
+        
+        if library:
+            sub_data = self.get_reagent_resource(library).build_schema()
+            
+            newfields = {}
+            newfields.update(sub_data['fields'])
+            newfields.update(data['fields'])
+            data['fields'] = newfields
+        
+        return data
 
 class WellResource(ManagedModelResource, UnlimitedDownloadResource):
 
@@ -1546,9 +1572,10 @@ class WellResource(ManagedModelResource, UnlimitedDownloadResource):
                 reagent_bundle, 
                 **{ 'well': well_bundle.obj, 'library': library, 'duplex_wells': duplex_wells })
         else:
+            # NOTE: this only works if there is only one reagent in the well:
+            # TODO: implement update for specific reagent through ReagentResource
             if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(str(('==== updating reagent for ', well_bundle.obj)) )
-            # FIXME: untested
+                logger.debug(str(('==== updating *first* reagent for ', well_bundle.obj)) )
             # lookup and update the reagent
             reagent_bundle.obj = well_bundle.obj.reagent_set.all()[0]
             sub_resource.obj_update(reagent_bundle)
@@ -1677,10 +1704,10 @@ class LibraryResource(ManagedModelResource):
                 self.wrap_view('dispatch_library_reagentview'), 
                 name="api_dispatch_library_reagentview"),
             
-#             url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
-#                  r"/reagent/schema%s$") 
-#                     % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('get_reagent_schema'), name="api_get_reagent_schema"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
+                 r"/reagent/schema%s$") 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_reagent_schema'), name="api_get_reagent_schema"),
             
             url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
                  r"/well/schema%s$") 
@@ -1718,7 +1745,15 @@ class LibraryResource(ManagedModelResource):
                 'The well schema requires a library short name'
                 ' in the URI, as in /library/[short_name]/well/schema/')))
         kwargs['library_short_name'] = kwargs.pop('short_name')
-        return WellResource().get_schema(request, **kwargs)    
+        return self.get_well_resource().get_schema(request, **kwargs)    
+  
+    def get_reagent_schema(self, request, **kwargs):
+        if not 'short_name' in kwargs:
+            raise Http404(unicode((
+                'The reagent schema requires a library short name'
+                ' in the URI, as in /library/[short_name]/well/schema/')))
+        kwargs['library_short_name'] = kwargs.pop('short_name')
+        return self.get_reagent_resource().get_schema(request, **kwargs)    
   
     def dispatch_librarycopyview(self, request, **kwargs):
         kwargs['library_short_name'] = kwargs.pop('short_name')

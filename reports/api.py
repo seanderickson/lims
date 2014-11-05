@@ -983,7 +983,6 @@ class ManagedResource(LoggingMixin):
             raise e
             
         try:
-            # FIXME: above (1) and here (2)
             resource_def = MetaHash.objects.get(
                 scope='resource', key=self._meta.resource_name)
             schema['resource_definition'] = resource_def.model_to_dict(scope='fields.resource')
@@ -996,25 +995,25 @@ class ManagedResource(LoggingMixin):
                 supertype_fields.update(schema['fields'])
                 schema['fields'] = supertype_fields
                 
-            # pick apart the ORM to find DB particulars for read optimizations
-            sql = schema.get('sql', {})
-            
-            linked_table_module = schema['resource_definition'].get('linked_table_module', '')
-            if linked_table_module:
-                if '.' in linked_field_module:
-                    # Try to import.
-                    module_bits = linked_field_module.split('.')
-                    module_path, class_name = '.'.join(module_bits[:-1]), module_bits[-1]
-#                     logger.info(str(('====linked: ' , linked_field_module,'gives: ', module_path, class_name)))
-                    module = importlib.import_module(module_path)
-                    sql['db_table'] = getattr(module.objects._meta, 'db_table')
-                else:
-                    # We've got a bare class name here, which won't work (No AppCache
-                    # to rely on). Try to throw a useful error.
-                    raise ImportError(
-                        "linked_field_module requires a Python-style path "
-                        "(<module.module.Class>) to lazy load related resources. "
-                        "Only given '%s'." % linked_field_module )
+#             # pick apart the ORM to find DB particulars for read optimizations
+#             sql = schema.get('sql', {})
+#             
+#             linked_table_module = schema['resource_definition'].get('linked_table_module', '')
+#             if linked_table_module:
+#                 if '.' in linked_field_module:
+#                     # Try to import.
+#                     module_bits = linked_field_module.split('.')
+#                     module_path, class_name = '.'.join(module_bits[:-1]), module_bits[-1]
+# #                     logger.info(str(('====linked: ' , linked_field_module,'gives: ', module_path, class_name)))
+#                     module = importlib.import_module(module_path)
+#                     sql['db_table'] = getattr(module.objects._meta, 'db_table')
+#                 else:
+#                     # We've got a bare class name here, which won't work (No AppCache
+#                     # to rely on). Try to throw a useful error.
+#                     raise ImportError(
+#                         "linked_field_module requires a Python-style path "
+#                         "(<module.module.Class>) to lazy load related resources. "
+#                         "Only given '%s'." % linked_field_module )
         except Exception, e:
             logger.info(str(('in create_fields: resource information not available',self._meta.resource_name, e)))
         
@@ -1280,6 +1279,9 @@ class ManagedResource(LoggingMixin):
         id_attribute = None
         try:
             schema = self.build_schema()
+            if 'resource_definition' not in schema:
+                self.clear_cache()
+                schema = self.build_schema()
             resource = schema['resource_definition']
             
             # TODO: memoize
@@ -1734,6 +1736,22 @@ class ResourceResource(ManagedModelResource):
                          '.  Cannot build the schema for this resource.' )
         return bundle
 
+    def obj_create(self, bundle, **kwargs):
+        '''
+        Override - because the metahash resource is both a resource and the 
+        definer of json fields, reset_field_defs after each create/update, 
+        in case, new json fields are defined,or in case ordering,filtering 
+        groups are updated
+        '''
+        bundle = super(ResourceResource, self).obj_create(bundle, **kwargs);
+        if getattr(bundle.obj,'scope').find('fields') == 0: #'fields.metahash':
+            self.reset_field_defs(getattr(bundle.obj,'scope'))
+        return bundle
+
+    def obj_update(self, bundle, **kwargs):
+        bundle = super(ResourceResource, self).obj_update(bundle, **kwargs);
+        self.reset_field_defs(getattr(bundle.obj,'scope'))
+        return bundle
 
 class ApiLogAuthorization(UserGroupAuthorization):
     '''
@@ -2912,13 +2930,12 @@ class ManagedLinkedResource(ManagedModelResource):
     
     def get_object_list(self, request, library_short_name=None):
         query = super(ManagedLinkedResource,self).get_object_list(request)
-#         query = query.select_related('smallmoleculereagent')
-#         query = query.select_related('molfile')
         
         # FIXME: SQL injection attack through metadata.  (at least to avoid inadvertant actions)
         # TODO: use SqlAlchemy http://docs.sqlalchemy.org/en/latest/core/expression_api.html
         extra_select = OrderedDict()
-        extra_tables = set()
+        # NOTE extra_tables cannot be used, because it creates an inner join
+        #         extra_tables = set()
         extra_where = []
         extra_params = []
         for key,item in self.get_linked_fields().items():
@@ -2930,40 +2947,51 @@ class ManagedLinkedResource(ManagedModelResource):
             
             linkedModel = item.get('linked_field_model')
             field_table = linkedModel._meta.db_table
+            
+            parent_table = query.model._meta.db_table
+            parent_table_key = query.model._meta.pk.name
 
             format_dict = {
                 'field_name': field_name, 
                 'field_table': field_table,
-                'linked_field_parent': item['linked_field_parent'] }
+                'linked_field_parent': item['linked_field_parent'],
+                'parent_table': parent_table,
+                'parent_table_key': parent_table_key }
             
             if item['linked_field_type'] != 'fields.ListField':
+                sql = ( 'select {field_name} from {field_table} {where}')
+                where = ('WHERE {field_table}.{linked_field_parent}_id'
+                            '={parent_table}.{parent_table_key} ')
+                
                 if item.get('linked_field_meta_field', None):
                     format_dict['meta_field'] = item['linked_field_meta_field']
-                    sql = ( 'select {field_name} from {field_table} '
-                            'where {field_table}.{linked_field_parent}_id={linked_field_parent}_id '
-                            'and {field_table}.{meta_field}_id=%s' ).format(**format_dict)
-                    extra_select[key_query_alias] = sql
-                    extra_params.add(item['meta_field_instance'])
-                else:
-                    extra_select[key_query_alias] = '%s.%s' % (field_table, item['linked_field_value_field'])
-                    extra_tables.add(field_table)
-                    extra_where.append(
-                        '{field_table}.{linked_field_parent}_id='
-                            '{linked_field_parent}.{linked_field_parent}_id'.format(**format_dict))
+                    meta_field_id = getattr(item['meta_field_instance'], 'pk')
+                    where += ' and {field_table}.{meta_field}_id=%s '
+                    extra_params.append(meta_field_id)
+#                 else:
+#                     extra_select[key_query_alias] = \
+#                         '%s.%s' % (field_table, item['linked_field_value_field'])
+#                     extra_tables.add(field_table)
+#                     extra_where.append(
+#                         '{field_table}.{linked_field_parent}_id'
+#                             '={parent_table}.{parent_table_key}'.format(**format_dict))
+                format_dict['where'] = where.format(**format_dict)
+                sql = sql.format(**format_dict)
+                extra_select[key_query_alias] = sql
             if item['linked_field_type'] == 'fields.ListField':
                 sql = \
 '''    (select $$["$$ || array_to_string(array_agg({field_name}), $$","$$) || $$"]$$
         from (select {field_name} from {field_table} 
         {where} {order_by}) a) '''
-# unquoted: (select '[' || array_to_string(array_agg({field_name}), ',') || ']'
-# or quoted?     (select '["' || array_to_string(array_agg({field_name}), '","') || '"]'
                 
-                where = 'WHERE {field_table}.{linked_field_parent}_id={linked_field_parent}.{linked_field_parent}_id '
+                where = ('WHERE {field_table}.{linked_field_parent}_id'
+                            '={parent_table}.{parent_table_key} ')
 
                 if item.get('linked_field_meta_field', None):
                     format_dict['meta_field'] = item['linked_field_meta_field']
-                    where += ' and {linked_table}.{meta_field}_id=%s '
-                    extra_params.add(item['meta_field_instance'])
+                    meta_field_id = getattr(item['meta_field_instance'], 'pk')
+                    where += ' and {field_table}.{meta_field}_id=%s '
+                    extra_params.append(meta_field_id)
                 else:
                     pass
                 
@@ -2976,7 +3004,7 @@ class ManagedLinkedResource(ManagedModelResource):
                 extra_select[key_query_alias] = sql
 
         query = query.extra(
-            select=extra_select, tables=extra_tables, where=extra_where,select_params=extra_params )
+            select=extra_select, where=extra_where,select_params=extra_params )
         logger.info(str(('==== query', query.query.sql_with_params())))
         return query
      

@@ -427,17 +427,21 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
         logger.debug(str(('check patched data for',resource_name,
             'execute get on:',resource_uri)))
 
-        resource_name = 'well'
-        resource_uri = '/'.join([BASE_URI_DB,'library', library_item['short_name'],resource_name])
+        # NOTE: get the library "reagents" instead of the wells: reagents have a 
+        # one-to-many reln to wells, so the well endpoint returns only first;
+        # also, the well resource is not the linked resource type, and does not have
+        # the reagent fields.  
+        resource_name = 'reagent'
+        reagent_resource_uri = '/'.join([BASE_URI_DB,'library', library_item['short_name'],resource_name])
         resp = self.api_client.get(
-            resource_uri, format='sdf', authentication=self.get_credentials(), 
+            reagent_resource_uri, format='sdf', authentication=self.get_credentials(), 
             data=data_for_get)
 
         logger.debug(str(('--------resp to get:', resp.status_code)))
         self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
         new_obj = self.deserialize(resp)
         returned_data = new_obj['objects']
-        expected_count = 384
+        expected_count = 8
         self.assertEqual(len(returned_data), expected_count, 
             str(('returned_data of ',filename,'found',
                 len(returned_data), 'expected',expected_count,
@@ -462,7 +466,7 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
             expected_data = { key: inputobj[key] for key in fields.keys() if key in inputobj }
             result, msgs = assert_obj1_to_obj2(expected_data, outputobj)
             logger.debug(str((result, msgs)))
-            self.assertTrue(result, str((msgs, expected_data, outputobj)))
+            self.assertTrue(result, str((msgs, 'input', expected_data, 'output', outputobj)))
 
             substance_id = outputobj['substance_id']
             self.assertTrue(substance_id not in substance_ids, 
@@ -506,14 +510,14 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
             resource_name = 'well'
             resource_uri = '/'.join([BASE_URI_DB,'library', library_item['short_name'],resource_name])
             resp = self.api_client.get(
-                resource_uri, format='sdf', authentication=self.get_credentials(), 
+                reagent_resource_uri, format='sdf', authentication=self.get_credentials(), 
                 data=data_for_get)
     
             logger.debug(str(('--------resp to get:', resp.status_code)))
             self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
             new_obj = self.deserialize(resp)
             returned_data = new_obj['objects']
-            expected_count = 384
+            expected_count = 8
             self.assertEqual(len(returned_data), expected_count, 
                 str(('returned_data of ',filename,'found',
                     len(returned_data), 'expected',expected_count,
@@ -690,17 +694,17 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
         logger.debug(str(('check patched data for',resource_name,
             'execute get on:',resource_uri)))
 
-        resource_name = 'well'
-        resource_uri = '/'.join([BASE_URI_DB,'library', library_item['short_name'],resource_name])
+        resource_name = 'reagent'
+        reagent_resource_uri = '/'.join([BASE_URI_DB,'library', library_item['short_name'],resource_name])
         resp = self.api_client.get(
-            resource_uri, format='sdf', authentication=self.get_credentials(), 
+            reagent_resource_uri, format='sdf', authentication=self.get_credentials(), 
             data=data_for_get)
 
         logger.debug(str(('--------resp to get:', resp.status_code)))
         self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
         new_obj = self.deserialize(resp)
         returned_data = new_obj['objects']
-        expected_count = (end_plate-start_plate+1)*384
+#         expected_count = (end_plate-start_plate+1)*384
         self.assertEqual(len(returned_data), expected_count, 
             str(('returned_data of ',filename,'found',
                 len(returned_data), 'expected',expected_count )))

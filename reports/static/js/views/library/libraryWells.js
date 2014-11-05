@@ -45,7 +45,11 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var uriStack = this.uriStack;
       var library = this.library;
 
+      // NOTE: library/well view is actually a "reagents" view
+      // - use the well specific schema:
       var url = library.resource.apiUri +'/' + library.key + '/well';
+      // but get the reagent list from the link:
+      var reagents_url = library.resource.apiUri +'/' + library.key + '/reagent';
       
       var setupFunction = function(resource){
         console.log('setupFunction: ' + resource);
@@ -60,7 +64,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           } );
         } else {
           self.consumedStack = [];
-          self.showList(resource, url);
+          self.showList(resource, reagents_url);
         }
         
       };

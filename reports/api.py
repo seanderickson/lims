@@ -609,7 +609,7 @@ class UnlimitedDownloadResource(Resource):
     - instead of doing it in memory
     - will set a filename to the response header if specified
     '''
-    @profile("unlimited_get_list.prof")
+#     @profile("unlimited_get_list.prof")
     def get_list(self, request, **kwargs):
         from reports.serializers import csv_convert
         from django.utils.encoding import smart_str
@@ -850,15 +850,16 @@ class ManagedResource(LoggingMixin):
 #         self.local_field_defs = _fields
         logger.debug(str(('managed fields to create', _fields.keys())))
 
-        ## Get the supertype fields
         try:
-            logger.info(str(('========= supertype fields', self._meta.resource_name)))
             resource_def = MetaHash.objects.get(
                 scope='resource', key=self._meta.resource_name)
             resource_definition = resource_def.model_to_dict(scope='fields.resource')
+            
+            ## Get the supertype fields
             # TODO: -could- get the schema from the supertype resource
             supertype = resource_definition.get('supertype', '')
             if supertype:
+                logger.info(str(('========= supertype fields', self._meta.resource_name)))
                 supertype_fields = deepcopy(
                     MetaHash.objects.get_and_parse(
                         scope='fields.' + supertype, field_definition_scope='fields.metahash'))
@@ -939,7 +940,7 @@ class ManagedResource(LoggingMixin):
         '''
         Override
         '''
-        # FIXME: consider using the cache decorator?
+        # FIXME: consider using the cache decorator or a custom memoize decorator?
         schema = cache.get(self._meta.resource_name + ":schema")
         if schema:
             #if logger.isEnabledFor(logging.DEBUG):
@@ -962,14 +963,14 @@ class ManagedResource(LoggingMixin):
             if not 'id' in schema['fields']:
                 schema['fields']['id'] = { 'visibility':[] }
             
-            # FIXME: WHY IS THIS HERE (1) and below (2)
-            logger.debug(str((
-                'trying to locate resource information', 
-                self._meta.resource_name, self.scope)))
-            resource_def = MetaHash.objects.get(
-                scope='resource', key=self._meta.resource_name)
-            # FIXME in the UI: change the name to just "resource"
-            schema['resource_definition'] = resource_def.model_to_dict(scope='fields.resource')
+#             # FIXME: WHY IS THIS HERE (1) and below (2)
+#             logger.debug(str((
+#                 'trying to locate resource information', 
+#                 self._meta.resource_name, self.scope)))
+#             resource_def = MetaHash.objects.get(
+#                 scope='resource', key=self._meta.resource_name)
+#             # FIXME in the UI: change the name to just "resource"
+#             schema['resource_definition'] = resource_def.model_to_dict(scope='fields.resource')
 
         except Exception, e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -997,20 +998,28 @@ class ManagedResource(LoggingMixin):
                 
             # pick apart the ORM to find DB particulars for read optimizations
             sql = schema.get('sql', {})
-            model_meta = self._meta.model._meta
-            sql['db_table'] = getattr(model_meta, 'db_table')
             
-            
-
+            linked_table_module = schema['resource_definition'].get('linked_table_module', '')
+            if linked_table_module:
+                if '.' in linked_field_module:
+                    # Try to import.
+                    module_bits = linked_field_module.split('.')
+                    module_path, class_name = '.'.join(module_bits[:-1]), module_bits[-1]
+#                     logger.info(str(('====linked: ' , linked_field_module,'gives: ', module_path, class_name)))
+                    module = importlib.import_module(module_path)
+                    sql['db_table'] = getattr(module.objects._meta, 'db_table')
+                else:
+                    # We've got a bare class name here, which won't work (No AppCache
+                    # to rely on). Try to throw a useful error.
+                    raise ImportError(
+                        "linked_field_module requires a Python-style path "
+                        "(<module.module.Class>) to lazy load related resources. "
+                        "Only given '%s'." % linked_field_module )
         except Exception, e:
             logger.info(str(('in create_fields: resource information not available',self._meta.resource_name, e)))
         
         logger.debug('------build_schema,done: ' + self.scope ) 
-        
-        
-        # pick apart the query model to get the information about the db schema particulars
-        
-        
+       
         cache.set(self._meta.resource_name + ':schema', schema)
         return schema
     
@@ -2613,8 +2622,10 @@ class PermissionResource(ManagedModelResource):
         return schema
         
 
+KEY_QUERY_ALIAS_PATTERN = '_{key}'
+
 class ManagedLinkedResource(ManagedModelResource):
-    ''' poc: store resource virtual fields in a related table
+    ''' store resource virtual fields in a related table
     '''
 
     def __init__(self, **kwargs):
@@ -2899,8 +2910,103 @@ class ManagedLinkedResource(ManagedModelResource):
         bundle =  ManagedModelResource.full_dehydrate(self, bundle, for_list=for_list)
         return bundle
     
-    
+    def get_object_list(self, request, library_short_name=None):
+        query = super(ManagedLinkedResource,self).get_object_list(request)
+#         query = query.select_related('smallmoleculereagent')
+#         query = query.select_related('molfile')
+        
+        # FIXME: SQL injection attack through metadata.  (at least to avoid inadvertant actions)
+        # TODO: use SqlAlchemy http://docs.sqlalchemy.org/en/latest/core/expression_api.html
+        extra_select = OrderedDict()
+        extra_tables = set()
+        extra_where = []
+        extra_params = []
+        for key,item in self.get_linked_fields().items():
+            key_query_alias = KEY_QUERY_ALIAS_PATTERN.format(key=key)
+            
+            field_name = item.get('field_name', None)
+            if not field_name:
+                field_name = item.get('linked_field_value_field',key)
+            
+            linkedModel = item.get('linked_field_model')
+            field_table = linkedModel._meta.db_table
+
+            format_dict = {
+                'field_name': field_name, 
+                'field_table': field_table,
+                'linked_field_parent': item['linked_field_parent'] }
+            
+            if item['linked_field_type'] != 'fields.ListField':
+                if item.get('linked_field_meta_field', None):
+                    format_dict['meta_field'] = item['linked_field_meta_field']
+                    sql = ( 'select {field_name} from {field_table} '
+                            'where {field_table}.{linked_field_parent}_id={linked_field_parent}_id '
+                            'and {field_table}.{meta_field}_id=%s' ).format(**format_dict)
+                    extra_select[key_query_alias] = sql
+                    extra_params.add(item['meta_field_instance'])
+                else:
+                    extra_select[key_query_alias] = '%s.%s' % (field_table, item['linked_field_value_field'])
+                    extra_tables.add(field_table)
+                    extra_where.append(
+                        '{field_table}.{linked_field_parent}_id='
+                            '{linked_field_parent}.{linked_field_parent}_id'.format(**format_dict))
+            if item['linked_field_type'] == 'fields.ListField':
+                sql = \
+'''    (select $$["$$ || array_to_string(array_agg({field_name}), $$","$$) || $$"]$$
+        from (select {field_name} from {field_table} 
+        {where} {order_by}) a) '''
+# unquoted: (select '[' || array_to_string(array_agg({field_name}), ',') || ']'
+# or quoted?     (select '["' || array_to_string(array_agg({field_name}), '","') || '"]'
+                
+                where = 'WHERE {field_table}.{linked_field_parent}_id={linked_field_parent}.{linked_field_parent}_id '
+
+                if item.get('linked_field_meta_field', None):
+                    format_dict['meta_field'] = item['linked_field_meta_field']
+                    where += ' and {linked_table}.{meta_field}_id=%s '
+                    extra_params.add(item['meta_field_instance'])
+                else:
+                    pass
+                
+                format_dict['order_by'] = ''
+                ordinal_field = item.get('ordinal_field', None)
+                if ordinal_field:
+                    format_dict['order_by'] = ' ORDER BY %s ' % ordinal_field
+                format_dict['where'] = where.format(**format_dict)
+                sql = sql.format(**format_dict)
+                extra_select[key_query_alias] = sql
+
+        query = query.extra(
+            select=extra_select, tables=extra_tables, where=extra_where,select_params=extra_params )
+        logger.info(str(('==== query', query.query.sql_with_params())))
+        return query
+     
     def dehydrate(self, bundle):
+        try:
+            keys_not_available = []
+            for key,item in self.get_linked_fields().items():
+                key_query_alias = KEY_QUERY_ALIAS_PATTERN.format(key=key)
+                bundle.data[key] = None
+                if hasattr(bundle.obj, key_query_alias):
+                    bundle.data[key] = getattr(bundle.obj, key_query_alias)
+                    if bundle.data[key] and item['linked_field_type'] == 'fields.ListField':
+                        bundle.data[key] = json.loads(bundle.data[key])
+                else:
+                    keys_not_available.append(key_query_alias)
+            if keys_not_available:
+                logger.error(str(('keys not available', keys_not_available)))
+            return bundle
+        except Exception, e:
+            extype, ex, tb = sys.exc_info()
+            msg = str(e)
+            if isinstance(e, ImmediateHttpResponse):
+                msg = str(e.response)
+            logger.warn(str((
+                'throw', e, msg, tb.tb_frame.f_code.co_filename, 'error line', 
+                tb.tb_lineno, extype, ex)))
+            raise e
+        return bundle
+            
+    def dehydrate_inefficient(self, bundle):
         '''
         Note - dehydrate only to be used for small sets. 
         Looks each of the the fields up as separare query; should be able to modify
@@ -2939,6 +3045,7 @@ class ManagedLinkedResource(ManagedModelResource):
                 'throw', e, msg, tb.tb_frame.f_code.co_filename, 'error line', 
                 tb.tb_lineno, extype, ex)))
         return bundle
+    
     
 class RecordResource(ManagedLinkedResource):
     ''' poc: store resource virtual fields in a related table

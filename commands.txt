@@ -1,6 +1,8 @@
 # Useful dev commands:
 
+# Re-initialize the meta data for the site
 PYTHONPATH=. python reports/utils/db_init.py --input_dir=./reports/static/api_init/ -f ./reports/static/api_init/api_init_actions.csv -u http://localhost:8000/reports/api/v1 -U sde
+PYTHONPATH=. python reports/utils/db_init.py --input_dir=./db/static/api_init/ -f ./db/static/api_init/api_init_actions.csv -u http://localhost:8000/reports/api/v1 -U sde
 
 # to profile
 # add the profile path to the settings.py
@@ -11,10 +13,12 @@ PROFILE_LOG_BASE='/tmp'
 # then analyze the outpufile:
 PYTHONPATH=. python reports/utils/profile_decorator.py /tmp/unlimited_get_list-20141031T193039.prof 
 
+# run all tests
 ./manage.py test db.tests.LibraryResource --verbosity=2 --settings=lims.settings_testing
 
+# upload single meta data files
 curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/metahash/ --data-binary @db/static/api_init/metahash_fields_library.csv 
 
 curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/metahash/ --data-binary @reports/static/api_init/metahash_fields_apilog.csv
 
-curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reprts/api/v1/metahash/ --data-binary @reports/static/api_init/metahash_fields_initial_patch.csv
+curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/metahash/ --data-binary @reports/static/api_init/metahash_fields_initial_patch.csv

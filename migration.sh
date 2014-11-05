@@ -106,7 +106,7 @@ function gitpull {
 function restoredb {
   echo "restoredb: $(ts) ..." >> "$LOGFILE"
 
-  # drop DB if exits
+  # drop DB if exists
   if [[ -x "$DROP_DB_COMMAND" ]]; then
     $DROP_DB_COMMAND $DB $DBUSER >>"$LOGFILE" 2>&1 || error "dropdb failed: $?"
   else
@@ -118,7 +118,7 @@ function restoredb {
   fi
   
   if [[ $CREATE_DB -ne 0 ]]; then
-    createdb -U $DBUSER $DB -h $DBHOST >>"$LOGFILE" 2>&1 || error "createdb fails with status $?" 
+    createdb -U $DBUSER $DB -h $DBHOST --encoding=UTF8 >>"$LOGFILE" 2>&1 || error "createdb fails with status $?" 
   fi
   
   D=${PG_RESTORE_DIR:-.}
@@ -282,7 +282,7 @@ function bootstrap {
   BOOTSTRAP_PORT=55001
   
   echo "run a local dev server on port $BOOTSTRAP_PORT..."
-  nohup $DJANGO_CMD runserver --nothreading --noreload $BOOTSTRAP_PORT --settings=lims.migration-settings &
+  nohup $DJANGO_CMD runserver --settings=lims.migration-settings --nothreading --noreload $BOOTSTRAP_PORT  &
   server_pid=$!
   if [[ "$?" -ne 0 ]]; then
     runserver_status =$?
@@ -436,11 +436,12 @@ function code_bootstrap {
 
 echo "start migration: $(ts) ..."
 
-main "$@"
+#main "$@"
 
-#maybe_activate_virtualenv
-#bootstrap
-#migratedb
+maybe_activate_virtualenv
+bootstrap
+migratedb
+
 # restoredb
 # maybe_activate_virtualenv
 # django_syncdb

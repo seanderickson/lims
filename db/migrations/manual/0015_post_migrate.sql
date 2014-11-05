@@ -8,7 +8,8 @@ screensaverlims=# select count(*) from reagent;
  1868502
 (1 row)
 
-screensaverlims=# select count(r.*) from reagent r join well w using(well_id) where w.latest_released_reagent_id != r.reagent_id;
+screensaverlims=# select count(r.*) from reagent r join well w using(well_id) 
+  where w.latest_released_reagent_id != r.reagent_id;
  count  
 --------
  635410
@@ -18,9 +19,67 @@ screensaverlims=# select count(r.*) from reagent r join well w using(well_id) wh
   
   **/
 
+create temp table temp_reagents_to_delete 
+  as select reagent_id 
+  from reagent r join well w using(well_id) 
+  where w.latest_released_reagent_id != r.reagent_id;
+
+delete from small_molecule_reagent r 
+  using temp_reagents_to_delete d
+  where r.reagent_id=d.reagent_id; 
+
+delete from molfile r 
+  using temp_reagents_to_delete d
+  where r.reagent_id=d.reagent_id; 
+
+delete from small_molecule_compound_name r 
+  using temp_reagents_to_delete d
+  where r.reagent_id=d.reagent_id; 
+
+delete from small_molecule_pubchem_cid r 
+  using temp_reagents_to_delete d
+  where r.reagent_id=d.reagent_id; 
+
+delete from small_molecule_chembank_id r 
+  using temp_reagents_to_delete d
+  where r.reagent_id=d.reagent_id; 
+
+delete from small_molecule_chembl_id r 
+  using temp_reagents_to_delete d
+  where r.reagent_id=d.reagent_id; 
+
+delete from silencing_reagent_duplex_wells dw
+  using temp_reagents_to_delete d
+  where dw.silencingreagent_id=d.reagent_id; 
+
+delete from silencing_reagent r 
+  using temp_reagents_to_delete d
+  where r.reagent_id=d.reagent_id; 
+
+delete from natural_product_reagent r 
+  using temp_reagents_to_delete d
+  where r.reagent_id=d.reagent_id; 
+
+/** 
+ FIXME: these will all be broken:
+ study_reagent_link
+ reagent_publication_link
+ attached_file
+ annotation_value
+**/
+delete from annotation_value r 
+  using temp_reagents_to_delete d
+  where r.reagent_id=d.reagent_id; 
+
+delete from study_reagent_link r 
+  using temp_reagents_to_delete d
+  where r.reagent_id=d.reagent_id; 
+
+
+
+
 delete from reagent r 
-  using well w 
-  where r.well_id=r.well_id 
-  and w.latest_released_reagent_id != r.reagent_id;
+  using temp_reagents_to_delete d
+  where r.reagent_id=d.reagent_id; 
 
 

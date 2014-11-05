@@ -963,25 +963,6 @@ class LibraryCopyPlateResource(ManagedModelResource):
 
         return super(LibraryCopyPlateResource, self).obj_create(bundle, **kwargs)
 
-
-class ReagentResource(ManagedResource):
-    
-    class Meta:
-
-        queryset = Reagent.objects.all()
-        
-        authentication = MultiAuthentication(BasicAuthentication(), 
-                                             SessionAuthentication())
-        authorization= UserGroupAuthorization()
-        resource_name = 'reagent'
-        
-        ordering = []
-        filtering = {}
-        serializer = LimsSerializer()
-        
-    def __init__(self, **kwargs):
-        super(ReagentResource,self).__init__(**kwargs)
-
  
 class NaturalProductReagentResource(ManagedLinkedResource):
     
@@ -1125,71 +1106,7 @@ class SilencingReagentResource(ManagedLinkedResource):
         
 
 class SmallMoleculeReagentResource(ManagedLinkedResource):
- 
-    sm_sql = '''select 
-well_id, vendor_identifier, vendor_name, vendor_batch_id, vendor_name_synonym,
-inchi, smiles, 
-molecular_formula, molecular_mass, molecular_weight,
-(select '["' || array_to_string(array_agg(compound_name), '","') || '"]' 
-    from (select compound_name from small_molecule_compound_name smr 
-    where smr.reagent_id=r.reagent_id order by ordinal) a) as compound_name,
-(select '["' || array_to_string(array_agg(pubchem_cid), '","') || '"]' 
-    from ( select pubchem_cid from small_molecule_pubchem_cid p 
-           where p.reagent_id=r.reagent_id order by id ) a ) as pubchem_cid,
-(select '["' || array_to_string(array_agg(chembl_id), '","') || '"]' 
-    from (select chembl_id from small_molecule_chembl_id cb 
-          where cb.reagent_id=r.reagent_id order by id ) a )   as chembl_id,
-(select '["' || array_to_string(array_agg(chembank_id), '","') || '"]' 
-    from (select chembank_id from small_molecule_chembank_id cbk 
-          where cbk.reagent_id=r.reagent_id order by id ) a ) as chembank_id 
-from reagent r join small_molecule_reagent using(reagent_id)
-where r.library_contents_version_id=%s order by well_id;
-'''
-    
-#     def update_query(self, query):
-#          
-#         query.select_related('smallmoleculereagent')
-#         
-#         Hmmm, problem here, because what they really mean when they say "well", 
-#         is "reagent in the well"; so this perhaps should be reversed, so that well
-#         is joined in to a reagents query, expanding it.
-#     
-#     def dehydrate(self, bundle):
-#         # overridde inefficient ManagedLinkedResource.dehydrate
-#         try:
-#             for key,item in self.get_linked_fields().items():
-#                 bundle.data[key] = None
-#                 linkedModel = item.get('linked_field_model')
-#                 queryparams = { item['linked_field_parent']: bundle.obj }
-#                 if item.get('linked_field_meta_field', None):
-#                     queryparams[item['linked_field_meta_field']] = item['meta_field_instance']
-#                 if item['linked_field_type'] != 'fields.ListField':
-#                     try:
-#                         linkedObj = linkedModel.objects.get(**queryparams)
-#                         bundle.data[key] = getattr( linkedObj, item['linked_field_value_field'])
-#                     except ObjectDoesNotExist:
-#                         pass
-#                 else:
-#                     query = linkedModel.objects.filter(**queryparams)
-#                     if hasattr(linkedModel, 'ordinal'):
-#                         query = query.order_by('ordinal')
-#                     values = query.values_list(
-#                             item['linked_field_value_field'], flat=True)
-#     #                 logger.debug(str((key,'multifield values', values)))
-#                     if values and len(values)>0:
-#                         bundle.data[key] = list(values)
-#             return bundle
-#         except Exception, e:
-#             extype, ex, tb = sys.exc_info()
-#             msg = str(e)
-#             if isinstance(e, ImmediateHttpResponse):
-#                 msg = str(e.response)
-#             logger.warn(str((
-#                 'throw', e, msg, tb.tb_frame.f_code.co_filename, 'error line', 
-#                 tb.tb_lineno, extype, ex)))
-#         return bundle
         
-    
     class Meta:
         queryset = Reagent.objects.all() 
         authentication = MultiAuthentication(
@@ -1206,11 +1123,100 @@ where r.library_contents_version_id=%s order by well_id;
     def __init__(self, **kwargs):
         super(SmallMoleculeReagentResource,self).__init__(**kwargs)
 
-    def get_object_list(self,request):
-        from django.db import connection
-        cursor = connection.cursor()
-        cursor.execute(self.sql)
-        return cursor;
+
+
+class ReagentResource(ManagedModelResource):
+    
+    class Meta:
+
+        queryset = Reagent.objects.all()
+        
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= UserGroupAuthorization()
+        resource_name = 'reagent'
+        
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+        
+    def __init__(self, **kwargs):
+        self.library_resource = None
+        self.sr_resource = None
+        self.smr_resource = None
+        self.npr_resource = None
+        self.well_resource = None
+        super(ReagentResource,self).__init__(**kwargs)
+        
+    def get_sr_resource(self):
+        if not self.sr_resource:
+            self.sr_resource = SilencingReagentResource()
+        return self.sr_resource
+    
+    def get_smr_resource(self):
+        if not self.smr_resource:
+            self.smr_resource = SmallMoleculeReagentResource()
+        return self.smr_resource
+    
+    def get_npr_resource(self):
+        if not self.npr_resource:
+            self.npr_resource = NaturalProductReagentResource()
+        return self.npr_resource
+    
+    def get_well_resource(self):
+        if not self.well_resource:
+            self.well_resource = WellResource()
+        return self.well_resource
+    
+    def get_reagent_resource(self, library):
+        # FIXME: we should store the "type" on the entity
+        
+        if library.screen_type == 'rnai':
+            return self.get_sr_resource()
+        else:
+            if library.library_type == 'natural_products':
+                return self.get_npr_resource()
+            else:
+                return self.get_smr_resource()
+    
+    def get_library_resource(self):
+        if not self.library_resource:
+            self.library_resource = LibraryResource()
+        return self.library_resource
+
+    def get_object_list(self, request, library_short_name=None):
+        ''' 
+        Note: any extra kwargs are there because we are injecting them into the 
+        global tastypie kwargs in one of the various "dispatch_" handlers assigned 
+        through prepend_urls.  Here we can explicitly add them to the query. 
+        
+        '''
+        library = Library.objects.get(short_name=library_short_name)
+        sub_resource = self.get_reagent_resource(library)
+        query = sub_resource.get_object_list(request)
+        logger.info(str(('==== query', query.query.sql_with_params())))
+        
+        ## also add in the "supertype" fields:
+        query.select_related('well')
+        
+        
+        if library_short_name:
+            query = query.filter(well__library=library)
+#             logger.debug(str(('get reagent/well list', library_short_name, len(query))))
+        return query
+
+    def full_dehydrate(self, bundle, for_list=False):
+#         bundle = super(ReagentResource, self).full_dehydrate(bundle)
+        
+        well_bundle = self.build_bundle(bundle.obj.well, request=bundle.request)
+        well_bundle = self.get_well_resource().full_dehydrate(well_bundle)
+        bundle.data.update(well_bundle.data)
+        
+        library = bundle.obj.well.library
+        sub_resource = self.get_reagent_resource(library)
+        bundle = sub_resource.full_dehydrate(bundle, for_list=for_list)
+        
+        return bundle
 
 class WellResource(ManagedModelResource, UnlimitedDownloadResource):
 
@@ -1368,19 +1374,6 @@ class WellResource(ManagedModelResource, UnlimitedDownloadResource):
         
         '''
         query = super(WellResource, self).get_object_list(request);
-        
-        library = Library.objects.get(short_name=kwargs['library_short_name'])
-        
-#         sub_resource = self.get_reagent_resource(library)
-#         sub_resource.update_query(query)
-#         
-        
-        ## test, just for smr
-        
-        ## TODO:
-        # 1. modify the query to include reagent and sub-reagent columns
-        # 2. override the reports.api.ManagedLinkedResource dehydrate methods
-        
         if library_short_name:
             query = query.filter(library__short_name=library_short_name)
             logger.debug(str(('get well list', library_short_name, len(query))))
@@ -1389,27 +1382,27 @@ class WellResource(ManagedModelResource, UnlimitedDownloadResource):
 
     def dehydrate(self, bundle):
         
-        library = bundle.obj.library
-        
-        # TODO: migrate to using "well.reagents"
-        # FIXME: need to create a migration script that will invalidate all of the
-        # reagent.well_id's for reagents other than the "latest released reagent"
-        reagent_resource = self.get_reagent_resource(library)
-        if bundle.obj.reagent_set.exists():
-            reagent = bundle.obj.reagent_set.all()[0]            
-            sub_bundle = reagent_resource.build_bundle(
-                obj=reagent, request=bundle.request)
-            sub_bundle = reagent_resource.full_dehydrate(sub_bundle)
-            if 'resource_uri' in sub_bundle.data:
-                del sub_bundle.data['resource_uri'] 
-            bundle.data.update(sub_bundle.data)
-        else:
-            sub_bundle = reagent_resource.build_bundle(
-                obj=Reagent(), request=bundle.request)
-            sub_bundle = reagent_resource.full_dehydrate(sub_bundle)
-            if 'resource_uri' in sub_bundle.data:
-                del sub_bundle.data['resource_uri'] 
-            bundle.data.update(sub_bundle.data)
+#         library = bundle.obj.library
+#         
+#         # TODO: migrate to using "well.reagents"
+#         # FIXME: need to create a migration script that will invalidate all of the
+#         # reagent.well_id's for reagents other than the "latest released reagent"
+#         reagent_resource = self.get_reagent_resource(library)
+#         if bundle.obj.reagent_set.exists():
+#             reagent = bundle.obj.reagent_set.all()[0]            
+#             sub_bundle = reagent_resource.build_bundle(
+#                 obj=reagent, request=bundle.request)
+#             sub_bundle = reagent_resource.full_dehydrate(sub_bundle)
+#             if 'resource_uri' in sub_bundle.data:
+#                 del sub_bundle.data['resource_uri'] 
+#             bundle.data.update(sub_bundle.data)
+#         else:
+#             sub_bundle = reagent_resource.build_bundle(
+#                 obj=Reagent(), request=bundle.request)
+#             sub_bundle = reagent_resource.full_dehydrate(sub_bundle)
+#             if 'resource_uri' in sub_bundle.data:
+#                 del sub_bundle.data['resource_uri'] 
+#             bundle.data.update(sub_bundle.data)
         return bundle
     
     def dehydrate_library(self, bundle):
@@ -1629,6 +1622,7 @@ class LibraryResource(ManagedModelResource):
         
         super(LibraryResource,self).__init__(**kwargs)
     #         self._meta.validation = ManagedValidation(scope=self.scope)
+
     def get_apilog_resource(self):
         if not self.apilog_resource:
             self.apilog_resource = ApiLogResource()
@@ -1646,16 +1640,8 @@ class LibraryResource(ManagedModelResource):
     
     def prepend_urls(self):
         
-        # NOTE: this match "((?=(schema))__|(?!(schema))[^/]+)" 
-        # allows us to match any word (any char except forward slash), 
-        # except "schema", and use it as the key value to search for.
-        # also note the double underscore "__" is because we also don't want to 
-        # match in the first clause.
-        # We don't want "schema" since that reserved word is used by tastypie 
-        # for the schema definition for the resource (used by the UI)
         return [
             # override the parent "base_urls" so that we don't need to worry about schema again
-            # TODO: rework the "((?=(schema))__|(?!(schema))[^/]+)" used below
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
@@ -1665,7 +1651,9 @@ class LibraryResource(ManagedModelResource):
 #                     % (self._meta.resource_name, trailing_slash()), 
 #                 self.wrap_view('get_schema'), name="api_get_schema"),
 
-            url(r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))%s$" 
+            # TODO: rework the "((?=(schema))__|(?!(schema))[^/]+)" to "[\w\d_.\-\+: ]+" used below
+            # or even "[\/]+"
+            url(r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             
@@ -1684,10 +1672,10 @@ class LibraryResource(ManagedModelResource):
                 self.wrap_view('dispatch_library_wellview'), 
                 name="api_dispatch_library_wellview"),
             
-#             url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
-#                  r"/reagent%s$" ) % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('dispatch_library_reagentview'), 
-#                 name="api_dispatch_library_reagentview"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
+                 r"/reagent%s$" ) % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_library_reagentview'), 
+                name="api_dispatch_library_reagentview"),
             
 #             url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
 #                  r"/reagent/schema%s$") 
@@ -1745,6 +1733,7 @@ class LibraryResource(ManagedModelResource):
         return self.get_well_resource().dispatch('list', request, **kwargs)    
                     
     def dispatch_library_reagentview(self, request, **kwargs):
+        logger.info(str(('dispatch_library_reagentview ', kwargs)))
         kwargs['library_short_name'] = kwargs.pop('short_name')
         return self.get_reagent_resource().dispatch('list', request, **kwargs)    
                     

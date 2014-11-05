@@ -436,11 +436,11 @@ function code_bootstrap {
 
 echo "start migration: $(ts) ..."
 
-#main "$@"
+main "$@"
 
-maybe_activate_virtualenv
-bootstrap
-migratedb
+#maybe_activate_virtualenv
+#bootstrap
+#migratedb
 
 # restoredb
 # maybe_activate_virtualenv

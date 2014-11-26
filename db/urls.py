@@ -26,6 +26,7 @@ v1_api.register(WellResource())
 v1_api.register(ActivityResource())
 v1_api.register(LibraryContentsVersionResource())
 v1_api.register(ReagentResource())
+# v1_api.register(ReagentResource2())
 
 v1_api.register(SmallMoleculeReagentResource())
 v1_api.register(SilencingReagentResource())
@@ -33,6 +34,7 @@ v1_api.register(NaturalProductReagentResource())
 
 urlpatterns = patterns('',
     url(r'^$', views.main, name="home"),
-    url(r'^well_image/(?P<well_id>\S+)$','db.views.smiles_image', name="smiles_image" ),
+    url(r'^smiles_image/(?P<well_id>\S+)$','db.views.smiles_image', name="smiles_image" ),
+    url(r'^well_image/(?P<well_id>\S+)$','db.views.well_image', name="well_image" ),
     (r'^api/', include(v1_api.urls)),
 )

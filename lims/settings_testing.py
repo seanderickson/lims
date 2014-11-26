@@ -76,7 +76,7 @@ LOGGING = {
             'level': 'INFO',
         },               
         'reports': {  # set a default handler
-            'handlers': ['logfile'],
+            'handlers': ['console'],
             'propagate': False,
             'level': 'INFO',
         },

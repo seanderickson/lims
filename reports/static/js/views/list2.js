@@ -16,11 +16,6 @@ define([
       Iccbl, appModel, genericSelector,
       rowsPerPageTemplate, listTemplate, modalTemplate) {
 
-//  // for compatibility with require.js, attach PageableCollection in the right 
-//  // place on the Backbone object
-//  // see https://github.com/wyuenho/backbone-pageable/issues/62
-//  Backbone.PageableCollection = BackbonePageableCollection;
-
   var ajaxStart = function(){
       $('#loading').fadeIn({duration:100});
   };
@@ -187,6 +182,30 @@ define([
       }else{
         columns = _options.columns;
       }
+      
+      // ==== testing - images
+      // FIXME: FOR SMR only - poc - 
+      // first find the image field
+      _.each(_.keys(this._options.schemaResult.fields), function(key){
+        var field = self._options.schemaResult.fields[key];
+        if (field['ui_type'] == 'image'){
+          var col = {
+              'name' : field['key'],
+              'label' : field['title'],
+              'description' : field['description'],
+              'backgrid_cell_options': field['backgrid_cell_options'],
+              cell : Iccbl.ImageCell,
+              order : field['ordinal'],
+              editable : false,
+          };
+          console.log('adding image col: ' + field['key'] + ', ' );
+          columns.unshift(col);
+        }
+      });
+      
+      // end - FIXME: FOR SMR only - poc - 
+      //////////
+      
 
       this.listenTo(this.listModel, 'change', this.reportState );
 
@@ -225,7 +244,7 @@ define([
         }
       }
       
-      var url = self.collection.url + '?format=csv' + 
+      var url = self.collection.url + '?' + 
                 '&limit=' + limit;
       if(!_.isEmpty(urlparams)) url += '&' + urlparams;
       console.log('collection url: ' + url)
@@ -271,7 +290,7 @@ define([
       // We need to set the "Content-Disposition" header to trigger the server to 
       // bounce it back 
       var limitForDownload = 0;
-      $('#download_link').attr('href', self.getCollectionUrl(limitForDownload));
+      $('#download_link').attr('href', self.getCollectionUrl(limitForDownload) + '&format=csv');
     },
     
     checkState: function(){
@@ -398,6 +417,26 @@ define([
     	});            
       this.objects_to_destroy.push(paginator);
 
+      // Downloadselector
+      var downloadSelectorModel = new Backbone.Model({ selection: '' });
+      var downloadSelectorOptions = []
+      if(_.has(self._options.resource, 'content_types')){
+        // exclude JSON for downloads
+        downloadSelectorOptions = _.without(self._options.resource.content_types, 'json');
+      }
+      if (!_.contains(downloadSelectorOptions, '')) {
+        downloadSelectorOptions.unshift('');
+        // create a blank entry
+      }
+      var downloadSelectorInstance = self.downloadSelectorInstance =
+        new genericSelector({ model: downloadSelectorModel }, { options: downloadSelectorOptions } );
+      this.objects_to_destroy.push(downloadSelectorInstance);
+      this.listenTo(downloadSelectorModel, 'change', function() {
+        var val = downloadSelectorModel.get('selection');
+        var limitForDownload = 0;
+        $('#download_link').attr('href', self.getCollectionUrl(limitForDownload) + '&format=' + val);
+      });
+      
       // Extraselector
       if( _.has(schemaResult, 'extraSelectorOptions')){
         var searchHash = self.listModel.get('search');
@@ -483,7 +522,6 @@ define([
                   return;
               },
           },
-
       });
       this.objects_to_destroy.push(footer);
 
@@ -542,6 +580,10 @@ define([
       if(!_.isUndefined(self.extraSelectorInstance)){
         self.$("#extraselector").html(
             self.extraSelectorInstance.render().$el);
+      }
+      if(!_.isUndefined(self.downloadSelectorInstance)){
+        self.$("#downloadselector").html(
+            self.downloadSelectorInstance.render().$el);
       }
               
 //      // FIXME: "add" feature should be enabled declaratively, by user/group status:

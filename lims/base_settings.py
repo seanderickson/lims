@@ -156,6 +156,9 @@ LOGIN_REDIRECT_URL='/lims'
 # base path for profiling
 PROFILE_LOG_BASE='/tmp'
 
+# if structure image cache directory is available.  see db.api for details.
+WELL_STRUCTURE_IMAGE_DIR=''
+
 
 # A sample logging configuration. The only tangible logging
 # performed by this configuration is to send an email to

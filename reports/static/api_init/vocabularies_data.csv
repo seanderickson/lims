@@ -13,6 +13,7 @@ date,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/date/,0,"Date fiel
 boolean,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/boolean/,0,,"Field is a boolean",Boolean
 uri,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/uri/,0,"URI (local to the system) for a related endpoint","URI that references another REST entity",URI
 uri_list,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/uri_list/,0,"URIs (local to the system) for related endpoints","URIs that reference other REST entities","URI list"
+image,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/image/,0,"href for an image","href for an image",Image
 nested,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/nested/,0,"An embedded object","An embedded (nested) object","Embedded Object"
 nested_list,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/nested_list/,0,,"An embedded (nested) list of objects","Embedded List"
 Iccbl.EditCell,field.backgrid_cell_type,/reports/api/v1/vocabularies/field.backgrid_cell_type/Iccbl.EditCell/,20,,"Custom cell - creates a drilldown to the view/edit screen",EditCell
@@ -33,3 +34,7 @@ fields.FloatField,field.json_field_type,/reports/api/v1/vocabularies/field.json_
 fields.IntegerField,field.json_field_type,/reports/api/v1/vocabularies/field.json_field_type/fields.IntegerField/,4,,"A tastypie fields.IntegerField",IntegerField
 read,permission.type,/reports/api/v1/vocabularies/permission.type/read/,1,,"permission to read the resource",Read
 write,permission.type,/reports/api/v1/vocabularies/permission.type/write/,2,,"permission to write the resource",Write
+json,resource.content_type,/reports/api/v1/vocabularies/resource.content_type/json/,0,,application/json,JSON
+csv,resource.content_type,/reports/api/v1/vocabularies/resource.content_type/csv/,1,,text/csv,CSV
+xls,resource.content_type,/reports/api/v1/vocabularies/resource.content_type/xls/,2,"The Excel 2007+ XLSX file format",application/xls,XLS
+sdf,resource.content_type,/reports/api/v1/vocabularies/resource.content_type/sdf/,3,"see http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip",chemical/x-mdl-sdfile,SDF-molfile

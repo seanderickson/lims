@@ -14,10 +14,10 @@ print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
 
 
 ### uncomment to turn datetime warnings into a runtime exception with traceback
-import warnings
-warnings.filterwarnings(
-        'error', r"DateTimeField .* received a naive datetime",
-        RuntimeWarning, r'django\.db\.models\.fields')
+# import warnings
+# warnings.filterwarnings(
+#         'error', r"DateTimeField .* received a naive datetime",
+#         RuntimeWarning, r'django\.db\.models\.fields')
 
 
 

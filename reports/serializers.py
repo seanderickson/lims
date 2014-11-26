@@ -294,10 +294,13 @@ class XLSSerializer(Serializer):
         raw_data = StringIO.StringIO()
         book = xlwt.Workbook(encoding='utf8')
         
-        if 'error' in data:
+        if 'error' in data or 'error_messsage' in data:
             sheet = book.add_sheet('error')
             sheet.write(0, 0, 'error')
-            sheet.write(1, 0, data['error'])
+            sheet.write(1, 0, data.get('error', data.get('error_message', 'unknown error')))
+            if data.get('traceback', None):
+                sheet.write(0,1, 'traceback')
+                sheet.write(1,1, data.get('traceback', ''))
             book.save(raw_data)
             return raw_data.getvalue()
         
@@ -323,6 +326,8 @@ class XLSSerializer(Serializer):
                     for i, key in enumerate(item.keys()):
                         sheet.write(0,i,smart_str(key))
                 for i, val in enumerate(item.values()):
+                    if val and len(csv_convert(val)) > 32767: 
+                        logger.error(str(('warn, row too long', row,key, csv_convert(val))))
                     sheet.write(row+1,i,csv_convert(val))
         
         book.save(raw_data)
@@ -413,17 +418,21 @@ class CSVSerializer(Serializer):
         # TODO: stream this, don't do the whole dict at once 
         
         # TODO: smarter way to ignore 'objects'
+        # TODO: if error is thrown all the way to tp.wrapper, then root may not be a string...
         if 'objects' in data:
             data = data['objects']
+
         if len(data) == 0:
             return data
 
         if isinstance(data, dict):
             # usually, this happens when the data is actually an error message;
             # but also, it could be just one item being returned
-            keys = data.keys()
-            writer.writerow([smart_str(key) for key in keys])
-            writer.writerow(self.get_list(data))
+            logger.error(str(('non-standard data', data)))
+            raise Exception(str(('non-standard data', data)))
+#             keys = data.keys()
+#             writer.writerow([smart_str(key) for key in keys])
+#             writer.writerow(self.get_list(data))
         else:    
             # default 
             i = 0

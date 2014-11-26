@@ -3,6 +3,7 @@ import logging
 
 from django.db import models
 from django.conf import settings
+from tastypie.utils.dict import dict_strip_unicode_keys
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +104,7 @@ class MetaManager(GetOrNoneManager):
                     x.key for x in Vocabularies.objects.all().filter(
                         scope=vocab_ref)]
             
-            parsed_objects[unparsed_object.key] = parsed_object
+            parsed_objects[unparsed_object.key] = dict_strip_unicode_keys(parsed_object)
         return parsed_objects
 
 

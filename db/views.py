@@ -1,9 +1,11 @@
 import logging
+import os.path
 from django.shortcuts import render
 from db.models import ScreensaverUser, Reagent
 from django.http import HttpResponse
 import json
 from django.utils.encoding import smart_str
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -14,27 +16,64 @@ def main(request):
     return render(request, 'db/index.html', {'search': search})
 
 
+def well_image(request, well_id):
+    
+    if not request.user.is_authenticated():
+        raise ImmediateHttpResponse(response=HttpForbidden(
+            str(('user',request.user ,'not authorized for smiles_image view'))))
+
+    reagent = Reagent.objects.get(well_id=well_id)
+    response = HttpResponse(mimetype="image/png")
+    if reagent.smallmoleculereagent:
+        well = reagent.well
+        _plate = '{:0>5d}'.format(well.plate_number)
+        _name = '%s%s.png' %(_plate, well.well_name)
+        try:
+            structure_image_dir = os.path.abspath(settings.WELL_STRUCTURE_IMAGE_DIR)
+            structure_image_path = os.path.join(
+                structure_image_dir, _plate, _name)
+            
+            if os.path.exists(structure_image_path):
+                from PIL import Image
+                image = Image.open(structure_image_path)
+                image.save(response, "PNG")
+                return response
+            else:
+                logger.info(str(('well_image not found', well_id, structure_image_path)))
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('well_image', well_id, 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e   
+
 def smiles_image(request, well_id):
-        import rdkit.Chem
-        import rdkit.Chem.AllChem
-        import rdkit.Chem.Draw
+
+    if not request.user.is_authenticated():
+        raise ImmediateHttpResponse(response=HttpForbidden(
+            str(('user',request.user ,'not authorized for smiles_image view'))))
+        
+    import rdkit.Chem
+    import rdkit.Chem.AllChem
+    import rdkit.Chem.Draw
 #         import matplotlib
 # 
 # 
-        reagent = Reagent.objects.get(well_id=well_id)
-        smiles = reagent.smallmoleculereagent.smiles
-        logger.info(str((well_id, str(smiles) )))
-        m = rdkit.Chem.MolFromSmiles(str(smiles))
+    reagent = Reagent.objects.get(well_id=well_id)
+    smiles = reagent.smallmoleculereagent.smiles
+    logger.info(str((well_id, str(smiles) )))
+    m = rdkit.Chem.MolFromSmiles(str(smiles))
 #         m = reagent.smallmoleculereagent.molfile.molfile
 #         logger.info(str(('molfile', m)))
-        rdkit.Chem.AllChem.Compute2DCoords(m)
-        im = rdkit.Chem.Draw.MolToImage(m)
+    rdkit.Chem.AllChem.Compute2DCoords(m)
+    im = rdkit.Chem.Draw.MolToImage(m)
 #         return im
 # #         matplotlib.pyplot.imshow(im)
 #         
-        response = HttpResponse(mimetype="image/png")
-        im.save(response, "PNG")
-        return response
+    response = HttpResponse(mimetype="image/png")
+    im.save(response, "PNG")
+    return response
     
 
 

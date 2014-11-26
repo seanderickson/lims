@@ -50,9 +50,10 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var url = library.resource.apiUri +'/' + library.key + '/well';
       // but get the reagent list from the link:
       var reagents_url = library.resource.apiUri +'/' + library.key + '/reagent';
+      var url = reagents_url;
       
       var setupFunction = function(resource){
-        console.log('setupFunction: ' + resource);
+        console.log('setupFunction: ' + JSON.stringify(resource));
         // Test for list args, if not found, then it's a detail view
         if (!_.isEmpty(uriStack) && !_.isEmpty(uriStack[0]) &&
                 !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {

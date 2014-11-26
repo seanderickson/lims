@@ -648,6 +648,49 @@ define(['jquery', 'underscore', 'backbone', 'backgrid',
       },
   });
 
+  var ImageCell = Iccbl.ImageCell = Backgrid.Cell.extend({
+    className : "image-cell",
+    events : {
+        "click #link" : "toLink",
+    },
+
+    initialize : function(options) {
+        Backgrid.Cell.prototype.initialize.apply(this, arguments);
+    },
+
+    render : function() {
+        this.$el.empty();
+        this.$el.html(this.render_image());
+        this.delegateEvents();
+        return this;
+    },
+    
+    render_image: function(){
+      var val = this.model.get(this.column.get('name'));
+      if (!_.isEmpty(val)){
+        console.log('render image...' + val);
+        return '<img src="'+val+'" width="200" alt="" />';
+      }else{
+        return '';
+      }
+
+//      var image_src_attr = this.column.get('backgrid_cell_options')
+//      
+//      if (!_.isEmpty(image_src_attr)){
+//        // NOTE: format for backgrid cell options is "/{attribute_key}/"
+//        var src = Iccbl.replaceTokens(this.model,image_src_attr);
+//        console.log('image src: ' + src);
+//        return '<img src="'+src+'" width="100" alt="" />';
+//      }else{
+//        return '';
+//      }
+
+    },
+        
+  });
+
+
+  
   var EditCell = Iccbl.EditCell = Backgrid.Cell.extend({
       className : "detail-cell",
       events : {

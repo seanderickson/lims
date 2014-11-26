@@ -92,7 +92,10 @@ STATICFILES_FINDERS = (
 )
 
 # Make this unique, and don't share it with anybody.
-SECRET_KEY = 'x1gg450))screensaver2-lims2014001212045'
+SECRET_KEY = 'tell_no_one1_xxxw##!!!xsls%%#)*@'
+
+# if structure image cache directory is available.  see db.api for details.
+WELL_STRUCTURE_IMAGE_DIR='/groups/screensaver/image_directory/structure-images'
 
 LOGGING = {
     'version': 1,

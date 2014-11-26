@@ -130,5 +130,17 @@
         "options": { 
           "search": { "screen_type": "rnai"}, 
           "order": ["short_name"]  }
+    },
+    "well": {
+        "header_message": "Wells",
+        "title": "Well",
+        "route": "list/well",
+        "list_view": "ListView",
+        "detailView": "WellView",
+        "api_resource": "well",
+        "url_root": "/db/api/v1",
+        "description": "Well information",
+        "options": { 
+          "order": ["well_id"]  }
     }
 }

@@ -13,6 +13,7 @@ patch,metahash,metahash_fields_platelocation.csv
 patch,metahash,metahash_fields_well.csv
 patch,metahash,metahash_fields_librarycontentsversion.csv
 patch,metahash,metahash_fields_activity.csv
+patch,metahash,metahash_fields_reagent.csv
 patch,metahash,metahash_fields_smallmoleculereagent.csv
 patch,metahash,metahash_fields_silencingreagent.csv
 patch,metahash,metahash_fields_naturalproductreagent.csv

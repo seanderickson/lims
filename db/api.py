@@ -1,9 +1,23 @@
 import math
+import os.path
 import sys
 import logging
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
+import cStringIO
+import json
+from __builtin__ import StopIteration
+import csv
+from wsgiref.util import FileWrapper
+from zipfile import ZipFile
+import time
+import shutil
+from copy import deepcopy
+import re
+import urllib2
+import io
 
 from django.conf.urls import url
+from django.conf import settings
 from django.forms.models import model_to_dict
 from django.http import Http404
 from django.db import connection
@@ -11,6 +25,12 @@ from django.db import transaction
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.db.models.aggregates import Max, Min
+from django.http.response import StreamingHttpResponse, HttpResponse
+import django.db.models.sql.constants
+import django.db.models.constants
+from django.core.urlresolvers import resolve
+
+from PIL import Image
 
 from tastypie.validation import Validation
 from tastypie.utils import timezone
@@ -21,6 +41,16 @@ from tastypie.authentication import BasicAuthentication, SessionAuthentication,\
     MultiAuthentication
 from tastypie.constants import ALL_WITH_RELATIONS
 from tastypie import fields
+from tastypie.resources import Resource
+from tastypie.utils.mime import build_content_type
+
+from sqlalchemy import select, asc
+from sqlalchemy import text
+from sqlalchemy.sql.expression import column
+from sqlalchemy.sql import func
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.sql import asc,desc, alias, Alias
+from sqlalchemy.sql.expression import nullsfirst,nullslast
 
 from db.models import ScreensaverUser,Screen, LabHead, LabAffiliation, \
     ScreeningRoomUser, ScreenResult, DataColumn, Library, Plate, Copy,\
@@ -31,12 +61,15 @@ from db.support import lims_utils
 from reports.serializers import CursorSerializer, LimsSerializer, XLSSerializer
 from reports.models import MetaHash, Vocabularies, ApiLog
 from reports.api import ManagedModelResource, ManagedResource, ApiLogResource,\
-    UserGroupAuthorization, ManagedLinkedResource, log_obj_update, UnlimitedDownloadResource
-import json
+    UserGroupAuthorization, ManagedLinkedResource, log_obj_update,\
+    UnlimitedDownloadResource, StreamingResource
+from reports.utils.sqlalchemy_bridge import Bridge
 
         
 logger = logging.getLogger(__name__)
 
+def _get_raw_time_string():
+  return timezone.now().strftime("%Y%m%d%H%M%S")
     
 class ScreensaverUserResource(ManagedModelResource):
 #    screens = fields.ToManyField('db.api.ScreenResource', 'screens', 
@@ -1123,9 +1156,890 @@ class SmallMoleculeReagentResource(ManagedLinkedResource):
     def __init__(self, **kwargs):
         super(SmallMoleculeReagentResource,self).__init__(**kwargs)
 
+# FIXME: Test
+class ChunkIterWrapper(object):
+    ''' 
+    Iterate in "chunks" of chunk_size chars.
+    '''
+    def __init__(self, iter_stream, chunk_size = 1024**2):
+        self.iter_stream = iter_stream
+        self.chunk_size = chunk_size
+        self.fragment = None
+    
+    def next(self):
+        logger.info(str(('chunking')))
+        bytes = cStringIO.StringIO()
+        
+        bytecount = 0
+        try:
+            if self.fragment:
+                logger.info(str(('fragment', self.fragment)))
+                #  FIXME: if fragment is still > chunk_size, will just serve it here.
+                bytecount = len(self.fragment)
+                bytes.write(self.fragment)
+                self.fragment = None
+
+            while bytecount < self.chunk_size:
+                row = self.iter_stream.next()
+                rowlen = len(row)
+                if bytecount + rowlen < self.chunk_size:
+                    bytes.write(row)
+                    bytecount += rowlen
+                else:
+                    nextbytes = self.chunk_size-bytecount
+                    bytes.write(row[:nextbytes])
+                    self.fragment = row[nextbytes:]
+                    bytecount += nextbytes
+        except StopIteration:
+            if self.fragment:
+                bytes.write(self.fragment)
+                self.fragment = None
+            else:
+                raise StopIteration
+        finally:
+            if bytes.getvalue():
+                logger.info(str(('chunk size', len(bytes.getvalue()), 'chars')))
+                return bytes.getvalue()
+            else:
+                logger.info(str(('stop iteration', self.fragment, bytes.getvalue())))
+                raise StopIteration
+
+    def __iter__(self):
+        return self
+
+class ChunkIterWrapper1(object):
+    ''' 
+    Iterate in "chunks" of min_iteration size (final size is still dependent on
+    length of original iteration chunk size.
+    FIXME: break streamed output into exact size (buffer remainder for next iteration)
+    FIXME: 'min_iteration' replaced with bytes
+    '''
+    def __init__(self, iter_stream, min_iteration = 1000):
+        self.iter_stream = iter_stream
+        self.min_iteration = min_iteration
+    
+    def next(self):
+        logger.info(str(('chunking')))
+        bytes = cStringIO.StringIO()
+        try:
+            for i in range(self.min_iteration):
+                bytes.write(self.iter_stream.next())
+        except StopIteration:
+            raise StopIteration
+        finally:
+            if bytes.getvalue():
+                logger.info(str(('chunk size', len(bytes.getvalue()), 'chars')))
+                return bytes.getvalue()
+            else:
+                logger.info(str(('stop iteration', bytes.getvalue())))
+                raise StopIteration
+
+    def __iter__(self):
+        return self
+
+class SqlAlchemyResource(StreamingResource):
+    '''
+    FIXME: serialization of list fields: they are sent as concatenated strings with commas
+    FIXME: Reagent/SMR specific
+    '''
+    
+    class Meta:
+        queryset = Reagent.objects.all()
+#         serializer = LimsSerializer() # still have a serializer for error response
+
+    
+    def __init__(self, *args, **kwargs):
+        # get a handle to the SqlAlchemy "bridge" for its table registry and 
+        # connection handle
+        self.bridge = Bridge()
+        
+        super(SqlAlchemyResource, self).__init__(*args, **kwargs)
 
 
-class ReagentResource(ManagedModelResource):
+    def build_sqlalchemy_columns(self, fields, base_query_tables=[]):
+        '''
+        returns an array of sqlalchemy.sql.schema.Column objects, associated 
+        with the sqlalchemy.sql.schema.Table definitions, which are bound to 
+        the sqlalchemy.engine.Engine which: 
+        "Connects a Pool and Dialect together to provide a source of database 
+        connectivity and behavior."
+        
+        @param fields - field definitions, from the resource schema
+        @param bridge - a reports.utils.sqlalchemy_bridge.Bridge
+        @param base_query_tables - if specified, the fields for these tables 
+        will be available as part of the base query, so the column definitions
+        become simpler, and do not need to be joined in. 
+        @param manual_includes - columns to include even if the field visibility is not set
+        '''
+        columns = []
+        for field in fields:
+            field_name = field.get('field', None)
+            if not field_name:
+                field_name = field['key']
+            
+            field_table = field.get('table', None)
+            if not field_table:
+                continue
+            if field_table in base_query_tables:
+                # simple case: table.fields already selected in the base query:
+                # just need to specify them
+                col = self.bridge[field_table].c[field_name]
+                if field_name != field['key']:
+                    col = col.label(field['key'])
+                columns.append(col)
+            
+            elif field.get('linked_field_type', None):
+                link_table = field['table']
+                link_table_def = self.bridge[link_table]
+                linked_field_parent = field['linked_field_parent']
+                link_field = linked_field_parent + '_id'
+                join_args = { 
+                    'link_table': link_table, 'link_field': link_field,
+                    'parent_table': linked_field_parent
+                    }
+                
+                if field['linked_field_type'] != 'fields.ListField':
+                    join_stmt = select([link_table_def.c[field_name]]).\
+                        where(text('{link_table}.{link_field}='
+                                '{parent_table}.{link_field}'.format(**join_args)))
+                    if field.get('linked_field_meta_field', None):
+                        # TODO: test - the linked meta field is the "datacolumn type"
+                        linked_field_meta_field = field['linked_field_meta_field']
+                        meta_field_obj = MetaHash.objects.get(
+                            key=field['key'], scope=field['scope'])
+                        meta_table_def = self.bridge['metahash']
+                        join_stmt.join(meta_table_def, 
+                            link_table_def.c[linked_field_meta_field]==
+                                getattr(meta_field_obj,'pk') )
+                    join_stmt = join_stmt.label(field_name)
+                    columns.append(join_stmt)
+                elif field['linked_field_type'] == 'fields.ListField':
+                    join_stmt = select([link_table_def.c[field_name]]).\
+                        where(text('{link_table}.{link_field}='
+                                '{parent_table}.{link_field}'.format(**join_args)))
+
+                    if field.get('linked_field_meta_field', None):
+                        # TODO: test - the linked meta field is the "datacolumn type"
+                        linked_field_meta_field = field['linked_field_meta_field']
+                        meta_field_obj = MetaHash.objects.get(
+                            key=field['key'], scope=field['scope'])
+                        meta_table_def = self.bridge['metahash']
+                        join_stmt.join(meta_table_def, 
+                            link_table_def.c[linked_field_meta_field]==
+                                getattr(meta_field_obj,'pk') )
+                    
+                    ordinal_field = field.get('ordinal_field', None)
+                    if ordinal_field:
+                        join_stmt = join_stmt.order_by(link_table_def.c[ordinal_field])
+                    join_stmt = join_stmt.alias('a')
+                    stmt2 = select([func.array_to_string(func.array_agg(
+                        column(field_name)),',')]).select_from(join_stmt).\
+                        label(field_name)
+                    columns.append(stmt2)
+            
+        logger.info(str(('columns', columns)))
+        return columns
+
+    def build_sqlalchemy_ordering(self, request):
+        '''
+        returns a scalar or list of ClauseElement objects which will comprise 
+        the ORDER BY clause of the resulting select.
+        This method borrows from tastypie.resources.ModelResource.apply_sorting
+        '''
+        options = request.GET
+        parameter_name = 'order_by'
+        if not parameter_name in options:
+            return []
+        
+        order_by_args = []
+
+        if hasattr(options, 'getlist'):
+            order_bits = options.getlist(parameter_name)
+        else:
+            order_bits = options.get(parameter_name)
+
+            if not isinstance(order_bits, (list, tuple)):
+                order_bits = [order_bits]
+        
+        order_clauses = []
+        for order_by in order_bits:
+            field_name = order_by
+            if order_by.startswith('-'):
+                field_name = order_by[1:]
+                order_clauses.append(nullslast(desc(column(field_name))))
+            else:
+                order_clauses.append(nullsfirst(asc(column(field_name))))
+                
+        return order_clauses
+    
+    def filter_value_to_python(self, value, filters, filter_expr, filter_type):
+        """
+        Turn the string ``value`` into a python object.
+        - copied from TP
+        """
+        # Simple values
+        if value in ['true', 'True', True]:
+            value = True
+        elif value in ['false', 'False', False]:
+            value = False
+        elif value in ('nil', 'none', 'None', None):
+            value = None
+
+        # Split on ',' if not empty string and either an in or range filter.
+        if filter_type in ('in', 'range') and len(value):
+            if hasattr(filters, 'getlist'):
+                value = []
+
+                for part in filters.getlist(filter_expr):
+                    value.extend(part.split(','))
+            else:
+                value = value.split(',')
+
+        return value
+
+    def build_sqlalchemy_filters(self, schema, request, **kwargs):
+        '''
+        Attempt to create a SqlAlchemy whereclause out of django style filters.
+        
+        This method borrows from tastypie.resources.ModelResource.build_filters
+        
+        Valid values are either a list of Django filter types (i.e.
+        ``['startswith', 'exact', 'lte']``), the ``ALL`` constant or the
+        ``ALL_WITH_RELATIONS`` constant.
+        
+        @return - (sqlalchemy.whereclause, [field_name_list])
+        '''
+        
+        # At the declarative level:
+        #     filtering = {
+        #         'resource_field_name': ['exact', 'startswith', 'endswith', 'contains'],
+        #         'resource_field_name_2': ['exact', 'gt', 'gte', 'lt', 'lte', 'range'],
+        #         'resource_field_name_3': ALL,
+        #         'resource_field_name_4': ALL_WITH_RELATIONS,
+        #         ...
+        #     }
+        query_terms = django.db.models.sql.constants.QUERY_TERMS
+        lookup_sep = django.db.models.constants.LOOKUP_SEP
+
+        filters = request.GET.copy()
+        # Update with the provided kwargs.
+        filters.update(kwargs)
+
+        if filters is None:
+            return (None,None)
+        
+        expressions = []
+        filtered_fields = []
+        for filter_expr, value in filters.items():
+            filter_bits = filter_expr.split(lookup_sep)
+            field_name = filter_bits.pop(0)
+            filter_type = 'exact'
+
+            if not field_name in schema['fields']:
+                continue
+            filtered_fields.append(field_name)
+            field = schema['fields'][field_name]
+            
+            if len(filter_bits) and filter_bits[-1] in query_terms:
+                filter_type = filter_bits.pop()
+
+#             lookup_bits = self.check_filtering(field_name, filter_type, filter_bits)
+            value = self.filter_value_to_python(value, filters, filter_expr, filter_type)
+
+            # TODO all the types
+#             QUERY_TERMS = set([
+#                 'exact', 'iexact', 'contains', 'icontains', 'gt', 'gte', 'lt', 'lte', 'in',
+#                 'startswith', 'istartswith', 'endswith', 'iendswith', 'range', 'year',
+#                 'month', 'day', 'week_day', 'hour', 'minute', 'second', 'isnull', 'search',
+#                 'regex', 'iregex',
+#             ])
+
+            if filter_type == 'exact':
+                expressions.append(column(field_name)==value)
+            elif filter_type == 'contains':
+                expressions.append(column(field_name).contains(value))
+            elif filter_type == 'icontains':
+                expressions.append(column(field_name).ilike('%{value}%'.format(value=value)))
+        if len(expressions) > 1: 
+            from sqlalchemy.sql import and_, or_, not_          
+            return (and_(*expressions), filtered_fields)
+        elif len(expressions) == 1:
+            return (expressions[0], filtered_fields) 
+        else:
+            return (None, filtered_fields)
+
+    def get_format(self, request):
+        format = request.GET.get('format', None)
+        if format:
+            if format in self.content_types:
+                format = self.content_types[format]
+            else:
+                logger.error(str(('unknown format', desired_format)))
+                raise ImmediateHttpResponse("unknown format: %s" % desired_format)
+        else:
+            # Try to fallback on the Accepts header.
+            if request.META.get('HTTP_ACCEPT', '*/*') != '*/*':
+                try:
+                    import mimeparse
+                    format = mimeparse.best_match(
+                        self.content_types.values(), request.META['HTTP_ACCEPT'])
+                except ValueError:
+                    logger.error(str(('Invalid Accept header')))
+                    raise ImmediateHttpResponse('Invalid Accept header')
+#                     raise BadRequest('Invalid Accept header')
+        return format
+        
+    def get_list(self, request, **kwargs):
+        raise NotImplemented(str(('get_list must be implemented for the SqlAlchemyResource', 
+            self._meta.resource_name)) )
+        
+    def stream_response_from_cursor(self, request, stmt, count_stmt, 
+        output_filename, field_hash={}):
+                    
+#         logger.info(str(('request,stmt,count_stmt', request, stmt, count_stmt)))
+        limit = request.GET.get('limit', self._meta.limit) 
+        try:
+            limit = int(limit)
+        except ValueError:
+            raise BadRequest("Invalid limit '%s' provided. Please provide a positive integer." % limit)
+        if limit > 0:    
+            stmt = stmt.limit(limit)
+
+        offset = request.GET.get('offset', 0) 
+        try:
+            offset = int(offset)
+        except ValueError:
+            raise BadRequest("Invalid offset '%s' provided. Please provide a positive integer." % limit)
+        if offset < 0:    
+            offset = -offset
+        
+        stmt = stmt.offset(offset)
+        logger.info(str(('stmt', str(stmt))))
+
+        conn = self.bridge.get_engine().connect()
+        result = conn.execute(stmt)
+        
+        desired_format = self.get_format(request)
+        content_type=build_content_type(desired_format)
+        logger.info(str(('desired_format', desired_format)))
+
+        def interpolate_value_template(value_template, row):
+            ''' 
+            a "value_template" is of the form:
+            "text... {field_name} ..text"
+            wherein the {field_name} is replaced with the field-value
+            '''                
+            def get_value_from_template(matchobj):
+                val = matchobj.group()
+                val = re.sub(r'[{}]+', '', val)
+                if row.has_key(val):
+                    return row[val]
+                else:
+                    return ''
+            return re.sub(r'{([^}]+)}', get_value_from_template, value_template)
+
+        if desired_format == 'application/json':
+
+            count = conn.execute(count_stmt).scalar()
+            logger.info(str(('====count====', count)))
+        
+            meta = {
+                'limit': limit,
+                'offset': offset,
+                'total_count': count
+                }    
+            
+            def json_generator(cursor):
+                yield '{ "meta": %s, "objects": [' % json.dumps(meta)
+                i=0
+                for row in cursor:
+                    if field_hash:
+                        _dict = OrderedDict()
+                        for key, field in field_hash.iteritems():
+                            if row.has_key(key):
+                                _dict[key] = row[key]
+                            if field.get('value_template', None):
+                                value_template = field['value_template']
+                                logger.info(str(('field', key, value_template)))
+                                newval = interpolate_value_template(value_template, row)
+                                if field['ui_type'] == 'image':
+                                    # hack to speed things up:
+                                    if ( key == 'structure_image' and
+                                            row.has_key('library_well_type') and
+                                            row['library_well_type'] == 'empty' ):
+                                        continue
+                                    # see if the specified url is available
+                                    try:
+                                        view, args, kwargs = resolve(newval)
+                                        kwargs['request'] = request
+                                        view(*args, **kwargs)
+                                        _dict[key] = newval
+                                    except Exception, e:
+                                        logger.info(str(('no image at', newval,e)))
+                                else:
+                                    _dict[key]=newval
+                    else:
+                        _dict = dict((x,y) for x, y in row.items())
+
+                    i += 1
+                    if i == 1:
+                        yield json.dumps(_dict)
+                    else:
+                        yield ', ' + json.dumps(_dict)
+                
+                logger.info(str(('i', i)))    
+                yield ' ] }'
+            
+            logger.info(str(('ready to stream 1...')))
+            # NOTE: sqlalchemy ResultProxy will automatically close the result after last row fetch
+            response = StreamingHttpResponse(ChunkIterWrapper(json_generator(result)))
+            return response
+        
+        elif desired_format == 'application/xls':
+            
+            # FIXME: how to abstract images?
+            
+            structure_image_dir = os.path.abspath(settings.WELL_STRUCTURE_IMAGE_DIR)
+            # create a temp dir
+            # FIXME: temp directory as a setting
+            temp_dir = os.path.join('/tmp', str(time.clock()).replace('.', '_'))
+            os.mkdir(temp_dir)
+            try:
+                from xlsxwriter.workbook import Workbook
+                irow=0
+                # Create an new Excel file and add a worksheet.
+                filename = '%s.xlsx' % (output_filename)
+                temp_file = os.path.join(temp_dir, filename)
+                logger.info(str(('temp file', temp_file)))
+                workbook = Workbook(temp_file)
+                worksheet = workbook.add_worksheet()
+                
+                # FIXME: only need max rows if the file will be too big (structure images)
+                # or too long (>65535, for some versions of xls; for that case
+                # should implement a mult-sheet solution.
+                max_rows_per_file = 1000
+                file_names_to_zip = [temp_file]
+                filerow = 0
+                for row in result:
+                    if filerow == 0:
+                        if field_hash:
+                            for col, (key, field) in enumerate(field_hash.items()):
+                                worksheet.write(filerow,col,key)
+                                ## TODO: option to write titles
+                                # worksheet.write(filerow,col,field['title'])
+                        else:
+                            for col,name in enumerate(record.keys()):
+                                worksheet.write(filerow,col,name)
+#                         # FIXME: SMR ONLY
+#                         worksheet.write(filerow,col+1, 'structure_image')
+                        filerow += 1
+                    
+                    if field_hash:
+                        for col, (key, field) in enumerate(field_hash.iteritems()):
+                            if row.has_key(key):
+                                worksheet.write(filerow, col, row[key])
+                            if field.get('value_template', None):
+                                value_template = field['value_template']
+                                logger.info(str(('field', key, value_template)))
+                                newval = interpolate_value_template(value_template, row)
+                                if field['ui_type'] == 'image':
+                                    # hack to speed things up:
+                                    if ( key == 'structure_image' and
+                                            row.has_key('library_well_type') and
+                                            row['library_well_type'] == 'empty' ):
+                                        continue
+                                    # see if the specified url is available
+                                    try:
+                                        view, args, kwargs = resolve(newval)
+                                        kwargs['request'] = request
+                                        response = view(*args, **kwargs)
+                                        image = Image.open(io.BytesIO(response.content))
+                                        height = image.size[1]
+                                        width = image.size[0]
+                                        worksheet.set_row(filerow, height)
+                                        scaling = 0.130 # trial and error width in default excel font
+                                        worksheet.set_column(col,col, width*scaling)
+                                        worksheet.insert_image(filerow, col, newval, {'image_data': io.BytesIO(response.content)})
+                                    except Exception, e:
+                                        logger.info(str(('no image at', newval,e)))
+                                else:
+                                    worksheet.write(filerow, col, newval)
+
+                    else:
+                        
+                        for col,val in enumerate(row.values()):
+                            worksheet.write(filerow, col, val)
+
+                    irow +=1
+                    filerow +=1
+                    
+                    if irow % max_rows_per_file == 0:
+                        workbook.close()
+                        logger.info(str(('wrote file', temp_file)))
+
+                        # Create an new Excel file and add a worksheet.
+                        filename = '%s_%s.xlsx' % (output_filename, irow)
+                        temp_file = os.path.join(temp_dir, filename)
+                        logger.info(str(('temp file', temp_file)))
+                        workbook = Workbook(temp_file)
+                        worksheet = workbook.add_worksheet()
+                        
+                        file_names_to_zip.append(temp_file)
+                        filerow = 0
+                    
+                workbook.close()
+                logger.info(str(('wrote file', temp_file)))
+
+                if len(file_names_to_zip) >1:
+                    # create a temp zip file
+                    temp_file = os.path.join('/tmp',str(time.clock()))
+                    logger.info(str(('temp ZIP file', temp_file)))
+
+                    with ZipFile(temp_file, 'w') as zip_file:
+                        for _file in file_names_to_zip:
+                            zip_file.write(_file, os.path.basename(_file))
+                    logger.info(str(('wrote file', temp_file)))
+                    filename = '%s.zip' % output_filename
+
+                _file = file(temp_file)
+                logger.info(str(('download tmp file',temp_file,_file)))
+                wrapper = FileWrapper(_file)
+                response = StreamingHttpResponse(
+                    wrapper, content_type='application/zip; charset=utf-8') 
+                response['Content-Disposition'] = \
+                    'attachment; filename=%s' % filename
+                response['Content-Length'] = os.path.getsize(temp_file)
+                return response
+            except Exception, e:
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+                msg = str(e)
+                logger.warn(str(('on xlsx & zip file process', 
+                    self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+                raise e   
+            finally:
+                try:
+                    logger.info(str(('rmdir', temp_dir)))
+                    shutil.rmtree(temp_dir)
+                    if os.path.exists(temp_file):
+                        logger.info(str(('remove', temp_file)))
+                        os.remove(temp_file)     
+                    logger.info(str(('removed', temp_dir)))
+                except Exception, e:
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+                    msg = str(e)
+                    logger.warn(str(('on xlsx & zip file process', self._meta.resource_name, 
+                        msg, exc_type, fname, exc_tb.tb_lineno)))
+                    raise ImmediateHttpResponse(str(('ex during rmdir', e)))
+        elif desired_format == 'chemical/x-mdl-sdfile':
+            import reports.utils.sdf2py
+            MOLDATAKEY = reports.utils.sdf2py.MOLDATAKEY
+            try:
+                def sdf_generator(cursor):
+                    i = 0
+                    for row in cursor:
+                        i += 1
+
+                        if MOLDATAKEY in row and row[MOLDATAKEY]:
+                            yield str(row[MOLDATAKEY])
+                            yield '\n' 
+
+                        if field_hash:
+                            for col, (key, field) in enumerate(field_hash.iteritems()):
+                                if key == MOLDATAKEY: 
+                                    continue
+                                yield '> <%s>\n' % key
+                                # according to 
+                                # http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip
+                                # "only one blank line should terminate a data item"
+                                value = None
+                                if row.has_key(key):
+                                    value = row[key]
+                                if field.get('value_template', None):
+                                    value_template = field['value_template']
+                                    logger.info(str(('field', key, value_template)))
+                                    value = interpolate_value_template(value_template, row)
+
+                                if value:
+                                    # find lists, but not strings (or dicts)
+                                    # Note: a dict here will be non-standard; probably an error 
+                                    # report, so just stringify dicts as is.
+                                    if not hasattr(value, "strip") and isinstance(value, (list,tuple)): 
+                                        for x in value:
+                                            # DB should be UTF-8, so this should not be necessary,
+                                            # however, it appears we have legacy non-utf data in 
+                                            # some tables (i.e. small_molecule_compound_name 193090
+                                            yield unicode.encode(x,'utf-8')
+                                            yield '\n'
+                                    else:
+                                        yield str(value)
+                                        yield '\n'
+            
+                                yield '\n'
+                            yield '$$$$\n'
+                                    
+                        else:
+                        
+                            for k,v in row.items():
+                                if k == MOLDATAKEY: 
+                                    continue
+                                yield '> <%s>\n' % k
+                                # according to 
+                                # http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip
+                                # "only one blank line should terminate a data item"
+                                if v:
+                                    # find lists, but not strings (or dicts)
+                                    # Note: a dict here will be non-standard; probably an error 
+                                    # report, so just stringify dicts as is.
+                                    if not hasattr(v, "strip") and isinstance(v, (list,tuple)): 
+                                        for x in v:
+                                            # DB should be UTF-8, so this should not be necessary,
+                                            # however, it appears we have legacy non-utf data in 
+                                            # some tables (i.e. small_molecule_compound_name 193090
+                                            yield unicode.encode(x,'utf-8')
+                                            yield '\n'
+                                    else:
+                                        yield str(v)
+                                        yield '\n'
+                
+                                yield '\n'
+                            yield '$$$$\n'
+        
+                    logger.info(str(('wrote i', i)))    
+    
+                response = StreamingHttpResponse(
+                    ChunkIterWrapper(sdf_generator(result)),
+                    content_type=content_type)
+                response['Content-Disposition'] = \
+                    'attachment; filename=%s.sdf' % output_filename
+                return response
+            except Exception, e:
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+                msg = str(e)
+                logger.warn(str(('sdf export process', self._meta.resource_name, 
+                    msg, exc_type, fname, exc_tb.tb_lineno)))
+                raise ImmediateHttpResponse(str(('ex during sdf export', e)))
+                
+        
+        elif desired_format == 'text/csv':
+            class Echo(object):
+                """An object that implements just the write method of the file-like
+                interface.
+                """
+                def write(self, value):
+                    return value
+
+            pseudo_buffer = Echo()
+            csvwriter = csv.writer(
+                pseudo_buffer, delimiter='\t', quotechar='"', 
+                quoting=csv.QUOTE_ALL)
+            from reports.serializers import csv_convert
+            def csv_generator(cursor):
+                i=0
+                for row in cursor:
+                    i += 1
+                    if i == 1:
+                        if field_hash:
+                            yield csvwriter.writerow(field_hash.keys())
+                            # TODO: option to write titles:
+                            # yield csvwriter.writerow([field['title'] for field in field_hash.values()])
+                        else:
+                            yield csvwriter.writerow(row.keys())
+
+                    if field_hash:
+                        values = []
+                        for col, (key, field) in enumerate(field_hash.iteritems()):
+                            value = ''
+                            if row.has_key(key):
+                                value = row[key]
+                            if field.get('value_template', None):
+                                value_template = field['value_template']
+                                logger.info(str(('field', key, value_template)))
+                                newval = interpolate_value_template(value_template, row)
+                                if field['ui_type'] == 'image':
+                                    # hack to speed things up:
+                                    if ( key == 'structure_image' and
+                                            row.has_key('library_well_type') and
+                                            row['library_well_type'] == 'empty' ):
+                                        continue
+                                    # see if the specified url is available
+                                    try:
+                                        view, args, kwargs = resolve(newval)
+                                        kwargs['request'] = request
+                                        response = view(*args, **kwargs)
+                                        value = newval
+                                    except Exception, e:
+                                        logger.info(str(('no image at', newval,e)))
+                                else:
+                                    value = newval
+                            values.append(value)
+                        yield csvwriter.writerow([csv_convert(val) for val in values])
+                    
+                    else:
+                        yield csvwriter.writerow([csv_convert(val) for val in row.values()])
+
+            response = StreamingHttpResponse(csv_generator(result),
+                content_type=content_type)
+            name = self._meta.resource_name
+            response['Content-Disposition'] = \
+                'attachment; filename=%s.csv' % output_filename
+            return response
+
+        else:
+            msg = str(('unknown format', desired_format, output_filename))
+            logger.error(msg)
+            raise ImmediateHttpResponse(msg)
+    
+
+    # FIXME: remove this; this is for the alternate join methdod, which is 
+    # less performant, as per explain analyze for postgresql8.4
+    def get_list_linkedjoins(self, request, **kwargs):
+        if 'library_short_name' in kwargs:
+            library = Library.objects.get(short_name=kwargs['library_short_name'])
+        else:
+            raise NotImplementedError('must provide a library_short_name parameter')
+        logger.info(str(('kwargs', kwargs)))
+
+        
+        from reports.utils.sqlalchemy_bridge import Bridge
+        from sqlalchemy import select, asc
+        from sqlalchemy import text
+        from sqlalchemy.sql.expression import column
+        from sqlalchemy.sql import func
+        from sqlalchemy.dialects.postgresql import ARRAY
+
+        from sqlalchemy.sql import asc,desc
+        from sqlalchemy.sql.expression import nullsfirst,nullslast, subquery
+        from sqlalchemy.sql.expression import column, alias
+
+        bridge = Bridge()
+        
+        tables = ['well', 'reagent', 'small_molecule_reagent', 'library']
+        well = bridge['well']
+        reagent = bridge['reagent']
+        smr = bridge['small_molecule_reagent']
+        library_table = bridge['library']
+        
+    
+        schema = self.build_schema(library=library)
+        fields = schema['fields']
+     
+        j = well.join(reagent, well.c.well_id==reagent.c.well_id, isouter=True)
+        j = j.join(smr, reagent.c.reagent_id == smr.c.reagent_id, isouter=True )
+        j = j.join(library_table, well.c.library_id == library_table.c.library_id )
+
+        
+#         smcn = bridge['small_molecule_compound_name']
+#         
+#         stmt_inner = select([smcn.c.reagent_id, smcn.c.compound_name]).\
+#                     order_by(smcn.c.reagent_id, smcn.c.ordinal)
+#         stmt1 = select([
+#                 func.array_to_string(func.array_agg(column('compound_name')),',').\
+#                     label('compound_names'), 
+#                 column('reagent_id')]).\
+#             select_from(stmt_inner.alias()).\
+#             group_by(column('reagent_id'))
+#         logger.info(str(('====stmt1', str(stmt1))))
+#         
+#         j = j.join(stmt1.alias('smcn1'), text('smcn1.reagent_id=reagent.reagent_id'), isouter=True)        
+        
+        columns = []
+        for field in fields.values():
+            if field.get('linked_field_type', None):
+                if field['linked_field_type'] != 'fields.ListField':
+                    pass
+                elif field['linked_field_type'] == 'fields.ListField':
+                    link_table = field['table']
+                    field_name = field.get('field', '')
+                    if not field_name:
+                        field_name = field['key']
+                    link_table_def = bridge[link_table]
+                    ordinal_field = field.get('ordinal_field', None)
+                    linked_field_parent = field['linked_field_parent']
+                    link_field = linked_field_parent + '_id'
+                    stmt_inner = select([link_table_def.c[link_field], link_table_def.c[field_name]]).\
+                                order_by(link_table_def.c[link_field], link_table_def.c[ordinal_field])
+
+                    stmt1 = select([
+                            func.array_to_string(func.array_agg(column(field_name)),',').\
+                                label(field_name), 
+                            column(link_field)]).\
+                        select_from(stmt_inner.alias()).\
+                        group_by(column(link_field))
+                    logger.info(str(('====stmt1', str(stmt1))))
+                    
+                    alias_string = field_name + '_sub'
+                    join_args = { 
+                        'link_table': alias_string, 'link_field': link_field,
+                        'parent_table': linked_field_parent
+                        }
+                    j = j.join(
+                        stmt1.alias(alias_string), 
+                        text('{link_table}.{link_field}={parent_table}.{link_field}'.format(**join_args)), isouter=True)        
+                    columns.append(column(field_name))
+
+            elif 'table' in field and field['table'] in tables:
+                field_name = field.get('field', None)
+                if not field_name:
+                    field_name = field['key']
+                
+                logger.info(str(('included field', field_name, field['key'], field)))
+                col_name = '%s.%s' % (field['table'],field_name)
+                if field_name != field['key']:
+                    col_name += ' as ' + field['key']
+                columns.append(col_name)
+
+        columns.append('reagent.reagent_id')
+
+        stmt = select([well, reagent, smr,library_table], use_labels=True).\
+                    select_from(j).\
+                    where(well.c.library_id == library.library_id)
+        
+        stmt = stmt.with_only_columns(columns)
+        logger.info(str(('columns', columns, 'stmt', stmt)))
+        
+
+        stmt = stmt.order_by(asc(well.c.well_id))
+#         stmt = stmt.order_by(nullsfirst(asc(column('compound_names'))))
+
+        
+#         stmt = stmt.where(column('compound_names').like('%W%'))
+#         stmt = stmt.where(column('compound_name')!= None)
+        stmt = stmt.offset(1452).limit(200)
+
+
+        logger.info(str(('stmt', str(stmt))))
+        conn = bridge.get_engine().connect()
+        result = conn.execute(stmt)
+        
+        desired_format = self.determine_format(request)
+        content_type=build_content_type(desired_format)
+
+        def json_generator(cursor):
+            yield '[ '
+            i=0
+            for row in cursor:
+                i += 1
+                if i == 1:
+                    yield json.dumps(dict((x,y) for x, y in row.items()))
+                else:
+                    yield ', ' + json.dumps(dict((x,y) for x, y in row.items()))
+            
+            logger.info(str(('i', i)))    
+            yield ' ]'
+            
+        # NOTE: sqlalchemy ResultProxy will automatically close the result after last row fetch
+        from django.http.response import StreamingHttpResponse
+        logger.info(str(('ready to stream 1...')))
+        
+        response = StreamingHttpResponse(ChunkIterWrapper(json_generator(result)))
+        return response
+
+
+
+class ReagentResource(SqlAlchemyResource, ManagedModelResource):
     
     class Meta:
 
@@ -1147,7 +2061,163 @@ class ReagentResource(ManagedModelResource):
         self.npr_resource = None
         self.well_resource = None
         super(ReagentResource,self).__init__(**kwargs)
+ 
+    def get_list(self, request, **kwargs):
+    
+        if 'library_short_name' in kwargs:
+            library = Library.objects.get(short_name=kwargs['library_short_name'])
+        else:
+            raise NotImplementedError('must provide a library_short_name parameter')
+        logger.info(str(('kwargs', kwargs)))
         
+        filename = '%s_%s' % (self._meta.resource_name, library.short_name )
+        
+        # Build the query columns using directions from our schema
+        # Specify the tables in the base query (*will not need to re-join them)
+        base_query_tables = ['well', 'reagent', 'library']
+        schema = self.build_schema(library=library)
+
+        (filter_expression, filter_fields) = self.build_sqlalchemy_filters(schema, request, **kwargs)
+
+        # TODO: get manual field includes from kwargs
+        manual_field_includes = set()
+        manual_field_includes.add('structure_image')
+        desired_format = self.get_format(request)
+        if desired_format == 'chemical/x-mdl-sdfile':
+            manual_field_includes.add('molfile')
+
+        # Filter fields and put in an ordered dict
+        # TODO: if this is a detail search, include those columns then.
+        temp = { key:field for key,field in schema['fields'].items() 
+            if ((field.get('visibility', None) and 'list' in field['visibility']) 
+                or field['key'] in filter_fields 
+                or field['key'] in manual_field_includes )}
+        field_hash = OrderedDict(sorted(temp.iteritems(), key=lambda x: x[1]['ordinal'])) 
+        logger.info(str(('field_hash', field_hash)))       
+        
+        columns = self.build_sqlalchemy_columns(
+            field_hash.values(), base_query_tables=base_query_tables)
+
+        # Start building a query; use the sqlalchemy.sql.schema.Table API:
+        _well = self.bridge['well']
+        _reagent = self.bridge['reagent']
+        _library = self.bridge['library']
+        j = _well.join(_reagent, _well.c.well_id==_reagent.c.well_id, isouter=True)
+        j = j.join(_library, _well.c.library_id == _library.c.library_id )
+        stmt = select(columns).\
+            select_from(j).\
+            where(_well.c.library_id == library.library_id) 
+#         logger.info(str(('initial stmt', str(stmt))))
+
+        # perform ordering and filters     
+        
+        order_clauses = self.build_sqlalchemy_ordering(request)
+        logger.info(str(('order_clauses', [str(c) for c in order_clauses])))
+        if order_clauses:
+            _alias = Alias(stmt)
+            stmt = select([text('*')]).select_from(_alias)
+            stmt = stmt.order_by(*order_clauses)
+#         logger.info(str(('order stmt', str(stmt))))
+        
+        logger.info(str(('filter_expression', str(filter_expression))))
+        if filter_expression is not None:
+            if not order_clauses:
+                _alias = Alias(stmt)
+                stmt = select([text('*')]).select_from(_alias)
+            stmt = stmt.where(filter_expression)
+
+#         logger.info(str(('filter stmt', str(stmt))))
+
+        # need the count
+        if filter_fields is not None:
+            count_fields = [field for field in schema['fields'].values() 
+                if field['key'] in filter_fields ]
+            count_columns = self.build_sqlalchemy_columns(count_fields, base_query_tables)
+            if count_columns:
+                count_stmt = select(columns).\
+                    select_from(j).\
+                    where(_well.c.library_id == library.library_id) 
+                _alias = Alias(count_stmt)
+                count_stmt = select([text('*')]).select_from(_alias)
+                count_stmt = stmt.where(filter_expression)
+            else:
+                logger.error('no count columns')
+        else:
+            count_stmt = select(columns).\
+                select_from(j).\
+                where(_well.c.library_id == library.library_id) 
+        count_stmt = select([func.count()]).select_from(count_stmt.alias())
+        
+        # FIXME: this is for smr
+        structure_image_dir = os.path.abspath(settings.WELL_STRUCTURE_IMAGE_DIR)
+        def row_to_image_location(row):
+            '''
+            @param row - a cursor row;
+                see RowProxy: http://docs.sqlalchemy.org/en/latest/core/connections.html#sqlalchemy.engine.RowProxy
+            @return (key, val) for the row_to_field conversion
+            '''
+            if row.has_key('plate_number'):
+                plate_number = row['plate_number']
+                if plate_number:
+                    _plate = '{:0>5d}'.format(plate_number)
+                    _name = '%s%s.png' %(_plate, row['well_name'])
+                    structure_image_path = os.path.join(
+                        structure_image_dir, _plate, _name)
+                    if os.path.exists(structure_image_path):
+                        return('structure_image', '/db/well_image/' + row['well_id'])
+                    else:
+                        if logger.isEnabledFor(logging.DEBUG):
+                            logger.debug(str(('path not found', structure_image_path)))
+            return (None,None)
+        
+        def row_to_worksheet_image(rowproxy, sheetrow, sheetcol, worksheet):
+            '''
+            @param row - a cursor row;
+                see RowProxy: http://docs.sqlalchemy.org/en/latest/core/connections.html#sqlalchemy.engine.RowProxy
+            @param worksheet - an xlsx worksheet;
+                see https://xlsxwriter.readthedocs.org/en/latest/worksheet.html
+            '''
+            if rowproxy.has_key('plate_number'):
+                plate_number = rowproxy['plate_number']
+                if plate_number:
+                    _plate = '{:0>5d}'.format(plate_number)
+                    _name = '%s%s.png' %(_plate, rowproxy['well_name'])
+                    structure_image_path = os.path.join(
+                        structure_image_dir, _plate, _name)
+                    
+                    if os.path.exists(structure_image_path):
+                        try:
+                            from PIL import Image
+                            image = Image.open(structure_image_path)
+                            height = image.size[1]
+                            width = image.size[0]
+                            worksheet.set_row(sheetrow, height)
+                            scaling = 0.130 # trial and error width in default excel font
+                            worksheet.set_column(sheetcol,sheetcol, width*scaling)
+                            _options = {'x_offset': 0, 'y_offset': 0, 'positioning': 1}
+                            # NOTE: technique is designed around using the "insert_image"
+                            # method with a filepath; xlsxwriter "just knows" how to 
+                            # insert the image correctly
+                            # Todo: implement images as a service
+                            worksheet.insert_image(
+                                sheetrow, sheetcol, structure_image_path)
+                        except Exception, e:
+                            exc_type, exc_obj, exc_tb = sys.exc_info()
+                            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+                            msg = str(e)
+                            logger.warn(str(('on image retrieval', rowproxy, sheetrow,
+                                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+                            raise e   
+                    else:
+                        logger.info(str(('path not found', structure_image_path)))
+        
+#         row_to_field_lambdas = {
+#             'application/json': [row_to_image_location],
+#             'application/xls': [row_to_worksheet_image]
+#             }
+        return self.stream_response_from_cursor(
+            request, stmt, count_stmt, filename, field_hash=field_hash  )
+ 
     def get_sr_resource(self):
         if not self.sr_resource:
             self.sr_resource = SilencingReagentResource()
@@ -1198,8 +2268,7 @@ class ReagentResource(ManagedModelResource):
         
         ## also add in the "supertype" fields:
         query.select_related('well')
-        
-        
+    
         if library_short_name:
             query = query.filter(well__library=library)
 #             logger.debug(str(('get reagent/well list', library_short_name, len(query))))
@@ -1232,17 +2301,24 @@ class ReagentResource(ManagedModelResource):
                 'no library found for short_name', library_short_name)))
                 
     def build_schema(self, library=None):
-        data = super(ReagentResource,self).build_schema()
+        schema = deepcopy(super(ReagentResource,self).build_schema())
         
         if library:
             sub_data = self.get_reagent_resource(library).build_schema()
             
             newfields = {}
             newfields.update(sub_data['fields'])
-            newfields.update(data['fields'])
-            data['fields'] = newfields
-        
-        return data
+            newfields.update(schema['fields'])
+            schema['fields'] = newfields
+            
+            for k,v in schema.items():
+                if k != 'fields' and k in sub_data:
+                    schema[k] = sub_data[k]
+            
+        well_schema = WellResource().build_schema()
+        schema['fields'].update(well_schema['fields'])
+
+        return schema
 
 class WellResource(ManagedModelResource, UnlimitedDownloadResource):
 
@@ -1257,7 +2333,9 @@ class WellResource(ManagedModelResource, UnlimitedDownloadResource):
         resource_name = 'well'
         ordering = []
         filtering = {}
-        serializer = LimsSerializer()
+        serializer = LimsSerializer()   
+#         serializer = CursorSerializer()
+
         xls_serializer = XLSSerializer()
         # Backbone/JQuery likes to JSON.parse the returned data
         always_return_data = True 
@@ -1392,6 +2470,55 @@ class WellResource(ManagedModelResource, UnlimitedDownloadResource):
 
         return data
     
+    def obj_get_list(self, bundle, **kwargs):    
+
+        if 'library_short_name' in kwargs:
+            library_short_name = kwargs.pop('library_short_name')
+            try:
+                library = Library.objects.get(short_name=library_short_name)
+                reagent_resource = self.get_reagent_resource(library)
+                
+                reagent_query = reagent_resource.obj_get_list(bundle, **kwargs)
+                
+                
+                sql = ('select w.*,r.* '
+                    'from well w left outer join ({reagent_query}) r on(r.well_id=w.well_id) '
+                    'where w.library=%s')
+                sql = sql.format(reagent_query=reagent_query.query.sql_with_params())
+                logger.info(str(('===sql', sql)))
+                
+                cursor = connection.cursor()
+                cursor.execute(sql, library.library_id)
+                logger.info(str(('===sql2', sql)))
+                
+                
+                class CursorIterator:
+                    def __init__(self, cursor):
+                        self.cursor = cursor
+                
+                    def __iter__(self):
+                        return self
+                
+                    def next(self): # Python 3: def __next__(self)
+                        obj = cursor.fetchone()
+                        if obj:
+                            bundle = self.build_bundle(obj=obj,request=bundle.request)
+                            bundle = reagent_resource.full_dehydrate(bundle)
+                            bundle = self.full_dehydrate(bundle)
+                            return bundle
+                        else:
+                            raise StopIteration
+                
+                return CursorIterator(cursor)
+                
+            except Exception, e:
+                raise Http404(str(('err', e)))
+        
+    def apply_sorting(self, obj_list, options=None):
+        # disabled, for now
+        return obj_list
+    
+        
     def get_object_list(self, request, library_short_name=None):
         ''' 
         Note: any extra kwargs are there because we are injecting them into the 
@@ -1403,6 +2530,7 @@ class WellResource(ManagedModelResource, UnlimitedDownloadResource):
         if library_short_name:
             query = query.filter(library__short_name=library_short_name)
             logger.debug(str(('get well list', library_short_name, len(query))))
+            
         return query
                     
 
@@ -1704,6 +2832,11 @@ class LibraryResource(ManagedModelResource):
                 self.wrap_view('dispatch_library_reagentview'), 
                 name="api_dispatch_library_reagentview"),
             
+#             url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
+#                  r"/reagent2%s$" ) % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('dispatch_library_reagentview2'), 
+#                 name="api_dispatch_library_reagentview2"),
+            
             url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
                  r"/reagent/schema%s$") 
                     % (self._meta.resource_name, trailing_slash()), 
@@ -1771,6 +2904,11 @@ class LibraryResource(ManagedModelResource):
         logger.info(str(('dispatch_library_reagentview ', kwargs)))
         kwargs['library_short_name'] = kwargs.pop('short_name')
         return self.get_reagent_resource().dispatch('list', request, **kwargs)    
+                    
+#     def dispatch_library_reagentview2(self, request, **kwargs):
+#         logger.info(str(('dispatch_library_reagentview ', kwargs)))
+#         kwargs['library_short_name'] = kwargs.pop('short_name')
+#         return ReagentResource2().dispatch('list', request, **kwargs)    
                     
     def dispatch_library_copyplateview(self, request, **kwargs):
         kwargs['library_short_name'] = kwargs.pop('short_name')

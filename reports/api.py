@@ -10,14 +10,15 @@ from copy import deepcopy
 from django.conf.urls import url
 from django.conf import settings
 from django.core.cache import cache
-from django.utils.encoding import smart_text
-from django.utils import timezone, importlib
-from django.forms.models import model_to_dict
 from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.auth.models import User
 from django.db.models.aggregates import Max
 from django.db.models import Q
 from django.db import transaction
+from django.utils.encoding import smart_text
+from django.utils import timezone, importlib
+from django.forms.models import model_to_dict
+from django.http.response import HttpResponseBase
 from tastypie.exceptions import NotFound, ImmediateHttpResponse, Unauthorized,\
     BadRequest
 from tastypie.bundle import Bundle
@@ -27,6 +28,7 @@ from tastypie.authentication import BasicAuthentication, SessionAuthentication,\
 from tastypie.constants import ALL, ALL_WITH_RELATIONS
 # NOTE: tastypie.fields is required for dynamic field instances using eval
 from tastypie import fields 
+import tastypie.resources
 from tastypie.resources import Resource, ModelResource
 from tastypie.utils.urls import trailing_slash
 
@@ -46,6 +48,7 @@ import csv
 from tastypie.utils.mime import build_content_type
 
 logger = logging.getLogger(__name__)
+
 
 class UserGroupAuthorization(Authorization):
     
@@ -373,7 +376,7 @@ def log_obj_update(obj_update_func):
         # the api logger is concerned with what's sent out of the system, i.e.
         # the dehydrated output, not the internal representations.
         
-        ## filter out the fields that aren't actually on this resource
+        ## filter out the fields that aren't actually on this resource (well fields on reagent)
         schema = self.build_schema()
         fields = schema['fields']
         original_bundle.data = { key: original_bundle.data[key] 
@@ -599,6 +602,63 @@ class LoggingMixin(Resource):
 # #         self.listlog = None
 #     
 #         return response        
+
+class StreamingResource(Resource):
+    """
+    Override tastypie.resources.Resource to replace check:
+     if not isinstance(response, HttpResponse):
+        return http.HttpNoContent()
+    with:
+     if not isinstance(response, HttpResponseBase):
+        return http.HttpNoContent()
+    -- this allows for use of the StreamingHttpResponse or the HttpResponse
+    """
+
+    content_types = {'json': 'application/json',
+                     'xls': 'application/xls',
+                     'csv': 'text/csv',
+                     'sdf': 'chemical/x-mdl-sdfile',
+                     }
+
+    def dispatch(self, request_type, request, **kwargs):
+        """
+        Override tastypie.resources.Resource to replace check:
+         if not isinstance(response, HttpResponse):
+            return http.HttpNoContent()
+        with:
+         if not isinstance(response, HttpResponseBase):
+            return http.HttpNoContent()
+        -- this allows for use of the StreamingHttpResponse or the HttpResponse
+        """
+        allowed_methods = getattr(self._meta, "%s_allowed_methods" % request_type, None)
+
+        if 'HTTP_X_HTTP_METHOD_OVERRIDE' in request.META:
+            request.method = request.META['HTTP_X_HTTP_METHOD_OVERRIDE']
+
+        request_method = self.method_check(request, allowed=allowed_methods)
+        method = getattr(self, "%s_%s" % (request_method, request_type), None)
+
+        if method is None:
+            raise ImmediateHttpResponse(response=http.HttpNotImplemented())
+
+        self.is_authenticated(request)
+        self.throttle_check(request)
+
+        # All clear. Process the request.
+        tastypie.resources.convert_post_to_put(request)
+        response = method(request, **kwargs)
+
+        # Add the throttled request.
+        self.log_throttled_access(request)
+
+        # If what comes back isn't a ``HttpResponse``, assume that the
+        # request was accepted and that some action occurred. This also
+        # prevents Django from freaking out.
+        if not isinstance(response, HttpResponseBase):
+            return http.HttpNoContent()
+
+        return response
+
     
 from reports.utils.profile_decorator import profile
 
@@ -609,7 +669,7 @@ class UnlimitedDownloadResource(Resource):
     - instead of doing it in memory
     - will set a filename to the response header if specified
     '''
-#     @profile("unlimited_get_list.prof")
+    #     @profile("unlimited_get_list.prof")
     def get_list(self, request, **kwargs):
         from reports.serializers import csv_convert
         from django.utils.encoding import smart_str
@@ -623,7 +683,6 @@ class UnlimitedDownloadResource(Resource):
                 sorted_objects = self.apply_sorting(objects, options=request.GET)
             
                 desired_format = self.determine_format(request)
-                
                 content_type=build_content_type(desired_format)
     
                 response = HttpResponse(content_type=content_type)
@@ -672,7 +731,7 @@ class UnlimitedDownloadResource(Resource):
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
             msg = str(e)
-            logger.warn(str(('on build_schema()', self._meta.resource_name, 
+            logger.warn(str(('on get_list()', self._meta.resource_name, 
                 msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e
 
@@ -958,20 +1017,14 @@ class ManagedResource(LoggingMixin):
             if 'json_field' in schema['fields']: 
                 # because we don't want this serialized directly (see dehydrate)
                 schema['fields'].pop('json_field')  
+            # all TP resources have an resource_uri field
             if not 'resource_uri' in schema['fields']:
-                schema['fields']['resource_uri'] = { 'visibility':[] }
+                schema['fields']['resource_uri'] = { 
+                    'key': 'resource_uri','table': 'None', 'visibility':[] }
+            # all TP resources have an id field
             if not 'id' in schema['fields']:
-                schema['fields']['id'] = { 'visibility':[] }
+                schema['fields']['id'] = { 'key': 'id', 'table':'None', 'visibility':[] }
             
-#             # FIXME: WHY IS THIS HERE (1) and below (2)
-#             logger.debug(str((
-#                 'trying to locate resource information', 
-#                 self._meta.resource_name, self.scope)))
-#             resource_def = MetaHash.objects.get(
-#                 scope='resource', key=self._meta.resource_name)
-#             # FIXME in the UI: change the name to just "resource"
-#             schema['resource_definition'] = resource_def.model_to_dict(scope='fields.resource')
-
         except Exception, e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
@@ -983,6 +1036,9 @@ class ManagedResource(LoggingMixin):
             raise e
             
         try:
+            ## FIXED: client can get the Resource definition from either the 
+            ## schema (here), or from the Resource endpoint; 
+            ## SO the "resource_definition" here is copied to the endpoint bundle.data
             resource_def = MetaHash.objects.get(
                 scope='resource', key=self._meta.resource_name)
             schema['resource_definition'] = resource_def.model_to_dict(scope='fields.resource')
@@ -994,7 +1050,23 @@ class ManagedResource(LoggingMixin):
                         scope=self.scope, field_definition_scope='fields.metahash'))
                 supertype_fields.update(schema['fields'])
                 schema['fields'] = supertype_fields
-                
+            
+            # content_types: all resources serve JSON and CSV
+            content_types = schema['resource_definition'].get('content_types', None)
+            if not content_types:
+                content_types = []
+            _temp = set(content_types)
+            _temp.add('json')
+            _temp.add('csv')
+            schema['resource_definition']['content_types'] = list(_temp)
+            
+            # find the default table for the resource
+            default_table = schema['resource_definition']['table']
+            logger.info(str(('default_table', default_table)))
+            for key,field in schema['fields'].items():
+                if not field.get('table', None):
+                    field['table'] = default_table
+                    
 #             # pick apart the ORM to find DB particulars for read optimizations
 #             sql = schema.get('sql', {})
 #             
@@ -1263,6 +1335,10 @@ class ManagedResource(LoggingMixin):
         
         return current_val
     
+    def _handle_500(self, request, exception):
+        logger.error(str(('handle_500 error', self._meta.resource_name, str(exception))))
+        return super(ManagedResource, self)._handle_500(request, exception)
+        
     # override
     def detail_uri_kwargs(self, bundle_or_obj):
         """
@@ -1403,14 +1479,25 @@ class ManagedResource(LoggingMixin):
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
 
-    def create_response(self, *args, **kwargs):
+    def create_response(self, request, data, response_class=HttpResponse, **response_kwargs):
         '''
         Override to set a Content-Disposition attachment header in the response;
         - this can be used by the browser to give the download a name.
         - TODO: this is an expedient solution to the download button in the 
-        browser, but a better solution will probably be a javascript utility - sde 201404
+        browser, a better solution will set the Content-Disposition from the client
         '''
-        response = super(ManagedResource, self).create_response(*args, **kwargs)
+        response = super(ManagedResource, self).create_response(request, data, response_class, **response_kwargs)
+
+        if 'Content-Disposition' not in response:
+            format = request.GET.get('format', None)
+            if format and format.lower() != 'json':
+                if format in self._meta.serializer.content_types:
+                    desired_format = self._meta.serializer.content_types[format]
+                    response['Content-Type'] = desired_format
+                    response['Content-Disposition'] = \
+                        'attachment; filename=%s.%s' % (self._meta.resource_name, format)
+                
+
         
 # FIXME: Setting a filename to the response:
 # - only set this header on the Response if it has been set in the Request;
@@ -1729,7 +1816,13 @@ class ResourceResource(ManagedModelResource):
         # FIXME: why is the resource registry keyed off of "field."+key ?
         resource = ManagedResource.resource_registry['fields.'+bundle.obj.key]
         if resource:
-            bundle.data['schema'] = resource.build_schema();
+            ## FIXED: use the schema version of the "resource definition";
+            ## This is because there are modifications ("table" and "content_types")
+            ## applied to the resource_definition in build_schema
+            _temp_schema = deepcopy(resource.build_schema());
+            bundle.data = deepcopy(_temp_schema['resource_definition'])
+#             del _temp_schema['resource_definition']
+            bundle.data['schema'] = _temp_schema
         else:
             logger.error('no API resource found in the registry for ' + 
                          bundle.data['key'] + 
@@ -1814,6 +1907,20 @@ class ApiLogResource(ManagedModelResource):
 #                 uris.append(self.get_resource_uri(child_log)) 
 #             return uris
         return None
+    
+#     def dehydrate_diff_keys(self, bundle):
+#         diff_keys = bundle.obj.diff_keys
+#         logger.info(str(('=== diff_keys: ', diff_keys)))
+#         if diff_keys:
+#             changed = json.loads(diff_keys)
+#             logger.info(str(('=== diff_keys2: ', changed)))
+#             return changed     
+#     
+#     def dehydrate_diffs(self, bundle):
+#         if bundle.obj.diffs:
+#             diffs = json.loads(bundle.obj.diffs)
+#             logger.info(str(('=== diffs2: ', diffs)))
+#             return diffs 
     
     def dehydrate_parent_log_uri(self, bundle):
         parent_log = bundle.obj.parent_log
@@ -2687,7 +2794,6 @@ class ManagedLinkedResource(ManagedModelResource):
                     # Try to import.
                     module_bits = linked_field_module.split('.')
                     module_path, class_name = '.'.join(module_bits[:-1]), module_bits[-1]
-#                     logger.info(str(('====linked: ' , linked_field_module,'gives: ', module_path, class_name)))
                     module = importlib.import_module(module_path)
                 else:
                     # We've got a bare class name here, which won't work (No AppCache
@@ -2928,7 +3034,7 @@ class ManagedLinkedResource(ManagedModelResource):
         bundle =  ManagedModelResource.full_dehydrate(self, bundle, for_list=for_list)
         return bundle
     
-    def get_object_list(self, request, library_short_name=None):
+    def get_object_list(self, request):
         query = super(ManagedLinkedResource,self).get_object_list(request)
         
         # FIXME: SQL injection attack through metadata.  (at least to avoid inadvertant actions)

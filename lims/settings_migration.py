@@ -128,6 +128,14 @@ LOGGING = {
             'class': 'logging.StreamHandler',
             'formatter': 'simple'
         },  
+        'logfile': {
+            'level':'DEBUG',
+            'class':'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(PROJECT_ROOT, '..') +  "/logs/screensaver-migration.log",
+            'maxBytes': 5000000,
+            'backupCount': 2,
+            'formatter': 'simple',
+        },
     },
     'loggers': {
         'django.request': {
@@ -136,32 +144,37 @@ LOGGING = {
             'propagate': False,
         },
         'db': {  # set a default handler
-            'handlers': ['console'],
+            'handlers': ['logfile'],
             'propagate': False,
             'level': 'INFO',
         },        
         'lims': {  # set a default handler
-            'handlers': ['console'],
+            'handlers': ['logfile'],
             'propagate': False,
             'level': 'INFO',
         },               
         'reports': {  # set a default handler
-            'handlers': ['console'],
+            'handlers': ['logfile'],
             'propagate': False,
             'level': 'INFO',
         },        
         'django.db': {  # for SQL
-            'handlers': ['console'],
+            'handlers': ['logfile'],
             'propagate': False,
             'level': 'INFO',
         },        
+        'django.db.backends': {  # for SQL
+            'handlers': ['logfile'],
+            'propagate': False,
+            'level': 'DEBUG',
+        },        
         'utils': {  # 
-            'handlers': ['console'],
+            'handlers': ['logfile'],
             'propagate': True,
             'level': 'INFO',
         },        
         'tastypie': {  # set a default handler
-            'handlers': ['console'],
+            'handlers': ['logfile'],
             'propagate': True,
             'level': 'DEBUG',
         },        

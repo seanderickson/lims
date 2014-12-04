@@ -20,11 +20,12 @@ import reports.utils.serialize
 import xlwt
 import xlrd
 from reports.utils.serialize import from_csv_iterate
+import six
 
 logger = logging.getLogger(__name__)
 
-
-
+LIST_DELIMITER_CSV = ','
+LIST_DELIMITER_XLS = ';' # for legacy reasons, for now
 
 class CsvBooleanField(fields.ApiField):
     """
@@ -254,9 +255,9 @@ class SDFSerializer(Serializer):
 # 
 #         logger.info(str(('content', content)))
 
-def csv_convert(val):
+def csv_convert(val, delimiter=LIST_DELIMITER_CSV):
     if isinstance(val, (list,tuple)):
-        return '[' + ','.join([smart_str(x) for x in val]) + ']' 
+        return '[' + delimiter.join([smart_str(x) for x in val]) + ']' 
     elif val != None:
         if type(val) == bool:
             if val:
@@ -326,9 +327,11 @@ class XLSSerializer(Serializer):
                     for i, key in enumerate(item.keys()):
                         sheet.write(0,i,smart_str(key))
                 for i, val in enumerate(item.values()):
-                    if val and len(csv_convert(val)) > 32767: 
-                        logger.error(str(('warn, row too long', row,key, csv_convert(val))))
-                    sheet.write(row+1,i,csv_convert(val))
+                    val = csv_convert(val, delimiter=LIST_DELIMITER_XLS)
+                    if val and len(val) > 32767: 
+                        logger.error(str(('warn, row too long', 
+                            row,key, val)))
+                    sheet.write(row+1,i,val)
         
         book.save(raw_data)
         
@@ -336,8 +339,13 @@ class XLSSerializer(Serializer):
 
     def from_xls(self, content, root='objects'):
         
-        wb = xlrd.open_workbook(file_contents=content)
-        
+        if isinstance(content, six.string_types):
+            wb = xlrd.open_workbook(file_contents=content)
+        else:
+            # TODO: this won't work!
+            # streaming content is coming from XlsxWriter, so need to read xlsx!
+            wb = xlrd.open_workbook(cStringIO.StringIO(content))
+            
         if wb.nsheets > 1:
             logger.warn('only first page of workbooks supported')
         
@@ -371,7 +379,7 @@ class XLSSerializer(Serializer):
 
         # because workbooks are treated like sets of csv sheets, now convert
         # as if this were a csv sheet
-        data = from_csv_iterate(read_sheet(sheet))
+        data = from_csv_iterate(read_sheet(sheet),list_delimiter=LIST_DELIMITER_XLS)
 
         if root:
             return { root: data }

@@ -51,6 +51,8 @@ from reports.dump_obj import dumpObj
 from tastypie import fields
 
 import reports.utils.serialize
+from django.utils.encoding import force_text
+from django.core.exceptions import ObjectDoesNotExist
     
 logger = logging.getLogger(__name__)
 
@@ -537,7 +539,7 @@ M  END
             r'vendor': r'Biomol-TimTec',
             r'vendor_reagent_id': r'SPL000058',
             r'vendor_batch_id': r'HM-001_TM-20090805',
-            r'plate_number': r'1534',
+            r'plate_number': r'1536',
             r'well_name': r'A01',
             r'library_well_type': r'experimental',
             r'facility_reagent_id': r'ICCB-00589081',
@@ -556,7 +558,7 @@ M  END
             r'Source': r'Biomol-TimTec',
             r'vendor': r'Biomol-TimTec',
             r'vendor_reagent_id': r'ST001215',
-            r'plate_number': r'1534',
+            r'plate_number': r'1536',
             r'well_name': r'A02',
             r'library_well_type': r'experimental',
             r'Row': r'1',
@@ -611,7 +613,7 @@ M  END'''            }
             'Source': 'Biomol-TimTec',
             'vendor': 'Biomol-TimTec',
             'vendor_reagent_id': '',
-            'plate_number': '1534',
+            'plate_number': '1536',
             'well_name': 'A09',
             'library_well_type': 'empty',
             'facility_reagent_id': '',
@@ -753,14 +755,14 @@ class XLSSerializerTest(SimpleTestCase):
                 'sequence': 'GACAUGCACUGCCUAAUUA;GUACAGAACUCUCCCAUUC;GAUGAAAUGUGCCUUGAAA;GAAGGUGGAUUUGCUAUUG', 
                 'anti_sense_sequence': 'GACAUGCACUGCCUAAUUA;GUACAGAACUCUCCCAUUC;GAUGAAAUGUGCCUUGAAA;GAAGGUGGAUUUGCUAUUA', 
                 'vendor_entrezgene_id': '22848', 
-                'vendor_entrezgene_symbols': 'AAK1;AAK2', 
+                'vendor_entrezgene_symbols': ['AAK1','AAK2'], 
                 'vendor_gene_name': 'VendorGeneNameX', 
-                'vendor_genbank_accession_numbers': 'NM_014911;NM_014912', 
+                'vendor_genbank_accession_numbers': ['NM_014911','NM_014912'], 
                 'vendor_species': 'VendorSpeciesX', 
                 'facility_entrezgene_id': '1111', 
-                'facility_entrezgene_symbols': 'AAK3; AAK4', 
+                'facility_entrezgene_symbols': ['AAK3','AAK4'], 
                 'facility_gene_name': 'FacilityGeneNameX',
-                'facility_genbank_accession_numbers': 'F_014911; F_014914', 
+                'facility_genbank_accession_numbers': ['F_014911','F_014914'], 
                 'facility_species': 'FacilitySpeciesX', 
                 },{
                 'plate_number': '50001', 
@@ -772,8 +774,8 @@ class XLSSerializerTest(SimpleTestCase):
                 'sequence': 'GUACAGAGAGGACUACUUC;GGUACGAGGUGAUGCAGUU;UCAGUGGCCUCAACGAGAA;GCAAGUACAGAGAGGACUA', 
                 'anti_sense_sequence': 'GUACAGAGAGGACUACUUC;GGUACGAGGUGAUGCAGUU;UCAGUGGCCUCAACGAGAA;GCAAGUACAGAGAGGACUG', 
                 'vendor_entrezgene_id': '9625', 
-                'vendor_entrezgene_symbols': 'AATK', 
-                'vendor_genbank_accession_numbers': 'XM_375495', 
+                'vendor_entrezgene_symbols': ['AATK'], 
+                'vendor_genbank_accession_numbers': ['XM_375495'], 
                 },            
             ]
         
@@ -871,9 +873,316 @@ class LogCompareTest(TestCase):
         self.assertTrue(diff_dict['diffs']['two']==['value2a', 'value2b'])
         
         
-        
+# Override the tastypie testcase so that we don't use the TransactionTestCase
+# necessary so that the SqlAlchemy connection can see the same database as the 
+# django test code (Django ORM)
+class IResourceTestCase(SimpleTestCase):
+    """
+    A useful base class for the start of testing Tastypie APIs.
+    """
+    def setUp(self):
+        super(IResourceTestCase, self).setUp()
+        self.serializer = Serializer()
+        self.api_client = TestApiClient()
+
+    def get_credentials(self):
+        """
+        A convenience method for the user as a way to shorten up the
+        often repetitious calls to create the same authentication.
+
+        Raises ``NotImplementedError`` by default.
+
+        Usage::
+
+            class MyResourceTestCase(ResourceTestCase):
+                def get_credentials(self):
+                    return self.create_basic('daniel', 'pass')
+
+                # Then the usual tests...
+
+        """
+        raise NotImplementedError("You must return the class for your Resource to test.")
+
+    def create_basic(self, username, password):
+        """
+        Creates & returns the HTTP ``Authorization`` header for use with BASIC
+        Auth.
+        """
+        import base64
+        return 'Basic %s' % base64.b64encode(':'.join([username, password]).encode('utf-8')).decode('utf-8')
+
+    def create_apikey(self, username, api_key):
+        """
+        Creates & returns the HTTP ``Authorization`` header for use with
+        ``ApiKeyAuthentication``.
+        """
+        return 'ApiKey %s:%s' % (username, api_key)
+
+    def create_digest(self, username, api_key, method, uri):
+        """
+        Creates & returns the HTTP ``Authorization`` header for use with Digest
+        Auth.
+        """
+        from tastypie.authentication import hmac, sha1, uuid, python_digest
+
+        new_uuid = uuid.uuid4()
+        opaque = hmac.new(str(new_uuid).encode('utf-8'), digestmod=sha1).hexdigest().decode('utf-8')
+        return python_digest.build_authorization_request(
+            username,
+            method.upper(),
+            uri,
+            1, # nonce_count
+            digest_challenge=python_digest.build_digest_challenge(time.time(), getattr(settings, 'SECRET_KEY', ''), 'django-tastypie', opaque, False),
+            password=api_key
+        )
+
+    def create_oauth(self, user):
+        """
+        Creates & returns the HTTP ``Authorization`` header for use with Oauth.
+        """
+        from oauth_provider.models import Consumer, Token, Resource
+
+        # Necessary setup for ``oauth_provider``.
+        resource, _ = Resource.objects.get_or_create(url='test', defaults={
+            'name': 'Test Resource'
+        })
+        consumer, _ = Consumer.objects.get_or_create(key='123', defaults={
+            'name': 'Test',
+            'description': 'Testing...'
+        })
+        token, _ = Token.objects.get_or_create(key='foo', token_type=Token.ACCESS, defaults={
+            'consumer': consumer,
+            'resource': resource,
+            'secret': '',
+            'user': user,
+        })
+
+        # Then generate the header.
+        oauth_data = {
+            'oauth_consumer_key': '123',
+            'oauth_nonce': 'abc',
+            'oauth_signature': '&',
+            'oauth_signature_method': 'PLAINTEXT',
+            'oauth_timestamp': str(int(time.time())),
+            'oauth_token': 'foo',
+        }
+        return 'OAuth %s' % ','.join([key+'='+value for key, value in oauth_data.items()])
+
+    def assertHttpOK(self, resp):
+        """
+        Ensures the response is returning a HTTP 200.
+        """
+        return self.assertEqual(resp.status_code, 200)
+
+    def assertHttpCreated(self, resp):
+        """
+        Ensures the response is returning a HTTP 201.
+        """
+        return self.assertEqual(resp.status_code, 201)
+
+    def assertHttpAccepted(self, resp):
+        """
+        Ensures the response is returning either a HTTP 202 or a HTTP 204.
+        """
+        return self.assertIn(resp.status_code, [202, 204])
+
+    def assertHttpMultipleChoices(self, resp):
+        """
+        Ensures the response is returning a HTTP 300.
+        """
+        return self.assertEqual(resp.status_code, 300)
+
+    def assertHttpSeeOther(self, resp):
+        """
+        Ensures the response is returning a HTTP 303.
+        """
+        return self.assertEqual(resp.status_code, 303)
+
+    def assertHttpNotModified(self, resp):
+        """
+        Ensures the response is returning a HTTP 304.
+        """
+        return self.assertEqual(resp.status_code, 304)
+
+    def assertHttpBadRequest(self, resp):
+        """
+        Ensures the response is returning a HTTP 400.
+        """
+        return self.assertEqual(resp.status_code, 400)
+
+    def assertHttpUnauthorized(self, resp):
+        """
+        Ensures the response is returning a HTTP 401.
+        """
+        return self.assertEqual(resp.status_code, 401)
+
+    def assertHttpForbidden(self, resp):
+        """
+        Ensures the response is returning a HTTP 403.
+        """
+        return self.assertEqual(resp.status_code, 403)
+
+    def assertHttpNotFound(self, resp):
+        """
+        Ensures the response is returning a HTTP 404.
+        """
+        return self.assertEqual(resp.status_code, 404)
+
+    def assertHttpMethodNotAllowed(self, resp):
+        """
+        Ensures the response is returning a HTTP 405.
+        """
+        return self.assertEqual(resp.status_code, 405)
+
+    def assertHttpConflict(self, resp):
+        """
+        Ensures the response is returning a HTTP 409.
+        """
+        return self.assertEqual(resp.status_code, 409)
+
+    def assertHttpGone(self, resp):
+        """
+        Ensures the response is returning a HTTP 410.
+        """
+        return self.assertEqual(resp.status_code, 410)
+
+    def assertHttpUnprocessableEntity(self, resp):
+        """
+        Ensures the response is returning a HTTP 422.
+        """
+        return self.assertEqual(resp.status_code, 422)
+
+    def assertHttpTooManyRequests(self, resp):
+        """
+        Ensures the response is returning a HTTP 429.
+        """
+        return self.assertEqual(resp.status_code, 429)
+
+    def assertHttpApplicationError(self, resp):
+        """
+        Ensures the response is returning a HTTP 500.
+        """
+        return self.assertEqual(resp.status_code, 500)
+
+    def assertHttpNotImplemented(self, resp):
+        """
+        Ensures the response is returning a HTTP 501.
+        """
+        return self.assertEqual(resp.status_code, 501)
+
+    def assertValidJSON(self, data):
+        """
+        Given the provided ``data`` as a string, ensures that it is valid JSON &
+        can be loaded properly.
+        """
+        # Just try the load. If it throws an exception, the test case will fail.
+        self.serializer.from_json(data)
+
+    def assertValidXML(self, data):
+        """
+        Given the provided ``data`` as a string, ensures that it is valid XML &
+        can be loaded properly.
+        """
+        # Just try the load. If it throws an exception, the test case will fail.
+        self.serializer.from_xml(data)
+
+    def assertValidYAML(self, data):
+        """
+        Given the provided ``data`` as a string, ensures that it is valid YAML &
+        can be loaded properly.
+        """
+        # Just try the load. If it throws an exception, the test case will fail.
+        self.serializer.from_yaml(data)
+
+    def assertValidPlist(self, data):
+        """
+        Given the provided ``data`` as a string, ensures that it is valid
+        binary plist & can be loaded properly.
+        """
+        # Just try the load. If it throws an exception, the test case will fail.
+        self.serializer.from_plist(data)
+
+    def assertValidJSONResponse(self, resp):
+        """
+        Given a ``HttpResponse`` coming back from using the ``client``, assert that
+        you get back:
+
+        * An HTTP 200
+        * The correct content-type (``application/json``)
+        * The content is valid JSON
+        """
+        self.assertHttpOK(resp)
+        self.assertTrue(resp['Content-Type'].startswith('application/json'))
+        self.assertValidJSON(force_text(resp.content))
+
+    def assertValidXMLResponse(self, resp):
+        """
+        Given a ``HttpResponse`` coming back from using the ``client``, assert that
+        you get back:
+
+        * An HTTP 200
+        * The correct content-type (``application/xml``)
+        * The content is valid XML
+        """
+        self.assertHttpOK(resp)
+        self.assertTrue(resp['Content-Type'].startswith('application/xml'))
+        self.assertValidXML(force_text(resp.content))
+
+    def assertValidYAMLResponse(self, resp):
+        """
+        Given a ``HttpResponse`` coming back from using the ``client``, assert that
+        you get back:
+
+        * An HTTP 200
+        * The correct content-type (``text/yaml``)
+        * The content is valid YAML
+        """
+        self.assertHttpOK(resp)
+        self.assertTrue(resp['Content-Type'].startswith('text/yaml'))
+        self.assertValidYAML(force_text(resp.content))
+
+    def assertValidPlistResponse(self, resp):
+        """
+        Given a ``HttpResponse`` coming back from using the ``client``, assert that
+        you get back:
+
+        * An HTTP 200
+        * The correct content-type (``application/x-plist``)
+        * The content is valid binary plist data
+        """
+        self.assertHttpOK(resp)
+        self.assertTrue(resp['Content-Type'].startswith('application/x-plist'))
+        self.assertValidPlist(force_text(resp.content))
+
+    def deserialize(self, resp):
+        """
+        Given a ``HttpResponse`` coming back from using the ``client``, this method
+        checks the ``Content-Type`` header & attempts to deserialize the data based on
+        that.
+
+        It returns a Python datastructure (typically a ``dict``) of the serialized data.
+        """
+        return self.serializer.deserialize(resp.content, format=resp['Content-Type'])
+
+    def serialize(self, data, format='application/json'):
+        """
+        Given a Python datastructure (typically a ``dict``) & a desired content-type,
+        this method will return a serialized string of that data.
+        """
+        return self.serializer.serialize(data, format=format)
+
+    def assertKeys(self, data, expected):
+        """
+        This method ensures that the keys of the ``data`` match up to the keys of
+        ``expected``.
+
+        It covers the (extremely) common case where you want to make sure the keys of
+        a response match up to what is expected. This is typically less fragile than
+        testing the full structure, which can be prone to data changes.
+        """
+        self.assertEqual(sorted(data.keys()), sorted(expected))        
     
-class MetaHashResourceBootstrap(ResourceTestCase):
+class MetaHashResourceBootstrap(IResourceTestCase):
     # TODO: this class is a utility, not a TestCase
     # still, overriding tastypie.test.TestCase for some utility methods, like
     # "create_basic"... 
@@ -885,8 +1194,11 @@ class MetaHashResourceBootstrap(ResourceTestCase):
         # Create a user.
         self.username = 'testsuper'
         self.password = 'pass'
-        self.user = User.objects.create_superuser(
-            self.username, 'testsuperuser@example.com', self.password)
+        try:
+            self.user = User.objects.get(username=self.username)
+        except ObjectDoesNotExist:
+            self.user = User.objects.create_superuser(
+                self.username, 'testsuperuser@example.com', self.password)
         
         self.resource_uri = BASE_URI + '/metahash'
         self.directory = os.path.join(APP_ROOT_DIR, 'reports/static/api_init')
@@ -1026,6 +1338,7 @@ class MetaHashResourceBootstrap(ResourceTestCase):
                     inputobj,new_obj['objects'], excludes=keys_not_to_check)
                 self.assertTrue(result, str(('not found', outputobj, 
                                              new_obj['objects'] )) )
+                logger.info(str(('outputobj[resource_uri]', outputobj['resource_uri'])))
                 self.assertTrue(resource_name in outputobj['resource_uri'], 
                     str(('wrong resource_uri returned:', filename, outputobj['resource_uri'],
                          'should contain', resource_name)))
@@ -1954,12 +2267,14 @@ class RecordResource(MetaHashResourceBootstrap):
         logger.debug('created items, now get them')
         resp = self.api_client.get(
             resource_uri, format='json', 
-            authentication=self.get_credentials(), data={ 'limit': 999, 'scope':'fields.record' })
+            authentication=self.get_credentials(), 
+                data={ 'limit': 999, 'scope':'fields.record' })
         logger.debug(str(('--------resp to get:', resp, resp.status_code)))
         new_obj = self.deserialize(resp)
         logger.debug(str(('deserialized object:', json.dumps(new_obj))))
         self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
-        self.assertEqual(len(new_obj['objects']), len(record_fields), str((len(new_obj['objects']), new_obj)))
+        self.assertEqual(len(new_obj['objects']), len(record_fields), 
+            str((len(new_obj['objects']), new_obj)))
         logger.debug(str(('=== returned objs', new_obj['objects'])))
         
         for inputobj in record_fields:

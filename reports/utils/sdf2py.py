@@ -3,6 +3,8 @@
 
 import re
 import logging
+import cStringIO
+import six
 
 logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
@@ -80,18 +82,31 @@ def parse_sdf(data, _delimre=re.compile(ur'(?<=\n)\$\$\$\$')): #ur'(?<=\n)\$\$\$
     """
     #     data = data.strip(u'\r\n')
     #     data = data.strip(u'\n')
-    data = data.strip()
-    data = data.strip(u'$')
-    mols = _delimre.split(data)
-    # original
-    #     return tuple(dict(parse_mol(mol)) for mol in mols)
-
     result = []
-    for mol in mols:
-        x = dict(parse_mol(mol))
-        result.append(x)
-    return tuple(result)
+    if isinstance(data, six.string_types):
+        data = data.strip()
+        data = data.strip(u'$')
 
+        mols = _delimre.split(data)
+        # original
+        #     return tuple(dict(parse_mol(mol)) for mol in mols)
+    
+        for mol in mols:
+            x = dict(parse_mol(mol))
+            result.append(x)
+    else: # treat the data as an iterable
+        
+        buffer = cStringIO.StringIO()
+        for line in data:
+            if _delimre.match(line):
+                x = dict(parse_mol(buffer.read()))
+                result.append(x)
+                buffer = cStringIO.StringIO()
+            else:
+                buffer.write(line)
+    
+    return tuple(result)
+        
 
 if __name__ == '__main__':
     import sys

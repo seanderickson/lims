@@ -27,6 +27,11 @@ print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
 # ./manage.py test --settings=lims.testing-settings
 SOUTH_TESTS_MIGRATE = False
 
+# set SQLALCHEMY_POOL_CLASS=sqlalchemy.pool.NullPool for testing
+# environments, so that the test database can be destroyed
+import sqlalchemy.pool
+SQLALCHEMY_POOL_CLASS = sqlalchemy.pool.NullPool
+
 # import reports.tests.NoDbTestRunner
 TEST_RUNNER='reports.tests.NoDbTestRunner'
 

@@ -160,6 +160,13 @@ PROFILE_LOG_BASE='/tmp'
 WELL_STRUCTURE_IMAGE_DIR=''
 
 
+# set SQLALCHEMY_POOL_CLASS=sqlalchemy.pool.NullPool for testing
+# environments, so that the test database can be destroyed
+# import sqlalchemy.pool
+# SQLALCHEMY_POOL_CLASS = sqlalchemy.pool.NullPool
+
+
+
 # A sample logging configuration. The only tangible logging
 # performed by this configuration is to send an email to
 # the site admins on every HTTP 500 error when DEBUG=False.

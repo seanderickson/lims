@@ -13,11 +13,15 @@ import os.path
 
 print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
 
-
 # make tests faster
 # use from the command line with testing like
 # ./manage.py test --settings=lims.testing-settings
 SOUTH_TESTS_MIGRATE = False
+
+# set SQLALCHEMY_POOL_CLASS=sqlalchemy.pool.NullPool for testing
+# environments, so that the test database can be destroyed
+import sqlalchemy.pool
+SQLALCHEMY_POOL_CLASS = sqlalchemy.pool.NullPool
 
 # FIXME: sqllite3 db does not work - errors on "DISTINCT ON" clause
 # DATABASES['default'] = {'ENGINE': 'django.db.backends.sqlite3',

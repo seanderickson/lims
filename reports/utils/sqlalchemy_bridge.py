@@ -4,6 +4,12 @@ Copyright (c) 2011, John Paulett
 All rights reserved.
 '''
 from sqlalchemy import create_engine, MetaData, Table
+from django.db import connection
+from django.conf import settings
+import sqlalchemy.pool
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Bridge(object):
     def __init__(self):
@@ -15,7 +21,6 @@ class Bridge(object):
         based upon the database defined by :py:attr:`django.db.connection`
         """
         # we lazily import connection since it requires a DJANGO_SETTINGS_MODULE
-        from django.db import connection
         
         return urlbuild(
             scheme=connection.vendor,
@@ -47,7 +52,12 @@ class Bridge(object):
         # (e.g. during a TestCase)
         if self._meta is None:
             self._meta = MetaData()
-            self._meta.bind = create_engine(self.connection_url())
+            # set SQLALCHEMY_POOL_CLASS == sqlalchemy.pool.NullPool for testing
+            # environments, so that the test database can be destroyed
+            if getattr(settings, 'SQLALCHEMY_POOL_CLASS', None):
+                self._meta.bind = create_engine(self.connection_url(), poolclass=settings.SQLALCHEMY_POOL_CLASS)
+            else:
+                self._meta.bind = create_engine(self.connection_url())
         return self._meta
 
 

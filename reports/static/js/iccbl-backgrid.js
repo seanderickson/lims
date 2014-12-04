@@ -1142,9 +1142,10 @@ var MyServerSideFilter =
     	this.collection.addSearch(searchHash);
     	
     	
-    	// Note: not calling super, because it will force first page.
-    	//    	Backgrid.Extension.ServerSideFilter.prototype.search.apply(this,e);
-      if (e) e.preventDefault();
+    	// reinstated - for usability 20141203: calling super, because it will force first page.
+    	Backgrid.Extension.ServerSideFilter.prototype.search.apply(this,e);
+      
+    	if (e) e.preventDefault();
 
       var data = {};
       var query = this.searchBox().val();

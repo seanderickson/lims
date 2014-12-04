@@ -317,7 +317,9 @@ define([
       
       // NOTE: building a "resource" by getting the "schema" which has a "resource" member
       var uiResources = this.get('ui_resources');
-      var ui_resource = {};
+      var ui_resource = { 
+            "options": { 
+              "order": ["well_id"]  } };
       if(_.has(uiResources, resourceId)) {
         ui_resource = uiResources[resourceId];
       }

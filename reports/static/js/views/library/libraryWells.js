@@ -49,7 +49,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       // - use the well specific schema:
       var url = library.resource.apiUri +'/' + library.key + '/well';
       // but get the reagent list from the link:
-      var reagents_url = library.resource.apiUri +'/' + library.key + '/reagent';
+      var reagents_url = library.resource.apiUri +'/' + library.key + '/well';
       var url = reagents_url;
       
       var setupFunction = function(resource){

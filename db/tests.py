@@ -18,6 +18,8 @@ from south.migration import get_migrator
 from db.test.factories import LibraryFactory
 from django.utils.timezone import now
 from reports.dump_obj import dumpObj
+from django.http.response import StreamingHttpResponse
+import cStringIO
 
 
 logger = logging.getLogger(__name__)
@@ -184,7 +186,20 @@ class DBMetaHashResourceBootstrap(MetaHashResourceBootstrap):
         
           
 
-class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
+class LibraryResource(DBMetaHashResourceBootstrap):
+
+    def deserialize(self, resp):
+        """
+        Override to allow for use of the StreamingHttpResponse or the HttpResponse
+        """
+        if isinstance(resp, StreamingHttpResponse):
+            
+            buffer = cStringIO.StringIO()
+            for line in resp.streaming_content:
+                buffer.write(line)
+            return self.serializer.deserialize(buffer.getvalue(), format=resp['Content-Type'])
+        else:
+            return self.serializer.deserialize(resp.content, format=resp['Content-Type'])
 
     def setUp(self):
         logger.debug('============== LibraryResource setup ============')
@@ -216,18 +231,17 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
         self._patch_test(
             'metahash', filename, data_for_get={ 'scope':'fields.silencingreagent'})
         
-
-
-#         filename = os.path.join(self.db_directory,'metahash_fields_reagent.csv')
-#         self._patch_test(
-#             'metahash', filename, data_for_get={ 'scope':'fields.reagent'})
-
-#         self.testApiClient = TestApiClient(serializer=reports.serializers.SmallMoleculeSerializer()) 
-
         logger.debug('============== LibraryResource setup: done ============')
+
+    def tearDown(self):
+        logger.info(str(('tearDown')))
         
 
+
+#     from django.db import transaction
+#     @transaction.atomic()
     def test1_create_library(self):
+        
         logger.debug(str(('==== test1_create_library =====')))
         
         resource_uri = BASE_URI_DB + '/library'
@@ -267,15 +281,17 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
         logger.debug(str(('item found', obj)))
         
         # now find the library wells
-        
         resource_uri = '/'.join([BASE_URI_DB,'library',library_item['short_name'],'well'])
         logger.debug(str(('GET', resource_uri)))
         resp = self.api_client.get(
             resource_uri, format='json', authentication=self.get_credentials(), 
             data={ 'limit': 2000 })
-        logger.debug(str(('--------resp to get:', resp.status_code)))
+        logger.info(str(('--------resp to get:', resp.status_code, resp['Content-Type'], resp)))
+        self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+        self.assertTrue(resp['Content-Type'].startswith('application/json'))
         new_obj = self.deserialize(resp)
-        self.assertValidJSONResponse(resp)
+#         logger.info(str(('deserialized', new_obj)))
+#         self.assertValidJSONResponse(resp)
         expected_count = 384*3
         self.assertEqual(len(new_obj['objects']), expected_count, 
             str(('wrong number of wells',len(new_obj['objects']), expected_count)))
@@ -382,7 +398,7 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
         logger.debug(str(('==== test6_load_small_molecule_file =====')))
         
         library_item = LibraryFactory.attributes()
-        library_item.update({ 'start_plate': '1534', 'end_plate': '1534', 'plate_size': '384' })
+        library_item.update({ 'start_plate': '1536', 'end_plate': '1536', 'plate_size': '384' })
         resource_uri = BASE_URI_DB + '/library'
         logger.debug(str((library_item)))
         resp = self.api_client.post(
@@ -399,6 +415,7 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
 
         data_for_get={}
         data_for_get.setdefault('limit', 999)
+        data_for_get.setdefault('includes', 'smiles,inchi,substance_id')
         data_for_get.setdefault('HTTP_ACCEPT', 'chemical/x-mdl-sdfile' )
 #         data_for_get.setdefault('HTTP_ACCEPT', 'application/json' )
 
@@ -432,7 +449,8 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
         # also, the well resource is not the linked resource type, and does not have
         # the reagent fields.  
         resource_name = 'reagent'
-        reagent_resource_uri = '/'.join([BASE_URI_DB,'library', library_item['short_name'],resource_name])
+        reagent_resource_uri = '/'.join([
+            BASE_URI_DB,'library', library_item['short_name'],resource_name])
         resp = self.api_client.get(
             reagent_resource_uri, format='sdf', authentication=self.get_credentials(), 
             data=data_for_get)
@@ -441,7 +459,7 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
         self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
         new_obj = self.deserialize(resp)
         returned_data = new_obj['objects']
-        expected_count = 8
+        expected_count = 384
         self.assertEqual(len(returned_data), expected_count, 
             str(('returned_data of ',filename,'found',
                 len(returned_data), 'expected',expected_count,
@@ -481,6 +499,7 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
 
         data_for_get={}
         data_for_get.setdefault('limit', 999)
+        data_for_get.setdefault('includes', 'smiles,inchi,substance_id')
         data_for_get.setdefault('HTTP_ACCEPT', 'chemical/x-mdl-sdfile' )
 #         data_for_get.setdefault('HTTP_ACCEPT', 'application/json' )
 
@@ -517,7 +536,7 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
             self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
             new_obj = self.deserialize(resp)
             returned_data = new_obj['objects']
-            expected_count = 8
+            expected_count = 384
             self.assertEqual(len(returned_data), expected_count, 
                 str(('returned_data of ',filename,'found',
                     len(returned_data), 'expected',expected_count,
@@ -544,14 +563,14 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
             resp = self.api_client.get(
                 resource_uri, format='json', 
                 authentication=self.get_credentials(), 
-                data={ 'limit': 999, 'ref_resource_name': 'library' })
+                data={ 'limit': 999, 'ref_resource_name': 'library', 'key': library_item['short_name'] })
             self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
             new_obj = self.deserialize(resp)
             logger.debug(str(('===library apilogs:', json.dumps(new_obj))))
             
             expected_count = 3 # create, post, update
             self.assertEqual( len(new_obj['objects']), expected_count , 
-                str((len(new_obj['objects']), expected_count)))
+                str((len(new_obj['objects']), expected_count, new_obj)))
 
             
             # 2. check the apilogs
@@ -569,9 +588,6 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
             self.assertEqual( len(new_obj['objects']), expected_count , 
                 str((len(new_obj['objects']), expected_count)))
         
- 
-
-
     def test7_load_sirnai(self):
 
         filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_rnai.xls'
@@ -589,7 +605,7 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
             authentication=self.get_credentials())
         self.assertTrue(resp.status_code in [201], str((resp.status_code, resp)))
         
-        self._load_xls_reagent_file(filename,library_item, 5 )
+        self._load_xls_reagent_file(filename,library_item, 5,384 )
 
 #     def test7a_sirna_validations(self):
 #         # TODO: test validations
@@ -612,7 +628,7 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
             authentication=self.get_credentials())
         self.assertTrue(resp.status_code in [201], str((resp.status_code, resp)))
         
-        self._load_xls_reagent_file(filename,library_item, 532 )
+        self._load_xls_reagent_file(filename,library_item, 532, 1536 )
 
         filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_rnai_pool.xls'
 
@@ -630,7 +646,7 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
             authentication=self.get_credentials())
         self.assertTrue(resp.status_code in [201], str((resp.status_code, resp)))
         
-        self._load_xls_reagent_file(filename,library_item, 133 )
+        self._load_xls_reagent_file(filename,library_item, 133, 384 )
         
         ## TODO: test the duplex wells are set on the pool well
         
@@ -651,16 +667,16 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
             authentication=self.get_credentials())
         self.assertTrue(resp.status_code in [201], str((resp.status_code, resp)))
         
-        self._load_xls_reagent_file(filename,library_item, 352 )
+        self._load_xls_reagent_file(filename,library_item, 352, 384 )
 
 
-    def _load_xls_reagent_file(self, filename,library_item, expected_count):
+    def _load_xls_reagent_file(self, filename,library_item, expected_in, expected_count):
         logger.debug(str(('==== test7_load_xls_reagent_file =====')))
         
         start_plate = library_item['start_plate']
         end_plate = library_item['end_plate']
 
-        logger.debug(str(('==== start: test7_load_xls_reagent_file =====')))
+        logger.debug(str(('==== start: _load_xls_reagent_file =====')))
 
         resource_name = 'well'
         resource_uri = '/'.join([
@@ -668,6 +684,9 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
         
         data_for_get={}
         data_for_get.setdefault('limit', 9999)
+        data_for_get.setdefault('includes', 
+            ('substance_id,facility_entrezgene_id,facility_entrezgene_symbols,'
+             'facility_gene_name,facility_gene_species,facility_genbank_accession_numbers'))
         data_for_get.setdefault('HTTP_ACCEPT', 'application/xls' )
         xls_serializer = XLSSerializer()
         with open(filename) as input_file:
@@ -679,9 +698,9 @@ class LibraryResource(DBMetaHashResourceBootstrap,ResourceTestCase):
             #logger.info(str(('===== input data', input_data)))
         
 #             expected_count = 5
-            self.assertEqual(len(input_data), expected_count, 
+            self.assertEqual(len(input_data), expected_in, 
                 str(('initial serialization of ',filename,'found',
-                    len(input_data), 'expected',expected_count)))
+                    len(input_data), 'expected',expected_in)))
             
             logger.debug(str(('======Submitting patch...', filename, resource_uri)))
         

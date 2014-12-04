@@ -33,7 +33,7 @@ from tastypie.resources import Resource, ModelResource
 from tastypie.utils.urls import trailing_slash
 
 from reports.serializers import LimsSerializer, CsvBooleanField, CSVSerializer
-from reports.models import MetaHash, Vocabularies, ApiLog, ListLog, Permission, \
+from reports.models import MetaHash, Vocabularies, ApiLog, ListLog, Permission,\
                            UserGroup, UserProfile, Record
 # import lims.settings 
 from tastypie.utils.timezone import make_naive
@@ -614,10 +614,11 @@ class StreamingResource(Resource):
     -- this allows for use of the StreamingHttpResponse or the HttpResponse
     """
 
-    content_types = {'json': 'application/json',
+    content_types = {
                      'xls': 'application/xls',
                      'csv': 'text/csv',
                      'sdf': 'chemical/x-mdl-sdfile',
+                     'json': 'application/json',
                      }
 
     def dispatch(self, request_type, request, **kwargs):
@@ -961,7 +962,7 @@ class ManagedResource(LoggingMixin):
                 else:
                     new_fields[field_name] = eval(field_def['json_field_type'])(
                         attribute=field_name,readonly=True, blank=True, null=True) 
-            elif 'linked_field_type' in field_def and field_def['linked_field_type']:
+            elif 'linked_field_value_field' in field_def and field_def['linked_field_value_field']:
                 new_fields[field_name] = eval(field_def['linked_field_type'])(
                     attribute=field_name,readonly=True, blank=True, null=True) 
             else:
@@ -985,7 +986,6 @@ class ManagedResource(LoggingMixin):
             return item 
         
     def create_aliasmapping_iterator(self, data):
-        logger.info(str(('====testing data', data)))
         def data_generator(data):
             for item in data:
                 yield alias_item(data)
@@ -994,7 +994,22 @@ class ManagedResource(LoggingMixin):
             data_generator(data)
         else:
             return data 
-        
+
+    def _get_resource_def(self):
+        resource_def = MetaHash.objects.get(
+            scope='resource', key=self._meta.resource_name)
+        _def = resource_def.model_to_dict(scope='fields.resource')
+        # content_types: all resources serve JSON and CSV
+        content_types = _def.get('content_types', None)
+        if not content_types:
+            content_types = []
+        _temp = set(content_types)
+        _temp.add('json')
+        _temp.add('csv')
+        _def['content_types'] = list(_temp)
+        logger.info(str(('content_types', _temp)))
+        return _def
+
     def build_schema(self):
         '''
         Override
@@ -1007,9 +1022,9 @@ class ManagedResource(LoggingMixin):
             return schema
         
         logger.debug('------build_schema: ' + self.scope)
+        schema = {}
         
         try:
-            schema = {}
             schema['fields'] = deepcopy(
                 MetaHash.objects.get_and_parse(
                     scope=self.scope, field_definition_scope='fields.metahash'))
@@ -1039,9 +1054,9 @@ class ManagedResource(LoggingMixin):
             ## FIXED: client can get the Resource definition from either the 
             ## schema (here), or from the Resource endpoint; 
             ## SO the "resource_definition" here is copied to the endpoint bundle.data
-            resource_def = MetaHash.objects.get(
-                scope='resource', key=self._meta.resource_name)
-            schema['resource_definition'] = resource_def.model_to_dict(scope='fields.resource')
+            
+            schema['resource_definition'] = self._get_resource_def()
+            
             # TODO: -could- get the schema from the supertype resource
             supertype = schema['resource_definition'].get('supertype', '')
             if supertype:
@@ -1051,14 +1066,6 @@ class ManagedResource(LoggingMixin):
                 supertype_fields.update(schema['fields'])
                 schema['fields'] = supertype_fields
             
-            # content_types: all resources serve JSON and CSV
-            content_types = schema['resource_definition'].get('content_types', None)
-            if not content_types:
-                content_types = []
-            _temp = set(content_types)
-            _temp.add('json')
-            _temp.add('csv')
-            schema['resource_definition']['content_types'] = list(_temp)
             
             # find the default table for the resource
             default_table = schema['resource_definition']['table']
@@ -1066,28 +1073,18 @@ class ManagedResource(LoggingMixin):
             for key,field in schema['fields'].items():
                 if not field.get('table', None):
                     field['table'] = default_table
-                    
-#             # pick apart the ORM to find DB particulars for read optimizations
-#             sql = schema.get('sql', {})
-#             
-#             linked_table_module = schema['resource_definition'].get('linked_table_module', '')
-#             if linked_table_module:
-#                 if '.' in linked_field_module:
-#                     # Try to import.
-#                     module_bits = linked_field_module.split('.')
-#                     module_path, class_name = '.'.join(module_bits[:-1]), module_bits[-1]
-# #                     logger.info(str(('====linked: ' , linked_field_module,'gives: ', module_path, class_name)))
-#                     module = importlib.import_module(module_path)
-#                     sql['db_table'] = getattr(module.objects._meta, 'db_table')
-#                 else:
-#                     # We've got a bare class name here, which won't work (No AppCache
-#                     # to rely on). Try to throw a useful error.
-#                     raise ImportError(
-#                         "linked_field_module requires a Python-style path "
-#                         "(<module.module.Class>) to lazy load related resources. "
-#                         "Only given '%s'." % linked_field_module )
         except Exception, e:
-            logger.info(str(('in create_fields: resource information not available',self._meta.resource_name, e)))
+            if(logger.isEnabledFor(logging.DEBUG)):
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+                msg = str(e)
+                if isinstance(e, ImmediateHttpResponse):
+                    msg = str(e.response)
+                logger.warn(str(('on build_schema()', self._meta.resource_name, 
+                    msg, exc_type, fname, exc_tb.tb_lineno)))
+                #                 raise e
+            logger.info(str(('build_schema: resource information not available',self._meta.resource_name, e)))
+
         
         logger.debug('------build_schema,done: ' + self.scope ) 
        
@@ -1358,35 +1355,36 @@ class ManagedResource(LoggingMixin):
             if 'resource_definition' not in schema:
                 self.clear_cache()
                 schema = self.build_schema()
-            resource = schema['resource_definition']
-            
-            # TODO: memoize
-            # note use an ordered dict here so that the args can be returned as
-            # a positional array for 
-            kwargs = OrderedDict() 
-            id_attribute = resource['id_attribute']
-            for x in id_attribute:
-                val = ''
-                if isinstance(bundle_or_obj, Bundle):
-#                     val = getattr(bundle_or_obj.obj,x)
-                    val = self._get_attribute(bundle_or_obj.obj, x)
-                else:
-                    if hasattr(bundle_or_obj, x):
-#                         val = getattr(bundle_or_obj,x)  
-                        val = self._get_attribute(bundle_or_obj,x)  
-                    elif isinstance(bundle_or_obj, dict):
-#                         val = bundle_or_obj[x] # allows simple dicts
-                        val = self._get_hashvalue(bundle_or_obj, x) # allows simple dicts
-                    else:
-                        raise Exception(str(('obj', type(obj), obj, 'does not contain', x)))
-                if isinstance(val, datetime.datetime):
-                    val = val.isoformat()
-                else:
-                    val = str(val)
+            if 'resource_definition' in schema:
+                resource = schema['resource_definition']
                 
-                kwargs[x] = val
-            
-            return kwargs
+                # TODO: memoize
+                # note use an ordered dict here so that the args can be returned as
+                # a positional array for 
+                kwargs = OrderedDict() 
+                id_attribute = resource['id_attribute']
+                for x in id_attribute:
+                    val = ''
+                    if isinstance(bundle_or_obj, Bundle):
+    #                     val = getattr(bundle_or_obj.obj,x)
+                        val = self._get_attribute(bundle_or_obj.obj, x)
+                    else:
+                        if hasattr(bundle_or_obj, x):
+    #                         val = getattr(bundle_or_obj,x)  
+                            val = self._get_attribute(bundle_or_obj,x)  
+                        elif isinstance(bundle_or_obj, dict):
+    #                         val = bundle_or_obj[x] # allows simple dicts
+                            val = self._get_hashvalue(bundle_or_obj, x) # allows simple dicts
+                        else:
+                            raise Exception(str(('obj', type(obj), obj, 'does not contain', x)))
+                    if isinstance(val, datetime.datetime):
+                        val = val.isoformat()
+                    else:
+                        val = str(val)
+                    
+                    kwargs[x] = val
+                
+                return kwargs
             
         except Exception, e:
             #             extype, ex, tb = sys.exc_info()
@@ -1394,24 +1392,24 @@ class ManagedResource(LoggingMixin):
             #                 'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
             #                 tb.tb_lineno, extype, ex)))
             #             logger.warn(str(('==cannot grab id_attribute', bundle_or_obj, id_attribute, e)))
-            logger.warn(str(('cannot grab id_attribute for', resource_name,bundle_or_obj, id_attribute,  e)))
-            
-            try:
-                if logger.isEnabledFor(logging.INFO):
+            logger.warn(str(('cannot grab id_attribute for', resource_name,
+                id_attribute,  e)))
+            if logger.isEnabledFor(logging.INFO):
+                try:
                     logger.info(str((
                         'unable to locate resource: ', resource_name,
                         ' has it been loaded yet for this resource?',
                         'also note that this may not work with south, since model methods',
                         'are not available: ', e, 
                         'type', type(bundle_or_obj),
-                        'bundle', bundle_or_obj,id_attribute,
+                        id_attribute,
                          )))
-            except Exception, e:
-                logger.info(str(('reporting exception', e)))
+                except Exception, e:
+                    logger.info(str(('reporting exception', e)))
         # Fall back to base class implementation 
         # (using the declared primary key only, for ModelResource)
         # This is useful in order to bootstrap the ResourceResource
-        logger.info(str(( 'use base class method for ', bundle_or_obj)))
+        logger.info(str(('resource_definition: %s not available, use base class method' % resource_name)))
         return super(ManagedResource,self).detail_uri_kwargs(bundle_or_obj)
 
     def get_via_uri(self, uri, request=None):
@@ -1558,7 +1556,7 @@ class ExtensibleModelResourceMixin(ModelResource):
 
         try:
             # MODIFICATION: adding kwargs to the apply_filters call - sde
-            logger.debug(str(('kwargs', kwargs)))
+            # logger.debug(str(('kwargs', kwargs)))
             _kwargs = kwargs
             if 'request' in _kwargs: 
                 _kwargs = {}
@@ -1809,25 +1807,45 @@ class ResourceResource(ManagedModelResource):
             logger.warn(str(('Resources not defined', e, self._meta.resource_name)))
             
             return True;
-            
+
     def dehydrate(self, bundle):
         bundle = super(ResourceResource,self).dehydrate(bundle)
         # Get the schema
         # FIXME: why is the resource registry keyed off of "field."+key ?
         resource = ManagedResource.resource_registry['fields.'+bundle.obj.key]
         if resource:
-            ## FIXED: use the schema version of the "resource definition";
-            ## This is because there are modifications ("table" and "content_types")
-            ## applied to the resource_definition in build_schema
-            _temp_schema = deepcopy(resource.build_schema());
-            bundle.data = deepcopy(_temp_schema['resource_definition'])
-#             del _temp_schema['resource_definition']
-            bundle.data['schema'] = _temp_schema
+            bundle.data['schema'] = resource.build_schema();
         else:
             logger.error('no API resource found in the registry for ' + 
                          bundle.data['key'] + 
                          '.  Cannot build the schema for this resource.' )
         return bundle
+        
+            
+#     def dehydrate(self, bundle):
+#         bundle = super(ResourceResource,self).dehydrate(bundle)
+#         # Get the schema
+#         # FIXME: why is the resource registry keyed off of "field."+key ?
+#         resource = ManagedResource.resource_registry['fields.'+bundle.obj.key]
+#         if resource:
+#             ## FIXED: use the schema version of the "resource definition";
+#             ## This is because there are modifications ("table" and "content_types")
+#             ## applied to the resource_definition in build_schema
+#             _temp_schema = deepcopy(resource.build_schema());
+#             if 'resource_definition' in _temp_schema:
+#                 bundle.data = deepcopy(_temp_schema['resource_definition'])
+#             else:
+#                 # if the resource is not yet defined, then need to manually get the def
+#                 resource_def = MetaHash.objects.get(
+#                     scope='resource', key=self._meta.resource_name)
+#                 bundle.data = resource_def.model_to_dict(scope='fields.resource')
+#             bundle.data['schema'] = _temp_schema
+# 
+#         else:
+#             logger.error('no API resource found in the registry for ' + 
+#                          bundle.data['key'] + 
+#                          '.  Cannot build the schema for this resource.' )
+#         return bundle
 
     def obj_create(self, bundle, **kwargs):
         '''
@@ -2769,7 +2787,7 @@ class ManagedLinkedResource(ManagedModelResource):
             
             self.linked_field_defs = { x: _fields[x] 
                 for x,y in _fields.items() 
-                    if y.get('linked_field_type',None) }
+                    if y.get('linked_field_value_field',None) }
 
             logger.debug(str(('lookup the module.model for each linked field', 
                 self.linked_field_defs.keys() )))
@@ -2819,7 +2837,7 @@ class ManagedLinkedResource(ManagedModelResource):
     @log_obj_create
     @transaction.atomic()
     def obj_create(self, bundle, **kwargs):
-        logger.info(str(('=== obj_create', self._meta.resource_name, bundle.data)))
+#         logger.info(str(('=== obj_create', self._meta.resource_name, bundle.data)))
         
         bundle.obj = self._meta.object_class()
 
@@ -2863,7 +2881,8 @@ class ManagedLinkedResource(ManagedModelResource):
             # from the *first* field, since -all- the complex fields have the same one
             linkedModel = complex_linked_fields.values()[0]['linked_field_model']
             linkedObj = linkedModel()
-            setattr( linkedObj, complex_linked_fields.values()[0]['linked_field_parent'], bundle.obj)
+            setattr( linkedObj, 
+                complex_linked_fields.values()[0]['linked_field_parent'], bundle.obj)
             
             for key,item in complex_linked_fields.items():
                 val = bundle.data.get(key,None)
@@ -3111,7 +3130,7 @@ class ManagedLinkedResource(ManagedModelResource):
 
         query = query.extra(
             select=extra_select, where=extra_where,select_params=extra_params )
-        logger.info(str(('==== query', query.query.sql_with_params())))
+        logger.debug(str(('==== query', query.query.sql_with_params())))
         return query
      
     def dehydrate(self, bundle):

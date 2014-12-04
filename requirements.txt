@@ -17,6 +17,6 @@ wsgiref==0.1.2
 xlrd
 xlwt
 XlsxWriter #==0.6.4
-PIL #==1.1.7
+# replaced by pillow PIL #==1.1.7
 Pillow  #==2.6.1
 

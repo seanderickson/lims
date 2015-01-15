@@ -287,7 +287,7 @@ function migratedb {
 function bootstrap {
   echo "Bootstrapping the web server: $(ts) ...">> "$LOGFILE"
   
-  BOOTSTRAP_PORT=55001
+  BOOTSTRAP_PORT={BOOTSTRAP_PORT:-55999}
   
   echo "run a local dev server on port $BOOTSTRAP_PORT..."
   nohup $DJANGO_CMD runserver --settings=lims.migration-settings --nothreading --noreload $BOOTSTRAP_PORT  &

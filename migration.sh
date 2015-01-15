@@ -331,7 +331,8 @@ function bootstrap {
     error "bootstrap production data failed: $?"
   fi
 
-  final_server_pid=$(ps aux |grep runserver| grep 55001 | awk '{print $2}')
+  final_server_pid=$(ps aux |grep runserver| grep ${BOOTSTRAP_PORT} | awk '{print $2}')
+  echo "kill $final_server_pid"
   kill $final_server_pid || error "kill server $final_server_pid failed with $?"
   # kill $server_pid
 

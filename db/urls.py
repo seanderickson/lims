@@ -7,7 +7,8 @@ from db.api import ScreensaverUserResource, ScreenResource, \
     LabAffiliationResource, ScreeningRoomUserResource, DataColumnResource, LibraryResource,\
     LibraryCopyResource, LibraryCopyPlateResource, PlateLocationResource,\
     WellResource, ActivityResource, LibraryContentsVersionResource, ReagentResource, \
-    SmallMoleculeReagentResource, SilencingReagentResource, NaturalProductReagentResource
+    SmallMoleculeReagentResource, SilencingReagentResource, NaturalProductReagentResource, \
+    LibraryCopiesResource, LibraryCopyPlatesResource
 
 v1_api = Api(api_name='v1')
 v1_api.register(ScreensaverUserResource())
@@ -31,6 +32,9 @@ v1_api.register(ReagentResource())
 v1_api.register(SmallMoleculeReagentResource())
 v1_api.register(SilencingReagentResource())
 v1_api.register(NaturalProductReagentResource())
+
+v1_api.register(LibraryCopiesResource())
+v1_api.register(LibraryCopyPlatesResource())
 
 urlpatterns = patterns('',
     url(r'^$', views.main, name="home"),

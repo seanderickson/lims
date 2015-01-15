@@ -218,11 +218,13 @@ class AssayPlate(models.Model):
     assay_plate_id = models.IntegerField(primary_key=True)
     replicate_ordinal = models.IntegerField()
     version = models.IntegerField()
-    library_screening = models.ForeignKey('LibraryScreening', null=True, blank=True)
     screen = models.ForeignKey('Screen')
     plate = models.ForeignKey('Plate', null=True, blank=True)
     plate_number = models.IntegerField()
+
+    library_screening = models.ForeignKey('LibraryScreening', null=True, blank=True)
     screen_result_data_loading = models.ForeignKey(AdministrativeActivity, null=True, blank=True)
+    
     class Meta:
         db_table = 'assay_plate'
 
@@ -1027,7 +1029,18 @@ class Plate(models.Model):
     version = models.IntegerField()
     plate_type = models.TextField(blank=True)
     plate_number = models.IntegerField()
-    well_volume = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
+    
+#     well_volume = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
+    well_volume = models.FloatField(null=True, blank=True)
+#     remaining_volume = models.FloatField(null=True, blank=True)
+    
+    avg_remaining_volume = models.FloatField(null=True, blank=True)
+    min_remaining_volume = models.FloatField(null=True, blank=True)
+    max_remaining_volume = models.FloatField(null=True, blank=True)
+    
+    screening_count = models.IntegerField(null=True, blank=True)
+    
+    
     copy = models.ForeignKey(Copy)
     facility_id = models.TextField(blank=True)
     date_created = models.DateTimeField()
@@ -1048,6 +1061,21 @@ class Plate(models.Model):
     date_publicly_available = models.DateTimeField(null=True, blank=True)
     class Meta:
         db_table = 'plate'
+
+
+class CopyWell(models.Model):
+    plate = models.ForeignKey(Plate)
+    copy = models.ForeignKey(Copy)
+    well_id = models.TextField()
+    well_name = models.TextField()
+    plate_number = models.IntegerField()
+    well_volume = models.FloatField(null=True, blank=True)
+#     micro_molar_concentration = models.FloatField(null=True, blank=True)
+#     mg_ml_concentration = models.FloatField(null=True, blank=True)
+ 
+    class Meta:
+        db_table = 'copy_well'
+
 
 class PlateLocation(models.Model):
     plate_location_id = models.IntegerField(primary_key=True)

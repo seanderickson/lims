@@ -4,6 +4,7 @@ import logging
 from django.db import models
 from django.conf import settings
 from tastypie.utils.dict import dict_strip_unicode_keys
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -210,8 +211,6 @@ class ListLog(models.Model):
             str((self.ref_resource_name, self.key, self.uri )))
     
     
-    
-    
 class MetaHash(models.Model):
     objects                 = MetaManager()
     #    objects                 = models.Manager() # default manager
@@ -294,6 +293,7 @@ class MetaHash(models.Model):
     
     
 class Vocabularies(models.Model):
+    
     objects                 = MetaManager()
     #    objects                 = models.Manager() # default manager
     
@@ -564,5 +564,37 @@ class RecordValueComplex(models.Model):
     value1 = models.TextField(null=True)
     value2 = models.TextField(null=True)
 
+class Job(models.Model):
+    # POC: 20141128
+    # Version 0.1: for processing large uploaded files
+    
+    # Client information
+    remote_addr = models.TextField(null=True)
+    request_method = models.TextField(null=True)
+    
+    # original path info, used by job process to submit full job to endpoint
+    path_info = models.TextField(null=True)
+    
+    # user comment on post
+    comment = models.TextField(null=True);
+    
+    # 0.1: original POST input is saved to this file
+    input_filename = models.TextField(null=True)
+    
+    date_time_fullfilled = models.DateTimeField(null=True) 
+    date_time_processing = models.DateTimeField(null=True) 
+    date_time_requested = models.DateTimeField(null=False, default=timezone.now) 
+
+    # if the response is large, save to a temp file
+    response_filename = models.TextField(null=True)
+    
+    # store response to field
+    response_content = models.TextField(null=True)
+    
+    # HTTP response code, saved from the endpoint job submission on completion
+    response_code = models.IntegerField();
+    
+    def __unicode__(self):
+        return unicode(str((self.id, self.path_info, self.date_time_requested)))
     
     

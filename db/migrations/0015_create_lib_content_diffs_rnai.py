@@ -16,10 +16,18 @@ class Migration(SchemaMigration):
               "drop not null").format(
                   table='reagent', column='library_contents_version_id'))
 
-
+        # Deleting model 'SilencingReagentDuplexWells' (because Django now manages this rln)
+        db.delete_table(u'silencing_reagent_duplex_wells')
         
 
     def backwards(self, orm):
+        # Adding model 'SilencingReagentDuplexWells'
+        db.create_table(u'silencing_reagent_duplex_wells', (
+            ('well', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Well'])),
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('silencing_reagent', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.SilencingReagent'])),
+        ))
+        db.send_create_signal(u'db', ['SilencingReagentDuplexWells'])
 
         raise RuntimeError("Cannot reverse the Screensaver initial migrations: "
             "re-import the database to restore")
@@ -773,12 +781,12 @@ class Migration(SchemaMigration):
             'silencing_reagent_type': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_gene': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "u'vendor_reagent'", 'unique': 'True', 'null': 'True', 'to': u"orm['db.Gene']"})
         },
-        u'db.silencingreagentduplexwells': {
-            'Meta': {'object_name': 'SilencingReagentDuplexWells', 'db_table': "u'silencing_reagent_duplex_wells'"},
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'silencing_reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SilencingReagent']"}),
-            'well': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']"})
-        },
+#         u'db.silencingreagentduplexwells': {
+#             'Meta': {'object_name': 'SilencingReagentDuplexWells', 'db_table': "u'silencing_reagent_duplex_wells'"},
+#             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+#             'silencing_reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SilencingReagent']"}),
+#             'well': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']"})
+#         },
         u'db.smallmoleculechembankid': {
             'Meta': {'object_name': 'SmallMoleculeChembankId', 'db_table': "u'small_molecule_chembank_id'"},
             'chembank_id': ('django.db.models.fields.IntegerField', [], {}),
@@ -843,8 +851,8 @@ class Migration(SchemaMigration):
             'latest_released_reagent': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "u'reagent_well'", 'null': 'True', 'to': u"orm['db.Reagent']"}),
             'library': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Library']"}),
             'library_well_type': ('django.db.models.fields.TextField', [], {}),
-            'mg_ml_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '5', 'decimal_places': '3', 'blank': 'True'}),
-            'molar_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '13', 'decimal_places': '12', 'blank': 'True'}),
+            'mg_ml_concentration': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
+            'micro_molar_concentration': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
             'plate_number': ('django.db.models.fields.IntegerField', [], {}),
             'version': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'well_id': ('django.db.models.fields.TextField', [], {'primary_key': 'True'}),

@@ -1,392 +1,25 @@
 # -*- coding: utf-8 -*-
-import datetime
+from south.utils import datetime_utils as datetime
 from south.db import db
 from south.v2 import SchemaMigration
 from django.db import models
 
-import logging
-
-logger = logging.getLogger(__name__)
-
 
 class Migration(SchemaMigration):
-    ''' 
-    Performs db schema changes needed for testing and basic functionality
-    
-    '''
 
     def forwards(self, orm):
         
-        # Adding model 'Substance'
-        db.create_table(u'db_substance', (
-            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('comment', self.gf('django.db.models.fields.TextField')()),
-        ))
-        db.send_create_signal(u'db', ['Substance'])
-
-        ### Schema updates:
-        
-        ### Adding field 'Screen.status'
-        db.add_column(u'screen', 'status',
-                      self.gf('django.db.models.fields.TextField')(null=True, blank=True),
-                      keep_default=False)
-
-        # Adding field 'Screen.status_date'
-        db.add_column(u'screen', 'status_date',
-                      self.gf('django.db.models.fields.DateField')
-                      (null=True, blank=True),
-                      keep_default=False)
-
-        ### Adding silencingreagent gene fields
-        
-        # Adding field 'SilencingReagent.vendor_gene'
-        db.add_column(u'silencing_reagent', 'vendor_gene',
-                      self.gf('django.db.models.fields.related.ForeignKey')
-                      (blank=True, related_name=u'vendor_reagent', unique=True, 
-                          null=True, to=orm['db.Gene']),
-                      keep_default=False)
-
-        # Adding field 'SilencingReagent.facility_gene'
-        db.add_column(u'silencing_reagent', 'facility_gene',
-                      self.gf('django.db.models.fields.related.ForeignKey')
-                      (blank=True, related_name=u'facility_reagent', unique=True, 
-                          null=True, to=orm['db.Gene']),
-                      keep_default=False)
-
-        ### Library & substance id
-        ### NOTE: 20140826
-        
-        db.add_column(u'library', 'version_number',
-                      self.gf('django.db.models.fields.IntegerField')(default=0),
-                      keep_default=False)
-        
-        db.add_column(u'library', 'loaded_by',
-                      self.gf('django.db.models.fields.related.ForeignKey')
-                      (blank=True, related_name=u'libraries_loaded', null=True, 
-                          to=orm['db.ScreensaverUser']),
-                      keep_default=False)
-
-        ## -- moved out of 0010
-
-        db.add_column(u'reagent', 'substance_id',
-                      self.gf('django.db.models.fields.CharField')(max_length=8, null=True),
-                      keep_default=False)
-        
-        ### Convert to Django AutoFields
-        
-        table_autofields = (
-            ('reagent', 'reagent_id'),
-            ('screen', 'screen_id'),
-            ('library', 'library_id'),
-            ('gene', 'gene_id'),
-            )
-        for (table, key_field) in table_autofields:
-            logger.info(str(('_update_table_autofield', table, key_field)))
-            self._update_table_autofield(table, key_field)
-                
-        ### MISC changes - todo, organize
-
-                
-        db.delete_column(u'reagent', 'facility_batch_id')
-        #         db.execute(
-        #             ( "ALTER TABLE {table} DROP COLUMN {column} ").format(
-        #                   table='reagent', column='facility_batch_id'))
-
-        db.delete_column(u'small_molecule_reagent', 'salt_form_id')
-        #         db.execute(
-        #             ( "ALTER TABLE {table} DROP COLUMN {column} ").format(
-        #                   table='small_molecule_reagent', column='salt_form_id'))
-
-        db.alter_column(u'well', 'version', 
-            self.gf('django.db.models.fields.IntegerField')(null=True))
-        
-        db.alter_column(u'library', 'version', 
-            self.gf('django.db.models.fields.IntegerField')(null=True))
-        
-
-        ### Change Well fixed precision columns to float
-
-        db.execute(
-            ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
-                  table='well', column='molar_concentration'))
-        db.execute(
-            ( "ALTER TABLE {table} ADD COLUMN {column} double precision").format(
-                  table='well', column='molar_concentration'))
-        db.execute(
-            ( "update {table} set {column} = tmp_{column}").format(
-                  table='well', column='molar_concentration'))
-        db.execute(
-            ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
-                  table='well', column='molar_concentration'))
-        
-        db.execute(
-            ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
-                  table='well', column='mg_ml_concentration'))
-        db.execute(
-            ( "ALTER TABLE {table} ADD COLUMN {column} double precision").format(
-                  table='well', column='mg_ml_concentration'))
-        db.execute(
-            ( "update {table} set {column} = tmp_{column}").format(
-                  table='well', column='mg_ml_concentration'))
-        db.execute(
-            ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
-                  table='well', column='mg_ml_concentration'))
-        
-        ### Change SMR fixed precision columns to float
-        
-        db.execute(
-            ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
-                  table='small_molecule_reagent', column='molecular_weight'))
-        db.execute(
-            ( "ALTER TABLE {table} ADD COLUMN {column} double precision").format(
-                  table='small_molecule_reagent', column='molecular_weight'))
-        db.execute(
-            ( "update {table} set {column} = tmp_{column}").format(
-                  table='small_molecule_reagent', column='molecular_weight'))
-        db.execute(
-            ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
-                  table='small_molecule_reagent', column='molecular_weight'))
-        
-        db.execute(
-            ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
-                  table='small_molecule_reagent', column='molecular_mass'))
-        db.execute(
-            ( "ALTER TABLE {table} ADD COLUMN {column} double precision").format(
-                  table='small_molecule_reagent', column='molecular_mass'))
-        db.execute(
-            ( "update {table} set {column} = tmp_{column}").format(
-                  table='small_molecule_reagent', column='molecular_mass'))
-        db.execute(
-            ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
-                  table='small_molecule_reagent', column='molecular_mass'))
-        
-        ### FIXUP Reagent related tables so that they now point to reagent, not smr:
-        # TODO: consider using raw SQL
-
-        self._alter_table_parent(
-            'molfile', 'reagent_id','reagent_id', 'reagent', 'reagent_id')
-        self._alter_table_parent(
-            'small_molecule_compound_name', 'reagent_id,ordinal', 
-            'reagent_id', 'reagent', 'reagent_id')
-        self._alter_table_parent(
-            'small_molecule_pubchem_cid', 'reagent_id,pubchem_cid',
-            'reagent_id', 'reagent', 'reagent_id')
-        self._alter_table_parent(
-            'small_molecule_chembank_id', 'reagent_id,chembank_id',
-            'reagent_id', 'reagent', 'reagent_id')
-        self._alter_table_parent(
-            'small_molecule_chembl_id', 'reagent_id,chembl_id',
-            'reagent_id', 'reagent', 'reagent_id')
-
-        # Since there's only ever one molfile, don't need the ordinal
-        
-        db.execute(
-            ( "ALTER TABLE {table} DROP COLUMN {column} ").format(
-                  table='molfile', column='ordinal'))
-        
-        ### Update screensaver user sub tables
-        # TODO: REDO This based on reports.User - 20140409 - sde4
-        
-        # Changing field 'AdministratorUser.screensaver_user'
-        db.alter_column(u'administrator_user', 'screensaver_user_id', 
-            self.gf('django.db.models.fields.related.OneToOneField')
-            (to=orm['db.ScreensaverUser'], unique=True, primary_key=True))
-
-
-        # Changing field 'LabHead.screensaver_user'
-        db.alter_column(u'lab_head', 'screensaver_user_id', 
-            self.gf('django.db.models.fields.related.OneToOneField')
-            (to=orm['db.ScreeningRoomUser'], unique=True, primary_key=True))
-
-        # Changing field 'ScreenResult.screen'
-        db.alter_column(u'screen_result', 'screen_id', 
-            self.gf('django.db.models.fields.related.OneToOneField')
-            (to=orm['db.Screen'], unique=True))
-        # Adding unique constraint on 'ScreenResult', fields ['screen']
-        db.create_unique(u'screen_result', ['screen_id'])
-
-        # Adding field 'ScreensaverUser.user'
-        db.add_column(u'screensaver_user', 'user',
-                      self.gf('django.db.models.fields.related.OneToOneField')
-                      (to=orm['auth.User'], unique=True, null=True),
-                      keep_default=False)
-
-        # Changing field 'ScreeningRoomUser.screensaver_user'
-        db.alter_column(u'screening_room_user', 'screensaver_user_id', 
-            self.gf('django.db.models.fields.related.OneToOneField')
-            (to=orm['db.ScreensaverUser'], unique=True, primary_key=True))
-
-        ### Delete unused tables
-        
-        # Deleting model 'CellLineage'
-        db.delete_table(u'cell_lineage')
-
-        # Deleting model 'CellRelatedProjects'
-        db.delete_table(u'cell_related_projects')
-
-        # Deleting model 'CellMarkers'
-        db.delete_table(u'cell_markers')
-
-        # Deleting model 'Cell'
-        db.delete_table(u'cell')
-
-        # Deleting model 'ExperimentalCellInformation'
-        db.delete_table(u'experimental_cell_information')
-
-        # Deleting model 'CellGrowthProperties'
-        db.delete_table(u'cell_growth_properties')
-
-        # Deleting model 'CellUpdateActivity'
-        db.delete_table(u'cell_update_activity')
-
-        # Deleting model 'PrimaryCell'
-        db.delete_table(u'primary_cell')
-        
-        # Deleting model 'GeneOldEntrezgeneId'
-        db.delete_table(u'gene_old_entrezgene_id')
-
-        # Deleting model 'GeneOldEntrezgeneSymbol'
-        db.delete_table(u'gene_old_entrezgene_symbol')
-        
-        db.delete_table(u'silencing_reagent_non_targetted_genbank_accession_number')
-
-        #
-        # Adding fields for copy wells, plate/copy volume stats
-        #
-        
-        db.add_column(u'plate', 'avg_remaining_volume',
-                      self.gf('django.db.models.fields.FloatField')(null=True, blank=True),
-                      keep_default=False)
-        
-        db.add_column(u'plate', 'min_remaining_volume',
-                      self.gf('django.db.models.fields.FloatField')(null=True, blank=True),
-                      keep_default=False)
-        
-        db.add_column(u'plate', 'max_remaining_volume',
-                      self.gf('django.db.models.fields.FloatField')(null=True, blank=True),
-                      keep_default=False)
-        
-        db.add_column(u'plate', 'screening_count',
-                      self.gf('django.db.models.fields.IntegerField')(null=True, blank=True),
-                      keep_default=False)
-        
-        kwargs = {
-            'table': 'plate',
-            'column': 'well_volume'
-            }
-        db.execute("ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}".\
-                format(**kwargs))
-        db.execute("ALTER TABLE {table} ADD COLUMN {column} double precision".\
-                format(**kwargs))
-        db.execute("update {table} set {column} = tmp_{column}".\
-                format(**kwargs))
-        db.execute("ALTER TABLE {table} DROP COLUMN tmp_{column} ".\
-                format(**kwargs))
-
-        # Adding model 'CopyWell'
-        db.create_table(u'copy_well', (
-            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('plate', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Plate'])),
-            ('copy', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Copy'])),
-            ('well_id', self.gf('django.db.models.fields.TextField')()),
-            ('well_name', self.gf('django.db.models.fields.TextField')()),
-            ('plate_number', self.gf('django.db.models.fields.IntegerField')()),
-            ('volume', self.gf('django.db.models.fields.FloatField')(null=True, blank=True)),
-        ))
-        db.send_create_signal(u'db', ['CopyWell'])
-
-
-    
-    def _update_table_autofield(self, table, column):
-        
-        ###
-        # Converting to Autofields in Django
-        # Creating primary key "AutoFields" for the old java/hibernate 
-        # "GenericGenerator" class
-        #
-        # example:
-        # Changing field 'Screen.screen_id' to auto field
-        # *NOTE: the following does not work with Postgres, for an already 
-        # existing field:
-        # db.alter_column(u'screen', 'screen_id', self.gf('django.db.models.fields.AutoField')(primary_key=True))
-        # ( Postgres can create a field of type 'serial', but it is not a real type, 
-        # so postgres will not convert a field to 'serial'; as would be needed to work
-        # with the Django Autofield;
-        # see: http://www.postgresql.org/docs/8.3/interactive/datatype-numeric.html#DATATYPE-SERIAL
-        # see: http://south.aeracode.org/ticket/407, 
-        # Fix is as follows:
-        
-        # Note: we don't need to create the sequence; just re-associate the old one
-        # Note - 20140826:
-        # -- moved out of 0012_create_reagent_autofield
-        # because the migration bootstrap step needs these fields to be here.
-        # Also: note: we have not modified the "models" section below, because some 
-        # we would also have to change all the other migrations for consistency;
-        # we'll just keep the very last schema migration up-to-date.
-        
-        # Note: we don't need to create the sequence; just re-associate the old one
-
-        # first change the name to use the standard django naming
-        db.execute(
-            "ALTER SEQUENCE {column}_seq RENAME to {table}_{column}_seq".format(
-                table=table, column=column))
-        db.execute(
-            ( "ALTER TABLE {table} ALTER COLUMN {column} "
-              "SET DEFAULT nextval('{table}_{column}_seq'::regclass)").format(
-                  table=table, column=column))
-        db.execute(
-            "ALTER SEQUENCE {table}_{column}_seq OWNED BY {table}.{column}".format(
-                table=table, column=column))
-
-
-    def _alter_table_parent(self, sub_table, new_primary_key, fk_column, 
-                            new_parent, new_parent_column):
-        
-        # alter table molfile rename column reagent_id to smr_reagent_id;
-        # alter table molfile add column reagent_id integer;
-        # update molfile set reagent_id = smr_reagent_id;
-        # alter table molfile add constraint reagent_fk FOREIGN KEY (reagent_id) 
-        #     REFERENCES reagent (reagent_id);
-        # alter table molfile alter column reagent_id set NOT NULL;
-        # alter table molfile drop column smr_reagent_id;
-        # ALTER TABLE small_molecule_compound_name ADD PRIMARY KEY (reagent_id, ordinal);
-
-        ## NOTE: we are copying/deleting/making new foreign key because it is 
-        ## proving difficult to find the constraint for the extant foreign key
-        logger.info(str(('alter foreign key', sub_table, fk_column, new_parent, new_parent_column)))
-        db.execute(
-            ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
-                  table=sub_table, column=fk_column))
-        db.execute(
-            ( "ALTER TABLE {table} ADD COLUMN {column} integer").format(
-                  table=sub_table, column=fk_column))
-        db.execute(
-            ( "update {table} set {column} = tmp_{column}").format(
-                  table=sub_table, column=fk_column))
-        db.execute(
-            ("ALTER TABLE {table} ADD CONSTRAINT fk_{column} "
-                "FOREIGN KEY ({column}) "
-                "REFERENCES {other_table} ({other_column}) ").format(
-                    table=sub_table, column=fk_column, 
-                    other_table=new_parent, other_column=new_parent_column))
-        db.execute(
-            ( "ALTER TABLE {table} ALTER COLUMN {column} set NOT NULL").format(
-                  table=sub_table, column=fk_column))
-        db.execute(
-            ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
-                  table=sub_table, column=fk_column))
-        db.execute(
-            ( "ALTER TABLE {table} ADD PRIMARY KEY ({primary_key})").format(
-                  table=sub_table, primary_key=new_primary_key))
-
-
+        pass;
+        # TODO: Migrate logs for library screenings, well volume adjustments
 
     def backwards(self, orm):
+        # Deleting field 'Plate.remaining_volume'
+        db.delete_column(u'plate', 'remaining_volume')
 
-        raise RuntimeError("Cannot reverse the Screensaver initial migrations: "
-            "re-import the database to restore")
 
-    
+        # Changing field 'Plate.well_volume'
+        db.alter_column(u'plate', 'well_volume', self.gf('django.db.models.fields.DecimalField')(null=True, max_digits=10, decimal_places=9))
+
     models = {
         u'auth.group': {
             'Meta': {'object_name': 'Group'},
@@ -665,6 +298,16 @@ class Migration(SchemaMigration):
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'update_activity_id': ('django.db.models.fields.IntegerField', [], {'unique': 'True'})
         },
+        u'db.copywell': {
+            'Meta': {'object_name': 'CopyWell', 'db_table': "u'copy_well'"},
+            'copy': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Copy']"}),
+            'plate': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Plate']"}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'plate_number': ('django.db.models.fields.IntegerField', [], {}),
+            'well_id': ('django.db.models.fields.TextField', [], {}),
+            'well_name': ('django.db.models.fields.TextField', [], {}),
+            'volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'})
+        },
         u'db.datacolumn': {
             'Meta': {'object_name': 'DataColumn', 'db_table': "u'data_column'"},
             'assay_phenotype': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -848,11 +491,12 @@ class Migration(SchemaMigration):
             'primary_well_mg_ml_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '5', 'decimal_places': '3', 'blank': 'True'}),
             'primary_well_molar_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '13', 'decimal_places': '12', 'blank': 'True'}),
             'quadrant': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
+            'remaining_volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
             'retired_activity_id': ('django.db.models.fields.IntegerField', [], {'unique': 'True', 'null': 'True', 'blank': 'True'}),
             'status': ('django.db.models.fields.TextField', [], {}),
             'stock_plate_number': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'version': ('django.db.models.fields.IntegerField', [], {}),
-            'well_volume': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '10', 'decimal_places': '9', 'blank': 'True'})
+            'well_volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'})
         },
         u'db.platelocation': {
             'Meta': {'object_name': 'PlateLocation', 'db_table': "u'plate_location'"},
@@ -886,7 +530,7 @@ class Migration(SchemaMigration):
             'Meta': {'object_name': 'Reagent', 'db_table': "u'reagent'"},
             'library_contents_version': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.LibraryContentsVersion']", 'null': 'True'}),
             'reagent_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UWPRH2ZD'", 'unique': 'True', 'max_length': '8'}),
+            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UWPRH34L'", 'unique': 'True', 'max_length': '8'}),
             'vendor_batch_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_identifier': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_name': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -1136,12 +780,6 @@ class Migration(SchemaMigration):
             'silencing_reagent_type': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_gene': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "u'vendor_reagent'", 'unique': 'True', 'null': 'True', 'to': u"orm['db.Gene']"})
         },
-        u'db.silencingreagentduplexwells': {
-            'Meta': {'object_name': 'SilencingReagentDuplexWells', 'db_table': "u'silencing_reagent_duplex_wells'"},
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'silencing_reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SilencingReagent']"}),
-            'well': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']"})
-        },
         u'db.smallmoleculechembankid': {
             'Meta': {'object_name': 'SmallMoleculeChembankId', 'db_table': "u'small_molecule_chembank_id'"},
             'chembank_id': ('django.db.models.fields.IntegerField', [], {}),
@@ -1206,8 +844,8 @@ class Migration(SchemaMigration):
             'latest_released_reagent': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "u'reagent_well'", 'null': 'True', 'to': u"orm['db.Reagent']"}),
             'library': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Library']"}),
             'library_well_type': ('django.db.models.fields.TextField', [], {}),
-            'mg_ml_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '5', 'decimal_places': '3', 'blank': 'True'}),
-            'molar_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '13', 'decimal_places': '12', 'blank': 'True'}),
+            'mg_ml_concentration': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
+            'micro_molar_concentration': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
             'plate_number': ('django.db.models.fields.IntegerField', [], {}),
             'version': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'well_id': ('django.db.models.fields.TextField', [], {'primary_key': 'True'}),
@@ -1230,4 +868,3 @@ class Migration(SchemaMigration):
     }
 
     complete_apps = ['db']
-    

@@ -17,3 +17,5 @@ patch,metahash,metahash_fields_reagent.csv
 patch,metahash,metahash_fields_smallmoleculereagent.csv
 patch,metahash,metahash_fields_silencingreagent.csv
 patch,metahash,metahash_fields_naturalproductreagent.csv
+patch,metahash,metahash_fields_librarycopiesreport.csv
+patch,metahash,metahash_fields_copyplatesreport.csv

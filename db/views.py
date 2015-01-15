@@ -1,11 +1,13 @@
 import logging
 import os.path
+import sys
 from django.shortcuts import render
 from db.models import ScreensaverUser, Reagent
 from django.http import HttpResponse
 import json
 from django.utils.encoding import smart_str
 from django.conf import settings
+from django.http.response import Http404
 
 logger = logging.getLogger(__name__)
 
@@ -39,13 +41,16 @@ def well_image(request, well_id):
                 image.save(response, "PNG")
                 return response
             else:
-                logger.info(str(('well_image not found', well_id, structure_image_path)))
+                msg = str(('well_image not found', well_id, structure_image_path))
+                logger.info(msg)
+                raise Http404(msg)
+
         except Exception, e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
             msg = str(e)
             logger.warn(str(('well_image', well_id, 
-                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+                msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e   
 
 def smiles_image(request, well_id):

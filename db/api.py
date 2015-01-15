@@ -46,7 +46,7 @@ from tastypie.utils.mime import build_content_type
 
 from sqlalchemy import select, asc
 from sqlalchemy import text
-from sqlalchemy.sql.expression import column
+from sqlalchemy.sql.expression import column, join
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.sql import asc,desc, alias, Alias
@@ -66,13 +66,17 @@ from reports.api import ManagedModelResource, ManagedResource, ApiLogResource,\
 from reports.utils.sqlalchemy_bridge import Bridge
 from reports.serializers import LIST_DELIMITER_XLS
 from reports.serializers import csv_convert
+from sqlalchemy.sql.elements import literal_column
+from django.core.serializers.json import DjangoJSONEncoder
+import hashlib
 
         
 logger = logging.getLogger(__name__)
 
 LIST_DELIMITER_SQL_ARRAY = ','
 LIST_DELIMITER_URL_PARAM = ','
-MAX_ROWS_PER_XLS_FILE = 2000
+MAX_ROWS_PER_XLS_FILE = 100000
+MAX_IMAGE_ROWS_PER_XLS_FILE = 2000
 
 def _get_raw_time_string():
   return timezone.now().strftime("%Y%m%d%H%M%S")
@@ -1401,7 +1405,7 @@ class SqlAlchemyResource(StreamingResource):
         '''
         returns an array of sqlalchemy.sql.schema.Column objects, associated 
         with the sqlalchemy.sql.schema.Table definitions, which are bound to 
-        the sqlalchemy.engine.Engine which: 
+        the sqlalchemy.engine.Engine: 
         "Connects a Pool and Dialect together to provide a source of database 
         connectivity and behavior."
         
@@ -1432,14 +1436,17 @@ class SqlAlchemyResource(StreamingResource):
                 
                 if not field_table:
                     continue
+                logger.info(str(('field', field['key'], 'field_table', field_table )))
                 if field_table in base_query_tables:
                     # simple case: table.fields already selected in the base query:
                     # just need to specify them
-                    col = self.bridge[field_table].c[field_name]
-    #                 if field_name != field['key']:
+                    if field_name in self.bridge[field_table].c:
+                        col = self.bridge[field_table].c[field_name]
+                    else:
+                        raise Exception(str(('field', field_name, 'not found in table', field_table)))
                     col = col.label(label)
                     columns[label] = col
-                
+                    
                 elif field.get('linked_field_value_field', None):
                     link_table = field['table']
                     link_table_def = self.bridge[link_table]
@@ -1602,16 +1609,15 @@ class SqlAlchemyResource(StreamingResource):
             if len(filter_bits) and filter_bits[-1] in query_terms:
                 filter_type = filter_bits.pop()
 
-#             lookup_bits = self.check_filtering(field_name, filter_type, filter_bits)
             value = self.filter_value_to_python(value, filters, filter_expr, filter_type)
 
-            # TODO all the types
-#             QUERY_TERMS = set([
-#                 'exact', 'iexact', 'contains', 'icontains', 'gt', 'gte', 'lt', 'lte', 'in',
-#                 'startswith', 'istartswith', 'endswith', 'iendswith', 'range', 'year',
-#                 'month', 'day', 'week_day', 'hour', 'minute', 'second', 'isnull', 'search',
-#                 'regex', 'iregex',
-#             ])
+                        # TODO all the types
+            #             QUERY_TERMS = set([
+            #                 'exact', 'iexact', 'contains', 'icontains', 'gt', 'gte', 'lt', 'lte', 'in',
+            #                 'startswith', 'istartswith', 'endswith', 'iendswith', 'range', 'year',
+            #                 'month', 'day', 'week_day', 'hour', 'minute', 'second', 'isnull', 'search',
+            #                 'regex', 'iregex',
+            #             ])
 
             if filter_type == 'exact':
                 expressions.append(column(field_name)==value)
@@ -1648,25 +1654,97 @@ class SqlAlchemyResource(StreamingResource):
                 except ValueError:
                     logger.error(str(('Invalid Accept header')))
                     raise ImmediateHttpResponse('Invalid Accept header')
-#                     raise BadRequest('Invalid Accept header')
         return format
         
     def get_list(self, request, **kwargs):
         raise NotImplemented(str(('get_list must be implemented for the SqlAlchemyResource', 
             self._meta.resource_name)) )
         
+    def _cached_resultproxy(self, stmt, count_stmt, limit, offset):
+        ''' ad-hoc cache for some resultsets
+        NOTE: limit and offset are included because this version of sqlalchemy
+        does not support printing of them with the select.compile() function.
+        TODO: cache clearing
+        '''
+        
+        from django.core.cache import cache
+        
+        conn = self.bridge.get_engine().connect()
+        try:
+            # use a hexdigest because statements can contain problematic chars 
+            # for the memcache
+            m = hashlib.md5()
+            compiled_stmt = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+            key_digest = '%s_%s_%s' %(compiled_stmt, str(limit), str(offset))
+            m.update(key_digest)
+            key = m.hexdigest()
+#             logger.info(str(('hash key:', key_digest, key)))
+            cache_hit = cache.get(key)
+            if cache_hit:
+                if ('stmt' not in cache_hit or
+                        cache_hit['stmt'] != compiled_stmt):
+                    cache_hit = None
+                    logger.warn(str(('cache collision for key', key, stmt)))
+            
+            if not cache_hit:
+                # Note: if no cache hit, then retrive limit*n results, and 
+                # cache several iterations at once.
+                prefetch_number = 5
+                new_limit = limit * prefetch_number 
+                logger.info(str(('limit', limit, 'new limit for caching', new_limit)))
+                stmt = stmt.limit(new_limit)
+                logger.info('executing stmt')
+                resultset = conn.execute(stmt)
+                prefetched_result = [dict(row) for row in resultset] if resultset else []
+                logger.info('executed stmt')
+                
+                logger.info(str(('no cache hit, execute count')))
+                count = conn.execute(count_stmt).scalar()
+                logger.info(str(('count', count)))
+                for y in range(prefetch_number):
+                    new_offset = offset + limit*y;
+                    _start = limit*y
+                    if _start < len(prefetched_result):
+                        key_digest = '%s_%s_%s' %(compiled_stmt, str(limit), str(new_offset))
+                        m = hashlib.md5()
+                        m.update(key_digest)
+                        key = m.hexdigest()
+#                         logger.info(str((y, 'hash key:', key_digest, m.hexdigest())))
+                        _result = prefetched_result[_start:_start+limit]
+                        _cache = {
+                            'stmt': compiled_stmt,
+                            'cached_result': _result,
+                            'count': count }
+                        cache.set( key, _cache, None)
+                        if y == 0:
+                            cache_hit = _cache
+                    else:
+                        logger.info(str(('prefetched length: ', len(prefetched_result), _start, 'end')))
+                        break
+                logger.info(str(('cached iterations:', y)))
+#                 cached_result = [dict(row) for row in resultset] if resultset else []
+            else:
+                logger.info(str(('cache hit')))   
+                
+            return cache_hit
+ 
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on conn execute', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e   
+        
+        
     def stream_response_from_cursor(self, request, stmt, count_stmt, 
-
-        # FIXME 20141203: refactor this method 
-
-        output_filename, field_hash={}):
-                    
-#         logger.info(str(('request,stmt,count_stmt', request, stmt, count_stmt)))
+            output_filename, field_hash={}):
         limit = request.GET.get('limit', self._meta.limit) 
         try:
             limit = int(limit)
         except ValueError:
-            raise BadRequest("Invalid limit '%s' provided. Please provide a positive integer." % limit)
+            raise BadRequest(
+                "Invalid limit '%s' provided. Please provide a positive integer." % limit)
         if limit > 0:    
             stmt = stmt.limit(limit)
 
@@ -1674,22 +1752,30 @@ class SqlAlchemyResource(StreamingResource):
         try:
             offset = int(offset)
         except ValueError:
-            raise BadRequest("Invalid offset '%s' provided. Please provide a positive integer." % limit)
+            raise BadRequest(
+                "Invalid offset '%s' provided. Please provide a positive integer." % offset)
         if offset < 0:    
             offset = -offset
         
         stmt = stmt.offset(offset)
-        logger.info(str(('stmt', str(stmt))))
-
         conn = self.bridge.get_engine().connect()
+        
+        logger.info(str(('stmt', str(stmt))))
+        logger.info(str(('count stmt', str(count_stmt))))
+        
+        logger.info('excute stmt')
         result = conn.execute(stmt)
+        logger.info('excuted stmt')
         
         desired_format = self.get_format(request)
         content_type=build_content_type(desired_format)
-        logger.info(str(('desired_format', desired_format, request.GET)))
+        logger.info(str(('desired_format', desired_format, 
+            'content_type', content_type)))
 
+        
         def interpolate_value_template(value_template, row):
             ''' 
+            Utility class for transforming cell values:
             a "value_template" is of the form:
             "text... {field_name} ..text"
             wherein the {field_name} is replaced with the field-value
@@ -1704,7 +1790,15 @@ class SqlAlchemyResource(StreamingResource):
             return re.sub(r'{([^}]+)}', get_value_from_template, value_template)
 
         if desired_format == 'application/json':
-            count = conn.execute(count_stmt).scalar()
+            
+            cache_hit = self._cached_resultproxy(stmt, count_stmt, limit, offset)
+            if cache_hit:
+                result = cache_hit['cached_result']
+                count = cache_hit['count']
+            else:
+                # use result from before
+                logger.info(str(('execute count')))
+                count = conn.execute(count_stmt).scalar()
             logger.info(str(('====count====', count)))
         
             meta = {
@@ -1712,7 +1806,7 @@ class SqlAlchemyResource(StreamingResource):
                 'offset': offset,
                 'total_count': count
                 }    
-            
+                        
             def json_generator(cursor):
 #                 logger.info(str(('meta', meta)))
                 yield '{ "meta": %s, "objects": [' % json.dumps(meta)
@@ -1756,16 +1850,30 @@ class SqlAlchemyResource(StreamingResource):
                                 else:
                                     _dict[key]=newval
                     else:
+#                         logger.info(str(('raw', row)))
                         _dict = dict((x,y) for x, y in row.items())
 
                     i += 1
                     if i == 1:
-                        yield json.dumps(_dict)
+                        try:
+#                             logger.info(str(('_dict',i, _dict)))
+#                             logger.info(str(('_dict', json.dumps(_dict))))
+#                             yield json.dumps(_dict)
+                            yield json.dumps(_dict, cls=DjangoJSONEncoder,
+                                sort_keys=True, ensure_ascii=False, indent=2)
+
+                        except Exception, e:
+                            logger.error(str(('ex', _dict, e)))
                     else:
-#                         logger.info(str(('_dict', _dict)))
-                        yield ', ' + json.dumps(_dict)
+                        try:
+#                             logger.info(str(('_dict',i, _dict)))
+#                             yield ', ' + json.dumps(_dict)
+                            yield ', ' + json.dumps(_dict, cls=DjangoJSONEncoder,
+                                sort_keys=True, ensure_ascii=False, indent=2)
+                        except Exception, e:
+                            logger.error(str(('ex============', _dict, e)))
                 
-                logger.info(str(('i', i)))    
+#                 logger.info(str(('i', i)))    
                 yield ' ] }'
             
             logger.info(str(('ready to stream 1...')))
@@ -1826,6 +1934,7 @@ class SqlAlchemyResource(StreamingResource):
                                 logger.info(str(('field', key, value_template)))
                                 newval = interpolate_value_template(value_template, row)
                                 if field['ui_type'] == 'image':
+                                    max_rows_per_file = MAX_IMAGE_ROWS_PER_XLS_FILE
                                     # hack to speed things up:
                                     if ( key == 'structure_image' and
                                             row.has_key('library_well_type') and
@@ -2019,8 +2128,8 @@ class SqlAlchemyResource(StreamingResource):
 
             pseudo_buffer = Echo()
             csvwriter = csv.writer(
-                pseudo_buffer, delimiter='\t', quotechar='"', 
-                quoting=csv.QUOTE_ALL)
+                pseudo_buffer, delimiter=',', quotechar='"', 
+                quoting=csv.QUOTE_ALL, lineterminator="\n")
             def csv_generator(cursor):
                 i=0
                 for row in cursor:
@@ -2044,6 +2153,12 @@ class SqlAlchemyResource(StreamingResource):
                                 # FIXME: must quote special strings?
 #                                 value = '[' + ",".join(value.split(LIST_DELIMITER_SQL_ARRAY)) + ']'
                                 value = value.split(LIST_DELIMITER_SQL_ARRAY)
+                            
+#                             if field.get('data_type', None):
+#                                 data_type = field['data_type']
+#                                 if data_type == "float":
+#                                     value = 
+                                
                             if field.get('value_template', None):
                                 value_template = field['value_template']
                                 logger.info(str(('field', key, value_template)))
@@ -2083,6 +2198,528 @@ class SqlAlchemyResource(StreamingResource):
             logger.error(msg)
             raise ImmediateHttpResponse(msg)
 
+class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
+    class Meta:
+        queryset = Plate.objects.all().order_by('name')
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= UserGroupAuthorization()
+        resource_name = 'librarycopyplates'
+        
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
+        always_return_data = True 
+
+    def __init__(self, **kwargs):
+        super(LibraryCopyPlatesResource,self).__init__(**kwargs)
+
+    def prepend_urls(self):
+        # Note: because this prepends the other list, we have to make sure 
+        # "schema" is matched
+        
+        return [
+            # override the parent "base_urls" so that we don't need to worry about schema again
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+
+            url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w\d_.\-\+: ]+)/(?P<name>[\w\d_.\-\+: ]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+        ]
+
+    def get_list(self,request,**kwargs):
+        try:
+            _p = self.bridge['plate']
+            _pl = self.bridge['plate_location']
+            _c = self.bridge['copy']
+            _l = self.bridge['library']
+            _ap = self.bridge['assay_plate']
+            
+            library = None
+            copy = None
+            plate = None
+            if 'library_short_name' in kwargs:
+                library = Library.objects.get(short_name=kwargs['library_short_name'])
+                filename = '%s_%s' % (self._meta.resource_name, library.short_name )
+                if 'name' in kwargs:
+                    copy = Copy.objects.get(name=kwargs['name'])
+                    filename = '%s_%s_%s' % (self._meta.resource_name, library.short_name, copy.name )
+            else:
+                filename = '%s' % (self._meta.resource_name )
+                logger.info(str(('no library_short_name provided')))
+    
+
+#         # define plate_screening_statistics subquery        
+#         text_cols = ','.join([
+#             'p.plate_id', 
+#             'c.copy_id',
+#             'c.name',
+#             'l.short_name',
+#             'count(distinct(ls)) screening_count', 
+#             'count(distinct(ap)) ap_count', 
+#             'count(distinct(srdl)) dl_count',
+#             'min(srdl.date_of_activity) first_date_data_loaded', 
+#             'max(srdl.date_of_activity) last_date_data_loaded', 
+#             'min(lsa.date_of_activity) first_date_screened', 
+#             'max(lsa.date_of_activity) last_date_screened', 
+#             ])
+#         text_select = '\n'.join([
+#             'copy c', 
+#             'join plate p using(copy_id) ',
+#             'join library l using(library_id) ',
+#             'join assay_plate ap on(ap.plate_id=p.plate_id)',  
+#             'left outer join library_screening ls on(library_screening_id=ls.activity_id)',
+#             'left outer join activity lsa on(ls.activity_id=lsa.activity_id)', 
+#             'left outer join (',
+#             '    select a.activity_id, a.date_of_activity', 
+#             '    from activity a', 
+#             '    join administrative_activity using(activity_id) ) srdl', 
+#             '    on(screen_result_data_loading_id=srdl.activity_id)'  
+#             ])
+# 
+#         plate_screening_statistics = select([text(text_cols)]).\
+#             select_from( text(text_select))
+#         if library:
+#             plate_screening_statistics = \
+#                 plate_screening_statistics.where(
+#                     _l.c.library_id == library.library_id )
+#         plate_screening_statistics = plate_screening_statistics.group_by(
+#             text('p.plate_id, c.copy_id, c.name, l.short_name '))
+#         plate_screening_statistics = \
+#             plate_screening_statistics.order_by(text('p.plate_id '))
+#         plate_screening_statistics = plate_screening_statistics.cte('plate_screening_statistics')
+        
+        
+            # NOTE: precalculated version
+            plate_screening_statistics = \
+                select([text('*')]).\
+                    select_from(text('plate_screening_statistics')).cte('plate_screening_statistics')
+        
+
+
+            p1 = plate_screening_statistics.alias('p1')
+            
+            j = join(_p, _c, _p.c.copy_id == _c.c.copy_id )
+            j = j.join(p1, _p.c.plate_id == text('p1.plate_id'), isouter=True)
+            j = j.join(_pl, _p.c.plate_location_id == _pl.c.plate_location_id )
+            j = j.join(_l, _c.c.library_id == _l.c.library_id )
+        
+            logger.info(str(('get_list', kwargs)))
+            
+            schema = super(LibraryCopyPlatesResource,self).build_schema()
+        
+            # FIXME: 20150114 - includes not being sent by UI
+            includes = request.GET.get('includes', None)
+            logger.info(str(('includes', includes)))
+            if includes:
+                manual_field_includes = set(includes.split(LIST_DELIMITER_URL_PARAM))
+            else:    
+                manual_field_includes = set()
+            logger.info(str(('manual_field_includes', manual_field_includes)))
+
+            (filter_expression, filter_fields) = \
+                self.build_sqlalchemy_filters(schema, request, **kwargs)
+            
+            temp = { key:field for key,field in schema['fields'].items() 
+                if ((field.get('visibility', None) and 'list' in field['visibility']) 
+                    or field['key'] in filter_fields 
+                    or field['key'] in manual_field_includes )}
+            field_hash = OrderedDict(sorted(temp.iteritems(), key=lambda x: x[1]['ordinal'])) 
+    
+            base_query_tables = ['plate', 'copy','plate_location', 'library']
+            
+            already_defined_columns={
+                'screening_count': literal_column('p1.screening_count'), 
+                'ap_count': literal_column('p1.ap_count'), 
+                'dl_count':literal_column('p1.dl_count'),
+                'first_date_data_loaded':literal_column('p1.first_date_data_loaded'), 
+                'last_date_data_loaded':literal_column('p1.last_date_data_loaded'), 
+                'first_date_screened':literal_column('p1.first_date_screened'), 
+                'last_date_screened':literal_column('p1.last_date_screened'), 
+                'status_date': literal_column(
+                    '(select date_of_activity'
+                    ' from activity a'
+                    ' join administrative_activity aa on(aa.activity_id=a.activity_id) '
+                    ' join plate_update_activity pu on(a.activity_id=pu.update_activity_id)'
+                    ' where pu.plate_id = plate.plate_id'
+                    " and aa.administrative_activity_type='Plate Status Update' "
+                    ' order by date_created desc limit 1 )').label('status_date'),
+                'status_performed_by': literal_column(
+                    "(select su.first_name || ' ' || su.last_name "
+                    ' from activity a'
+                    ' join screensaver_user su on(a.performed_by_id=su.screensaver_user_id) '
+                    ' join administrative_activity aa on(aa.activity_id=a.activity_id) '
+                    ' join plate_update_activity pu on(a.activity_id=pu.update_activity_id)'
+                    ' where pu.plate_id = plate.plate_id'
+                    " and aa.administrative_activity_type='Plate Status Update' "
+                    ' order by a.date_created desc limit 1 )').label('status_performed_by'),
+                'date_plated': literal_column(
+                    '(select date_of_activity '
+                    ' from activity a'
+                    ' where a.activity_id=plate.plated_activity_id )').label('date_plated'),
+                'date_retired': literal_column(
+                    '(select date_of_activity '
+                    ' from activity a'
+                    ' where a.activity_id=plate.retired_activity_id )').label('date_retired'),
+                    };
+                    
+            # TODO: test "includes" and this, when working (ui is stripping args from post)
+            already_defined_columns = { key:field for key,field in already_defined_columns.iteritems()
+                if key in field_hash }
+            
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                already_defined_columns=already_defined_columns
+                )
+            cols = list(already_defined_columns.values())
+            cols.extend( [v for k,v in columns.iteritems() if k not in already_defined_columns] )
+#             columns['status_date']= already_defined_columns['status_date']
+            logger.info(str(('columns', cols)))
+            
+            stmt = select(cols).select_from(j)
+            stmt = stmt.order_by(_l.c.short_name, _c.c.name, _p.c.plate_number )
+
+            order_clauses = self.build_sqlalchemy_ordering(request)
+            if order_clauses:
+                logger.info(str(('order_clauses', [str(c) for c in order_clauses])))
+                _alias = Alias(stmt)
+                stmt = select([text('*')]).select_from(_alias)
+                stmt = stmt.order_by(*order_clauses)
+            
+            logger.info(str(('filter_expression', str(filter_expression))))
+            if filter_expression is not None:
+                if not order_clauses:
+                    _alias = Alias(stmt)
+                    logger.info(str(('filter_expression', str(filter_expression))))
+                    stmt = select([text('*')]).select_from(_alias)
+                stmt = stmt.where(filter_expression)
+
+            count_stmt = select([func.count()]).select_from(stmt.alias())
+
+            return self.stream_response_from_cursor(
+                request, stmt, count_stmt, filename, field_hash=field_hash  )
+        
+            
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on get_list', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e  
+        
+        
+class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
+    ''' 
+    Testing class for the "freeze copy thaw" reports
+    '''
+
+    class Meta:
+        queryset = Copy.objects.all().order_by('name')
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= UserGroupAuthorization()
+        resource_name = 'librarycopies'
+        
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
+        always_return_data = True 
+
+        
+    def __init__(self, **kwargs):
+        super(LibraryCopiesResource,self).__init__(**kwargs)
+
+    def prepend_urls(self):
+        # Note: because this prepends the other list, we have to make sure 
+        # "schema" is matched
+        
+        return [
+            # override the parent "base_urls" so that we don't need to worry about schema again
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+
+            url(r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+        ]
+
+
+    def get_list(self,request,**kwargs):
+
+
+        try:
+            _c = self.bridge['copy']
+            _l = self.bridge['library']
+            _ap = self.bridge['assay_plate']
+            
+            library = None
+            if 'library_short_name' in kwargs:
+                library = Library.objects.get(short_name=kwargs['library_short_name'])
+                filename = '%s_%s' % (self._meta.resource_name, library.short_name )
+            else:
+                filename = '%s' % (self._meta.resource_name )
+                logger.info(str(('no library_short_name provided')))
+            
+            
+            # = copy volume statistics =
+            
+            # REMOVED 20150112 - using precalculated table see 0016 migration
+            #         text_cols=[ literal_column('c.copy_id').label('copy_id'),
+            # text('c.name'),
+            # text('c.short_name'),
+            # 'avg(c.plate_remaining_volume) avg_plate_volume', 
+            # 'min(c.plate_remaining_volume) min_plate_volume', 
+            # 'max(c.plate_remaining_volume) max_plate_volume']
+            #         text_select =''' 
+            # ( select 
+            #     p.copy_id, 
+            #     p.well_volume - sum(la.volume_transferred_per_well_from_library_plates) as plate_remaining_volume,
+            #     co.name,
+            #     l.short_name
+            #     from plate p
+            #     join copy co using(copy_id)
+            #     join library l using(library_id) 
+            #     join assay_plate ap using(plate_id) 
+            #     join screening ls on(ls.activity_id = ap.library_screening_id) 
+            #     join lab_activity la using(activity_id) 
+            #     where co.library_id = 108
+            #     and ap.replicate_ordinal = 0 
+            #     group by p.copy_id, p.plate_id, p.well_volume, co.name, l.short_name ) as c 
+            # group by c.copy_id, c.name, c.short_name'''
+            
+            text_cols = ','.join([
+                'c.copy_id',
+                'c.name',
+                'l.short_name',
+                'avg(p.avg_remaining_volume) avg_plate_volume', 
+                'min(p.min_remaining_volume) min_plate_volume', 
+                'max(p.max_remaining_volume) max_plate_volume'])
+            text_select = '\n'.join([
+                'plate p ' 
+                'join copy c using(copy_id) '
+                'join library l using(library_id) '
+                ])
+            copy_volume_statistics = select([text(text_cols)]).\
+                select_from( text(text_select))
+            if library:
+                copy_volume_statistics = copy_volume_statistics.where(_l.c.library_id == library.library_id )
+            copy_volume_statistics = copy_volume_statistics.group_by(text('c.copy_id, c.name, l.short_name '))
+            copy_volume_statistics = copy_volume_statistics.order_by(text('c.name '))
+            copy_volume_statistics = copy_volume_statistics.cte('copy_volume_statistics')
+    
+            # = copy plate screening statistics = 
+            
+            text_cols = ','.join([
+                'c.copy_id',
+                'c.name',
+                'l.short_name',
+                ('(select count(distinct(p)) from plate p where p.copy_id=c.copy_id) '
+                    'as copy_plate_count'),
+                'count(distinct(ls1)) as plate_screening_count' ])
+            text_select = '\n'.join([
+                'copy c', 
+                'join plate p using(copy_id) ',
+                'join library l using(library_id) ',
+                'left join ( select ap.plate_id, ls.activity_id ',
+                '    from assay_plate ap', 
+                '    join library_screening ls on(ap.library_screening_id=ls.activity_id) ',
+                '    where ap.replicate_ordinal=0 ) as ls1 on(ls1.plate_id=p.plate_id) ',
+                ])
+            copy_plate_screening_statistics = select([text(text_cols)]).\
+                select_from( text(text_select))
+            if library:
+                copy_plate_screening_statistics = copy_plate_screening_statistics.where(_l.c.library_id == library.library_id )
+            copy_plate_screening_statistics = \
+                copy_plate_screening_statistics.group_by('c.copy_id, c.name, l.short_name')
+            copy_plate_screening_statistics = copy_plate_screening_statistics.cte('copy_plate_screening_statistics')
+    
+            # = copy screening statistics = 
+            
+            # REMOVED 20150112 - using precalculated stats, see 0016 migrations
+            #         text_cols = '''c.copy_id,
+            # c.name,
+            # l.short_name
+            # ,count(distinct(ls)) screening_count 
+            # ,count(distinct(ap)) ap_count 
+            # ,count(distinct(srdl)) dl_count
+            # ,min(srdl.date_of_activity) first_date_data_loaded 
+            # ,max(srdl.date_of_activity) last_date_data_loaded 
+            # ,min(lsa.date_of_activity) first_date_screened 
+            # ,max(lsa.date_of_activity) last_date_screened'''
+            #         text_select = \
+            #             '''copy c 
+            # join plate p using(copy_id) 
+            # join library l using(library_id) 
+            # join assay_plate ap on(ap.plate_id=p.plate_id)  
+            #     left outer join library_screening ls on(library_screening_id=ls.activity_id)
+            #     left outer join activity lsa on(ls.activity_id=lsa.activity_id) 
+            # left outer join (select a.activity_id, a.date_of_activity from activity a join administrative_activity using(activity_id) ) srdl on(screen_result_data_loading_id=srdl.activity_id)  
+            # group by c.copy_id, c.name, l.short_name'''
+            # 
+            # TODO: dynamic version
+            #         copy_screening_statistics = \
+            #             select([text(text_cols)]).select_from( text(text_select)).cte('copy_screening_statistics')
+            
+            # NOTE: precalculated version
+            copy_screening_statistics = \
+                select([text('*')]).\
+                    select_from(text('copy_screening_statistics')).cte('copy_screening_statistics')
+    
+            # FIXME: 20150114 - itemize colums like librarycopyplates
+            
+            already_defined_columns = {
+                'copy_id': literal_column('c1.copy_id'),
+                'library_short_name': literal_column(
+                    'c1.short_name').label('library_short_name'),
+                'plate_screening_count': literal_column('c1.plate_screening_count'),
+                'copy_plate_count': literal_column('c1.copy_plate_count'),
+                'plate_screening_count_average': literal_column(
+                    'c1.plate_screening_count::float/c1.copy_plate_count::float ').\
+                    label('plate_screening_count_average'),
+                'avg_plate_volume': literal_column('c2.avg_plate_volume'),
+                'min_plate_volume': literal_column('c2.min_plate_volume'), 
+                'max_plate_volume': literal_column('c2.max_plate_volume'), 
+                'screening_count': literal_column('c3.screening_count'),
+                'ap_count': literal_column('c3.ap_count'),
+                'dl_count': literal_column('c3.dl_count'),
+                'first_date_data_loaded': literal_column('c3.first_date_data_loaded'), 
+                'last_date_data_loaded': literal_column('c3.last_date_data_loaded'), 
+                'first_date_screened': literal_column('c3.first_date_screened'), 
+                'last_date_screened': literal_column('c3.last_date_screened'),
+                'primary_plate_location': literal_column('\n'.join([
+                    "( select room || '-' || freezer || '-' || shelf || '-' || bin ", 
+                    '    from plate_location pl ' ,
+                    '    where pl.plate_location_id=copy.primary_plate_location_id) '])).\
+                    label('primary_plate_location'),
+                'plate_locations': literal_column('\n'.join([
+                    '(select count(distinct(plate_location_id)) ',
+                    '    from plate p',
+                    '    where p.copy_id = copy.copy_id ) '])).\
+                    label('plate_locations'),
+                'plates_available': literal_column('\n'.join([
+                    '(select count(p)', 
+                    '    from plate p ',
+                    '    where p.copy_id=copy.copy_id', 
+                    "    and p.status = 'Available' ) "])).\
+                    label('plates_available'),
+                }
+            
+            #         text_cols = ','.join([
+            #             'c1.copy_id', 
+            #             'c1.short_name library_short_name',
+            #             'c1.plate_screening_count',
+            #             'c1.copy_plate_count',
+            #             ('c1.plate_screening_count::float/c1.copy_plate_count::float '
+            #                 'as plate_screening_count_average'),
+            #             'c2.avg_plate_volume',
+            #             'c2.min_plate_volume', 
+            #             'c2.max_plate_volume', 
+            #             'c3.screening_count',
+            #             'c3.ap_count',
+            #             'c3.dl_count',
+            #             'c3.first_date_data_loaded', 
+            #             'c3.last_date_data_loaded', 
+            #             'c3.first_date_screened', 
+            #             'c3.last_date_screened',
+            #             '\n'.join([
+            #                 "( select room || '-' || freezer || '-' || shelf || '-' || bin ", 
+            #                 '    from plate_location pl ' ,
+            #                 '    where pl.plate_location_id=copy.primary_plate_location_id) ',
+            #                 '        as primary_plate_location']),
+            #             '\n'.join([
+            #                 '(select count(distinct(plate_location_id)) ',
+            #                 '    from plate p',
+            #                 '    where p.copy_id = copy.copy_id ) ',
+            #                 'as plate_locations']),
+            #             '\n'.join([
+            #                 '(select count(p)', 
+            #                 '    from plate p ',
+            #                 '    where p.copy_id=copy.copy_id', 
+            #                 "    and p.status = 'Available' ) ",
+            #                 '    as plates_available']),
+            #                 ])
+
+            c1 = copy_plate_screening_statistics.alias('c1')
+            c2 = copy_volume_statistics.alias('c2')
+            c3 = copy_screening_statistics.alias('c3')
+    
+            j = join(_c, c1, _c.c.copy_id == text('c1.copy_id'), isouter=True)
+            j = j.outerjoin(c2,text('c1.copy_id = c2.copy_id') )
+            j = j.outerjoin(c3, text('c1.copy_id = c3.copy_id') )
+    
+            logger.info(str(('====j', str(j))))
+
+            logger.info(str(('get_list', kwargs)))
+            
+            schema = super(LibraryCopiesResource,self).build_schema()
+    
+            # FIXME: 20150114 - includes not being sent by UI
+            includes = request.GET.get('includes', None)
+            logger.info(str(('includes', includes)))
+            if includes:
+                manual_field_includes = set(includes.split(LIST_DELIMITER_URL_PARAM))
+            else:    
+                manual_field_includes = set()
+            logger.info(str(('manual_field_includes', manual_field_includes)))
+
+            (filter_expression, filter_fields) = \
+                self.build_sqlalchemy_filters(schema, request, **kwargs)
+            
+            temp = { key:field for key,field in schema['fields'].items() 
+                if ((field.get('visibility', None) and 'list' in field['visibility']) 
+                    or field['key'] in filter_fields 
+                    or field['key'] in manual_field_includes )}
+            field_hash = OrderedDict(sorted(temp.iteritems(), key=lambda x: x[1]['ordinal'])) 
+    
+            base_query_tables = ['copy','library']
+            
+#             already_defined_columns={};
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                already_defined_columns=already_defined_columns
+                )
+            logger.info(str(('columns', columns)))
+            cols = list(already_defined_columns.values())
+            cols.extend( [v for k,v in columns.iteritems() if k not in already_defined_columns] )
+            
+#             cols = [text(text_cols)]
+#             cols.extend( [v for k,v in columns.iteritems() if k not in already_defined_columns] )
+            
+            stmt = select(cols).select_from(j)
+            stmt = stmt.order_by(text('c1.short_name,c1.name'))
+
+            order_clauses = self.build_sqlalchemy_ordering(request)
+            if order_clauses:
+                logger.info(str(('order_clauses', [str(c) for c in order_clauses])))
+                _alias = Alias(stmt)
+                stmt = select([text('*')]).select_from(_alias)
+                stmt = stmt.order_by(*order_clauses)
+            
+            logger.info(str(('filter_expression', str(filter_expression))))
+            if filter_expression is not None:
+                if not order_clauses:
+                    _alias = Alias(stmt)
+                    logger.info(str(('filter_expression', str(filter_expression))))
+                    stmt = select([text('*')]).select_from(_alias)
+                stmt = stmt.where(filter_expression)
+
+            count_stmt = select([func.count()]).select_from(stmt.alias())
+
+            return self.stream_response_from_cursor(
+                request, stmt, count_stmt, filename, field_hash=field_hash  )
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on get_list', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e   
 
 class ReagentResource(SqlAlchemyResource, ManagedModelResource):
     
@@ -2135,7 +2772,7 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
         logger.info(str(('manual_field_includes', manual_field_includes)))
 
         desired_format = self.get_format(request)
-#         if desired_format == 'application/xls':
+        #         if desired_format == 'application/xls':
         manual_field_includes.add('structure_image')
         if desired_format == 'chemical/x-mdl-sdfile':
             manual_field_includes.add('molfile')
@@ -2147,7 +2784,6 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
                 or field['key'] in filter_fields 
                 or field['key'] in manual_field_includes )}
         field_hash = OrderedDict(sorted(temp.iteritems(), key=lambda x: x[1]['ordinal'])) 
-#         logger.info(str(('field_hash', field_hash)))       
         
         sub_resource = self.get_reagent_resource(library)
         if hasattr(sub_resource, 'build_sqlalchemy_columns'):
@@ -2171,7 +2807,6 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
         stmt = select(columns.values()).\
             select_from(j).\
             where(_well.c.library_id == library.library_id) 
-#         logger.info(str(('initial stmt', str(stmt))))
 
         # perform ordering and filters     
         
@@ -2181,7 +2816,6 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
             _alias = Alias(stmt)
             stmt = select([text('*')]).select_from(_alias)
             stmt = stmt.order_by(*order_clauses)
-#         logger.info(str(('order stmt', str(stmt))))
         
         logger.info(str(('filter_expression', str(filter_expression))))
         if filter_expression is not None:
@@ -2190,20 +2824,22 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
                 stmt = select([text('*')]).select_from(_alias)
             stmt = stmt.where(filter_expression)
 
-#         logger.info(str(('filter stmt', str(stmt))))
-
         # need the count
+        # TODO: select (and join) only the columns that are being shown
         if filter_fields is not None:
             count_fields = [field for field in schema['fields'].values() 
                 if field['key'] in filter_fields ]
+            logger.info(str(('filter_fields', filter_fields, 'count_fields', count_fields)))
             count_columns = self.build_sqlalchemy_columns(count_fields, base_query_tables)
+            logger.info(str(('count_columns', count_columns)))
             if count_columns:
-                count_stmt = select(columns).\
+                count_stmt = select(count_columns.values()).\
                     select_from(j).\
                     where(_well.c.library_id == library.library_id) 
                 _alias = Alias(count_stmt)
                 count_stmt = select([text('*')]).select_from(_alias)
-                count_stmt = stmt.where(filter_expression)
+                count_stmt = count_stmt.where(filter_expression)
+                logger.info(str(('count_stmt',str(count_stmt))))
             else:
                 logger.error('no count columns')
         else:
@@ -2814,7 +3450,7 @@ class LibraryResource(ManagedModelResource):
         return self.reagent_resource
     
     def prepend_urls(self):
-        
+
         return [
             # override the parent "base_urls" so that we don't need to worry about schema again
             url(r"^(?P<resource_name>%s)/schema%s$" 
@@ -2837,10 +3473,20 @@ class LibraryResource(ManagedModelResource):
                 self.wrap_view('dispatch_librarycopyview'), 
                 name="api_dispatch_librarycopyview"),
             
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/librarycopies%s$" ) % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_librarycopiesview'), 
+                name="api_dispatch_librarycopiesview"),
+            
             url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
                  r"/plate%s$" ) % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_libraryplateview'), 
                 name="api_dispatch_libraryplateview"),
+            
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/librarycopyplates%s$" ) % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_librarycopyplatesview'), 
+                name="api_dispatch_librarycopyplatesview"),
             
             url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
                  r"/well%s$" ) % (self._meta.resource_name, trailing_slash()), 
@@ -2912,9 +3558,18 @@ class LibraryResource(ManagedModelResource):
         kwargs['library_short_name'] = kwargs.pop('short_name')
         return LibraryCopyResource().dispatch('list', request, **kwargs)    
  
+    def dispatch_librarycopiesview(self, request, **kwargs):
+        logger.info(str(('short_name',kwargs['short_name'])))
+        kwargs['library_short_name'] = kwargs.pop('short_name')
+        return LibraryCopiesResource().dispatch('list', request, **kwargs)    
+ 
     def dispatch_libraryplateview(self, request, **kwargs):
         kwargs['library_short_name'] = kwargs.pop('short_name')
-        return LibraryCopyPlateResource().dispatch('list', request, **kwargs)    
+        return LibraryCopyPlateResource().dispatch('list', request, **kwargs)   
+    
+    def dispatch_librarycopyplatesview(self, request, **kwargs): 
+        kwargs['library_short_name'] = kwargs.pop('short_name')
+        return LibraryCopyPlatesResource().dispatch('list', request, **kwargs)   
 
     def dispatch_library_wellview(self, request, **kwargs):
         kwargs['library_short_name'] = kwargs.pop('short_name')

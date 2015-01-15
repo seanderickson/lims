@@ -1,5 +1,9 @@
 # Useful dev commands:
 
+# run migration script for branch library1 using repo: seanderickson
+
+bash -x ./migration.sh library1 seanderickson migration.properties
+
 # Re-initialize the meta data for the site
 PYTHONPATH=. python reports/utils/db_init.py --input_dir=./reports/static/api_init/ -f ./reports/static/api_init/api_init_actions.csv -u http://localhost:8000/reports/api/v1 -U sde
 PYTHONPATH=. python reports/utils/db_init.py --input_dir=./db/static/api_init/ -f ./db/static/api_init/api_init_actions.csv -u http://localhost:8000/reports/api/v1 -U sde
@@ -17,6 +21,7 @@ PYTHONPATH=. python reports/utils/profile_decorator.py /tmp/unlimited_get_list-2
 ./manage.py test db.tests.LibraryResource --verbosity=2 --settings=lims.settings_testing
 
 # upload single meta data files
+# TODO: patching is not working ---
 curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/metahash/ --data-binary @db/static/api_init/metahash_fields_library.csv 
 
 curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/metahash/ --data-binary @reports/static/api_init/metahash_fields_apilog.csv

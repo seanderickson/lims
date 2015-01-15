@@ -854,7 +854,7 @@ class ManagedResource(LoggingMixin):
             scope = self.scope
         if scope not in ManagedResource.resource_registry:
             msg = str((
-                'resource for scope not found: ', scope, 
+                'resource for scope not found: ', scope, self._meta.resource_name,
                 'in resource registry',ManagedResource.resource_registry.keys(),
                 'possible cause: resource not entered in urls.py' ))
             logger.warn(msg)
@@ -1057,12 +1057,20 @@ class ManagedResource(LoggingMixin):
             
             schema['resource_definition'] = self._get_resource_def()
             
+            logger.info(str(('content_types1', self._meta.resource_name, 
+                schema['resource_definition']['content_types'])))
+            
             # TODO: -could- get the schema from the supertype resource
             supertype = schema['resource_definition'].get('supertype', '')
+            logger.info(str(('supertype',supertype)))
             if supertype:
                 supertype_fields = deepcopy(
                     MetaHash.objects.get_and_parse(
-                        scope=self.scope, field_definition_scope='fields.metahash'))
+                        scope='fields.' + supertype, field_definition_scope='fields.metahash'))
+#                 supertype_fields = deepcopy(
+#                     MetaHash.objects.get_and_parse(
+#                         scope=self.scope, field_definition_scope='fields.metahash'))
+                logger.info(str(('supertype_fields',supertype_fields.keys())))
                 supertype_fields.update(schema['fields'])
                 schema['fields'] = supertype_fields
             
@@ -1082,8 +1090,9 @@ class ManagedResource(LoggingMixin):
                     msg = str(e.response)
                 logger.warn(str(('on build_schema()', self._meta.resource_name, 
                     msg, exc_type, fname, exc_tb.tb_lineno)))
-                #                 raise e
-            logger.info(str(('build_schema: resource information not available',self._meta.resource_name, e)))
+                    #                 raise e
+            logger.info(str(('build_schema: resource information not available',
+                self._meta.resource_name, e)))
 
         
         logger.debug('------build_schema,done: ' + self.scope ) 
@@ -1334,7 +1343,7 @@ class ManagedResource(LoggingMixin):
     
     def _handle_500(self, request, exception):
         logger.error(str(('handle_500 error', self._meta.resource_name, str(exception))))
-        return super(ManagedResource, self)._handle_500(request, exception)
+        return super(ManagedResource, self)._handle_500(request, str((type(exception), str((exception)))) )
         
     # override
     def detail_uri_kwargs(self, bundle_or_obj):
@@ -1454,6 +1463,10 @@ class ManagedResource(LoggingMixin):
         uri = super(ManagedResource, self).get_resource_uri(
             bundle_or_obj=bundle_or_obj, url_name=url_name)
         return uri
+
+#     def base_urls(self):
+#         ''' Override base urls to make sure that schema is always matched
+#         '''
         
     # implementation hook - URLS to match _before_ the default URLS
     # used here to allow the natural keys [scope, key] to be used
@@ -1812,12 +1825,14 @@ class ResourceResource(ManagedModelResource):
         bundle = super(ResourceResource,self).dehydrate(bundle)
         # Get the schema
         # FIXME: why is the resource registry keyed off of "field."+key ?
-        resource = ManagedResource.resource_registry['fields.'+bundle.obj.key]
-        if resource:
-            bundle.data['schema'] = resource.build_schema();
+        if ManagedResource.resource_registry.get('fields.'+bundle.obj.key, None):
+            resource = ManagedResource.resource_registry['fields.'+bundle.obj.key]
+            schema = resource.build_schema();
+            bundle.data.update(schema['resource_definition'])
+            bundle.data['schema'] = schema;
         else:
             logger.error('no API resource found in the registry for ' + 
-                         bundle.data['key'] + 
+                         'fields.'+bundle.obj.key + 
                          '.  Cannot build the schema for this resource.' )
         return bundle
         
@@ -1854,11 +1869,21 @@ class ResourceResource(ManagedModelResource):
         in case, new json fields are defined,or in case ordering,filtering 
         groups are updated
         '''
-        bundle = super(ResourceResource, self).obj_create(bundle, **kwargs);
-        if getattr(bundle.obj,'scope').find('fields') == 0: #'fields.metahash':
-            self.reset_field_defs(getattr(bundle.obj,'scope'))
-        return bundle
-
+        try:
+            bundle = super(ResourceResource, self).obj_create(bundle, **kwargs);
+            if getattr(bundle.obj,'scope').find('fields') == 0: #'fields.metahash':
+                self.reset_field_defs(getattr(bundle.obj,'scope'))
+            return bundle
+        except Exception, e:
+            extype, ex, tb = sys.exc_info()
+            msg = str(e)
+            if isinstance(e, ImmediateHttpResponse):
+                msg = str(e.response)
+            logger.warn(str((
+                'throw', e, msg, tb.tb_frame.f_code.co_filename, 'error line', 
+                tb.tb_lineno, extype, ex)))
+            raise e
+        
     def obj_update(self, bundle, **kwargs):
         bundle = super(ResourceResource, self).obj_update(bundle, **kwargs);
         self.reset_field_defs(getattr(bundle.obj,'scope'))

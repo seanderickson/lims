@@ -444,17 +444,17 @@ function code_bootstrap {
 
 echo "start migration: $(ts) ..."
 
-#main "$@"
+main "$@"
 
 maybe_activate_virtualenv
 #  django_syncdb
 
 #  premigratedb  
 
-  bootstrap
+#  bootstrap
   
   # the later migrations require the bootstrapped data
-  migratedb
+#  migratedb
 
 
 #bootstrap

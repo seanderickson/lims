@@ -534,13 +534,19 @@ define(['jquery', 'underscore', 'backbone', 'backgrid',
               var backgridCellType = 'string';
               if (!_.isEmpty(prop['backgrid_cell_type'])) {
                   backgridCellType = prop['backgrid_cell_type'];
+                  cell_options = prop['backgrid_cell_options'];
+                  
                   try {
-                      //                            console.log('look for ' +
-                      // key + ', ' + prop['backgrid_cell_type']);
                       var klass = Iccbl.stringToFunction(prop['backgrid_cell_type']);
                       if (!_.isUndefined(klass)) {
                           console.log('----- class found: ' + prop['backgrid_cell_type']);
                           backgridCellType = klass;
+                          _options = JSON.parse(cell_options);
+                          if(!_.isUndefined(_options)){
+                            var _specialized_cell = klass.extend(_options);
+                            console.log('instance: ' + _specialized_cell + ', ' + _options);
+                            backgridCellType = _specialized_cell;
+                          }
                       }
                   } catch(ex) {
                       var msg = ('----for: field: ' + key + 
@@ -688,8 +694,6 @@ define(['jquery', 'underscore', 'backbone', 'backgrid',
     },
         
   });
-
-
   
   var EditCell = Iccbl.EditCell = Backgrid.Cell.extend({
       className : "detail-cell",
@@ -725,6 +729,234 @@ define(['jquery', 'underscore', 'backbone', 'backgrid',
           }
       },
   });
+  
+  
+  
+  var NumberFormatter = Backgrid.NumberFormatter;
+  var NumberCell = Backgrid.NumberCell;
+
+  var DecimalFormatter = Iccbl.DecimalFormatter = function () {
+    Backgrid.NumberFormatter.apply(this, arguments);
+   };
+   
+   DecimalFormatter.prototype = new Backgrid.NumberFormatter(),
+   
+   _.extend(DecimalFormatter.prototype, {
+   
+     fromRaw: function (number, model) {
+       var args = [].slice.call(arguments, 1);
+       if(_.isUndefined(number)){
+         return '';
+       }
+       if(_.isNull(number)){
+         return '';
+       }
+       if(!_.isNumber(number)){
+         try{
+           number = parseFloat(number);
+         }catch(e){
+           console.log('not a number: ' + number + ', ex:' + e);
+           return number;
+         }
+       }
+       
+       args.unshift(number);
+       return (NumberFormatter.prototype.fromRaw.apply(this, args) || "0");
+     }     
+   });  
+
+  /**
+  A number formatter that converts a floating point number, optionally
+  multiplied by a multiplier, to a units string and vice versa.
+
+  @class Backgrid.UnitsFormatter
+  @extends Backgrid.NumberFormatter
+  @constructor
+  @throws {RangeError} If decimals < 0 or > 20.
+  */
+  var SciUnitsFormatter = Backgrid.SciUnitsFormatter = function () {
+   Backgrid.NumberFormatter.apply(this, arguments);
+  };
+  
+  SciUnitsFormatter.prototype = new Backgrid.NumberFormatter(),
+  
+  _.extend(SciUnitsFormatter.prototype, {
+  
+   /**
+      @member Backgrid.UnitsFormatter
+      @cfg {Object} options
+  
+      @cfg {number} [options.multiplier=1] The number used to multiply the model
+      value for display.
+  
+      @cfg {string} [options.symbol='%'] The symbol to append to the Unitsage
+      string.
+    */
+   defaults: _.extend({}, NumberFormatter.prototype.defaults, {
+     sciunits: [
+                ['G', 1e9],
+                ['M', 1e6],
+                ['k', 1e3],
+                ['', 1],
+                ['m', 1e-3,],
+                ['μ', 1e-6,],
+                ['n', 1e-9 ],
+                ['p', 1e-12 ]
+                ],
+     multiplier: 1
+   }),
+  
+   /**
+      Takes a floating point number, where the number is first multiplied by
+      `multiplier`, then converted to a formatted string like
+      NumberFormatter#fromRaw, then finally append `symbol` to the end.
+  
+      @member Backgrid.UnitsFormatter
+      @param {number} rawValue
+      @param {Backbone.Model} model Used for more complicated formatting
+      @return {string}
+   */
+   fromRaw: function (number, model) {
+//       console.log('process: ' + number + ', ' +this.multiplier 
+//           + ', ' +  this.symbol + ', ' + this.decimals );
+       return this.getUnit(number, this.multiplier, this.symbol, this.decimals);
+   },
+
+   getUnit: function(number, multiplier, symbol, decimals) {
+       
+       if(_.isUndefined(number)){
+         return '';
+       }
+       if(_.isNull(number)){
+         return '';
+       }
+       if(!_.isNumber(number)){
+         try{
+           number = parseFloat(number);
+         }catch(e){
+           console.log('not a number: ' + number + ', ex:' + e);
+           return number;
+         }
+       }
+       if(number == 0 ) return number;
+
+       if(_.isNumber(multiplier) && multiplier > 1){
+         number = number * multiplier;
+       }
+//       console.log('m number: ' + number);
+       
+       
+//       console.log('find units: ' + number);
+       
+       pair = _.find(this.sciunits, function(pair){
+         return pair[1] <= Math.abs(number); 
+       });
+       
+       if(_.isUndefined(pair)){
+         console.log('could not find units for the input number: ' + number);
+         return number;
+       }
+       
+       var val = (1/pair[1])*number;
+       val = Math.round(val*Math.pow(10,decimals))/Math.pow(10,decimals);
+//       console.log('val :'+ val);
+       return '' + val + ' ' + pair[0] + symbol;
+   },
+   
+   /**
+    * TODO: implement
+      Takes a string, possibly appended with `symbol` and/or `decimalSeparator`,
+      and convert it back to a number for the model like NumberFormatter#toRaw,
+      and then dividing it by `multiplier`.
+  
+      @member Backgrid.UnitsFormatter
+      @param {string} formattedData
+      @param {Backbone.Model} model Used for more complicated formatting
+      @return {number|undefined} Undefined if the string cannot be converted to
+      a number.
+   */
+   toRaw: function (formattedValue, model) {
+     var tokens = formattedValue.split(this.symbol);
+     if (tokens && tokens[0] && tokens[1] === "" || tokens[1] == null) {
+       var rawValue = NumberFormatter.prototype.toRaw.call(this, tokens[0]);
+       if (_.isUndefined(rawValue)) return rawValue;
+       return rawValue / this.multiplier;
+     }
+   },
+   
+  });  
+  
+  /**
+  A DecimalCell is another Backgrid.NumberCell that takes a floating number,
+  and showing a decimals number of digits.
+  
+  @class Backgrid.SciUnitsCell
+  @extends Backgrid.NumberCell
+  */
+  var DecimalCell = Iccbl.DecimalCell = NumberCell.extend({
+    
+    /** @property */
+    className: "decimal-cell",
+
+    /** @property {Backgrid.CellFormatter} [formatter=Backgrid.NumberFormatter] */
+    formatter: DecimalFormatter,
+   
+    /**
+       Initializes this cell and the Units formatter.
+   
+       @param {Object} options
+       @param {Backbone.Model} options.model
+       @param {Backgrid.Column} options.column
+    */
+    initialize: function () {
+      DecimalCell.__super__.initialize.apply(this, arguments);
+      var formatter = this.formatter;
+      formatter.decimals = this.decimals;
+    }
+   
+   });  
+
+  
+  
+  /**
+  A SciUnitsCell is another Backgrid.NumberCell that takes a floating number,
+  optionally multiplied by a multiplier, 
+  showing a decimals number of digits, 
+  and displayed with a units symbol.
+
+  @class Backgrid.SciUnitsCell
+  @extends Backgrid.NumberCell
+  */
+  var SciUnitsCell = Iccbl.SciUnitsCell = NumberCell.extend({
+  
+   /** @property */
+   className: "units-cell",
+  
+   /** @property {number} [multiplier=1] */
+   multiplier: SciUnitsFormatter.prototype.defaults.multiplier,
+  
+   /** @property {string} [symbol='%'] */
+   symbol: SciUnitsFormatter.prototype.defaults.symbol,
+  
+   /** @property {Backgrid.CellFormatter} [formatter=Backgrid.UnitsFormatter] */
+   formatter: SciUnitsFormatter,
+  
+   /**
+      Initializes this cell and the Units formatter.
+  
+      @param {Object} options
+      @param {Backbone.Model} options.model
+      @param {Backgrid.Column} options.column
+   */
+   initialize: function () {
+     SciUnitsCell.__super__.initialize.apply(this, arguments);
+     var formatter = this.formatter;
+     formatter.multiplier = this.multiplier;
+     formatter.decimals = this.decimals;
+     formatter.symbol = this.symbol;
+   }
+  
+  });  
 
   /**
    * uses the options.attributes.label
@@ -831,7 +1063,7 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
         // FIXME: better global error handling
         console.log('error thrown' + e);
         // FIXME: why is the ajaxStop handler in main.js not being called anyway?
-        $('#loading').fadeOut({duration:100});
+//        $('#loading').fadeOut({duration:100});
       }
     }
   },
@@ -874,7 +1106,15 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
   }
 });
 
-var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
+//var MyCollection = Iccbl.MyCollection = function () {
+//  Backbone.PageableCollection.apply(this, arguments);
+// };
+// MyCollection.prototype = new Backbone.PageableCollection(),
+// 
+// _.extend(MyCollection.prototype, {
+
+
+ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
 
   initialize : function(options) {
     var self = this;
@@ -958,6 +1198,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     var searchHash = _.clone(searchHash);
     
     // Tell all the header cells
+    // TODO: test further - REMOVED 20150113
     this.trigger("MyServerSideFilter:search", searchHash, this);
 
     // Allow searches that aren't for a visible column:
@@ -998,7 +1239,8 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
       // 
       //      self.fetch({data:_.clone(_data), reset: true});
     }else{
-      self.fetch();
+// TODO: test further, part of the double network hit on search - REMOVED 20150113
+//      self.fetch();
     }
   },
 
@@ -1147,18 +1389,19 @@ var MyServerSideFilter =
       
     	if (e) e.preventDefault();
 
-      var data = {};
-      var query = this.searchBox().val();
-      if (query) data[this.name] = query;
-
-      var collection = this.collection;
-      // We're overriding this behaviour:
-  		//        // go back to the first page on search
-  		//        if (Backbone.PageableCollection &&
-  		//            collection instanceof Backbone.PageableCollection) {
-  		//          collection.getFirstPage({data: data, reset: true, fetch: true});
-  		//        }
-      collection.fetch({data: data, reset: true});
+    	// REMOVED 20150113
+      //      var data = {};
+      //      var query = this.searchBox().val();
+      //      if (query) data[this.name] = query;
+      //
+      //      var collection = this.collection;
+      //      // We're overriding this behaviour:
+      //  		//        // go back to the first page on search
+      //  		//        if (Backbone.PageableCollection &&
+      //  		//            collection instanceof Backbone.PageableCollection) {
+      //  		//          collection.getFirstPage({data: data, reset: true, fetch: true});
+      //  		//        }
+      //      collection.fetch({data: data, reset: true});
       
       this.showClearButtonMaybe();
     },
@@ -1231,10 +1474,10 @@ var MyHeaderCell = Iccbl.MyHeaderCell = Backgrid.HeaderCell.extend({
         var fieldname = order_entry;
         if(dir == '-'){
           fieldname = order_entry.substring(1);
-          direction = 'ascending';
+          direction = 'descending';
         }else{
           dir = '';
-          direction = 'descending';
+          direction = 'ascending';
         }
         if(fieldname == name){
           self.$el.removeClass("ascending").removeClass("descending");
@@ -1295,11 +1538,92 @@ var MyHeaderCell = Iccbl.MyHeaderCell = Backgrid.HeaderCell.extend({
         }
     },
 
+    
+    renderOriginal: function () {
+      this.$el.empty();
+      var column = this.column;
+      var sortable = Backgrid.callByNeed(column.sortable(), column, this.collection);
+      var label;
+      if(sortable){
+        label = $("<a>").text(column.get("label")).append("<b class='sort-caret'></b>");
+      } else {
+        label = document.createTextNode(column.get("label"));
+      }
+
+      this.$el.append(label);
+      this.$el.addClass(column.get("name"));
+      this.$el.addClass(column.get("direction"));
+      this.delegateEvents();
+      return this;
+    },    
+    
     /**
      * Renders a header cell with a sorter and a label.
      */
     render : function() {
-        Backgrid.HeaderCell.prototype.render.apply(this);
+        
+        //        Backgrid.HeaderCell.prototype.render.apply(this);
+        this.$el.empty();
+        var column = this.column;
+        var sortable = Backgrid.callByNeed(column.sortable(), column, this.collection);
+        var label = '';
+
+        var labelParts = column.get("label");
+        labelParts = labelParts.split(/\W/);
+        
+        var line = '';
+        _.each(labelParts, function(part){
+          if(line.length > 0){
+            if(line.length+part.length < 10){
+              line += ' ' + part;
+            }else{
+              if(label.length > 0){
+                label += "<br>" + line;
+                line = part;
+              }else{
+                label = line;
+                line = part;
+              }
+            }
+          }else{
+            line += part;
+          }
+        });
+        
+        if(label.length > 0) {
+          label += '<br>' + line;
+        }else{
+          label = line;
+        }
+        
+        
+//        var line = '';
+//        var label = '';
+//        _.each(labelParts, function(part){
+//          console.log('part'+part);
+//          if( (line.length+part.length) < 20 ){
+//            line += ' ' + part;
+//          }else{
+//            if(label.length > 0){
+//              label += '<br>' + line;
+//              line = part;
+//            }else{
+//              label = line;
+//            }
+//          }
+//        });
+//        label += '<br/>' + line;
+
+        if(sortable){
+          label = $("<a>" + label +"</a>").append("<div id='sorter'></div>");
+        } else {
+          label = document.createTextNode(label);
+        }
+        this.$el.append(label);
+        this.$el.addClass(column.get("name"));
+        this.$el.addClass(column.get("direction"));
+        this.delegateEvents();
+        
         var _handle = this;
         var filterIcon = $('<span class="glyphicon glyphicon-search"></span>');
         filterIcon.click(function(e) {
@@ -1309,16 +1633,6 @@ var MyHeaderCell = Iccbl.MyHeaderCell = Backgrid.HeaderCell.extend({
 
         this.$el.prop('title', 
         			  this.options['column']['attributes']["description"]);
-        
-        // modify the sorting to use our badge-sort multisort 
-        var column = this.column;
-        var sortable = Backgrid.callByNeed(column.sortable(), column, this.collection);
-        if(sortable){
-          var sort = this.$el.find(".sort-caret");
-          var parent = sort.parent();
-          sort.remove();
-          parent.append("<div id='sorter'></div>");
-        }
         
         return this;
     }

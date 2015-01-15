@@ -17,15 +17,15 @@ define([
 //  // see https://github.com/wyuenho/backbone-pageable/issues/62
 //  Backbone.PageableCollection = BackbonePageableCollection;
 
-  var ajaxStart = function(){
-      $('#loading').fadeIn({duration:100});
-  };
-  var ajaxComplete = function(){
-      $('#loading').fadeOut({duration:100});
-  };
-  $(document).bind("ajaxComplete", function(){
-      ajaxComplete(); // TODO: bind this closer to the collection
-  });
+//  var ajaxStart = function(){
+//      $('#loading').fadeIn({duration:100});
+//  };
+//  var ajaxComplete = function(){
+//      $('#loading').fadeOut({duration:100});
+//  };
+//  $(document).bind("ajaxComplete", function(){
+//      ajaxComplete(); // TODO: bind this closer to the collection
+//  });
 
   var ListView = Backbone.Layout.extend({
     LIST_ROUTE_ORDER: ['rpp', 'page','order','search'],
@@ -111,9 +111,9 @@ define([
           });        
         
         // TODO: work out the specifics of communication complete event
-        this.listenTo(self.collection, 'request', ajaxStart);
-        this.listenTo(self.collection, 'error', ajaxComplete);
-        this.listenTo(self.collection, 'complete', ajaxComplete);
+//        this.listenTo(self.collection, 'request', ajaxStart);
+//        this.listenTo(self.collection, 'error', ajaxComplete);
+//        this.listenTo(self.collection, 'complete', ajaxComplete);
 
         console.log('list view initialized');
     },

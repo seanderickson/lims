@@ -101,12 +101,29 @@ requirejs(['require-config'],
     _.extend(menu_resource['submenus'], JSON.parse(reports_menu_raw)['submenus']);
     appModel.set('menu', menu_resource);
 
+    var loadCount = 0
     $(document).bind("ajaxSend", function(){
       $('#loading').fadeIn({duration:100});
+      loadCount++;
+      console.log('add to loadCount: ' + loadCount );
     }).bind("ajaxComplete", function(){
-      $('#loading').fadeOut({duration:100});
+      loadCount--;
+      if (loadCount == 0 ){
+        console.log('loadCount: ' + loadCount );
+        $('#loading').fadeOut({duration:100});
+      }else{
+        $('#loading').show();
+        console.log('loadCount: ' + loadCount );
+      }
     }).bind("ajaxStop"), function(){
-      $('#loading').fadeOut({duration:100});
+      loadCount--;
+      if (loadCount == 0 ){
+        console.log('loadCount: ' + loadCount );
+        $('#loading').fadeOut({duration:100});
+      }else{
+        $('#loading').show();
+        console.log('loadCount: ' + loadCount );
+      }
     };
     
     var appRouter = appModel.router = new AppRouter({ model: appModel });

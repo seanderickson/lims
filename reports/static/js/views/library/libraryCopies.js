@@ -45,8 +45,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var uriStack = this.uriStack;
       var library = this.library;
 
-      var url = library.resource.apiUri +'/' + library.key + '/copy/'
-      var libraryCopyResourceId = 'librarycopy';
+//      var url = library.resource.apiUri +'/' + library.key + '/copy/'
+      var url = library.resource.apiUri +'/' + library.key + '/librarycopies/'
+      var libraryCopyResourceId = 'librarycopies';
       var libraryCopyResource = appModel.getResource(libraryCopyResourceId);
 
       // Test for list args, if not found, then it's a detail view

@@ -19,12 +19,12 @@ define([
   var ajaxStart = function(){
       $('#loading').fadeIn({duration:100});
   };
-  var ajaxComplete = function(){
-      $('#loading').fadeOut({duration:100});
-  };
-  $(document).bind("ajaxComplete", function(){
-      ajaxComplete(); // TODO: bind this closer to the collection
-  });
+//  var ajaxComplete = function(){
+//      $('#loading').fadeOut({duration:100});
+//  };
+//  $(document).bind("ajaxComplete", function(){
+//      ajaxComplete(); // TODO: bind this closer to the collection
+//  });
 
   var ListView = Backbone.View.extend({
 
@@ -360,8 +360,8 @@ define([
 
       // TODO: work out the specifics of communication complete event.  
       // the following are superceded by the global handler for "ajaxComplete"
-      this.listenTo(self.collection, 'error', ajaxComplete);
-      this.listenTo(self.collection, 'complete', ajaxComplete);
+//      this.listenTo(self.collection, 'error', ajaxComplete);
+//      this.listenTo(self.collection, 'complete', ajaxComplete);
       console.log('list view initialized');
     },
 

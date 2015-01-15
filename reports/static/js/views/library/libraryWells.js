@@ -53,7 +53,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var url = reagents_url;
       
       var setupFunction = function(resource){
-        console.log('setupFunction: ' + JSON.stringify(resource));
         // Test for list args, if not found, then it's a detail view
         if (!_.isEmpty(uriStack) && !_.isEmpty(uriStack[0]) &&
                 !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {

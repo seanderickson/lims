@@ -16,15 +16,15 @@ define([
       Iccbl, appModel, genericSelector,
       rowsPerPageTemplate, listTemplate, modalTemplate) {
 
-  var ajaxStart = function(){
-      $('#loading').fadeIn({duration:100});
-  };
-  var ajaxComplete = function(){
-      $('#loading').fadeOut({duration:100});
-  };
-  $(document).bind("ajaxComplete", function(){
-      ajaxComplete(); 
-  });
+//  var ajaxStart = function(){
+//      $('#loading').fadeIn({duration:100});
+//  };
+//  var ajaxComplete = function(){
+//      $('#loading').fadeOut({duration:100});
+//  };
+//  $(document).bind("ajaxComplete", function(){
+//      ajaxComplete(); 
+//  });
 
   var ListView = Backbone.View.extend({
     LIST_ROUTE_ORDER: ['rpp', 'page','order','search'],
@@ -530,12 +530,12 @@ define([
       //collection.on('request', ajaxStart); // NOTE: can use bind or on
       //collection.bind('sync', ajaxComplete, this);
 
-      this.listenTo(self.collection, 'request', ajaxStart);
+//      this.listenTo(self.collection, 'request', ajaxStart);
 
       // TODO: work out the specifics of communication complete event.  
       // the following are superceded by the global handler for "ajaxComplete"
-      this.listenTo(self.collection, 'error', ajaxComplete);
-      this.listenTo(self.collection, 'complete', ajaxComplete);
+//      this.listenTo(self.collection, 'error', ajaxComplete);
+//      this.listenTo(self.collection, 'complete', ajaxComplete);
       console.log('list view initialized');
     },
 
@@ -608,6 +608,11 @@ define([
 
       var orderStack = self.listModel.get('order') || [];
       self.collection.state.orderStack = _.clone(orderStack);
+      // TODO: test further: added 20150114
+      if(!_.isEmpty(orderStack)){
+        self.collection.setSorting();
+        //        fetched = true;
+      }
 
       this.listenTo(self.collection, 'sync', function(event){
         var msg = ''; 

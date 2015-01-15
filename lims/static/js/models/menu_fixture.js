@@ -13,6 +13,12 @@
         }
       }
     },
+    "librarycopies": {
+      "view": "list"
+    },
+    "librarycopyplates": {
+      "view": "list"
+    },
     "screensaveruser": {
       "expanded": false,
       "view": "list",

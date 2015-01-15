@@ -287,7 +287,7 @@ function migratedb {
 function bootstrap {
   echo "Bootstrapping the web server: $(ts) ...">> "$LOGFILE"
   
-  BOOTSTRAP_PORT={BOOTSTRAP_PORT:-55999}
+  BOOTSTRAP_PORT=${BOOTSTRAP_PORT:-55999}
   
   echo "run a local dev server on port $BOOTSTRAP_PORT..."
   nohup $DJANGO_CMD runserver --settings=lims.migration-settings --nothreading --noreload $BOOTSTRAP_PORT  &
@@ -444,7 +444,7 @@ function code_bootstrap {
 
 echo "start migration: $(ts) ..."
 
-main "$@"
+#main "$@"
 
 maybe_activate_virtualenv
 #  django_syncdb
@@ -457,7 +457,7 @@ maybe_activate_virtualenv
 #  migratedb
 
 
-#bootstrap
+bootstrap
 #migratedb
 
 # restoredb

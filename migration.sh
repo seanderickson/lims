@@ -444,9 +444,9 @@ function code_bootstrap {
 
 echo "start migration: $(ts) ..."
 
-#main "$@"
+main "$@"
 
-maybe_activate_virtualenv
+#maybe_activate_virtualenv
 #  django_syncdb
 
 #  premigratedb  
@@ -457,7 +457,7 @@ maybe_activate_virtualenv
 #  migratedb
 
 
-bootstrap
+#bootstrap
 #migratedb
 
 # restoredb

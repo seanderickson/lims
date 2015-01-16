@@ -28,23 +28,24 @@ insert into copy_well
     join library l on(c.library_id=l.library_id) 
     order by w.well_id;
 
-with plate_volume as (
-    select 
-    p.copy_id, p.plate_id, 
+create temp table plate_volume as (
+    select
+    p.copy_id, p.plate_id,
     p.well_volume - sum(la.volume_transferred_per_well_from_library_plates) as plate_remaining_volume
     from plate p
     join copy c using(copy_id)
-    left join assay_plate ap using(plate_id) 
-    left join screening ls on(ls.activity_id = ap.library_screening_id) 
-    left join lab_activity la using(activity_id) 
-    where ap.replicate_ordinal = 0 
-    group by p.plate_id, p.copy_id, p.well_volume order by p.plate_id, copy_id )
-update copy_well as cw
+    left join assay_plate ap using(plate_id)
+    left join screening ls on(ls.activity_id = ap.library_screening_id)
+    left join lab_activity la using(activity_id)
+    where ap.replicate_ordinal = 0
+    group by p.plate_id, p.copy_id, p.well_volume order by p.plate_id, copy_id );
+
+update copy_well
 set volume = pv.plate_remaining_volume
 from plate_volume as pv
-where pv.copy_id = cw.copy_id and pv.plate_id=cw.plate_id;
+where pv.copy_id = copy_well.copy_id and pv.plate_id=copy_well.plate_id;
 
-with well_volume_adjustments as (
+create temp table well_volume_adjustments as (
     select 
     c.copy_id,
     w.well_id,
@@ -57,7 +58,8 @@ with well_volume_adjustments as (
     well_volume_adjustment wva
     where wva.copy_id=c.copy_id and wva.well_id = w.well_id
     group by c.copy_id, w.well_id, p.well_volume
-    order by w.well_id)
+    order by w.well_id);
+
 update copy_well as cw
 set volume = wva.well_remaining_volume
 from well_volume_adjustments as wva
@@ -89,25 +91,28 @@ and volume is null;
 
 **/
 
-with plate_volume as (
+
+create temp table plate_volume2 as (
   select
   cw.plate_id,
   avg(cw.volume) avg_remaining_volume,
   min(cw.volume) min_remaining_volume,
   max(cw.volume) max_remaining_volume
   from copy_well cw
-  group by cw.plate_id )
+  group by cw.plate_id );
+
 update plate set 
 avg_remaining_volume = pv.avg_remaining_volume, 
 min_remaining_volume = pv.min_remaining_volume, 
 max_remaining_volume = pv.max_remaining_volume
-from plate_volume pv 
+from plate_volume2 pv 
 where plate.plate_id = pv.plate_id;
+
 
 /** update plate set remaining_volume = well_volume where remaining_volume is null;
 **/
 
-with plate_screening_count as (
+create temp table plate_screening_count as (
   select 
   p.plate_id, 
   p.plate_number, 
@@ -117,7 +122,8 @@ with plate_screening_count as (
   join library_screening ls on(ap.library_screening_id=ls.activity_id) 
   where ap.replicate_ordinal=0 
   group by p.plate_id, p.plate_number 
-  order by plate_id )
+  order by plate_id );
+
 update plate as p 
 set screening_count = psc.count
 from plate_screening_count psc 
@@ -206,7 +212,7 @@ insert into plate_screening_statistics
       from activity a 
       join administrative_activity using(activity_id) ) srdl 
     on(screen_result_data_loading_id=srdl.activity_id)  
-    group by p.plate_id, c.copy_id, c.name, l.library_id, l.short_name );
+    group by p.plate_id, p.plate_number, c.copy_id, c.name, l.library_id, l.short_name );
 
 
 

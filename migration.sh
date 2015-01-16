@@ -377,8 +377,9 @@ function main {
 
   if [[ -n "$SETTINGS_FILE" ]]; then
     cp $SETTINGS_FILE lims/settings.py
-  else  
-    cp lims/settings-dist.py lims/settings.py
+  else
+    echo "no SETTINGS_FILE migration.properties setting"
+    # cp lims/settings-dist.py lims/settings.py
   fi
   
   mkdir logs

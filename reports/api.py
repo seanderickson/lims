@@ -1828,7 +1828,10 @@ class ResourceResource(ManagedModelResource):
         if ManagedResource.resource_registry.get('fields.'+bundle.obj.key, None):
             resource = ManagedResource.resource_registry['fields.'+bundle.obj.key]
             schema = resource.build_schema();
-            bundle.data.update(schema['resource_definition'])
+#             if 'resource_definition' in schema:
+#                 bundle.data.update(schema['resource_definition'])
+#             else:
+#                 logger.info('resource_definition is not available')
             bundle.data['schema'] = schema;
         else:
             logger.error('no API resource found in the registry for ' + 

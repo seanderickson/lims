@@ -401,7 +401,7 @@ function main {
   migratedb
   
   if [[ $IS_DEV_SERVER -ne 1 ]]; then
-    tail -400 migration.log | mail sean.erickson.hms@gmail.com -s "Migration completed $(ts)"
+    tail -400 migration.log | mail -s "Migration completed $(ts)" sean.erickson.hms@gmail.com
   fi  
   # put this here to see if LSF will start reporting results
   exit 0

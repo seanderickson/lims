@@ -2654,7 +2654,8 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
             c2 = copy_volume_statistics.alias('c2')
             c3 = copy_screening_statistics.alias('c3')
     
-            j = join(_c, c1, _c.c.copy_id == text('c1.copy_id'), isouter=True)
+            j = join(_c, _l, _c.c.library_id == _l.c.library_id)
+            j = j.outerjoin(c1, _c.c.copy_id == text('c1.copy_id'))
             j = j.outerjoin(c2,text('c1.copy_id = c2.copy_id') )
             j = j.outerjoin(c3, text('c1.copy_id = c3.copy_id') )
     

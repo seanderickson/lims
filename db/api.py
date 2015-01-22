@@ -2776,10 +2776,10 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
             self.build_sqlalchemy_filters(schema, request, **kwargs)
 
         # get manual field includes from kwargs
-        includes = request.GET.get('includes', None)
+        includes = request.GET.getlist('includes', None)
         logger.info(str(('includes', includes)))
         if includes:
-            manual_field_includes = set(includes.split(LIST_DELIMITER_URL_PARAM))
+            manual_field_includes = set(includes)
         else:    
             manual_field_includes = set()
         logger.info(str(('manual_field_includes', manual_field_includes)))
@@ -2796,6 +2796,11 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
             if ((field.get('visibility', None) and 'list' in field['visibility']) 
                 or field['key'] in filter_fields 
                 or field['key'] in manual_field_includes )}
+
+        # manual excludes
+        temp = { key:field for key,field in temp.items() 
+            if '-%s' % key not in manual_field_includes }
+        
         field_hash = OrderedDict(sorted(temp.iteritems(), key=lambda x: x[1]['ordinal'])) 
         
         sub_resource = self.get_reagent_resource(library)

@@ -195,7 +195,6 @@ define([
         columns = _options.columns;
       }
       
-      
       // ==== testing - images
       // FIXME: FOR SMR only - poc - 
       // first find the image field
@@ -663,7 +662,6 @@ define([
     select_columns: function(event){
       var self = this;
       var includes = self.listModel.get('includes') || [];
-      var formSchema = {};
       var altFieldTemplate =  _.template('\
               <div class="form-group" style="margin-bottom: 0px;" > \
                 <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
@@ -671,6 +669,8 @@ define([
                 </div>\
               </div>\
             ');
+
+      var formSchema = {};
       _.each(_.pairs(this._options.schemaResult.fields), function(pair){
         var prop = pair[1];
         var key = prop['key'];
@@ -694,7 +694,6 @@ define([
       _.each(_.pairs(this._options.schemaResult.fields), function(pair){
         var key = pair[1]['key'];
         var prop = pair[1];
-        
         if(key == 'resource_uri' || key == 'id') return;
         
         var _visible = (_.has(prop, 'visibility') && 
@@ -716,18 +715,42 @@ define([
       var form = new Backbone.Form({
           model: formFields,
           fields: orderedFieldKeys,
-          template: _.template("<form data-fieldsets class='form-horizontal container' ></form>")
+          template: _.template([
+            "<form data-fieldsets class='form-horizontal container' >",
+            "<div class='btn btn-default btn-sm ' id='select-all' >select all</div>",
+            "<div class='btn btn-default btn-sm ' id='clear-all' >clear all</div>",
+            "</form>"
+            ].join(''))
       });
+      
+      form.events = {
+        'click .btn#select-all': function(){
+          $("form input:checkbox").each(function(){
+            $(this).prop("checked",true);
+          });
+        },
+        'click .btn#clear-all': function(){
+          $("form input:checkbox").each(function(){
+            $(this).prop("checked",false);
+          });
+        }
+      };
 
       appModel.showModal({
         ok: function(){
           form.commit();
+          if(_.isUndefined(
+              _.find(formFields.values(),function(val){ return val==true; }))){
+            // TODO: display "nothing selected" error
+            console.log('error: nothing selected');
+            self.select_columns();
+            return;
+          }
+          
           var new_includes = [];
           console.log('formFields: ' + JSON.stringify(formFields.toJSON()));
           _.each(formFields.keys(), function(key){
             var value = formFields.get(key);
-            if(_.isUndefined(value)) throw Exception('could not find value for key:' + key );
-//            console.log('key: ' + key + ', value: ' + value );
             
             if(value && !already_visible[key] ){
               self.grid.insertColumn(

@@ -469,6 +469,8 @@ define([
       }else{
         var pendingFunction = this.get('pagePending');
         if(_.isFunction(pendingFunction)){
+          options.title = 'Please confirm';
+          options.body = "Pending changes in the page: continue anyway?";
           options.cancel = pendingFunction;
         }
         self.showModal(options);
@@ -478,23 +480,20 @@ define([
     /**
      * options.ok = ok function
      * options.cancel = cancel function
+     * options.body
+     * options.title
      */
     showModal: function(options){
       
       var self = this;
       var callbackOk = (options && options.ok)? options.ok : function(){};
       var callbackCancel = (options && options.cancel)? options.cancel: function(){};
-      var body = (options && options.body) ?
-          options.body : "Pending changes in the page: continue anyway?";
           
-      var title = (options && options.title) ?
-          options.title : 'Please confirm';
-      
       console.log('showModal: ' + options);
       var modalDialog = new Backbone.View({
           el: _.template(modalOkCancelTemplate, { 
-            body: body,
-            title: title } ),
+            body: options.body,
+            title: options.title } ),
           events: {
               'click #modal-cancel':function(event) {
                   console.log('cancel button click event, '); 
@@ -506,12 +505,15 @@ define([
                   console.log('ok button click event, '); 
                   event.preventDefault();
                   $('#modal').modal('hide');
-                  self.setPagePending(false);
+                  self.clearPagePending();
                   callbackOk();
               }
           },
       });
       modalDialog.render();
+      if(!_.isUndefined(options.view)){
+        modalDialog.$el.find('.modal-body').append(options.view.render().el);
+      }
       modalDialog.$el.find('#modal-cancel').html('Cancel and return to page');
       modalDialog.$el.find('#modal-ok').html('Continue');
       $('#modal').empty();
@@ -530,7 +532,7 @@ define([
   appState.apiVersion = API_VERSION;
   appState.reportsApiUri = REPORTS_API_URI;
   appState.dbApiUri = DB_API_URI;
-  appState.LIST_ARGS = ['page','rpp','order','search','log', 'children'];      
+  appState.LIST_ARGS = ['page','rpp','includes','order','search','log', 'children'];      
   
   
   return appState;

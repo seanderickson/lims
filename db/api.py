@@ -2312,10 +2312,10 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
             schema = super(LibraryCopyPlatesResource,self).build_schema()
         
             # FIXME: 20150114 - includes not being sent by UI
-            includes = request.GET.get('includes', None)
+            includes = request.GET.getlist('includes', None)
             logger.info(str(('includes', includes)))
             if includes:
-                manual_field_includes = set(includes.split(LIST_DELIMITER_URL_PARAM))
+                manual_field_includes = set(includes)
             else:    
                 manual_field_includes = set()
             logger.info(str(('manual_field_includes', manual_field_includes)))
@@ -2327,8 +2327,13 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
                 if ((field.get('visibility', None) and 'list' in field['visibility']) 
                     or field['key'] in filter_fields 
                     or field['key'] in manual_field_includes )}
+            # manual excludes
+            temp = { key:field for key,field in temp.items() 
+                if '-%s' % key not in manual_field_includes }
+            
             field_hash = OrderedDict(sorted(temp.iteritems(), key=lambda x: x[1]['ordinal'])) 
-    
+            logger.info(str(('field_hash final: ', field_hash.keys() )))
+            
             base_query_tables = ['plate', 'copy','plate_location', 'library']
             
             already_defined_columns={
@@ -2660,10 +2665,12 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
             schema = super(LibraryCopiesResource,self).build_schema()
     
             # FIXME: 20150114 - includes not being sent by UI
-            includes = request.GET.get('includes', None)
+            includes = request.GET.getlist('includes', None)
             logger.info(str(('includes', includes)))
             if includes:
-                manual_field_includes = set(includes.split(LIST_DELIMITER_URL_PARAM))
+                manual_field_includes = set(includes)
+#                 for include in includes:
+#                     manual_field_includes.add(include) #.split(LIST_DELIMITER_URL_PARAM))
             else:    
                 manual_field_includes = set()
             logger.info(str(('manual_field_includes', manual_field_includes)))
@@ -2675,6 +2682,11 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
                 if ((field.get('visibility', None) and 'list' in field['visibility']) 
                     or field['key'] in filter_fields 
                     or field['key'] in manual_field_includes )}
+            
+            # manual excludes
+            temp = { key:field for key,field in temp.items() 
+                if '-%s' % key not in manual_field_includes }
+            
             field_hash = OrderedDict(sorted(temp.iteritems(), key=lambda x: x[1]['ordinal'])) 
     
             base_query_tables = ['copy','library']

@@ -63,7 +63,7 @@ define([
       <div class="form-group"> \
             <label class="control-label col-sm-2" for="<%= editorId %>"><%= title %></label>\
             <div class="col-sm-10" >\
-              <div data-editor></span>\
+              <div data-editor/>\
               <div data-error class="text-danger" ></div>\
               <div><%= help %></div>\
             </div>\

@@ -8,7 +8,7 @@ function($, _, Backbone, appModel) {
 
   var AppRouter = Backbone.Router.extend({
 
-    LIST_ROUTE_ORDER: ['rpp', 'page','order','search'],
+//    LIST_ROUTE_ORDER: ['rpp', 'page','include', 'order','search'],
     
     initialize : function() {
       // send all routes to URIstack processing function

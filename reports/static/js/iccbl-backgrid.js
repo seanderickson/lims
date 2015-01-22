@@ -516,81 +516,103 @@ define(['jquery', 'underscore', 'backbone', 'backgrid',
    * @param {Object} options - a hash of { fieldKey: [custom cell: extend
    *    Backgrid.Cell] } to map custom cell implementations to fields
    */
+  var createBackgridColumn = Iccbl.createBackgridColumn = 
+    function(key, prop, optionalHeaderCell, _orderStack){
+    
+    var orderStack = _orderStack || [];
+    
+    var column = {};
+
+    var visible = _.has(prop, 'visibility') && 
+                      _.contains(prop['visibility'], 'list');
+    var backgridCellType = 'string';
+    if (!_.isEmpty(prop['backgrid_cell_type'])) {
+        backgridCellType = prop['backgrid_cell_type'];
+        cell_options = prop['backgrid_cell_options'];
+        
+        try {
+            var klass = Iccbl.stringToFunction(prop['backgrid_cell_type']);
+            if (!_.isUndefined(klass)) {
+                console.log('----- class found: ' + prop['backgrid_cell_type']);
+                backgridCellType = klass;
+                _options = JSON.parse(cell_options);
+                if(!_.isUndefined(_options)){
+                  var _specialized_cell = klass.extend(_options);
+//                  console.log('instance: ' + _specialized_cell + ', ' + _options);
+                  backgridCellType = _specialized_cell;
+                }
+            }
+        } catch(ex) {
+            var msg = ('----for: field: ' + key + 
+                ', no Iccbl class found for type: ' + 
+                prop['backgrid_cell_type'] + 
+                ', this may be a Backgrid cell type');
+            console.log(msg + ': ' + JSON.stringify(ex));
+        }
+    }
+    
+    column = _.extend(column, {
+        'name' : key,
+        'label' : prop['title'],
+        'description' : prop['description'],
+        cell : backgridCellType,
+        'order' : prop['ordinal'],
+        editable : false,
+        'visible': visible
+    });
+    if(orderStack && _.contains(orderStack, key)){
+      column['direction'] = 'ascending';
+    }
+    else if(orderStack && _.contains(orderStack, '-' + key)){
+      column['direction'] = 'descending';
+    }
+    if (optionalHeaderCell) {
+      column['headerCell'] = optionalHeaderCell;
+    }
+    return column;
+  };
+  
   var createBackgridColModel = Iccbl.createBackgridColModel = 
-  	    function(restFields, optionalHeaderCell, orderStack) {
+    function(restFields, optionalHeaderCell, orderStack, _manualIncludes) {
       
   	  console.log('--createBackgridColModel');
-      //: restFields: ' + JSON.stringify(restFields));
-      var colModel = [];
+      var manualIncludes = _manualIncludes || [];
+
+  	  var colModel = [];
       var i = 0;
       var _total_count = 0;
       _.each(_.pairs(restFields), function(pair) {
           var key = pair[0];
           var prop = pair[1];
-
-          var visible = _.has(pair[1], 'visibility') && _.contains(pair[1]['visibility'], 'list');
-          if (visible) {
-
-              var backgridCellType = 'string';
-              if (!_.isEmpty(prop['backgrid_cell_type'])) {
-                  backgridCellType = prop['backgrid_cell_type'];
-                  cell_options = prop['backgrid_cell_options'];
-                  
-                  try {
-                      var klass = Iccbl.stringToFunction(prop['backgrid_cell_type']);
-                      if (!_.isUndefined(klass)) {
-                          console.log('----- class found: ' + prop['backgrid_cell_type']);
-                          backgridCellType = klass;
-                          _options = JSON.parse(cell_options);
-                          if(!_.isUndefined(_options)){
-                            var _specialized_cell = klass.extend(_options);
-                            console.log('instance: ' + _specialized_cell + ', ' + _options);
-                            backgridCellType = _specialized_cell;
-                          }
-                      }
-                  } catch(ex) {
-                      var msg = ('----for: field: ' + key + 
-                          ', no Iccbl class found for type: ' + 
-                          prop['backgrid_cell_type'] + 
-                          ', this may be a Backgrid cell type');
-                      console.log(msg + ': ' + JSON.stringify(ex));
-                  }
-              }
-              
-              colModel[i] = {
-                  'name' : key,
-                  'label' : prop['title'],
-                  'description' : prop['description'],
-                  cell : backgridCellType,
-                  order : prop['ordinal'],
-                  editable : false,
-              };
-              if(orderStack && _.contains(orderStack, key)){
-                colModel[i]['direction'] = 'ascending';
-              }
-              else if(orderStack && _.contains(orderStack, '-' + key)){
-                colModel[i]['direction'] = 'descending';
-              }
-              if (optionalHeaderCell) {
-                  colModel[i]['headerCell'] = optionalHeaderCell;
-              }
+          var column = createBackgridColumn(key, prop, optionalHeaderCell, orderStack);
+          var visible = _.has(prop, 'visibility') && 
+            _.contains(prop['visibility'], 'list');
+          if (visible || _.contains(manualIncludes, key) ) {
+            if(_.contains(manualIncludes, '-'+key)){
+              console.log('Column: ' + key + ' is manually excluded');
+            }else{
+              colModel[i] = column;
               i++;
+            }
           } else {
               //console.log('field not visible in list view: ' + key)
           }
       });
-
-      colModel.sort(function(a, b) {
-          if (_.isNumber(a['order']) && _.isNumber(b['order'])) {
-              return a['order'] - b['order'];
-          } else if (_.isNumber(a['order'])) {
-              return -1;
-          } else if (_.isNumber(b['order'])) {
-              return 1;
-          } else {
-              return 0;
-          }
-      });
+      
+      colModel = new Backgrid.Columns(colModel);
+      colModel.comparator = 'order';
+      colModel.sort();
+//      colModel.sort(function(a, b) {
+//          if (_.isNumber(a['order']) && _.isNumber(b['order'])) {
+//              return a['order'] - b['order'];
+//          } else if (_.isNumber(a['order'])) {
+//              return -1;
+//          } else if (_.isNumber(b['order'])) {
+//              return 1;
+//          } else {
+//              return 0;
+//          }
+//      });
       return colModel;
   };
 
@@ -817,8 +839,8 @@ define(['jquery', 'underscore', 'backbone', 'backgrid',
       @return {string}
    */
    fromRaw: function (number, model) {
-//       console.log('process: ' + number + ', ' +this.multiplier 
-//           + ', ' +  this.symbol + ', ' + this.decimals );
+        //       console.log('process: ' + number + ', ' +this.multiplier 
+        //           + ', ' +  this.symbol + ', ' + this.decimals );
        return this.getUnit(number, this.multiplier, this.symbol, this.decimals);
    },
 
@@ -839,14 +861,19 @@ define(['jquery', 'underscore', 'backbone', 'backgrid',
          }
        }
        if(number == 0 ) return number;
-
-       if(_.isNumber(multiplier) && multiplier > 1){
-         number = number * multiplier;
+       if(!_.isNumber(multiplier)){
+         try{
+           multiplier = parseFloat(multiplier);
+         }catch(e){
+           console.log('not a number - multiplier: ' + multiplier+ ', ex:' + e);
+         }
        }
-//       console.log('m number: ' + number);
-       
-       
-//       console.log('find units: ' + number);
+
+       if(multiplier >= 1){
+         number = number * multiplier;
+       }else{
+         console.log("Error, DecimalCell multiplier < 1: " + multiplier);
+       }
        
        pair = _.find(this.sciunits, function(pair){
          return pair[1] <= Math.abs(number); 
@@ -859,12 +886,11 @@ define(['jquery', 'underscore', 'backbone', 'backgrid',
        
        var val = (1/pair[1])*number;
        val = Math.round(val*Math.pow(10,decimals))/Math.pow(10,decimals);
-//       console.log('val :'+ val);
        return '' + val + ' ' + pair[0] + symbol;
    },
    
    /**
-    * TODO: implement
+    * FIXME: implement = this is copied from Backgrid percentformatter
       Takes a string, possibly appended with `symbol` and/or `decimalSeparator`,
       and convert it back to a number for the model like NumberFormatter#toRaw,
       and then dividing it by `multiplier`.

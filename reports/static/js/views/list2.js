@@ -27,8 +27,12 @@ define([
 //  });
 
   var ListView = Backbone.View.extend({
-    LIST_ROUTE_ORDER: ['rpp', 'page','order','search'],
+    LIST_ROUTE_ORDER: ['rpp', 'page', 'includes', 'order','search'],
     
+    events: {
+      'click .btn#select_columns': 'select_columns'
+    },
+
     initialize : function(args) {
       console.log('initialize ListView: ');
       var self = this;
@@ -57,7 +61,8 @@ define([
       var urlSuffix = self.urlSuffix = "";
       var listInitial = {};
       var searchHash = {};
-      var orderings = []
+      var orderings = [];
+      var includes = [];
       if(_.has(self._options,'uriStack')){
         var stack = self._options.uriStack;
         for (var i=0; i<stack.length; i++){
@@ -103,6 +108,8 @@ define([
             } else if (key === 'order') {
               orderings = value.split(',');
               //listInitial[key] = value.split(',');        
+            } else if (key === 'includes') {
+              includes = value.split(',');
             }else {
               listInitial[key] = value;
             }
@@ -138,6 +145,8 @@ define([
         }
       }
       listInitial['order'] = orderings;
+
+      listInitial['includes'] = includes;
       
       var listModel = this.listModel = new ListModel(listInitial);
 
@@ -178,10 +187,14 @@ define([
       var columns;
       if(!_options.columns){
         columns = Iccbl.createBackgridColModel(
-            this._options.schemaResult.fields, Iccbl.MyHeaderCell, orderStack);
+            this._options.schemaResult.fields, 
+            Iccbl.MyHeaderCell, 
+            orderStack,
+            includes);
       }else{
         columns = _options.columns;
       }
+      
       
       // ==== testing - images
       // FIXME: FOR SMR only - poc - 
@@ -234,6 +247,8 @@ define([
             urlparams += val;
           }else if (route === 'order') {
             urlparams += 'order_by=' + value.join('&order_by=');
+          }else if (route === 'includes') {
+            urlparams += 'includes=' + value.join('&includes=');
           }
         }
       });
@@ -279,11 +294,14 @@ define([
             
           }else if (route === 'order') {
             newStack.push(value);
+          }else if (route === 'includes') {
+            newStack.push(value.join(','));
           } else {
             newStack.push(value);
           }
         }
       });
+      console.log('newStack: ' + JSON.stringify(newStack));
       self.trigger('uriStack:change', newStack );
 
       // FIXME: TODO: see reports.ManagedResource.create_response:
@@ -298,7 +316,6 @@ define([
       var state = self.collection.state;
       var currentPage = Math.max(state.currentPage, state.firstPage);
 
-      
       // search: set in Iccbl Collection
       
       self.listModel.set({ 
@@ -390,11 +407,8 @@ define([
       this.listenTo(rppModel, 'change', function() {
           var rpp = parseInt(rppModel.get('selection'));
           self.listModel.set('rpp', String(rpp));
-
           console.log('===--- rppModel change: ' + rpp );
-          
           self.collection.setPageSize(rpp);
-
       });
 
       var paginator = self.paginator = new Backgrid.Extension.Paginator({
@@ -508,7 +522,6 @@ define([
         body: Iccbl.MultiSortBody,
         collection: self.collection,
       });
-
       this.objects_to_destroy.push(grid);
 
       // encapsulate the footer in a view, help grab button click
@@ -585,7 +598,7 @@ define([
         self.$("#downloadselector").html(
             self.downloadSelectorInstance.render().$el);
       }
-              
+      
 //      // FIXME: "add" feature should be enabled declaratively, by user/group status:
 //      if(appModel.getCurrentUser().is_superuser
 //          && _.contains(self._options.resource.visibility, 'add')){
@@ -630,6 +643,10 @@ define([
       
       if ( !fetched ) {
         var fetchOptions = { reset: false, error: appModel.jqXHRerror };
+        var includes = self.listModel.get('includes');
+        if(!_.isEmpty(includes)){
+          fetchOptions['data'] = { includes: includes };
+        }
         self.collection.fetch(fetchOptions);
       }
       
@@ -643,9 +660,110 @@ define([
       this.reportState();
     },
     
-    
+    select_columns: function(event){
+      var self = this;
+      var includes = self.listModel.get('includes') || [];
+      var formSchema = {};
+      var altFieldTemplate =  _.template('\
+              <div class="form-group" style="margin-bottom: 0px;" > \
+                <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
+                  <label for="<%= editorId %>"><span data-editor\><%= title %></label>\
+                </div>\
+              </div>\
+            ');
+      _.each(_.pairs(this._options.schemaResult.fields), function(pair){
+        var prop = pair[1];
+        var key = prop['key'];
+        if(key == 'resource_uri' || key == 'id') return;
 
+        var title = prop['title'];
+        formSchema[key] = { 
+            title: title, 
+            ordinal: prop['ordinal'],
+            key:  key, 
+            type: 'Checkbox',
+            template: altFieldTemplate };
+      });
+      var FormFields = Backbone.Model.extend({
+        schema: formSchema
+      });
+      
+      var formFields = new FormFields();
+      var already_visible = {};
+      var default_visible = {};
+      _.each(_.pairs(this._options.schemaResult.fields), function(pair){
+        var key = pair[1]['key'];
+        var prop = pair[1];
+        
+        if(key == 'resource_uri' || key == 'id') return;
+        
+        var _visible = (_.has(prop, 'visibility') && 
+            _.contains(prop['visibility'], 'list'));
+        default_visible[key] = _visible;
+        _visible = _visible || _.contains(includes, key);
+        _visible = _visible && !_.contains(includes, '-'+key);
+        
+        already_visible[key] = _visible;
+        formFields.set( key, _visible);
+      });
+      
+      var orderedFieldKeys = _.sortBy(formFields.keys(), function(key){
+        console.log('find:' + key + ',' + formSchema[key]);
+        return formSchema[key]['ordinal'];
+      });
+      console.log('orderedFields: ' + JSON.stringify(orderedFieldKeys));
+  
+      var form = new Backbone.Form({
+          model: formFields,
+          fields: orderedFieldKeys,
+          template: _.template("<form data-fieldsets class='form-horizontal container' ></form>")
+      });
+
+      appModel.showModal({
+        ok: function(){
+          form.commit();
+          var new_includes = [];
+          console.log('formFields: ' + JSON.stringify(formFields.toJSON()));
+          _.each(formFields.keys(), function(key){
+            var value = formFields.get(key);
+            if(_.isUndefined(value)) throw Exception('could not find value for key:' + key );
+//            console.log('key: ' + key + ', value: ' + value );
+            
+            if(value && !already_visible[key] ){
+              self.grid.insertColumn(
+                  Iccbl.createBackgridColumn(
+                      key,self._options.schemaResult.fields[key],
+                      Iccbl.MyHeaderCell, self.collection.state.orderStack));
+            }
+            if(!value && default_visible[key]){
+              new_includes.unshift('-' + key);
+              column =  self.grid.columns.find(function(column){
+                if(column.get('name') == key){
+                  self.grid.removeColumn(column);
+                  return true;
+                }
+              });
+              
+            }
+            if(value && !default_visible[key]){
+              new_includes.unshift(key);
+            }
+          });
+          
+          console.log('new_includes: ' + JSON.stringify(new_includes));
+          if(!_.isEmpty(new_includes)){
+            self.collection.fetch({data: { includes: new_includes}})
+          }
+          self.listModel.set({'includes': new_includes });
+        },
+        view: form,
+        title: 'Select columns'  
+      });
+      
+    },
+    
   });
+  
 
   return ListView;
 });

@@ -15,10 +15,7 @@ class Migration(SchemaMigration):
             ( "ALTER TABLE {table} ALTER COLUMN {column} "
               "drop not null").format(
                   table='reagent', column='library_contents_version_id'))
-
-        # Deleting model 'SilencingReagentDuplexWells' (because Django now manages this rln)
-        db.delete_table(u'silencing_reagent_duplex_wells')
-        
+       
 
     def backwards(self, orm):
         # Adding model 'SilencingReagentDuplexWells'

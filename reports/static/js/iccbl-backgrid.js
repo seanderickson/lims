@@ -22,12 +22,15 @@
 
 // FIXME: lunr should not be a requirement - for server side filtering,
 // and backgrid_filter is requiring it.
+// Note: backbone_forms included for testing imports to work properly
+// - bad imports can result in the:
+// "Warning: PhantomJS timed out, possibly due to a missing Mocha run() call"
 
-define(['jquery', 'underscore', 'backbone', 'backgrid', 
-        'backgrid_filter', 'backgrid_paginator', 'backgrid_select_all', 'lunr',
+define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms', 
+        'backgrid_filter', 'backgrid_paginator', 'lunr', //'backgrid_select_all',  
         'layoutmanager'],
-    function($, _, Backbone, Backgrid, 
-             BackgridFilter, BackgridPaginator, BackgridSelectAll, lunr,
+    function($, _, Backbone, Backgrid, BackboneForms,
+             BackgridFilter, BackgridPaginator, lunr, //BackgridSelectAll,
              layoutmanager ) {
 
   var root = window;

@@ -302,24 +302,16 @@ define([
      */
     getResource: function(resourceId){
       var uiResources = this.get('ui_resources');
-//      var resources = this.get('resources');
       if(!_.has(uiResources, resourceId)) {
-//        if(!_.has(resources, resourceId)) {
-//          this.error('Unknown resource: ' + resourceId);
           throw "Unknown resource: " + resourceId;
-//        }
-        return resources[resourceId];
       }
       return uiResources[resourceId];
     },
         
     getResourceFromUrl: function(resourceId, schemaUrl, callback){
       
-      // NOTE: building a "resource" by getting the "schema" which has a "resource" member
       var uiResources = this.get('ui_resources');
-      var ui_resource = { 
-            "options": { 
-              "order": ["well_id"]  } };
+      var ui_resource = {};
       if(_.has(uiResources, resourceId)) {
         ui_resource = uiResources[resourceId];
       }

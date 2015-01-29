@@ -50,6 +50,18 @@ define([
       this.consumedStack = []; 
       
       Backbone.Form.prototype.initialize.apply(this,args);
+      
+//      this.model.on('change', function(evt){
+//        console.log('chg evt: ' + evt);
+//      });
+      this.listenTo(this, 'screen_type:change', function(target){
+        console.log('chg evt:' + target);
+////        if(evt) evt.preventDefault();
+//        $( "#c32_screen_type-1" ).prop( "checked", true );
+      });
+      this.on('change', function(t){
+        console.log('all:' + t);
+      });
     },
 
     events: {
@@ -60,26 +72,26 @@ define([
     // using custom templates to hold the editors,
     // control the layout with the "controls, control-group" classes
     altFieldTemplate:  _.template('\
-      <div class="form-group"> \
+      <div class="form-group" > \
             <label class="control-label col-sm-2" for="<%= editorId %>"><%= title %></label>\
             <div class="col-sm-10" >\
-              <div data-editor/>\
+              <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />\
               <div data-error class="text-danger" ></div>\
               <div><%= help %></div>\
-            </div>\
+            </div> \
           </div>\
         '),
     
     // using custom templates to hold the editors,
     // control the layout with the "controls, control-group" classes
     altRadioFieldTemplate: _.template('\
-      <div class="form-group"> \
+      <div class="form-group"  ><fieldset> \
           <label class="control-label col-sm-2" for="<%= editorId %>"><%= title %></label>\
           <div class="col-sm-10" >\
-            <span data-editor></span>\
+            <div data-editor  ></div>\
             <div data-error></div>\
             <div><%= help %></div>\
-          </div>\
+          </div></fieldset>\
         </div>\
       '),
       
@@ -101,54 +113,42 @@ define([
       _.each(editKeys, function(key){
         if( _(schema.fields).has(key)){
           var option = schema.fields[key];
+//          console.log('key: ' + key + ', option: ' + JSON.stringify(option));
+          var fieldSchema = editSchema[key] = {};
+
+          var typeMap = {
+              'boolean': 'Checkbox',
+              'string': 'Text',
+              'uri': 'Text',
+              'float': 'Number',
+              'integer': 'Number'
+          }
           
+          var temp = option.ui_type || 'Text';
+          temp = temp.toLowerCase();
+          fieldSchema['type'] = temp.charAt(0).toUpperCase() + temp.slice(1);
+          if(_.has(typeMap, option.ui_type)){
+            fieldSchema['type'] = typeMap[option.ui_type];
+          }
           var validators = [];
           
           if(option.ui_type == 'Select' 
               || option.ui_type == 'Radio'
               || option.ui_type == 'Checkboxes' ){
-            var _optionsCollection = [];
-            if(_.has(option, 'choices')){
-              _optionsCollection = option.choices.map(function(choice){
-                return choice;
-              });
-            }else{
+            fieldSchema['options'] = option.choices || [];
+            if(_.isEmpty(option.choices)){
               appModel.error('no choices defined for: ' + key);
-              // set null choices so the template doesn't complain
-              option.choices = _(_optionsCollection); 
             }
-            editSchema[key] = { 
-              type: option.ui_type, 
-              options: _optionsCollection
-            };
-
-            if(option.ui_type == 'Checkboxes' ){ 
-              editSchema[key]['defaults'] = self.model.get(key);
-            } 
-          }else if( option.ui_type == 'boolean'){
-            editSchema[key] = {
-              type: 'Checkbox'
-            };
-          }else if( option.ui_type.toLowerCase() == 'date'){
-            editSchema[key] = {
-              type: 'Date'
-            };
-          }else{
-            editSchema[key] = {
-              type: 'Text'
-            };
           }
           
           if(option.ui_type == 'Radio'){
-            // editSchema[key]['template'] = self.altRadioFieldTemplate;
+            editSchema[key]['template'] = self.altRadioFieldTemplate;
           }else{
             editSchema[key]['template'] = self.altFieldTemplate;
           }
 
           // validation stuff
-          if(option.ui_type == 'integer' || option.ui_type == 'float'){
-            editSchema[key]['type'] = 'Number';
-            
+          if(fieldSchema['type']  == 'Number'){
             // TODO: check for the "min" "max","range" validation properties and implement
             if( !_.isUndefined(option.min)){
               var validator = function checkMin(value, formValues) {
@@ -233,8 +233,10 @@ define([
             editSchema[key]['editorAttrs'] = { autofocus: 'autofocus'}
           }
         }
+        console.log('editSchema[' + key + '] = ' + JSON.stringify(editSchema[key]));
       });      
       
+      // Note: Enforced comment
       editSchema['comment'] = {
           type: 'TextArea',
           validators: ['required'], 
@@ -276,6 +278,15 @@ define([
     renderTemplate: function() {
       return Backbone.Form.prototype.render.apply(this);
     },
+    
+//    afterRender: function(){
+//      console.log('afterRender called');
+//      
+//      $( "#c32_screen_type-1" ).change(function(e){
+//        console.log('on change called: ' + e);
+//      });
+//
+//    },
 
     template: _.template(editTemplate),
     
@@ -340,8 +351,8 @@ define([
         // note, not a real backbone model, just JSON
         model = new Backbone.Model(model);
         var key = Iccbl.getIdFromIdAttribute( model,self.model.resource.schema );
-//        appModel.set('routing_options', {trigger: true});
-//        self.reportUriStack([key]);
+        //        appModel.set('routing_options', {trigger: true});
+        //        self.reportUriStack([key]);
         appModel.router.navigate(self.model.resource.key + '/' + key, {trigger:true});
       })
       .done(function(model, resp){

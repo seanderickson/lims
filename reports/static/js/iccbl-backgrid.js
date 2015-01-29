@@ -288,6 +288,29 @@ define(['jquery', 'underscore', 'backbone', 'backgrid',
     });
   };
 
+  var createLabel = Iccbl.createLabel = function(original_label, max_line_length){
+    var lines = [];
+    var labelParts = original_label.split(/\W/);
+    var line = '';
+    _.each(labelParts, function(part){
+      if(line.length > 0){
+        if(line.length+part.length <= max_line_length){
+          line += ' ' + part;
+        }else{
+          lines.push(line);
+          line = part;
+        }
+      }else{
+        line += part;
+      }
+    });
+    lines.push(line);
+    
+    return lines.join('<br>');
+  };
+  
+  //// Network Utilities ////
+  
   var getSchema = Iccbl.getSchema = function(schema_url, callback) {
     $.ajax({
       type : "GET",
@@ -506,115 +529,6 @@ define(['jquery', 'underscore', 'backbone', 'backgrid',
       });
   };
 
-  /**
-   * Return an array for backgrid column descriptors.
-   * @param {Object} fields_from_rest - hash of fields for the current dataset:
-   *    field properties { visibility: [array of strings], title: a label for
-   *    the field, order: display order of the field }
-   * @param {Object} optionalHeaderCell - a Backgrid.HeaderCell to use for each
-   *    column
-   * @param {Object} options - a hash of { fieldKey: [custom cell: extend
-   *    Backgrid.Cell] } to map custom cell implementations to fields
-   */
-  var createBackgridColumn = Iccbl.createBackgridColumn = 
-    function(key, prop, optionalHeaderCell, _orderStack){
-    
-    var orderStack = _orderStack || [];
-    
-    var column = {};
-
-    var visible = _.has(prop, 'visibility') && 
-                      _.contains(prop['visibility'], 'list');
-    var backgridCellType = 'string';
-    if (!_.isEmpty(prop['backgrid_cell_type'])) {
-        backgridCellType = prop['backgrid_cell_type'];
-        cell_options = prop['backgrid_cell_options'];
-        
-        try {
-            var klass = Iccbl.stringToFunction(prop['backgrid_cell_type']);
-            if (!_.isUndefined(klass)) {
-                console.log('----- class found: ' + prop['backgrid_cell_type']);
-                backgridCellType = klass;
-                _options = JSON.parse(cell_options);
-                if(!_.isUndefined(_options)){
-                  var _specialized_cell = klass.extend(_options);
-//                  console.log('instance: ' + _specialized_cell + ', ' + _options);
-                  backgridCellType = _specialized_cell;
-                }
-            }
-        } catch(ex) {
-            var msg = ('----for: field: ' + key + 
-                ', no Iccbl class found for type: ' + 
-                prop['backgrid_cell_type'] + 
-                ', this may be a Backgrid cell type');
-            console.log(msg + ': ' + JSON.stringify(ex));
-        }
-    }
-    
-    column = _.extend(column, {
-        'name' : key,
-        'label' : prop['title'],
-        'description' : prop['description'],
-        cell : backgridCellType,
-        'order' : prop['ordinal'],
-        editable : false,
-        'visible': visible
-    });
-    if(orderStack && _.contains(orderStack, key)){
-      column['direction'] = 'ascending';
-    }
-    else if(orderStack && _.contains(orderStack, '-' + key)){
-      column['direction'] = 'descending';
-    }
-    if (optionalHeaderCell) {
-      column['headerCell'] = optionalHeaderCell;
-    }
-    return column;
-  };
-  
-  var createBackgridColModel = Iccbl.createBackgridColModel = 
-    function(restFields, optionalHeaderCell, orderStack, _manualIncludes) {
-      
-  	  console.log('--createBackgridColModel');
-      var manualIncludes = _manualIncludes || [];
-
-  	  var colModel = [];
-      var i = 0;
-      var _total_count = 0;
-      _.each(_.pairs(restFields), function(pair) {
-          var key = pair[0];
-          var prop = pair[1];
-          var column = createBackgridColumn(key, prop, optionalHeaderCell, orderStack);
-          var visible = _.has(prop, 'visibility') && 
-            _.contains(prop['visibility'], 'list');
-          if (visible || _.contains(manualIncludes, key) ) {
-            if(_.contains(manualIncludes, '-'+key)){
-              console.log('Column: ' + key + ' is manually excluded');
-            }else{
-              colModel[i] = column;
-              i++;
-            }
-          } else {
-              //console.log('field not visible in list view: ' + key)
-          }
-      });
-      
-      colModel = new Backgrid.Columns(colModel);
-      colModel.comparator = 'order';
-      colModel.sort();
-//      colModel.sort(function(a, b) {
-//          if (_.isNumber(a['order']) && _.isNumber(b['order'])) {
-//              return a['order'] - b['order'];
-//          } else if (_.isNumber(a['order'])) {
-//              return -1;
-//          } else if (_.isNumber(b['order'])) {
-//              return 1;
-//          } else {
-//              return 0;
-//          }
-//      });
-      return colModel;
-  };
 
   var MyModel = Iccbl.MyModel = Backbone.Model.extend({
       // TODO: we want to make sure there is a trailing slash, or tastypie
@@ -1107,8 +1021,12 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
    * See Backgrid.Body.sort:
    * - created to solve the multisort case for the server side backbone-pageable
    * collection only.
+   * triggered by "backgrid:sort"
    */
   sort: function (column, direction) {
+    if (_.isString(column)) column = this.columns.findWhere({name: column});
+
+    
     var collection = this.collection;
 
     var order;
@@ -1265,8 +1183,8 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
       // 
       //      self.fetch({data:_.clone(_data), reset: true});
     }else{
-// TODO: test further, part of the double network hit on search - REMOVED 20150113
-//      self.fetch();
+      // TODO: test further, part of the double network hit on search - REMOVED 20150113
+      //      self.fetch();
     }
   },
 
@@ -1302,6 +1220,12 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
         'search' : searchHash
     });
   },
+  
+//  clearSortings: function() {
+//    console.log('clearSortings');
+//    this.state.orderStack = [];
+//    this.trigger('sort',this);    
+//  },
 
   /**
    *  Override - 
@@ -1373,6 +1297,124 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
 });
 
 
+
+ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend({
+
+   initialize : function(options) {
+     this.options = options;
+     MultiSortHeaderCell.__super__.initialize.apply(this, arguments);
+     this.listenTo(this.collection,"sort",this.collectionSorted);
+   },
+    
+    // TODO: debounced clicking
+    //  /**
+    //   Event handler for the `click` event on the cell's anchor. If the column is
+    //   sortable, clicking on the anchor will cycle through 3 sorting orderings -
+    //   `ascending`, `descending`, and default.
+    //  */
+    //  onClick: function (e) {
+    //    var self=this;
+    //    e.preventDefault();
+    //    
+    //    if(_.isUndefined(this.tempdirection)){
+    //      this.tempdirection = this.column.get("direction");
+    //    }
+    //    var tempdirection = this.tempdirection;
+    //    if(tempdirection == "ascending"){
+    //      tempdirection = "descending";
+    //    }else if(tempdirection == "descending"){
+    //      tempdirection == null;
+    //    }else{
+    //      tempdirection == "ascending";
+    //    }
+    //    this.$el.removeClass("ascending").removeClass("descending");
+    //    self.$el.addClass(tempdirection);
+    //
+    //    var delayedClick = function(){
+    //      MultiSortHeaderCell.__super__.onClick.apply(self,e);
+    //    };
+    //    _.debounce(2000, delayedClick)
+    //  },   
+   
+   collectionSorted: function(collection, options){
+     var self = this;
+     var name = this.column.get('name');
+     var state = this.collection.state;
+     if(_.isUndefined(state.orderStack)){
+       console.log('Warning: grid does not support the ordered sort functionality');
+       return;
+     }
+     var i = 0;
+     _.each(state.orderStack, function(order_entry){
+       i++;
+       var dir = order_entry.substring(0,1);
+       var direction = null;
+       var fieldname = order_entry;
+       if(dir == '-'){
+         fieldname = order_entry.substring(1);
+         direction = 'descending';
+       }else{
+         dir = '';
+         direction = 'ascending';
+       }
+       if(fieldname == name){
+         self.$el.removeClass("ascending").removeClass("descending");
+         self.$el.addClass(direction);
+
+         var sorter = self.$el.find('#sorter');
+         sorter.empty();
+         sorter.append("<span class='badge pull-right'>" + i + "<b class='sort-caret'></b></span>");
+       }
+     });
+   },
+   
+   /**
+     Event handler for the column's `change:direction` event. If this
+     HeaderCell's column is being sorted on, it applies the direction given as a
+     CSS class to the header cell. Removes all the CSS direction classes
+     otherwise.
+   */
+   setCellDirection: function (column, direction) {
+     if(! direction){
+       this.$el.removeClass("ascending").removeClass("descending");
+       this.$el.find("#sorter").empty();
+     }
+   },
+
+   /**
+    * Backgrid event handler for the PageableCollection 'sort' event.
+    */
+   removeCellDirection: function () {
+     this.$el.removeClass("ascending").removeClass("descending");
+     this.$el.find("#sorter").empty();
+     this.column.set("direction", null);
+   },
+
+   
+   /**
+    * Renders a header cell with a sorter and a label.
+    */
+   render : function() {
+     console.log('render MultiSortHeaderCell:  ' + this.column.get('name'));
+     this.$el.empty();
+     var column = this.column;
+     var sortable = Backgrid.callByNeed(column.sortable(), column, this.collection);
+     var label = Iccbl.createLabel(column.get("label"), 10);
+     if(sortable){
+       label = $("<a>" + label +"</a>").append("<div id='sorter'></div>");
+     } else {
+       label = document.createTextNode(label);
+     }
+     this.$el.append(label);
+     this.$el.addClass(column.get("direction"));
+     this.$el.addClass(column.get("name"));
+     this.delegateEvents();
+     return this;
+   }
+   
+ });
+
+ 
 /**
  * Override so that we can keep a handle to the containing column name.
  * TODO: can handle this with events instead (so that the filter notifies the
@@ -1388,7 +1430,12 @@ var MyServerSideFilter =
     className: "form-search",    
     
     // override, provide our own class
-    template: _.template('<input type="search" <% if (placeholder) { %> placeholder="<%- placeholder %>" <% } %> name="<%- name %>" /><a class="backgrid-filter clear" data-backgrid-action="clear" href="#">&times;</a>', null, {variable: null}),
+    template: _.template([
+        '<input type="search" ',
+        '<% if (placeholder) { %> placeholder="<%- placeholder %>" <% } %>',
+        'name="<%- name %>" />',
+        '<a class="backgrid-filter clear" data-backgrid-action="clear" href="#">&times;</a>'
+        ].join(''), null, {variable: null}),
 
     initialize : function(options) {
       this.columnName = options.columnName;
@@ -1397,16 +1444,12 @@ var MyServerSideFilter =
     },
     
     /**
-     * Override - to allow fetch without returning to the first page.
-     * (note: this has negative side effect that if the page is too high, a 
-     * blank list is shown).
+     * Override
      */
     search: function(e) {
       if (e) e.preventDefault();    	
     	var searchHash = {};
     	searchHash[this.name] = this.searchBox().val();
-    	console.log('server side filter add search: ' + 
-    			JSON.stringify(searchHash));
     	this.collection.addSearch(searchHash);
     	
     	
@@ -1431,6 +1474,9 @@ var MyServerSideFilter =
       
       this.showClearButtonMaybe();
     },
+    showClearButtonMaybe: function () {
+      this.clearButton().show();
+    },
     
     /**
      * Override
@@ -1443,36 +1489,35 @@ var MyServerSideFilter =
     },    
 });
 
+
 /**
  * Override of the Backgrid.HeaderCell to:
- * - add search
- * - add multisort
- * 
- * TODO: this should be named "contains" header cell, because it searches using
- * "__contains"
+ * - add "contains" search
  **/
-var MyHeaderCell = Iccbl.MyHeaderCell = Backgrid.HeaderCell.extend({
+var MyHeaderCell = Iccbl.MyHeaderCell = MultiSortHeaderCell.extend({
 
     _serverSideFilter : null,
 
     initialize : function(options) {
         this.options = options;
-        Backgrid.HeaderCell.prototype.initialize.apply(this, [options]);
+        MyHeaderCell.__super__.initialize.apply(this, arguments);
 
         this._serverSideFilter = new MyServerSideFilter({
-            // TODO: collection should be passed as an option
             collection : this.collection, 
-            // Name of the URL query parameter for tastypie/django 
-            // TODO: support other filters
             name : this.column.get("name") + "__contains", 
-            // HTML5 placeholder for the search box
             placeholder : "Search " + this.column.get("label"), 
             columnName : this.column.get("name"),
         });
 
         this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
-        this.listenTo(this.collection,"sort",this.collectionSorted);
+        this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
+        _.bindAll(this, 'clearSearch');
     },
+
+    clearSearch: function(){
+        this._serverSideFilter.clear();
+    },
+      
 
     remove: function() {
         console.log('headercell remove called');
@@ -1481,52 +1526,7 @@ var MyHeaderCell = Iccbl.MyHeaderCell = Backgrid.HeaderCell.extend({
         this._serverSideFilter.collection = null;
         this.unbind();
 
-        Backgrid.HeaderCell.prototype.remove.apply(this);
-    },
-    
-    collectionSorted: function(collection, options){
-      var self = this;
-      var name = this.column.get('name');
-      var state = this.collection.state;
-      if(_.isUndefined(state.orderStack)){
-        console.log('Warning: grid does not support the ordered sort functionality');
-        return;
-      }
-      var i = 0;
-      _.each(state.orderStack, function(order_entry){
-        i++;
-        var dir = order_entry.substring(0,1);
-        var direction = null;
-        var fieldname = order_entry;
-        if(dir == '-'){
-          fieldname = order_entry.substring(1);
-          direction = 'descending';
-        }else{
-          dir = '';
-          direction = 'ascending';
-        }
-        if(fieldname == name){
-          self.$el.removeClass("ascending").removeClass("descending");
-          self.$el.addClass(direction);
-
-          var sorter = self.$el.find('#sorter');
-          sorter.empty();
-          sorter.append("<span class='badge pull-right'>" + i + "<b class='sort-caret'></b></span>");
-        }
-      });
-    },
-    
-    /**
-      Event handler for the column's `change:direction` event. If this
-      HeaderCell's column is being sorted on, it applies the direction given as a
-      CSS class to the header cell. Removes all the CSS direction classes
-      otherwise.
-    */
-    setCellDirection: function (column, direction) {
-      if(! direction){
-        this.$el.removeClass("ascending").removeClass("descending");
-        this.$el.find("#sorter").empty();
-      }
+        MyHeaderCell.__super__.remove.apply(this);
     },
     
     /**
@@ -1564,105 +1564,534 @@ var MyHeaderCell = Iccbl.MyHeaderCell = Backgrid.HeaderCell.extend({
         }
     },
 
-    
-    renderOriginal: function () {
-      this.$el.empty();
-      var column = this.column;
-      var sortable = Backgrid.callByNeed(column.sortable(), column, this.collection);
-      var label;
-      if(sortable){
-        label = $("<a>").text(column.get("label")).append("<b class='sort-caret'></b>");
-      } else {
-        label = document.createTextNode(column.get("label"));
-      }
-
-      this.$el.append(label);
-      this.$el.addClass(column.get("name"));
-      this.$el.addClass(column.get("direction"));
-      this.delegateEvents();
-      return this;
-    },    
-    
     /**
      * Renders a header cell with a sorter and a label.
      */
     render : function() {
-        
-        //        Backgrid.HeaderCell.prototype.render.apply(this);
-        this.$el.empty();
-        var column = this.column;
-        var sortable = Backgrid.callByNeed(column.sortable(), column, this.collection);
-        var label = '';
+      MyHeaderCell.__super__.render.apply(this, arguments);
 
-        var labelParts = column.get("label");
-        labelParts = labelParts.split(/\W/);
-        
-        var line = '';
-        _.each(labelParts, function(part){
-          if(line.length > 0){
-            if(line.length+part.length < 10){
-              line += ' ' + part;
-            }else{
-              if(label.length > 0){
-                label += "<br>" + line;
-                line = part;
-              }else{
-                label = line;
-                line = part;
-              }
-            }
-          }else{
-            line += part;
-          }
-        });
-        
-        if(label.length > 0) {
-          label += '<br>' + line;
-        }else{
-          label = line;
-        }
-        
-        
-//        var line = '';
-//        var label = '';
-//        _.each(labelParts, function(part){
-//          console.log('part'+part);
-//          if( (line.length+part.length) < 20 ){
-//            line += ' ' + part;
-//          }else{
-//            if(label.length > 0){
-//              label += '<br>' + line;
-//              line = part;
-//            }else{
-//              label = line;
-//            }
-//          }
-//        });
-//        label += '<br/>' + line;
+      var column = this.column;
 
-        if(sortable){
-          label = $("<a>" + label +"</a>").append("<div id='sorter'></div>");
-        } else {
-          label = document.createTextNode(label);
-        }
-        this.$el.append(label);
-        this.$el.addClass(column.get("name"));
-        this.$el.addClass(column.get("direction"));
-        this.delegateEvents();
-        
-        var _handle = this;
-        var filterIcon = $('<span class="glyphicon glyphicon-search"></span>');
-        filterIcon.click(function(e) {
-            _handle.$el.append(_handle._serverSideFilter.render().el);
-        });
-        this.$el.append(filterIcon);
+      this.$el.addClass(column.get("name"));
+      this.delegateEvents();
+      
+      var _handle = this;
+      var filterIcon = $('<span class="glyphicon glyphicon-search" id="filter-icon" ></span>');
+      filterIcon.click(function(e) {
+          _handle.$el.append(_handle._serverSideFilter.render().el);
+      });
+      this.$el.append(filterIcon);
 
-        this.$el.prop('title', 
-        			  this.options['column']['attributes']["description"]);
-        
-        return this;
+      this.$el.prop('title', 
+      			  this.options['column']['attributes']["description"]);
+      
+      return this;
     }
 });
+
+var SelectorServerSideFilter = Backbone.Form.extend({
+  
+  template: _.template([
+    "<form data-fieldsets class='form-horizontal container' >",
+    "</form>"].join('')),
+   
+  /**
+   * - add a submit button
+   * - add a clear button
+   */
+  render: function () {
+    var self = this;
+    SelectorServerSideFilter.__super__.render.apply(this, arguments);
+    this.$el.append([
+      '<div class="col-xs-2">',
+      '<button type="submit" class="btn btn-default btn-xs" >ok</input>',
+      '</div>',
+      '<div class="col-xs-2">',
+      '<a class="backgrid-filter clear" style="display: inherit;" data-backgrid-action="clear"',
+      ' href="#">&times;</a></div>',
+      '</div>'
+      ].join(''));
+
+    return this;
+  },
+  
+  clearButton: function(){
+    return this.$el.find("a[data-backgrid-action=clear]");
+  },
+  
+  submitButton: function(){
+    return this.$el.find(':submit');
+  }
+
+});
+
+var SelectorHeaderCell = MultiSortHeaderCell.extend({
+
+  initialize : function(options) {
+    this.options = options;
+    SelectorHeaderCell.__super__.initialize.apply(this, arguments);
+
+    var altFieldTemplate = _.template('\
+        <div class="form-group" style="margin-bottom: 0px;" > \
+          <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
+            <label for="<%= editorId %>"><span data-editor\><%= title %></label>\
+          </div>\
+        </div>\
+      ');
+
+    this.fieldinformation = _.clone(this.column.get('fieldinformation'));
+
+    if(_.isUndefined(this.fieldinformation.choices)){
+      console.log([
+         'error: fieldinformation for a selection field type must define a ',
+         '"choices" list: field key: ' + this.name ].join(''));
+      this.fieldinformation.choices = [];
+    }
+    
+    var formSchema = {};
+    _.each(this.fieldinformation.choices, function(choice){
+      formSchema[choice] = { 
+          title: choice, // TODO: use vocabulary to get the title 
+          key:  choice, 
+          type: 'Checkbox',
+          template: altFieldTemplate };
+    });
+    
+
+    var FormFields = Backbone.Model.extend({
+      schema: formSchema
+    });
+    
+    var formFields = new FormFields();
+    
+    this._serverSideFilter = new SelectorServerSideFilter({
+        model: formFields,
+        fields: this.fieldinformation.choices,
+        collection: this.collection
+    });
+    
+    this.filterIcon = $('<span class="glyphicon glyphicon-search" id="filter-icon" ></span>');
+    
+    this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
+    this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
+    _.bindAll(this, '_submit', 'clearSearch');
+  },
+  
+  _submit: function(e){
+    if (e) e.preventDefault();      
+    console.log('_submit called');
+    var self  = this;
+    var searchHash = {};
+    var errors = this._serverSideFilter.commit();
+    var values = this._serverSideFilter.getValue();
+    var selected = _.filter(_.keys(values), function(key){ return values[key]; });
+    var name = this.column.get('name');
+    if(selected.length > 1){
+      searchHash[name +'__in'] = selected.join(',');
+    }else{
+      searchHash[name] = selected;
+    }
+    console.log('server side filter add search: ' + 
+        JSON.stringify(searchHash));
+    this.collection.clearSearch([name, name+'__in']);
+    this.collection.addSearch(searchHash);
+    this.collection.fetch({data: _.clone(this.collection.listModel.get('search'))});
+  },
+    
+  /**
+   * Function to listen for router generated custom search event
+   * "MyServerSideFilter:search"
+   * - add search term and show box
+   * - clear old search terms
+   **/
+  _search: function(hash, collection){
+      var self = this;
+      var searchHash = _.clone(hash);
+      if (collection == this.collection){
+        var name = this.column.get('name');
+        var searchTerm = name + '__in';
+        if(_.has(searchHash, searchTerm)){
+          
+          self._serverSideFilter.$el.show();
+          self.filterIcon.hide();
+          
+          var searchValues = searchHash[searchTerm];
+          _.each(searchValues.split(','), function(val){
+            self._serverSideFilter.setValue(val, true);
+          });
+        }
+      }
+  },  
+
+  clearSearch: function(){
+    var self=this;
+    _.each(_.keys(this._serverSideFilter.getValue()), function(key){
+      self._serverSideFilter.setValue(key,false);
+    });
+    
+    self._serverSideFilter.$el.hide();
+    self.filterIcon.show();
+    
+    var name = this.column.get('name');
+    this.collection.clearSearch([name, name+'__in']);
+    this.collection.getFirstPage({reset: true, fetch: true});
+  },      
+
+  render : function() {
+    var self = this;
+    SelectorHeaderCell.__super__.render.apply(this);
+
+    console.log('render SelectorHeaderCell:  ' + this.column.get('name'));
+  
+    this.$el.append(this.filterIcon);
+
+    this._serverSideFilter.render();
+    this.$el.append(this._serverSideFilter.el);
+    this._serverSideFilter.$el.hide();
+    
+    this._serverSideFilter.clearButton().click(function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      self.clearSearch();
+    });
+    
+    this.filterIcon.click(function(e){
+      e.stopPropagation();
+      e.preventDefault();
+      self._serverSideFilter.$el.show();
+      self.filterIcon.hide();
+    });
+
+    this._serverSideFilter.submitButton().click(function(e){
+      e.preventDefault();
+      self._submit();
+    });
+
+    this.$el.prop('title', 
+            this.options['column']['attributes']["description"]);
+    
+    return this;
+  },  
+  
+});
+
+var IntegerServerSideFilter = MyServerSideFilter.extend({
+
+  events: {
+    "keyup input[type=search]": "showClearButtonMaybe",
+    "click a[data-backgrid-action=clear]": "clear",
+    "submit": "search"
+  },
+
+  className: "form-horizontal container",    
+
+  template: _.template([
+      '<div class="input-group input-group-sm">',
+      '<span class="input-group-addon" for="lower">>=</span>',
+      // TODO: don't know why width override is needed
+      '<input type="text" class="form-control" style="width: 8em; padding: 0,0,0,0;" id="lower"',
+      '<% if (placeholder1) { %> placeholder="<%- placeholder1 %>" <% } %>',
+      ' name="<%- name %>" />',
+      '</div>',
+      '<div class="input-group input-group-sm">',
+      '<span class="input-group-addon" for="upper"><</span>',
+      '<input type="text" class="form-control" style=""  id="upper"',
+      '<% if (placeholder1) { %> placeholder="<%- placeholder1 %>" <% } %>',
+      ' name="<%- name %>" />',
+      '</div>',
+      '<div class="input-group"><input type="submit" class="btn btn-default btn-xs" name="ok" ></input>',
+      '<a class="backgrid-filter clear" style="display: inherit;" data-backgrid-action="clear" href="#">&times;</a></div>'
+      ].join(''), null, {variable: null}),
+
+  initialize: function(options){
+    this.placeholder1 = options.placeholder || this.placeholder;
+    this.placeholder2 = options.placeholder || this.placeholder;
+    this.name = options.name || this.name;
+    this.options = options;
+    
+  },
+
+  isForKey: function(searchKey){
+    return this.name + '__gte' == searchKey || this.name + '__lt' == searchKey;
+  },
+  
+  _setSearch: function(key, val){
+    if(key == this.name + '__gte'){
+      this.$el.find('#lower').val(val);
+    }else{
+      this.$el.find('#upper').val(val);
+    }
+  },
+  
+  /**
+   * Override
+    Upon search form submission, this event handler constructs a query
+    parameter object and pass it to Collection#fetch for server-side
+    filtering.
+  
+    If the collection is a PageableCollection, searching will go back to the
+    first page.
+  */
+  search: function(e) {
+    if (e) e.preventDefault();      
+    var searchHash = {};
+    
+    val1 = this.$el.find('#lower').val();
+    val2 = this.$el.find('#upper').val();
+    
+    if(_.isUndefined(val1)){
+      appModel.showError('must enter a value');
+      return;
+    }
+    
+    if(_.isUndefined(val2)){
+      searchHash[this.name] = val1;
+    }else{
+      searchHash[this.name + '__gte'] = val1;
+      searchHash[this.name + '__lt'] = val2;
+    }
+    
+    console.log('server side filter add search: ' + 
+        JSON.stringify(searchHash));
+    this.collection.addSearch(searchHash);
+    this.collection.fetch({data: _.clone(this.collection.listModel.get('search'))});
+    
+    if (e) e.preventDefault();
+    this.showClearButtonMaybe();
+  },
+  
+  /**
+  Event handler. Show the clear button when the search box has text, hide
+  it otherwise.
+  */
+  showClearButtonMaybe: function () {
+    this.clearButton();
+  },
+
+  clear: function(e){
+    if (e) e.preventDefault();
+    this.remove();
+    this.collection.clearSearch([this.name + '__gte']); 
+    this.collection.clearSearch([this.name + '__lt']); 
+    this.collection.getFirstPage({reset: true, fetch: true});
+  },    
+  
+  
+  /**
+    Renders a search form with a text box, optionally with a placeholder and
+    a preset value if supplied during initialization.
+   */
+  render: function () {
+    this.$el.empty().append(this.template({
+      name: this.name,
+      placeholder1: this.placeholder1,
+      placeholder2: this.placeholder2,
+      value: this.value
+    }));
+    
+    this.showClearButtonMaybe();
+    this.delegateEvents();
+    return this;
+  }
+});
+
+var IntegerHeaderCell = MyHeaderCell.extend({
+
+  initialize : function(options) {
+    this.options = options;
+    IntegerHeaderCell.__super__.initialize.apply(this, arguments);
+
+    this._serverSideFilter = new IntegerServerSideFilter({
+        // TODO: collection should be passed as an option
+        collection : this.collection, 
+        // Name of the URL query parameter for tastypie/django 
+        // TODO: support other filters
+        name : this.column.get("name"), 
+        // HTML5 placeholder for the search box
+        placeholder : "Search " + this.column.get("label"), 
+        columnName : this.column.get("name"),
+        fieldinformation : this.column.get('fieldinformation')
+    });
+
+    this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
+    this.listenTo(this.collection,"sort",this.collectionSorted);
+//    this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
+//    _.bindAll(this, 'clearSearch');
+  },
+
+//  clearSearch: function(){
+//    this._serverSideFilter.clear();
+//  },
+  
+  /**
+   * Function to listen for router generated custom search event
+   * "MyServerSideFilter:search"
+   * - add search term and show box
+   * - clear old search terms
+   **/
+  _search: function(hash, collection){
+      var self = this;
+      var searchHash = _.clone(hash);
+      if (collection == this.collection){
+          var _el;
+          // TODO: delegate this to the filter --- 
+          _.each(_(searchHash).pairs(), function(pair){
+              var key = pair[0];
+              var val = pair[1];
+//              console.log('looking for search: ' + key + ', ' + val + ',' + self._serverSideFilter.name );
+              if (self._serverSideFilter.isForKey(key)){
+                  console.log('--found search: ' + key + '=' + val + 
+                      ', on: ' + self.column.get('name'));
+//                  // create the DOM element
+//                  self.$el.append(self._serverSideFilter.render().el);
+                  if(_.isUndefined(_el) ) _el = self._serverSideFilter.render().el; 
+                  // set the search term
+                  self._serverSideFilter._setSearch(key, val);
+                  // the filter search method will call collection.fetch()
+//                  self._serverSideFilter.search(); 
+              }
+          });
+
+          if (_.isUndefined(_el)) {
+              if (!_.isEmpty(this.$el.find("input[type=text]").val())) {
+                  this._serverSideFilter.remove();
+                  this.collection.clearSearch([self._serverSideFilter.name]);
+              }
+          }else{
+            // create the DOM element
+            self.$el.append(_el);
+          }
+      }
+  },  
+  
+});
+
+
+/**
+ * Return an array for backgrid column descriptors.
+ * @param {Object} fields_from_rest - hash of fields for the current dataset:
+ *    field properties { visibility: [array of strings], title: a label for
+ *    the field, order: display order of the field }
+ * @param {Object} optionalHeaderCell - a Backgrid.HeaderCell to use for each
+ *    column
+ * @param {Object} options - a hash of { fieldKey: [custom cell: extend
+ *    Backgrid.Cell] } to map custom cell implementations to fields
+ */
+var createBackgridColumn = Iccbl.createBackgridColumn = 
+  function(key, prop, optionalHeaderCell, _orderStack){
+  
+  var orderStack = _orderStack || [];
+  
+  var column = {};
+
+  var visible = _.has(prop, 'visibility') && 
+                    _.contains(prop['visibility'], 'list');
+  var backgridCellType = 'string';
+  if (!_.isEmpty(prop['backgrid_cell_type'])) {
+      backgridCellType = prop['backgrid_cell_type'];
+      cell_options = prop['backgrid_cell_options'];
+      
+      try {
+          var klass = Iccbl.stringToFunction(prop['backgrid_cell_type']);
+          if (!_.isUndefined(klass)) {
+              console.log('----- class found: ' + prop['backgrid_cell_type']);
+              backgridCellType = klass;
+              _options = JSON.parse(cell_options);
+              if(!_.isUndefined(_options)){
+                var _specialized_cell = klass.extend(_options);
+                backgridCellType = _specialized_cell;
+              }
+          }
+      } catch(ex) {
+          var msg = ('----for: field: ' + key + 
+              ', no Iccbl class found for type: ' + 
+              prop['backgrid_cell_type'] + 
+              ', this may be a Backgrid cell type');
+          console.log(msg + ': ' + JSON.stringify(ex));
+      }
+  }
+  
+  column = _.extend(column, {
+      'name' : key,
+      'label' : prop['title'],
+      'description' : prop['description'],
+      'cell' : backgridCellType,
+      'order' : prop['ordinal'],
+      'editable' : false,
+      'visible': visible,
+      'fieldinformation': prop
+  });
+  if(orderStack && _.contains(orderStack, key)){
+    column['direction'] = 'ascending';
+  }
+  else if(orderStack && _.contains(orderStack, '-' + key)){
+    column['direction'] = 'descending';
+  }
+  if (optionalHeaderCell) {
+    column['headerCell'] = optionalHeaderCell;
+    
+    
+    
+    // Preliminary -- testing -- 
+    var ui_type = prop['ui_type'];
+    if(ui_type == 'integer'){
+      column['headerCell'] = IntegerHeaderCell;
+    }
+    if( ui_type == 'Select' 
+      || ui_type == 'Radio'
+      || ui_type == 'Checkboxes' ){
+      column['headerCell'] = SelectorHeaderCell;
+    }
+  }
+  return column;
+};
+
+var createBackgridColModel = Iccbl.createBackgridColModel = 
+  function(restFields, optionalHeaderCell, orderStack, _manualIncludes) {
+    
+    console.log('--createBackgridColModel');
+    var manualIncludes = _manualIncludes || [];
+
+    var colModel = [];
+    var i = 0;
+    var _total_count = 0;
+    _.each(_.pairs(restFields), function(pair) {
+        var key = pair[0];
+        var prop = pair[1];
+        var column = createBackgridColumn(key, prop, optionalHeaderCell, orderStack);
+        var visible = _.has(prop, 'visibility') && 
+          _.contains(prop['visibility'], 'list');
+        if (visible || _.contains(manualIncludes, key) ) {
+          if(_.contains(manualIncludes, '-'+key)){
+            console.log('Column: ' + key + ' is manually excluded');
+          }else{
+            colModel[i] = column;
+            i++;
+          }
+        } else {
+            //console.log('field not visible in list view: ' + key)
+        }
+    });
+    
+    colModel = new Backgrid.Columns(colModel);
+    colModel.comparator = 'order';
+    colModel.sort();
+//    colModel.sort(function(a, b) {
+//        if (_.isNumber(a['order']) && _.isNumber(b['order'])) {
+//            return a['order'] - b['order'];
+//        } else if (_.isNumber(a['order'])) {
+//            return -1;
+//        } else if (_.isNumber(b['order'])) {
+//            return 1;
+//        } else {
+//            return 0;
+//        }
+//    });
+    return colModel;
+};
+
+
+
 
 return Iccbl;
 });

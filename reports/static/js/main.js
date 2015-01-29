@@ -96,6 +96,7 @@ requirejs(['require-config'],
     var ui_resources = JSON.parse(reports_ui_resources_raw);
     _.extend(ui_resources, JSON.parse(ui_resources_raw));
     appModel.set('ui_resources', ui_resources);
+
     // Bootstrap the menu hash
     var menu_resource = JSON.parse(menu_raw);
     _.extend(menu_resource['submenus'], JSON.parse(reports_menu_raw)['submenus']);
@@ -103,6 +104,7 @@ requirejs(['require-config'],
 
     var loadCount = 0
     $(document).bind("ajaxSend", function(){
+      
       $('#loading').fadeIn({duration:100});
       loadCount++;
       console.log('add to loadCount: ' + loadCount );

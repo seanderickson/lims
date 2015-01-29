@@ -1,9 +1,7 @@
-// REFACTOR OF list.js to use layoutmanager
 define([
   'jquery',
   'underscore',
   'backbone',
-//  'backbone_pageable',
   'backgrid',
   'iccbl_backgrid',
   'models/app_state',
@@ -16,24 +14,18 @@ define([
       Iccbl, appModel, genericSelector,
       rowsPerPageTemplate, listTemplate, modalTemplate) {
 
-//  var ajaxStart = function(){
-//      $('#loading').fadeIn({duration:100});
-//  };
-//  var ajaxComplete = function(){
-//      $('#loading').fadeOut({duration:100});
-//  };
-//  $(document).bind("ajaxComplete", function(){
-//      ajaxComplete(); 
-//  });
-
+  
   var ListView = Backbone.View.extend({
+
     LIST_ROUTE_ORDER: ['rpp', 'page', 'includes', 'order','search'],
+    SEARCH_DELIMITER: ';',
     
     events: {
       'click .btn#select_columns': 'select_columns'
     },
 
     initialize : function(args) {
+      
       console.log('initialize ListView: ');
       var self = this;
       var _options = self._options = args.options;
@@ -47,8 +39,6 @@ define([
             search: {}}
         });
       
-
-      // grab any preset searches
       var preset_searches = {};
       if(!_.isUndefined(resource.options)
           && ! _.isUndefined(resource.options.search)){
@@ -92,7 +82,7 @@ define([
           if(_.contains(this.LIST_ROUTE_ORDER, key)){
             
             if(key === 'search') {
-              var searches = value.split(',');
+              var searches = value.split(this.SEARCH_DELIMITER);
               _.each(searches, function(search){
                 var parts = search.split('=');
                 if (!parts || parts.length!=2) {
@@ -145,9 +135,21 @@ define([
         }
       }
       listInitial['order'] = orderings;
-
-      listInitial['includes'] = includes;
       
+      if(!_.isUndefined(resource.options)
+          && ! _.isUndefined(resource.options.includes)){
+        if(!_.isEmpty(resource.options.order)){
+          includes = _.union(includes, resource.options.includes);
+        }
+      }
+      
+      listInitial['includes'] = includes;
+
+      if(!_.isUndefined(resource.options)
+          && ! _.isUndefined(resource.options.rpp)){
+        listInitial['rpp'] = resource.options.rpp;
+      }
+
       var listModel = this.listModel = new ListModel(listInitial);
 
       this.objects_to_destroy = _([]);
@@ -284,7 +286,7 @@ define([
           if (route === 'search') {
             var val = '';
             _.each(value, function(v,k){
-              if (val !== '' ) val += ',';
+              if (val !== '' ) val += self.SEARCH_DELIMITER;
               
               val += k + "=" + v;
             });
@@ -353,7 +355,6 @@ define([
             if(!_.isUndefined(self._options.detailHandler)){
               self._options.detailHandler(model);
             }else{
-//            self.trigger('detail', model);
               var id = Iccbl.getIdFromIdAttribute( model, schemaResult );
               model.resource = self._options.resource;
               appModel.router.navigate(model.resource.key + '/' + id, {trigger:true});
@@ -395,10 +396,16 @@ define([
       var rppModel = self.rppModel = new Backbone.Model({ 
           selection: String(self.listModel.get('rpp')) 
         });
+      
+      var rpp_selections = ['25','50','200','500','1000'];
+      if(!_.isUndefined(self._options.resource.options)
+          && ! _.isUndefined(self._options.resource.options.rpp_selections)){
+        rpp_selections = self._options.resource.options.rpp_selections;
+      }
       var rppSelectorInstance = self.rppSelectorInstance = new genericSelector(
           { model: rppModel }, 
           { label: 'Rows', 
-            options: ['25','50','200','1000'] });
+            options: rpp_selections });
       this.objects_to_destroy.push(rppSelectorInstance);
       this.listenTo(this.listModel, 'change: rpp', function(){
           rppModel.set({ selection: String(self.listModel.get('rpp')) });
@@ -536,18 +543,6 @@ define([
           },
       });
       this.objects_to_destroy.push(footer);
-
-      // Note: prefer listenTo over "on" (alias for _.bind/model.bind) as this
-      // will allow the object to unbind all observers at once.
-      //collection.on('request', ajaxStart); // NOTE: can use bind or on
-      //collection.bind('sync', ajaxComplete, this);
-
-//      this.listenTo(self.collection, 'request', ajaxStart);
-
-      // TODO: work out the specifics of communication complete event.  
-      // the following are superceded by the global handler for "ajaxComplete"
-//      this.listenTo(self.collection, 'error', ajaxComplete);
-//      this.listenTo(self.collection, 'complete', ajaxComplete);
       console.log('list view initialized');
     },
 
@@ -583,10 +578,6 @@ define([
       finalGrid.$el.addClass("col-sm-12 table-striped table-condensed table-hover");
 
       self.$("#paginator-div").append(self.paginator.render().$el);
-//      self.$('#list-header').append(
-//          '<div class="pull-right pull-down"><a class="btn btn-default btn-sm pull-down" role="button" id="download_link" href="' + 
-//          self.getCollectionUrl() +
-//          '">download</a></div>');
       self.$("#rppselector").html(
       		self.rppSelectorInstance.render().$el);
       if(!_.isUndefined(self.extraSelectorInstance)){
@@ -597,12 +588,39 @@ define([
         self.$("#downloadselector").html(
             self.downloadSelectorInstance.render().$el);
       }
+
+      var clearSearchesButton = $([
+        '<div class="pull-right pull-down">',
+        '<div class="col-xs-1">',
+        '<a id="clear-searches" >clear searches</a>',
+        '</div>',
+        '</div>'
+        ].join(''));
+      clearSearchesButton.click(function(e){
+        e.preventDefault();
+        self.clear_searches();
+      });
+      self.$('#list-header').append(clearSearchesButton);
       
-//      // FIXME: "add" feature should be enabled declaratively, by user/group status:
-//      if(appModel.getCurrentUser().is_superuser
-//          && _.contains(self._options.resource.visibility, 'add')){
-//        self.$("#table-footer-div").append(self.footer.$el);
-//      }
+      var clearSortsButton = $([
+        '<div class="pull-right pull-down">',
+        '<div class="col-xs-1">',
+        '<a id="clear-sorts" >clear sorts</a>',
+        '</div>',
+        '</div>'
+        ].join(''));
+      clearSortsButton.click(function(e){
+        e.preventDefault();
+        self.clear_sorts();
+      });
+      self.$('#list-header').append(clearSortsButton);
+                         
+      
+      //      // FIXME: "add" feature should be enabled declaratively, by user/group status:
+      //      if(appModel.getCurrentUser().is_superuser
+      //          && _.contains(self._options.resource.visibility, 'add')){
+      //        self.$("#table-footer-div").append(self.footer.$el);
+      //      }
       
       if(appModel.hasPermission(self._options.resource.key, 'write')){
         self.$("#table-footer-div").append(self.footer.$el);
@@ -657,6 +675,26 @@ define([
     
     afterRender: function() {
       this.reportState();
+    },
+    
+    clear_searches: function(){
+      this.collection.trigger("Iccbl:clearSearches");
+    },
+    
+    clear_sorts: function(){
+      var self = this;
+      // TODO: refactor sorting to be more model-driven:
+      // override BackbonePageableCollection and Backgrid.HeaderCell
+      _.each(this.collection.state.orderStack, function(order_entry){
+        var dir = order_entry.substring(0,1);
+        var fieldname = order_entry;
+        if(dir == '-'){
+          fieldname = order_entry.substring(1);
+        }
+        self.collection.trigger('backgrid:sort', fieldname, null );
+      })
+      this.listModel.unset('order');
+      this.collection.state.orderStack = [];
     },
     
     select_columns: function(event){
@@ -766,7 +804,6 @@ define([
                   return true;
                 }
               });
-              
             }
             if(value && !default_visible[key]){
               new_includes.unshift(key);

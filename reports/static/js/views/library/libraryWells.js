@@ -74,15 +74,17 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       // -or- the libary-specific well view has it's own schema and url: i.e.:
       // library/short_name/well/schema
       // library/short_name/well/well_id
-      var wellSpecificResource;
-      var wellResourceId = library.key + '-wells';
-      try{
-        // try to get cached resource
-        setupFunction(appModel.getResource(wellResourceId));
-      } catch(e) {
-        console.log('get resource from server ' + appModel);
-        appModel.getResourceFromUrl(wellResourceId, url+'/schema', setupFunction );
-      }
+//      var wellResourceId = library.key + '-wells';
+      var wellResourceId = 'well';
+      console.log('get resource from server ' + appModel);
+      appModel.getResourceFromUrl(wellResourceId, url+'/schema', setupFunction );
+//      try{
+//        // try to get cached resource
+//        setupFunction(appModel.getResource(wellResourceId));
+//      } catch(e) {
+//        console.log('get resource from server ' + appModel);
+//        appModel.getResourceFromUrl(wellResourceId, url+'/schema', setupFunction );
+//      }
       
 //      var ModelClass = Backbone.Model.extend({
 //        url : url + 'schema',

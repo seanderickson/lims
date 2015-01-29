@@ -139,7 +139,21 @@ dd {
   overflow-x: auto;
 }
 
-
+.form-horizontal * {
+	min-height: 0px; 
+	padding-top: 0px; 
+	margin-bottom: 0px;
+	list-style: none;
+}
+.form-horizontal li {
+  display: inline;
+  padding-left: 0px;
+  padding-right: 5px;
+}
+.form-horizontal ul {
+  display: inline;
+  padding-left: 5px;
+}
 
 #content {
 	/* style choice:

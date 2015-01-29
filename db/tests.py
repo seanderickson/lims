@@ -684,8 +684,9 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         data_for_get={}
         data_for_get.setdefault('limit', 9999)
         data_for_get.setdefault('includes', 
-            ['substance_id','duplex_wells','facility_entrezgene_id','facility_entrezgene_symbols',
-             'facility_gene_name','facility_gene_species','facility_genbank_accession_numbers'])
+            ['substance_id','duplex_wells','facility_entrezgene_id',
+             'facility_entrezgene_symbols','facility_gene_name',
+             'facility_gene_species','facility_genbank_accession_numbers'])
         data_for_get.setdefault('HTTP_ACCEPT', 'application/xls' )
         xls_serializer = XLSSerializer()
         with open(filename) as input_file:

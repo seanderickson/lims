@@ -11,7 +11,7 @@ require.config({
     backgrid: 'libs/backgrid',
     backgrid_filter: 'libs/backgrid-filter',
     backgrid_paginator: 'libs/backgrid-paginator',
-    backgrid_select_all: 'libs/backgrid-select-all',
+//    backgrid_select_all: 'libs/backgrid-select-all',
     backbone_stickit: 'libs/backbone.stickit',
     backbone_modelbinder: 'libs/Backbone.ModelBinder',
     backbone_forms: 'libs/backbone-forms', // TODO: evaluating vs. backbone.stickit

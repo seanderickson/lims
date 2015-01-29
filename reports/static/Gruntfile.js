@@ -10,6 +10,8 @@ module.exports = function (grunt) {
   gruntConfig.connect = {
     server: {
       options: {
+//        hostname: '*',
+//        keepalive: true,
         port: 8008,
         base: '.',
         debug: true
@@ -27,7 +29,8 @@ module.exports = function (grunt) {
         //        reporter: 'List',
         run: false,
         timeout: 25000,
-        log: true
+        log: true,
+        logErrors: true
       }
     }
     

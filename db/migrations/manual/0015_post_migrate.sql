@@ -57,6 +57,9 @@ delete from silencing_reagent_duplex_wells dw
   using temp_reagents_to_delete d
   where dw.silencingreagent_id=d.reagent_id; 
 **/
+delete from silencing_reagent_duplex_wells dw
+  using temp_reagents_to_delete d
+  where dw.silencingreagent_id=d.reagent_id; 
 
 delete from silencing_reagent r 
   using temp_reagents_to_delete d

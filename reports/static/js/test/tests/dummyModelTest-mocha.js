@@ -8,6 +8,7 @@ define([
         ], 
       function(sinon, fakeServer, chai, _, Backbone, 
           appModel, ui_resources_raw, resource_raw) {
+  console.log('start...');
   var testData = {           
       object1: {
           property1: 'val1',

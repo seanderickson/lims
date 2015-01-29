@@ -16,14 +16,16 @@
   <script src="config.js" type="text/javascript" charset="utf-8"></script>
   <script src="../libs/require.js" type="text/javascript" charset="utf-8"></script>
   <script type="text/javascript">
-    //First, load application require-config   
+    console.log('First, load application require-config');   
     requirejs(['../require-config'], function() { 
-      //second, load the testing require-config, which sets the baseUrl to ".." :
+      console.log('second, load the testing require-config, which sets the baseUrl to ".."');
       requirejs(['require-config'], function() {
-        // load test code
+        console.log('load test code');
         require(['chai', 'chai-jquery'], function(chai, chaiJquery){
           //             chai.use(chaiJquery);
           mocha.setup('bdd');
+          console.log('runMocha');
+          
           require([
               'tests/model-tests.js',
               'tests/dummyModelTest-mocha.js',

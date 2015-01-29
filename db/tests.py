@@ -233,9 +233,8 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         
         logger.debug('============== LibraryResource setup: done ============')
 
-    def tearDown(self):
-        logger.info(str(('tearDown')))
-        
+#     def tearDown(self):
+#         logger.info(str(('tearDown')))
 
 
 #     from django.db import transaction
@@ -286,7 +285,7 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         resp = self.api_client.get(
             resource_uri, format='json', authentication=self.get_credentials(), 
             data={ 'limit': 2000 })
-        logger.info(str(('--------resp to get:', resp.status_code, resp['Content-Type'], resp)))
+        logger.debug(str(('--------resp to get:', resp.status_code, resp['Content-Type'], resp)))
         self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
         self.assertTrue(resp['Content-Type'].startswith('application/json'))
         new_obj = self.deserialize(resp)
@@ -415,7 +414,7 @@ class LibraryResource(DBMetaHashResourceBootstrap):
 
         data_for_get={}
         data_for_get.setdefault('limit', 999)
-        data_for_get.setdefault('includes', 'smiles,inchi,substance_id')
+        data_for_get.setdefault('includes', ['substance_id','smiles','inchi','substance_id'])
         data_for_get.setdefault('HTTP_ACCEPT', 'chemical/x-mdl-sdfile' )
 #         data_for_get.setdefault('HTTP_ACCEPT', 'application/json' )
 
@@ -499,7 +498,7 @@ class LibraryResource(DBMetaHashResourceBootstrap):
 
         data_for_get={}
         data_for_get.setdefault('limit', 999)
-        data_for_get.setdefault('includes', 'smiles,inchi,substance_id')
+        data_for_get.setdefault('includes', ['substance_id','smiles','inchi','substance_id'])
         data_for_get.setdefault('HTTP_ACCEPT', 'chemical/x-mdl-sdfile' )
 #         data_for_get.setdefault('HTTP_ACCEPT', 'application/json' )
 
@@ -685,8 +684,8 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         data_for_get={}
         data_for_get.setdefault('limit', 9999)
         data_for_get.setdefault('includes', 
-            ('substance_id,facility_entrezgene_id,facility_entrezgene_symbols,'
-             'facility_gene_name,facility_gene_species,facility_genbank_accession_numbers'))
+            ['substance_id','duplex_wells','facility_entrezgene_id','facility_entrezgene_symbols',
+             'facility_gene_name','facility_gene_species','facility_genbank_accession_numbers'])
         data_for_get.setdefault('HTTP_ACCEPT', 'application/xls' )
         xls_serializer = XLSSerializer()
         with open(filename) as input_file:

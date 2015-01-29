@@ -150,7 +150,7 @@
         "description": "Well information",
         "options": { 
           "rpp_selections" : [24,96,384,1000],
-          "rpp": 384,
-          "order": ["well_id"]  }
+          "rpp": 24,
+          "order": ["plate_number","well_name"]  }
     }
 }

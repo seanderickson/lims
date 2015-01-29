@@ -115,8 +115,13 @@
         "url_root": "/db/api/v1",
         "description": "View Small Molecule Library information",
         "options": { 
-          "search": { "screen_type": "small_molecule"}, 
-          "order": ["short_name"] }
+          "rpp": 500, 
+          "includes": ["-screen_type"],
+          "order": ["short_name"], 
+          "search": { 
+            "screen_type": "small_molecule"
+           } 
+        }
     },
     "rnalibrary": {
         "header_message": "RNAi Libraries",
@@ -128,8 +133,11 @@
         "url_root": "/db/api/v1",
         "description": "View RNAi library information",
         "options": { 
+          "rpp": 500, 
           "search": { "screen_type": "rnai"}, 
-          "order": ["short_name"]  }
+          "includes": ["-screen_type"],
+          "order": ["short_name"]  
+        }
     },
     "well": {
         "header_message": "Wells",
@@ -141,6 +149,8 @@
         "url_root": "/db/api/v1",
         "description": "Well information",
         "options": { 
+          "rpp_selections" : [24,96,384,1000],
+          "rpp": 384,
           "order": ["well_id"]  }
     }
 }

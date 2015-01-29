@@ -1837,6 +1837,10 @@ class ResourceResource(ManagedModelResource):
             logger.error('no API resource found in the registry for ' + 
                          'fields.'+bundle.obj.key + 
                          '.  Cannot build the schema for this resource.' )
+        
+        # hack to make a "key" entry that will alwasy sort first, for debugging
+        bundle.data['1'] = bundle.data['key']
+        
         return bundle
         
             

@@ -1,5 +1,8 @@
 # Useful dev commands:
 
+# copy production settings to server:
+scp /home/sde4/workspace/iccbl-lims/lims/static/production_data/* orchestra.med.harvard.edu:/www/dev.screensaver2.med.harvard.edu/support/production_data/
+
 # run migration script for branch library1 using repo: seanderickson
 
 bash -x ./migration.sh library1 seanderickson migration.properties

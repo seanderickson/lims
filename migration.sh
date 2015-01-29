@@ -347,7 +347,8 @@ function frontend_setup {
   npm --version 2>&1 || error "npm not found: $?"
   
   npm install >>"$LOGFILE" 2>&1 || error "npm install failed: $?"
-  
+  npm install bower
+  ./node_modules/.bin/bower cache clean
   ./node_modules/.bin/grunt bowercopy >>"$LOGFILE" 2>&1 || error "grunt bowercopy failed: $?"
   
   ./node_modules/.bin/grunt test >>"$LOGFILE" 2>&1 || error "grunt test failed: $?"
@@ -447,6 +448,7 @@ function code_bootstrap {
 echo "start migration: $(ts) ..."
 
 main "$@"
+#frontend_setup
 
 #maybe_activate_virtualenv
 #  django_syncdb

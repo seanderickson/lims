@@ -1341,6 +1341,13 @@ class ChunkIterWrapper(object):
                 self.fragment = None
             else:
                 raise StopIteration
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on ChunkIterWrapper next', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e   
         finally:
             if bytes.getvalue():
                 logger.info(str(('chunk size', len(bytes.getvalue()), 'chars')))
@@ -1739,6 +1746,8 @@ class SqlAlchemyResource(StreamingResource):
         
     def stream_response_from_cursor(self, request, stmt, count_stmt, 
             output_filename, field_hash={}):
+        DEBUG_STREAMING = True
+        
         limit = request.GET.get('limit', self._meta.limit) 
         try:
             limit = int(limit)
@@ -1808,30 +1817,35 @@ class SqlAlchemyResource(StreamingResource):
                 }    
                         
             def json_generator(cursor):
-#                 logger.info(str(('meta', meta)))
+                if DEBUG_STREAMING: logger.info(str(('meta', meta)))
                 yield '{ "meta": %s, "objects": [' % json.dumps(meta)
                 i=0
                 for row in cursor:
-#                     logger.info(str(('row', row, row.keys())))
+                    if DEBUG_STREAMING: logger.info(str(('row', row, row.keys())))
                     if field_hash:
                         _dict = OrderedDict()
                         for key, field in field_hash.iteritems():
-#                             logger.info(str(('key', key,  row.has_key(key))))
+                            if DEBUG_STREAMING: 
+                                logger.info(str(('key', key,  row.has_key(key), field)))
                             value = None
+                            
                             if row.has_key(key):
                                 value = row[key]
+                            else:
+                                continue
+                            
                             if ( field['json_field_type'] == 'fields.ListField' 
                                  or field['linked_field_type'] == 'fields.ListField' ) and value:
                                 # FIXME: need to do an escaped split
-#                                 logger.info(str(('split', key, value)))
+                                if DEBUG_STREAMING: logger.info(str(('split', key, value)))
                                 value = value.split(LIST_DELIMITER_SQL_ARRAY)
 
-#                             logger.info(str(('key val', key, value, field)))
+                            if DEBUG_STREAMING: logger.info(str(('key val', key, value, field)))
                             _dict[key] = value
                             
                             if field.get('value_template', None):
                                 value_template = field['value_template']
-#                                 logger.info(str(('field', key, value_template)))
+                                if DEBUG_STREAMING: logger.info(str(('field', key, value_template)))
                                 newval = interpolate_value_template(value_template, row)
                                 if field['ui_type'] == 'image':
                                     # hack to speed things up:
@@ -1850,14 +1864,14 @@ class SqlAlchemyResource(StreamingResource):
                                 else:
                                     _dict[key]=newval
                     else:
-#                         logger.info(str(('raw', row)))
+                        if DEBUG_STREAMING: logger.info(str(('raw', row)))
                         _dict = dict((x,y) for x, y in row.items())
 
                     i += 1
                     if i == 1:
                         try:
-#                             logger.info(str(('_dict',i, _dict)))
-#                             logger.info(str(('_dict', json.dumps(_dict))))
+                            if DEBUG_STREAMING: logger.info(str(('_dict',i, _dict)))
+                            if DEBUG_STREAMING: logger.info(str(('_dict', json.dumps(_dict))))
 #                             yield json.dumps(_dict)
                             yield json.dumps(_dict, cls=DjangoJSONEncoder,
                                 sort_keys=True, ensure_ascii=False, indent=2)
@@ -1866,17 +1880,16 @@ class SqlAlchemyResource(StreamingResource):
                             logger.error(str(('ex', _dict, e)))
                     else:
                         try:
-#                             logger.info(str(('_dict',i, _dict)))
+                            if DEBUG_STREAMING: logger.info(str(('_dict',i, _dict)))
 #                             yield ', ' + json.dumps(_dict)
                             yield ', ' + json.dumps(_dict, cls=DjangoJSONEncoder,
                                 sort_keys=True, ensure_ascii=False, indent=2)
                         except Exception, e:
                             logger.error(str(('ex============', _dict, e)))
                 
-#                 logger.info(str(('i', i)))    
                 yield ' ] }'
             
-            logger.info(str(('ready to stream 1...')))
+            if DEBUG_STREAMING: logger.info(str(('ready to stream 1...')))
             # NOTE: sqlalchemy ResultProxy will automatically close the result after last row fetch
             response = StreamingHttpResponse(ChunkIterWrapper(json_generator(result)))
             response['Content-Type'] = content_type
@@ -1897,7 +1910,7 @@ class SqlAlchemyResource(StreamingResource):
                 # Create an new Excel file and add a worksheet.
                 filename = '%s.xlsx' % (output_filename)
                 temp_file = os.path.join(temp_dir, filename)
-                logger.info(str(('temp file', temp_file)))
+                if DEBUG_STREAMING: logger.info(str(('temp file', temp_file)))
                 workbook = Workbook(temp_file)
                 worksheet = workbook.add_worksheet()
                 
@@ -1923,6 +1936,9 @@ class SqlAlchemyResource(StreamingResource):
                         for col, (key, field) in enumerate(field_hash.iteritems()):
                             if row.has_key(key):
                                 value = row[key]
+                            else: 
+                                continue
+                            
                             if ( field['json_field_type'] == 'fields.ListField' 
                                  or field['linked_field_type'] == 'fields.ListField' ) and value:
                                 value = value.split(LIST_DELIMITER_SQL_ARRAY)
@@ -1931,7 +1947,7 @@ class SqlAlchemyResource(StreamingResource):
 
                             if field.get('value_template', None):
                                 value_template = field['value_template']
-                                logger.info(str(('field', key, value_template)))
+                                if DEBUG_STREAMING: logger.info(str(('field', key, value_template)))
                                 newval = interpolate_value_template(value_template, row)
                                 if field['ui_type'] == 'image':
                                     max_rows_per_file = MAX_IMAGE_ROWS_PER_XLS_FILE
@@ -2046,8 +2062,12 @@ class SqlAlchemyResource(StreamingResource):
                                 # http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip
                                 # "only one blank line should terminate a data item"
                                 value = None
+                                
                                 if row.has_key(key):
                                     value = row[key]
+                                else: 
+                                    continue
+                                
                                 if field.get('value_template', None):
                                     value_template = field['value_template']
 #                                     logger.info(str(('field', key, value_template)))
@@ -2319,6 +2339,7 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
             else:    
                 manual_field_includes = set()
             logger.info(str(('manual_field_includes', manual_field_includes)))
+            include_all = '*' in manual_field_includes
 
             (filter_expression, filter_fields) = \
                 self.build_sqlalchemy_filters(schema, request, **kwargs)
@@ -2326,12 +2347,15 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
             temp = { key:field for key,field in schema['fields'].items() 
                 if ((field.get('visibility', None) and 'list' in field['visibility']) 
                     or field['key'] in filter_fields 
-                    or field['key'] in manual_field_includes )}
+                    or field['key'] in manual_field_includes
+                    or include_all )}
+
             # manual excludes
             temp = { key:field for key,field in temp.items() 
                 if '-%s' % key not in manual_field_includes }
             
-            field_hash = OrderedDict(sorted(temp.iteritems(), key=lambda x: x[1]['ordinal'])) 
+            field_hash = OrderedDict(sorted(temp.iteritems(), 
+                key=lambda x: x[1].get('ordinal',999))) 
             logger.info(str(('field_hash final: ', field_hash.keys() )))
             
             base_query_tables = ['plate', 'copy','plate_location', 'library']
@@ -2670,11 +2694,10 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
             logger.info(str(('includes', includes)))
             if includes:
                 manual_field_includes = set(includes)
-#                 for include in includes:
-#                     manual_field_includes.add(include) #.split(LIST_DELIMITER_URL_PARAM))
             else:    
                 manual_field_includes = set()
             logger.info(str(('manual_field_includes', manual_field_includes)))
+            include_all = '*' in manual_field_includes
 
             (filter_expression, filter_fields) = \
                 self.build_sqlalchemy_filters(schema, request, **kwargs)
@@ -2682,13 +2705,15 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
             temp = { key:field for key,field in schema['fields'].items() 
                 if ((field.get('visibility', None) and 'list' in field['visibility']) 
                     or field['key'] in filter_fields 
-                    or field['key'] in manual_field_includes )}
+                    or field['key'] in manual_field_includes
+                    or include_all )}
             
             # manual excludes
             temp = { key:field for key,field in temp.items() 
                 if '-%s' % key not in manual_field_includes }
             
-            field_hash = OrderedDict(sorted(temp.iteritems(), key=lambda x: x[1]['ordinal'])) 
+            field_hash = OrderedDict(sorted(temp.iteritems(), 
+                key=lambda x: x[1].get('ordinal',999))) 
     
             base_query_tables = ['copy','library']
             
@@ -2783,7 +2808,9 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
         else:    
             manual_field_includes = set()
         logger.info(str(('manual_field_includes', manual_field_includes)))
-
+        include_all = '*' in manual_field_includes
+        
+        
         desired_format = self.get_format(request)
         #         if desired_format == 'application/xls':
         manual_field_includes.add('structure_image')
@@ -2795,13 +2822,15 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
         temp = { key:field for key,field in schema['fields'].items() 
             if ((field.get('visibility', None) and 'list' in field['visibility']) 
                 or field['key'] in filter_fields 
-                or field['key'] in manual_field_includes )}
+                or field['key'] in manual_field_includes
+                or include_all )}
 
         # manual excludes
         temp = { key:field for key,field in temp.items() 
             if '-%s' % key not in manual_field_includes }
         
-        field_hash = OrderedDict(sorted(temp.iteritems(), key=lambda x: x[1]['ordinal'])) 
+        field_hash = OrderedDict(sorted(temp.iteritems(), 
+            key=lambda x: x[1].get('ordinal',999))) 
         
         sub_resource = self.get_reagent_resource(library)
         if hasattr(sub_resource, 'build_sqlalchemy_columns'):

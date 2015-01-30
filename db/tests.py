@@ -265,9 +265,11 @@ class LibraryResource(DBMetaHashResourceBootstrap):
             authentication=self.get_credentials())
         self.assertTrue(resp.status_code in [201], str((resp.status_code, resp)))
          
+        data_for_get={ 'limit': 0 }        
+        data_for_get.setdefault('includes', ['*'])
         resp = self.api_client.get(
             resource_uri, format='json', authentication=self.get_credentials(), 
-            data={ 'limit': 999 })
+            data=data_for_get)
         logger.debug(str(('--------resp to get:', resp.status_code)))
         new_obj = self.deserialize(resp)
         self.assertValidJSONResponse(resp)
@@ -282,9 +284,11 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         # now find the library wells
         resource_uri = '/'.join([BASE_URI_DB,'library',library_item['short_name'],'well'])
         logger.debug(str(('GET', resource_uri)))
+        data_for_get={ 'limit': 0 }        
+        data_for_get.setdefault('includes', ['*'])
         resp = self.api_client.get(
             resource_uri, format='json', authentication=self.get_credentials(), 
-            data={ 'limit': 2000 })
+            data=data_for_get)
         logger.debug(str(('--------resp to get:', resp.status_code, resp['Content-Type'], resp)))
         self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
         self.assertTrue(resp['Content-Type'].startswith('application/json'))
@@ -413,8 +417,8 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_small_molecule.sdf'
 
         data_for_get={}
-        data_for_get.setdefault('limit', 999)
-        data_for_get.setdefault('includes', ['substance_id','well_id','smiles','inchi','substance_id'])
+        data_for_get.setdefault('limit', 0)
+        data_for_get.setdefault('includes', ['*'])
         data_for_get.setdefault('HTTP_ACCEPT', 'chemical/x-mdl-sdfile' )
 #         data_for_get.setdefault('HTTP_ACCEPT', 'application/json' )
 
@@ -497,8 +501,8 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_small_molecule_update.sdf'
 
         data_for_get={}
-        data_for_get.setdefault('limit', 999)
-        data_for_get.setdefault('includes', ['substance_id','well_id','smiles','inchi','substance_id'])
+        data_for_get.setdefault('limit', 0)
+        data_for_get.setdefault('includes', ['*'])
         data_for_get.setdefault('HTTP_ACCEPT', 'chemical/x-mdl-sdfile' )
 #         data_for_get.setdefault('HTTP_ACCEPT', 'application/json' )
 
@@ -562,7 +566,7 @@ class LibraryResource(DBMetaHashResourceBootstrap):
             resp = self.api_client.get(
                 resource_uri, format='json', 
                 authentication=self.get_credentials(), 
-                data={ 'limit': 999, 'ref_resource_name': 'library', 'key': library_item['short_name'] })
+                data={ 'limit': 0, 'ref_resource_name': 'library', 'key': library_item['short_name'] })
             self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
             new_obj = self.deserialize(resp)
             logger.debug(str(('===library apilogs:', json.dumps(new_obj))))
@@ -577,7 +581,7 @@ class LibraryResource(DBMetaHashResourceBootstrap):
             resp = self.api_client.get(
                 resource_uri, format='json', 
                 authentication=self.get_credentials(), 
-                data={ 'limit': 999, 'ref_resource_name': 'well' })
+                data={ 'limit': 0, 'ref_resource_name': 'well' })
             self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
             new_obj = self.deserialize(resp)
             logger.debug(str(('===apilogs:', json.dumps(new_obj))))
@@ -682,11 +686,8 @@ class LibraryResource(DBMetaHashResourceBootstrap):
             BASE_URI_DB,'library', library_item['short_name'],resource_name])
         
         data_for_get={}
-        data_for_get.setdefault('limit', 9999)
-        data_for_get.setdefault('includes', 
-            ['substance_id','well_id','duplex_wells','facility_entrezgene_id',
-             'facility_entrezgene_symbols','facility_gene_name',
-             'facility_gene_species','facility_genbank_accession_numbers'])
+        data_for_get.setdefault('limit', 0)
+        data_for_get.setdefault('includes', ['*'])
         data_for_get.setdefault('HTTP_ACCEPT', 'application/xls' )
         xls_serializer = XLSSerializer()
         with open(filename) as input_file:
@@ -804,7 +805,7 @@ class ScreenResource(DBMetaHashResourceBootstrap,ResourceTestCase):
         
         resp = self.api_client.get(
             resource_uri, format='json', authentication=self.get_credentials(), 
-            data={ 'limit': 999 })
+            data={ 'limit': 0 })
         logger.debug(str(('--------resp to get:', resp.status_code)))
         new_obj = self.deserialize(resp)
         self.assertValidJSONResponse(resp)
@@ -853,7 +854,7 @@ class ScreenResource(DBMetaHashResourceBootstrap,ResourceTestCase):
         logger.debug('created items, now get them')
         resp = self.api_client.get(
             resource_uri, format='json', authentication=self.get_credentials(), 
-            data={ 'limit': 999 })
+            data={ 'limit': 0 })
         logger.debug(str(('--------resp to get:', resp.status_code)))
         new_obj = self.deserialize(resp)
         self.assertValidJSONResponse(resp)

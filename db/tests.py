@@ -414,7 +414,7 @@ class LibraryResource(DBMetaHashResourceBootstrap):
 
         data_for_get={}
         data_for_get.setdefault('limit', 999)
-        data_for_get.setdefault('includes', ['substance_id','smiles','inchi','substance_id'])
+        data_for_get.setdefault('includes', ['substance_id','well_id','smiles','inchi','substance_id'])
         data_for_get.setdefault('HTTP_ACCEPT', 'chemical/x-mdl-sdfile' )
 #         data_for_get.setdefault('HTTP_ACCEPT', 'application/json' )
 
@@ -498,7 +498,7 @@ class LibraryResource(DBMetaHashResourceBootstrap):
 
         data_for_get={}
         data_for_get.setdefault('limit', 999)
-        data_for_get.setdefault('includes', ['substance_id','smiles','inchi','substance_id'])
+        data_for_get.setdefault('includes', ['substance_id','well_id','smiles','inchi','substance_id'])
         data_for_get.setdefault('HTTP_ACCEPT', 'chemical/x-mdl-sdfile' )
 #         data_for_get.setdefault('HTTP_ACCEPT', 'application/json' )
 
@@ -684,7 +684,7 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         data_for_get={}
         data_for_get.setdefault('limit', 9999)
         data_for_get.setdefault('includes', 
-            ['substance_id','duplex_wells','facility_entrezgene_id',
+            ['substance_id','well_id','duplex_wells','facility_entrezgene_id',
              'facility_entrezgene_symbols','facility_gene_name',
              'facility_gene_species','facility_genbank_accession_numbers'])
         data_for_get.setdefault('HTTP_ACCEPT', 'application/xls' )

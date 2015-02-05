@@ -1503,7 +1503,7 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
    removeCellDirection: function () {
      var self = this;
      this.$el.removeClass("ascending").removeClass("descending");
-     self.sorter.empty();
+     if(self.sorter) self.sorter.empty();
 //     this.$el.find("#sorter").empty();
 //     this.column.set("direction", null);
    },

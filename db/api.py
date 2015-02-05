@@ -1074,6 +1074,8 @@ class SilencingReagentResource(ManagedLinkedResource):
         #FIXME: this is a hack for SIRNA, to handle the gene table
         - sirna->(vendor,facility)gene->gene_genbank_accession_number
         '''
+        DEBUG_BUILD_COLS = False or logger.isEnabledFor(logging.DEBUG)
+        
         columns = {}
         vendor_gene_columns=['vendor_entrezgene_id',
             'vendor_gene_name','vendor_gene_species']
@@ -1110,7 +1112,8 @@ class SilencingReagentResource(ManagedLinkedResource):
             if not field_name:
                 field_name = field['key']
             label = field['key']
-            logger.info(str(('field[key]', field['key'])))
+            if DEBUG_BUILD_COLS: 
+                logger.info(str(('field[key]', field['key'])))
             join_stmt = None
             join_column = None
             if field['key'] in vendor_columns:
@@ -1189,10 +1192,12 @@ class SilencingReagentResource(ManagedLinkedResource):
                 select_stmt = select_stmt.label(label)
                 columns[label] = select_stmt
                 
-                logger.info(str((select_stmt)))
+                if DEBUG_BUILD_COLS:
+                    logger.info(str((select_stmt)))
                 
                 
-        logger.info(str(('sirna columns', columns.keys())))
+        if DEBUG_BUILD_COLS: 
+            logger.info(str(('sirna columns', columns.keys())))
         
         return columns 
 
@@ -4184,6 +4189,10 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
                     '    from ( select c.name from copy c '
                     '    where c.library_id=library.library_id '
                     '    order by c.name) as c1 )').label('copies'), 
+                'owner': literal_column(
+                    "(select u.first_name || ' ' || u.last_name "
+                    '    from screensaver_user u '
+                    '    where u.screensaver_user_id=library.owner_screener_id)').label('owner')
                     };
                      
             base_query_tables = ['library']

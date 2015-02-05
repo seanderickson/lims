@@ -1876,8 +1876,9 @@ class SqlAlchemyResource(StreamingResource):
         stmt = stmt.offset(offset)
         conn = self.bridge.get_engine().connect()
         
-        logger.info(str(('stmt', str(stmt))))
-        logger.info(str(('count stmt', str(count_stmt))))
+        if DEBUG_STREAMING:
+            logger.info(str(('stmt', str(stmt))))
+            logger.info(str(('count stmt', str(count_stmt))))
         
         logger.info('excute stmt')
         result = conn.execute(stmt)

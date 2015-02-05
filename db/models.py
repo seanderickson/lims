@@ -183,17 +183,6 @@ class WellVolumeCorrectionActivity(models.Model):
         db_table = 'well_volume_correction_activity'
 
 
-
-
-
-
-
-
-
-
-
-
-
 class AnnotationType(models.Model):
     annotation_type_id = models.IntegerField(primary_key=True)
     version = models.IntegerField()

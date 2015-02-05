@@ -1,20 +1,21 @@
 key,scope,resource_uri,ordinal,comment,description,title
 small_molecule,screen.type,/reports/api/v1/vocabularies/screen.type/small_molecule/,1,,"A small molecule screen","Small Molecule"
 rnai,screen.type,/reports/api/v1/vocabularies/screen.type/rnai/,2,,"An RNAi Screen",RNAi
-commercial,library.type,/reports/api/v1/vocabularies/library.type/commercial/,0,,"A commercial llibrary",Commercial
-dos,library.type,/reports/api/v1/vocabularies/library.type/dos/,1,,DOS,DOS
-annotation,library.type,/reports/api/v1/vocabularies/library.type/annotation/,2,,Annotation,Annotation
-academic_collection,library.type,/reports/api/v1/vocabularies/library.type/academic_collection/,3,,"Academic Collection","Academic Collection"
-nih_mlp,library.type,/reports/api/v1/vocabularies/library.type/nih_mlp/,4,,NIH-MLP,NIH-MLP
-known_bioactives,library.type,/reports/api/v1/vocabularies/library.type/known_bioactives/,5,,"Known Bioactives","Known Bioactives"
-nci,library.type,/reports/api/v1/vocabularies/library.type/nci/,6,,NCI,NCI
-natural_products,library.type,/reports/api/v1/vocabularies/library.type/natural_products/,7,,"Natural Products","Natural Products"
-sirna,library.type,/reports/api/v1/vocabularies/library.type/sirna/,8,,siRNA,siRNA
-shrna,library.type,/reports/api/v1/vocabularies/library.type/shrna/,9,,shRNA,shRNA
-mirna_inhibitor,library.type,/reports/api/v1/vocabularies/library.type/mirna_inhibitor/,10,,"miRNA Inhibitor","miRNA Inhibitor"
-mirna_mimic,library.type,/reports/api/v1/vocabularies/library.type/mirna_mimic/,11,,"miRNA Mimic","miRNA Mimic"
-other,library.type,/reports/api/v1/vocabularies/library.type/other/,12,,Other,Other
-discrete,library.type,/reports/api/v1/vocabularies/library.type/discrete/,13,,Discrete,Discrete
+commercial,library.type,/reports/api/v1/vocabularies/library.type/commercial/,1,,"A commercial llibrary",Commercial
+dos,library.type,/reports/api/v1/vocabularies/library.type/dos/,2,,DOS,DOS
+annotation,library.type,/reports/api/v1/vocabularies/library.type/annotation/,4,,Annotation,Annotation
+academic_collection,library.type,/reports/api/v1/vocabularies/library.type/academic_collection/,5,,"Academic Collection","Academic Collection"
+nih_mlp,library.type,/reports/api/v1/vocabularies/library.type/nih_mlp/,6,,NIH-MLP,NIH-MLP
+known_bioactives,library.type,/reports/api/v1/vocabularies/library.type/known_bioactives/,7,,"Known Bioactives","Known Bioactives"
+nci,library.type,/reports/api/v1/vocabularies/library.type/nci/,8,,NCI,NCI
+natural_products,library.type,/reports/api/v1/vocabularies/library.type/natural_products/,9,,"Natural Products","Natural Products"
+sirna,library.type,/reports/api/v1/vocabularies/library.type/sirna/,10,,siRNA,siRNA
+shrna,library.type,/reports/api/v1/vocabularies/library.type/shrna/,11,,shRNA,shRNA
+mirna_inhibitor,library.type,/reports/api/v1/vocabularies/library.type/mirna_inhibitor/,12,,"miRNA Inhibitor","miRNA Inhibitor"
+mirna_mimic,library.type,/reports/api/v1/vocabularies/library.type/mirna_mimic/,13,,"miRNA Mimic","miRNA Mimic"
+other,library.type,/reports/api/v1/vocabularies/library.type/other/,14,,Other,Other
+discrete,library.type,/reports/api/v1/vocabularies/library.type/discrete/,15,,Discrete,Discrete
+fragment,library.type,/reports/api/v1/vocabularies/library.type/fragment/,3,,Fragment,Fragment
 1,plate.size,/reports/api/v1/vocabularies/plate.size/1/,0,,Vial,1
 96,plate.size,/reports/api/v1/vocabularies/plate.size/96/,1,,"96 Well",96
 384,plate.size,/reports/api/v1/vocabularies/plate.size/384/,2,,"384 Well",384
@@ -69,3 +70,19 @@ library_control,library.well_type,/reports/api/v1/vocabularies/library.well_type
 rnai_buffer,library.well_type,/reports/api/v1/vocabularies/library.well_type/rnai_buffer/,6,,"RNAi Buffer","RNAi Buffer"
 sirna,silencing_reagent.type,vocabularies/silencing_reagent.type/sirna/,1,,"Small Interfering RNA",siRNA
 mirna,silencing_reagent.type,vocabularies/silencing_reagent.type/mirna/,2,,microRNA,miRNA
+eppendorf_384,plate.type,vocabularies/plate.type/eppendorf_384/,4,,"Eppendorf 384 CB PP","Eppendorf 384 CB PP"
+eppendorf_96,plate.type,vocabularies/plate.type/eppendorf_96/,3,,"Eppendorf 96 CB PP","Eppendorf 96 CB PP"
+costar_96,plate.type,vocabularies/plate.type/costar_96/,2,,"Costar 96 RB PS","Costar 96 RB PS"
+abgene_384,plate.type,vocabularies/plate.type/abgene_384/,1,,"Abgene 384 CB PP","Abgene 384 CB PP"
+marsh_384,plate.type,vocabularies/plate.type/marsh_384/,6,,"Marsh 384 VB PP","Marsh 384 VB PP"
+genetix_384,plate.type,vocabularies/plate.type/genetix_384/,5,,"Genetix 384 CB PP","Genetix 384 CB PP"
+nunc_96,plate.type,vocabularies/plate.type/nunc_96/,7,,"Nunc 96 VB PS","Nunc 96 VB PS"
+available,plate.status,vocabularies/plate.status/available/,1,,Available,Available
+discarded,plate.status,vocabularies/plate.status/discarded/,2,,Discarded,Discarded
+discarded_volume_transferred,plate.status,vocabularies/plate.status/discarded_volume_transferred/,3,,"Discarded (volume transferred)","Discarded (volume transferred)"
+given_away,plate.status,vocabularies/plate.status/given_away/,4,,"Given Away","Given Away"
+lost,plate.status,vocabularies/plate.status/lost/,5,,Lost,Lost
+not_available,plate.status,vocabularies/plate.status/not_available/,6,,"Not available","Not available"
+not_created,plate.status,vocabularies/plate.status/not_created/,7,,"Not created","Not created"
+not_specified,plate.status,vocabularies/plate.status/not_specified/,8,,"Not specified","Not specified"
+retired,plate.status,vocabularies/plate.status/retired/,9,,Retired,Retired

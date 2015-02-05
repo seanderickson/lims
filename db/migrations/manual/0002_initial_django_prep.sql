@@ -54,6 +54,7 @@ update screen set status_date = si.status_date
 alter table gene_symbol add column id integer;
 create sequence gene_symbol_sequence;
 update gene_symbol set id=nextval('gene_symbol_sequence');
+
 /** since this table will still be used, make the changes for the autofield **/
 alter table gene_symbol drop CONSTRAINT gene_symbol_pkey;
 alter table gene_symbol add primary key(id);

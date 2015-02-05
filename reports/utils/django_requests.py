@@ -1,3 +1,9 @@
+
+###
+# Performs form based interaction with the API
+# - useful if the HTTP server doesn't support basic authentication
+# TODO: we can probably do this with curl and a form definition?
+###
 import requests
 from requests import Request
 import argparse

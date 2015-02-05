@@ -46,6 +46,7 @@ import six
 from django.http.response import HttpResponse
 import csv
 from tastypie.utils.mime import build_content_type
+from django.http.request import HttpRequest
 
 logger = logging.getLogger(__name__)
 
@@ -620,6 +621,37 @@ class StreamingResource(Resource):
                      'sdf': 'chemical/x-mdl-sdfile',
                      'json': 'application/json',
                      }
+    
+
+    def get_format(self, request):
+        '''
+        Return mime-type "format" set on the request, or
+        use mimeparse.best_match:
+        "Return the mime-type with the highest quality ('q') from list of candidates."
+        - uses Resource.content_types
+        '''
+        format = request.GET.get('format', None)
+        logger.info(str(('format', format)))
+        if format:
+            if format in self.content_types:
+                format = self.content_types[format]
+                logger.info(str(('format', format)))
+            else:
+                logger.error(str(('unknown format', desired_format)))
+                raise ImmediateHttpResponse("unknown format: %s" % desired_format)
+        else:
+            # Try to fallback on the Accepts header.
+            if request.META.get('HTTP_ACCEPT', '*/*') != '*/*':
+                try:
+                    import mimeparse
+                    format = mimeparse.best_match(
+                        self.content_types.values(), request.META['HTTP_ACCEPT'])
+                    logger.info(str(('format', format, request.META['HTTP_ACCEPT'])))
+                except ValueError:
+                    logger.error(str(('Invalid Accept header')))
+                    raise ImmediateHttpResponse('Invalid Accept header')
+        return format
+            
 
     def dispatch(self, request_type, request, **kwargs):
         """
@@ -852,6 +884,10 @@ class ManagedResource(LoggingMixin):
     def reset_field_defs(self, scope=None):
         if not scope:
             scope = self.scope
+        # FIXME: somehow the registry has become keyed off "fields.[resource_name]"
+        # instead of just "resource_name"
+        if scope.find('fields') != 0: 
+            scope = 'fields.' + scope
         if scope not in ManagedResource.resource_registry:
             msg = str((
                 'resource for scope not found: ', scope, self._meta.resource_name,
@@ -874,6 +910,7 @@ class ManagedResource(LoggingMixin):
         # provisional 20140825
         logger.info('clear cache')
         cache.delete(self._meta.resource_name + ':schema')
+
         self.field_alias_map = {}
         
         
@@ -900,14 +937,8 @@ class ManagedResource(LoggingMixin):
         if hasattr(self._meta, 'bootstrap_fields'):
             logger.debug(str(('bootstrap fields', self._meta.bootstrap_fields)))
 
-#         try:        
-#             _fields = self.build_schema()['fields']
-#         except Exception, e:
-#             logger.info(str(('in create_fields: resource information not available', e)))
         _fields = MetaHash.objects.get_and_parse(scope=self.scope, 
                     field_definition_scope='fields.metahash', clear=True)
-
-#         self.local_field_defs = _fields
         logger.debug(str(('managed fields to create', _fields.keys())))
 
         try:
@@ -1007,21 +1038,23 @@ class ManagedResource(LoggingMixin):
         _temp.add('json')
         _temp.add('csv')
         _def['content_types'] = list(_temp)
-        logger.info(str(('content_types', _temp)))
+#         logger.info(str(('content_types', _temp)))
         return _def
-
+    
+ 
     def build_schema(self):
         '''
         Override
         '''
+        DEBUG_BUILD_SCHEMA = False or logger.isEnabledFor(logging.DEBUG)
         # FIXME: consider using the cache decorator or a custom memoize decorator?
         schema = cache.get(self._meta.resource_name + ":schema")
         if schema:
-            #if logger.isEnabledFor(logging.DEBUG):
-            #    logger.debug(str(('====schema:', self._meta.resource_name, schema['fields'])))
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(str(('====cached schema:', self._meta.resource_name)))
             return schema
         
-        logger.debug('------build_schema: ' + self.scope)
+        if DEBUG_BUILD_SCHEMA: logger.info('------build_schema: ' + self.scope)
         schema = {}
         
         try:
@@ -1057,32 +1090,46 @@ class ManagedResource(LoggingMixin):
             
             schema['resource_definition'] = self._get_resource_def()
             
-            logger.info(str(('content_types1', self._meta.resource_name, 
-                schema['resource_definition']['content_types'])))
+            if DEBUG_BUILD_SCHEMA: 
+                logger.info(str(('content_types1', self._meta.resource_name, 
+                    schema['resource_definition']['content_types'])))
             
             # TODO: -could- get the schema from the supertype resource
             supertype = schema['resource_definition'].get('supertype', '')
-            logger.info(str(('supertype',supertype)))
+#             logger.info(str(('supertype',supertype)))
             if supertype:
                 supertype_fields = deepcopy(
                     MetaHash.objects.get_and_parse(
                         scope='fields.' + supertype, field_definition_scope='fields.metahash'))
-#                 supertype_fields = deepcopy(
-#                     MetaHash.objects.get_and_parse(
-#                         scope=self.scope, field_definition_scope='fields.metahash'))
-                logger.info(str(('supertype_fields',supertype_fields.keys())))
+                if DEBUG_BUILD_SCHEMA: 
+                    logger.info(str(('supertype_fields',supertype_fields.keys())))
                 supertype_fields.update(schema['fields'])
                 schema['fields'] = supertype_fields
             
-            
-            # find the default table for the resource
+            # Set:
+            # - Default field table
+            # - Field dependencies
             default_table = schema['resource_definition']['table']
-            logger.info(str(('default_table', default_table)))
+            if DEBUG_BUILD_SCHEMA: 
+                logger.info(str(('default_table', default_table)))
             for key,field in schema['fields'].items():
+                
                 if not field.get('table', None):
                     field['table'] = default_table
+                
+                dep_fields = set()
+                if field.get('value_template', None):
+                    dep_fields.update(
+                        re.findall(r'{([^}]+)}', field['value_template']))
+                if field.get('backgrid_cell_options', None):
+                    dep_fields.update(
+                        re.findall(r'{([^}]+)}', field['backgrid_cell_options']))
+                if DEBUG_BUILD_SCHEMA: 
+                    logger.info(str(('field', key, 'dependencies', dep_fields)))
+                field['dependencies'] = dep_fields
+                
         except Exception, e:
-            if(logger.isEnabledFor(logging.DEBUG)):
+            if DEBUG_BUILD_SCHEMA:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
                 msg = str(e)
@@ -1095,7 +1142,8 @@ class ManagedResource(LoggingMixin):
                 self._meta.resource_name, e)))
 
         
-        logger.debug('------build_schema,done: ' + self.scope ) 
+        if DEBUG_BUILD_SCHEMA: 
+            logger.info('------build_schema,done: ' + self.scope ) 
        
         cache.set(self._meta.resource_name + ':schema', schema)
         return schema
@@ -1772,6 +1820,48 @@ class VocabulariesResource(ManagedModelResource):
         schema['extraSelectorOptions'] = { 
             'label': 'Vocabulary', 'searchColumn': 'scope', 'options': temp }
         return schema
+    
+    @staticmethod
+    def get_vocabularies_by_scope(scope):
+        ''' Utility method
+        '''
+        try:
+            vocabularies = cache.get('vocabularies');
+            if not vocabularies:
+                vocabularies = {}
+                res = VocabulariesResource()
+                request_bundle = res.build_bundle(request=HttpRequest())
+                class User:
+                    @staticmethod
+                    def is_superuser():
+                        return true
+                request_bundle.request.user = User
+                queryset = res.obj_get_list(request_bundle)
+        
+                for obj in queryset:
+#                     logger.info(str(('v:', obj)))
+                    request_bundle.obj = obj
+                    request_bundle.data = {}
+                    vocabulary_instance = res.full_dehydrate(request_bundle).data
+                    _scope = vocabulary_instance['scope']
+                    if _scope not in vocabularies:
+                         vocabularies[_scope] = {}
+                    vocabularies[_scope][vocabulary_instance['key']] = vocabulary_instance
+                cache.set('vocabularies', vocabularies);
+            
+            return deepcopy(vocabularies[scope])    
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on get_vocabularies_by_scope', 
+                msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e  
+    
+    def clear_cache(self):
+        super(VocabulariesResource,self).clear_cache()
+        cache.delete('vocabularies');
+
 
 class ResourceResource(ManagedModelResource):
     '''

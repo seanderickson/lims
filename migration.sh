@@ -412,10 +412,12 @@ function main {
 
 function code_bootstrap {
   # performs a full update, minus the database restoration
+  
   gitpull
   
-  # restoredb
-  # restoredb_data
+#  restoredb
+  
+#  restoredb_data
     
   maybe_activate_virtualenv
   
@@ -423,8 +425,9 @@ function code_bootstrap {
 
   if [[ -n "$SETTINGS_FILE" ]]; then
     cp $SETTINGS_FILE lims/settings.py
-  else  
-    cp lims/settings-dist.py lims/settings.py
+  else
+    echo "no SETTINGS_FILE migration.properties setting"
+    # cp lims/settings-dist.py lims/settings.py
   fi
   
   mkdir logs
@@ -437,54 +440,37 @@ function code_bootstrap {
   frontend_setup
   
   django_syncdb
+
   premigratedb  
 
   bootstrap
   
+  # the later migrations require the bootstrapped data
   migratedb
+  
+  if [[ $IS_DEV_SERVER -ne 1 ]]; then
+    tail -400 migration.log | mail -s "Migration completed $(ts)" sean.erickson.hms@gmail.com
+  fi  
+  # put this here to see if LSF will start reporting results
+  exit 0
+
   
 }  
 
 echo "start migration: $(ts) ..."
 
-main "$@"
-#frontend_setup
+#main "$@"
 
-#maybe_activate_virtualenv
-#  django_syncdb
+maybe_activate_virtualenv
 
-#  premigratedb  
+  django_syncdb
 
-#  bootstrap
+  premigratedb  
+
+  bootstrap
   
   # the later migrations require the bootstrapped data
-#  migratedb
-
-
-#bootstrap
-#migratedb
-
-# restoredb
-# maybe_activate_virtualenv
-# django_syncdb
-# premigratedb
-
-# restoredb_data
-
-# code_bootstrap "$@"
-  
-
-# bootstrap "$@"
-
-# restoredb
-
-# maybe_activate_virtualenv
-
-# bootstrap
-  
-#  pip install -r requirements.txt
-  
-#  cp lims/settings_migration.py lims/settings.py
+  migratedb
 
 # $DJANGO_CMD test --verbosity=2 --settings=lims.settings_testing || error "django tests failed: $?"
 # $DJANGO_CMD test --verbosity=2 --settings=lims.settings_testing

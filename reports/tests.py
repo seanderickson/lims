@@ -53,6 +53,8 @@ from tastypie import fields
 import reports.utils.serialize
 from django.utils.encoding import force_text
 from django.core.exceptions import ObjectDoesNotExist
+import cStringIO
+from django.http.response import StreamingHttpResponse
     
 logger = logging.getLogger(__name__)
 
@@ -1102,6 +1104,19 @@ class IResourceTestCase(SimpleTestCase):
         # Just try the load. If it throws an exception, the test case will fail.
         self.serializer.from_plist(data)
 
+    def get_content(self, resp):
+        
+        if isinstance(resp, StreamingHttpResponse):
+            if not hasattr(resp,'cached_content'):
+                buffer = cStringIO.StringIO()
+                for line in resp.streaming_content:
+                    buffer.write(line)
+                resp.cached_content = buffer.getvalue()
+#                 logger.info((('streamed content:', resp.cached_content)))
+            return resp.cached_content
+        else:
+            return resp.content
+    
     def assertValidJSONResponse(self, resp):
         """
         Given a ``HttpResponse`` coming back from using the ``client``, assert that
@@ -1113,7 +1128,7 @@ class IResourceTestCase(SimpleTestCase):
         """
         self.assertHttpOK(resp)
         self.assertTrue(resp['Content-Type'].startswith('application/json'))
-        self.assertValidJSON(force_text(resp.content))
+        self.assertValidJSON(force_text(self.get_content(resp)))
 
     def assertValidXMLResponse(self, resp):
         """
@@ -1126,7 +1141,7 @@ class IResourceTestCase(SimpleTestCase):
         """
         self.assertHttpOK(resp)
         self.assertTrue(resp['Content-Type'].startswith('application/xml'))
-        self.assertValidXML(force_text(resp.content))
+        self.assertValidXML(force_text(self.get_content(resp)))
 
     def assertValidYAMLResponse(self, resp):
         """
@@ -1139,7 +1154,7 @@ class IResourceTestCase(SimpleTestCase):
         """
         self.assertHttpOK(resp)
         self.assertTrue(resp['Content-Type'].startswith('text/yaml'))
-        self.assertValidYAML(force_text(resp.content))
+        self.assertValidYAML(force_text(self.get_content(resp)))
 
     def assertValidPlistResponse(self, resp):
         """
@@ -1152,7 +1167,7 @@ class IResourceTestCase(SimpleTestCase):
         """
         self.assertHttpOK(resp)
         self.assertTrue(resp['Content-Type'].startswith('application/x-plist'))
-        self.assertValidPlist(force_text(resp.content))
+        self.assertValidPlist(force_text(self.get_content(resp)))
 
     def deserialize(self, resp):
         """
@@ -1162,7 +1177,8 @@ class IResourceTestCase(SimpleTestCase):
 
         It returns a Python datastructure (typically a ``dict``) of the serialized data.
         """
-        return self.serializer.deserialize(resp.content, format=resp['Content-Type'])
+        # Override to allow for use of the StreamingHttpResponse or the HttpResponse
+        return self.serializer.deserialize(self.get_content(resp), format=resp['Content-Type'])
 
     def serialize(self, data, format='application/json'):
         """

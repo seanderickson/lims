@@ -188,18 +188,17 @@ class DBMetaHashResourceBootstrap(MetaHashResourceBootstrap):
 
 class LibraryResource(DBMetaHashResourceBootstrap):
 
-    def deserialize(self, resp):
-        """
-        Override to allow for use of the StreamingHttpResponse or the HttpResponse
-        """
-        if isinstance(resp, StreamingHttpResponse):
-            
-            buffer = cStringIO.StringIO()
-            for line in resp.streaming_content:
-                buffer.write(line)
-            return self.serializer.deserialize(buffer.getvalue(), format=resp['Content-Type'])
-        else:
-            return self.serializer.deserialize(resp.content, format=resp['Content-Type'])
+#     def deserialize(self, resp):
+#         """
+#         Override to allow for use of the StreamingHttpResponse or the HttpResponse
+#         """
+#         if isinstance(resp, StreamingHttpResponse):
+#             buffer = cStringIO.StringIO()
+#             for line in resp.streaming_content:
+#                 buffer.write(line)
+#             return self.serializer.deserialize(buffer.getvalue(), format=resp['Content-Type'])
+#         else:
+#             return self.serializer.deserialize(resp.content, format=resp['Content-Type'])
 
     def setUp(self):
         logger.debug('============== LibraryResource setup ============')

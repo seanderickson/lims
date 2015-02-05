@@ -1615,7 +1615,7 @@ class SqlAlchemyResource(StreamingResource):
                                         func.array_agg(column(field_name)),
                                                        LIST_DELIMITER_SQL_ARRAY)])
                         stmt2 = stmt2.select_from(join_stmt).label(key)
-                        columns[label] = stmt2
+                        columns[key] = stmt2
                 
             if DEBUG_BUILD_COLUMNS: logger.info(str(('columns', columns.keys())))
             return columns.values()
@@ -2042,6 +2042,7 @@ class SqlAlchemyResource(StreamingResource):
                     
                     if field_hash:
                         for col, (key, field) in enumerate(field_hash.iteritems()):
+                            value = None
                             if row.has_key(key):
                                 value = row[key]
 #                             else: 
@@ -3248,6 +3249,96 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
         super(ReagentResource,self).__init__(**kwargs)
  
     def get_list(self, request, **kwargs):
+        ''' 
+        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
+        @returns djanog.http.response.StreamingHttpResponse 
+        '''
+       
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+        
+        library_short_name = kwargs.get('library_short_name', None)
+        if not library_short_name:
+            raise NotImplementedError('must provide a library_short_name parameter')
+        else:
+            filename = '_'.join(kwargs.keys())
+            # TODO: remove dependency on Django ORM
+            library = Library.objects.get(short_name=kwargs['library_short_name'])
+
+        logger.info(str(('get_list', filename, kwargs)))
+ 
+        try:
+            
+            # general setup
+             
+            schema = self.build_schema(library=library)
+          
+            manual_field_includes = set(request.GET.getlist('includes', None))
+            desired_format = self.get_format(request)
+            if desired_format == 'chemical/x-mdl-sdfile':
+                manual_field_includes.add('molfile')
+            if DEBUG_GET_LIST: 
+                logger.info(str(('manual_field_includes', manual_field_includes)))
+  
+            (filter_expression, filter_fields) = \
+                SqlAlchemyResource.build_sqlalchemy_filters(schema, request, **kwargs)
+                 
+            field_hash = self.get_visible_fields(
+                schema['fields'], filter_fields, manual_field_includes)
+              
+            order_params = request.GET.getlist('order_by')
+            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
+             
+            rowproxy_generator = None
+            if request.GET.get('vocabularies',False):
+                rowproxy_generator = SqlAlchemyResource.create_vocabulary_rowproxy_generator(field_hash)
+ 
+            # specific setup 
+        
+        
+            base_query_tables = ['well', 'reagent', 'library']
+
+            sub_resource = self.get_reagent_resource(library)
+            if hasattr(sub_resource, 'build_sqlalchemy_columns'):
+                sub_columns = sub_resource.build_sqlalchemy_columns(
+                    field_hash.values(), self.bridge)
+                logger.info(str(('sub_columns', sub_columns.keys())))
+                columns = self.build_sqlalchemy_columns(
+                    field_hash.values(), base_query_tables=base_query_tables,
+                    custom_columns=sub_columns)
+            else:
+                columns = self.build_sqlalchemy_columns(
+                    field_hash.values(), base_query_tables=base_query_tables)
+            
+            # Start building a query; use the sqlalchemy.sql.schema.Table API:
+            _well = self.bridge['well']
+            _reagent = self.bridge['reagent']
+            _library = self.bridge['library']
+            j = _well.join(_reagent, _well.c.well_id==_reagent.c.well_id, isouter=True)
+            j = j.join(_library, _well.c.library_id == _library.c.library_id )
+            stmt = select(columns).\
+                select_from(j).\
+                where(_well.c.library_id == library.library_id) 
+
+            # general setup
+             
+            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+ 
+            return self.stream_response_from_cursor(
+                request, stmt, count_stmt, filename, 
+                field_hash=field_hash, 
+                rowproxy_generator=rowproxy_generator  )
+            
+                        
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on get_list', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e  
+        
+                
+    def get_list1(self, request, **kwargs):
     
         if 'library_short_name' in kwargs:
             library = Library.objects.get(short_name=kwargs['library_short_name'])

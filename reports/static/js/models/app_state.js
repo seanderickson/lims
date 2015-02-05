@@ -70,7 +70,10 @@ define([
       var self = this;
       console.log('start app_state.js');
       this.getResources(function(){
-        self.setCurrentUser(callBack);
+        self.getVocabularies(function(vocabularies){
+          self.set('vocabularies', vocabularies);
+          self.setCurrentUser(callBack);
+        });
       });
     },
     
@@ -86,6 +89,35 @@ define([
     
     getCurrentUser: function(){
       return this.currentUser;
+    },
+    
+    getVocabularies: function(callBack){
+      console.log('getVocabularies from the server...');
+      var self = this;
+      
+      var resourceUrl = self.reportsApiUri + '/vocabularies'
+      Iccbl.getCollectionOnClient(resourceUrl, function(collection){
+        var vocabularies = {};
+        collection.each(function(vModel){
+          var v = vModel.toJSON();
+          if(!_.has(vocabularies, v.scope)){
+            vocabularies[v.scope] = {};
+          }
+          vocabularies[v.scope][v.key]=v;
+        });
+        callBack(vocabularies);
+      });
+    },
+    
+    getVocabulary: function(scope){
+      if(!this.has('vocabularies')){
+        throw "Vocabularies aren't initialized";
+      }
+      var vocabularies = this.get('vocabularies');
+      if(!_.has(vocabularies, scope)) {
+          throw "Unknown vocabulary: " + scope;
+      }
+      return vocabularies[scope];
     },
 
     getResources: function(callBack){
@@ -526,6 +558,7 @@ define([
   appState.dbApiUri = DB_API_URI;
   appState.LIST_ARGS = ['page','rpp','includes','order','search','log', 'children'];      
   
+  Iccbl.appModel = appState;
   
   return appState;
 });

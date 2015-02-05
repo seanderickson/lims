@@ -172,9 +172,13 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         }
       });
       self.listenTo(view, 'update_title', function(val){
-        this.$('#content_title').html(
-            resource.title + 
-            ': <small>' + val + '</small>');
+        if(val) {
+          this.$('#content_title').html(
+              resource.title + 
+              ': <small>' + val + '</small>');
+        }else{
+          this.$('#content_title').html(resource.title);
+        }
       });
 
       self.listenTo(view , 'uriStack:change', self.reportUriStack);

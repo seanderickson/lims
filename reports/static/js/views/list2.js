@@ -197,28 +197,28 @@ define([
         columns = _options.columns;
       }
       
-      // ==== testing - images
-      // FIXME: FOR SMR only - poc - 
-      // first find the image field
-      _.each(_.keys(this._options.schemaResult.fields), function(key){
-        var field = self._options.schemaResult.fields[key];
-        if (field['ui_type'] == 'image'){
-          var col = {
-              'name' : field['key'],
-              'label' : field['title'],
-              'description' : field['description'],
-              'backgrid_cell_options': field['backgrid_cell_options'],
-              cell : Iccbl.ImageCell,
-              order : field['ordinal'],
-              editable : false,
-          };
-          console.log('adding image col: ' + field['key'] + ', ' );
-          columns.unshift(col);
-        }
-      });
-      
-      // end - FIXME: FOR SMR only - poc - 
-      //////////
+//      // ==== testing - images
+//      // FIXME: FOR SMR only - poc - 
+//      // first find the image field
+//      _.each(_.keys(this._options.schemaResult.fields), function(key){
+//        var field = self._options.schemaResult.fields[key];
+//        if (field['ui_type'] == 'image'){
+//          var col = {
+//              'name' : field['key'],
+//              'label' : field['title'],
+//              'description' : field['description'],
+//              'backgrid_cell_options': field['backgrid_cell_options'],
+//              cell : Iccbl.ImageCell,
+//              order : field['ordinal'],
+//              editable : false,
+//          };
+//          console.log('adding image col: ' + field['key'] + ', ' );
+//          columns.unshift(col);
+//        }
+//      });
+//      
+//      // end - FIXME: FOR SMR only - poc - 
+//      //////////
       
 
       this.listenTo(this.listModel, 'change', this.reportState );
@@ -231,11 +231,13 @@ define([
     getCollectionUrl: function(limit) {
       var self = this;
       var urlparams = '';
+      self.trigger('update_title', '');
+      
       _.each(self.LIST_ROUTE_ORDER, function(route){
         var value = self.listModel.get(route);
         if ( (!_.isObject(value) && value ) || 
              ( _.isObject(value) && !_.isEmpty(value))) {
-          
+
           if (route === 'search') {
             var val = '';
             _.each(value, function(v,k){
@@ -247,8 +249,10 @@ define([
             if(!_.isEmpty(urlparams)) urlparams += '&';
             urlparams += val;
           }else if (route === 'order') {
+            if(!_.isEmpty(urlparams)) urlparams += '&';
             urlparams += 'order_by=' + value.join('&order_by=');
           }else if (route === 'includes') {
+            if(!_.isEmpty(urlparams)) urlparams += '&';
             urlparams += 'includes=' + value.join('&includes=');
           }
         }
@@ -454,7 +458,10 @@ define([
       this.listenTo(downloadSelectorModel, 'change', function() {
         var val = downloadSelectorModel.get('selection');
         var limitForDownload = 0;
-        $('#download_link').attr('href', self.getCollectionUrl(limitForDownload) + '&format=' + val);
+        var url = self.getCollectionUrl(limitForDownload) + '&format=' + val;
+        // TODO: add UI intelligence to determine if "report" format is desired
+        // "report" format implies settings like "vocabularies=true"
+        $('#download_link').attr('href', url);
       });
       
       // Extraselector
@@ -804,6 +811,13 @@ define([
                   return true;
                 }
               });
+            }else if(!value){
+              column =  self.grid.columns.find(function(column){
+                if(column.get('name') == key){
+                  self.grid.removeColumn(column);
+                  return true;
+                }
+              });
             }
             if(value && !default_visible[key]){
               new_includes.unshift(key);
@@ -811,9 +825,12 @@ define([
           });
           
           console.log('new_includes: ' + JSON.stringify(new_includes));
-          if(!_.isEmpty(new_includes)){
-            self.collection.fetch({data: { includes: new_includes}})
-          }
+//          if(!_.isEmpty(new_includes)){
+//            self.collection.query_params['includes'] = new_includes;
+            self.collection.state.includes = new_includes;
+//            self.collection.fetch({data: { includes: new_includes}})
+            self.collection.fetch();
+//          }
           self.listModel.set({'includes': new_includes });
         },
         view: form,

@@ -37,6 +37,7 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
   
   var Iccbl = root.Iccbl = {
       VERSION : "0.0.1",
+      appModel : "This value will be initialized on app start"
   };
 
   // TODO: remove this
@@ -1029,9 +1030,9 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
   sort: function (column, direction) {
     if (_.isString(column)) column = this.columns.findWhere({name: column});
 
-    
-    var collection = this.collection;
+    console.log('MultiSortBody.sort( ' + column.get('name') + ', ' + direction);
 
+    var collection = this.collection;
     var order;
     if (direction === "ascending") order = -1;
     else if (direction === "descending") order = 1;
@@ -1040,10 +1041,13 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
     // Replaces:    
     //    collection.setSorting(order && column.get("name"), order,
     //        {sortValue: column.sortValue()});
+    
+    console.log('call setSorting: order: ' + order + ', ' + direction );
     collection.setSorting(column.get("name"), order,
         {sortValue: column.sortValue()});
-
+    console.log('collection fetch');
     collection.fetch({reset: true, success: function () {
+      console.log('fetch success, direction: ' + direction);
       collection.trigger("backgrid:sorted", column, direction, collection);
     }});
     
@@ -1090,6 +1094,7 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
       offset : function() {
           return (this.state.currentPage - 1) * this.state.pageSize;
       },
+      vocabularies: true, // this signals to the api to replace out vocabularies - FIXME: make this a setting?
       totalRecords : null, // unset for tastypie
       totalPages : null, // unset for tastypie
       sortKey : "order_by", // modified for tastypie
@@ -1102,6 +1107,11 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
           // see: http://api.jquery.com/jQuery.param/
           //          var val = this.state.orderStack.join('&order_by=');
           return this.state.orderStack;
+        }
+      }, 
+      includes: function(){
+        if(!_.isUndefined(this.state.includes) && !_.isEmpty(this.state.includes)){
+          return this.state.includes;
         }
       }
       //      directions : {
@@ -1203,6 +1213,12 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
     oldsearchHash = _.extend(oldsearchHash, searchHash);
     self.listModel.set({
         'search' : oldsearchHash
+    });
+    _.each(_.keys(searchHash), function(key){
+      // make the params persistent (if not a backgrid-filter)
+      self.queryParams[key] = function () {
+        return self.listModel.get('search')[key] || null;
+      };
     });
   },
 
@@ -1308,45 +1324,93 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
      MultiSortHeaderCell.__super__.initialize.apply(this, arguments);
      this.listenTo(this.collection,"sort",this.collectionSorted);
    },
+   
+   
+//   onClick: function (e) {
+//     e.preventDefault();
+//
+//     var column = this.column;
+//     var collection = this.collection;
+//     var event = "backgrid:sort";
+//
+//     function cycleSort(header, col) {
+//       if (column.get("direction") === "ascending") collection.trigger(event, col, "descending");
+//       else if (column.get("direction") === "descending") collection.trigger(event, col, null);
+//       else collection.trigger(event, col, "ascending");
+//     }
+//
+//     function toggleSort(header, col) {
+//       if (column.get("direction") === "ascending") collection.trigger(event, col, "descending");
+//       else collection.trigger(event, col, "ascending");
+//     }
+//
+//     var sortable = Backgrid.callByNeed(column.sortable(), column, this.collection);
+//     if (sortable) {
+//       var sortType = column.get("sortType");
+//       if (sortType === "toggle") toggleSort(this, column);
+//       else cycleSort(this, column);
+//     }
+//   },
     
-    // TODO: debounced clicking
-    //  /**
-    //   Event handler for the `click` event on the cell's anchor. If the column is
-    //   sortable, clicking on the anchor will cycle through 3 sorting orderings -
-    //   `ascending`, `descending`, and default.
-    //  */
-    //  onClick: function (e) {
-    //    var self=this;
-    //    e.preventDefault();
-    //    
-    //    if(_.isUndefined(this.tempdirection)){
-    //      this.tempdirection = this.column.get("direction");
-    //    }
-    //    var tempdirection = this.tempdirection;
-    //    if(tempdirection == "ascending"){
-    //      tempdirection = "descending";
-    //    }else if(tempdirection == "descending"){
-    //      tempdirection == null;
-    //    }else{
-    //      tempdirection == "ascending";
-    //    }
-    //    this.$el.removeClass("ascending").removeClass("descending");
-    //    self.$el.addClass(tempdirection);
-    //
-    //    var delayedClick = function(){
-    //      MultiSortHeaderCell.__super__.onClick.apply(self,e);
-    //    };
-    //    _.debounce(2000, delayedClick)
-    //  },   
+// TODO: debounced clicking - sort of working, but...
+// - at this time this method is debouncing on the cell instance:
+// --- no coordination with other headercells
+// 
+      /**
+       Event handler for the `click` event on the cell's anchor. If the column is
+       sortable, clicking on the anchor will cycle through 3 sorting orderings -
+       `ascending`, `descending`, and default.
+      */
+      onClick: function (e) {
+        console.log('onclick');
+        var self=this;
+        e.preventDefault();
+        e.stopPropagation();
+        
+        var collection = this.collection;
+        var event = "backgrid:sort"
+        var column = this.column;
+        
+        if(_.isUndefined(this.tempdirection)){
+          this.tempdirection = this.column.get("direction");
+        }
+        console.log('tempdirection1: ' + this.tempdirection);
+        if(this.tempdirection == "ascending"){
+          this.tempdirection = "descending";
+        }else if(this.tempdirection == "descending"){
+          this.tempdirection = "none";
+        }else{
+          this.tempdirection = "ascending";
+        }
+        
+        this.setCellDirection(column, self.tempdirection=="none"?null:self.tempdirection );
+        console.log('tempdirection2: ' + self.tempdirection);
+
+        var args = arguments;
+        
+        var delayedClick = function(){
+          console.log('delayedclick: tempdirection: ' + self.tempdirection);
+          if(self.tempdirection != self.lastExecutedVal){
+            console.log('delayed click: ' + self.tempdirection );
+            collection.trigger(event, column, self.tempdirection=="none"?null:self.tempdirection);
+            self.lastExecutedVal = self.tempdirection;
+          }else{
+            console.log('this.tempdirection == self.lastExecutedVal: ' + self.lastExecutedVal);
+          }
+        };
+        _.debounce(delayedClick, 750)();
+        // FIXME: both throttle and debounce seem to work the same;
+        // that is they both are working like setTimeout
+        //        _.throttle(delayedClick, 5000, {leading: false})();
+        
+        console.log('onclick exit');
+      },   
    
    collectionSorted: function(collection, options){
      var self = this;
      var name = this.column.get('name');
      var state = this.collection.state;
-     if(_.isUndefined(state.orderStack)){
-       console.log('Warning: grid does not support the ordered sort functionality');
-       return;
-     }
+
      var i = 0;
      _.each(state.orderStack, function(order_entry){
        i++;
@@ -1378,19 +1442,70 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
      otherwise.
    */
    setCellDirection: function (column, direction) {
-     if(! direction){
+     var self = this;
+     var name = column.get('name');
+     
+     if(_.isUndefined(direction) || _.isNull(direction)){
+//       this.$el.removeClass("ascending").removeClass("descending");
+//       this.$el.find("#sorter").empty();
+       this.removeCellDirection();
+     }else{
        this.$el.removeClass("ascending").removeClass("descending");
-       this.$el.find("#sorter").empty();
+       this.$el.addClass(direction);
+//       if(direction=="ascending"){
+         
+         var num = 0,i = 0;
+         _.find(self.collection.state.orderStack, function(fieldname){
+           i++;
+           if(fieldname == name || fieldname == '-' + name){ 
+             num = i;
+             console.log('found: ' + self.collection.state.orderStack[i-1]);
+             return true;
+           }
+         });
+         if(num==0){ 
+           num = self.collection.state.orderStack.length+1; 
+         }
+         sorterText = $("<span class='badge pull-right'>" + num + "<b class='sort-caret'></b></span>");
+         
+         self.sorter.empty();
+         self.sorter.append(sorterText);
+//         var sorter = self.$el.find('#sorter');
+//         sorter.empty();
+//         sorter.append(sorterText);
+//       }
+       
+
      }
    },
+//   setCellDirection1: function (column, direction, i) {
+//     var self = this;
+//     if(! direction){
+////       this.$el.removeClass("ascending").removeClass("descending");
+////       this.$el.find("#sorter").empty();
+//       this.removeCellDirection();
+//     }else{
+//       this.$el.removeClass("ascending").removeClass("descending");
+//       if (column.cid == self.column.cid){
+//         this.$el.addClass(direction);
+//         var sorter = self.$el.find('#sorter');
+//         sorter.empty();
+//         if(!_.isUndefined(i) && _.isNumber(i)){
+//           sorter.append("<span class='badge pull-right'>" + i + "<b class='sort-caret'></b></span>");
+//         }
+//       }
+//     }
+//   },
 
    /**
     * Backgrid event handler for the PageableCollection 'sort' event.
     */
    removeCellDirection: function () {
+     var self = this;
      this.$el.removeClass("ascending").removeClass("descending");
-     this.$el.find("#sorter").empty();
-     this.column.set("direction", null);
+     self.sorter.empty();
+//     this.$el.find("#sorter").empty();
+//     this.column.set("direction", null);
    },
 
    
@@ -1398,15 +1513,19 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
     * Renders a header cell with a sorter and a label.
     */
    render : function() {
+     var self = this;
      console.log('render MultiSortHeaderCell:  ' + this.column.get('name'));
      this.$el.empty();
      var column = this.column;
      var sortable = Backgrid.callByNeed(column.sortable(), column, this.collection);
-     var label = Iccbl.createLabel(column.get("label"), 10);
      if(sortable){
-       label = $("<a>" + label +"</a>").append("<div id='sorter'></div>");
+       var label = Iccbl.createLabel(column.get("label"), 10);
+       self.sorter = $("<div id='sorter'></div>");
+       label = $("<a>" + label +"</a>").append(self.sorter);
      } else {
-       label = document.createTextNode(label);
+       // NOTE: using anchor node to set the text color/style the same as other cells
+       //       label = document.createTextNode(column.get("label"));
+       label = $("<a>" + column.get("label") +"</a>");
      }
      this.$el.append(label);
      this.$el.addClass(column.get("direction"));
@@ -1579,11 +1698,15 @@ var MyHeaderCell = Iccbl.MyHeaderCell = MultiSortHeaderCell.extend({
       this.delegateEvents();
       
       var _handle = this;
-      var filterIcon = $('<span class="glyphicon glyphicon-search" id="filter-icon" ></span>');
-      filterIcon.click(function(e) {
-          _handle.$el.append(_handle._serverSideFilter.render().el);
-      });
-      this.$el.append(filterIcon);
+      
+      var searchableVal = column.get('searchable');
+      if(_.isBoolean(searchableVal) && searchableVal ){
+        var filterIcon = $('<span class="glyphicon glyphicon-search" id="filter-icon" ></span>');
+        filterIcon.click(function(e) {
+            _handle.$el.append(_handle._serverSideFilter.render().el);
+        });
+        this.$el.append(filterIcon);
+      }
 
       this.$el.prop('title', 
       			  this.options['column']['attributes']["description"]);
@@ -1592,7 +1715,8 @@ var MyHeaderCell = Iccbl.MyHeaderCell = MultiSortHeaderCell.extend({
     }
 });
 
-var SelectorServerSideFilter = Backbone.Form.extend({
+
+var BackboneFormFilter = Backbone.Form.extend({
   
   template: _.template([
     "<form data-fieldsets class='form-horizontal container' >",
@@ -1604,7 +1728,7 @@ var SelectorServerSideFilter = Backbone.Form.extend({
    */
   render: function () {
     var self = this;
-    SelectorServerSideFilter.__super__.render.apply(this, arguments);
+    BackboneFormFilter.__super__.render.apply(this, arguments);
     this.$el.append([
       '<div class="col-xs-2">',
       '<button type="submit" class="btn btn-default btn-xs" >ok</input>',
@@ -1624,10 +1748,177 @@ var SelectorServerSideFilter = Backbone.Form.extend({
   
   submitButton: function(){
     return this.$el.find(':submit');
-  }
+  },
+  
+  /** 
+   * Override the Backbone Layoutmanager template rendering to use 
+   * Backbone Forms
+   */
+  renderTemplate: function() {
+    return Backbone.Form.prototype.render.apply(this);
+  },
+  
+  templateData: function() {
+    return { years: 0, months: 0, dates: 0 };
+  }  
 
 });
 
+var DateHeaderCell = MultiSortHeaderCell.extend({
+
+  initialize : function(options) {
+    this.options = options;
+    DateHeaderCell.__super__.initialize.apply(this, arguments);
+
+    this.fieldinformation = _.clone(this.column.get('fieldinformation'));
+
+// FIXME: alt field template is causing a problem with the backbone-layoutmanager
+// see https://github.com/tbranyen/lm-forms/commit/23104e047e5d14dfe46bd29718bb37dc1fb40488
+// See https://github.com/powmedia/backbone-forms/issues/137
+// Disabled for now
+    var altFieldTemplate = _.template('\
+        <div>\
+          <select data-type="year"><%= years %></select>\
+          <select data-type="month"><%= months %></select>\
+          <select data-type="date"><%= dates %></select>\
+        </div>\
+      ', null, DateHeaderCell.__super__.templateSettings);
+
+    var formSchema = {};
+    formSchema['gte'] = {
+        title: '>=', // TODO: use vocabulary to get the title 
+        key:  'gte', 
+        type: 'Date',
+        yearStart: 2000//,
+//        template: altFieldTemplate 
+    }
+    formSchema['lt'] = {
+        title: '<', // TODO: use vocabulary to get the title 
+        key:  'lt', 
+        type: 'Date',
+        yearStart: 2000//,
+//        template: altFieldTemplate 
+    }
+    var FormFields = Backbone.Model.extend({
+      schema: formSchema
+    });
+    var formFields = new FormFields();
+    this._serverSideFilter = new BackboneFormFilter({
+        model: formFields,
+        fields: ['gte','lt']
+    });
+    
+    this.filterIcon = $('<span class="glyphicon glyphicon-search" id="filter-icon" ></span>');
+    
+    this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
+    this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
+    _.bindAll(this, '_submit', 'clearSearch');
+  },
+  
+  _submit: function(e){
+    if (e) e.preventDefault();      
+    console.log('_submit called');
+    var self  = this;
+    var name = this.column.get('name');
+    var searchHash = {};
+    var errors = this._serverSideFilter.commit();
+    var values = this._serverSideFilter.getValue();
+    _.each(_.keys(values), function(key){
+      if(values[key] && _.isDate(values[key])){
+        searchHash[name + '__' + key] = values[key].toISOString();
+        self.collection.clearSearch([name + '__' + key]);
+                                     
+      }else{
+        console.log('unusable value:' + JSON.stringify(values[key]));
+      }
+    });
+    
+    console.log('server side filter add search: ' + 
+        JSON.stringify(searchHash));
+    this.collection.addSearch(searchHash);
+    this.collection.fetch({data: _.clone(this.collection.listModel.get('search'))});
+  },
+    
+  /**
+   * Function to listen for router generated custom search event
+   * "MyServerSideFilter:search"
+   * - add search term and show box
+   * - clear old search terms
+   **/
+  _search: function(hash, collection){
+      var self = this;
+      var name = this.column.get('name');
+      var searchHash = _.clone(hash);
+      _.each(['gte', 'lt'], function(key){
+        var searchTerm = name + '__' + key;
+        if(_.has(searchHash, searchTerm)){
+          var searchVal = searchHash[searchTerm];
+          try{
+            searchVal = new Date(searchVal);
+            self._serverSideFilter.$el.show();
+            self.filterIcon.hide();
+            self._serverSideFilter.setValue(key, searchVal);
+          }catch(e){
+            console.log('invalid date value: ' + searchVal + ', ' + JSON.stringify(e));
+          }
+        }
+      });
+  },  
+
+  clearSearch: function(){
+    var self=this;
+//    _.each(_.keys(this._serverSideFilter.getValue()), function(key){
+//      self._serverSideFilter.setValue(key,null);
+//    });
+    
+    self._serverSideFilter.$el.hide();
+    self.filterIcon.show();
+    
+    var name = this.column.get('name');
+    this.collection.clearSearch([name+'__gte', name+'__lt']);
+    this.collection.getFirstPage({reset: true, fetch: true});
+  },      
+
+  render : function() {
+    var self = this;
+    DateHeaderCell.__super__.render.apply(this);
+
+    console.log('render DateHeaderCell:  ' + this.column.get('name'));
+  
+    this.$el.append(this.filterIcon);
+
+//    Backbone.View.prototype.manage = false;
+    this._serverSideFilter.render();
+    this.$el.append(this._serverSideFilter.el);
+    this._serverSideFilter.$el.hide();
+//    Backbone.View.prototype.manage = false;
+    
+    this._serverSideFilter.clearButton().click(function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      self.clearSearch();
+    });
+    
+    this.filterIcon.click(function(e){
+      e.stopPropagation();
+      e.preventDefault();
+      self._serverSideFilter.$el.show();
+      self.filterIcon.hide();
+    });
+
+    this._serverSideFilter.submitButton().click(function(e){
+      e.preventDefault();
+      self._submit();
+    });
+
+    this.$el.prop('title', 
+            this.options['column']['attributes']["description"]);
+    
+    return this;
+  },  
+  
+});
+    
 var SelectorHeaderCell = MultiSortHeaderCell.extend({
 
   initialize : function(options) {
@@ -1650,24 +1941,25 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
          '"choices" list: field key: ' + this.name ].join(''));
       this.fieldinformation.choices = [];
     }
-    
+    vocabulary = {};
+    try{
+      vocabulary = Iccbl.appModel.getVocabulary(this.fieldinformation.vocabulary_scope_ref);
+    }catch(e){
+      console.log('e'+JSON.stringify(e));
+    }
     var formSchema = {};
     _.each(this.fieldinformation.choices, function(choice){
       formSchema[choice] = { 
-          title: choice, // TODO: use vocabulary to get the title 
+          title: _.has(vocabulary,choice)?vocabulary[choice].title:choice,
           key:  choice, 
           type: 'Checkbox',
           template: altFieldTemplate };
     });
-    
-
     var FormFields = Backbone.Model.extend({
       schema: formSchema
     });
-    
     var formFields = new FormFields();
-    
-    this._serverSideFilter = new SelectorServerSideFilter({
+    this._serverSideFilter = new BackboneFormFilter({
         model: formFields,
         fields: this.fieldinformation.choices,
         collection: this.collection
@@ -1714,10 +2006,17 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
         var name = this.column.get('name');
         var searchTerm = name + '__in';
         if(_.has(searchHash, searchTerm)){
-          
           self._serverSideFilter.$el.show();
           self.filterIcon.hide();
-          
+          var searchValues = searchHash[searchTerm];
+          _.each(searchValues.split(','), function(val){
+            self._serverSideFilter.setValue(val, true);
+          });
+        }
+        searchTerm = name;
+        if(_.has(searchHash, searchTerm)){
+          self._serverSideFilter.$el.show();
+          self.filterIcon.hide();
           var searchValues = searchHash[searchTerm];
           _.each(searchValues.split(','), function(val){
             self._serverSideFilter.setValue(val, true);
@@ -1774,7 +2073,7 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
             this.options['column']['attributes']["description"]);
     
     return this;
-  },  
+  }
   
 });
 
@@ -1786,19 +2085,18 @@ var IntegerServerSideFilter = MyServerSideFilter.extend({
     "submit": "search"
   },
 
-  className: "form-horizontal container",    
+  className: "form-horizontal",    
 
   template: _.template([
       '<div class="input-group input-group-sm">',
       '<span class="input-group-addon" for="lower">>=</span>',
-      // TODO: don't know why width override is needed
-      '<input type="text" class="form-control" style="width: 8em; padding: 0,0,0,0;" id="lower"',
+      '<input type="text" class="form-control pull-left" style="width: 8em; padding: 0,0,0,0;" id="lower"',
       '<% if (placeholder1) { %> placeholder="<%- placeholder1 %>" <% } %>',
       ' name="<%- name %>" />',
       '</div>',
       '<div class="input-group input-group-sm">',
       '<span class="input-group-addon" for="upper"><</span>',
-      '<input type="text" class="form-control" style=""  id="upper"',
+      '<input type="text" class="form-control pull-left" style="width: 8em; padding: 0,0,0,0;" id="upper"',
       '<% if (placeholder1) { %> placeholder="<%- placeholder1 %>" <% } %>',
       ' name="<%- name %>" />',
       '</div>',
@@ -1847,7 +2145,7 @@ var IntegerServerSideFilter = MyServerSideFilter.extend({
       return;
     }
     
-    if(_.isUndefined(val2)){
+    if(_.isUndefined(val2) || _.isEmpty(val2)){
       searchHash[this.name] = val1;
     }else{
       searchHash[this.name + '__gte'] = val1;
@@ -2020,6 +2318,8 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
       'description' : prop['description'],
       'cell' : backgridCellType,
       'order' : prop['ordinal'],
+      'sortable': prop['ordering'],
+      'searchable': prop['filtering'],
       'editable' : false,
       'visible': visible,
       'fieldinformation': prop
@@ -2033,17 +2333,21 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   if (optionalHeaderCell) {
     column['headerCell'] = optionalHeaderCell;
     
-    
-    
     // Preliminary -- testing -- 
     var ui_type = prop['ui_type'];
-    if(ui_type == 'integer'){
-      column['headerCell'] = IntegerHeaderCell;
-    }
-    if( ui_type == 'Select' 
-      || ui_type == 'Radio'
-      || ui_type == 'Checkboxes' ){
-      column['headerCell'] = SelectorHeaderCell;
+    if(!_.isEmpty(ui_type)){
+      ui_type = ui_type.toLowerCase();
+      if(ui_type == 'integer'){
+        column['headerCell'] = IntegerHeaderCell;
+      }
+      if( ui_type == 'select' 
+        || ui_type == 'radio'
+        || ui_type == 'checkboxes' ){
+        column['headerCell'] = SelectorHeaderCell;
+      }
+      if( ui_type == 'date'){
+        column['headerCell'] = DateHeaderCell;
+      }
     }
   }
   return column;
@@ -2061,6 +2365,7 @@ var createBackgridColModel = Iccbl.createBackgridColModel =
     _.each(_.pairs(restFields), function(pair) {
         var key = pair[0];
         var prop = pair[1];
+        console.log('Column: ' + key );
         var column = createBackgridColumn(key, prop, optionalHeaderCell, orderStack);
         var visible = _.has(prop, 'visibility') && 
           _.contains(prop['visibility'], 'list');

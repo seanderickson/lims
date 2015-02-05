@@ -55,6 +55,11 @@ body {
 	}
 }
 
+media="screen"
+.input-group-addon, .input-group-btn, .input-group .form-control {
+display: inherit;
+}
+
 div#application_div > .one-space {
     padding-right: 0px;
     padding-left: 2px;

@@ -459,18 +459,18 @@ function code_bootstrap {
 
 echo "start migration: $(ts) ..."
 
-#main "$@"
+main "$@"
 
-maybe_activate_virtualenv
+#maybe_activate_virtualenv
 
-  django_syncdb
+#  django_syncdb
 
-  premigratedb  
+#  premigratedb  
 
-  bootstrap
+#  bootstrap
   
   # the later migrations require the bootstrapped data
-  migratedb
+#  migratedb
 
 # $DJANGO_CMD test --verbosity=2 --settings=lims.settings_testing || error "django tests failed: $?"
 # $DJANGO_CMD test --verbosity=2 --settings=lims.settings_testing

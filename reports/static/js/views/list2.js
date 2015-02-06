@@ -571,7 +571,7 @@ define([
     },
     
 
-    beforeRender: function(){
+    afterRender: function(){
       var self = this;
       self.listenTo(self.collection, "add", self.checkState);
       self.listenTo(self.collection, "remove", self.checkState);
@@ -667,21 +667,22 @@ define([
       
       if ( !fetched ) {
         var fetchOptions = { reset: false, error: appModel.jqXHRerror };
-        var includes = self.listModel.get('includes');
-        if(!_.isEmpty(includes)){
-          fetchOptions['data'] = { includes: includes };
-        }
+//        var includes = self.listModel.get('includes');
+//        if(!_.isEmpty(includes)){
+//          fetchOptions['data'] = { includes: includes };
+//        }
         self.collection.fetch(fetchOptions);
       }
       
       // Note: replace: true - to suppress router history:
       // at this point, reportState is modifying the URL to show rpp, pagesSize, etc.
       appModel.set('routing_options', {replace: true});  
-      return this;
-    },
-    
-    afterRender: function() {
+//      return this;
+//    },
+//    
+//    afterRender: function() {
       this.reportState();
+      return this;
     },
     
     clear_searches: function(){

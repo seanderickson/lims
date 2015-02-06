@@ -1110,9 +1110,10 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
         }
       }, 
       includes: function(){
-        if(!_.isUndefined(this.state.includes) && !_.isEmpty(this.state.includes)){
-          return this.state.includes;
-        }
+        return this.listModel.get('includes');
+//        if(!_.isUndefined(this.state.includes) && !_.isEmpty(this.state.includes)){
+//          return this.state.includes;
+//        }
       }
       //      directions : {
       //          "-1" : "asc",
@@ -1229,15 +1230,21 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
     console.log('clearsearch: ' + JSON.stringify(searchKeys));
     var self = this;
     var searchHash = {};
+    var found = false;
     if (!_.isUndefined(searchKeys)) {
         searchHash = _.clone(self.listModel.get('search'));
         _.each(searchKeys, function(searchKey) {
+          if(_.has(searchHash, searchKey)){
             delete searchHash[searchKey];
+            found = true;
+          }
         });
     }
-    self.listModel.set({
+    if(found){
+      self.listModel.set({
         'search' : searchHash
-    });
+      });
+    }
   },
   
 //  clearSortings: function() {

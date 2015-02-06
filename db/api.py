@@ -1488,10 +1488,10 @@ class SqlAlchemyResource(StreamingResource):
         TODO: this method can be static
         TODO: this method is not SqlAlchemy specific
         '''
+        logger.info(str(('get_visible_fields: field_hash initial: ', schema_fields.keys() )))
         try:
             temp = { key:field for key,field in schema_fields.items() 
                 if ((field.get('visibility', None) and 'list' in field['visibility']) 
-                    or field['key'] in filter_fields 
                     or field['key'] in manual_field_includes
                     or '*' in manual_field_includes )}
             
@@ -1507,6 +1507,11 @@ class SqlAlchemyResource(StreamingResource):
             if dependency_fields:
                 temp.update({ key:field 
                     for key,field in schema_fields.items() if key in dependency_fields })
+            
+            # filter_fields
+            if filter_fields:
+                temp.update({ key:field 
+                    for key,field in schema_fields.items() if key in filter_fields })
              
             field_hash = OrderedDict(sorted(temp.iteritems(), 
                 key=lambda x: x[1].get('ordinal',999))) 
@@ -1758,6 +1763,8 @@ class SqlAlchemyResource(StreamingResource):
             else:
                 logger.warn(str(('--- unknown filter type: ', filter_type,
                     'filter_expr',filter_expr )))
+        
+        logger.info(str(('filtered_fields', filtered_fields)))
         if len(expressions) > 1: 
             from sqlalchemy.sql import and_, or_, not_          
             return (and_(*expressions), filtered_fields)

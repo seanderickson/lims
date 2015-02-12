@@ -152,5 +152,9 @@
           "rpp_selections" : [24,96,384,1000],
           "rpp": 24,
           "order": ["plate_number","well_name"]  }
-    }
+    },
+    "librarycopyplates": {
+      "options": { 
+        "order": ["plate_number","copy_name"]  }
+    }    
 }

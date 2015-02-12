@@ -51,13 +51,8 @@ define([
       
       Backbone.Form.prototype.initialize.apply(this,args);
       
-//      this.model.on('change', function(evt){
-//        console.log('chg evt: ' + evt);
-//      });
       this.listenTo(this, 'screen_type:change', function(target){
         console.log('chg evt:' + target);
-////        if(evt) evt.preventDefault();
-//        $( "#c32_screen_type-1" ).prop( "checked", true );
       });
       this.on('change', function(t){
         console.log('all:' + t);
@@ -113,7 +108,6 @@ define([
       _.each(editKeys, function(key){
         if( _(schema.fields).has(key)){
           var option = schema.fields[key];
-//          console.log('key: ' + key + ', option: ' + JSON.stringify(option));
           var fieldSchema = editSchema[key] = {};
 
           var typeMap = {

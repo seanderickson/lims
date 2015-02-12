@@ -687,6 +687,7 @@ define([
     
     clear_searches: function(){
       this.collection.trigger("Iccbl:clearSearches");
+      this.collection.getFirstPage({reset: true, fetch: true});
     },
     
     clear_sorts: function(){
@@ -699,6 +700,7 @@ define([
         if(dir == '-'){
           fieldname = order_entry.substring(1);
         }
+        // TODO: this triggers a fetch for each clear; replace with custom event like clearSearches
         self.collection.trigger('backgrid:sort', fieldname, null );
       })
       this.listModel.unset('order');

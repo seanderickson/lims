@@ -1109,12 +1109,19 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
           return this.state.orderStack;
         }
       }, 
+//      includes: function(){
+//        return this.listModel.get('includes');
+////        if(!_.isUndefined(this.state.includes) && !_.isEmpty(this.state.includes)){
+////          return this.state.includes;
+////        }
+//      }
+      
       includes: function(){
-        return this.listModel.get('includes');
-//        if(!_.isUndefined(this.state.includes) && !_.isEmpty(this.state.includes)){
-//          return this.state.includes;
-//        }
+        if(!_.isUndefined(this.state.includes) && !_.isEmpty(this.state.includes)){
+          return this.state.includes;
+        }
       }
+      
       //      directions : {
       //          "-1" : "asc",
       //          "1" : "desc"
@@ -1225,9 +1232,11 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
 
   /**
    * Proxy for the search elements to clear search terms from the listModel
+   * on the collection.
    */ 
-  clearSearch: function(searchKeys) {
-    console.log('clearsearch: ' + JSON.stringify(searchKeys));
+  clearSearch: function(searchKeys, options) {
+    console.log('clearsearch: ' + JSON.stringify(searchKeys) 
+        + ', options: ' + JSON.stringify(options) );
     var self = this;
     var searchHash = {};
     var found = false;
@@ -1244,6 +1253,10 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
       self.listModel.set({
         'search' : searchHash
       });
+      if(options && options.reset){
+        console.log('collection.clearSearch: reset');
+        self.getFirstPage({reset: true, fetch: true});
+      }
     }
   },
   
@@ -1325,7 +1338,8 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
 
 
  var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend({
-
+   filtericon_text : '<span class="pull-left glyphicon glyphicon-search" id="filter-icon" ></span>',
+   
    initialize : function(options) {
      this.options = options;
      MultiSortHeaderCell.__super__.initialize.apply(this, arguments);
@@ -1437,7 +1451,9 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
 
          var sorter = self.$el.find('#sorter');
          sorter.empty();
-         sorter.append("<span class='badge pull-right'>" + i + "<b class='sort-caret'></b></span>");
+         sorter.append(
+             "<span style='margin-bottom: 2px;' class='badge pull-right'>" 
+             + i + "<b class='sort-caret'></b></span>");
        }
      });
    },
@@ -1473,7 +1489,8 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
          if(num==0){ 
            num = self.collection.state.orderStack.length+1; 
          }
-         sorterText = $("<span class='badge pull-right'>" + num + "<b class='sort-caret'></b></span>");
+         sorterText = $("<span style='margin-bottom: 2px;' class='badge pull-right'>" 
+             + num + "<b class='sort-caret'></b></span>");
          
          self.sorter.empty();
          self.sorter.append(sorterText);
@@ -1548,7 +1565,7 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
  * Override so that we can keep a handle to the containing column name.
  * TODO: can handle this with events instead (so that the filter notifies the
  * containing headercell?)
- * 
+ * TODO: replace this with specific header cells -as implemented: Date,Integer,Text,Select...
  **/
 var MyServerSideFilter = 
 		  Iccbl.MyServerSideFilter = 
@@ -1614,6 +1631,7 @@ var MyServerSideFilter =
       if (e) e.preventDefault();
       this.remove();
       this.collection.clearSearch([this.name]); 
+      console.log('ssf prototype clear')
       Backgrid.Extension.ServerSideFilter.prototype.clear.apply(this,e);
     },    
 });
@@ -1622,6 +1640,7 @@ var MyServerSideFilter =
 /**
  * Override of the Backgrid.HeaderCell to:
  * - add "contains" search
+ * TODO: replace this with specific header cells -as implemented: Date,Integer,Text,Select...
  **/
 var MyHeaderCell = Iccbl.MyHeaderCell = MultiSortHeaderCell.extend({
 
@@ -1644,7 +1663,11 @@ var MyHeaderCell = Iccbl.MyHeaderCell = MultiSortHeaderCell.extend({
     },
 
     clearSearch: function(){
+      if(this._serverSideFilter.searchBox().val()){
+        console.log('responding to clearSearch:'  + this.column.get('name') 
+            + ':' + this._serverSideFilter.searchBox().val());
         this._serverSideFilter.clear();
+      }
     },
       
 
@@ -1697,6 +1720,7 @@ var MyHeaderCell = Iccbl.MyHeaderCell = MultiSortHeaderCell.extend({
      * Renders a header cell with a sorter and a label.
      */
     render : function() {
+      var self = this;
       MyHeaderCell.__super__.render.apply(this, arguments);
 
       var column = this.column;
@@ -1708,7 +1732,7 @@ var MyHeaderCell = Iccbl.MyHeaderCell = MultiSortHeaderCell.extend({
       
       var searchableVal = column.get('searchable');
       if(_.isBoolean(searchableVal) && searchableVal ){
-        var filterIcon = $('<span class="glyphicon glyphicon-search" id="filter-icon" ></span>');
+        var filterIcon = $(self.filtericon_text);
         filterIcon.click(function(e) {
             _handle.$el.append(_handle._serverSideFilter.render().el);
         });
@@ -1728,6 +1752,10 @@ var BackboneFormFilter = Backbone.Form.extend({
   template: _.template([
     "<form data-fieldsets class='form-horizontal container' >",
     "</form>"].join('')),
+  checkboxTemplate: [
+    '<label data-editor title="<%= help %>" class="checkbox-inline" >',
+    '<%= title %></label>'      
+    ].join(''),
    
   /**
    * - add a submit button
@@ -1737,13 +1765,13 @@ var BackboneFormFilter = Backbone.Form.extend({
     var self = this;
     BackboneFormFilter.__super__.render.apply(this, arguments);
     this.$el.append([
-      '<div class="col-xs-2">',
-      '<button type="submit" class="btn btn-default btn-xs" >ok</input>',
+      '<div class="col-xs-3">',
+      '<button type="submit" class="btn btn-default btn-xs" style="width: 100%; " >ok</input>',
       '</div>',
-      '<div class="col-xs-2">',
-      '<a class="backgrid-filter clear" style="display: inherit;" data-backgrid-action="clear"',
+      '<div class="col-xs-3">',
+      '<a class="backgrid-filter clear" data-backgrid-action="clear"',
       ' href="#">&times;</a></div>',
-      '</div>'
+      '</div>',
       ].join(''));
 
     return this;
@@ -1767,143 +1795,1236 @@ var BackboneFormFilter = Backbone.Form.extend({
   
   templateData: function() {
     return { years: 0, months: 0, dates: 0 };
-  }  
+  },
+  
+  /**
+   * Convenience - determine if the form has been set with any values
+   */
+  isSet: function(){
+    var values = this.getValue();
+    var found = _.find(_.keys(values), function(key){
+      // signal isSet for any field value set
+      return values[key]>0 || !_.isEmpty(values[key]);
+    });
+    return !_.isEmpty(found);
+  }
 
 });
 
-var DateHeaderCell = MultiSortHeaderCell.extend({
+///** 
+// * Override: << not needed because field schema template allows override >>
+// * provide a minimal template: no label, help, or error div's
+// */
+//var HeaderFormField = Backbone.Form.Field.extend({
+//  template: _.template('\
+//    <span data-editor></span>\
+//    <div data-error></div>\
+//    ', null, Backbone.Form.templateSettings),
+//  
+//});
+
+var CriteriumFormFilter = BackboneFormFilter.extend({
+  criterium: {'=':'eq'},
+  errorClass: 'has-error',
+  criteriaTemplate: 
+    [
+      '<span  data-editor></span>'
+    ].join(''),
+  fieldTemplate: [
+      '<div data-editor title="<%= help %>" class="form-control" >',
+    ].join(''),
+
+  getPossibleSearches: function(){
+    var self = this;
+    var name = self.columnName;
+    var possibleSearches = [];
+    _.each(_.values(self.criterium), function(criteria){
+      possibleSearches.push(name + '__' + criteria);
+      possibleSearches.push('-'+name + '__' + criteria);
+    });
+    return possibleSearches;
+  },
+  
+  /**
+   * Convenience - determine if the form has been set with any values
+   */
+  isSet: function(){
+    var values = this.getValue();
+    var found = _.find(_.keys(values), function(key){
+      if(key == 'lower_criteria' ) return false;
+      // signal isSet for any field value set
+      return values[key]>0 || !_.isEmpty(values[key]);
+    });
+    return !_.isEmpty(found);
+  }
+  
+});
+
+var TextFormFilter = CriteriumFormFilter.extend({
+  
+  criterium: {'=':'eq','contains':'contains','icontains':'icontains','<>':'ne', 'in': 'in'},
+    
+  // provide a custom form template; use Bootstrap layout/styling
+  template: _.template([
+      '<form class="iccbl-headerfield-form" >',
+      '   <div data-fields="lower_criteria" ',
+      '     class="form-control iccbl-headerfield-text" for="lower_value"   />',
+      '</div>',
+      '<div class="form-group" data-fields="form_textarea" />',
+      '<div class="col-xs-6"  data-fields="invert_field" />',
+      '</div>',
+      '</form>'
+    ].join('')),
 
   initialize : function(options) {
-    this.options = options;
-    DateHeaderCell.__super__.initialize.apply(this, arguments);
-
-    this.fieldinformation = _.clone(this.column.get('fieldinformation'));
-
-// FIXME: alt field template is causing a problem with the backbone-layoutmanager
-// see https://github.com/tbranyen/lm-forms/commit/23104e047e5d14dfe46bd29718bb37dc1fb40488
-// See https://github.com/powmedia/backbone-forms/issues/137
-// Disabled for now
-    var altFieldTemplate = _.template('\
-        <div>\
-          <select data-type="year"><%= years %></select>\
-          <select data-type="month"><%= months %></select>\
-          <select data-type="date"><%= dates %></select>\
-        </div>\
-      ', null, DateHeaderCell.__super__.templateSettings);
-
-    var formSchema = {};
-    formSchema['gte'] = {
-        title: '>=', // TODO: use vocabulary to get the title 
-        key:  'gte', 
-        type: 'Date',
-        yearStart: 2000//,
-//        template: altFieldTemplate 
+    var self = this;
+    console.log('initialize TextFormFilter');
+    
+    this.options = options || {};
+    
+    if(!options.columnName){
+      throw "must define column name option for the TextFormFilter, options: " + options;
+    }else{
+      this.columnName = options.columnName;
     }
-    formSchema['lt'] = {
-        title: '<', // TODO: use vocabulary to get the title 
-        key:  'lt', 
-        type: 'Date',
-        yearStart: 2000//,
-//        template: altFieldTemplate 
-    }
+
+    var formSchema = this.schema = {};
+    formSchema['lower_criteria'] = {
+        title: '', 
+        key:  'lower_criteria', // TODO: "key" not needed>?
+        type: 'Select',
+        options: _.keys(self.criterium),
+        template: _.template(self.criteriaTemplate),
+        editorClass: 'form-control'
+    };
+    formSchema['form_textarea'] = {
+        title: '',
+        help: 'enter a comma separated list',
+        key: 'form_textarea',
+        type: 'TextArea',
+        template: _.template(self.fieldTemplate),
+        editorClass: 'form-control'
+    };
+    formSchema['invert_field'] = {
+        title: 'invert',
+        help: 'select this to invert the criteria',
+        type: 'Checkbox',
+        template: _.template(self.checkboxTemplate),
+        editorClass: ''
+    };    
+
     var FormFields = Backbone.Model.extend({
-      schema: formSchema
+      schema: formSchema,
+      validate: function(attrs) {
+        var errs = {};
+        if(!_.isEmpty(errs)) return errs;
+      }
     });
-    var formFields = new FormFields();
-    this._serverSideFilter = new BackboneFormFilter({
-        model: formFields,
-        fields: ['gte','lt']
+    this.model = new FormFields();
+    this.selectedFields = ['lower_criteria','form_textarea','invert_field']; 
+    
+    TextFormFilter.__super__.initialize.apply(this, arguments);
+    
+  },
+  
+  /**
+   * handles router generated searches
+   **/
+  _search: function(hash){
+    var self = this;
+    var searchHash = _.clone(hash);
+    
+    var found = false;
+    _.each(_.keys(self.criterium), function(criteriaKey){
+      var criteria = self.criterium[criteriaKey];
+      var searchTerm = self.columnName + '__' + criteria;
+      var nsearchTerm = '-' + self.columnName + '__' + criteria;
+      var searchVal = null;
+      var negated = false;
+      if(_.has(searchHash, searchTerm)){
+        var searchVal = searchHash[searchTerm];
+      }else if(_.has(searchHash, nsearchTerm)){
+        var searchVal = searchHash[nsearchTerm];
+        negated=true;
+      }
+      if(searchVal){
+        found = true;
+        self.setValue('lower_criteria', criteriaKey);
+        self.setValue('form_textarea', searchVal);
+        if(negated){
+          self.setValue('invert_field', true);
+        }
+      }
+    });
+    return found;
+  },  
+
+  /**
+   * Form submit handler
+   */
+  _submit: function(){
+    var self  = this;
+
+    if(!self.isSet()) return;
+    
+    var searchHash = {};
+    
+    // validate:true: tells bbf to run model.validate(), in addition to field[].validate()
+    var errors = self.commit({ validate: true }); 
+    if(!_.isEmpty(errors)){
+      console.log('form errors, abort submit: ' + JSON.stringify(errors));
+      return;
+    }else{
+      //      this.$el.find('#range_upper_block').removeClass(self.errorClass);
+    }
+    
+    var values = self.getValue();
+    var criteria = self.criterium[values['lower_criteria']];
+    var searchKey = self.columnName + '__' + criteria;
+    var invert = values['invert_field'];
+    if(invert) searchKey = '-'+searchKey;
+    searchHash[searchKey] = values['form_textarea'];
+  
+    return searchHash
+  }
+  
+});
+
+var DateEditor = Backbone.Form.editors.Date.extend({
+
+  /** need to extend because an error in the bbf initializer makes it impossible
+   * to override the monthnames otherwise.
+   * (Using var Self = Form.editors.Date; 
+   * this.options = _.extend({
+   *   monthNames: Self.monthNames,
+   * why?
+   */
+  monthNames: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+
+  initialize : function(options) {
+    var self = this;
+    console.log('initialize DateEditor');
+    DateEditor.__super__.initialize.apply(this, arguments);
+    
+    // now override monthnames
+    self.options.monthNames = self.monthNames;
+  },
+  
+});
+
+var DateFormFilter = CriteriumFormFilter.extend({
+  
+  criterium: {'=':'eq','>=':'gte','<':'lt','<>':'ne', 'between':'range', 'in': 'in'},
+
+
+  // provide a custom form template; use Bootstrap layout/styling
+  template: _.template([
+      '<form class="iccbl-headerfield-form" >',
+      '   <div data-fields="lower_criteria" ',
+      '     class="form-control" for="lower_value"   />',
+      '   <div class="input-group pull-right"  data-fields="lower_value"/>',
+      '<div class="form-group" data-fields="form_textarea" style="display: none;" />',
+      '<div class="input-group" id="range_upper_block" style="display: none;" >',
+      '   <span class="input-group-addon" for="upper_value"  style="width: 4em; ">and</span>',
+      '   <span data-fields="upper_value"/>',
+      '</div>',
+      '<div class="col-xs-6"  data-fields="invert_field" />',
+      '</div>',
+      '</form>'
+    ].join('')),
+      
+  initialize : function(options) {
+    var self = this;
+    console.log('initialize DateFormFilter');
+    
+    this.options = options || {};
+    
+    if(!options.columnName){
+      throw "must define column name option for the DateFormFilter, options: " + options;
+    }else{
+      this.columnName = options.columnName;
+    }
+
+    var formSchema = this.schema = {};
+    formSchema['lower_criteria'] = {
+        title: '', 
+        key:  'lower_criteria', // TODO: "key" not needed>?
+        type: 'Select',
+        options: _.keys(self.criterium),
+        template: _.template(self.criteriaTemplate),
+        editorClass: 'form-control'
+    };
+    formSchema['lower_value'] = {
+        title: '',
+        key: 'lower_value',
+        type: DateEditor,
+        template: _.template(self.fieldTemplate),
+        editorClass: 'form-control',
+        monthNames: self.monthNames
+
+    };
+    formSchema['form_textarea'] = {
+        title: '',
+        help: 'enter a comma separated list',
+        key: 'form_textarea',
+        type: 'TextArea',
+        template: _.template(self.fieldTemplate),
+        editorClass: 'form-control'
+    };
+    formSchema['upper_value'] = {
+        title: '',
+        key: 'upper_value',
+        type: DateEditor,
+        template: _.template(self.fieldTemplate),
+        editorClass: 'form-control',
+        monthNames: self.monthNames
+    };
+    formSchema['invert_field'] = {
+        title: 'invert',
+        help: 'select this to invert the criteria',
+        type: 'Checkbox',
+        template: _.template(self.checkboxTemplate),
+        editorClass: ''
+    };    
+
+    var FormFields = Backbone.Model.extend({
+      schema: formSchema,
+      validate: function(attrs) {
+        var errs = {};
+        if(attrs.lower_criteria == 'in' 
+          && !_.isEmpty(attrs.form_textarea) ){
+          var datevals = attrs.form_textarea.split(',');
+          var errmsgs = [];
+          _.each(datevals, function(dateval){
+            try{
+              var v = new Date(dateval)
+            }catch(e){
+              errmsgs.push('not a date: '+dateval + ', err: ' + e);
+            }
+          })
+        }
+        if(!_.isEmpty(errmsgs)){
+          errs['form_textarea'] = errmsgs;
+          return errs;
+        }
+      }
+    });
+    this.model = new FormFields();
+    this.selectedFields = ['lower_criteria','lower_value','form_textarea','upper_value','invert_field']; 
+    
+    this.listenTo(this, "change", function(e){
+      var criteria = self.getValue('lower_criteria');
+      console.log('change:' + criteria)
+      if(criteria == 'between'){
+        self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', false);
+        self.$el.find('[data-fields="form_textarea"]').hide();
+        self.$el.find('#range_upper_block').show();
+      }else if(criteria == 'in'){
+        self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', true);
+        self.setValue('lower_value', '');
+        self.$el.find('#range_upper_block').hide();
+        self.$el.find('[data-fields="form_textarea"]').show();
+      }else{
+        self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', false);
+        self.$el.find('[data-fields="form_textarea"]').hide();
+        self.$el.find('#range_upper_block').hide();
+      }
+    });
+
+    DateFormFilter.__super__.initialize.apply(this, arguments);
+    
+  },
+
+  /**
+   **/
+  _search: function(hash){
+    var self = this;
+    var searchHash = _.clone(hash);
+    
+    var found = false;
+    _.each(_.keys(self.criterium), function(criteriaKey){
+      var criteria = self.criterium[criteriaKey];
+      var searchTerm = self.columnName + '__' + criteria;
+      var nsearchTerm = '-' + self.columnName + '__' + criteria;
+      var searchVal = null;
+      var negated = false;
+      if(_.has(searchHash, searchTerm)){
+        var searchVal = searchHash[searchTerm];
+      }else if(_.has(searchHash, nsearchTerm)){
+        var searchVal = searchHash[nsearchTerm];
+        negated=true;
+      }
+      if(searchVal){
+        found = true;
+        self.setValue('lower_criteria', criteriaKey);
+        try{
+          if(criteria == 'range'){
+            self.$el.find('#range_upper_block').show();
+            var vals = searchVal.split(',');
+            if(vals.length < 2){
+              throw "the range filter requires 2 date arguments separated by a comma, given: " + searchVal
+            }
+            self.setValue('lower_value', new Date(vals[0]));
+            self.setValue('upper_value', new Date(vals[1]));
+          }else if(criteria == 'in'){
+            self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', true);
+            self.setValue('lower_value', '');
+            self.$el.find('[data-fields="form_textarea"]').show();
+            self.setValue('form_textarea', searchVal);
+          }else{
+            self.setValue('lower_value', new Date(searchVal));
+          }
+        }catch(e){
+          var msg = 'Unable to parse date portion of the url, column: ' + 
+              self.columnName +', searchVal:'+ searchVal + ', error: ' + e;
+          console.log(msg);
+          Iccbl.appModel.error(msg);
+          return false;
+        }
+        
+        if(negated){
+          self.setValue('invert_field', true);
+        }
+      }
+    });
+    return found;
+  },  
+
+  /**
+   * Form submit handler
+   */
+  _submit: function(){
+    var self  = this;
+    if(!self.isSet()) return;
+    var searchHash = {};
+    
+    // validate:true: tells bbf to run model.validate(), in addition to field[].validate()
+    var errors = self.commit({ validate: true }); 
+    if(!_.isEmpty(errors)){
+      console.log('form errors, abort submit: ' + JSON.stringify(errors));
+      this.$el.find('#range_upper_block').addClass(self.errorClass);
+      return;
+    }else{
+      this.$el.find('#range_upper_block').removeClass(self.errorClass);
+    }
+    
+    var values = self.getValue();
+    
+    var name = self.columnName;
+    var invert = values['invert_field'];
+    if(invert) name = '-'+name;
+    var criteria = self.criterium[values['lower_criteria']];
+    
+    if(criteria == 'in'){
+      var searchKey = name + '__' + criteria;
+      searchHash[searchKey] = values['form_textarea'];
+    }else if(_.isDate(values['lower_value']) ){
+      var searchKey = name + '__' + criteria;
+      if(criteria == 'range'){
+        if(_.isDate(values['upper_value'])){
+          var searchKey = name + '__' + criteria;
+          searchHash[searchKey] = values['lower_value'].toISOString()
+              + ',' + values['upper_value'].toISOString();
+        }else{
+          console.log('upper value not set; validation should have caught this');
+        }
+      }else{
+        searchHash[searchKey] = values['lower_value'].toISOString();
+      }
+    }
+    return searchHash
+  }
+
+});
+
+
+var NumberFormFilter = CriteriumFormFilter.extend({
+  
+  criterium: {'=':'eq','>=':'gte','<':'lt','<>':'ne', '...':'range', 'in': 'in'},
+
+  // provide a custom form template; use Bootstrap layout/styling
+  template: _.template([
+      '<form class="iccbl-headerfield-form" >',
+      '<div class="input-group ">',
+      '   <div data-fields="lower_criteria" ',
+      '     class="input-group-addon iccbl-headerfield-number" for="lower_value"   />',
+      '   <div data-fields="lower_value"/>',
+      '</div>',
+      '<div class="form-group" data-fields="form_textarea" style="display: none;" />',
+      '<div class="input-group" id="range_upper_block" style="display: none;" >',
+      '   <span class="input-group-addon" for="upper_value"  style="width: 4em; ">to</span>',
+      '   <span data-fields="upper_value"/>',
+      '</div>',
+      '<div class="col-xs-6"  data-fields="invert_field" />',
+      '</form>'
+    ].join('')),
+      
+  initialize : function(options) {
+    var self = this;
+    console.log('initialize NumberFormFilter');
+    
+    this.options = options || {};
+    
+    if(!options.columnName){
+      throw "must define column name option for the NumberFormFilter, options: " + options;
+    }else{
+      this.columnName = options.columnName;
+    }
+
+    var formSchema = this.schema = {};
+    formSchema['lower_criteria'] = {
+        title: '', 
+        key:  'lower_criteria', // TODO: "key" not needed>?
+        type: 'Select',
+        options: _.keys(self.criterium),
+        template: _.template(self.criteriaTemplate),
+        editorClass: 'form-control'
+    };
+    formSchema['lower_value'] = {
+        title: '',
+        key: 'lower_value',
+        type: 'Number',
+        template: _.template(self.fieldTemplate),
+        editorClass: 'form-control'
+    };
+    formSchema['form_textarea'] = {
+        title: '',
+        help: 'enter a comma separated list',
+        key: 'form_textarea',
+        type: 'TextArea',
+        template: _.template(self.fieldTemplate),
+        editorClass: 'form-control'
+    };
+    formSchema['upper_value'] = {
+        title: '',
+        key: 'upper_value',
+        type: 'Number',
+        template: _.template(self.fieldTemplate),
+        editorClass: 'form-control '
+    };
+    formSchema['invert_field'] = {
+        title: 'invert',
+        help: 'select this to invert the criteria',
+        type: 'Checkbox',
+        template: _.template(self.checkboxTemplate),
+        editorClass: ''
+    };    
+
+    var FormFields = Backbone.Model.extend({
+      schema: formSchema,
+      validate: function(attrs) {
+        var errs = {};
+        if(attrs.lower_criteria == '...' 
+          && ( attrs.upper_value < 1 ) ){
+          errs['upper_value'] = '!'
+        }
+        if(!_.isEmpty(errs)) return errs;
+      }
+    });
+    this.model = new FormFields();
+    this.selectedFields = ['lower_criteria','lower_value','form_textarea','upper_value','invert_field']; 
+    
+    this.listenTo(this, "change", function(e){
+      var criteria = self.getValue('lower_criteria');
+      console.log('change:' + criteria)
+      if(criteria == '...'){
+        self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', false);
+        self.$el.find('[data-fields="form_textarea"]').hide();
+        self.$el.find('#range_upper_block').show();
+      }else if(criteria == 'in'){
+        self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', true);
+        self.setValue('lower_value', '');
+        self.$el.find('#range_upper_block').hide();
+        self.$el.find('[data-fields="form_textarea"]').show();
+      }else{
+        self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', false);
+        self.$el.find('[data-fields="form_textarea"]').hide();
+        self.$el.find('#range_upper_block').hide();
+      }
+    });
+
+    NumberFormFilter.__super__.initialize.apply(this, arguments);
+    
+  },
+
+  /**
+   * Set the form from router generated event
+   **/
+  _search: function(hash){
+    var self = this;
+    var searchHash = _.clone(hash);
+    
+    var found = false;
+    _.each(_.keys(self.criterium), function(criteriaKey){
+      var criteria = self.criterium[criteriaKey];
+      var searchTerm = self.columnName + '__' + criteria;
+      var nsearchTerm = '-' + self.columnName + '__' + criteria;
+      var searchVal = null;
+      var negated = false;
+      if(_.has(searchHash, searchTerm)){
+        var searchVal = searchHash[searchTerm];
+      }else if(_.has(searchHash, nsearchTerm)){
+        var searchVal = searchHash[nsearchTerm];
+        negated=true;
+      }
+      if(searchVal){
+        found = true;
+        self.setValue('lower_criteria', criteriaKey);
+        if(criteria == 'range'){
+          self.$el.find('#range_upper_block').show();
+          var vals = searchVal.split(',');
+          self.setValue('lower_value', vals[0]);
+          self.setValue('upper_value', vals[1]);
+        }else if(criteria == 'in'){
+          self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', true);
+          self.setValue('lower_value', '');
+          self.$el.find('[data-fields="form_textarea"]').show();
+          self.setValue('form_textarea', searchVal);
+        }else{
+          self.setValue('lower_value', searchVal);
+        }
+        
+        if(negated){
+          self.setValue('invert_field', true);
+        }
+        
+      }
+    });
+    return found;
+  },  
+
+  /**
+   * Form submit handler
+   */
+  _submit: function(){
+    var self  = this;
+    if(!self.isSet()) return;
+    var searchHash = {};
+    
+    // validate:true: tells bbf to run model.validate(), in addition to field[].validate()
+    var errors = self.commit({ validate: true }); 
+    if(!_.isEmpty(errors)){
+      console.log('form errors, abort submit: ' + JSON.stringify(errors));
+      this.$el.find('#range_upper_block').addClass(self.errorClass);
+      return;
+    }else{
+      this.$el.find('#range_upper_block').removeClass(self.errorClass);
+    }
+    
+    var values = self.getValue();
+    
+    var name = self.columnName;
+    var invert = values['invert_field'];
+    if(invert) name = '-'+name;
+    var criteria = self.criterium[values['lower_criteria']];
+    
+    if(criteria == 'in'){
+      var searchKey = name + '__' + criteria;
+      searchHash[searchKey] = values['form_textarea'];
+    }else if(values['lower_value'] > 0){
+      var searchKey = name + '__' + criteria;
+      if(criteria == 'range'){
+        if(values['upper_value'] >  0){
+          var searchKey = name + '__' + criteria;
+          searchHash[searchKey] = values['lower_value'] + ',' + values['upper_value'];
+        }else{
+          console.log('upper value not set; validation should have caught this');
+        }
+      }else{
+        searchHash[searchKey] = values['lower_value'];
+      }
+    }
+    return searchHash
+  }
+
+});
+
+var TextHeaderCell = MultiSortHeaderCell.extend({
+
+  initialize : function(options) {
+    var self = this;
+    console.log('initialize TextHeaderCell');
+    
+    this.options = options;
+    TextHeaderCell.__super__.initialize.apply(this, arguments);
+    this.fieldinformation = _.clone(this.column.get('fieldinformation'));
+  
+    this._serverSideFilter = new TextFormFilter({
+      columnName: this.column.get('name')
+    });
+    this.filterIcon = $(self.filtericon_text);
+    this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
+    this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
+    _.bindAll(this, '_submit', 'clearSearch');
+  },
+
+  
+  /**
+   * Form submit handler
+   */
+  _submit: function(e){
+    var self  = this;
+    console.log('_submit called');
+    if (e) e.preventDefault();      
+  
+    var searchHash = self._serverSideFilter._submit();
+    if(!_.isEmpty(searchHash)){
+      var possibleSearches = self._serverSideFilter.getPossibleSearches();
+      self.collection.clearSearch(possibleSearches);
+      
+      console.log('server side filter add search: ' + 
+          JSON.stringify(searchHash));
+      this.collection.addSearch(searchHash);
+      self.collection.fetch({ reset: true });
+    }else{
+      console.log('nothing submitted');
+    }
+  },
+
+  /**
+   * Listen for router generated search events
+   * "MyServerSideFilter:search"
+   * - add search term and show box
+   * - clear old search terms
+   **/
+  _search: function(hash, collection){
+    var self = this;
+    var name = this.column.get('name');
+    var searchHash = _.clone(hash);
+
+    // TODO: could use form.isSet() instead of found
+    var found = this._serverSideFilter._search(searchHash);
+    
+    if(found){
+      self._serverSideFilter.$el.show();
+      self.filterIcon.hide();
+    }
+  },  
+  
+  /**
+   * clears all possible searches
+   * if options.reset, then trigger a collection fetch
+   */
+  clearSearch: function(options){
+    var self=this;
+    self._serverSideFilter.$el.hide();
+    self.filterIcon.show();
+    
+    var possibleSearches = self._serverSideFilter.getPossibleSearches();
+    self.collection.clearSearch(possibleSearches);
+  },      
+  
+  render : function() {
+    var self = this;
+    TextHeaderCell.__super__.render.apply(this);
+  
+    console.log('render TextHeaderCell:  ' + this.column.get('name'));
+  
+    this.$el.append(this.filterIcon);
+  
+    //  Backbone.View.prototype.manage = false;
+    this._serverSideFilter.render();
+    this.$el.append(this._serverSideFilter.el);
+    this._serverSideFilter.$el.hide();
+    //  Backbone.View.prototype.manage = false;
+    
+    this._serverSideFilter.clearButton().click(function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      self.clearSearch();
+      self.collection.fetch({ reset: true });
     });
     
-    this.filterIcon = $('<span class="glyphicon glyphicon-search" id="filter-icon" ></span>');
+    this.filterIcon.click(function(e){
+      e.stopPropagation();
+      e.preventDefault();
+      self._serverSideFilter.$el.show();
+      self.filterIcon.hide();
+    });
+  
+    this._serverSideFilter.submitButton().click(function(e){
+      e.preventDefault();
+      self._submit();
+    });
+  
+    this.$el.prop('title', this.options['column']['attributes']["description"]);
+    
+    return this;
+  },  
+});
+
+var NumberHeaderCell = MultiSortHeaderCell.extend({
+
+  initialize : function(options) {
+    var self = this;
+    console.log('initialize NumberHeaderCell');
+    
+    this.options = options;
+    NumberHeaderCell.__super__.initialize.apply(this, arguments);
+    this.fieldinformation = _.clone(this.column.get('fieldinformation'));
+
+    
+    this._serverSideFilter = new NumberFormFilter({
+      columnName: this.column.get('name')
+    });
+    this.filterIcon = $(self.filtericon_text);
     
     this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
     this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
     _.bindAll(this, '_submit', 'clearSearch');
   },
   
-  _submit: function(e){
-    if (e) e.preventDefault();      
-    console.log('_submit called');
-    var self  = this;
-    var name = this.column.get('name');
-    var searchHash = {};
-    var errors = this._serverSideFilter.commit();
-    var values = this._serverSideFilter.getValue();
-    _.each(_.keys(values), function(key){
-      if(values[key] && _.isDate(values[key])){
-        searchHash[name + '__' + key] = values[key].toISOString();
-        self.collection.clearSearch([name + '__' + key]);
-                                     
-      }else{
-        console.log('unusable value:' + JSON.stringify(values[key]));
-      }
-    });
-    
-    console.log('server side filter add search: ' + 
-        JSON.stringify(searchHash));
-    this.collection.addSearch(searchHash);
-    this.collection.fetch({data: _.clone(this.collection.listModel.get('search'))});
-  },
-    
+  
   /**
-   * Function to listen for router generated custom search event
+   * Form submit handler
+   */
+  _submit: function(e){
+    var self  = this;
+    console.log('_submit called');
+    if (e) e.preventDefault();      
+    
+    var name = this.column.get('name');
+    var searchHash = self._serverSideFilter._submit();
+    if(!_.isEmpty(searchHash)){
+      var possibleSearches = self._serverSideFilter.getPossibleSearches();
+      self.collection.clearSearch(possibleSearches);
+      console.log('server side filter add search: ' + 
+          JSON.stringify(searchHash));
+      this.collection.addSearch(searchHash);
+      self.collection.fetch({ reset: true });
+    }else{
+      console.log('nothing submitted');
+    }
+  },
+  
+  /**
+   * Listen for router generated search events
    * "MyServerSideFilter:search"
    * - add search term and show box
    * - clear old search terms
    **/
   _search: function(hash, collection){
-      var self = this;
-      var name = this.column.get('name');
-      var searchHash = _.clone(hash);
-      _.each(['gte', 'lt'], function(key){
-        var searchTerm = name + '__' + key;
-        if(_.has(searchHash, searchTerm)){
-          var searchVal = searchHash[searchTerm];
-          try{
-            searchVal = new Date(searchVal);
-            self._serverSideFilter.$el.show();
-            self.filterIcon.hide();
-            self._serverSideFilter.setValue(key, searchVal);
-          }catch(e){
-            console.log('invalid date value: ' + searchVal + ', ' + JSON.stringify(e));
-          }
-        }
-      });
+    var self = this;
+    var name = this.column.get('name');
+    var searchHash = _.clone(hash);
+
+    // TODO: could use form.isSet() instead of found
+    var found = this._serverSideFilter._search(searchHash);
+    if(found){
+      self._serverSideFilter.$el.show();
+      self.filterIcon.hide();
+    }
   },  
 
-  clearSearch: function(){
+  /**
+   * clears all possible searches
+   * if options.reset, then trigger a collection fetch
+   */
+  clearSearch: function(options){
     var self=this;
-//    _.each(_.keys(this._serverSideFilter.getValue()), function(key){
-//      self._serverSideFilter.setValue(key,null);
-//    });
-    
     self._serverSideFilter.$el.hide();
     self.filterIcon.show();
     
-    var name = this.column.get('name');
-    this.collection.clearSearch([name+'__gte', name+'__lt']);
-    this.collection.getFirstPage({reset: true, fetch: true});
+    var possibleSearches = self._serverSideFilter.getPossibleSearches();
+    self.collection.clearSearch(possibleSearches);
   },      
 
   render : function() {
     var self = this;
-    DateHeaderCell.__super__.render.apply(this);
-
-    console.log('render DateHeaderCell:  ' + this.column.get('name'));
+    NumberHeaderCell.__super__.render.apply(this);
+  
+    console.log('render NumberHeaderCell:  ' + this.column.get('name'));
   
     this.$el.append(this.filterIcon);
-
-//    Backbone.View.prototype.manage = false;
+  
+    //  Backbone.View.prototype.manage = false;
     this._serverSideFilter.render();
     this.$el.append(this._serverSideFilter.el);
     this._serverSideFilter.$el.hide();
-//    Backbone.View.prototype.manage = false;
+    //  Backbone.View.prototype.manage = false;
     
     this._serverSideFilter.clearButton().click(function(e){
       e.preventDefault();
       e.stopPropagation();
       self.clearSearch();
+      self.collection.fetch({ reset: true });
+    });
+    
+    this.filterIcon.click(function(e){
+      e.stopPropagation();
+      e.preventDefault();
+      self._serverSideFilter.$el.show();
+      self.filterIcon.hide();
+    });
+  
+    this._serverSideFilter.submitButton().click(function(e){
+      e.preventDefault();
+      self._submit();
+    });
+  
+    this.$el.prop('title', this.options['column']['attributes']["description"]);
+    
+    return this;
+  },  
+});
+
+var DateHeaderCell = MultiSortHeaderCell.extend({
+
+  initialize : function(options) {
+    var self = this;
+    console.log('initialize DateHeaderCell');
+    
+    this.options = options;
+    DateHeaderCell.__super__.initialize.apply(this, arguments);
+    this.fieldinformation = _.clone(this.column.get('fieldinformation'));
+
+    
+    this._serverSideFilter = new DateFormFilter({
+      columnName: this.column.get('name')
+    });
+    this.filterIcon = $(self.filtericon_text);
+    
+    this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
+    this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
+    _.bindAll(this, '_submit', 'clearSearch');
+  },
+  
+  
+  /**
+   * Form submit handler
+   */
+  _submit: function(e){
+    var self  = this;
+    console.log('_submit called');
+    if (e) e.preventDefault();      
+    
+    var name = this.column.get('name');
+    var searchHash = self._serverSideFilter._submit();
+    if(!_.isEmpty(searchHash)){
+      var possibleSearches = self._serverSideFilter.getPossibleSearches();
+      self.collection.clearSearch(possibleSearches);
+      console.log('server side filter add search: ' + 
+          JSON.stringify(searchHash));
+      this.collection.addSearch(searchHash);
+      self.collection.fetch({ reset: true });
+    }else{
+      console.log('Date Cell nothing submitted');
+    }
+  },
+  
+  /**
+   * Listen for router generated search events
+   * "MyServerSideFilter:search"
+   * - add search term and show box
+   * - clear old search terms
+   **/
+  _search: function(hash, collection){
+    var self = this;
+    var name = this.column.get('name');
+    var searchHash = _.clone(hash);
+
+    // TODO: could use form.isSet() instead of found
+    var found = this._serverSideFilter._search(searchHash);
+    if(found){
+      self._serverSideFilter.$el.show();
+      self.filterIcon.hide();
+    }
+  },  
+
+  /**
+   * clears all possible searches
+   * if options.reset, then trigger a collection fetch
+   */
+  clearSearch: function(options){
+    var self=this;
+    self._serverSideFilter.$el.hide();
+    self.filterIcon.show();
+    
+    var possibleSearches = self._serverSideFilter.getPossibleSearches();
+    self.collection.clearSearch(possibleSearches);
+  },      
+
+  render : function() {
+    var self = this;
+    DateHeaderCell.__super__.render.apply(this);
+  
+    console.log('render DateHeaderCell:  ' + this.column.get('name'));
+  
+    this.$el.append(this.filterIcon);
+  
+    //  Backbone.View.prototype.manage = false;
+    this._serverSideFilter.render();
+    this.$el.append(this._serverSideFilter.el);
+    this._serverSideFilter.$el.hide();
+    //  Backbone.View.prototype.manage = false;
+    
+    this._serverSideFilter.clearButton().click(function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      self.clearSearch();
+      self.collection.fetch({ reset: true });
+    });
+    
+    this.filterIcon.click(function(e){
+      e.stopPropagation();
+      e.preventDefault();
+      self._serverSideFilter.$el.show();
+      self.filterIcon.hide();
+    });
+  
+    this._serverSideFilter.submitButton().click(function(e){
+      e.preventDefault();
+      self._submit();
+    });
+  
+    this.$el.prop('title', this.options['column']['attributes']["description"]);
+    
+    return this;
+  },  
+});
+    
+var SelectorFormFilter = BackboneFormFilter.extend({
+  template: _.template([
+      "<form data-fieldsets class='form-horizontal container' >",
+      "</form>"].join('')),
+
+   altFieldTemplate: _.template([
+      '<div class="form-group" style="margin-bottom: 0px;" >',
+      '    <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > ',
+      '      <label for="<%= editorId %>"><span data-editor\><%= title %></label>',
+      '    </div>',
+      '  </div>'
+      ].join('')),
+    
+  initialize : function(options) {
+    var self = this;
+    console.log('initialize SelectorFormFilter');
+    
+    this.options = options || {};
+    
+    if(!options.columnName){
+      throw "must define column name option for the SelectorFormFilter, options: " + options;
+    }else{
+      this.columnName = options.columnName;
+    }
+    if(!options.choiceHash){
+      throw "must define choiceHash option for the SelectorFormFilter, options: " + options;
+    }else{
+      var choiceHash = this.choiceHash = options.choiceHash;
+    }
+    if(!options.selectedFields){
+      throw "must define selectedFields option for the SelectorFormFilter, options: " + options;
+    }else{
+      var selectedFields = this.selectedFields = options.selectedFields || [];
+    }
+    
+    var formSchema = this.schema = {};
+
+    _.each(_.keys(choiceHash), function(choice){
+      formSchema[choice] = { 
+          title: choiceHash[choice],
+          key:  choice, 
+          type: 'Checkbox',
+          template: self.altFieldTemplate };
+    });
+    formSchema['invert_field'] = {
+        title: 'invert',
+        help: 'select this to invert the criteria',
+        type: 'Checkbox',
+        template: _.template(self.checkboxTemplate),
+        editorClass: ''
+    };    
+    selectedFields.push('invert_field');
+    
+    var FormFields = Backbone.Model.extend({
+      schema: formSchema,
+      validate: function(attrs) {
+        var errs = {};
+        if(!_.isEmpty(errs)) return errs;
+      }
+    });
+    this.model = new FormFields();
+    this.selectedFields = selectedFields; 
+    
+    BackboneFormFilter.__super__.initialize.apply(this, arguments);
+
+  },
+
+  /**
+   * Form submit handler
+   */
+  _submit: function(){
+    var self  = this;
+    if(!self.isSet()) return;
+    var searchHash = {};
+    
+    var values = self.getValue();
+    
+    var name = self.columnName;
+    var invert = values['invert_field'];
+    if(invert) name = '-'+name;
+
+    var selected = _.filter(_.keys(values), function(key){ 
+      if(key != 'invert_field') return values[key]; 
+      return false;
+    });
+    searchHash[name +'__in'] = selected.join(',');
+    
+    return searchHash
+  },
+
+  /**
+   * Set the form from router generated event
+   **/
+  _search: function(hash){
+    var self = this;
+    var searchHash = _.clone(hash);
+    
+    var searchTerm = null;
+    _.each(self.getPossibleSearches(), function(term){
+      if(_.has(searchHash,term)) searchTerm = term;
+    });
+    
+    var found = searchTerm;
+    
+    if(found){
+      if(searchTerm.charAt(0) == '-'){
+        self.setValue('invert_field', true);
+      }
+      var searchVal = searchHash[searchTerm];
+      _.each(searchVal.split(','), function(choice){
+        self.setValue(choice, true);
+      });
+    }
+    return found;
+  },  
+  
+  /**
+   * Convenience - determine if the form has been set with any values
+   */
+  isSet: function(){
+    var values = this.getValue();
+    var found = _.find(_.keys(values), function(key){
+      if(key == 'invert_field' ) return false;
+      return values[key];
+    });
+    return found;
+  },
+  
+  getPossibleSearches: function(){
+    return [this.columnName + '__in', '-'+this.columnName + '__in'];
+  },
+
+
+});
+
+var SelectorHeaderCell = MultiSortHeaderCell.extend({
+
+  initialize : function(options) {
+    var self = this;
+    this.options = options;
+    SelectorHeaderCell.__super__.initialize.apply(this, arguments);
+    this.fieldinformation = _.clone(this.column.get('fieldinformation'));
+
+    if(_.isUndefined(this.fieldinformation.choices)){
+      console.log([
+         'error: fieldinformation for a selection field type must define a ',
+         '"choices" list: field key: ' + this.name ].join(''));
+      this.fieldinformation.choices = [];
+    }
+    vocabulary = {};
+    try{
+      vocabulary = Iccbl.appModel.getVocabulary(this.fieldinformation.vocabulary_scope_ref);
+    }catch(e){
+      console.log('e'+JSON.stringify(e));
+    }
+    var choiceHash = {}
+    _.each(this.fieldinformation.choices, function(choice){
+      choiceHash[choice] = _.has(vocabulary,choice)?vocabulary[choice].title:choice;
+    });
+    
+    this._serverSideFilter = new SelectorFormFilter({
+        choiceHash: choiceHash,
+        columnName: this.column.get('name'),
+        selectedFields: _.clone(this.fieldinformation.choices)
+      });
+    
+    this.filterIcon = $(self.filtericon_text);
+    
+    this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
+    this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
+    _.bindAll(this, '_submit', 'clearSearch');
+  },
+  
+  /**
+   * Form submit handler
+   */
+  _submit: function(e){
+    var self  = this;
+    console.log('_submit called');
+    if (e) e.preventDefault();      
+    
+    var searchHash = self._serverSideFilter._submit();
+    if(!_.isEmpty(searchHash)){
+      var possibleSearches = self._serverSideFilter.getPossibleSearches();
+      self.collection.clearSearch(possibleSearches);
+      console.log('server side filter add search: ' + 
+          JSON.stringify(searchHash));
+      this.collection.addSearch(searchHash);
+      self.collection.fetch({ reset: true });
+    }else{
+      console.log('Selector Cell nothing submitted');
+    }
+  },
+  
+  /**
+   * Listen for router generated search events
+   * "MyServerSideFilter:search"
+   * - add search term and show box
+   * - clear old search terms
+   **/
+  _search: function(hash, collection){
+    var self = this;
+    var searchHash = _.clone(hash);
+
+    // TODO: could use form.isSet() instead of found
+    var found = this._serverSideFilter._search(searchHash);
+    if(found){
+      self._serverSideFilter.$el.show();
+      self.filterIcon.hide();
+    }
+  },  
+
+  /**
+   * clears all possible searches
+   * if options.reset, then trigger a collection fetch
+   */
+  clearSearch: function(options){
+    var self=this;
+    self._serverSideFilter.$el.hide();
+    self.filterIcon.show();
+    
+    var possibleSearches = self._serverSideFilter.getPossibleSearches();
+    self.collection.clearSearch(possibleSearches);
+  },      
+
+  render : function() {
+    var self = this;
+    SelectorHeaderCell.__super__.render.apply(this);
+
+    console.log('render SelectorHeaderCell:  ' + this.column.get('name'));
+  
+    this.$el.append(this.filterIcon);
+
+    this._serverSideFilter.render();
+    this.$el.append(this._serverSideFilter.el);
+    this._serverSideFilter.$el.hide();
+    
+    this._serverSideFilter.clearButton().click(function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      self.clearSearch();
+      self.collection.fetch({ reset: true });
     });
     
     this.filterIcon.click(function(e){
@@ -1922,13 +3043,14 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
             this.options['column']['attributes']["description"]);
     
     return this;
-  },  
+  }
   
 });
-    
-var SelectorHeaderCell = MultiSortHeaderCell.extend({
+
+var SelectorHeaderCell1 = MultiSortHeaderCell.extend({
 
   initialize : function(options) {
+    var self = this;
     this.options = options;
     SelectorHeaderCell.__super__.initialize.apply(this, arguments);
 
@@ -1972,7 +3094,7 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
         collection: this.collection
     });
     
-    this.filterIcon = $('<span class="glyphicon glyphicon-search" id="filter-icon" ></span>');
+    this.filterIcon = $(self.filtericon_text);
     
     this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
     this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
@@ -1997,7 +3119,7 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
         JSON.stringify(searchHash));
     this.collection.clearSearch([name, name+'__in']);
     this.collection.addSearch(searchHash);
-    this.collection.fetch({data: _.clone(this.collection.listModel.get('search'))});
+    self.collection.fetch({data: _.clone(this.collection.listModel.get('search'))});
   },
     
   /**
@@ -2034,16 +3156,23 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
 
   clearSearch: function(){
     var self=this;
-    _.each(_.keys(this._serverSideFilter.getValue()), function(key){
-      self._serverSideFilter.setValue(key,false);
-    });
-    
     self._serverSideFilter.$el.hide();
     self.filterIcon.show();
     
-    var name = this.column.get('name');
-    this.collection.clearSearch([name, name+'__in']);
-    this.collection.getFirstPage({reset: true, fetch: true});
+    var isSet = false;
+    var values = this._serverSideFilter.getValue();
+    _.each(_.keys(values), function(key){
+      if(values[key]) isSet = true;
+      self._serverSideFilter.setValue(key,false);
+    });
+    if(isSet){
+      console.log('clearSearch handler: ' + this.column.get('name') 
+          + ', ' + JSON.stringify(this._serverSideFilter.getValue()));
+
+      var name = this.column.get('name');
+      this.collection.clearSearch([name, name+'__in']);
+      this.collection.getFirstPage({reset: true, fetch: true});
+    }
   },      
 
   render : function() {
@@ -2062,6 +3191,7 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
       e.preventDefault();
       e.stopPropagation();
       self.clearSearch();
+      self.collection.fetch({ reset: true });
     });
     
     this.filterIcon.click(function(e){
@@ -2083,197 +3213,6 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
   }
   
 });
-
-var IntegerServerSideFilter = MyServerSideFilter.extend({
-
-  events: {
-    "keyup input[type=search]": "showClearButtonMaybe",
-    "click a[data-backgrid-action=clear]": "clear",
-    "submit": "search"
-  },
-
-  className: "form-horizontal",    
-
-  template: _.template([
-      '<div class="input-group input-group-sm">',
-      '<span class="input-group-addon" for="lower">>=</span>',
-      '<input type="text" class="form-control pull-left" style="width: 8em; padding: 0,0,0,0;" id="lower"',
-      '<% if (placeholder1) { %> placeholder="<%- placeholder1 %>" <% } %>',
-      ' name="<%- name %>" />',
-      '</div>',
-      '<div class="input-group input-group-sm">',
-      '<span class="input-group-addon" for="upper"><</span>',
-      '<input type="text" class="form-control pull-left" style="width: 8em; padding: 0,0,0,0;" id="upper"',
-      '<% if (placeholder1) { %> placeholder="<%- placeholder1 %>" <% } %>',
-      ' name="<%- name %>" />',
-      '</div>',
-      '<div class="input-group"><input type="submit" class="btn btn-default btn-xs" name="ok" ></input>',
-      '<a class="backgrid-filter clear" style="display: inherit;" data-backgrid-action="clear" href="#">&times;</a></div>'
-      ].join(''), null, {variable: null}),
-
-  initialize: function(options){
-    this.placeholder1 = options.placeholder || this.placeholder;
-    this.placeholder2 = options.placeholder || this.placeholder;
-    this.name = options.name || this.name;
-    this.options = options;
-    
-  },
-
-  isForKey: function(searchKey){
-    return this.name + '__gte' == searchKey || this.name + '__lt' == searchKey;
-  },
-  
-  _setSearch: function(key, val){
-    if(key == this.name + '__gte'){
-      this.$el.find('#lower').val(val);
-    }else{
-      this.$el.find('#upper').val(val);
-    }
-  },
-  
-  /**
-   * Override
-    Upon search form submission, this event handler constructs a query
-    parameter object and pass it to Collection#fetch for server-side
-    filtering.
-  
-    If the collection is a PageableCollection, searching will go back to the
-    first page.
-  */
-  search: function(e) {
-    if (e) e.preventDefault();      
-    var searchHash = {};
-    
-    val1 = this.$el.find('#lower').val();
-    val2 = this.$el.find('#upper').val();
-    
-    if(_.isUndefined(val1)){
-      appModel.showError('must enter a value');
-      return;
-    }
-    
-    if(_.isUndefined(val2) || _.isEmpty(val2)){
-      searchHash[this.name] = val1;
-    }else{
-      searchHash[this.name + '__gte'] = val1;
-      searchHash[this.name + '__lt'] = val2;
-    }
-    
-    console.log('server side filter add search: ' + 
-        JSON.stringify(searchHash));
-    this.collection.addSearch(searchHash);
-    this.collection.fetch({data: _.clone(this.collection.listModel.get('search'))});
-    
-    if (e) e.preventDefault();
-    this.showClearButtonMaybe();
-  },
-  
-  /**
-  Event handler. Show the clear button when the search box has text, hide
-  it otherwise.
-  */
-  showClearButtonMaybe: function () {
-    this.clearButton();
-  },
-
-  clear: function(e){
-    if (e) e.preventDefault();
-    this.remove();
-    this.collection.clearSearch([this.name + '__gte']); 
-    this.collection.clearSearch([this.name + '__lt']); 
-    this.collection.getFirstPage({reset: true, fetch: true});
-  },    
-  
-  
-  /**
-    Renders a search form with a text box, optionally with a placeholder and
-    a preset value if supplied during initialization.
-   */
-  render: function () {
-    this.$el.empty().append(this.template({
-      name: this.name,
-      placeholder1: this.placeholder1,
-      placeholder2: this.placeholder2,
-      value: this.value
-    }));
-    
-    this.showClearButtonMaybe();
-    this.delegateEvents();
-    return this;
-  }
-});
-
-var IntegerHeaderCell = MyHeaderCell.extend({
-
-  initialize : function(options) {
-    this.options = options;
-    IntegerHeaderCell.__super__.initialize.apply(this, arguments);
-
-    this._serverSideFilter = new IntegerServerSideFilter({
-        // TODO: collection should be passed as an option
-        collection : this.collection, 
-        // Name of the URL query parameter for tastypie/django 
-        // TODO: support other filters
-        name : this.column.get("name"), 
-        // HTML5 placeholder for the search box
-        placeholder : "Search " + this.column.get("label"), 
-        columnName : this.column.get("name"),
-        fieldinformation : this.column.get('fieldinformation')
-    });
-
-    this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
-    this.listenTo(this.collection,"sort",this.collectionSorted);
-//    this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
-//    _.bindAll(this, 'clearSearch');
-  },
-
-//  clearSearch: function(){
-//    this._serverSideFilter.clear();
-//  },
-  
-  /**
-   * Function to listen for router generated custom search event
-   * "MyServerSideFilter:search"
-   * - add search term and show box
-   * - clear old search terms
-   **/
-  _search: function(hash, collection){
-      var self = this;
-      var searchHash = _.clone(hash);
-      if (collection == this.collection){
-          var _el;
-          // TODO: delegate this to the filter --- 
-          _.each(_(searchHash).pairs(), function(pair){
-              var key = pair[0];
-              var val = pair[1];
-//              console.log('looking for search: ' + key + ', ' + val + ',' + self._serverSideFilter.name );
-              if (self._serverSideFilter.isForKey(key)){
-                  console.log('--found search: ' + key + '=' + val + 
-                      ', on: ' + self.column.get('name'));
-//                  // create the DOM element
-//                  self.$el.append(self._serverSideFilter.render().el);
-                  if(_.isUndefined(_el) ) _el = self._serverSideFilter.render().el; 
-                  // set the search term
-                  self._serverSideFilter._setSearch(key, val);
-                  // the filter search method will call collection.fetch()
-//                  self._serverSideFilter.search(); 
-              }
-          });
-
-          if (_.isUndefined(_el)) {
-              if (!_.isEmpty(this.$el.find("input[type=text]").val())) {
-                  this._serverSideFilter.remove();
-                  this.collection.clearSearch([self._serverSideFilter.name]);
-              }
-          }else{
-            // create the DOM element
-            self.$el.append(_el);
-          }
-      }
-  },  
-  
-});
-
 
 /**
  * Return an array for backgrid column descriptors.
@@ -2344,8 +3283,13 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     var ui_type = prop['ui_type'];
     if(!_.isEmpty(ui_type)){
       ui_type = ui_type.toLowerCase();
-      if(ui_type == 'integer'){
-        column['headerCell'] = IntegerHeaderCell;
+      if(ui_type == 'string'){
+        column['headerCell'] = TextHeaderCell;
+      }
+      if(ui_type == 'integer'
+        || ui_type == 'float'
+      ){
+        column['headerCell'] = NumberHeaderCell;
       }
       if( ui_type == 'select' 
         || ui_type == 'radio'

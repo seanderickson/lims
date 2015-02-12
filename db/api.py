@@ -50,6 +50,7 @@ from sqlalchemy.sql.expression import column, join
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.sql import asc,desc, alias, Alias
+from sqlalchemy.sql import and_, or_, not_          
 from sqlalchemy.sql.expression import nullsfirst,nullslast
 
 from db.models import ScreensaverUser,Screen, LabHead, LabAffiliation, \
@@ -69,6 +70,7 @@ from reports.serializers import csv_convert
 from sqlalchemy.sql.elements import literal_column
 from django.core.serializers.json import DjangoJSONEncoder
 import hashlib
+import StringIO
 
         
 logger = logging.getLogger(__name__)
@@ -1318,7 +1320,10 @@ class ChunkIterWrapper(object):
     
     def next(self):
         logger.info(str(('chunking')))
+        # Note: cStringIO will not accept unicode strings that can not be encoded as 7-bit ascii
         bytes = cStringIO.StringIO()
+        # NOTE: StringIO will have difficulty decoding UTF-8 mixed with ascii
+        #         bytes = StringIO.StringIO()
         
         bytecount = 0
         try:
@@ -1663,7 +1668,7 @@ class SqlAlchemyResource(StreamingResource):
         return order_clauses
     
     @staticmethod
-    def filter_value_to_python(value, filters, field_name, filter_expr, filter_type):
+    def filter_value_to_python(value, query_params, filter_expr, filter_type):
         """
         Turn the string ``value`` into a python object.
         - copied from TP
@@ -1678,10 +1683,10 @@ class SqlAlchemyResource(StreamingResource):
 
         # Split on ',' if not empty string and either an in or range filter.
         if filter_type in ('in', 'range') and len(value):
-            if hasattr(filters, 'getlist'):
+            if hasattr(query_params, 'getlist'):
                 value = []
 
-                for part in filters.getlist(filter_expr):
+                for part in query_params.getlist(filter_expr):
                     value.extend(part.split(LIST_DELIMITER_URL_PARAM))
             else:
                 value = value.split(LIST_DELIMITER_URL_PARAM)
@@ -1691,82 +1696,92 @@ class SqlAlchemyResource(StreamingResource):
     @staticmethod
     def build_sqlalchemy_filters(schema, request, **kwargs):
         '''
-        Attempt to create a SqlAlchemy whereclause out of django style filters.
-        
-        This method borrows from tastypie.resources.ModelResource.build_filters
-        
-        Valid values are either a list of Django filter types (i.e.
-        ``['startswith', 'exact', 'lte']``), the ``ALL`` constant or the
-        ``ALL_WITH_RELATIONS`` constant.
-        
-        @return - (sqlalchemy.whereclause, [field_name_list])
+        Attempt to create a SqlAlchemy whereclause out of django style filters:
+        - field_name__filter_expression
         '''
         
-        #     filtering = {
-        #         'resource_field_name': ['exact', 'startswith', 'endswith', 'contains'],
-        #         'resource_field_name_2': ['exact', 'gt', 'gte', 'lt', 'lte', 'range'],
-        #         'resource_field_name_3': ALL,
-        #         'resource_field_name_4': ALL_WITH_RELATIONS,
-        #         ...
-        #     }
-        query_terms = django.db.models.sql.constants.QUERY_TERMS
         lookup_sep = django.db.models.constants.LOOKUP_SEP
 
-        filters = request.GET.copy()
+        query_params = request.GET.copy()
         # Update with the provided kwargs.
-        filters.update(kwargs)
+        logger.info(str(('query_params', query_params, 'kwargs', kwargs)))
+        query_params.update(kwargs)
 
-        if filters is None:
+        if query_params is None:
             return (None,None)
         
         expressions = []
         filtered_fields = []
-        for filter_expr, value in filters.items():
+        for filter_expr, value in query_params.items():
+            if lookup_sep not in filter_expr:
+                continue;
             filter_bits = filter_expr.split(lookup_sep)
-            field_name = filter_bits.pop(0)
-            filter_type = 'exact'
-
+            if len(filter_bits) != 2:
+                logger.warn(str(('filter expression must be of the form "field_name__expression"',
+                    filter_expr, filter_bits)))
+            field_name = filter_bits[0]
+            
+            inverted = False
+            if field_name and field_name[0] == '-':
+                inverted = True
+                field_name = field_name[1:]
+                        
+            filter_type = filter_bits[1]
             if not field_name in schema['fields']:
+                logger.warn(str(('unknown filter field', field_name, filter_expr)))
                 continue
-            filtered_fields.append(field_name)
+
             field = schema['fields'][field_name]
             
-            if len(filter_bits) and filter_bits[-1] in query_terms:
-                filter_type = filter_bits.pop()
-
             value = SqlAlchemyResource.filter_value_to_python(
-                value, filters, field_name, filter_expr, filter_type)
+                value, query_params, filter_expr, filter_type)
 
-                        # TODO all the types
-            #             QUERY_TERMS = set([
-            #                 'exact', 'iexact', 'contains', 'icontains', 'gt', 'gte', 'lt', 'lte', 'in',
-            #                 'startswith', 'istartswith', 'endswith', 'iendswith', 'range', 'year',
-            #                 'month', 'day', 'week_day', 'hour', 'minute', 'second', 'isnull', 'search',
-            #                 'regex', 'iregex',
-            #             ])
+            # TODO: all of the Django query terms:
+            # QUERY_TERMS = set([
+            #     'exact', 'iexact', 'contains', 'icontains', 'gt', 'gte', 'lt', 'lte', 'in',
+            #     'startswith', 'istartswith', 'endswith', 'iendswith', 'range', 'year',
+            #     'month', 'day', 'week_day', 'hour', 'minute', 'second', 'isnull', 'search',
+            #     'regex', 'iregex',
+            # ])
             
+            logger.info(str(('find filter', field_name, filter_type, value)))
             if not value:
                 continue
             
-            if filter_type == 'exact':
-                expressions.append(column(field_name)==value)
+            expression = None
+            if filter_type in ['exact','eq']:
+                expression = column(field_name)==value
             elif filter_type == 'contains':
-                expressions.append(column(field_name).contains(value))
+                expression = column(field_name).contains(value)
             elif filter_type == 'icontains':
-                expressions.append(column(field_name).ilike('%{value}%'.format(value=value)))
+                expression = column(field_name).ilike('%{value}%'.format(value=value))
             elif filter_type == 'lt':
-                expressions.append(column(field_name) < value)
+                expression = column(field_name) < value
             elif filter_type == 'gte':
-                expressions.append(column(field_name) >= value)
+                expression = column(field_name) >= value
             elif filter_type == 'in':
-                expressions.append(column(field_name).in_(value))
+                expression = column(field_name).in_(value)
+            elif filter_type == 'ne':
+                expression = column(field_name) != value
+            elif filter_type == 'range':
+                if len(value) != 2:
+                    logger.error(str(('value for range expression must be list of length 2', 
+                        field_name, filter_expr, value)))
+                    continue
+                else:
+                    expression = column(field_name).between(value[0],value[1],symmetric=True)
             else:
-                logger.warn(str(('--- unknown filter type: ', filter_type,
+                logger.error(str(('--- unknown filter type: ', field_name, filter_type,
                     'filter_expr',filter_expr )))
-        
+                continue
+
+            if inverted:
+                expression = not_(expression)
+            expressions.append(expression)
+            filtered_fields.append(field_name)
+            
         logger.info(str(('filtered_fields', filtered_fields)))
         if len(expressions) > 1: 
-            from sqlalchemy.sql import and_, or_, not_          
             return (and_(*expressions), filtered_fields)
         elif len(expressions) == 1:
             return (expressions[0], filtered_fields) 
@@ -1883,8 +1898,8 @@ class SqlAlchemyResource(StreamingResource):
         stmt = stmt.offset(offset)
         conn = self.bridge.get_engine().connect()
         
+        logger.info(str(('stmt', str(stmt))))
         if DEBUG_STREAMING:
-            logger.info(str(('stmt', str(stmt))))
             logger.info(str(('count stmt', str(count_stmt))))
         
         logger.info('excute stmt')
@@ -1942,7 +1957,11 @@ class SqlAlchemyResource(StreamingResource):
                         
             def json_generator(cursor):
                 if DEBUG_STREAMING: logger.info(str(('meta', meta)))
-                yield '{ "meta": %s, "objects": [' % json.dumps(meta)
+                # NOTE, using "ensure_ascii" = True to force encoding of all 
+                # chars to be encoded using ascii or escaped unicode; 
+                # because some chars in db might be non-UTF8
+                # and downstream programs have trouble with mixed encoding (cStringIO)
+                yield '{ "meta": %s, "objects": [' % json.dumps(meta, ensure_ascii=True, encoding="utf-8")
                 i=0
                 for row in cursor:
                     if DEBUG_STREAMING: logger.info(str(('row', row, row.keys())))
@@ -1956,6 +1975,8 @@ class SqlAlchemyResource(StreamingResource):
                                 if row.has_key(key):
                                     value = row[key]
 #                                 logger.info(str(('value', value)))
+                                if key == 'library_name':
+                                    logger.info(str(('library_name', key, value )))
                                 if value and ( field.get('json_field_type') == 'fields.ListField' 
                                      or field.get('linked_field_type') == 'fields.ListField' ):
                                     # FIXME: need to do an escaped split
@@ -2001,14 +2022,23 @@ class SqlAlchemyResource(StreamingResource):
                     try:
                         if DEBUG_STREAMING: logger.info(str(('_dict',i, _dict)))
                         if i == 1:
+                            # NOTE, using "ensure_ascii" = True to force encoding of all 
+                            # chars to the ascii charset; otherwise, cStringIO has problems
                             yield json.dumps(_dict, cls=DjangoJSONEncoder,
-                                sort_keys=True, ensure_ascii=False, indent=2)
+                                sort_keys=True, ensure_ascii=True, indent=2, encoding="utf-8")
                         else:
+                            # NOTE, using "ensure_ascii" = True to force encoding of all 
+                            # chars to the ascii charset; otherwise, cStringIO has problems
+                            # so "tm" becomes \u2122
+                            # Upon fp.write  the unicode is converted to the default charset?
+                            # also, CStringIO doesn't support UTF-8 mixed with ascii, for instance
                             yield ', ' + json.dumps(_dict, cls=DjangoJSONEncoder,
-                                sort_keys=True, ensure_ascii=False, indent=2)
+                                sort_keys=True, ensure_ascii=True, indent=2, encoding="utf-8")
                     except Exception, e:
+                        print 'Exception'
+                        logger.info(str(('exception')))
                         logger.error(str(('ex', _dict, e)))
-                
+                logger.info('streaming finished')
                 yield ' ] }'
             
             if DEBUG_STREAMING: logger.info(str(('ready to stream 1...')))

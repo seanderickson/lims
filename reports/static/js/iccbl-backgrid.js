@@ -734,6 +734,7 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
     */
    defaults: _.extend({}, NumberFormatter.prototype.defaults, {
      sciunits: [
+                ['T', 1e12],
                 ['G', 1e9],
                 ['M', 1e6],
                 ['k', 1e3],
@@ -762,6 +763,12 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
        return this.getUnit(number, this.multiplier, this.symbol, this.decimals);
    },
 
+   /**
+    * Convert the number to a sciunit value;
+    * number = .0025
+    * multiplier = 1000
+    * @return Math.round(number*multiplier,decimals) + symbol
+    */
    getUnit: function(number, multiplier, symbol, decimals) {
        
        if(_.isUndefined(number)){
@@ -1757,6 +1764,20 @@ var BackboneFormFilter = Backbone.Form.extend({
     '<%= title %></label>'      
     ].join(''),
    
+  initialize : function(options) {
+    var self = this;
+    console.log('initialize BackboneFormFilter');
+    
+    var options = this.options = options || {};
+      
+    if(!options.columnName){
+      throw "must define column name option for the BackboneFormFilter, options: " + options;
+    }else{
+      this.columnName = options.columnName;
+    }
+    BackboneFormFilter.__super__.initialize.apply(this, arguments);
+  },
+
   /**
    * - add a submit button
    * - add a clear button
@@ -1766,7 +1787,7 @@ var BackboneFormFilter = Backbone.Form.extend({
     BackboneFormFilter.__super__.render.apply(this, arguments);
     this.$el.append([
       '<div class="col-xs-3">',
-      '<button type="submit" class="btn btn-default btn-xs" style="width: 100%; " >ok</input>',
+      '<button type="submit" class="btn btn-default btn-xs" style="width: 3em; " >ok</input>',
       '</div>',
       '<div class="col-xs-3">',
       '<a class="backgrid-filter clear" data-backgrid-action="clear"',
@@ -1880,13 +1901,13 @@ var TextFormFilter = CriteriumFormFilter.extend({
     var self = this;
     console.log('initialize TextFormFilter');
     
-    this.options = options || {};
+    var options = this.options = options || {};
     
-    if(!options.columnName){
-      throw "must define column name option for the TextFormFilter, options: " + options;
-    }else{
-      this.columnName = options.columnName;
-    }
+//    if(!options.columnName){
+//      throw "must define column name option for the TextFormFilter, options: " + options;
+//    }else{
+//      this.columnName = options.columnName;
+//    }
 
     var formSchema = this.schema = {};
     formSchema['lower_criteria'] = {
@@ -2037,14 +2058,14 @@ var DateFormFilter = CriteriumFormFilter.extend({
     var self = this;
     console.log('initialize DateFormFilter');
     
-    this.options = options || {};
+    var options = this.options = options || {};
     
-    if(!options.columnName){
-      throw "must define column name option for the DateFormFilter, options: " + options;
-    }else{
-      this.columnName = options.columnName;
-    }
-
+//    if(!options.columnName){
+//      throw "must define column name option for the DateFormFilter, options: " + options;
+//    }else{
+//      this.columnName = options.columnName;
+//    }
+//
     var formSchema = this.schema = {};
     formSchema['lower_criteria'] = {
         title: '', 
@@ -2238,207 +2259,6 @@ var DateFormFilter = CriteriumFormFilter.extend({
 });
 
 
-var NumberFormFilter = CriteriumFormFilter.extend({
-  
-  criterium: {'=':'eq','>=':'gte','<':'lt','<>':'ne', '...':'range', 'in': 'in'},
-
-  // provide a custom form template; use Bootstrap layout/styling
-  template: _.template([
-      '<form class="iccbl-headerfield-form" >',
-      '<div class="input-group ">',
-      '   <div data-fields="lower_criteria" ',
-      '     class="input-group-addon iccbl-headerfield-number" for="lower_value"   />',
-      '   <div data-fields="lower_value"/>',
-      '</div>',
-      '<div class="form-group" data-fields="form_textarea" style="display: none;" />',
-      '<div class="input-group" id="range_upper_block" style="display: none;" >',
-      '   <span class="input-group-addon" for="upper_value"  style="width: 4em; ">to</span>',
-      '   <span data-fields="upper_value"/>',
-      '</div>',
-      '<div class="col-xs-6"  data-fields="invert_field" />',
-      '</form>'
-    ].join('')),
-      
-  initialize : function(options) {
-    var self = this;
-    console.log('initialize NumberFormFilter');
-    
-    this.options = options || {};
-    
-    if(!options.columnName){
-      throw "must define column name option for the NumberFormFilter, options: " + options;
-    }else{
-      this.columnName = options.columnName;
-    }
-
-    var formSchema = this.schema = {};
-    formSchema['lower_criteria'] = {
-        title: '', 
-        key:  'lower_criteria', // TODO: "key" not needed>?
-        type: 'Select',
-        options: _.keys(self.criterium),
-        template: _.template(self.criteriaTemplate),
-        editorClass: 'form-control'
-    };
-    formSchema['lower_value'] = {
-        title: '',
-        key: 'lower_value',
-        type: 'Number',
-        template: _.template(self.fieldTemplate),
-        editorClass: 'form-control'
-    };
-    formSchema['form_textarea'] = {
-        title: '',
-        help: 'enter a comma separated list',
-        key: 'form_textarea',
-        type: 'TextArea',
-        template: _.template(self.fieldTemplate),
-        editorClass: 'form-control'
-    };
-    formSchema['upper_value'] = {
-        title: '',
-        key: 'upper_value',
-        type: 'Number',
-        template: _.template(self.fieldTemplate),
-        editorClass: 'form-control '
-    };
-    formSchema['invert_field'] = {
-        title: 'invert',
-        help: 'select this to invert the criteria',
-        type: 'Checkbox',
-        template: _.template(self.checkboxTemplate),
-        editorClass: ''
-    };    
-
-    var FormFields = Backbone.Model.extend({
-      schema: formSchema,
-      validate: function(attrs) {
-        var errs = {};
-        if(attrs.lower_criteria == '...' 
-          && ( attrs.upper_value < 1 ) ){
-          errs['upper_value'] = '!'
-        }
-        if(!_.isEmpty(errs)) return errs;
-      }
-    });
-    this.model = new FormFields();
-    this.selectedFields = ['lower_criteria','lower_value','form_textarea','upper_value','invert_field']; 
-    
-    this.listenTo(this, "change", function(e){
-      var criteria = self.getValue('lower_criteria');
-      console.log('change:' + criteria)
-      if(criteria == '...'){
-        self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', false);
-        self.$el.find('[data-fields="form_textarea"]').hide();
-        self.$el.find('#range_upper_block').show();
-      }else if(criteria == 'in'){
-        self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', true);
-        self.setValue('lower_value', '');
-        self.$el.find('#range_upper_block').hide();
-        self.$el.find('[data-fields="form_textarea"]').show();
-      }else{
-        self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', false);
-        self.$el.find('[data-fields="form_textarea"]').hide();
-        self.$el.find('#range_upper_block').hide();
-      }
-    });
-
-    NumberFormFilter.__super__.initialize.apply(this, arguments);
-    
-  },
-
-  /**
-   * Set the form from router generated event
-   **/
-  _search: function(hash){
-    var self = this;
-    var searchHash = _.clone(hash);
-    
-    var found = false;
-    _.each(_.keys(self.criterium), function(criteriaKey){
-      var criteria = self.criterium[criteriaKey];
-      var searchTerm = self.columnName + '__' + criteria;
-      var nsearchTerm = '-' + self.columnName + '__' + criteria;
-      var searchVal = null;
-      var negated = false;
-      if(_.has(searchHash, searchTerm)){
-        var searchVal = searchHash[searchTerm];
-      }else if(_.has(searchHash, nsearchTerm)){
-        var searchVal = searchHash[nsearchTerm];
-        negated=true;
-      }
-      if(searchVal){
-        found = true;
-        self.setValue('lower_criteria', criteriaKey);
-        if(criteria == 'range'){
-          self.$el.find('#range_upper_block').show();
-          var vals = searchVal.split(',');
-          self.setValue('lower_value', vals[0]);
-          self.setValue('upper_value', vals[1]);
-        }else if(criteria == 'in'){
-          self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', true);
-          self.setValue('lower_value', '');
-          self.$el.find('[data-fields="form_textarea"]').show();
-          self.setValue('form_textarea', searchVal);
-        }else{
-          self.setValue('lower_value', searchVal);
-        }
-        
-        if(negated){
-          self.setValue('invert_field', true);
-        }
-        
-      }
-    });
-    return found;
-  },  
-
-  /**
-   * Form submit handler
-   */
-  _submit: function(){
-    var self  = this;
-    if(!self.isSet()) return;
-    var searchHash = {};
-    
-    // validate:true: tells bbf to run model.validate(), in addition to field[].validate()
-    var errors = self.commit({ validate: true }); 
-    if(!_.isEmpty(errors)){
-      console.log('form errors, abort submit: ' + JSON.stringify(errors));
-      this.$el.find('#range_upper_block').addClass(self.errorClass);
-      return;
-    }else{
-      this.$el.find('#range_upper_block').removeClass(self.errorClass);
-    }
-    
-    var values = self.getValue();
-    
-    var name = self.columnName;
-    var invert = values['invert_field'];
-    if(invert) name = '-'+name;
-    var criteria = self.criterium[values['lower_criteria']];
-    
-    if(criteria == 'in'){
-      var searchKey = name + '__' + criteria;
-      searchHash[searchKey] = values['form_textarea'];
-    }else if(values['lower_value'] > 0){
-      var searchKey = name + '__' + criteria;
-      if(criteria == 'range'){
-        if(values['upper_value'] >  0){
-          var searchKey = name + '__' + criteria;
-          searchHash[searchKey] = values['lower_value'] + ',' + values['upper_value'];
-        }else{
-          console.log('upper value not set; validation should have caught this');
-        }
-      }else{
-        searchHash[searchKey] = values['lower_value'];
-      }
-    }
-    return searchHash
-  }
-
-});
-
 var TextHeaderCell = MultiSortHeaderCell.extend({
 
   initialize : function(options) {
@@ -2553,120 +2373,6 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
   },  
 });
 
-var NumberHeaderCell = MultiSortHeaderCell.extend({
-
-  initialize : function(options) {
-    var self = this;
-    console.log('initialize NumberHeaderCell');
-    
-    this.options = options;
-    NumberHeaderCell.__super__.initialize.apply(this, arguments);
-    this.fieldinformation = _.clone(this.column.get('fieldinformation'));
-
-    
-    this._serverSideFilter = new NumberFormFilter({
-      columnName: this.column.get('name')
-    });
-    this.filterIcon = $(self.filtericon_text);
-    
-    this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
-    this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
-    _.bindAll(this, '_submit', 'clearSearch');
-  },
-  
-  
-  /**
-   * Form submit handler
-   */
-  _submit: function(e){
-    var self  = this;
-    console.log('_submit called');
-    if (e) e.preventDefault();      
-    
-    var name = this.column.get('name');
-    var searchHash = self._serverSideFilter._submit();
-    if(!_.isEmpty(searchHash)){
-      var possibleSearches = self._serverSideFilter.getPossibleSearches();
-      self.collection.clearSearch(possibleSearches);
-      console.log('server side filter add search: ' + 
-          JSON.stringify(searchHash));
-      this.collection.addSearch(searchHash);
-      self.collection.fetch({ reset: true });
-    }else{
-      console.log('nothing submitted');
-    }
-  },
-  
-  /**
-   * Listen for router generated search events
-   * "MyServerSideFilter:search"
-   * - add search term and show box
-   * - clear old search terms
-   **/
-  _search: function(hash, collection){
-    var self = this;
-    var name = this.column.get('name');
-    var searchHash = _.clone(hash);
-
-    // TODO: could use form.isSet() instead of found
-    var found = this._serverSideFilter._search(searchHash);
-    if(found){
-      self._serverSideFilter.$el.show();
-      self.filterIcon.hide();
-    }
-  },  
-
-  /**
-   * clears all possible searches
-   * if options.reset, then trigger a collection fetch
-   */
-  clearSearch: function(options){
-    var self=this;
-    self._serverSideFilter.$el.hide();
-    self.filterIcon.show();
-    
-    var possibleSearches = self._serverSideFilter.getPossibleSearches();
-    self.collection.clearSearch(possibleSearches);
-  },      
-
-  render : function() {
-    var self = this;
-    NumberHeaderCell.__super__.render.apply(this);
-  
-    console.log('render NumberHeaderCell:  ' + this.column.get('name'));
-  
-    this.$el.append(this.filterIcon);
-  
-    //  Backbone.View.prototype.manage = false;
-    this._serverSideFilter.render();
-    this.$el.append(this._serverSideFilter.el);
-    this._serverSideFilter.$el.hide();
-    //  Backbone.View.prototype.manage = false;
-    
-    this._serverSideFilter.clearButton().click(function(e){
-      e.preventDefault();
-      e.stopPropagation();
-      self.clearSearch();
-      self.collection.fetch({ reset: true });
-    });
-    
-    this.filterIcon.click(function(e){
-      e.stopPropagation();
-      e.preventDefault();
-      self._serverSideFilter.$el.show();
-      self.filterIcon.hide();
-    });
-  
-    this._serverSideFilter.submitButton().click(function(e){
-      e.preventDefault();
-      self._submit();
-    });
-  
-    this.$el.prop('title', this.options['column']['attributes']["description"]);
-    
-    return this;
-  },  
-});
 
 var DateHeaderCell = MultiSortHeaderCell.extend({
 
@@ -2800,13 +2506,8 @@ var SelectorFormFilter = BackboneFormFilter.extend({
     var self = this;
     console.log('initialize SelectorFormFilter');
     
-    this.options = options || {};
+    var options = this.options = options || {};
     
-    if(!options.columnName){
-      throw "must define column name option for the SelectorFormFilter, options: " + options;
-    }else{
-      this.columnName = options.columnName;
-    }
     if(!options.choiceHash){
       throw "must define choiceHash option for the SelectorFormFilter, options: " + options;
     }else{
@@ -3214,6 +2915,633 @@ var SelectorHeaderCell1 = MultiSortHeaderCell.extend({
   
 });
 
+var NumberFormFilter = CriteriumFormFilter.extend({
+  
+  criterium: {'=':'eq','>=':'gte','<':'lt','<>':'ne', '...':'range', 'in': 'in'},
+
+  // provide a custom form template; use Bootstrap layout/styling
+  template: _.template([
+      '<form class="iccbl-headerfield-form" >',
+      '<div class="input-group ">',
+      '   <div data-fields="lower_criteria" ',
+      '     class="input-group-addon iccbl-headerfield-number" for="lower_value"   />',
+      '   <div data-fields="lower_value"/>',
+      '</div>',
+      '<div class="form-group" data-fields="form_textarea" style="display: none;" />',
+      '<div class="input-group" id="range_upper_block" style="display: none;" >',
+      '   <span class="input-group-addon" for="upper_value"  style="width: 4em; ">to</span>',
+      '   <span data-fields="upper_value"/>',
+      '</div>',
+      '<div class="col-xs-6"  data-fields="invert_field" />',
+      '</form>'
+    ].join('')),
+      
+  initialize : function(options) {
+    var self = this;
+    console.log('initialize NumberFormFilter');
+
+    var options = this.options = options || {};
+    
+    var formSchema = options.schema = options.schema || {};
+    formSchema['lower_criteria'] = {
+        title: '', 
+        key:  'lower_criteria', // TODO: "key" not needed>?
+        type: 'Select',
+        options: _.keys(self.criterium),
+        template: _.template(self.criteriaTemplate),
+        editorClass: 'form-control'
+    };
+    formSchema['lower_value'] = {
+        title: '',
+        key: 'lower_value',
+        type: 'Number',
+        template: _.template(self.fieldTemplate),
+        editorClass: 'form-control'
+    };
+    formSchema['form_textarea'] = {
+        title: '',
+        help: 'enter a comma separated list',
+        key: 'form_textarea',
+        type: 'TextArea',
+        template: _.template(self.fieldTemplate),
+        editorClass: 'form-control'
+    };
+    formSchema['upper_value'] = {
+        title: '',
+        key: 'upper_value',
+        type: 'Number',
+        template: _.template(self.fieldTemplate),
+        editorClass: 'form-control '
+    };
+    formSchema['invert_field'] = {
+        title: 'invert',
+        help: 'select this to invert the criteria',
+        type: 'Checkbox',
+        template: _.template(self.checkboxTemplate),
+        editorClass: ''
+    };    
+
+    var FormFields = Backbone.Model.extend({
+//      schema: formSchema,
+      validate: function(attrs) {
+        var errs = {};
+        if(attrs.lower_criteria == '...' 
+          && ( attrs.upper_value < 1 ) ){
+          errs['upper_value'] = '!'
+        }
+        if(!_.isEmpty(errs)) return errs;
+      }
+    });
+    options['model'] = new FormFields();
+    
+    var fields = options.fields = options.fields || [];
+    options.fields = fields.concat(
+        ['lower_criteria','lower_value','form_textarea','upper_value','invert_field']); 
+    
+    this.listenTo(this, "change", function(e){
+      var criteria = self.getValue('lower_criteria');
+      console.log('change:' + criteria)
+      if(criteria == '...'){
+        self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', false);
+        self.$el.find('[data-fields="form_textarea"]').hide();
+        self.$el.find('#range_upper_block').show();
+      }else if(criteria == 'in'){
+        self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', true);
+        self.setValue('lower_value', '');
+        self.$el.find('#range_upper_block').hide();
+        self.$el.find('[data-fields="form_textarea"]').show();
+      }else{
+        self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', false);
+        self.$el.find('[data-fields="form_textarea"]').hide();
+        self.$el.find('#range_upper_block').hide();
+      }
+    });
+
+    NumberFormFilter.__super__.initialize.call(this, options);
+    
+  },
+
+  /**
+   * Set the form from router generated event
+   **/
+  _search: function(hash){
+    var self = this;
+    var searchHash = _.clone(hash);
+    
+    var found = false;
+    _.each(_.keys(self.criterium), function(criteriaKey){
+      var criteria = self.criterium[criteriaKey];
+      var searchTerm = self.columnName + '__' + criteria;
+      var nsearchTerm = '-' + self.columnName + '__' + criteria;
+      var searchVal = null;
+      var negated = false;
+      if(_.has(searchHash, searchTerm)){
+        var searchVal = searchHash[searchTerm];
+      }else if(_.has(searchHash, nsearchTerm)){
+        var searchVal = searchHash[nsearchTerm];
+        negated=true;
+      }
+      if(searchVal){
+        found = true;
+        self.setValue('lower_criteria', criteriaKey);
+        if(criteria == 'range'){
+          self.$el.find('#range_upper_block').show();
+          var vals = searchVal.split(',');
+          self.setValue('lower_value', vals[0]);
+          self.setValue('upper_value', vals[1]);
+        }else if(criteria == 'in'){
+          self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', true);
+          self.setValue('lower_value', '');
+          self.$el.find('[data-fields="form_textarea"]').show();
+          self.setValue('form_textarea', searchVal);
+        }else{
+          self.setValue('lower_value', searchVal);
+        }
+        
+        if(negated){
+          self.setValue('invert_field', true);
+        }
+        
+      }
+    });
+    return found;
+  },  
+
+  /**
+   * Form submit handler
+   */
+  _submit: function(){
+    var self  = this;
+    if(!self.isSet()) return;
+    var searchHash = {};
+    
+    // validate:true: tells bbf to run model.validate(), in addition to field[].validate()
+    var errors = self.commit({ validate: true }); 
+    if(!_.isEmpty(errors)){
+      console.log('form errors, abort submit: ' + JSON.stringify(errors));
+      this.$el.find('#range_upper_block').addClass(self.errorClass);
+      return;
+    }else{
+      this.$el.find('#range_upper_block').removeClass(self.errorClass);
+    }
+    
+    var values = self.getValue();
+    
+    var name = self.columnName;
+    var invert = values['invert_field'];
+    if(invert) name = '-'+name;
+    var criteria = self.criterium[values['lower_criteria']];
+    
+    if(criteria == 'in'){
+      var searchKey = name + '__' + criteria;
+      searchHash[searchKey] = values['form_textarea'];
+    }else if(values['lower_value'] > 0){
+      var searchKey = name + '__' + criteria;
+      if(criteria == 'range'){
+        if(values['upper_value'] >  0){
+          var searchKey = name + '__' + criteria;
+          searchHash[searchKey] = values['lower_value'] + ',' + values['upper_value'];
+        }else{
+          console.log('upper value not set; validation should have caught this');
+        }
+      }else{
+        searchHash[searchKey] = values['lower_value'];
+      }
+    }
+    return searchHash
+  }
+
+});
+
+var NumberHeaderCell = MultiSortHeaderCell.extend({
+
+  initialize : function(options) {
+    var self = this;
+    NumberHeaderCell.__super__.initialize.apply(this, arguments);
+    console.log('initialize NumberHeaderCell');
+    this.options = options;
+
+    this.fieldinformation = _.clone(this.column.get('fieldinformation'));
+    
+    this._serverSideFilter = new NumberFormFilter({
+      columnName: this.column.get('name')
+    });
+    this.filterIcon = $(self.filtericon_text);
+    
+    this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
+    this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
+    _.bindAll(this, '_submit', 'clearSearch');
+  },
+  
+  
+  /**
+   * Form submit handler
+   */
+  _submit: function(e){
+    var self  = this;
+    console.log('_submit called');
+    if (e) e.preventDefault();      
+    
+    var name = this.column.get('name');
+    var searchHash = self._serverSideFilter._submit();
+    if(!_.isEmpty(searchHash)){
+      var possibleSearches = self._serverSideFilter.getPossibleSearches();
+      self.collection.clearSearch(possibleSearches);
+      console.log('server side filter add search: ' + 
+          JSON.stringify(searchHash));
+      this.collection.addSearch(searchHash);
+      self.collection.fetch({ reset: true });
+    }else{
+      console.log('nothing submitted');
+    }
+  },
+  
+  /**
+   * Listen for router generated search events
+   * "MyServerSideFilter:search"
+   * - add search term and show box
+   * - clear old search terms
+   **/
+  _search: function(hash, collection){
+    var self = this;
+    var name = this.column.get('name');
+    var searchHash = _.clone(hash);
+
+    // TODO: could use form.isSet() instead of found
+    var found = this._serverSideFilter._search(searchHash);
+    if(found){
+      self._serverSideFilter.$el.show();
+      self.filterIcon.hide();
+    }
+  },  
+
+  /**
+   * clears all possible searches
+   * if options.reset, then trigger a collection fetch
+   */
+  clearSearch: function(options){
+    var self=this;
+    self._serverSideFilter.$el.hide();
+    self.filterIcon.show();
+    
+    var possibleSearches = self._serverSideFilter.getPossibleSearches();
+    self.collection.clearSearch(possibleSearches);
+  },      
+
+  render : function() {
+    var self = this;
+    NumberHeaderCell.__super__.render.apply(this);
+  
+    console.log('render NumberHeaderCell:  ' + this.column.get('name'));
+  
+    this.$el.append(this.filterIcon);
+  
+    //  Backbone.View.prototype.manage = false;
+    this._serverSideFilter.render();
+    this.$el.append(this._serverSideFilter.el);
+    this._serverSideFilter.$el.hide();
+    //  Backbone.View.prototype.manage = false;
+    
+    this._serverSideFilter.clearButton().click(function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      self.clearSearch();
+      self.collection.fetch({ reset: true });
+    });
+    
+    this.filterIcon.click(function(e){
+      e.stopPropagation();
+      e.preventDefault();
+      self._serverSideFilter.$el.show();
+      self.filterIcon.hide();
+    });
+  
+    this._serverSideFilter.submitButton().click(function(e){
+      e.preventDefault();
+      self._submit();
+    });
+  
+    this.$el.prop('title', this.options['column']['attributes']["description"]);
+    
+    return this;
+  },  
+});
+
+
+var SciUnitFormFilter = NumberFormFilter.extend({
+  
+  // provide a custom form template; use Bootstrap layout/styling
+  template: _.template([
+      '<form class="iccbl-headerfield-form" >',
+      '<div class="input-group ">',
+      '   <div data-fields="lower_criteria" ',
+      '     class="input-group-addon iccbl-headerfield-number" for="lower_value"   />',
+      '   <div data-fields="lower_value"/>',
+      '   <div class="input-group-addon iccbl-headerfield-number" data-fields="lower_sciunit"/>',
+      '</div>',
+      '<div class="form-group" data-fields="form_textarea" style="display: none;" />',
+      '<div class="input-group" id="range_upper_block" style="display: none;" >',
+      '   <span class="input-group-addon" for="upper_value"  style="width: 4em; ">to</span>',
+      '   <span data-fields="upper_value"/>',
+      '   <div class="input-group-addon iccbl-headerfield-number" data-fields="upper_sciunit"/>',
+      '</div>',
+      '<div class="col-xs-6"  data-fields="invert_field" />',
+      '</form>'
+    ].join('')),
+
+  sciunits: [
+      ['T', 1e12],
+      ['G', 1e9],
+      ['M', 1e6],
+      ['k', 1e3],
+      ['', 1],
+      ['m', 1e-3,],
+      ['μ', 1e-6,],
+      ['n', 1e-9 ],
+      ['p', 1e-12 ]
+  ],
+
+  initialize : function(options) {
+    var self = this;
+    console.log('initialize SciUnitFormFilter');
+    var options = this.options = options || {};
+
+    var multiplier = this.multiplier = options.multiplier || 1;
+    
+    if(! options.symbol){
+      throw 'Error: SciUnitFormFilter requires a "symbol" option' 
+    }
+    var symbol = this.symbol = options.symbol;
+    
+    var units = this.units = [];
+    _.each(this.sciunits,function(pair){
+      units.push({ val: pair[1], label: pair[0] + self.symbol });
+    });
+    
+    var formSchema = options.schema = options.schema || {};
+
+    formSchema['lower_sciunit'] = {
+      title: '', 
+      key:  'lower_sciunit', // TODO: "key" not needed>?
+      type: 'Select',
+      options: units,
+      template: _.template(self.criteriaTemplate),
+      editorClass: 'form-control'
+    };
+    
+    formSchema['upper_sciunit'] = {
+      title: '', 
+      key:  'upper_sciunit', // TODO: "key" not needed>?
+      type: 'Select',
+      options: units,
+      template: _.template(self.criteriaTemplate),
+      editorClass: 'form-control'
+    };
+    
+    options['fields'] = ['lower_sciunit','upper_sciunit']
+    
+    SciUnitFormFilter.__super__.initialize.call(this, options);
+  },
+  
+  /**
+   * Convenience - determine if the form has been set with any values
+   */
+  isSet: function(){
+    var values = this.getValue();
+    var found = _.find(_.keys(values), function(key){
+      if(key == 'lower_criteria' 
+        || key == 'lower_sciunit'
+        || key == 'upper_sciunit' ) return false;
+      // signal isSet for any field value set
+      return values[key]>0 || !_.isEmpty(values[key]);
+    });
+    return !_.isEmpty(found);
+  },
+  
+  /**
+   * Form submit handler
+   */
+  _submit: function(){
+    var self = this;
+    var searchHash = SciUnitFormFilter.__super__._submit.call(this);
+    
+    if(!_.isEmpty(searchHash)){
+      var searchKey = _.keys(searchHash)[0];
+      var searchValue = searchHash[searchKey];
+      
+      var values = self.getValue();
+      var criteria = self.criterium[values['lower_criteria']];
+      if(criteria == 'range'){
+        searchHash[searchKey] = [
+            self._calculate(self.multiplier,values['lower_sciunit'],values['lower_value']),
+            self._calculate(self.multiplier,values['upper_sciunit'],values['upper_value'])
+            ].join(',');
+      }else{
+        searchHash[searchKey] = self._calculate(
+            self.multiplier,values['lower_sciunit'],values['lower_value']);
+      }
+      console.log('Sciunit new search value: ' + searchHash[searchKey]);
+    }
+    return searchHash
+  },
+  
+  _calculate: function(multiplier, sci_mult, val){
+    // run strip after every calculation to round out floating point math errors
+    function strip(number) {
+      return (parseFloat(number.toPrecision(12)));
+      };
+    val = strip(val * multiplier);
+    val = strip(val * sci_mult);
+    return val;
+  },
+  
+  _findNumberAndUnit: function(number){
+    var decimals = 3; // TODO: users will not be expected to enter values beyond 3 decimals
+    
+    var self = this;
+    function strip(number) {
+      return (parseFloat(number.toPrecision(12)));
+      };
+    number = strip(number/self.multiplier);
+    pair = _.find(this.sciunits, function(pair){
+      return pair[1] <= Math.abs(number); 
+    });
+    
+    if(_.isUndefined(pair)){
+      console.log('could not find units for the input number: ' + number);
+      return { number:number, unit: ''};
+    }
+    
+    var val = (1/pair[1])*number;
+    val = Math.round(val*Math.pow(10,decimals))/Math.pow(10,decimals);
+    
+    return {number:val, unit: pair[1]};
+  },
+  
+  /**
+   * Set the form from router generated event
+   **/
+  _search: function(hash){
+    var self = this;
+    var searchHash = _.clone(hash);
+    var found = SciUnitFormFilter.__super__._search.call(this, hash);
+    if(found){
+      var values = self.getValue();
+      
+      if(values['lower_value'] != 0){
+        var numberAndUnit = self._findNumberAndUnit(values['lower_value']);
+        self.setValue('lower_value', numberAndUnit.number);
+        self.setValue('lower_sciunit', numberAndUnit.unit);
+      }
+      if(values['upper_value'] != 0){
+        var numberAndUnit = self._findNumberAndUnit(values['upper_value']);
+        self.setValue('upper_value', numberAndUnit.number);
+        self.setValue('upper_sciunit', numberAndUnit.unit);
+      }
+    }
+    return found;
+  }  
+  
+});
+
+
+var SciUnitHeaderCell = MultiSortHeaderCell.extend({
+  
+  initialize: function(options){
+
+    SciUnitHeaderCell.__super__.initialize.apply(this,arguments);
+
+    console.log('initialize SciUnitHeaderCell');
+    var self = this;
+    this.options = options;
+    var name = this.column.get('name');
+    
+    // NOTE: do not like passing the field information argument on the column,
+    // but can not see a way around this in the backgrid implementation
+    var fi = this.fieldinformation = _.clone(this.column.get('fieldinformation'));
+    var cell_options = fi['backgrid_cell_options'];
+    try{
+      cell_options = JSON.parse(cell_options);
+    }catch(e){
+      throw new Error('SciUnitHeaderCell: Could not parse backgrid_cell_options for header: ' 
+          + name + ',' + cell_options);
+    }
+    if(!cell_options.symbol)
+    {
+      throw new Error('SciUnitHeaderCell: field information requires the '+
+          '"symbol" option');
+    }
+    var symbol = this.symbol = cell_options.symbol;
+    var multiplier = this.multiplier = _.has(cell_options, 'multiplier')?cell_options.multiplier:1;
+    
+    this._serverSideFilter = new SciUnitFormFilter({
+      columnName: this.column.get('name'),
+      symbol: symbol,
+      multiplier: multiplier
+    });
+    this.filterIcon = $(self.filtericon_text);
+    
+    this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
+    this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
+//    _.bindAll(this, '_submit', 'clearSearch');
+  },
+
+  
+  /**
+   * Form submit handler
+   */
+  _submit: function(e){
+    var self  = this;
+    console.log('_submit called');
+    if (e) e.preventDefault();      
+    
+    var name = this.column.get('name');
+    var searchHash = self._serverSideFilter._submit();
+    if(!_.isEmpty(searchHash)){
+      var possibleSearches = self._serverSideFilter.getPossibleSearches();
+      self.collection.clearSearch(possibleSearches);
+      console.log('server side filter add search: ' + 
+          JSON.stringify(searchHash));
+      this.collection.addSearch(searchHash);
+      self.collection.fetch({ reset: true });
+    }else{
+      console.log('nothing submitted');
+    }
+  },
+  
+  /**
+   * Listen for router generated search events
+   * "MyServerSideFilter:search"
+   * - add search term and show box
+   * - clear old search terms
+   **/
+  _search: function(hash, collection){
+    var self = this;
+    var name = this.column.get('name');
+    var searchHash = _.clone(hash);
+
+    // TODO: could use form.isSet() instead of found
+    var found = this._serverSideFilter._search(searchHash);
+    if(found){
+      self._serverSideFilter.$el.show();
+      self.filterIcon.hide();
+    }
+  },  
+
+  /**
+   * clears all possible searches
+   * if options.reset, then trigger a collection fetch
+   */
+  clearSearch: function(options){
+    var self=this;
+    self._serverSideFilter.$el.hide();
+    self.filterIcon.show();
+    
+    var possibleSearches = self._serverSideFilter.getPossibleSearches();
+    self.collection.clearSearch(possibleSearches);
+  }, 
+  
+  
+  render : function() {
+    SelectorHeaderCell.__super__.render.apply(this);
+
+    console.log('render SelectorHeaderCell:  ' + this.column.get('name'));
+    var self = this;
+  
+    this.$el.append(this.filterIcon);
+
+    this._serverSideFilter.render();
+    this.$el.append(this._serverSideFilter.el);
+    this._serverSideFilter.$el.hide();
+    
+    this._serverSideFilter.clearButton().click(function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      self.clearSearch();
+      self.collection.fetch({ reset: true });
+    });
+    
+    this.filterIcon.click(function(e){
+      e.stopPropagation();
+      e.preventDefault();
+      self._serverSideFilter.$el.show();
+      self.filterIcon.hide();
+    });
+
+    this._serverSideFilter.submitButton().click(function(e){
+      e.preventDefault();
+      self._submit();
+    });
+
+    this.$el.prop('title', 
+            this.options['column']['attributes']["description"]);
+    
+    return this;
+  }
+
+});
+
+
 /**
  * Return an array for backgrid column descriptors.
  * @param {Object} fields_from_rest - hash of fields for the current dataset:
@@ -3234,18 +3562,24 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   var visible = _.has(prop, 'visibility') && 
                     _.contains(prop['visibility'], 'list');
   var backgridCellType = 'string';
+  var cell_options = null;
   if (!_.isEmpty(prop['backgrid_cell_type'])) {
       backgridCellType = prop['backgrid_cell_type'];
       cell_options = prop['backgrid_cell_options'];
+      try{
+        cell_options = JSON.parse(cell_options);
+      }catch(e){
+        console.log('warn: backgrid_cell_options is not JSON parseable, column: ' +
+            key + ', options: ' + cell_options);
+      }
       
       try {
           var klass = Iccbl.stringToFunction(prop['backgrid_cell_type']);
           if (!_.isUndefined(klass)) {
               console.log('----- class found: ' + prop['backgrid_cell_type']);
               backgridCellType = klass;
-              _options = JSON.parse(cell_options);
-              if(!_.isUndefined(_options)){
-                var _specialized_cell = klass.extend(_options);
+              if(!_.isUndefined(cell_options)){
+                var _specialized_cell = klass.extend(cell_options);
                 backgridCellType = _specialized_cell;
               }
           }
@@ -3289,7 +3623,30 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
       if(ui_type == 'integer'
         || ui_type == 'float'
       ){
-        column['headerCell'] = NumberHeaderCell;
+        var headerCell;
+        if(prop['backgrid_cell_type'] && 
+            prop['backgrid_cell_type']=='Iccbl.SciUnitsCell'){          
+          if(!cell_options.symbol){
+            console.log('Error constructing SciUnit header cell: ' +
+                'missing required "symbol" backgrid_cell_option');
+          }
+          else{
+            headerCell = SciUnitHeaderCell;
+            // Note: we actually need the column instance to properly initialize
+            // an instance here; would require override of HeaderRow.makeCell
+            //            headerCell = new SciUnitHeaderCell({
+            //              column: key,
+            //              collection: this.collection,
+            //              symbol: cell_options.symbol,
+            //              multiplier: multiplier
+            //            });
+          }
+        }
+        
+        if(!headerCell){
+          headerCell = NumberHeaderCell;
+        }
+        column['headerCell'] = headerCell;
       }
       if( ui_type == 'select' 
         || ui_type == 'radio'
@@ -3299,6 +3656,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
       if( ui_type == 'date'){
         column['headerCell'] = DateHeaderCell;
       }
+      
     }
   }
   return column;

@@ -100,8 +100,10 @@ class PrettyJSONSerializer(Serializer):
     def to_json(self, data, options=None):
         options = options or {}
         data = self.to_simple(data, options)
+        # NOTE, using "ensure_ascii" = True to force encoding of all 
+        # chars to the ascii charset; otherwise, cStringIO has problems
         return json.dumps(data, cls=DjangoJSONEncoder,
-                sort_keys=True, ensure_ascii=False, indent=self.json_indent)
+                sort_keys=True, ensure_ascii=True, indent=self.json_indent, encoding="utf-8")
 
 
 class SDFSerializer(Serializer):
@@ -597,15 +599,17 @@ class CursorSerializer(Serializer):
             for key, value in obj.items():
                 if not isinstance(value, cursor):
                     if not wrote_to_csv:
+                        # NOTE, using "ensure_ascii" = True to force encoding of all 
+                        # chars to the ascii charset; otherwise, cStringIO has problems
                         writer.writewrow([key,json.dumps(
-                            value,skipkeys=False,check_circular=True, 
-                            allow_nan=True, default=lambda x: str(x))] )
+                            value,skipkeys=False,check_circular=True,ensure_ascii=True, 
+                            allow_nan=True, default=lambda x: str(x), encoding="utf-8")] )
                     else:
                         logger.warn(
                             'non-cursor data will not be written to csv: "' + 
                             key +'": ' + json.dumps(
-                                value,skipkeys=False,check_circular=True, 
-                                allow_nan=True, default=lambda x: str(x)))
+                                value,skipkeys=False,check_circular=True,ensure_ascii=True,
+                                allow_nan=True, default=lambda x: str(x)), encoding="utf-8")
             
         return raw_data.getvalue()
     
@@ -647,9 +651,11 @@ class CursorSerializer(Serializer):
                     raw_data.write(']')
                 else:
                     raw_data.write('"' + key + '": ')
+                    # NOTE, using "ensure_ascii" = True to force encoding of all 
+                    # chars to the ascii charset; otherwise, cStringIO has problems
                     raw_data.write(json.dumps(
-                        value,skipkeys=False,check_circular=True, 
-                        allow_nan=True, default=lambda x: str(x)))
+                        value,skipkeys=False,check_circular=True,ensure_ascii=True,
+                        allow_nan=True, default=lambda x: str(x)), encoding="utf-8")
                 count += 1
                 
             raw_data.write('}')
@@ -669,10 +675,12 @@ class CursorSerializer(Serializer):
         for row in _cursor.fetchall():
             if i!=0:
                 raw_data.write(',\n')
+            # NOTE, using "ensure_ascii" = True to force encoding of all 
+            # chars to the ascii charset; otherwise, cStringIO has problems
             raw_data.write(json.dumps(
                 OrderedDict(zip(cols, row)),
-                skipkeys=False,ensure_ascii=True,check_circular=True, 
-                allow_nan=True, cls=DjangoJSONEncoder))
+                skipkeys=False,ensure_ascii=True,check_circular=True,
+                allow_nan=True, cls=DjangoJSONEncoder,encoding="utf-8"))
             i += 1
 
         logger.info('done, wrote: %d' % i)

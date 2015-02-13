@@ -31,4 +31,4 @@ curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://
 
 curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/metahash/ --data-binary @reports/static/api_init/metahash_fields_initial_patch.csv
 
-curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reprts/api/v1/vocabularies/ --data-binary @db/static/api_init/vocabularies_data.csv
+curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/vocabularies/ --data-binary @db/static/api_init/vocabularies_data.csv

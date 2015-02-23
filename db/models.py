@@ -733,7 +733,8 @@ class Well(models.Model):
     
 #     molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
 #     mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
-    micro_molar_concentration = models.FloatField(null=True, blank=True)
+    molar_concentration = models.FloatField(null=True, blank=True)
+#     micro_molar_concentration = models.FloatField(null=True, blank=True)
     mg_ml_concentration = models.FloatField(null=True, blank=True)
     class Meta:
         db_table = 'well'

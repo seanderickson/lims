@@ -219,9 +219,10 @@ drop table reagent_vendor_genes cascade;
   Make the well concentration fields units specific
 **/
 
+/** discontinue: 20150216
 update well set molar_concentration = molar_concentration*1000000;
 alter table well rename COLUMN molar_concentration to micro_molar_concentration;
-
+**/
 
 /** change timestamp fields to use timezone information **/
 alter table library alter column date_created SET DATA TYPE timestamp with time zone;

@@ -1,13 +1,10 @@
 > <comment>
 
-> <Facility_Reagent_ID>
+> <OldWell>
+A01
+
+> <facility_reagent_id>
 ICCB-00589081
-
-> <vendor_batch_id>
-HM-001_TM-20090805
-
-> <OldPlate>
-1
 
 > <salt_form_id>
 101
@@ -16,52 +13,61 @@ HM-001_TM-20090805
 008
 
 > <pubchem_cid>
+558309
 7335957
 
 > <Source>
 Biomol-TimTec
 
-> <Vendor_Reagent_ID>
+> <library_well_type>
+experimental
+
+> <vendor_reagent_id>
 SPL000058
 
-> <Well_type>
-EXPERIMENTAL
+> <vendor_batch_id>
+HM-001_TM-20090805
 
-> <concentration>
-111 nM
-
-> <Plate>
-1534
-
-> <Solvent>
-DMSO
-
-> <chembl_id>
-111102
-
-> <Chemical_Name>
-fake compound name 1
-
-> <Vendor>
+> <vendor>
 Biomol-TimTec
 
+> <compound_name>
+fake compound name 1
+fake compound name 2
+
+> <well_name>
+A01
+
+> <chembank_id>
+1665724
+6066882
+
+> <Oldplate_number>
+1
+
+> <chembl_id>
+100001
+100002
+111102
+
+> <plate_number>
+1536
+
 > <pubmed_id>
+20653109
 20653081
+
+> <mg_ml_concentration>
+.111
 
 > <smiles>
 O=C1CC(C)(C)CC(=O)C1C(c1ccccc1)C1=C(O)CC(C)(C)CC1=O
 
-> <OldWell>
-A01
-
-> <Well>
-A01
+> <solvent>
+DMSO
 
 > <inchi>
 InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-23(3,4)13-18(21)27/h5-9,19-20,26H,10-13H2,1-4H3
-
-> <chembank_id>
-6066882
 
 > <Col>
 1
@@ -113,41 +119,38 @@ csChFnd70/04290511482D
 M  END
 > <comment>
 
-> <Plate>
-1534
-
-> <Facility_Reagent_ID>
-ICCB-00589082
-
-> <Solvent>
-DMSO
-
 > <smiles>
 Clc1ccc(\\C=C/c2c(C)n(C)n(c3ccccc3)c2=O)c(Cl)c1
 
-> <OldPlate>
+> <facility_reagent_id>
+ICCB-00589082
+
+> <OldWell>
+A01
+
+> <Oldplate_number>
 2
 
-> <Well>
-A02
+> <vendor>
+Biomol-TimTec
 
-> <Vendor_Reagent_ID>
+> <vendor_reagent_id>
 ST001215
 
-> <Chemical_Name>
-fake compound name 1
+> <plate_number>
+1536
 
 > <Source>
 Biomol-TimTec
 
-> <Vendor>
-Biomol-TimTec
+> <library_well_type>
+experimental
+
+> <molar_concentration>
+.005
 
 > <Library>
 Biomol-TimTec1
-
-> <Well_type>
-EXPERIMENTAL
 
 > <CAS_Number>
 fake cas number 1
@@ -155,11 +158,14 @@ fake cas number 1
 > <inchi>
 InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-23(3,4)13-18(21)27/h5-9,19-20,26H,10-13H2,1-4H3
 
-> <OldWell>
-A01
+> <solvent>
+DMSO
 
-> <Concentration>
-5 nM
+> <compound_name>
+fake compound name 1
+
+> <well_name>
+A02
 
 > <Col>
 2
@@ -209,35 +215,35 @@ csChFnd70/04290511482D
 M  END
 > <comment>
 
-> <Plate>
-1534
-
-> <Solvent>
-DMSO
-
-> <Well_type>
-EXPERIMENTAL
-
 > <smiles>
 CCOC(=O)C(C#N)C(=O)c1ccc(N)cc1
 
-> <OldPlate>
+> <OldWell>
+A02
+
+> <Oldplate_number>
 1
 
-> <Well>
-A03
+> <SaltData>
+2C2H2O4
 
-> <Vendor_Reagent_ID>
+> <vendor>
+Biomol-TimTec
+
+> <vendor_reagent_id>
 ST000077
 
-> <Chemical_Name>
-fake compound name 2
+> <Col>
+3
+
+> <plate_number>
+1536
 
 > <Source>
 Biomol-TimTec
 
-> <Vendor>
-Biomol-TimTec
+> <library_well_type>
+experimental
 
 > <Library>
 Biomol-TimTec1
@@ -248,23 +254,23 @@ ICCB-00589083
 > <CAS_number>
 fake cas number 2
 
-> <SaltData>
-2C2H2O4
+> <inchi>
+InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-23(3,4)13-18(21)27/h5-9,19-20,26H,10-13H2,1-4H3
 
-> <OldWell>
-A02
+> <solvent>
+DMSO
 
-> <Concentration>
-2.46 mg/ml
+> <compound_name>
+fake compound name 2
+
+> <well_name>
+A03
+
+> <mg_ml_concentration>
+2.46
 
 > <Row>
 1
-
-> <Col>
-3
-
-> <inchi>
-InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-23(3,4)13-18(21)27/h5-9,19-20,26H,10-13H2,1-4H3
 
 $$$$
 Structure97
@@ -320,61 +326,63 @@ csChFnd70/04290511482D
  11 10  1  0  0  0  0
  14 16  1  0  0  0  0
 M  END
-> <comment>
-
-> <Plate>
-1534
-
-> <Facility_Reagent_ID>
-ICCB-00589084
-
-> <Solvent>
-DMSO
+> <Col>
+4
 
 > <smiles>
 O=C1CC(C)(C)CC(=O)C1C(c1ccccc1)C1=C(O)CC(C)(C)CC1=O
 
-> <OldPlate>
+> <facility_reagent_id>
+ICCB-00589084
+
+> <OldWell>
+A02
+
+> <Oldplate_number>
 2
 
-> <Well>
-A04
+> <vendor>
+Biomol-TimTec
 
-> <Vendor_Reagent_ID>
+> <vendor_reagent_id>
 ST001243
 
-> <Chemical_Name>
-fake compound name 3
+> <plate_number>
+1536
 
 > <pubchem_cid>
+558309
 7335957
 
 > <Source>
 Biomol-TimTec
 
-> <Vendor>
-Biomol-TimTec
+> <library_well_type>
+experimental
 
 > <Library>
 Biomol-TimTec1
 
-> <Well_type>
-EXPERIMENTAL
-
 > <chembank_id>
+1665724
 6066882
 
 > <inchi>
 InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-23(3,4)13-18(21)27/h5-9,19-20,26H,10-13H2,1-4H3
 
-> <OldWell>
-A02
+> <solvent>
+DMSO
 
-> <Concentration>
-0.123 mg/ml
+> <compound_name>
+fake compound name 3
 
-> <Col>
-4
+> <well_name>
+A04
+
+> <mg_ml_concentration>
+0.123
+
+> <comment>
 
 > <Row>
 1
@@ -429,56 +437,58 @@ csChFnd70/04290511482D
 M  END
 > <comment>
 
-> <Plate>
-1534
-
-> <Facility_Reagent_ID>
-ICCB-00589085
-
-> <Solvent>
-DMSO
-
 > <smiles>
 O=C1CC(C)(C)CC(=O)C1C(c1ccccc1)C1=C(O)CC(C)(C)CC1=O
 
-> <OldPlate>
+> <facility_reagent_id>
+ICCB-00589085
+
+> <OldWell>
+A03
+
+> <Oldplate_number>
 1
 
-> <Well>
-A05
+> <vendor>
+Biomol-TimTec
 
-> <Vendor_Reagent_ID>
+> <vendor_reagent_id>
 ST000202
 
-> <Chemical_Name>
-fake compound name 4
+> <plate_number>
+1536
 
 > <pubchem_cid>
+558309
 7335957
 
 > <Source>
 Biomol-TimTec
 
-> <Vendor>
-Biomol-TimTec
+> <library_well_type>
+experimental
+
+> <molar_concentration>
+.000115
 
 > <Library>
 Biomol-TimTec1
 
-> <Well_type>
-EXPERIMENTAL
-
 > <chembank_id>
+1665724
 6066882
 
 > <inchi>
 InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-23(3,4)13-18(21)27/h5-9,19-20,26H,10-13H2,1-4H3
 
-> <OldWell>
-A03
+> <solvent>
+DMSO
 
-> <Concentration>
-115 pM
+> <compound_name>
+fake compound name 4
+
+> <well_name>
+A05
 
 > <Col>
 5
@@ -534,56 +544,58 @@ csChFnd70/04290511482D
 M  END
 > <comment>
 
-> <Plate>
-1534
-
-> <Facility_Reagent_ID>
-ICCB-00589086
-
-> <Solvent>
-DMSO
-
 > <smiles>
 O=C1CC(C)(C)CC(=O)C1C(c1ccccc1)C1=C(O)CC(C)(C)CC1=O
 
-> <OldPlate>
+> <facility_reagent_id>
+ICCB-00589086
+
+> <OldWell>
+A03
+
+> <Oldplate_number>
 2
 
-> <Well>
-A06
+> <vendor>
+Biomol-TimTec
 
-> <Vendor_Reagent_ID>
+> <vendor_reagent_id>
 ST001344
 
+> <plate_number>
+1536
+
 > <pubchem_cid>
+558309
 7335957
 
 > <Source>
 Biomol-TimTec
 
-> <Vendor>
-Biomol-TimTec
+> <library_well_type>
+experimental
 
 > <Library>
 Biomol-TimTec1
 
-> <Well_type>
-EXPERIMENTAL
-
 > <chembank_id>
+1665724
 6066882
 
 > <inchi>
 InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-23(3,4)13-18(21)27/h5-9,19-20,26H,10-13H2,1-4H3
 
-> <OldWell>
-A03
-
-> <Concentration>
-2.46 mg/ml
+> <solvent>
+DMSO
 
 > <Col>
 6
+
+> <well_name>
+A06
+
+> <mg_ml_concentration>
+2.46
 
 > <Row>
 1
@@ -652,53 +664,58 @@ csChFnd70/04290511482D
 M  END
 > <comment>
 
-> <Facility_Reagent_ID>
+> <OldWell>
+A04
+
+> <facility_reagent_id>
 ICCB-00589088
 
-> <OldPlate>
-2
-
 > <pubchem_cid>
+558309
 7335957
 
 > <Source>
 Biomol-TimTec
 
-> <Vendor_Reagent_ID>
+> <library_well_type>
+experimental
+
+> <vendor_reagent_id>
 ST001467
 
-> <Well_type>
-EXPERIMENTAL
+> <vendor>
+Biomol-TimTec
 
-> <Plate>
-1534
+> <well_name>
+A08
 
-> <Solvent>
-DMSO
+> <chembank_id>
+1665724
+6066882
+
+> <Oldplate_number>
+2
 
 > <molecular_weight>
 369.0002
 
-> <Vendor>
-Biomol-TimTec
+> <plate_number>
+1536
 
 > <smiles>
 O=C1CC(C)(C)CC(=O)C1C(c1ccccc1)C1=C(O)CC(C)(C)CC1=O
 
-> <OldWell>
-A04
-
-> <Well>
-A08
+> <solvent>
+DMSO
 
 > <molecular_mass>
 368.46602
 
+> <molar_concentration>
+.115
+
 > <inchi>
 InChI=1/C23H28O4/c1-22(2)10-15(24)20(16(25)11-22)19(14-8-6-5-7-9-14)21-17(26)12-23(3,4)13-18(21)27/h5-9,19-20,26H,10-13H2,1-4H3
-
-> <chembank_id>
-6066882
 
 > <Col>
 8
@@ -709,55 +726,52 @@ Biomol-TimTec1
 > <molecular_formula>
 C23H28O4
 
-> <Concentration>
-115 nM
-
 > <Row>
 1
 
 $$$$
 > <comment>
 
-> <Plate>
-1534
+> <smiles>
 
-> <Facility_Reagent_ID>
+> <facility_reagent_id>
 
 > <OldWell>
 P24
 
-> <smiles>
-
-> <OldPlate>
+> <Oldplate_number>
 2
 
-> <Well>
-A09
+> <vendor>
+Biomol-TimTec
 
-> <Vendor_Reagent_ID>
+> <vendor_reagent_id>
 
-> <Chemical_Name>
+> <Col>
+8
+
+> <plate_number>
+1536
 
 > <Source>
 Biomol-TimTec
 
-> <Vendor>
-Biomol-TimTec
+> <library_well_type>
+empty
 
 > <Library>
 Biomol-TimTec1
 
-> <Well_type>
-EMPTY
-
 > <inchi>
 
-> <Solvent>
+> <solvent>
 
-> <Concentration>
+> <compound_name>
 
-> <Col>
-8
+> <well_name>
+A09
+
+> <mg_ml_concentration>
 
 > <Row>
 1

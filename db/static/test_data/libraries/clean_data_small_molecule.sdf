@@ -154,7 +154,7 @@ ICCB-00589082
 >  <solvent> (4)
 DMSO
 
->  <micro_molar_concentration> (4)
+>  <molar_concentration> (4)
 .005
 
 >  <compound_name> (5)
@@ -466,7 +466,7 @@ ICCB-00589085
 >  <solvent> (7)
 DMSO
 
->  <micro_molar_concentration> (7)
+>  <molar_concentration> (7)
 .000115
 
 >  <compound_name> (5)
@@ -689,7 +689,7 @@ ICCB-00589088
 >  <solvent> (10)
 DMSO
 
->  <micro_molar_concentration> (10)
+>  <molar_concentration> (10)
 .115
 
 >  <smiles> (10)

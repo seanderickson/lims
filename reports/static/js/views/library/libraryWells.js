@@ -58,7 +58,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
                 !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
           var _key = Iccbl.popKeyFromStack(resource,uriStack,self.consumedStack);
   
-          appModel.getModel(resource.key, _key, function(model){
+          appModel.getModel('well', _key, function(model){
             model.resource = resource;
             self.showDetail(model);
           } );
@@ -124,15 +124,23 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var uriStack = _.clone(this.uriStack);
       // get the view class
       var viewClass = DetailLayout;
+
+      // prevent normal display of structure image value
+      var si_field = model.resource.schema.fields['structure_image']
+      if(si_field){
+        si_field['visibility'] = ['api'];
+      }
       var view = new viewClass({ model: model, uriStack: uriStack });
 
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      this.$('#content_title').html("");
       self.setView('#content', view).render();
       
-      
-      self.$('#content').append(
-          '<img style="position: absolute; top: 8em; right: 3em; height: 16em;" src="/db/well_image/' 
-          + model.get('well_id') + '" alt="image" />')
+      if(model.has('structure_image')){
+        self.$('#content').append(
+            '<img style="position: absolute; top: 8em; right: 3em; height: 16em;" src="' 
+            + model.get('structure_image') + '" alt="image" />')
+      }
     },
     
     showList: function(resource, url) {
@@ -154,6 +162,13 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         url: url, 
         detailHandler: detailHandler
       }});
+      self.listenTo(view, 'update_title', function(val){
+        if(val) {
+          this.$('#content_title').html('<small>' + val + '</small>');
+        }else{
+          this.$('#content_title').html("");
+        }
+      });
     
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       Backbone.Layout.setupView(view);

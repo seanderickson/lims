@@ -76,7 +76,7 @@
         "url_root": "/db/api/v1",
         "description": "View small molecule screen information",
         "options": { 
-          "search": { "screen_type": "small_molecule",
+          "search": { "screen_type__eq": "small_molecule",
                       "project_phase__ne": "annotation" },
           "order": ["facility_id"] }
     },
@@ -90,7 +90,7 @@
         "url_root": "/db/api/v1",
         "description": "View rnai screen information",
         "options": { 
-          "search": { "screen_type": "rnai",
+          "search": { "screen_type__eq": "rnai",
                       "project_phase__ne": "annotation" },
           "order": ["facility_id"] }
     },
@@ -116,10 +116,10 @@
         "description": "View Small Molecule Library information",
         "options": { 
           "rpp": 500, 
-          "includes": ["-screen_type"],
+          "includes": ["-screen_type","-is_pool"],
           "order": ["short_name"], 
           "search": { 
-            "screen_type": "small_molecule"
+            "screen_type__eq": "small_molecule"
            } 
         }
     },
@@ -134,7 +134,7 @@
         "description": "View RNAi library information",
         "options": { 
           "rpp": 500, 
-          "search": { "screen_type": "rnai"}, 
+          "search": { "screen_type__eq": "rnai"}, 
           "includes": ["-screen_type"],
           "order": ["short_name"]  
         }

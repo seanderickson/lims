@@ -140,9 +140,13 @@ ul.backgrid-paginator {
 
 /** TODO: for detail view - develop a better container for showing long text 
   and this may not be needed **/
-dd {
-  white-space: nowrap;
-  overflow-x: auto;
+.dl-horizontal  dt {
+  white-space: normal;
+  overflow-x: inherit;
+}
+.dl-horizontal  dd {
+  white-space: normal;
+  overflow-x: inherit;
 }
 
 .form-horizontal * {
@@ -176,7 +180,7 @@ dd {
   width: 3em !important;
 }
 
-.iccbl-headerfield-text select{
+.iccbl-headerfield-text *{
 /*   padding: 0 0 0 0 !important; */
   width: 9em !important;
 }

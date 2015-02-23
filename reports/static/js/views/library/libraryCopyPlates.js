@@ -25,6 +25,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     initialize: function(args) {
       this.uriStack = args.uriStack;
       this.library = args.library;
+      this.copyName = args.copyName;
       this.consumedStack = [];
       _.bindAll(this, 'showDetail','showList');
     },
@@ -44,14 +45,26 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var library = this.library;
 
       //      var url = library.resource.apiUri +'/' + library.key + '/plate/';
-      var url = library.resource.apiUri +'/' + library.key + '/librarycopyplates/';
+      var url = library.resource.apiUri +'/' + library.key ;
+      if(!_.isUndefined(this.copyName)){
+        url += '/copy/' + this.copyName;
+      }
+      url += '/plate/';
+      if(!_.isUndefined(this.plateNumber)){
+        url += this.plateNumber;
+      }
+      console.log('url:' + url);
       var resourceId = 'librarycopyplates';
       var resource = appModel.getResource(resourceId);
 
-      // Test for list args, if not found, then it's a detail view
-      if (!_.isEmpty(uriStack) && !_.isEmpty(uriStack[0]) &&
-              !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
+      var isDetailView = isDetailView = (!_.isEmpty(uriStack) && !_.isEmpty(uriStack[0]) &&
+          !_.contains(appModel.LIST_ARGS, uriStack[0]) );
 
+      if(!isDetailView){
+        isDetailView = !_.isUndefined(this.copyName) && !_.isUndefined(this.plateNumber);
+      }
+      
+      if(isDetailView){
         // Determine the key from the stack:
         // Note: because this is in the context of a library, the key for the 
         // librarycopyplate can be simpler, ignoring the library__short_name,
@@ -64,7 +77,12 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         } 
         uriStack.shift();
         uriStack.shift();
-        _key = library.key + '/' + this.consumedStack.join('/');
+        
+        _key = library.key;
+        if(!_.isUndefined(this.copyName)){
+          _key += '/' + this.copyName;
+        }
+        _key += '/' + this.consumedStack.join('/');
 
         appModel.getModel(resourceId, _key, this.showDetail );
       } else {
@@ -81,6 +99,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var view = new viewClass({ model: model, uriStack: uriStack });
 
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      this.$('#content_title').html("");
       self.setView('#content', view).render();
     },
     
@@ -104,6 +123,13 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         }
         self.consumedStack = keysToReport;
         self.showDetail(model);
+      });
+      self.listenTo(view, 'update_title', function(val){
+        if(val) {
+          this.$('#content_title').html('<small>' + val + '</small>');
+        }else{
+          this.$('#content_title').html("");
+        }
       });
     
       self.listenTo(view , 'uriStack:change', self.reportUriStack);

@@ -34,11 +34,8 @@ define([
           delete self.tabbed_resources[key];
         }
       });
-      console.log('check1');
       _.bindAll(this, 'click_tab');
       _.bindAll(this, 'saveFile');
-      
-  
     },
     
     template: _.template(libraryTemplate),
@@ -114,12 +111,9 @@ define([
           console.log('done');
         },
         error: appModel.jqXHRFail
-//        error: function(data){
-//          alert('no upload');
-//          $('#loadingModal').modal('hide');
-//        }
       });
     },
+
     /**
      * Child view bubble up URI stack change event
      */
@@ -287,15 +281,33 @@ define([
       this.setView("#tab_container", view ).render();
     },
 
-    setPlates: function(delegateStack) {
+    setPlates: function(delegateStack, copyName) {
       var self = this;
       var key = 'plate';
       var view = this.tabViews[key];
+      
+      var plateNumber;
+      if(_.isUndefined(copyName) && !_.isUndefined(_.first(delegateStack))){
+        try{
+          var temp = parseInt(_.first(delegateStack));
+          if(!_.isNaN(temp)){
+            plateNumber = temp;
+            delegateStack.shift();
+            this.consumedStack.push(plateNumber);
+          }
+        }catch(e){
+          // not a number, so not a plate_number, so process normally
+        }
+      }
+      
       if ( !view ) {
         var view = new LibraryCopyPlatesView({
           library: self.model,
-          uriStack: delegateStack
+          uriStack: delegateStack,
+          copyName: copyName,
+          plateNumber: plateNumber
         });
+        
         self.tabViews[key] = view;
         Backbone.Layout.setupView(view);
       } else {
@@ -308,6 +320,24 @@ define([
 
     setCopies: function(delegateStack) {
       var self = this;
+
+      if(!_.isEmpty(delegateStack) && delegateStack.length >= 2 
+          && delegateStack[1] == 'plate'){
+        // if delegateStack = [copy/<copyname>/plate/...] then redirect this as 
+        // a library/copy/plates view
+        var copyName = delegateStack.shift();
+        this.consumedStack.push(copyName);
+        var plateKey = delegateStack.shift(); // "plate"
+        this.consumedStack.push(plateKey);
+
+        this.$('li').removeClass('active');
+        this.$('#' + plateKey).addClass('active');
+
+        this.setPlates(delegateStack, copyName);
+        return;
+      }
+
+      
       var key = 'copy';
       var view = this.tabViews[key];
       if ( !view ) {

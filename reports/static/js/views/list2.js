@@ -21,7 +21,8 @@ define([
     SEARCH_DELIMITER: ';',
     
     events: {
-      'click .btn#select_columns': 'select_columns'
+      'click .btn#select_columns': 'select_columns',
+      'click .btn#download_link': 'download'
     },
 
     initialize : function(args) {
@@ -309,11 +310,11 @@ define([
       console.log('newStack: ' + JSON.stringify(newStack));
       self.trigger('uriStack:change', newStack );
 
-      // FIXME: TODO: see reports.ManagedResource.create_response:
-      // We need to set the "Content-Disposition" header to trigger the server to 
-      // bounce it back 
-      var limitForDownload = 0;
-      $('#download_link').attr('href', self.getCollectionUrl(limitForDownload) + '&format=csv');
+//      // FIXME: TODO: see reports.ManagedResource.create_response:
+//      // We need to set the "Content-Disposition" header to trigger the server to 
+//      // bounce it back 
+//      var limitForDownload = 0;
+//      $('#download_link').attr('href', self.getCollectionUrl(limitForDownload) + '&format=csv');
     },
     
     checkState: function(){
@@ -441,28 +442,29 @@ define([
     	});            
       this.objects_to_destroy.push(paginator);
 
-      // Downloadselector
-      var downloadSelectorModel = new Backbone.Model({ selection: '' });
-      var downloadSelectorOptions = []
-      if(_.has(self._options.resource, 'content_types')){
-        // exclude JSON for downloads
-        downloadSelectorOptions = _.without(self._options.resource.content_types, 'json');
-      }
-      if (!_.contains(downloadSelectorOptions, '')) {
-        downloadSelectorOptions.unshift('');
-        // create a blank entry
-      }
-      var downloadSelectorInstance = self.downloadSelectorInstance =
-        new genericSelector({ model: downloadSelectorModel }, { options: downloadSelectorOptions } );
-      this.objects_to_destroy.push(downloadSelectorInstance);
-      this.listenTo(downloadSelectorModel, 'change', function() {
-        var val = downloadSelectorModel.get('selection');
-        var limitForDownload = 0;
-        var url = self.getCollectionUrl(limitForDownload) + '&format=' + val;
-        // TODO: add UI intelligence to determine if "report" format is desired
-        // "report" format implies settings like "vocabularies=true"
-        $('#download_link').attr('href', url);
-      });
+// 20150219 - replaced by download modal dialog + cookie 
+//      // Downloadselector
+//      var downloadSelectorModel = new Backbone.Model({ selection: '' });
+//      var downloadSelectorOptions = []
+//      if(_.has(self._options.resource, 'content_types')){
+//        // exclude JSON for downloads
+//        downloadSelectorOptions = _.without(self._options.resource.content_types, 'json');
+//      }
+//      if (!_.contains(downloadSelectorOptions, '')) {
+//        downloadSelectorOptions.unshift('');
+//        // create a blank entry
+//      }
+//      var downloadSelectorInstance = self.downloadSelectorInstance =
+//        new genericSelector({ model: downloadSelectorModel }, { options: downloadSelectorOptions } );
+//      this.objects_to_destroy.push(downloadSelectorInstance);
+//      this.listenTo(downloadSelectorModel, 'change', function() {
+//        var val = downloadSelectorModel.get('selection');
+//        var limitForDownload = 0;
+//        var url = self.getCollectionUrl(limitForDownload) + '&format=' + val;
+//        // TODO: add UI intelligence to determine if "report" format is desired
+//        // "report" format implies settings like "vocabularies=true"
+//        $('#download_link').attr('href', url);
+//      });
       
       // Extraselector
       if( _.has(schemaResult, 'extraSelectorOptions')){
@@ -591,10 +593,10 @@ define([
         self.$("#extraselector").html(
             self.extraSelectorInstance.render().$el);
       }
-      if(!_.isUndefined(self.downloadSelectorInstance)){
-        self.$("#downloadselector").html(
-            self.downloadSelectorInstance.render().$el);
-      }
+//      if(!_.isUndefined(self.downloadSelectorInstance)){
+//        self.$("#downloadselector").html(
+//            self.downloadSelectorInstance.render().$el);
+//      }
 
       var clearSearchesButton = $([
         '<div class="pull-right pull-down">',
@@ -691,26 +693,37 @@ define([
     },
     
     clear_sorts: function(){
-      var self = this;
-      // TODO: refactor sorting to be more model-driven:
-      // override BackbonePageableCollection and Backgrid.HeaderCell
-      _.each(this.collection.state.orderStack, function(order_entry){
-        var dir = order_entry.substring(0,1);
-        var fieldname = order_entry;
-        if(dir == '-'){
-          fieldname = order_entry.substring(1);
-        }
-        // TODO: this triggers a fetch for each clear; replace with custom event like clearSearches
-        self.collection.trigger('backgrid:sort', fieldname, null );
-      })
+      this.collection.trigger("Iccbl:clearSearches");
       this.listModel.unset('order');
       this.collection.state.orderStack = [];
+      this.collection.getFirstPage({reset: true, fetch: true});
+//      var self = this;
+//      // TODO: refactor sorting to be more model-driven:
+//      // override BackbonePageableCollection and Backgrid.HeaderCell
+//      _.each(this.collection.state.orderStack, function(order_entry){
+//        var dir = order_entry.substring(0,1);
+//        var fieldname = order_entry;
+//        if(dir == '-'){
+//          fieldname = order_entry.substring(1);
+//        }
+//        // TODO: this triggers a fetch for each clear; replace with custom event like clearSearches
+//        self.collection.trigger('backgrid:sort', fieldname, null );
+//      })
+//      this.listModel.unset('order');
+//      this.collection.state.orderStack = [];
     },
     
+    download: function(e){
+      var self = this;
+      e.preventDefault();
+      var limitForDownload = 0;
+      appModel.download(self.getCollectionUrl(limitForDownload), self._options.resource);
+    },
+     
     select_columns: function(event){
       var self = this;
       var includes = self.listModel.get('includes') || [];
-      var altFieldTemplate =  _.template('\
+      var altCheckboxTemplate =  _.template('\
               <div class="form-group" style="margin-bottom: 0px;" > \
                 <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
                   <label for="<%= editorId %>"><span data-editor\><%= title %></label>\
@@ -730,7 +743,7 @@ define([
             ordinal: prop['ordinal'],
             key:  key, 
             type: 'Checkbox',
-            template: altFieldTemplate };
+            template: altCheckboxTemplate };
       });
       var FormFields = Backbone.Model.extend({
         schema: formSchema
@@ -828,15 +841,16 @@ define([
           });
           
           console.log('new_includes: ' + JSON.stringify(new_includes));
+          self.listModel.set({'includes': new_includes });
 //          if(!_.isEmpty(new_includes)){
 //            self.collection.query_params['includes'] = new_includes;
-            self.collection.state.includes = new_includes;
+//            self.collection.state.includes = new_includes;
 //            self.collection.fetch({data: { includes: new_includes}})
             self.collection.fetch();
 //          }
           self.listModel.set({'includes': new_includes });
         },
-        view: form,
+        view: form.render().el,
         title: 'Select columns'  
       });
       

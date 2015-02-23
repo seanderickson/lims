@@ -23,8 +23,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     template: _.template(layout),
     
     initialize: function(args) {
-//      this.viewCache = {}; // view cache
-      
       this.uriStack = args.uriStack;
       this.library = args.library;
       this.consumedStack = [];
@@ -45,8 +43,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var uriStack = this.uriStack;
       var library = this.library;
 
-//      var url = library.resource.apiUri +'/' + library.key + '/copy/'
-      var url = library.resource.apiUri +'/' + library.key + '/librarycopies/'
+      var url = library.resource.apiUri +'/' + library.key + '/copy/'
+//      var url = library.resource.apiUri +'/' + library.key + '/librarycopies/'
       var libraryCopyResourceId = 'librarycopies';
       var libraryCopyResource = appModel.getResource(libraryCopyResourceId);
 
@@ -83,6 +81,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var view = new viewClass({ model: model, uriStack: uriStack });
 
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      this.$('#content_title').html("");
       self.setView('#content', view).render();
     },
     
@@ -108,6 +107,13 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         }
         self.consumedStack = keysToReport;
         self.showDetail(model);
+      });
+      self.listenTo(view, 'update_title', function(val){
+        if(val) {
+          this.$('#content_title').html('<small>' + val + '</small>');
+        }else{
+          this.$('#content_title').html("");
+        }
       });
       
       self.listenTo(view , 'uriStack:change', self.reportUriStack);

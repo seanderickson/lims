@@ -105,8 +105,10 @@ define([
       this.showDetail();
     },
      
-    download: function(event){
-      $('#tmpFrame').attr('src', this.model.url + '?format=csv' );
+    download: function(e){
+//      $('#tmpFrame').attr('src', this.model.url + '?format=csv' );
+      e.preventDefault();
+      appModel.download(this.model.url, this.model.resource);
     },
 
     cancel: function(event){

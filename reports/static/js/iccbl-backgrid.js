@@ -249,15 +249,19 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
    */
   var getTitleFromTitleAttribute = Iccbl.getTitleFromTitleAttribute = 
       function(model, schema){
-  
+    var re_isQuoted = /['"]+/g;
     if(_.has(schema['resource_definition'], 'title_attribute')){
       var title_attribute = schema['resource_definition']['title_attribute'];
       console.log('create title from ' + title_attribute);
       var title = _.reduce(
         schema['resource_definition']['title_attribute'],
         function(memo, item){
-          if( model.has(item) ) memo += model.get(item)
-          else memo += item
+          if(item && item.match(re_isQuoted)){
+            memo += item.replace(re_isQuoted, '');
+          }else{
+            if( model.has(item) ) memo += model.get(item)
+            else memo += item
+          }
           return memo ;
         }, '');
       console.log('extracted title: ' + title + ' from ' + model);
@@ -292,7 +296,7 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
     });
   };
 
-  var createLabel = Iccbl.createLabel = function(original_label, max_line_length){
+  var createLabel = Iccbl.createLabel = function(original_label, max_line_length, break_char){
     var lines = [];
     var labelParts = original_label.split(/\W/);
     var line = '';
@@ -310,7 +314,10 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
     });
     lines.push(line);
     
-    return lines.join('<br>');
+    if(_.isUndefined(break_char)){
+      break_char = '<br>';
+    }
+    return lines.join(break_char);
   };
   
   //// Network Utilities ////
@@ -593,7 +600,72 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
           this.model.collection.trigger("MyCollection:link", this.model, this.column.get("name"));
       },
   });
+  
+  
+  var UriListCell = Iccbl.UriListCell = Backgrid.Cell.extend({
+    className : "uri-list-cell",
 
+    /**
+     * @property {string} ["string with {model_key} values to interpolate"]
+     */
+    hrefTemplate: 'Http://', 
+
+    /**
+    @property {string} [title] The title attribute of the generated anchor. It
+    uses the display value formatted by the `formatter.fromRaw` by default.
+    */
+    title: null,
+
+    /**
+       @property {string} [target="_blank"] The target attribute of the generated
+       anchor.
+    */
+    target: "_blank",
+    
+    initialize : function(options) {
+        Backgrid.Cell.prototype.initialize.apply(this, arguments);
+    },
+
+    render : function() {
+      var self = this;
+      this.$el.empty();
+      var rawValue = this.model.get(this.column.get("name"));
+      
+      
+      console.log('urilist, raw value: ' + rawValue 
+          + ', hrefTemplate: ' + this.hrefTemplate);
+      
+      if(rawValue && !_.isEmpty(rawValue)){
+        var i = 0;
+        _.each(rawValue, function(val){
+          var interpolatedVal = self.hrefTemplate.replace(/{([^}]+)}/g, 
+              function (match) 
+              {
+                match = match.replace(/[{}]/g,'');
+                return val;
+              });
+          if(Iccbl.appModel.DEBUG) console.log('val:' + val + ', ' + interpolatedVal);
+          if(i>0) self.$el.append(',');
+          self.$el.append($('<a>', {
+            tabIndex : -1,
+            href : interpolatedVal,
+            title : val,
+            target : self.target
+          }).text(val));
+          i++;
+        });
+      }
+        
+      this.delegateEvents();
+      return this;
+    },
+
+//    toLink : function(e) {
+//        e.preventDefault();
+//        this.model.collection.trigger("MyCollection:link", this.model, this.column.get("name"));
+//    },
+}); 
+  
   var ImageCell = Iccbl.ImageCell = Backgrid.Cell.extend({
     className : "image-cell",
     events : {
@@ -714,7 +786,7 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
   @constructor
   @throws {RangeError} If decimals < 0 or > 20.
   */
-  var SciUnitsFormatter = Backgrid.SciUnitsFormatter = function () {
+  var SciUnitsFormatter = Iccbl.SciUnitsFormatter = function () {
    Backgrid.NumberFormatter.apply(this, arguments);
   };
   
@@ -841,7 +913,7 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
   A DecimalCell is another Backgrid.NumberCell that takes a floating number,
   and showing a decimals number of digits.
   
-  @class Backgrid.SciUnitsCell
+  @class Backgrid.DecimalCell
   @extends Backgrid.NumberCell
   */
   var DecimalCell = Iccbl.DecimalCell = NumberCell.extend({
@@ -1116,18 +1188,18 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
           return this.state.orderStack;
         }
       }, 
-//      includes: function(){
-//        return this.listModel.get('includes');
-////        if(!_.isUndefined(this.state.includes) && !_.isEmpty(this.state.includes)){
-////          return this.state.includes;
-////        }
-//      }
-      
       includes: function(){
-        if(!_.isUndefined(this.state.includes) && !_.isEmpty(this.state.includes)){
-          return this.state.includes;
-        }
+        return this.listModel.get('includes');
+//        if(!_.isUndefined(this.state.includes) && !_.isEmpty(this.state.includes)){
+//          return this.state.includes;
+//        }
       }
+      
+//      includes: function(){
+//        if(!_.isUndefined(this.state.includes) && !_.isEmpty(this.state.includes)){
+//          return this.state.includes;
+//        }
+//      }
       
       //      directions : {
       //          "-1" : "asc",
@@ -1304,7 +1376,7 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
         }else if(newdir == dir){
           // no change; push back on the stack
           newStack.push(order_entry);
-        }else if (newdir != dir){
+        }else if (newdir !== dir){
           newStack.push(newdir + fieldname);
         }
       }else{
@@ -1351,6 +1423,7 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
      this.options = options;
      MultiSortHeaderCell.__super__.initialize.apply(this, arguments);
      this.listenTo(this.collection,"sort",this.collectionSorted);
+     this.listenTo(this.collection,"Iccbl:clearSearches", this.removeCellDirection);
    },
    
    
@@ -1418,7 +1491,7 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
         
         var delayedClick = function(){
           console.log('delayedclick: tempdirection: ' + self.tempdirection);
-          if(self.tempdirection != self.lastExecutedVal){
+          if(self.tempdirection !== self.lastExecutedVal){
             console.log('delayed click: ' + self.tempdirection );
             collection.trigger(event, column, self.tempdirection=="none"?null:self.tempdirection);
             self.lastExecutedVal = self.tempdirection;
@@ -1844,7 +1917,7 @@ var BackboneFormFilter = Backbone.Form.extend({
 //  
 //});
 
-var CriteriumFormFilter = BackboneFormFilter.extend({
+var CriteriumFormFilter = Iccbl.CriteriumFormFilter = BackboneFormFilter.extend({
   criterium: {'=':'eq'},
   errorClass: 'has-error',
   criteriaTemplate: 
@@ -1872,7 +1945,10 @@ var CriteriumFormFilter = BackboneFormFilter.extend({
   isSet: function(){
     var values = this.getValue();
     var found = _.find(_.keys(values), function(key){
-      if(key == 'lower_criteria' ) return false;
+      if(key == 'lower_criteria' ){
+        if(values[key] == 'blank' || values[key] == 'not blank') return true;
+        return false;
+      }
       // signal isSet for any field value set
       return values[key]>0 || !_.isEmpty(values[key]);
     });
@@ -1883,13 +1959,14 @@ var CriteriumFormFilter = BackboneFormFilter.extend({
 
 var TextFormFilter = CriteriumFormFilter.extend({
   
-  criterium: {'=':'eq','contains':'contains','icontains':'icontains','<>':'ne', 'in': 'in'},
+  criterium: {'=':'eq','contains':'contains','icontains':'icontains','<>':'ne', 
+    'in': 'in','blank':'is_null','not blank':'not_blank'},
     
   // provide a custom form template; use Bootstrap layout/styling
   template: _.template([
       '<form class="iccbl-headerfield-form" >',
       '   <div data-fields="lower_criteria" ',
-      '     class="form-control iccbl-headerfield-text" for="lower_value"   />',
+      '     class="iccbl-headerfield-text" for="lower_value"   />',
       '</div>',
       '<div class="form-group" data-fields="form_textarea" />',
       '<div class="col-xs-6"  data-fields="invert_field" />',
@@ -1903,12 +1980,6 @@ var TextFormFilter = CriteriumFormFilter.extend({
     
     var options = this.options = options || {};
     
-//    if(!options.columnName){
-//      throw "must define column name option for the TextFormFilter, options: " + options;
-//    }else{
-//      this.columnName = options.columnName;
-//    }
-
     var formSchema = this.schema = {};
     formSchema['lower_criteria'] = {
         title: '', 
@@ -1945,10 +2016,33 @@ var TextFormFilter = CriteriumFormFilter.extend({
     this.selectedFields = ['lower_criteria','form_textarea','invert_field']; 
     
     TextFormFilter.__super__.initialize.apply(this, arguments);
-    
+
+    this.listenTo(this, "change", function(e){
+      var criteria = self.getValue('lower_criteria');
+      console.log('change: ' + criteria );
+      if(criteria == 'blank' || criteria == 'not blank'){
+        self.$el.find('[data-fields="form_textarea"]').hide();
+      }else{
+        self.$el.find('[data-fields="form_textarea"]').show();
+      }
+    });
+  },
+  
+  isSet: function(){
+    var values = this.getValue();
+    var found = _.find(_.keys(values), function(key){
+      if(key == 'lower_criteria' ){
+        if(values[key] == 'blank' || values[key] == 'not blank') return true;
+        return false;
+      }
+      // signal isSet for any field value set
+      return values[key]>0 || !_.isEmpty(values[key]);
+    });
+    return !_.isEmpty(found);
   },
   
   /**
+   * TextFormFilter
    * handles router generated searches
    **/
   _search: function(hash){
@@ -1971,7 +2065,15 @@ var TextFormFilter = CriteriumFormFilter.extend({
       if(searchVal){
         found = true;
         self.setValue('lower_criteria', criteriaKey);
-        self.setValue('form_textarea', searchVal);
+        if(criteria == 'is_null'){
+          self.$el.find('[data-fields="form_textarea"]').hide();
+          if(searchVal == 'false'){
+            self.setValue('lower_criteria', 'not blank');
+          }
+        }else{
+          self.$el.find('[data-fields="form_textarea"]').show();
+          self.setValue('form_textarea', searchVal);
+        }
         if(negated){
           self.setValue('invert_field', true);
         }
@@ -1981,6 +2083,7 @@ var TextFormFilter = CriteriumFormFilter.extend({
   },  
 
   /**
+   * TextFormFilter
    * Form submit handler
    */
   _submit: function(){
@@ -2002,9 +2105,16 @@ var TextFormFilter = CriteriumFormFilter.extend({
     var values = self.getValue();
     var criteria = self.criterium[values['lower_criteria']];
     var searchKey = self.columnName + '__' + criteria;
+    var searchVal = values['form_textarea'];
+    if(criteria == 'not_blank'){
+      searchKey = self.columnName + '__' + 'is_null';
+      searchVal = 'false'
+    }else if(criteria == 'is_null'){
+      searchVal = 'true';
+    }
     var invert = values['invert_field'];
     if(invert) searchKey = '-'+searchKey;
-    searchHash[searchKey] = values['form_textarea'];
+    searchHash[searchKey] = searchVal;
   
     return searchHash
   }
@@ -2035,7 +2145,8 @@ var DateEditor = Backbone.Form.editors.Date.extend({
 
 var DateFormFilter = CriteriumFormFilter.extend({
   
-  criterium: {'=':'eq','>=':'gte','<':'lt','<>':'ne', 'between':'range', 'in': 'in'},
+  criterium: {'=':'eq','>':'gt','>=':'gte','<':'lt','<=':'lte','<>':'ne',
+    'between':'range', 'in': 'in','blank':'is_null','not blank':'not_blank'},
 
 
   // provide a custom form template; use Bootstrap layout/styling
@@ -2059,13 +2170,6 @@ var DateFormFilter = CriteriumFormFilter.extend({
     console.log('initialize DateFormFilter');
     
     var options = this.options = options || {};
-    
-//    if(!options.columnName){
-//      throw "must define column name option for the DateFormFilter, options: " + options;
-//    }else{
-//      this.columnName = options.columnName;
-//    }
-//
     var formSchema = this.schema = {};
     formSchema['lower_criteria'] = {
         title: '', 
@@ -2156,7 +2260,7 @@ var DateFormFilter = CriteriumFormFilter.extend({
     
   },
 
-  /**
+  /**DateFormFilter
    **/
   _search: function(hash){
     var self = this;
@@ -2192,6 +2296,10 @@ var DateFormFilter = CriteriumFormFilter.extend({
             self.setValue('lower_value', '');
             self.$el.find('[data-fields="form_textarea"]').show();
             self.setValue('form_textarea', searchVal);
+          }else if(criteria == 'is_null'){
+            if(searchVal == 'false'){
+              self.setValue('lower_criteria', 'not blank');
+            }
           }else{
             self.setValue('lower_value', new Date(searchVal));
           }
@@ -2211,7 +2319,7 @@ var DateFormFilter = CriteriumFormFilter.extend({
     return found;
   },  
 
-  /**
+  /**DateFormFilter
    * Form submit handler
    */
   _submit: function(){
@@ -2235,12 +2343,16 @@ var DateFormFilter = CriteriumFormFilter.extend({
     var invert = values['invert_field'];
     if(invert) name = '-'+name;
     var criteria = self.criterium[values['lower_criteria']];
+    var searchKey = name + '__' + criteria;
     
     if(criteria == 'in'){
-      var searchKey = name + '__' + criteria;
       searchHash[searchKey] = values['form_textarea'];
+    }else if(criteria == 'is_null'){
+      searchHash[searchKey] = 'true';
+    }else if(criteria == 'not_blank'){
+      var searchKey = name + '__is_null';
+      searchHash[searchKey] = 'false';
     }else if(_.isDate(values['lower_value']) ){
-      var searchKey = name + '__' + criteria;
       if(criteria == 'range'){
         if(_.isDate(values['upper_value'])){
           var searchKey = name + '__' + criteria;
@@ -2255,7 +2367,6 @@ var DateFormFilter = CriteriumFormFilter.extend({
     }
     return searchHash
   }
-
 });
 
 
@@ -2279,7 +2390,7 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
   },
 
   
-  /**
+  /**TextHeaderCell
    * Form submit handler
    */
   _submit: function(e){
@@ -2301,11 +2412,8 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
     }
   },
 
-  /**
+  /**TextHeaderCell
    * Listen for router generated search events
-   * "MyServerSideFilter:search"
-   * - add search term and show box
-   * - clear old search terms
    **/
   _search: function(hash, collection){
     var self = this;
@@ -2321,7 +2429,7 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
     }
   },  
   
-  /**
+  /**TextHeaderCell
    * clears all possible searches
    * if options.reset, then trigger a collection fetch
    */
@@ -2334,6 +2442,8 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
     self.collection.clearSearch(possibleSearches);
   },      
   
+  /**TextHeaderCell
+   */
   render : function() {
     var self = this;
     TextHeaderCell.__super__.render.apply(this);
@@ -2396,7 +2506,7 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
   },
   
   
-  /**
+  /**DateHeaderCell
    * Form submit handler
    */
   _submit: function(e){
@@ -2418,11 +2528,8 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
     }
   },
   
-  /**
+  /**DateHeaderCell
    * Listen for router generated search events
-   * "MyServerSideFilter:search"
-   * - add search term and show box
-   * - clear old search terms
    **/
   _search: function(hash, collection){
     var self = this;
@@ -2437,7 +2544,7 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
     }
   },  
 
-  /**
+  /**DateHeaderCell
    * clears all possible searches
    * if options.reset, then trigger a collection fetch
    */
@@ -2450,6 +2557,8 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
     self.collection.clearSearch(possibleSearches);
   },      
 
+  /**DateHeaderCell
+   */
   render : function() {
     var self = this;
     DateHeaderCell.__super__.render.apply(this);
@@ -2489,7 +2598,11 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
   },  
 });
     
-var SelectorFormFilter = BackboneFormFilter.extend({
+var SelectorFormFilter = CriteriumFormFilter.extend({
+
+  
+  criterium: {'': 'unset', 'blank':'is_null','not blank':'not_blank'},
+  
   template: _.template([
       "<form data-fieldsets class='form-horizontal container' >",
       "</form>"].join('')),
@@ -2528,6 +2641,17 @@ var SelectorFormFilter = BackboneFormFilter.extend({
           type: 'Checkbox',
           template: self.altFieldTemplate };
     });
+
+    formSchema['lower_criteria'] = {
+      title: '', 
+      key:  'lower_criteria', // TODO: "key" not needed>?
+      type: 'Select',
+      options: _.keys(self.criterium),
+      template: _.template(self.criteriaTemplate),
+      editorClass: 'form-control'
+    };
+    selectedFields.push('lower_criteria');
+    
     formSchema['invert_field'] = {
         title: 'invert',
         help: 'select this to invert the criteria',
@@ -2547,11 +2671,22 @@ var SelectorFormFilter = BackboneFormFilter.extend({
     this.model = new FormFields();
     this.selectedFields = selectedFields; 
     
-    BackboneFormFilter.__super__.initialize.apply(this, arguments);
+    SelectorFormFilter.__super__.initialize.apply(this, arguments);
 
+    this.listenTo(this, "change", function(e){
+      var criteria = self.getValue('lower_criteria');
+      console.log('criteria: ' + criteria);
+      if(criteria == 'blank'){
+        self.$el.find('[data-fields]').find('input').prop('disabled', true);
+      }else if(criteria == 'not blank'){
+        self.$el.find('[data-fields]').find('input').prop('disabled', true);
+      }else {
+        self.$el.find('[data-fields]').find('input').prop('disabled', false);
+      }
+    });
   },
 
-  /**
+  /**SelectorFormFilter
    * Form submit handler
    */
   _submit: function(){
@@ -2560,21 +2695,31 @@ var SelectorFormFilter = BackboneFormFilter.extend({
     var searchHash = {};
     
     var values = self.getValue();
-    
     var name = self.columnName;
     var invert = values['invert_field'];
     if(invert) name = '-'+name;
-
-    var selected = _.filter(_.keys(values), function(key){ 
-      if(key != 'invert_field') return values[key]; 
-      return false;
-    });
-    searchHash[name +'__in'] = selected.join(',');
+    
+    var criteria = self.criterium[values['lower_criteria']];
+    var searchKey = name + '__' + criteria;
+    if(criteria == 'not_blank'){
+      searchKey = name + '__' + 'is_null';
+      searchVal = 'false'
+        searchHash[searchKey]=searchVal;
+    }else if(criteria == 'is_null'){
+      searchVal = 'true';
+      searchHash[searchKey]=searchVal;
+    }else{
+      var selected = _.filter(_.keys(values), function(key){ 
+        if(key !== 'invert_field') return values[key]; 
+        return false;
+      });
+      searchHash[name +'__in'] = selected.join(',');
+    }
     
     return searchHash
   },
 
-  /**
+  /**SelectorFormFilter
    * Set the form from router generated event
    **/
   _search: function(hash){
@@ -2587,20 +2732,29 @@ var SelectorFormFilter = BackboneFormFilter.extend({
     });
     
     var found = searchTerm;
-    
+    var name = this.columnName;
     if(found){
       if(searchTerm.charAt(0) == '-'){
         self.setValue('invert_field', true);
+        name = '-' + name;
       }
-      var searchVal = searchHash[searchTerm];
-      _.each(searchVal.split(','), function(choice){
-        self.setValue(choice, true);
-      });
+      if(searchTerm ==  name + '__is_null'){
+        if(searchVal == 'true'){
+          self.setValue('lower_criteria','blank');
+        }else{
+          self.setValue('lower_criteria', 'not blank');
+        }
+      }else{
+        var searchVal = searchHash[searchTerm];
+        _.each(searchVal.split(','), function(choice){
+          self.setValue(choice, true);
+        });
+      }
     }
     return found;
   },  
   
-  /**
+  /**SelectorFormFilter
    * Convenience - determine if the form has been set with any values
    */
   isSet: function(){
@@ -2613,7 +2767,8 @@ var SelectorFormFilter = BackboneFormFilter.extend({
   },
   
   getPossibleSearches: function(){
-    return [this.columnName + '__in', '-'+this.columnName + '__in'];
+    return [this.columnName + '__in', '-'+this.columnName + '__in',
+            this.columnName + '__is_null'];
   },
 
 
@@ -2657,7 +2812,7 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
     _.bindAll(this, '_submit', 'clearSearch');
   },
   
-  /**
+  /**SelectorHeaderCell
    * Form submit handler
    */
   _submit: function(e){
@@ -2666,23 +2821,20 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
     if (e) e.preventDefault();      
     
     var searchHash = self._serverSideFilter._submit();
+    var possibleSearches = self._serverSideFilter.getPossibleSearches();
+    self.collection.clearSearch(possibleSearches);
     if(!_.isEmpty(searchHash)){
-      var possibleSearches = self._serverSideFilter.getPossibleSearches();
-      self.collection.clearSearch(possibleSearches);
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash);
       self.collection.fetch({ reset: true });
     }else{
-      console.log('Selector Cell nothing submitted');
+      self.collection.fetch({});
     }
   },
   
-  /**
+  /**SelectorHeaderCell
    * Listen for router generated search events
-   * "MyServerSideFilter:search"
-   * - add search term and show box
-   * - clear old search terms
    **/
   _search: function(hash, collection){
     var self = this;
@@ -2696,7 +2848,7 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
     }
   },  
 
-  /**
+  /**SelectorHeaderCell
    * clears all possible searches
    * if options.reset, then trigger a collection fetch
    */
@@ -2709,6 +2861,8 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
     self.collection.clearSearch(possibleSearches);
   },      
 
+  /**SelectorHeaderCell
+   */
   render : function() {
     var self = this;
     SelectorHeaderCell.__super__.render.apply(this);
@@ -2748,176 +2902,11 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
   
 });
 
-var SelectorHeaderCell1 = MultiSortHeaderCell.extend({
-
-  initialize : function(options) {
-    var self = this;
-    this.options = options;
-    SelectorHeaderCell.__super__.initialize.apply(this, arguments);
-
-    var altFieldTemplate = _.template('\
-        <div class="form-group" style="margin-bottom: 0px;" > \
-          <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
-            <label for="<%= editorId %>"><span data-editor\><%= title %></label>\
-          </div>\
-        </div>\
-      ');
-
-    this.fieldinformation = _.clone(this.column.get('fieldinformation'));
-
-    if(_.isUndefined(this.fieldinformation.choices)){
-      console.log([
-         'error: fieldinformation for a selection field type must define a ',
-         '"choices" list: field key: ' + this.name ].join(''));
-      this.fieldinformation.choices = [];
-    }
-    vocabulary = {};
-    try{
-      vocabulary = Iccbl.appModel.getVocabulary(this.fieldinformation.vocabulary_scope_ref);
-    }catch(e){
-      console.log('e'+JSON.stringify(e));
-    }
-    var formSchema = {};
-    _.each(this.fieldinformation.choices, function(choice){
-      formSchema[choice] = { 
-          title: _.has(vocabulary,choice)?vocabulary[choice].title:choice,
-          key:  choice, 
-          type: 'Checkbox',
-          template: altFieldTemplate };
-    });
-    var FormFields = Backbone.Model.extend({
-      schema: formSchema
-    });
-    var formFields = new FormFields();
-    this._serverSideFilter = new BackboneFormFilter({
-        model: formFields,
-        fields: this.fieldinformation.choices,
-        collection: this.collection
-    });
-    
-    this.filterIcon = $(self.filtericon_text);
-    
-    this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
-    this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
-    _.bindAll(this, '_submit', 'clearSearch');
-  },
-  
-  _submit: function(e){
-    if (e) e.preventDefault();      
-    console.log('_submit called');
-    var self  = this;
-    var searchHash = {};
-    var errors = this._serverSideFilter.commit();
-    var values = this._serverSideFilter.getValue();
-    var selected = _.filter(_.keys(values), function(key){ return values[key]; });
-    var name = this.column.get('name');
-    if(selected.length > 1){
-      searchHash[name +'__in'] = selected.join(',');
-    }else{
-      searchHash[name] = selected;
-    }
-    console.log('server side filter add search: ' + 
-        JSON.stringify(searchHash));
-    this.collection.clearSearch([name, name+'__in']);
-    this.collection.addSearch(searchHash);
-    self.collection.fetch({data: _.clone(this.collection.listModel.get('search'))});
-  },
-    
-  /**
-   * Function to listen for router generated custom search event
-   * "MyServerSideFilter:search"
-   * - add search term and show box
-   * - clear old search terms
-   **/
-  _search: function(hash, collection){
-      var self = this;
-      var searchHash = _.clone(hash);
-      if (collection == this.collection){
-        var name = this.column.get('name');
-        var searchTerm = name + '__in';
-        if(_.has(searchHash, searchTerm)){
-          self._serverSideFilter.$el.show();
-          self.filterIcon.hide();
-          var searchValues = searchHash[searchTerm];
-          _.each(searchValues.split(','), function(val){
-            self._serverSideFilter.setValue(val, true);
-          });
-        }
-        searchTerm = name;
-        if(_.has(searchHash, searchTerm)){
-          self._serverSideFilter.$el.show();
-          self.filterIcon.hide();
-          var searchValues = searchHash[searchTerm];
-          _.each(searchValues.split(','), function(val){
-            self._serverSideFilter.setValue(val, true);
-          });
-        }
-      }
-  },  
-
-  clearSearch: function(){
-    var self=this;
-    self._serverSideFilter.$el.hide();
-    self.filterIcon.show();
-    
-    var isSet = false;
-    var values = this._serverSideFilter.getValue();
-    _.each(_.keys(values), function(key){
-      if(values[key]) isSet = true;
-      self._serverSideFilter.setValue(key,false);
-    });
-    if(isSet){
-      console.log('clearSearch handler: ' + this.column.get('name') 
-          + ', ' + JSON.stringify(this._serverSideFilter.getValue()));
-
-      var name = this.column.get('name');
-      this.collection.clearSearch([name, name+'__in']);
-      this.collection.getFirstPage({reset: true, fetch: true});
-    }
-  },      
-
-  render : function() {
-    var self = this;
-    SelectorHeaderCell.__super__.render.apply(this);
-
-    console.log('render SelectorHeaderCell:  ' + this.column.get('name'));
-  
-    this.$el.append(this.filterIcon);
-
-    this._serverSideFilter.render();
-    this.$el.append(this._serverSideFilter.el);
-    this._serverSideFilter.$el.hide();
-    
-    this._serverSideFilter.clearButton().click(function(e){
-      e.preventDefault();
-      e.stopPropagation();
-      self.clearSearch();
-      self.collection.fetch({ reset: true });
-    });
-    
-    this.filterIcon.click(function(e){
-      e.stopPropagation();
-      e.preventDefault();
-      self._serverSideFilter.$el.show();
-      self.filterIcon.hide();
-    });
-
-    this._serverSideFilter.submitButton().click(function(e){
-      e.preventDefault();
-      self._submit();
-    });
-
-    this.$el.prop('title', 
-            this.options['column']['attributes']["description"]);
-    
-    return this;
-  }
-  
-});
 
 var NumberFormFilter = CriteriumFormFilter.extend({
   
-  criterium: {'=':'eq','>=':'gte','<':'lt','<>':'ne', '...':'range', 'in': 'in'},
+  criterium: {'=':'eq','\u2248':'about','>':'gt', '>=':'gte','<':'lt','<=':'lte',
+    '<>':'ne', '...':'range', 'in': 'in','blank':'is_null','not blank':'not_blank'},
 
   // provide a custom form template; use Bootstrap layout/styling
   template: _.template([
@@ -3021,7 +3010,18 @@ var NumberFormFilter = CriteriumFormFilter.extend({
     
   },
 
-  /**
+  /**NumberFormFilter
+   * Convenience - determine if the form has been set with any values
+   */
+  isSet: function(){
+    var values = this.getValue();
+    var found = _.find(_.keys(values), function(key){
+      return values[key] !== '';
+    });
+    return !_.isEmpty(found);
+  },
+  
+  /**NumberFormFilter
    * Set the form from router generated event
    **/
   _search: function(hash){
@@ -3054,6 +3054,10 @@ var NumberFormFilter = CriteriumFormFilter.extend({
           self.setValue('lower_value', '');
           self.$el.find('[data-fields="form_textarea"]').show();
           self.setValue('form_textarea', searchVal);
+        }else if(criteria == 'is_null'){
+          if(searchVal == 'false'){
+            self.setValue('lower_criteria', 'not blank');
+          }
         }else{
           self.setValue('lower_value', searchVal);
         }
@@ -3067,7 +3071,7 @@ var NumberFormFilter = CriteriumFormFilter.extend({
     return found;
   },  
 
-  /**
+  /**NumberFormFilter
    * Form submit handler
    */
   _submit: function(){
@@ -3091,21 +3095,25 @@ var NumberFormFilter = CriteriumFormFilter.extend({
     var invert = values['invert_field'];
     if(invert) name = '-'+name;
     var criteria = self.criterium[values['lower_criteria']];
+    var searchKey = name + '__' + criteria;
     
     if(criteria == 'in'){
-      var searchKey = name + '__' + criteria;
       searchHash[searchKey] = values['form_textarea'];
-    }else if(values['lower_value'] > 0){
-      var searchKey = name + '__' + criteria;
+    }else if(criteria == 'is_null'){
+      searchHash[searchKey] = 'true';
+    }else if(criteria == 'not_blank'){
+      var searchKey = name + '__is_null';
+      searchHash[searchKey] = 'false';
+    }else if(''+values['lower_value'] !== ''){
       if(criteria == 'range'){
-        if(values['upper_value'] >  0){
+        if(''+values['upper_value'] !== ''){
           var searchKey = name + '__' + criteria;
           searchHash[searchKey] = values['lower_value'] + ',' + values['upper_value'];
         }else{
           console.log('upper value not set; validation should have caught this');
         }
       }else{
-        searchHash[searchKey] = values['lower_value'];
+        searchHash[searchKey] = ''+values['lower_value'];
       }
     }
     return searchHash
@@ -3134,7 +3142,7 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
   },
   
   
-  /**
+  /**NumberHeaderCell
    * Form submit handler
    */
   _submit: function(e){
@@ -3156,11 +3164,8 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
     }
   },
   
-  /**
+  /**NumberHeaderCell
    * Listen for router generated search events
-   * "MyServerSideFilter:search"
-   * - add search term and show box
-   * - clear old search terms
    **/
   _search: function(hash, collection){
     var self = this;
@@ -3175,7 +3180,7 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
     }
   },  
 
-  /**
+  /**NumberHeaderCell
    * clears all possible searches
    * if options.reset, then trigger a collection fetch
    */
@@ -3187,7 +3192,9 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
     var possibleSearches = self._serverSideFilter.getPossibleSearches();
     self.collection.clearSearch(possibleSearches);
   },      
-
+  
+  /**NumberHeaderCell
+   */
   render : function() {
     var self = this;
     NumberHeaderCell.__super__.render.apply(this);
@@ -3303,7 +3310,7 @@ var SciUnitFormFilter = NumberFormFilter.extend({
     SciUnitFormFilter.__super__.initialize.call(this, options);
   },
   
-  /**
+  /**SciUnitFormFilter
    * Convenience - determine if the form has been set with any values
    */
   isSet: function(){
@@ -3313,12 +3320,12 @@ var SciUnitFormFilter = NumberFormFilter.extend({
         || key == 'lower_sciunit'
         || key == 'upper_sciunit' ) return false;
       // signal isSet for any field value set
-      return values[key]>0 || !_.isEmpty(values[key]);
+      return values[key] !== '';
     });
     return !_.isEmpty(found);
   },
   
-  /**
+  /**SciUnitFormFilter
    * Form submit handler
    */
   _submit: function(){
@@ -3336,8 +3343,17 @@ var SciUnitFormFilter = NumberFormFilter.extend({
             self._calculate(self.multiplier,values['lower_sciunit'],values['lower_value']),
             self._calculate(self.multiplier,values['upper_sciunit'],values['upper_value'])
             ].join(',');
+      }else if(criteria == 'in'){
+        var newvalues = _.map(searchValue.split(','),function(val){
+          return ''+self._calculate(self.multiplier,values['lower_sciunit'],val);
+        });
+        searchHash[searchKey] = newvalues.join(',');
+      }else if(criteria == 'is_null'){
+        // do nothing it's good already
+      }else if(criteria == 'not_blank'){
+        // do nothing it's good already
       }else{
-        searchHash[searchKey] = self._calculate(
+        searchHash[searchKey] = ''+self._calculate(
             self.multiplier,values['lower_sciunit'],values['lower_value']);
       }
       console.log('Sciunit new search value: ' + searchHash[searchKey]);
@@ -3351,7 +3367,9 @@ var SciUnitFormFilter = NumberFormFilter.extend({
       return (parseFloat(number.toPrecision(12)));
       };
     val = strip(val * multiplier);
-    val = strip(val * sci_mult);
+    if(sci_mult > 0){ // if sci unit is undefined, assume to be 1
+      val = strip(val * sci_mult);
+    }
     return val;
   },
   
@@ -3378,7 +3396,7 @@ var SciUnitFormFilter = NumberFormFilter.extend({
     return {number:val, unit: pair[1]};
   },
   
-  /**
+  /**SciUnitFormFilter
    * Set the form from router generated event
    **/
   _search: function(hash){
@@ -3388,12 +3406,12 @@ var SciUnitFormFilter = NumberFormFilter.extend({
     if(found){
       var values = self.getValue();
       
-      if(values['lower_value'] != 0){
+      if(values['lower_value'] !== ''){
         var numberAndUnit = self._findNumberAndUnit(values['lower_value']);
         self.setValue('lower_value', numberAndUnit.number);
         self.setValue('lower_sciunit', numberAndUnit.unit);
       }
-      if(values['upper_value'] != 0){
+      if(values['upper_value'] !== ''){
         var numberAndUnit = self._findNumberAndUnit(values['upper_value']);
         self.setValue('upper_value', numberAndUnit.number);
         self.setValue('upper_sciunit', numberAndUnit.unit);
@@ -3447,7 +3465,7 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
   },
 
   
-  /**
+  /**SciUnitHeaderCell
    * Form submit handler
    */
   _submit: function(e){
@@ -3469,11 +3487,8 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
     }
   },
   
-  /**
+  /**SciUnitHeaderCell
    * Listen for router generated search events
-   * "MyServerSideFilter:search"
-   * - add search term and show box
-   * - clear old search terms
    **/
   _search: function(hash, collection){
     var self = this;
@@ -3488,7 +3503,7 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
     }
   },  
 
-  /**
+  /**SciUnitHeaderCell
    * clears all possible searches
    * if options.reset, then trigger a collection fetch
    */
@@ -3501,7 +3516,7 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
     self.collection.clearSearch(possibleSearches);
   }, 
   
-  
+  /** SciUnitHeaderCell **/
   render : function() {
     SelectorHeaderCell.__super__.render.apply(this);
 
@@ -3563,6 +3578,14 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
                     _.contains(prop['visibility'], 'list');
   var backgridCellType = 'string';
   var cell_options = null;
+  var ui_type = prop['ui_type'];
+  if(!_.isUndefined(ui_type)){
+    ui_type = ui_type.toLowerCase();
+  }
+  
+  if(ui_type == 'date'){
+    backgridCellType = Backgrid.DateCell;
+  }
   if (!_.isEmpty(prop['backgrid_cell_type'])) {
       backgridCellType = prop['backgrid_cell_type'];
       cell_options = prop['backgrid_cell_options'];
@@ -3576,7 +3599,8 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
       try {
           var klass = Iccbl.stringToFunction(prop['backgrid_cell_type']);
           if (!_.isUndefined(klass)) {
-              console.log('----- class found: ' + prop['backgrid_cell_type']);
+              console.log('----- class found: ' + prop['backgrid_cell_type']
+                + ', cell_options: ' + JSON.stringify(cell_options));
               backgridCellType = klass;
               if(!_.isUndefined(cell_options)){
                 var _specialized_cell = klass.extend(cell_options);
@@ -3610,55 +3634,49 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   else if(orderStack && _.contains(orderStack, '-' + key)){
     column['direction'] = 'descending';
   }
+  
   if (optionalHeaderCell) {
     column['headerCell'] = optionalHeaderCell;
-    
-    // Preliminary -- testing -- 
-    var ui_type = prop['ui_type'];
-    if(!_.isEmpty(ui_type)){
-      ui_type = ui_type.toLowerCase();
-      if(ui_type == 'string'){
-        column['headerCell'] = TextHeaderCell;
-      }
-      if(ui_type == 'integer'
-        || ui_type == 'float'
-      ){
-        var headerCell;
-        if(prop['backgrid_cell_type'] && 
-            prop['backgrid_cell_type']=='Iccbl.SciUnitsCell'){          
-          if(!cell_options.symbol){
-            console.log('Error constructing SciUnit header cell: ' +
-                'missing required "symbol" backgrid_cell_option');
-          }
-          else{
-            headerCell = SciUnitHeaderCell;
-            // Note: we actually need the column instance to properly initialize
-            // an instance here; would require override of HeaderRow.makeCell
-            //            headerCell = new SciUnitHeaderCell({
-            //              column: key,
-            //              collection: this.collection,
-            //              symbol: cell_options.symbol,
-            //              multiplier: multiplier
-            //            });
-          }
-        }
-        
-        if(!headerCell){
-          headerCell = NumberHeaderCell;
-        }
-        column['headerCell'] = headerCell;
-      }
-      if( ui_type == 'select' 
-        || ui_type == 'radio'
-        || ui_type == 'checkboxes' ){
-        column['headerCell'] = SelectorHeaderCell;
-      }
-      if( ui_type == 'date'){
-        column['headerCell'] = DateHeaderCell;
-      }
-      
-    }
   }
+  
+  // More specific header cell, if available
+  if(ui_type == 'string'){
+    column['headerCell'] = TextHeaderCell;
+  }else if(ui_type == 'integer'
+    || ui_type == 'float'){
+    var headerCell;
+    if(prop['backgrid_cell_type'] && 
+        prop['backgrid_cell_type']=='Iccbl.SciUnitsCell'){          
+      if(!cell_options.symbol){
+        console.log('Error constructing SciUnit header cell: ' +
+            'missing required "symbol" backgrid_cell_option');
+      }
+      else{
+        headerCell = SciUnitHeaderCell;
+        // Note: we actually need the column instance to properly initialize
+        // an instance here; would require override of HeaderRow.makeCell
+        //            headerCell = new SciUnitHeaderCell({
+        //              column: key,
+        //              collection: this.collection,
+        //              symbol: cell_options.symbol,
+        //              multiplier: multiplier
+        //            });
+      }
+    }
+    
+    if(!headerCell){
+      headerCell = NumberHeaderCell;
+    }
+    column['headerCell'] = headerCell;
+  }else if( ui_type == 'select' 
+    || ui_type == 'radio'
+    || ui_type == 'checkboxes' ){
+    column['headerCell'] = SelectorHeaderCell;
+  }
+  if( ui_type == 'date'){
+    column['headerCell'] = DateHeaderCell;
+  }
+    
   return column;
 };
 
@@ -3674,7 +3692,7 @@ var createBackgridColModel = Iccbl.createBackgridColModel =
     _.each(_.pairs(restFields), function(pair) {
         var key = pair[0];
         var prop = pair[1];
-        console.log('Column: ' + key );
+//        console.log('Column: ' + key );
         var column = createBackgridColumn(key, prop, optionalHeaderCell, orderStack);
         var visible = _.has(prop, 'visibility') && 
           _.contains(prop['visibility'], 'list');

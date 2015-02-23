@@ -208,10 +208,19 @@ define([
 
       var ModelClass = Backbone.Model.extend({
         url : url,
-        defaults : {}
+        defaults : {},
+        parse: function(resp, options){
+          // workaround for if the server returns the object in an "objects" array
+          if(_.has(resp,'objects') && _.isArray(resp.objects)
+              && resp.objects.length == 1 ){
+            resp = resp.objects[0];
+          }
+          return resp;
+        }
       });
       var instance = new ModelClass();
       instance.fetch({
+          // to force inclusion of all columns: data: { includes: '*' },
           success : function(model) {
             model.resource = resource;
             model.key = key;
@@ -500,6 +509,166 @@ define([
         self.showModal(options);
       }
     },
+
+    download: function(url, resource){
+      
+      if(url.search(/\?/) < 1 ){
+        url = url + '?';
+      }
+      var self = this;
+      var altCheckboxTemplate =  _.template('\
+          <div class="form-group" style="margin-bottom: 0px;" > \
+            <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
+              <label title="<%= help %>" for="<%= editorId %>"><span data-editor\><%= title %></label>\
+            </div>\
+          </div>\
+        ');
+      var formSchema = {};
+      
+      formSchema['use_vocabularies'] = {
+        title: 'Use vocabulary labels',
+        help: 'If selected, vocabulary key values will be replaced with labels',
+        key: 'use_vocabularies',
+        type: 'Checkbox',
+        template: altCheckboxTemplate
+      };
+      formSchema['use_titles'] = {
+        title: 'Use column titles',
+        help: 'If selected, column key values will be replaced with column titles',
+        key: 'use_titles',
+        type: 'Checkbox',
+        template: altCheckboxTemplate
+      };
+      formSchema['content_type'] = {
+        title: 'Download type',
+        help: 'Select the data format',
+        key: 'content_type',
+        options: _.without(resource.content_types, 'json'), // never json
+        type: 'Select',
+        template: _.template([
+          '<div class="input-group ">',
+          '   <label class="input-group-addon" for="<%= editorId %>" ',
+          '         title="<%= help %>" ><%= title %></label>',
+          '   <span  data-editor></span>',
+          '</div>',
+        ].join('')),
+        editorClass: 'form-control'
+      };
+
+      var FormFields = Backbone.Model.extend({
+        schema: formSchema
+      });
+      var formFields = new FormFields();
+      formFields.set('use_vocabularies', true);
+      formFields.set('use_titles', true);
+
+      var form = new Backbone.Form({
+        model: formFields,
+        template: _.template([
+                              "<div>",
+          "<form data-fieldsets class='form-horizontal container' >",
+          "</form>",
+          // tmpFrame is a target for the download
+          '<iframe name="tmpFrame" id="tmpFrame" width="1" height="1" style="visibility:hidden;position:absolute;display:none"></iframe>',
+          "</div>"
+          ].join(''))
+      });
+      
+      form.listenTo(form, "change", function(e){
+        console.log('change');
+        var content_type = form.getValue('content_type');
+        console.log('content_type: ' + content_type );
+        if(content_type != 'csv' && content_type != 'xls'){
+          form.$el.find('[name="use_vocabularies"]').prop('disabled', true);
+          form.$el.find('[name="use_titles"]').prop('disabled', true);
+        }else{
+          form.$el.find('[name="use_vocabularies"]').prop('disabled', false);
+          form.$el.find('[name="use_titles"]').prop('disabled', false);
+        }
+      });
+      
+      var el = form.render().el;
+      
+      var default_content = form.getValue('content_type');
+      console.log('default_content: ' + default_content);
+      if(default_content != 'csv' && default_content != 'xls'){
+        $(el).find('[name="use_vocabularies"]').prop('disabled', true);
+        $(el).find('[name="use_titles"]').prop('disabled', true);
+      }
+      
+      self.showModal({
+        view: el,
+        title: 'Download',  
+        ok: function(event){
+          var intervalCheckTime = 1000; // 1s
+          var maxIntervals = 3600;      // 3600s
+          var limitForDownload = 0;
+          
+          form.commit();
+          var values = form.getValue();
+
+          url += '&format=' + values['content_type']
+
+          if(values['use_vocabularies']){
+            url += '&vocabularies=true';
+          }
+          if(values['use_titles']){
+            url += '&use_titles=true';
+          }
+          
+          // How to trigger a download and notify JavaScript when finished:
+          // send a downloadID to the server and wait for a response cookie to appear.
+          // The code here was helpful:
+          // http://www.bennadel.com/blog/2533-tracking-file-download-events-using-javascript-and-coldfusion.htm
+          
+          // When tracking the download, we're going to have
+          // the server echo back a cookie that will be set
+          // when the download Response has been received.
+          var downloadID = ( new Date() ).getTime();
+          // Add the "downloadID" parameter for the server
+          // Server will set a cookie on the response to signal download complete
+          url += "&downloadID=" + downloadID;
+
+          form.$el.find('#tmpFrame').attr('src', url);
+          $('#loading').fadeIn({duration:100});
+
+          // The local cookie cache is defined in the browser
+          // as one large string; we need to search for the
+          // name-value pattern with the above ID.
+          var cookiePattern = new RegExp( ( "downloadID=" + downloadID ), "i" );
+
+          // Now, we need to start watching the local Cookies to
+          // see when the download ID has been updated by the
+          // response headers.
+          var cookieTimer = setInterval( checkCookies, intervalCheckTime );
+
+          var i = 0;
+          function checkCookies() {
+            if ( document.cookie.search( cookiePattern ) >= 0 ) {
+              clearInterval( cookieTimer );
+              $('#loading').fadeOut({duration:100});
+              return(
+                console.log( "Download complete!!" )
+              );
+            }else if(i >= maxIntervals){
+              clearInterval( cookieTimer );
+              window.alert('download abort after tries: ' + i);
+              return(
+                console.log( "Download abort!!" )
+              );
+            }
+            console.log(
+              "File still downloading...",
+              new Date().getTime()
+            );
+            i++;
+          }
+        }
+        
+      });
+      
+    },
+    
     
     /**
      * options.ok = ok function
@@ -528,15 +697,15 @@ define([
               'click #modal-ok':function(event) {
                   console.log('ok button click event, '); 
                   event.preventDefault();
-                  $('#modal').modal('hide');
                   self.clearPagePending();
-                  callbackOk();
+                  callbackOk(event);
+                  $('#modal').modal('hide');
               }
           },
       });
       modalDialog.render();
       if(!_.isUndefined(options.view)){
-        modalDialog.$el.find('.modal-body').append(options.view.render().el);
+        modalDialog.$el.find('.modal-body').append(options.view);
       }
       modalDialog.$el.find('#modal-cancel').html('Cancel and return to page');
       modalDialog.$el.find('#modal-ok').html('Continue');
@@ -556,6 +725,7 @@ define([
   appState.apiVersion = API_VERSION;
   appState.reportsApiUri = REPORTS_API_URI;
   appState.dbApiUri = DB_API_URI;
+  appState.DEBUG = DEBUG;
   appState.LIST_ARGS = ['page','rpp','includes','order','search','log', 'children'];      
   
   Iccbl.appModel = appState;

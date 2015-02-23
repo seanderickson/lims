@@ -44,8 +44,7 @@ from tastypie import fields
 from tastypie.resources import Resource
 from tastypie.utils.mime import build_content_type
 
-from sqlalchemy import select, asc
-from sqlalchemy import text
+from sqlalchemy import select, asc, text
 from sqlalchemy.sql.expression import column, join
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -63,7 +62,7 @@ from reports.serializers import CursorSerializer, LimsSerializer, XLSSerializer
 from reports.models import MetaHash, Vocabularies, ApiLog
 from reports.api import ManagedModelResource, ManagedResource, ApiLogResource,\
     UserGroupAuthorization, ManagedLinkedResource, log_obj_update,\
-    UnlimitedDownloadResource, StreamingResource, VocabulariesResource
+    UnlimitedDownloadResource, IccblBaseResource, VocabulariesResource
 from reports.utils.sqlalchemy_bridge import Bridge
 from reports.serializers import LIST_DELIMITER_XLS
 from reports.serializers import csv_convert
@@ -71,10 +70,12 @@ from sqlalchemy.sql.elements import literal_column
 from django.core.serializers.json import DjangoJSONEncoder
 import hashlib
 import StringIO
+import sqlalchemy
 
         
 logger = logging.getLogger(__name__)
 
+CSV_DELIMITER = ','
 LIST_DELIMITER_SQL_ARRAY = ','
 LIST_DELIMITER_URL_PARAM = ','
 MAX_ROWS_PER_XLS_FILE = 100000
@@ -741,7 +742,7 @@ class LibraryCopyResource(ManagedModelResource):
         ]    
 
     def dispatch_librarycopyplateview(self, request, **kwargs):
-      
+        logger.info(str(('dispatch_librarycopyplateview', kwargs)))
         kwargs['library_short_name'] = kwargs.pop('library__short_name')  
         kwargs['copy_name'] = kwargs.pop('name')
         return LibraryCopyPlateResource().dispatch('list', request, **kwargs)    
@@ -1399,8 +1400,13 @@ class ChunkIterWrapper1(object):
     def __iter__(self):
         return self
 
-class SqlAlchemyResource(StreamingResource):
+class SqlAlchemyResource(IccblBaseResource):
     '''
+    A resource that uses SqlAlchemy to facilitate the read queries:
+    - get_list
+    - get_detail
+    Note: write operations not implemented
+    
     FIXME: serialization of list fields: they are sent as concatenated strings with commas
     FIXME: Reagent/SMR specific
     '''
@@ -1465,6 +1471,8 @@ class SqlAlchemyResource(StreamingResource):
                 def keys(self):
                     return self.row.keys();
                 def __getitem__(self, key):
+                    if not row[key]:
+                        return None
                     if key in vocabularies:
                         if row[key] not in vocabularies[key]:
                             logger.error(str(('----warn, unknown vocabulary', 
@@ -1483,7 +1491,8 @@ class SqlAlchemyResource(StreamingResource):
         return vocabulary_rowproxy_generator
 
     
-    def get_visible_fields(self, schema_fields, filter_fields, manual_field_includes):
+    def get_visible_fields(self, schema_fields, filter_fields, manual_field_includes,
+                           is_for_detail=False):
         '''
         Construct an ordered dict of schema fields that are visible, based on
         - "list" in schema field["visibility"]
@@ -1495,8 +1504,11 @@ class SqlAlchemyResource(StreamingResource):
         '''
         logger.info(str(('get_visible_fields: field_hash initial: ', schema_fields.keys() )))
         try:
+            visibility_setting = 'list'
+            if is_for_detail:
+                visibility_setting = 'detail'
             temp = { key:field for key,field in schema_fields.items() 
-                if ((field.get('visibility', None) and 'list' in field['visibility']) 
+                if ((field.get('visibility', None) and visibility_setting in field['visibility']) 
                     or field['key'] in manual_field_includes
                     or '*' in manual_field_includes )}
             
@@ -1506,7 +1518,7 @@ class SqlAlchemyResource(StreamingResource):
             
             # dependency fields
             dependency_fields = set()
-            for field in schema_fields.values():
+            for field in temp.values():
                 dependency_fields.update(field.get('dependencies',[]))
             logger.info(str(('dependency_fields', dependency_fields)))
             if dependency_fields:
@@ -1745,20 +1757,43 @@ class SqlAlchemyResource(StreamingResource):
             # ])
             
             logger.info(str(('find filter', field_name, filter_type, value)))
-            if not value:
-                continue
             
+#             if not value:
+#                 continue
+#             
             expression = None
             if filter_type in ['exact','eq']:
                 expression = column(field_name)==value
+            elif filter_type == 'about':
+                decimals = 0
+                if '.' in value:
+                    decimals = len(value.split('.')[1])
+                expression = func.round(
+                    sqlalchemy.sql.expression.cast(
+                        column(field_name),sqlalchemy.types.Numeric),decimals) == value
+                logger.info(str(('create "about" expression for term:',filter_expr,
+                    value,'decimals',decimals)))
             elif filter_type == 'contains':
                 expression = column(field_name).contains(value)
             elif filter_type == 'icontains':
                 expression = column(field_name).ilike('%{value}%'.format(value=value))
             elif filter_type == 'lt':
                 expression = column(field_name) < value
+            elif filter_type == 'lte':
+                expression = column(field_name) <= value
+            elif filter_type == 'gt':
+                expression = column(field_name) > value
             elif filter_type == 'gte':
                 expression = column(field_name) >= value
+            elif filter_type == 'is_null':
+                logger.info(str(('is_null', field_name, value, str(value) )))
+                col = column(field_name)
+                if field['ui_type'] == 'string':
+                    col = func.trim(col)
+                if value and str(value).lower() == 'true':
+                    expression = col == None 
+                else:
+                    expression = col != None
             elif filter_type == 'in':
                 expression = column(field_name).in_(value)
             elif filter_type == 'ne':
@@ -1777,6 +1812,8 @@ class SqlAlchemyResource(StreamingResource):
 
             if inverted:
                 expression = not_(expression)
+            
+            logger.info(str(('filter_expr',filter_expr,'expression',expression)))
             expressions.append(expression)
             filtered_fields.append(field_name)
             
@@ -1872,9 +1909,10 @@ class SqlAlchemyResource(StreamingResource):
                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e   
         
-        
+          
     def stream_response_from_cursor(self, request, stmt, count_stmt, 
-            output_filename, field_hash={}, rowproxy_generator=None ):
+            output_filename, field_hash={}, rowproxy_generator=None, is_for_detail=False,
+            downloadID=None, title_function=None ):
         DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
         
         limit = request.GET.get('limit', self._meta.limit) 
@@ -1934,26 +1972,29 @@ class SqlAlchemyResource(StreamingResource):
                     logger.error(str(('field needed for value template is not available', val, row)))
                     return ''
             return re.sub(r'{([^}]+)}', get_value_from_template, value_template)
-
+        
+        response = None
+        
         if desired_format == 'application/json':
             
-            cache_hit = self._cached_resultproxy(stmt, count_stmt, limit, offset)
-            if cache_hit:
-                result = cache_hit['cached_result']
-                count = cache_hit['count']
-                if rowproxy_generator:
-                    result = rowproxy_generator(result)
-            else:
-                # use result from before
-                logger.info(str(('execute count')))
-                count = conn.execute(count_stmt).scalar()
-            logger.info(str(('====count====', count)))
+            if not is_for_detail:
+                cache_hit = self._cached_resultproxy(stmt, count_stmt, limit, offset)
+                if cache_hit:
+                    result = cache_hit['cached_result']
+                    count = cache_hit['count']
+                    if rowproxy_generator:
+                        result = rowproxy_generator(result)
+                else:
+                    # use result from before
+                    logger.info(str(('execute count')))
+                    count = conn.execute(count_stmt).scalar()
+                logger.info(str(('====count====', count)))
         
-            meta = {
-                'limit': limit,
-                'offset': offset,
-                'total_count': count
-                }    
+                meta = {
+                    'limit': limit,
+                    'offset': offset,
+                    'total_count': count
+                    }    
                         
             def json_generator(cursor):
                 if DEBUG_STREAMING: logger.info(str(('meta', meta)))
@@ -1961,7 +2002,8 @@ class SqlAlchemyResource(StreamingResource):
                 # chars to be encoded using ascii or escaped unicode; 
                 # because some chars in db might be non-UTF8
                 # and downstream programs have trouble with mixed encoding (cStringIO)
-                yield '{ "meta": %s, "objects": [' % json.dumps(meta, ensure_ascii=True, encoding="utf-8")
+                if not is_for_detail:
+                    yield '{ "meta": %s, "objects": [' % json.dumps(meta, ensure_ascii=True, encoding="utf-8")
                 i=0
                 for row in cursor:
                     if DEBUG_STREAMING: logger.info(str(('row', row, row.keys())))
@@ -1974,9 +2016,6 @@ class SqlAlchemyResource(StreamingResource):
                             try:
                                 if row.has_key(key):
                                     value = row[key]
-#                                 logger.info(str(('value', value)))
-                                if key == 'library_name':
-                                    logger.info(str(('library_name', key, value )))
                                 if value and ( field.get('json_field_type') == 'fields.ListField' 
                                      or field.get('linked_field_type') == 'fields.ListField' ):
                                     # FIXME: need to do an escaped split
@@ -2039,12 +2078,13 @@ class SqlAlchemyResource(StreamingResource):
                         logger.info(str(('exception')))
                         logger.error(str(('ex', _dict, e)))
                 logger.info('streaming finished')
-                yield ' ] }'
+                
+                if not is_for_detail:
+                    yield ' ] }'
             
             if DEBUG_STREAMING: logger.info(str(('ready to stream 1...')))
             response = StreamingHttpResponse(ChunkIterWrapper(json_generator(result)))
             response['Content-Type'] = content_type
-            return response
         
         elif desired_format == 'application/xls':
             
@@ -2075,6 +2115,8 @@ class SqlAlchemyResource(StreamingResource):
                     if filerow == 0:
                         if field_hash:
                             for col, (key, field) in enumerate(field_hash.items()):
+                                if title_function:
+                                    key = title_function(key) 
                                 worksheet.write(filerow,col,key)
                                 ## TODO: option to write titles
                                 # worksheet.write(filerow,col,field['title'])
@@ -2088,8 +2130,6 @@ class SqlAlchemyResource(StreamingResource):
                             value = None
                             if row.has_key(key):
                                 value = row[key]
-#                             else: 
-#                                 continue
                             
                             if value and ( field.get('json_field_type') == 'fields.ListField' 
                                  or field.get('linked_field_type') == 'fields.ListField' ):
@@ -2169,7 +2209,6 @@ class SqlAlchemyResource(StreamingResource):
                 response['Content-Disposition'] = \
                     'attachment; filename=%s' % filename
                 response['Content-Length'] = os.path.getsize(temp_file)
-                return response
             except Exception, e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
@@ -2201,7 +2240,7 @@ class SqlAlchemyResource(StreamingResource):
                     for row in cursor:
                         i += 1
 
-                        if MOLDATAKEY in row and row[MOLDATAKEY]:
+                        if row.has_key(MOLDATAKEY) and row[MOLDATAKEY]:
                             yield str(row[MOLDATAKEY])
                             yield '\n' 
 
@@ -2220,7 +2259,7 @@ class SqlAlchemyResource(StreamingResource):
                                 
                                 if field.get('value_template', None):
                                     value_template = field['value_template']
-                                    if DEBUG_STREAMING: 
+                                    if DEBUG_STREAMING:     
                                         logger.info(str(('field', key, value_template)))
                                     value = interpolate_value_template(value_template, row)
                                 if value and ( field.get('json_field_type') == 'fields.ListField' 
@@ -2279,7 +2318,6 @@ class SqlAlchemyResource(StreamingResource):
                     content_type=content_type)
                 response['Content-Disposition'] = \
                     'attachment; filename=%s.sdf' % output_filename
-                return response
             except Exception, e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
@@ -2299,7 +2337,7 @@ class SqlAlchemyResource(StreamingResource):
 
             pseudo_buffer = Echo()
             csvwriter = csv.writer(
-                pseudo_buffer, delimiter=',', quotechar='"', 
+                pseudo_buffer, delimiter=CSV_DELIMITER, quotechar='"', 
                 quoting=csv.QUOTE_ALL, lineterminator="\n")
             def csv_generator(cursor):
                 i=0
@@ -2307,7 +2345,12 @@ class SqlAlchemyResource(StreamingResource):
                     i += 1
                     if i == 1:
                         if field_hash:
-                            yield csvwriter.writerow(field_hash.keys())
+                            titles = field_hash.keys()
+                            logger.info(str(('keys', titles, title_function)))
+                            if title_function:
+                                titles = [title_function(key) for key in titles]
+                            logger.info(str(('titles', titles)))
+                            yield csvwriter.writerow(titles)
                             # TODO: option to write titles:
                             # yield csvwriter.writerow([field['title'] for field in field_hash.values()])
                         else:
@@ -2332,7 +2375,6 @@ class SqlAlchemyResource(StreamingResource):
                                 
                             if field.get('value_template', None):
                                 value_template = field['value_template']
-                                logger.info(str(('field', key, value_template)))
                                 newval = interpolate_value_template(value_template, row)
                                 if field['ui_type'] == 'image':
                                     # hack to speed things up:
@@ -2362,12 +2404,20 @@ class SqlAlchemyResource(StreamingResource):
             name = self._meta.resource_name
             response['Content-Disposition'] = \
                 'attachment; filename=%s.csv' % output_filename
-            return response
-
         else:
             msg = str(('unknown format', desired_format, output_filename))
             logger.error(msg)
             raise ImmediateHttpResponse(msg)
+
+#         downloadID = request.GET.get('downloadID', None)
+#         if downloadID:
+#             logger.info(str(('set cookie','downloadID', downloadID )))
+#             response.set_cookie('downloadID', downloadID)
+#         else:
+#             logger.info(str(('no downloadID', request.GET )))
+
+        return response
+
 
 class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
     class Meta:
@@ -2396,7 +2446,14 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
 
-            url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w\d_.\-\+: ]+)/(?P<name>[\w\d_.\-\+: ]+)%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w\d_.\-\+: ]+)"
+                r"/(?P<plate_number>[\d_.\-\+: ]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+
+            url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w\d_.\-\+: ]+)"
+                r"/(?P<copy_name>[\w\d_.\-\+: ]+)"
+                r"/(?P<plate_number>[\d_.\-\+: ]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
         ]
@@ -2406,15 +2463,27 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
         @returns djanog.http.response.StreamingHttpResponse 
         '''
-       
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        is_for_detail = kwargs.pop('is_for_detail', False)
+               
+        filename = '_'.join(kwargs.values())
         
-        if 'library_short_name' not in kwargs:
+        library_short_name = kwargs.pop('library_short_name', None)
+        if not library_short_name:
             filename = '%s' % (self._meta.resource_name )
             logger.info(str(('no library_short_name provided')))
         else:
-            filename = '_'.join(kwargs.keys())
+            kwargs['library_short_name__eq'] = library_short_name
 
+        copy_name = kwargs.pop('copy_name', None)
+        if copy_name:
+            kwargs['copy_name__eq'] = copy_name
+            
+        plate_number = kwargs.pop('plate_number', None)
+        if plate_number:
+            kwargs['plate_number__eq'] = plate_number
+            
         logger.info(str(('get_list', filename, kwargs)))
  
         try:
@@ -2431,7 +2500,8 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, request, **kwargs)
                  
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes)
+                schema['fields'], filter_fields, manual_field_includes, 
+                is_for_detail=is_for_detail)
               
             order_params = request.GET.getlist('order_by')
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
@@ -2467,6 +2537,15 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
                     ' where pu.plate_id = plate.plate_id'
                     " and aa.administrative_activity_type='Plate Status Update' "
                     ' order by a.date_created desc limit 1 )').label('status_performed_by'),
+                'status_performed_by_id': literal_column(
+                    "(select su.screensaver_user_id "     # TODO: replace with the final login id
+                    ' from activity a'
+                    ' join screensaver_user su on(a.performed_by_id=su.screensaver_user_id) '
+                    ' join administrative_activity aa on(aa.activity_id=a.activity_id) '
+                    ' join plate_update_activity pu on(a.activity_id=pu.update_activity_id)'
+                    ' where pu.plate_id = plate.plate_id'
+                    " and aa.administrative_activity_type='Plate Status Update' "
+                    ' order by a.date_created desc limit 1 )').label('status_performed_by_id'),
                 'date_plated': literal_column(
                     '(select date_of_activity '
                     ' from activity a'
@@ -2509,10 +2588,15 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
              
             (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
  
+            title_function = None
+            if request.GET.get('use_titles', False):
+                title_function = lambda key: field_hash[key]['title']
+
             return self.stream_response_from_cursor(
                 request, stmt, count_stmt, filename, 
-                field_hash=field_hash, 
-                rowproxy_generator=rowproxy_generator  )
+                field_hash=field_hash, is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function  )
             
                         
         except Exception, e:
@@ -2522,11 +2606,21 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
             logger.warn(str(('on get_list', 
                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e   
+
+
+#     def get_detail(self, request, **kwargs):
+#         
+#         logger.info(str(('get_detail rediredcted to get_list: kwargs', kwargs)))
+#         
+#         response =  self.get_list(request, **kwargs)
+#         
+#         content = response.streaming_content.getvalue()
+#         logger.info(str(('content', content)))
+#         
+#         return HttpResponse(content = content)
         
         
     def get_list1(self,request,**kwargs):
-       
-       
         
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
         
@@ -2741,10 +2835,15 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
                         
                 rowproxy_generator = vocabulary_rowproxy_generator
             
+            title_function = None
+            if request.GET.get('use_titles', False):
+                title_function = lambda key: field_hash[key]['title']
+
             return self.stream_response_from_cursor(
                 request, stmt, count_stmt, filename, 
                 field_hash=field_hash, 
-                rowproxy_generator=rowproxy_generator  )
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function  )
         
             
         except Exception, e:
@@ -2788,28 +2887,58 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
 
-            url(r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w\d_.\-\+: ]+)"
+                r"/(?P<copy_name>[\w\d_.\-\+: ]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
 
+
+    def get_detail(self, request, **kwargs):
+        # TODO: this is a strategy for refactoring get_detail to use get_list:
+        # follow this with wells/
+        logger.info(str(('get_detail')))
+
+        library_short_name = kwargs.get('library_short_name', None)
+        if not library_short_name:
+            logger.info(str(('no library_short_name provided')))
+            raise NotImplementedError('must provide a library_short_name parameter')
+
+        
+        copy_name = kwargs.get('copy_name', None)
+        if not copy_name:
+            logger.info(str(('no copy_name provided')))
+            raise NotImplementedError('must provide a copy_name parameter')
+        
+        kwargs['is_for_detail']=True
+        return self.get_list(request, **kwargs)
+        
+    
     def get_list(self,request,**kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
         @returns djanog.http.response.StreamingHttpResponse 
         '''
-       
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_GET_LIST = True #False or logger.isEnabledFor(logging.DEBUG)
+        logger.info(str(('get_list', kwargs)))
+
+        is_for_detail = kwargs.pop('is_for_detail', False)
         
-        library_short_name = kwargs.get('library_short_name', None)
+        filename = '_'.join(kwargs.values())
+
+        library_short_name = kwargs.pop('library_short_name', None)
         if not library_short_name:
             filename = '%s' % (self._meta.resource_name )
             logger.info(str(('no library_short_name provided')))
         else:
-            filename = '_'.join(kwargs.keys())
+            kwargs['library_short_name__eq'] = library_short_name
 
+        
+        copy_name = kwargs.pop('copy_name', None)
+        if copy_name:
+            kwargs['copy_name__eq'] = copy_name
+            
         logger.info(str(('get_list', filename, kwargs)))
- 
         try:
             
             # general setup
@@ -2824,7 +2953,8 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, request, **kwargs)
                  
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes)
+                schema['fields'], filter_fields, manual_field_includes, 
+                is_for_detail=is_for_detail)
               
             order_params = request.GET.getlist('order_by')
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
@@ -2902,11 +3032,12 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
                 select_from( text(text_select))
                 
             if library_short_name:
-                # TODO: prefilter on other filter columns
+                # FIXME: can
                 copy_volume_statistics = \
-                    copy_volume_statistics.where(_l.c.short_name == library_short_name )
-#                     copy_volume_statistics.where(_l.c.library_id == library.library_id )
-            copy_volume_statistics = copy_volume_statistics.group_by(text('c.copy_id, c.name, l.short_name '))
+                    copy_volume_statistics.where(literal_column('l.short_name') == library_short_name )
+#                     copy_volume_statistics.where(_l.c.library_id == 140 )
+            copy_volume_statistics = \
+                copy_volume_statistics.group_by(text('c.copy_id, c.name, l.short_name '))
             copy_volume_statistics = copy_volume_statistics.order_by(text('c.name '))
             copy_volume_statistics = copy_volume_statistics.cte('copy_volume_statistics')
     
@@ -2931,10 +3062,9 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
             copy_plate_screening_statistics = select([text(text_cols)]).\
                 select_from( text(text_select))
             if library_short_name:
-                # TODO: prefilter on other filter columns
                 copy_plate_screening_statistics = \
-                    copy_plate_screening_statistics.where(_l.c.short_name == library_short_name )
-#                     copy_plate_screening_statistics.where(_l.c.library_id == library.library_id )
+                    copy_plate_screening_statistics.where(literal_column('l.short_name') == library_short_name )
+#                     copy_plate_screening_statistics.where(_l.c.library_id == 140 )
             copy_plate_screening_statistics = \
                 copy_plate_screening_statistics.group_by('c.copy_id, c.name, l.short_name')
             copy_plate_screening_statistics = copy_plate_screening_statistics.cte('copy_plate_screening_statistics')
@@ -2944,7 +3074,11 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
             # NOTE: precalculated version
             copy_screening_statistics = select([text('*')])\
                     .select_from(text('copy_screening_statistics'))\
-                    .cte('copy_screening_statistics')
+
+            copy_screening_statistics = copy_screening_statistics.where(
+                literal_column('short_name') == library_short_name)
+
+            copy_screening_statistics = copy_screening_statistics.cte('copy_screening_statistics')
             
             c1 = copy_plate_screening_statistics.alias('c1')
             c2 = copy_volume_statistics.alias('c2')
@@ -2965,10 +3099,15 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
              
             (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
  
+            title_function = None
+            if request.GET.get('use_titles', False):
+                title_function = lambda key: field_hash[key]['title']
+
             return self.stream_response_from_cursor(
                 request, stmt, count_stmt, filename, 
-                field_hash=field_hash, 
-                rowproxy_generator=rowproxy_generator  )
+                field_hash=field_hash, is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function  )
             
                         
         except Exception, e:
@@ -2979,295 +3118,7 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e   
         
-    def get_list1(self,request,**kwargs):
-
-
-        try:
-            _c = self.bridge['copy']
-            _l = self.bridge['library']
-            _ap = self.bridge['assay_plate']
-            
-            library = None
-            if 'library_short_name' in kwargs:
-                library = Library.objects.get(short_name=kwargs['library_short_name'])
-                filename = '%s_%s' % (self._meta.resource_name, library.short_name )
-            else:
-                filename = '%s' % (self._meta.resource_name )
-                logger.info(str(('no library_short_name provided')))
-            
-            
-            # = copy volume statistics =
-            
-            # REMOVED 20150112 - using precalculated table see 0016 migration
-            #         text_cols=[ literal_column('c.copy_id').label('copy_id'),
-            # text('c.name'),
-            # text('c.short_name'),
-            # 'avg(c.plate_remaining_volume) avg_plate_volume', 
-            # 'min(c.plate_remaining_volume) min_plate_volume', 
-            # 'max(c.plate_remaining_volume) max_plate_volume']
-            #         text_select =''' 
-            # ( select 
-            #     p.copy_id, 
-            #     p.well_volume - sum(la.volume_transferred_per_well_from_library_plates) as plate_remaining_volume,
-            #     co.name,
-            #     l.short_name
-            #     from plate p
-            #     join copy co using(copy_id)
-            #     join library l using(library_id) 
-            #     join assay_plate ap using(plate_id) 
-            #     join screening ls on(ls.activity_id = ap.library_screening_id) 
-            #     join lab_activity la using(activity_id) 
-            #     where co.library_id = 108
-            #     and ap.replicate_ordinal = 0 
-            #     group by p.copy_id, p.plate_id, p.well_volume, co.name, l.short_name ) as c 
-            # group by c.copy_id, c.name, c.short_name'''
-            
-            text_cols = ','.join([
-                'c.copy_id',
-                'c.name',
-                'l.short_name',
-                'avg(p.avg_remaining_volume) avg_plate_volume', 
-                'min(p.min_remaining_volume) min_plate_volume', 
-                'max(p.max_remaining_volume) max_plate_volume'])
-            text_select = '\n'.join([
-                'plate p ' 
-                'join copy c using(copy_id) '
-                'join library l using(library_id) '
-                ])
-            copy_volume_statistics = select([text(text_cols)]).\
-                select_from( text(text_select))
-            if library:
-                copy_volume_statistics = copy_volume_statistics.where(_l.c.library_id == library.library_id )
-            copy_volume_statistics = copy_volume_statistics.group_by(text('c.copy_id, c.name, l.short_name '))
-            copy_volume_statistics = copy_volume_statistics.order_by(text('c.name '))
-            copy_volume_statistics = copy_volume_statistics.cte('copy_volume_statistics')
-    
-            # = copy plate screening statistics = 
-            
-            text_cols = ','.join([
-                'c.copy_id',
-                'c.name',
-                'l.short_name',
-                ('(select count(distinct(p)) from plate p where p.copy_id=c.copy_id) '
-                    'as copy_plate_count'),
-                'count(distinct(ls1)) as plate_screening_count' ])
-            text_select = '\n'.join([
-                'copy c', 
-                'join plate p using(copy_id) ',
-                'join library l using(library_id) ',
-                'left join ( select ap.plate_id, ls.activity_id ',
-                '    from assay_plate ap', 
-                '    join library_screening ls on(ap.library_screening_id=ls.activity_id) ',
-                '    where ap.replicate_ordinal=0 ) as ls1 on(ls1.plate_id=p.plate_id) ',
-                ])
-            copy_plate_screening_statistics = select([text(text_cols)]).\
-                select_from( text(text_select))
-            if library:
-                copy_plate_screening_statistics = copy_plate_screening_statistics.where(_l.c.library_id == library.library_id )
-            copy_plate_screening_statistics = \
-                copy_plate_screening_statistics.group_by('c.copy_id, c.name, l.short_name')
-            copy_plate_screening_statistics = copy_plate_screening_statistics.cte('copy_plate_screening_statistics')
-    
-            # = copy screening statistics = 
-            
-            # REMOVED 20150112 - using precalculated stats, see 0016 migrations
-            #         text_cols = '''c.copy_id,
-            # c.name,
-            # l.short_name
-            # ,count(distinct(ls)) screening_count 
-            # ,count(distinct(ap)) ap_count 
-            # ,count(distinct(srdl)) dl_count
-            # ,min(srdl.date_of_activity) first_date_data_loaded 
-            # ,max(srdl.date_of_activity) last_date_data_loaded 
-            # ,min(lsa.date_of_activity) first_date_screened 
-            # ,max(lsa.date_of_activity) last_date_screened'''
-            #         text_select = \
-            #             '''copy c 
-            # join plate p using(copy_id) 
-            # join library l using(library_id) 
-            # join assay_plate ap on(ap.plate_id=p.plate_id)  
-            #     left outer join library_screening ls on(library_screening_id=ls.activity_id)
-            #     left outer join activity lsa on(ls.activity_id=lsa.activity_id) 
-            # left outer join (select a.activity_id, a.date_of_activity from activity a join administrative_activity using(activity_id) ) srdl on(screen_result_data_loading_id=srdl.activity_id)  
-            # group by c.copy_id, c.name, l.short_name'''
-            # 
-            # TODO: dynamic version
-            #         copy_screening_statistics = \
-            #             select([text(text_cols)]).select_from( text(text_select)).cte('copy_screening_statistics')
-            
-            # NOTE: precalculated version
-            copy_screening_statistics = \
-                select([text('*')]).\
-                    select_from(text('copy_screening_statistics')).cte('copy_screening_statistics')
-    
-            # FIXME: 20150114 - itemize colums like librarycopyplates
-            
-            custom_columns = {
-                'copy_id': literal_column('c1.copy_id'),
-                'library_short_name': literal_column(
-                    'c1.short_name').label('library_short_name'),
-                'plate_screening_count': literal_column('c1.plate_screening_count'),
-                'copy_plate_count': literal_column('c1.copy_plate_count'),
-                'plate_screening_count_average': literal_column(
-                    'c1.plate_screening_count::float/c1.copy_plate_count::float ').\
-                    label('plate_screening_count_average'),
-                'avg_plate_volume': literal_column('c2.avg_plate_volume'),
-                'min_plate_volume': literal_column('c2.min_plate_volume'), 
-                'max_plate_volume': literal_column('c2.max_plate_volume'), 
-                'screening_count': literal_column('c3.screening_count'),
-                'ap_count': literal_column('c3.ap_count'),
-                'dl_count': literal_column('c3.dl_count'),
-                'first_date_data_loaded': literal_column('c3.first_date_data_loaded'), 
-                'last_date_data_loaded': literal_column('c3.last_date_data_loaded'), 
-                'first_date_screened': literal_column('c3.first_date_screened'), 
-                'last_date_screened': literal_column('c3.last_date_screened'),
-                'primary_plate_location': literal_column('\n'.join([
-                    "( select room || '-' || freezer || '-' || shelf || '-' || bin ", 
-                    '    from plate_location pl ' ,
-                    '    where pl.plate_location_id=copy.primary_plate_location_id) '])).\
-                    label('primary_plate_location'),
-                'plate_locations': literal_column('\n'.join([
-                    '(select count(distinct(plate_location_id)) ',
-                    '    from plate p',
-                    '    where p.copy_id = copy.copy_id ) '])).\
-                    label('plate_locations'),
-                'plates_available': literal_column('\n'.join([
-                    '(select count(p)', 
-                    '    from plate p ',
-                    '    where p.copy_id=copy.copy_id', 
-                    "    and p.status = 'Available' ) "])).\
-                    label('plates_available'),
-                }
-            
-            #         text_cols = ','.join([
-            #             'c1.copy_id', 
-            #             'c1.short_name library_short_name',
-            #             'c1.plate_screening_count',
-            #             'c1.copy_plate_count',
-            #             ('c1.plate_screening_count::float/c1.copy_plate_count::float '
-            #                 'as plate_screening_count_average'),
-            #             'c2.avg_plate_volume',
-            #             'c2.min_plate_volume', 
-            #             'c2.max_plate_volume', 
-            #             'c3.screening_count',
-            #             'c3.ap_count',
-            #             'c3.dl_count',
-            #             'c3.first_date_data_loaded', 
-            #             'c3.last_date_data_loaded', 
-            #             'c3.first_date_screened', 
-            #             'c3.last_date_screened',
-            #             '\n'.join([
-            #                 "( select room || '-' || freezer || '-' || shelf || '-' || bin ", 
-            #                 '    from plate_location pl ' ,
-            #                 '    where pl.plate_location_id=copy.primary_plate_location_id) ',
-            #                 '        as primary_plate_location']),
-            #             '\n'.join([
-            #                 '(select count(distinct(plate_location_id)) ',
-            #                 '    from plate p',
-            #                 '    where p.copy_id = copy.copy_id ) ',
-            #                 'as plate_locations']),
-            #             '\n'.join([
-            #                 '(select count(p)', 
-            #                 '    from plate p ',
-            #                 '    where p.copy_id=copy.copy_id', 
-            #                 "    and p.status = 'Available' ) ",
-            #                 '    as plates_available']),
-            #                 ])
-
-            c1 = copy_plate_screening_statistics.alias('c1')
-            c2 = copy_volume_statistics.alias('c2')
-            c3 = copy_screening_statistics.alias('c3')
-    
-            j = join(_c, _l, _c.c.library_id == _l.c.library_id)
-            j = j.outerjoin(c1, _c.c.copy_id == text('c1.copy_id'))
-            j = j.outerjoin(c2,text('c1.copy_id = c2.copy_id') )
-            j = j.outerjoin(c3, text('c1.copy_id = c3.copy_id') )
-    
-            logger.info(str(('====j', str(j))))
-
-            logger.info(str(('get_list', kwargs)))
-            
-            schema = super(LibraryCopiesResource,self).build_schema()
-    
-            # FIXME: 20150114 - includes not being sent by UI
-            includes = request.GET.getlist('includes', None)
-            logger.info(str(('includes', includes)))
-            if includes:
-                manual_field_includes = set(includes)
-            else:    
-                manual_field_includes = set()
-            logger.info(str(('manual_field_includes', manual_field_includes)))
-            include_all = '*' in manual_field_includes
-
-            (filter_expression, filter_fields) = \
-                self.build_sqlalchemy_filters(schema, request, **kwargs)
-            
-            temp = { key:field for key,field in schema['fields'].items() 
-                if ((field.get('visibility', None) and 'list' in field['visibility']) 
-                    or field['key'] in filter_fields 
-                    or field['key'] in manual_field_includes
-                    or include_all )}
-            
-            # manual excludes
-            temp = { key:field for key,field in temp.items() 
-                if '-%s' % key not in manual_field_includes }
-            
-            # dependency fields
-            dependency_fields = set()
-            for field in schema['fields'].values():
-                dependency_fields.update(field.get('dependencies',[]))
-            logger.info(str(('dependency_fields', dependency_fields)))
-            if dependency_fields:
-                temp.update({ key:field 
-                    for key,field in schema['fields'].items() if key in dependency_fields })
         
-            field_hash = OrderedDict(sorted(temp.iteritems(), 
-                key=lambda x: x[1].get('ordinal',999))) 
-    
-            base_query_tables = ['copy','library']
-            
-#             custom_columns={};
-            columns = self.build_sqlalchemy_columns(
-                field_hash.values(), base_query_tables=base_query_tables,
-                custom_columns=custom_columns
-                )
-            logger.info(str(('columns', columns)))
-            cols = list(custom_columns.values())
-            cols.extend( [v for k,v in columns.iteritems() if k not in custom_columns] )
-            
-#             cols = [text(text_cols)]
-#             cols.extend( [v for k,v in columns.iteritems() if k not in custom_columns] )
-            
-            stmt = select(cols).select_from(j)
-            stmt = stmt.order_by(text('c1.short_name,c1.name'))
-
-            order_clauses = self.build_sqlalchemy_ordering(request)
-            if order_clauses:
-                logger.info(str(('order_clauses', [str(c) for c in order_clauses])))
-                _alias = Alias(stmt)
-                stmt = select([text('*')]).select_from(_alias)
-                stmt = stmt.order_by(*order_clauses)
-            
-            logger.info(str(('filter_expression', str(filter_expression))))
-            if filter_expression is not None:
-                if not order_clauses:
-                    _alias = Alias(stmt)
-                    logger.info(str(('filter_expression', str(filter_expression))))
-                    stmt = select([text('*')]).select_from(_alias)
-                stmt = stmt.where(filter_expression)
-
-            count_stmt = select([func.count()]).select_from(stmt.alias())
-
-            return self.stream_response_from_cursor(
-                request, stmt, count_stmt, filename, field_hash=field_hash  )
-        except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on get_list', 
-                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
-            raise e   
-
 class ReagentResource(SqlAlchemyResource, ManagedModelResource):
     
     class Meta:
@@ -3290,25 +3141,64 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
         self.npr_resource = None
         self.well_resource = None
         super(ReagentResource,self).__init__(**kwargs)
+    
+    def prepend_urls(self):
+        
+        return [
+            # override the parent "base_urls" so that we don't need to worry about schema again
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+
+            url(r"^(?P<resource_name>%s)/(?P<substance_id>[^:]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+            url(r"^(?P<resource_name>%s)/(?P<well_id>[\w\d:]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+        ]
  
     def get_list(self, request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
         @returns djanog.http.response.StreamingHttpResponse 
         '''
+        is_for_detail = kwargs.pop('is_for_detail', False)
        
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
         
-        library_short_name = kwargs.get('library_short_name', None)
+        # TODO: eliminate dependency on library (for schema determination)
+        library = None
+        
+        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        
+        filename = re.sub(r'[\W]+','_',filename)
+        
+        library_short_name = kwargs.pop('library_short_name', None)
         if not library_short_name:
-            raise NotImplementedError('must provide a library_short_name parameter')
+            filename = '%s' % (self._meta.resource_name )
+            logger.info(str(('no library_short_name provided')))
         else:
-            filename = '_'.join(kwargs.keys())
-            # TODO: remove dependency on Django ORM
-            library = Library.objects.get(short_name=kwargs['library_short_name'])
+            kwargs['library_short_name__eq'] = library_short_name
+            library = Library.objects.get(short_name=library_short_name)
 
+        well_id = kwargs.pop('well_id', None)
+        if well_id:
+            kwargs['well_id__eq'] = well_id
+            if not library:
+                library = Well.objects.get(well_id=well_id).library
+
+        substance_id = kwargs.pop('substance_id', None)
+        if substance_id:
+            kwargs['substance_id__eq'] = well_id
+            if not library:
+                library = Reagent.objects.get(substance_id=substance_id).well.library
+
+        if not library:
+            raise NotImplementedError('must provide a library_short_name parameter')
+            
         logger.info(str(('get_list', filename, kwargs)))
- 
+
         try:
             
             # general setup
@@ -3326,7 +3216,8 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, request, **kwargs)
                  
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes)
+                schema['fields'], filter_fields, manual_field_includes,
+                is_for_detail=is_for_detail)
               
             order_params = request.GET.getlist('order_by')
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
@@ -3366,10 +3257,15 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
              
             (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
  
+            title_function = None
+            if request.GET.get('use_titles', False):
+                title_function = lambda key: field_hash[key]['title']
+
             return self.stream_response_from_cursor(
                 request, stmt, count_stmt, filename, 
-                field_hash=field_hash, 
-                rowproxy_generator=rowproxy_generator  )
+                field_hash=field_hash, is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function  )
             
                         
         except Exception, e:
@@ -3726,10 +3622,13 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
 
     def prepend_urls(self):
         return [
-            url((r"^(?P<resource_name>%s)"
-                 r"/(?P<well_id>((?=(schema))__|(?!(schema))[^/]+))%s$")  
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+            url(r"^(?P<resource_name>%s)/(?P<well_id>[\w\d:]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),]
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ]
                 
     def get_schema(self, request, **kwargs):
         if not 'library_short_name' in kwargs:
@@ -3764,14 +3663,42 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
 
         return data
 
+    def get_detail(self, request, **kwargs):
+        # TODO: this is a strategy for refactoring get_detail to use get_list:
+        # follow this with all resources
+        logger.info(str(('get_detail')))
+ 
+        well_id = kwargs.get('well_id', None)
+        if not well_id:
+            logger.info(str(('no well_id provided')))
+            raise NotImplementedError('must provide a well_id parameter')
+         
+        kwargs['is_for_detail']=True
+        return self.get_list(request, **kwargs)
+
     def get_list(self, request, **kwargs):
     
-        if 'library_short_name' in kwargs:
-            library = Library.objects.get(short_name=kwargs['library_short_name'])
-            return self.get_full_reagent_resource().get_list(request, **kwargs)
+        # TODO: eliminate dependency on library (for schema determination)
+        library = None
+        library_short_name = kwargs.pop('library_short_name', None)
+        if not library_short_name:
+            logger.info(str(('no library_short_name provided')))
         else:
-            raise NotImplementedError('must provide a library_short_name parameter')
-    
+            kwargs['library_short_name__eq'] = library_short_name
+            library = Library.objects.get(short_name=library_short_name)
+
+        well_id = kwargs.pop('well_id', None)
+        if well_id:
+            kwargs['well_id__eq'] = well_id
+            if not library:
+                library = Well.objects.get(well_id=well_id).library
+
+        if not library:
+            raise NotImplementedError('must provide a library_short_name parameter')    
+        else:
+            kwargs['library_short_name'] = library.short_name
+            return self.get_full_reagent_resource().get_list(request, **kwargs)
+        
 #     def obj_get_list(self, bundle, **kwargs):    
 # 
 #         if 'library_short_name' in kwargs:
@@ -4105,82 +4032,23 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         if not self.reagent_resource:
             self.reagent_resource = ReagentResource()
         return self.reagent_resource
-    
-    def prepend_urls(self):
 
-        return [
-            # override the parent "base_urls" so that we don't need to worry about schema again
-            url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('get_schema'), name="api_get_schema"),
-                
-#             url((r"^(?P<resource_name>%s)"
-#                  r"/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))/schema%s$") 
-#                     % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('get_schema'), name="api_get_schema"),
 
-            # TODO: rework the "((?=(schema))__|(?!(schema))[^/]+)" to "[\w\d_.\-\+: ]+" used below
-            # or even "[\/]+"
-            url(r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            
-            url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
-                 r"/copy%s$" ) % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_librarycopyview'), 
-                name="api_dispatch_librarycopyview"),
-            
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
-                 r"/librarycopies%s$" ) % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_librarycopiesview'), 
-                name="api_dispatch_librarycopiesview"),
-            
-            url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
-                 r"/plate%s$" ) % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_libraryplateview'), 
-                name="api_dispatch_libraryplateview"),
-            
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
-                 r"/librarycopyplates%s$" ) % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_librarycopyplatesview'), 
-                name="api_dispatch_librarycopyplatesview"),
-            
-            url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
-                 r"/well%s$" ) % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_library_wellview'), 
-                name="api_dispatch_library_wellview"),
-            
-            url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
-                 r"/reagent%s$" ) % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_library_reagentview'), 
-                name="api_dispatch_library_reagentview"),
-            
-#             url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
-#                  r"/reagent2%s$" ) % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('dispatch_library_reagentview2'), 
-#                 name="api_dispatch_library_reagentview2"),
-            
-            url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
-                 r"/reagent/schema%s$") 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('get_reagent_schema'), name="api_get_reagent_schema"),
-            
-            url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
-                 r"/well/schema%s$") 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('get_well_schema'), name="api_get_well_schema"),
-                
-            url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
-                 r"/copy/(?P<copy_name>[^/]+)"
-                 r"/plate%s$") % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_librarycopyplateview'), 
-                name="api_dispatch_library_copy_plateview"),
+    def get_detail(self, request, **kwargs):
+        # TODO: this is a strategy for refactoring get_detail to use get_list:
+        # follow this with wells/
+        logger.info(str(('get_detail', kwargs)))
 
-            url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
-                 r"/version%s$" ) % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_libraryversionview'), 
-                name="api_dispatch_libraryversionview"),
-        ]    
+        library_short_name = kwargs.pop('short_name', None)
+        if not library_short_name:
+            logger.info(str(('no library_short_name provided')))
+            raise NotImplementedError('must provide a short_name parameter')
+        else:
+            kwargs['short_name__eq'] = library_short_name
+        
+        kwargs['is_for_detail']=True
+        return self.get_list(request, **kwargs)
+        
     
     def get_list(self,request,**kwargs):
         ''' 
@@ -4189,6 +4057,15 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         '''
         
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        is_for_detail = kwargs.pop('is_for_detail', False)
+        #         default_response_options = {
+        #             'is_for_detail': False,
+        #             'downloadID': None
+        #         }
+        #         options = {}
+        #         for key, val in default_response_options.items():
+        #             options[key] = kwargs.get(key, val )
 
         filename = '%s' % (self._meta.resource_name )
         logger.info(str(('get_list', filename, kwargs)))
@@ -4206,7 +4083,8 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, request, **kwargs)
                 
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes)
+                schema['fields'], filter_fields, manual_field_includes, 
+                is_for_detail=is_for_detail)
              
             order_params = request.GET.getlist('order_by')
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
@@ -4247,11 +4125,17 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
             # general setup
              
             (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
- 
+            
+            title_function = None
+            if request.GET.get('use_titles', False):
+                title_function = lambda key: field_hash[key]['title']
+            
             return self.stream_response_from_cursor(
                 request, stmt, count_stmt, filename, 
                 field_hash=field_hash, 
-                rowproxy_generator=rowproxy_generator  )
+                is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function  )
              
         except Exception, e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -4261,6 +4145,101 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e  
 
+    def prepend_urls(self):
+
+        return [
+            # override the parent "base_urls" so that we don't need to worry about schema again
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+                
+#             url((r"^(?P<resource_name>%s)"
+#                  r"/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))/schema%s$") 
+#                     % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('get_schema'), name="api_get_schema"),
+
+            # TODO: rework the "((?=(schema))__|(?!(schema))[^/]+)" to "[\w\d_.\-\+: ]+" used below
+            # or even "[\/]+"
+            url(r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/copy/(?P<copy_name>[^/]+)"
+                 r"/plate/(?P<plate_number>[^/]+)%s$") % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_library_copyplateview'), 
+                name="api_dispatch_library_copyplateview"),
+
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/copy/(?P<copy_name>[^/]+)"
+                 r"/plate%s$") % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_library_copyplateview'), 
+                name="api_dispatch_library_copyplateview"),
+
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/copy/(?P<copy_name>[^/]+)%s$") % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_library_copyview'), 
+                name="api_dispatch_library_copyview"),
+
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/copy%s$" ) % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_library_copyview'), 
+#                 self.wrap_view('dispatch_librarycopyview'), 
+                name="api_dispatch_library_copyview"),
+
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/plate%s$" ) % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_library_copyplateview'), 
+                name="api_dispatch_library_copyplateview"),
+            
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/plate/(?P<plate_number>[^/]+)%s$" ) % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_library_copyplateview'), 
+                name="api_dispatch_library_copyplateview"),
+            
+# TODO: migrate to "library/<name>/copy/<name>/plate/<name>            
+#             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+#                  r"/librarycopies%s$" ) % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('dispatch_librarycopiesview'), 
+#                 name="api_dispatch_librarycopiesview"),
+            
+# TODO: migrate to "library/<name>/copy/<name>/plate/<name>            
+#             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+#                  r"/librarycopyplates%s$" ) % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('dispatch_librarycopyplatesview'), 
+#                 name="api_dispatch_librarycopyplatesview"),
+            
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/well%s$" ) % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_library_wellview'), 
+                name="api_dispatch_library_wellview"),
+            
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/reagent%s$" ) % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_library_reagentview'), 
+                name="api_dispatch_library_reagentview"),
+            
+#             url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
+#                  r"/reagent2%s$" ) % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('dispatch_library_reagentview2'), 
+#                 name="api_dispatch_library_reagentview2"),
+            
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/reagent/schema%s$") 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_reagent_schema'), name="api_get_reagent_schema"),
+            
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/well/schema%s$") 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_well_schema'), name="api_get_well_schema"),
+                
+            url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
+                 r"/version%s$" ) % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_libraryversionview'), 
+                name="api_dispatch_libraryversionview"),
+        ]    
+    
     def get_well_schema(self, request, **kwargs):
         if not 'short_name' in kwargs:
             raise Http404(unicode((
@@ -4277,22 +4256,33 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         kwargs['library_short_name'] = kwargs.pop('short_name')
         return self.get_reagent_resource().get_schema(request, **kwargs)    
   
-    def dispatch_librarycopyview(self, request, **kwargs):
+    def dispatch_librarycopyview_old(self, request, **kwargs):
         kwargs['library_short_name'] = kwargs.pop('short_name')
         return LibraryCopyResource().dispatch('list', request, **kwargs)    
+ 
+    def dispatch_library_copyview(self, request, **kwargs):
+        kwargs['library_short_name'] = kwargs.pop('short_name')
+        return LibraryCopiesResource().dispatch('list', request, **kwargs)    
  
     def dispatch_librarycopiesview(self, request, **kwargs):
         logger.info(str(('short_name',kwargs['short_name'])))
         kwargs['library_short_name'] = kwargs.pop('short_name')
         return LibraryCopiesResource().dispatch('list', request, **kwargs)    
  
-    def dispatch_libraryplateview(self, request, **kwargs):
-        kwargs['library_short_name'] = kwargs.pop('short_name')
-        return LibraryCopyPlateResource().dispatch('list', request, **kwargs)   
+#     def dispatch_libraryplateview(self, request, **kwargs):
+#         kwargs['library_short_name'] = kwargs.pop('short_name')
+#         return LibraryCopyPlateResource().dispatch('list', request, **kwargs)   
     
-    def dispatch_librarycopyplatesview(self, request, **kwargs): 
+#     def dispatch_librarycopyplatesview(self, request, **kwargs): 
+#         kwargs['library_short_name'] = kwargs.pop('short_name')
+#         return LibraryCopyPlatesResource().dispatch('list', request, **kwargs)   
+
+    def dispatch_library_copyplateview(self, request, **kwargs):
+        logger.info(str(('dispatch_library_copyplateview', kwargs)))
         kwargs['library_short_name'] = kwargs.pop('short_name')
         return LibraryCopyPlatesResource().dispatch('list', request, **kwargs)   
+#         return LibraryCopyPlateResource().dispatch('list', request, **kwargs)    
+        
 
     def dispatch_library_wellview(self, request, **kwargs):
         kwargs['library_short_name'] = kwargs.pop('short_name')
@@ -4308,10 +4298,6 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
 #         kwargs['library_short_name'] = kwargs.pop('short_name')
 #         return ReagentResource2().dispatch('list', request, **kwargs)    
                     
-    def dispatch_library_copyplateview(self, request, **kwargs):
-        kwargs['library_short_name'] = kwargs.pop('short_name')
-        return LibraryCopyPlateResource().dispatch('list', request, **kwargs)    
-        
     def dispatch_libraryversionview(self, request, **kwargs):
         kwargs['library_short_name'] = kwargs.pop('short_name')
         return LibraryContentsVersionResource().dispatch('list', request, **kwargs)    

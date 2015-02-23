@@ -175,6 +175,111 @@ class SuperUserAuthorization(ReadOnlyAuthorization):
         raise Unauthorized("Only superuser may update.")
 
 
+
+class IccblBaseResource(Resource):
+#  class StreamingResource(Resource):
+    """
+    Override tastypie.resources.Resource to replace check:
+     if not isinstance(response, HttpResponse):
+        return http.HttpNoContent()
+    with:
+     if not isinstance(response, HttpResponseBase):
+        return http.HttpNoContent()
+    -- this allows for use of the StreamingHttpResponse or the HttpResponse
+    """
+
+    content_types = {
+                     'xls': 'application/xls',
+                     'csv': 'text/csv',
+                     'sdf': 'chemical/x-mdl-sdfile',
+                     'json': 'application/json',
+                     }
+    
+
+    def get_format(self, request):
+        '''
+        Return mime-type "format" set on the request, or
+        use mimeparse.best_match:
+        "Return the mime-type with the highest quality ('q') from list of candidates."
+        - uses Resource.content_types
+        '''
+        format = request.GET.get('format', None)
+        logger.info(str(('format', format)))
+        if format:
+            if format in self.content_types:
+                format = self.content_types[format]
+                logger.info(str(('format', format)))
+            else:
+                logger.error(str(('unknown format', desired_format)))
+                raise ImmediateHttpResponse("unknown format: %s" % desired_format)
+        else:
+            # Try to fallback on the Accepts header.
+            if request.META.get('HTTP_ACCEPT', '*/*') != '*/*':
+                try:
+                    import mimeparse
+                    format = mimeparse.best_match(
+                        self.content_types.values(), request.META['HTTP_ACCEPT'])
+                    logger.info(str(('format', format, request.META['HTTP_ACCEPT'])))
+                except ValueError:
+                    logger.error(str(('Invalid Accept header')))
+                    raise ImmediateHttpResponse('Invalid Accept header')
+        return format
+  
+
+    def dispatch(self, request_type, request, **kwargs):
+        """
+        Override tastypie.resources.Resource to replace check:
+         if not isinstance(response, HttpResponse):
+            return http.HttpNoContent()
+        with:
+         if not isinstance(response, HttpResponseBase):
+            return http.HttpNoContent()
+        -- this allows for use of the StreamingHttpResponse or the HttpResponse
+        
+        Other modifications:
+        - use of the "downloadID" cookie
+        """
+        allowed_methods = getattr(self._meta, "%s_allowed_methods" % request_type, None)
+
+        if 'HTTP_X_HTTP_METHOD_OVERRIDE' in request.META:
+            request.method = request.META['HTTP_X_HTTP_METHOD_OVERRIDE']
+
+        request_method = self.method_check(request, allowed=allowed_methods)
+        method = getattr(self, "%s_%s" % (request_method, request_type), None)
+
+        if method is None:
+            raise ImmediateHttpResponse(response=http.HttpNotImplemented())
+
+        self.is_authenticated(request)
+        self.throttle_check(request)
+
+        # All clear. Process the request.
+        tastypie.resources.convert_post_to_put(request)
+        response = method(request, **kwargs)
+
+        # Add the throttled request.
+        self.log_throttled_access(request)
+
+        # If what comes back isn't a ``HttpResponse``, assume that the
+        # request was accepted and that some action occurred. This also
+        # prevents Django from freaking out.
+        if not isinstance(response, HttpResponseBase):
+            return tastypie.http.HttpNoContent()
+
+        
+        ### Custom iccbl-lims parameter: set cookie to tell browser javascript
+        ### UI that the download request is finished
+        downloadID = request.GET.get('downloadID', None)
+        if downloadID:
+            logger.info(str(('set cookie','downloadID', downloadID )))
+            response.set_cookie('downloadID', downloadID)
+        else:
+            logger.info(str(('no downloadID', request.GET )))
+
+        return response
+
+
+
 # TODO: this class should be constructed as a Mixin, not inheritor of ModelResource
 class PostgresSortingResource(ModelResource):
 
@@ -488,7 +593,7 @@ def log_patch_list(patch_list_func):
     return _inner
 
 
-class LoggingMixin(Resource):
+class LoggingMixin(IccblBaseResource):
     '''
     Intercepts obj_create, obj_update and creates an ApiLog entry for the action
     
@@ -603,99 +708,10 @@ class LoggingMixin(Resource):
 # #         self.listlog = None
 #     
 #         return response        
-
-class StreamingResource(Resource):
-    """
-    Override tastypie.resources.Resource to replace check:
-     if not isinstance(response, HttpResponse):
-        return http.HttpNoContent()
-    with:
-     if not isinstance(response, HttpResponseBase):
-        return http.HttpNoContent()
-    -- this allows for use of the StreamingHttpResponse or the HttpResponse
-    """
-
-    content_types = {
-                     'xls': 'application/xls',
-                     'csv': 'text/csv',
-                     'sdf': 'chemical/x-mdl-sdfile',
-                     'json': 'application/json',
-                     }
-    
-
-    def get_format(self, request):
-        '''
-        Return mime-type "format" set on the request, or
-        use mimeparse.best_match:
-        "Return the mime-type with the highest quality ('q') from list of candidates."
-        - uses Resource.content_types
-        '''
-        format = request.GET.get('format', None)
-        logger.info(str(('format', format)))
-        if format:
-            if format in self.content_types:
-                format = self.content_types[format]
-                logger.info(str(('format', format)))
-            else:
-                logger.error(str(('unknown format', desired_format)))
-                raise ImmediateHttpResponse("unknown format: %s" % desired_format)
-        else:
-            # Try to fallback on the Accepts header.
-            if request.META.get('HTTP_ACCEPT', '*/*') != '*/*':
-                try:
-                    import mimeparse
-                    format = mimeparse.best_match(
-                        self.content_types.values(), request.META['HTTP_ACCEPT'])
-                    logger.info(str(('format', format, request.META['HTTP_ACCEPT'])))
-                except ValueError:
-                    logger.error(str(('Invalid Accept header')))
-                    raise ImmediateHttpResponse('Invalid Accept header')
-        return format
-            
-
-    def dispatch(self, request_type, request, **kwargs):
-        """
-        Override tastypie.resources.Resource to replace check:
-         if not isinstance(response, HttpResponse):
-            return http.HttpNoContent()
-        with:
-         if not isinstance(response, HttpResponseBase):
-            return http.HttpNoContent()
-        -- this allows for use of the StreamingHttpResponse or the HttpResponse
-        """
-        allowed_methods = getattr(self._meta, "%s_allowed_methods" % request_type, None)
-
-        if 'HTTP_X_HTTP_METHOD_OVERRIDE' in request.META:
-            request.method = request.META['HTTP_X_HTTP_METHOD_OVERRIDE']
-
-        request_method = self.method_check(request, allowed=allowed_methods)
-        method = getattr(self, "%s_%s" % (request_method, request_type), None)
-
-        if method is None:
-            raise ImmediateHttpResponse(response=http.HttpNotImplemented())
-
-        self.is_authenticated(request)
-        self.throttle_check(request)
-
-        # All clear. Process the request.
-        tastypie.resources.convert_post_to_put(request)
-        response = method(request, **kwargs)
-
-        # Add the throttled request.
-        self.log_throttled_access(request)
-
-        # If what comes back isn't a ``HttpResponse``, assume that the
-        # request was accepted and that some action occurred. This also
-        # prevents Django from freaking out.
-        if not isinstance(response, HttpResponseBase):
-            return http.HttpNoContent()
-
-        return response
-
     
 from reports.utils.profile_decorator import profile
 
-class UnlimitedDownloadResource(Resource):
+class UnlimitedDownloadResource(IccblBaseResource):
     ''' 
     Resource that will stream the entire endpoint (with params):
     - instead of paginating it
@@ -1026,7 +1042,19 @@ class ManagedResource(LoggingMixin):
         else:
             return data 
 
+#     def _get_resource_resource(self):
+#         if not self.resource_resource:
+#             self.resource_resource = ResourceResource()
+#         return self.resource_resource
+
     def _get_resource_def(self):
+        # TODO: delegate this to the ResourceResource
+        #         res = self._get_resource_resource()
+        #         r = res.obj_get(scope='resource', key=self._meta.resource_name)
+        #         r_bundle = res.build_bundle(obj=r, request=request)
+        #         r_bundle = res.full_dehydrate(r_bundle)
+        #         logger.info(str(('r_bundle.data', r_bundle.data)))
+        #         return r_bundle.data
         resource_def = MetaHash.objects.get(
             scope='resource', key=self._meta.resource_name)
         _def = resource_def.model_to_dict(scope='fields.resource')
@@ -1821,6 +1849,14 @@ class VocabulariesResource(ManagedModelResource):
             'label': 'Vocabulary', 'searchColumn': 'scope', 'options': temp }
         return schema
     
+    def dehydrate(self, bundle):
+        # add in a convenience element for viewing
+        bundle = super(VocabulariesResource,self).dehydrate(bundle)
+        bundle.data['1'] = bundle.data['scope']
+        bundle.data['2'] = bundle.data['key']
+        return bundle
+    
+    
     @staticmethod
     def get_vocabularies_by_scope(scope):
         ''' Utility method
@@ -1843,6 +1879,8 @@ class VocabulariesResource(ManagedModelResource):
                     request_bundle.obj = obj
                     request_bundle.data = {}
                     vocabulary_instance = res.full_dehydrate(request_bundle).data
+                    ## add in a convenience key
+                    vocabulary_instance['1key'] = vocabulary_instance['key']
                     _scope = vocabulary_instance['scope']
                     if _scope not in vocabularies:
                          vocabularies[_scope] = {}
@@ -1923,6 +1961,14 @@ class ResourceResource(ManagedModelResource):
 #             else:
 #                 logger.info('resource_definition is not available')
             bundle.data['schema'] = schema;
+            
+            # TODO: duplicate of logic in _get_resource_def
+            _temp = set(bundle.data['content_types'] or [])
+            _temp.add('json')
+            _temp.add('csv')
+            bundle.data['content_types'] = list(_temp)
+            
+            
         else:
             logger.error('no API resource found in the registry for ' + 
                          'fields.'+bundle.obj.key + 

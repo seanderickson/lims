@@ -73,4 +73,20 @@ update plate set status = 'not_created' where status='Not created';
 update plate set status = 'not_specified' where status='Not specified';
 update plate set status = 'retired' where status='Retired';
 
+
+/**
+        usage_type         
+---------------------------
+ Cherry Pick Source Plates
+ Library Screening Plates
+ Stock Plates
+ 96 Stock Plates
+**/
+
+update copy set usage_type = 'cherry_pick_source_plates' where usage_type = 'Cherry Pick Source Plates';
+update copy set usage_type = 'library_screening_plates' where usage_type = 'Library Screening Plates';
+update copy set usage_type = 'stock_plates' where usage_type = 'Stock Plates';
+update copy set usage_type = '96_stock_plates' where usage_type = '96 Stock Plates';
+
+
 COMMIT;

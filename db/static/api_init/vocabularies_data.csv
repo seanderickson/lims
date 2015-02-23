@@ -86,3 +86,7 @@ not_available,plate.status,vocabularies/plate.status/not_available/,6,,"Not avai
 not_created,plate.status,vocabularies/plate.status/not_created/,7,,"Not created","Not created"
 not_specified,plate.status,vocabularies/plate.status/not_specified/,8,,"Not specified","Not specified"
 retired,plate.status,vocabularies/plate.status/retired/,9,,Retired,Retired
+stock_plates,copy.usage_type,vocabularies/copy.usage_type/stock_plates/,1,,"Stock Plates","Stock Plates"
+library_screening_plates,copy.usage_type,vocabularies/copy.usage_type/library_screening_plates/,2,,"Library Screening Plates","Library Screening Plates"
+96_stock_plates,copy.usage_type,vocabularies/copy.usage_type/96_stock_plates/,3,,"96 Stock Plates","96 Stock Plates"
+cherry_pick_source_plates,copy.usage_type,vocabularies/copy.usage_type/cherry_pick_source_plates/,4,,"Cherry Pick Source Plates","Cherry Pick Source Plates"

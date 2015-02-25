@@ -24,8 +24,8 @@ import six
 
 logger = logging.getLogger(__name__)
 
-LIST_DELIMITER_CSV = ','
-LIST_DELIMITER_XLS = ';' # for legacy reasons, for now
+LIST_DELIMITER_CSV = ';'
+LIST_DELIMITER_XLS = ';' 
 
 class CsvBooleanField(fields.ApiField):
     """
@@ -257,9 +257,14 @@ class SDFSerializer(Serializer):
 # 
 #         logger.info(str(('content', content)))
 
-def csv_convert(val, delimiter=LIST_DELIMITER_CSV):
+def csv_convert(val, delimiter=LIST_DELIMITER_CSV, list_brackets='[]'):
     if isinstance(val, (list,tuple)):
-        return '[' + delimiter.join([smart_str(x) for x in val]) + ']' 
+        if list_brackets:
+            return ( list_brackets[0] 
+                + delimiter.join([smart_str(x) for x in val]) 
+                + list_brackets[1] )
+        else: 
+            return delimiter.join([smart_str(x) for x in val]) 
     elif val != None:
         if type(val) == bool:
             if val:
@@ -440,9 +445,6 @@ class CSVSerializer(Serializer):
             # but also, it could be just one item being returned
             logger.error(str(('non-standard data', data)))
             raise Exception(str(('non-standard data', data)))
-#             keys = data.keys()
-#             writer.writerow([smart_str(key) for key in keys])
-#             writer.writerow(self.get_list(data))
         else:    
             # default 
             i = 0
@@ -452,46 +454,46 @@ class CSVSerializer(Serializer):
                     keys = item.keys()
                     writer.writerow([smart_str(key) for key in keys])
                 i += 1
-                writer.writerow(self.get_list(item))
+                writer.writerow([csv_convert(val) for val in item.values()])
 
         return raw_data.getvalue()
 
-    def to_csv_stream(self, query, options=None, outputstream=None):
-        '''
-        @param root ignored for csv!
-        
-        '''
-        
-        options = options or {}
-        data = self.to_simple(data, options)
-        
-        # default: delimiter = ',' quotechar='"'
-        writer = csv.writer(raw_data) 
+#     def to_csv_stream(self, query, options=None, outputstream=None):
+#         '''
+#         @param root ignored for csv!
+#         
+#         '''
+#         
+#         options = options or {}
+#         data = self.to_simple(data, options)
+#         
+#         # default: delimiter = ',' quotechar='"'
+#         writer = csv.writer(raw_data) 
+# 
+#         if 'error' in data:
+#             writer.writerow(['error'])
+#             writer.writerow([data['error']])
+#             logger.warn(str(('error', data)))
+#             return raw_data.getvalue()
+#             
+#         i = 0
+#         keys = None
+#         for item in query:
+#             if i == 0:
+#                 keys = item.keys()
+#                 writer.writerow([smart_str(key) for key in keys])
+#             i += 1
+#             writer.writerow(self.get_list(item))
 
-        if 'error' in data:
-            writer.writerow(['error'])
-            writer.writerow([data['error']])
-            logger.warn(str(('error', data)))
-            return raw_data.getvalue()
-            
-        i = 0
-        keys = None
-        for item in query:
-            if i == 0:
-                keys = item.keys()
-                writer.writerow([smart_str(key) for key in keys])
-            i += 1
-            writer.writerow(self.get_list(item))
-
-        
-    def get_list(self,item):
-        '''
-        Convert a csv row into a list of values
-        '''
-        _list = []
-        for key in item:
-            _list.append(csv_convert(item[key]))
-        return _list
+#         
+#     def get_list(self,item):
+#         '''
+#         Convert a csv row into a list of values
+#         '''
+#         _list = []
+#         for key in item:
+#             _list.append(csv_convert(item[key]))
+#         return _list
     
     def from_csv(self, content, root='objects'):
         '''
@@ -505,7 +507,8 @@ class CSVSerializer(Serializer):
 
         TODO: version 2 - read from a stream
         '''
-        objects = reports.utils.serialize.from_csv(StringIO.StringIO(content))
+        objects = reports.utils.serialize.from_csv(
+            StringIO.StringIO(content),list_delimiter=LIST_DELIMITER_CSV)
         if root:
             return { root: objects }
         else:
@@ -554,7 +557,6 @@ class CSVSerializer(Serializer):
 #             return data_result
 
 
-
 class CursorSerializer(Serializer):
     """
     A simple serializer that takes a cursor, queries it for its columns, and
@@ -601,7 +603,7 @@ class CursorSerializer(Serializer):
                     if not wrote_to_csv:
                         # NOTE, using "ensure_ascii" = True to force encoding of all 
                         # chars to the ascii charset; otherwise, cStringIO has problems
-                        writer.writewrow([key,json.dumps(
+                        writer.writewrow([key,json.dumps( 
                             value,skipkeys=False,check_circular=True,ensure_ascii=True, 
                             allow_nan=True, default=lambda x: str(x), encoding="utf-8")] )
                     else:

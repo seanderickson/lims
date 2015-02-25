@@ -1379,7 +1379,7 @@ class ManagedResource(LoggingMixin):
             msg = str((e));
             if hasattr(e, 'response'): 
                 msg = str(e.response)
-            logger.warn(str(('==ex on get',bundle.request.path,e, msg )))
+            logger.warn(str(('==ex on get',bundle.request.path,e, msg, kwargs)))
             raise e
 #             extype, ex, tb = sys.exc_info()
 #             logger.warn(str((

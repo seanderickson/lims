@@ -23,6 +23,9 @@ PYTHONPATH=. python reports/utils/profile_decorator.py /tmp/unlimited_get_list-2
 # run all tests
 ./manage.py test db.tests.LibraryResource --verbosity=2 --settings=lims.settings_testing
 
+# run tests without the test db
+./manage.py test reports.SDFSerializerTest.test2_clean_data_sdf --settings=lims.settings_testing_nodb
+
 # upload single meta data files
 # TODO: patching is not working ---
 curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/metahash/ --data-binary @db/static/api_init/metahash_fields_library.csv 

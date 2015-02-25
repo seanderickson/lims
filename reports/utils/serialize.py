@@ -4,17 +4,21 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def from_csv(csvfile):
+def from_csv(csvfile, list_delimiter=';', list_keys=None):
     '''
+    @param list_keys overrides nested list eval for column keys; no brackets '[]' are 
+        needed to denote these columns as list columns - however, to comply with 
+        the csv standard, they still have to be quoted (if list_delimiter=csv_delimiter)
     NOTES: 
     - nested lists are denoted by brackets, i.e. '[]',
     - to escape use '\[...' (i.e. when embedding a regex expression)
     TODO: version 2 - read from a stream
     '''
     reader = csv.reader(csvfile)
-    return from_csv_iterate(reader)
+    return from_csv_iterate(reader, list_delimiter=list_delimiter, list_keys=list_keys)
     
-def from_csv_iterate(iterable, list_delimiter=',', list_keys=[]):
+def from_csv_iterate(iterable, list_delimiter=';', list_keys=None):
+    list_keys = list_keys or []
     data_result = []
     i = 0
     keys = []

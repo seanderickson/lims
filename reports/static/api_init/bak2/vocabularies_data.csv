@@ -3,9 +3,6 @@ list,field.visibility,/reports/api/v1/vocabularies/field.visibility/list/,1,,"Al
 edit,field.visibility,/reports/api/v1/vocabularies/field.visibility/edit/,2,,"Allow visibility in the edit form","Visible in edit forms"
 detail,field.visibility,/reports/api/v1/vocabularies/field.visibility/detail/,3,,"Allow visibility in detail views","Visible in detail views"
 create,field.visibility,/reports/api/v1/vocabularies/field.visibility/create/,4,,"Allow visibility in the edit form when creating.","Visible when creating"
-list,resource.visibility,/reports/api/v1/vocabularies/resource.visibility/list/,1,,"Allow visibility in list views","Visible in list views"
-detail,resource.visibility,/reports/api/v1/vocabularies/resource.visibility/detail/,3,,"Allow visibility in detail views","Visible in detail views"
-create,resource.visibility,/reports/api/v1/vocabularies/resource.visibility/create/,4,,"Allow visibility in the edit form when creating.","Visible when creating"
 float,field.data_type,/reports/api/v1/vocabularies/field.visibility/field.data_type/,1,,"Float field type",Float
 Select,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/choice/,0,"The field referred to by this record is a single choice vocabulary term","Single choice field",Select
 Radio,field.ui_type,/reports/api/v1/vocabularies/field.ui_type/Radio/,0,,"Radio selector",Radio

@@ -1,8 +1,8 @@
 key,scope,resource_uri,ordinal,comment,ui_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,backgrid_cell_type,backgrid_cell_options,is_restricted,nested_resource
-plate_number,fields.librarycopyplate,/reports/api/v1/metahash/fields.librarycopyplate/plate_number/,0,,integer,TRUE,"Plate number",Plate,TRUE,,,"[list,detail]",,Iccbl.EditCell,,,
-copy_name,fields.librarycopyplate,/reports/api/v1/metahash/fields.librarycopyplate/copy_name/,1,,string,TRUE,"Copy name",Copy,TRUE,,,"[list,detail]",,,,,
-status,fields.librarycopyplate,/reports/api/v1/metahash/fields.librarycopyplate/status/,2,,Select,TRUE,"The plate status",Status,TRUE,,plate.status,"[list,detail]",,,,,
-status_date,fields.librarycopyplate,/reports/api/v1/metahash/fields.librarycopyplate/status_date/,3,,date,TRUE,"The date on which the status took effect","Status date",TRUE,,,"[list,detail]",,,,,
-plate_type,fields.librarycopyplate,/reports/api/v1/metahash/fields.librarycopyplate/plate_type/,4,,string,TRUE,"The plate type","Plate Type",TRUE,,,"[list,detail]",,,,,
-library_short_name,fields.librarycopyplate,/reports/api/v1/metahash/fields.librarycopyplate/library_short_name/,4,,string,TRUE,"The library short name",Library,TRUE,,,"[list,detail]",,,,,
-plate_location,fields.librarycopyplate,/reports/api/v1/metahash/fields.librarycopyplate/plate_location/,5,,nested,FALSE,"Plate location","Plate Location",FALSE,,,"[list,detail]",,,,,platelocation
+plate_number,fields.librarycopyplate,/reports/api/v1/metahash/fields.librarycopyplate/plate_number/,0,,integer,TRUE,"Plate number",Plate,TRUE,,,"[list;detail]",,Iccbl.EditCell,,,
+copy_name,fields.librarycopyplate,/reports/api/v1/metahash/fields.librarycopyplate/copy_name/,1,,string,TRUE,"Copy name",Copy,TRUE,,,"[list;detail]",,,,,
+status,fields.librarycopyplate,/reports/api/v1/metahash/fields.librarycopyplate/status/,2,,Select,TRUE,"The plate status",Status,TRUE,,plate.status,"[list;detail]",,,,,
+status_date,fields.librarycopyplate,/reports/api/v1/metahash/fields.librarycopyplate/status_date/,3,,date,TRUE,"The date on which the status took effect","Status date",TRUE,,,"[list;detail]",,,,,
+plate_type,fields.librarycopyplate,/reports/api/v1/metahash/fields.librarycopyplate/plate_type/,4,,string,TRUE,"The plate type","Plate Type",TRUE,,,"[list;detail]",,,,,
+library_short_name,fields.librarycopyplate,/reports/api/v1/metahash/fields.librarycopyplate/library_short_name/,4,,string,TRUE,"The library short name",Library,TRUE,,,"[list;detail]",,,,,
+plate_location,fields.librarycopyplate,/reports/api/v1/metahash/fields.librarycopyplate/plate_location/,5,,nested,FALSE,"Plate location","Plate Location",FALSE,,,"[list;detail]",,,,,platelocation

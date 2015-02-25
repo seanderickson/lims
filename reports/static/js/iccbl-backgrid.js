@@ -571,6 +571,7 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
   });
 
 
+  // TODO: redo the link cell like the UriListCell
   var LinkCell = Iccbl.LinkCell = Backgrid.Cell.extend({
       className : "link-cell",
       events : {
@@ -632,8 +633,8 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
       var rawValue = this.model.get(this.column.get("name"));
       
       
-      console.log('urilist, raw value: ' + rawValue 
-          + ', hrefTemplate: ' + this.hrefTemplate);
+//      if(Iccbl.appModel.DEBUG)  console.log('urilist, raw value: ' + rawValue 
+//            + ', hrefTemplate: ' + this.hrefTemplate);
       
       if(rawValue && !_.isEmpty(rawValue)){
         var i = 0;
@@ -641,10 +642,12 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
           var interpolatedVal = self.hrefTemplate.replace(/{([^}]+)}/g, 
               function (match) 
               {
-                match = match.replace(/[{}]/g,'');
-                return val;
+                match = match.replace(/[{}]/g,''); // remove the special chars
+                // replace all strings that match model attributes;
+                // any other matches will be replaced with the val
+                return !_.isUndefined(self.model.get(match)) ? self.model.get(match) : val;                
               });
-          if(Iccbl.appModel.DEBUG) console.log('val:' + val + ', ' + interpolatedVal);
+//          if(Iccbl.appModel.DEBUG) console.log('val:' + val + ', ' + interpolatedVal);
           if(i>0) self.$el.append(',');
           self.$el.append($('<a>', {
             tabIndex : -1,
@@ -660,10 +663,6 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
       return this;
     },
 
-//    toLink : function(e) {
-//        e.preventDefault();
-//        this.model.collection.trigger("MyCollection:link", this.model, this.column.get("name"));
-//    },
 }); 
   
   var ImageCell = Iccbl.ImageCell = Backgrid.Cell.extend({

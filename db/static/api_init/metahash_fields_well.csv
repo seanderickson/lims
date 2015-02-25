@@ -1,9 +1,9 @@
 key,scope,table,field,resource_uri,ordinal,comment,ui_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,backgrid_cell_type,backgrid_cell_options,is_restricted,nested_resource,default,required,min,max,regex,validation_message
 well_id,fields.well,,,/reports/api/v1/metahash/fields.well/well_id/,0,,string,TRUE,"Well ID [plate number]:[well_name]","Well ID",TRUE,,,[detail],,Iccbl.LinkCell,library/{library_short_name}/well/{well_id},,,,TRUE,,,,
-plate_number,fields.well,,,/reports/api/v1/metahash/fields.well/plate_number/,1,,integer,TRUE,"Plate number",Plate,TRUE,,,"[list,detail]",,Iccbl.LinkCell,library/{library_short_name}/plate/{plate_number}/rpp/50,,,,TRUE,,,,
-library_short_name,fields.well,library,short_name,/reports/api/v1/metahash/fields.well/library_short_name/,3,,string,TRUE,"Library short name",Library,TRUE,,,"[list,detail]",,Iccbl.LinkCell,library/{library_short_name},,,,TRUE,,,,
-library_well_type,fields.well,,,/reports/api/v1/metahash/fields.well/library_well_type/,4,,Select,TRUE,"Library well type","Library Well Type",TRUE,,library.well_type,"[list,detail]",,,,,,,TRUE,,,,
-well_name,fields.well,,,/reports/api/v1/metahash/fields.well/well_name/,2,,string,TRUE,"Well name [row-letter][column number]","Well Name",TRUE,,,"[list,detail]",,Iccbl.LinkCell,library/{library_short_name}/well/{well_id},,,,,,,,
+plate_number,fields.well,,,/reports/api/v1/metahash/fields.well/plate_number/,1,,integer,TRUE,"Plate number",Plate,TRUE,,,"[list;detail]",,Iccbl.LinkCell,library/{library_short_name}/plate/{plate_number}/rpp/50,,,,TRUE,,,,
+library_short_name,fields.well,library,short_name,/reports/api/v1/metahash/fields.well/library_short_name/,3,,string,TRUE,"Library short name",Library,TRUE,,,"[list;detail]",,Iccbl.LinkCell,library/{library_short_name},,,,TRUE,,,,
+library_well_type,fields.well,,,/reports/api/v1/metahash/fields.well/library_well_type/,4,,Select,TRUE,"Library well type","Library Well Type",TRUE,,library.well_type,"[list;detail]",,,,,,,TRUE,,,,
+well_name,fields.well,,,/reports/api/v1/metahash/fields.well/well_name/,2,,string,TRUE,"Well name [row-letter][column number]","Well Name",TRUE,,,"[list;detail]",,Iccbl.LinkCell,library/{library_short_name}/well/{well_id},,,,,,,,
 library,fields.well,,library_id,/reports/api/v1/metahash/fields.well/library/,6,,uri,TRUE,Library,Library,FALSE,,,,,,,,,,,,,,
 facility_id,fields.well,,,/reports/api/v1/metahash/fields.well/facility_id/,30,,string,TRUE,"ID assigned by the local authority","Facility ID",TRUE,,,[detail],,,,,,,,,,,
 mg_ml_concentration,fields.well,,,/reports/api/v1/metahash/fields.well/mg_ml_concentration/,21,,float,TRUE,"Concentration in mg/ml","Concentration (mg/ml)",TRUE,,,[detail],,,,,,,,,,,

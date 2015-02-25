@@ -1,5 +1,5 @@
 key,scope,resource_uri,ordinal,json_field_type,comment,ui_type,filtering,description,title,ordering,vocabulary_scope_ref,visibility,alias,backgrid_cell_type,is_restricted
-key,fields.metahash,/reports/api/v1/metahash/fields.metahash/key/,0,,"This is a composite key, along with scope",string,TRUE,"The key field",Key,TRUE,,"[list;detail;edit]",,,
+key,fields.metahash,/reports/api/v1/metahash/fields.metahash/key/,0,,"This is a composite key, along with scope",string,TRUE,"The key field",Key,TRUE,,"list,detail,edit",,,
 scope,fields.metahash,/reports/api/v1/metahash/fields.metahash/scope/,1,,"This is a composite key, along with key",string,TRUE,"The scope field",Scope,TRUE,,"[list;detail;edit]",,,
 ordinal,fields.metahash,/reports/api/v1/metahash/fields.metahash/ordinal/,2,,"The sort order counts from 0, if two are equal in a set, then secondary sort is by key (alpha)",integer,TRUE,"The ordinal field determines sort order",Ordinal,TRUE,,"[list;detail;edit]",,,
 title,fields.metahash,/reports/api/v1/metahash/fields.metahash/title/,3,fields.CharField,"The title of this field",string,TRUE,"The title is the label that is displayed to the end user",Title,TRUE,,"[list;detail;edit]",,Iccbl.EditCell,

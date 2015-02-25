@@ -1,8 +1,8 @@
 key,scope,resource_uri,ordinal,comment,ui_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,backgrid_cell_type,backgrid_cell_options,is_restricted
 scope,fields.permission,/reports/api/v1/metahash/fields.permission/scope/,0,,string,TRUE,"Scope for the resource definition of this permission",Scope,TRUE,,,"[list;detail]",,,,
 key,fields.permission,/reports/api/v1/metahash/fields.permission/key/,1,,string,TRUE,"Key for the resource definition of this permission",Key,TRUE,,,"[list;detail]",,,,
-users,fields.permission,/reports/api/v1/metahash/fields.permission/users/,3,,uri_list,TRUE,"URIs for users assigned this permission",Users,TRUE,,,[detail],,,,
-usergroups,fields.permission,/reports/api/v1/metahash/fields.permission/usergroups/,4,,uri_list,TRUE,"URIs for groups that the permission is assigned to",UserGroups,TRUE,,,[detail],,,,
+users,fields.permission,/reports/api/v1/metahash/fields.permission/users/,3,,uri_list,FALSE,"URIs for users assigned this permission",Users,TRUE,,,[detail],,,,
+usergroups,fields.permission,/reports/api/v1/metahash/fields.permission/usergroups/,4,,uri_list,FALSE,"URIs for groups that the permission is assigned to",UserGroups,TRUE,,,[detail],,,,
 type,fields.permission,/reports/api/v1/metahash/fields.permission/type/,5,,Select,TRUE,"Type of permission",Type,TRUE,,permission.type,"[list;detail]",,,,
 ordinal,fields.permission,/reports/api/v1/metahash/fields.permission/ordinal/,6,,integer,TRUE,"dynamic sorting variable",Ordinal,TRUE,,,,,,,
 is_for_group,fields.permission,/reports/api/v1/metahash/fields.permission/is_for_group/,4,,boolean,TRUE,"Is the permission assigned to the group","Is For Group",TRUE,,,[detail],,,,

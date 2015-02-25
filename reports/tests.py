@@ -416,8 +416,8 @@ class SerializerTest(TestCase):
         directory = APP_ROOT_DIR
         serializer = CSVSerializer() 
         
-        input = [['one','two', 'three', 'four', 'five'],
-                ['uno', '2', 'true', 'false', '' ]]
+        input = [['one','two', 'three', 'four', 'five','six'],
+                ['uno', '2', 'true', 'false', '',['a','b','c']]]
         
         
         input_data = reports.utils.serialize.from_csv_iterate(input)
@@ -427,6 +427,7 @@ class SerializerTest(TestCase):
             self.assertTrue(obj['three']=='true')
             self.assertTrue(obj['four']=='false')
             self.assertTrue(obj['five']=='')
+            self.assertTrue(obj['six']==['a','b','c'])
         logger.debug(str(('input to object', input_data)))
         csv_data = serializer.to_csv(input_data, root=None)
         logger.debug(str(('back to csv', csv_data)))
@@ -443,6 +444,7 @@ class SerializerTest(TestCase):
                 self.assertTrue(obj['three']=='true')
                 self.assertTrue(obj['four']=='false')
                 self.assertTrue(obj['five']=='')
+                self.assertTrue(obj['six']==['a','b','c'])
         
         # TODO: delete the file
         logger.debug(str(('======== test_csv done =========')))
@@ -705,7 +707,8 @@ class XLSSerializerTest(SimpleTestCase):
         records = [{
             'key1': 'aval1',
             'key2': 'aval2',
-            'key3': 'aval3'            
+            'key3': 'aval3',
+            'key4': ['a','b','c']           
             },{
             'key1': 'bval1',
             'key2': 'bval2',
@@ -736,7 +739,7 @@ class XLSSerializerTest(SimpleTestCase):
                     if record['key1'] == obj['key1']:
                         for k,v in record.items():
                             self.assertTrue(
-                                obj[k] == v.strip(), 
+                                obj[k] == v, 
                                 str(('values not equal', k, record[k], 'read:', v)))
 
     def test2_clean_data(self):
@@ -780,7 +783,7 @@ class XLSSerializerTest(SimpleTestCase):
                 'vendor_genbank_accession_numbers': ['XM_375495'], 
                 },            
             ]
-        
+        # TODO: referencing a "db" subproject from the "reports" subproject
         filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_rnai.xls'
         with open(os.path.join(APP_ROOT_DIR, filename)) as fin:    
             _data = serializer.from_xls(fin.read(), root=None)

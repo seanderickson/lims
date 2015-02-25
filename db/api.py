@@ -76,10 +76,16 @@ import sqlalchemy
 logger = logging.getLogger(__name__)
 
 CSV_DELIMITER = ','
-LIST_DELIMITER_SQL_ARRAY = ','
+LIST_DELIMITER_SQL_ARRAY = ';'
 LIST_DELIMITER_URL_PARAM = ','
 MAX_ROWS_PER_XLS_FILE = 100000
 MAX_IMAGE_ROWS_PER_XLS_FILE = 2000
+
+HTTP_PARAM_USE_VOCAB = 'use_vocabularies'
+HTTP_PARAM_USE_TITLES = 'use_titles'
+HTTP_PARAM_RAW_LISTS = 'raw_lists'
+
+LIST_BRACKETS = '[]' # default char to surround nested list in xls, csv
 
 def _get_raw_time_string():
   return timezone.now().strftime("%Y%m%d%H%M%S")
@@ -1932,8 +1938,13 @@ class SqlAlchemyResource(IccblBaseResource):
                 "Invalid offset '%s' provided. Please provide a positive integer." % offset)
         if offset < 0:    
             offset = -offset
-        
         stmt = stmt.offset(offset)
+
+
+        list_brackets = LIST_BRACKETS
+        if request.GET.get(HTTP_PARAM_RAW_LISTS, False):
+            list_brackets = None
+
         conn = self.bridge.get_engine().connect()
         
         logger.info(str(('stmt', str(stmt))))
@@ -2016,8 +2027,9 @@ class SqlAlchemyResource(IccblBaseResource):
                             try:
                                 if row.has_key(key):
                                     value = row[key]
-                                if value and ( field.get('json_field_type') == 'fields.ListField' 
-                                     or field.get('linked_field_type') == 'fields.ListField' ):
+                                if value and ( field.get('json_field_type',None) == 'fields.ListField' 
+                                     or field.get('linked_field_type',None) == 'fields.ListField'
+                                     or field.get('ui_type', None) == 'list' ):
                                     # FIXME: need to do an escaped split
                                     if DEBUG_STREAMING: logger.info(str(('split', key, value)))
                                     value = value.split(LIST_DELIMITER_SQL_ARRAY)
@@ -2131,11 +2143,13 @@ class SqlAlchemyResource(IccblBaseResource):
                             if row.has_key(key):
                                 value = row[key]
                             
-                            if value and ( field.get('json_field_type') == 'fields.ListField' 
-                                 or field.get('linked_field_type') == 'fields.ListField' ):
+                            if value and ( field.get('json_field_type',None) == 'fields.ListField' 
+                                 or field.get('linked_field_type',None) == 'fields.ListField'
+                                 or field.get('ui_type', None) == 'list' ):
                                 value = value.split(LIST_DELIMITER_SQL_ARRAY)
                             worksheet.write(filerow, col, 
-                                csv_convert(value, delimiter=LIST_DELIMITER_XLS))
+                                csv_convert(value, delimiter=LIST_DELIMITER_XLS, 
+                                    list_brackets=list_brackets))
 
                             if field.get('value_template', None):
                                 value_template = field['value_template']
@@ -2159,7 +2173,9 @@ class SqlAlchemyResource(IccblBaseResource):
                                         worksheet.set_row(filerow, height)
                                         scaling = 0.130 # trial and error width in default excel font
                                         worksheet.set_column(col,col, width*scaling)
-                                        worksheet.insert_image(filerow, col, newval, {'image_data': io.BytesIO(response.content)})
+                                        worksheet.insert_image(
+                                            filerow, col, newval, 
+                                            {'image_data': io.BytesIO(response.content)})
                                     except Exception, e:
                                         logger.info(str(('no image at', newval,e)))
                                 else:
@@ -2262,8 +2278,9 @@ class SqlAlchemyResource(IccblBaseResource):
                                     if DEBUG_STREAMING:     
                                         logger.info(str(('field', key, value_template)))
                                     value = interpolate_value_template(value_template, row)
-                                if value and ( field.get('json_field_type') == 'fields.ListField' 
-                                     or field.get('linked_field_type') == 'fields.ListField' ):
+                                if value and ( field.get('json_field_type',None) == 'fields.ListField' 
+                                     or field.get('linked_field_type',None) == 'fields.ListField'
+                                     or field.get('ui_type', None) == 'list' ):
                                     value = value.split(LIST_DELIMITER_SQL_ARRAY)
 
                                 if value:
@@ -2362,8 +2379,9 @@ class SqlAlchemyResource(IccblBaseResource):
                             value = ''
                             if row.has_key(key):
                                 value = row[key]
-                            if ( field['json_field_type'] == 'fields.ListField' 
-                                 or field['linked_field_type'] == 'fields.ListField' ) and value:
+                            if value and ( field.get('json_field_type',None) == 'fields.ListField' 
+                                 or field.get('linked_field_type',None) == 'fields.ListField'
+                                 or field.get('ui_type', None) == 'list' ):
                                 # FIXME: must quote special strings?
 #                                 value = '[' + ",".join(value.split(LIST_DELIMITER_SQL_ARRAY)) + ']'
                                 value = value.split(LIST_DELIMITER_SQL_ARRAY)
@@ -2394,10 +2412,14 @@ class SqlAlchemyResource(IccblBaseResource):
                                     value = newval
 
                             values.append(value)
-                        yield csvwriter.writerow([csv_convert(val) for val in values])
+                        yield csvwriter.writerow([
+                            csv_convert(val, list_brackets=list_brackets) 
+                                for val in values])
                     
                     else:
-                        yield csvwriter.writerow([csv_convert(val) for val in row.values()])
+                        yield csvwriter.writerow([
+                            csv_convert(val, list_brackets=list_brackets) 
+                                for val in row.values()])
 
             response = StreamingHttpResponse(csv_generator(result),
                 content_type=content_type)
@@ -2507,7 +2529,7 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
              
             rowproxy_generator = None
-            if request.GET.get('vocabularies',False):
+            if request.GET.get(HTTP_PARAM_USE_VOCAB,False):
                 rowproxy_generator = SqlAlchemyResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
@@ -2589,7 +2611,7 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
             (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
  
             title_function = None
-            if request.GET.get('use_titles', False):
+            if request.GET.get(HTTP_PARAM_USE_TITLES, False):
                 title_function = lambda key: field_hash[key]['title']
 
             return self.stream_response_from_cursor(
@@ -2808,7 +2830,7 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
             count_stmt = select([func.count()]).select_from(stmt.alias())
 
             rowproxy_generator = None
-            if request.GET.get('vocabularies',False):
+            if request.GET.get(HTTP_PARAM_USE_VOCAB,False):
                 
                 vocabularies = {}
                 for key, field in field_hash.iteritems():
@@ -2836,7 +2858,7 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
                 rowproxy_generator = vocabulary_rowproxy_generator
             
             title_function = None
-            if request.GET.get('use_titles', False):
+            if request.GET.get(HTTP_PARAM_USE_TITLES, False):
                 title_function = lambda key: field_hash[key]['title']
 
             return self.stream_response_from_cursor(
@@ -2960,7 +2982,7 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
              
             rowproxy_generator = None
-            if request.GET.get('vocabularies',False):
+            if request.GET.get(HTTP_PARAM_USE_VOCAB,False):
                 rowproxy_generator = SqlAlchemyResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
@@ -3100,7 +3122,7 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
             (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
  
             title_function = None
-            if request.GET.get('use_titles', False):
+            if request.GET.get(HTTP_PARAM_USE_TITLES, False):
                 title_function = lambda key: field_hash[key]['title']
 
             return self.stream_response_from_cursor(
@@ -3223,7 +3245,7 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
              
             rowproxy_generator = None
-            if request.GET.get('vocabularies',False):
+            if request.GET.get(HTTP_PARAM_USE_VOCAB,False):
                 rowproxy_generator = SqlAlchemyResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
@@ -3258,7 +3280,7 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
             (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
  
             title_function = None
-            if request.GET.get('use_titles', False):
+            if request.GET.get(HTTP_PARAM_USE_TITLES, False):
                 title_function = lambda key: field_hash[key]['title']
 
             return self.stream_response_from_cursor(
@@ -4090,7 +4112,7 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
             
             rowproxy_generator = None
-            if request.GET.get('vocabularies',False):
+            if request.GET.get(HTTP_PARAM_USE_VOCAB,False):
                 rowproxy_generator = SqlAlchemyResource.create_vocabulary_rowproxy_generator(field_hash)
 
             # specific setup
@@ -4101,10 +4123,10 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
                     '    from plate p join copy c using(copy_id)'
                     '    where c.library_id=library.library_id)').label('plate_count'), 
                 'copies': literal_column(
-                    "(select array_to_string(array_agg(c1.name),',') "
+                    "(select array_to_string(array_agg(c1.name),'%s') "
                     '    from ( select c.name from copy c '
                     '    where c.library_id=library.library_id '
-                    '    order by c.name) as c1 )').label('copies'), 
+                    '    order by c.name) as c1 )' % LIST_DELIMITER_SQL_ARRAY ).label('copies'), 
                 'owner': literal_column(
                     "(select u.first_name || ' ' || u.last_name "
                     '    from screensaver_user u '
@@ -4127,7 +4149,7 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
             (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
             
             title_function = None
-            if request.GET.get('use_titles', False):
+            if request.GET.get(HTTP_PARAM_USE_TITLES, False):
                 title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_cursor(

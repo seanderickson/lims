@@ -96,7 +96,7 @@ create temp table plate_volume2 as (
   select
   cw.plate_id,
   round(avg(cw.volume)::NUMERIC,9) avg_remaining_volume, /** 9 dec pl = nano liter **/
-  rmin(cw.volume) min_remaining_volume,
+  min(cw.volume) min_remaining_volume,
   max(cw.volume) max_remaining_volume
   from copy_well cw
   group by cw.plate_id );

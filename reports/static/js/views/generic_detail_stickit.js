@@ -150,13 +150,7 @@ define([
                 var i = 0;
                 var _html = '';
                 _.each(rawValue, function(val){
-                  var interpolatedVal = c_options.hrefTemplate.replace(/{([^}]+)}/g, 
-                      function (match) 
-                      {
-                        match = match.replace(/[{}]/g,'');
-                        return val;
-                      });
-                  if(Iccbl.appModel.DEBUG) console.log('val:' + val + ', ' + interpolatedVal);
+                  var interpolatedVal = Iccbl.replaceTokens(self.model,c_options.hrefTemplate,val);
                   if(i>0) _html += ',';
                   _html += ( '<a ' + 
                       'id="link-' + key + '-'+ i + '" ' + 

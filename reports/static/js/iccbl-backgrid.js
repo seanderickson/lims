@@ -61,12 +61,20 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
    * Replace all {tokens} in the string with model attributes.
    * - fallback to "token" if model attribute is not set.
    */
-  var replaceTokens = Iccbl.replaceTokens = function(model,stringWithTokens) {
+  var replaceTokens = Iccbl.replaceTokens = function(model,stringWithTokens, default_val) {
     var interpolatedString = stringWithTokens.replace(/{([^}]+)}/g, 
       function (match) 
       {
         match = match.replace(/[{}]/g,'');
-        return !_.isUndefined(model.get(match)) ? model.get(match) : match;
+        if(!_.isUndefined(model.get(match))){
+          return model.get(match);
+        }else{
+          if(!_.isUndefined(default_val)){
+            return default_val;
+          }else{
+            return match;
+          }
+        }
       });
     return interpolatedString;
   }
@@ -603,6 +611,19 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
   });
   
   
+//  var UriListFormatter = Iccbl.UriListFormatter = function () {
+//      _.extend(this, this.defaults, options || {});
+//  };
+//  UriListFormatter.prototype = new CellFormatter();
+//  _.extend(UriListFormatter.prototype, {   
+//    fromRaw: function (val, model) {
+//    },
+//     
+//    toRaw: function(formattedData, model) {
+//      return formattedData;
+//   }
+//  });
+    
   var UriListCell = Iccbl.UriListCell = Backgrid.Cell.extend({
     className : "uri-list-cell",
 
@@ -639,15 +660,8 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
       if(rawValue && !_.isEmpty(rawValue)){
         var i = 0;
         _.each(rawValue, function(val){
-          var interpolatedVal = self.hrefTemplate.replace(/{([^}]+)}/g, 
-              function (match) 
-              {
-                match = match.replace(/[{}]/g,''); // remove the special chars
-                // replace all strings that match model attributes;
-                // any other matches will be replaced with the val
-                return !_.isUndefined(self.model.get(match)) ? self.model.get(match) : val;                
-              });
-//          if(Iccbl.appModel.DEBUG) console.log('val:' + val + ', ' + interpolatedVal);
+          var interplatedVal = Iccbl.replaceTokens(self.hrefTemplate, self.model, val);
+          if(Iccbl.appModel.DEBUG) console.log('val:' + val + ', ' + interpolatedVal);
           if(i>0) self.$el.append(',');
           self.$el.append($('<a>', {
             tabIndex : -1,
@@ -899,10 +913,16 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
    */
    toRaw: function (formattedValue, model) {
      var tokens = formattedValue.split(this.symbol);
-     if (tokens && tokens[0] && tokens[1] === "" || tokens[1] == null) {
+     if (tokens && tokens[0] && tokens[1] ) {
        var rawValue = NumberFormatter.prototype.toRaw.call(this, tokens[0]);
        if (_.isUndefined(rawValue)) return rawValue;
-       return rawValue / this.multiplier;
+       var temp = rawValue / this.multiplier;
+       var power_mult = _.find(self.sciunits, function(pair){
+         if(pair[0] == tokens[1]) return true;
+       });
+       return temp*power_mult;
+     }else{
+       console.log('error, number of tokens wrong:' + tokens );
      }
    },
    

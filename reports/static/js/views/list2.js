@@ -561,15 +561,35 @@ define([
       Backbone.View.prototype.remove.apply(this);
     },
 
+    /** Backbone.layoutmanager callback **/
+    cleanup: function(){
+      this.onClose();
+    },
     onClose: function(){
-      console.log('Extra onclose method called');
+      this.$el.empty();
+      
       if(_.isObject(this.objects_to_destroy)){
           this.objects_to_destroy.each(function(view_obj){
+            console.log('destroy: ' + view_obj);
               view_obj.remove();
               view_obj.unbind();
               view_obj.stopListening();
+              view_obj = null;
           });
       }
+
+      this.objects_to_destroy = null; // critical for memory mgt
+
+      this.finalGrid = null;
+      this.grid = null;
+      this.collection = null;
+      this.extraSelectorInstance = null;
+      this.rppSelectorInstance = null;
+      this.footer = null;
+      this.listModel = null;
+      this._options = null;
+      this.compiledTemplate = null;
+      this.off();
     },
     
 

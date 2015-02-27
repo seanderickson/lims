@@ -1192,7 +1192,7 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
       offset : function() {
           return (this.state.currentPage - 1) * this.state.pageSize;
       },
-      vocabularies: true, // this signals to the api to replace out vocabularies - FIXME: make this a setting?
+      use_vocabularies: true, // this signals to the api to replace out vocabularies - FIXME: make this a setting?
       totalRecords : null, // unset for tastypie
       totalPages : null, // unset for tastypie
       sortKey : "order_by", // modified for tastypie

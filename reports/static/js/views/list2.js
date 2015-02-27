@@ -529,6 +529,7 @@ define([
             }
             self.listModel.set('search', searchHash);
             self.collection.setSearch(searchHash);
+            self.collection.fetch();
         });
       }
 

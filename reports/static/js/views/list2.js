@@ -198,34 +198,7 @@ define([
         columns = _options.columns;
       }
       
-//      // ==== testing - images
-//      // FIXME: FOR SMR only - poc - 
-//      // first find the image field
-//      _.each(_.keys(this._options.schemaResult.fields), function(key){
-//        var field = self._options.schemaResult.fields[key];
-//        if (field['ui_type'] == 'image'){
-//          var col = {
-//              'name' : field['key'],
-//              'label' : field['title'],
-//              'description' : field['description'],
-//              'backgrid_cell_options': field['backgrid_cell_options'],
-//              cell : Iccbl.ImageCell,
-//              order : field['ordinal'],
-//              editable : false,
-//          };
-//          console.log('adding image col: ' + field['key'] + ', ' );
-//          columns.unshift(col);
-//        }
-//      });
-//      
-//      // end - FIXME: FOR SMR only - poc - 
-//      //////////
-      
-
       this.listenTo(this.listModel, 'change', this.reportState );
-
-      var compiledTemplate = this.compiledTemplate = _.template(listTemplate);
-
       this.buildGrid( columns, self._options.schemaResult );
     },
     
@@ -309,12 +282,6 @@ define([
       });
       console.log('newStack: ' + JSON.stringify(newStack));
       self.trigger('uriStack:change', newStack );
-
-//      // FIXME: TODO: see reports.ManagedResource.create_response:
-//      // We need to set the "Content-Disposition" header to trigger the server to 
-//      // bounce it back 
-//      var limitForDownload = 0;
-//      $('#download_link').attr('href', self.getCollectionUrl(limitForDownload) + '&format=csv');
     },
     
     checkState: function(){
@@ -442,30 +409,6 @@ define([
     	});            
       this.objects_to_destroy.push(paginator);
 
-// 20150219 - replaced by download modal dialog + cookie 
-//      // Downloadselector
-//      var downloadSelectorModel = new Backbone.Model({ selection: '' });
-//      var downloadSelectorOptions = []
-//      if(_.has(self._options.resource, 'content_types')){
-//        // exclude JSON for downloads
-//        downloadSelectorOptions = _.without(self._options.resource.content_types, 'json');
-//      }
-//      if (!_.contains(downloadSelectorOptions, '')) {
-//        downloadSelectorOptions.unshift('');
-//        // create a blank entry
-//      }
-//      var downloadSelectorInstance = self.downloadSelectorInstance =
-//        new genericSelector({ model: downloadSelectorModel }, { options: downloadSelectorOptions } );
-//      this.objects_to_destroy.push(downloadSelectorInstance);
-//      this.listenTo(downloadSelectorModel, 'change', function() {
-//        var val = downloadSelectorModel.get('selection');
-//        var limitForDownload = 0;
-//        var url = self.getCollectionUrl(limitForDownload) + '&format=' + val;
-//        // TODO: add UI intelligence to determine if "report" format is desired
-//        // "report" format implies settings like "vocabularies=true"
-//        $('#download_link').attr('href', url);
-//      });
-      
       // Extraselector
       if( _.has(schemaResult, 'extraSelectorOptions')){
         var searchHash = self.listModel.get('search');
@@ -559,7 +502,7 @@ define([
 
     remove: function(){
       console.log('ListView remove called');
-      Backbone.View.prototype.remove.apply(this);
+      Backbone.View.prototype.remove.apply(this,arguments);
     },
 
     /** Backbone.layoutmanager callback **/
@@ -589,7 +532,6 @@ define([
       this.footer = null;
       this.listModel = null;
       this._options = null;
-      this.compiledTemplate = null;
       this.off();
     },
     
@@ -601,9 +543,10 @@ define([
       self.listenTo(self.collection, "reset", self.checkState);
       self.listenTo(self.collection, "sort", self.checkState);
 
-      this.$el.html(this.compiledTemplate);
+      this.$el.html(_.template(listTemplate));
       var finalGrid = self.finalGrid = this.grid.render();
-      self.$("#example-table").append(finalGrid.$el);
+      self.objects_to_destroy.push(finalGrid);
+      self.$("#example-table").append(finalGrid.el);
       // FIXME: move css classes out to templates
       finalGrid.$el.addClass("col-sm-12 table-striped table-condensed table-hover");
 
@@ -614,10 +557,6 @@ define([
         self.$("#extraselector").html(
             self.extraSelectorInstance.render().$el);
       }
-//      if(!_.isUndefined(self.downloadSelectorInstance)){
-//        self.$("#downloadselector").html(
-//            self.downloadSelectorInstance.render().$el);
-//      }
 
       var clearSearchesButton = $([
         '<div class="pull-right pull-down">',
@@ -644,14 +583,7 @@ define([
         self.clear_sorts();
       });
       self.$('#list-header').append(clearSortsButton);
-                         
-      
-      //      // FIXME: "add" feature should be enabled declaratively, by user/group status:
-      //      if(appModel.getCurrentUser().is_superuser
-      //          && _.contains(self._options.resource.visibility, 'add')){
-      //        self.$("#table-footer-div").append(self.footer.$el);
-      //      }
-      
+                               
       if(appModel.hasPermission(self._options.resource.key, 'write')){
         self.$("#table-footer-div").append(self.footer.$el);
       }
@@ -690,20 +622,12 @@ define([
       
       if ( !fetched ) {
         var fetchOptions = { reset: false, error: appModel.jqXHRerror };
-//        var includes = self.listModel.get('includes');
-//        if(!_.isEmpty(includes)){
-//          fetchOptions['data'] = { includes: includes };
-//        }
         self.collection.fetch(fetchOptions);
       }
       
       // Note: replace: true - to suppress router history:
       // at this point, reportState is modifying the URL to show rpp, pagesSize, etc.
       appModel.set('routing_options', {replace: true});  
-//      return this;
-//    },
-//    
-//    afterRender: function() {
       this.reportState();
       return this;
     },
@@ -718,20 +642,6 @@ define([
       this.listModel.unset('order');
       this.collection.state.orderStack = [];
       this.collection.getFirstPage({reset: true, fetch: true});
-//      var self = this;
-//      // TODO: refactor sorting to be more model-driven:
-//      // override BackbonePageableCollection and Backgrid.HeaderCell
-//      _.each(this.collection.state.orderStack, function(order_entry){
-//        var dir = order_entry.substring(0,1);
-//        var fieldname = order_entry;
-//        if(dir == '-'){
-//          fieldname = order_entry.substring(1);
-//        }
-//        // TODO: this triggers a fetch for each clear; replace with custom event like clearSearches
-//        self.collection.trigger('backgrid:sort', fieldname, null );
-//      })
-//      this.listModel.unset('order');
-//      this.collection.state.orderStack = [];
     },
     
     download: function(e){
@@ -863,12 +773,7 @@ define([
           
           console.log('new_includes: ' + JSON.stringify(new_includes));
           self.listModel.set({'includes': new_includes });
-//          if(!_.isEmpty(new_includes)){
-//            self.collection.query_params['includes'] = new_includes;
-//            self.collection.state.includes = new_includes;
-//            self.collection.fetch({data: { includes: new_includes}})
-            self.collection.fetch();
-//          }
+          self.collection.fetch();
           self.listModel.set({'includes': new_includes });
         },
         view: form.render().el,

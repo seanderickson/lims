@@ -660,8 +660,8 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
       if(rawValue && !_.isEmpty(rawValue)){
         var i = 0;
         _.each(rawValue, function(val){
-          var interplatedVal = Iccbl.replaceTokens(self.hrefTemplate, self.model, val);
-          if(Iccbl.appModel.DEBUG) console.log('val:' + val + ', ' + interpolatedVal);
+          var interpolatedVal = Iccbl.replaceTokens(self.model, self.hrefTemplate, val);
+          // if(Iccbl.appModel.DEBUG) console.log('val:' + val + ', ' + interpolatedVal);
           if(i>0) self.$el.append(',');
           self.$el.append($('<a>', {
             tabIndex : -1,
@@ -673,7 +673,7 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
         });
       }
         
-      this.delegateEvents();
+//      this.delegateEvents();
       return this;
     },
 

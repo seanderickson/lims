@@ -516,13 +516,14 @@ define([
           this.objects_to_destroy.each(function(view_obj){
             console.log('destroy: ' + view_obj);
               view_obj.remove();
-              view_obj.unbind();
+              view_obj.off();
               view_obj.stopListening();
               view_obj = null;
           });
       }
 
       this.objects_to_destroy = null; // critical for memory mgt
+      this.paginator = null; // critical for memory mgt
 
       this.finalGrid = null;
       this.grid = null;

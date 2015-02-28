@@ -191,7 +191,6 @@ define([
       if(!_options.columns){
         columns = Iccbl.createBackgridColModel(
             this._options.schemaResult.fields, 
-            Iccbl.MyHeaderCell, 
             orderStack,
             includes);
       }else{
@@ -749,7 +748,7 @@ define([
               self.grid.insertColumn(
                   Iccbl.createBackgridColumn(
                       key,self._options.schemaResult.fields[key],
-                      Iccbl.MyHeaderCell, self.collection.state.orderStack));
+                      self.collection.state.orderStack));
             }
             if(!value && default_visible[key]){
               new_includes.unshift('-' + key);

@@ -33,332 +33,439 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
              BackgridFilter, BackgridPaginator, lunr, //BackgridSelectAll,
              layoutmanager ) {
 
-  var root = window;
+var root = window;
   
-  var Iccbl = root.Iccbl = {
-      VERSION : "0.0.1",
-      appModel : "This value will be initialized on app start"
-  };
+var Iccbl = root.Iccbl = {
+    VERSION : "0.0.1",
+    appModel : "This value will be initialized on app start"
+};
 
-  // TODO: remove this
-  var assertIccbl = Iccbl.assert = function(condition, message) {
-      if (!condition) {
-          throw message || "Assertion failed";
+// TODO: remove this
+var assertIccbl = Iccbl.assert = function(condition, message) {
+    if (!condition) {
+        throw message || "Assertion failed";
+    }
+};
+
+// TODO: deprecated
+requireOptions = Iccbl.requireOptions = function(options,requireOptionKeys){
+    for (var i = 0; i < requireOptionKeys.length; i++) {
+      var key = requireOptionKeys[i];
+      if (_.isUndefined(options[key])) {
+        throw new TypeError("'" + key  + "' is required");
       }
-  };
+    }
+};
 
-  // TODO: deprecated
-  requireOptions = Iccbl.requireOptions = function(options,requireOptionKeys){
-      for (var i = 0; i < requireOptionKeys.length; i++) {
-        var key = requireOptionKeys[i];
-        if (_.isUndefined(options[key])) {
-          throw new TypeError("'" + key  + "' is required");
-        }
-      }
-  };
-
-  /**
-   * Replace all {tokens} in the string with model attributes.
-   * - fallback to "token" if model attribute is not set.
-   */
-  var replaceTokens = Iccbl.replaceTokens = function(model,stringWithTokens, default_val) {
-    var interpolatedString = stringWithTokens.replace(/{([^}]+)}/g, 
-      function (match) 
-      {
-        match = match.replace(/[{}]/g,'');
-        if(!_.isUndefined(model.get(match))){
-          return model.get(match);
+/**
+ * Replace all {tokens} in the string with model attributes.
+ * - fallback to "token" if model attribute is not set.
+ */
+var replaceTokens = Iccbl.replaceTokens = function(model,stringWithTokens, default_val) {
+  var interpolatedString = stringWithTokens.replace(/{([^}]+)}/g, 
+    function (match) 
+    {
+      match = match.replace(/[{}]/g,'');
+      if(!_.isUndefined(model.get(match))){
+        return model.get(match);
+      }else{
+        if(!_.isUndefined(default_val)){
+          return default_val;
         }else{
-          if(!_.isUndefined(default_val)){
-            return default_val;
-          }else{
-            return match;
-          }
+          return match;
         }
-      });
-    return interpolatedString;
+      }
+    });
+  return interpolatedString;
+}
+
+var stringToFunction = Iccbl.stringToFunction = function(str) {
+  var arr = str.split(".");
+
+  var fn = (window || this);
+  for (var i = 0, len = arr.length; i < len; i++) {
+    fn = fn[arr[i]];
+  }
+  if ( typeof fn !== "function") {
+    throw new ReferenceError("function not found: " + str);
+  }
+  return fn;
+};
+
+var UrlStack = Iccbl.UrlStack = Backbone.Model.extend({
+  defaults: {
+    // current app uri
+    path: '',
+    // current app uri, as array
+    actualStack: [],
+    // unprocessed uri elements
+    currentStack: [],
+    
+    level: 0,
+    // resources pop'd, one per level
+    resources: [],
+    // keys pop'd, one per level
+    keys: []  
+  },
+  
+  initialize: function(options) {
+    this.path = options.path;
+    this.actualStack = options.path.split('/');
+    
+  },
+  
+  pop: function() {
+  },
+  
+});
+
+var sortOnOrdinal = Iccbl.sortOnOrdinal = function(keys, fieldHash) {
+    var sorted = _(keys).sort(function(a, b) {
+        if (!_.has(fieldHash, a) || !_.has(fieldHash, b)) {
+            if (_.has(fieldHash, b)) {
+                return -1;
+            } else if (_.has(fieldHash, a)) {
+                return 1;
+            }
+            return 0;
+        }
+        order_a = fieldHash[a]['ordinal'];
+        // TODO: need an edit order by
+        order_b = fieldHash[b]['ordinal'];
+        if (_.isNumber(order_a) && _.isNumber(order_b)) {
+            return order_a - order_b;
+        } else if (_.isNumber(order_a)) {
+            return -1;
+        } else if (_.isNumber(order_b)) {
+            return 1;
+        } else {
+            return 0;
+        }
+    });
+    return sorted;
+};
+
+/**
+ * convert the app model "current_options" object into a route fragment "key"
+ */
+var getKey = Iccbl.getKey = function(options) {
+    var route_fragment = '';
+    
+    if (_.isString(options)) {
+        route_fragment += options;
+        
+    // an array is just a set of keys, to be separated by slashes
+    } else if (_.isArray(options)) {
+        route_fragment = _.reduce(options, function(route, option) {
+                if (!_.isNull(option)) {
+                    if (!_.isEmpty(route))
+                        route += '/';
+                    route += option;
+                }
+                return route;
+            }, route_fragment);
+    } else if (_.isObject(options)) {// generic, option order not defined
+        if (_.has(options, 'key')) {
+            return Iccbl.getKey(options.key);
+        }
+    }
+
+    return route_fragment;
+};
+
+/**
+ * Get the key off the URI stack:
+ * - we don't know if the key is composite or not; so we don't know how many 
+ * items to pop off the stack; So look at the resource definition 
+ * id_attribute; which lists the keys.
+ * @param resource - a resource definition as defined by the API
+ * @param urlStack - array representation of the current unprocessed URI 
+ * elements.
+ * @param consumedStack - holds the items popped off the stack
+ */
+var popKeyFromStack = Iccbl.popKeyFromStack = function(resource, urlStack, consumedStack){
+  var id  = '';
+  _.each(resource.id_attribute, function(attribute){
+    if (_.isEmpty(urlStack)){
+      var msg = 'not enough items on the URL to create the key for resource: ' + 
+          resource.title;
+      window.alert(msg);
+      throw msg;
+    }
+    // don't care what the id is, just pop one for each
+    var item = urlStack.shift();
+    consumedStack.push(item);
+    if ( id !== '' ){
+      id += '/' + item;
+    }
+    else {
+      id += item;
+    }
+  });
+  return id;
+};
+
+var getIdKeys = Iccbl.getIdKeys = function(model,schema) {
+  if (_.has(schema['resource_definition'], 'id_attribute')) {
+    var id_attribute = schema['resource_definition']['id_attribute'];
+    console.log('create id from ' + id_attribute);
+    var idList = [];
+    _.each(id_attribute, function(item){
+      idList.push(model.get(item));
+    });
+    return idList;
+  } else {
+    throw new TypeError("'id_attribute' not found on the schema: " 
+            + JSON.stringify(schema)
+            + ', for the model: ' + JSON.stringify(model.attributes));
   }
   
-  var stringToFunction = Iccbl.stringToFunction = function(str) {
-    var arr = str.split(".");
+};
 
-    var fn = (window || this);
-    for (var i = 0, len = arr.length; i < len; i++) {
-      fn = fn[arr[i]];
-    }
-    if ( typeof fn !== "function") {
-      throw new ReferenceError("function not found: " + str);
-    }
-    return fn;
-  };
-
-  var UrlStack = Iccbl.UrlStack = Backbone.Model.extend({
-    defaults: {
-      // current app uri
-      path: '',
-      // current app uri, as array
-      actualStack: [],
-      // unprocessed uri elements
-      currentStack: [],
-      
-      level: 0,
-      // resources pop'd, one per level
-      resources: [],
-      // keys pop'd, one per level
-      keys: []  
-    },
-    
-    initialize: function(options) {
-      this.path = options.path;
-      this.actualStack = options.path.split('/');
-      
-    },
-    
-    pop: function() {
-    },
-    
-  });
+/**
+ * Create a string ID from the 'id_attribute' of a schema resource definition.
+ * - the id_attribute is an array of field specifiers
+ * - the 'ID' will be each of these fields, concatenated with a forward slash.
+ * Note: the composite key is the public key; although there is often an
+ * 'ID' field, it should not be used for URL's, as it is a internal, possibly
+ * transient implementation detail.
+ */
+var getIdFromIdAttribute = Iccbl.getIdFromIdAttribute = 
+  function(model, schema){
   
-  var sortOnOrdinal = Iccbl.sortOnOrdinal = function(keys, fieldHash) {
-      var sorted = _(keys).sort(function(a, b) {
-          if (!_.has(fieldHash, a) || !_.has(fieldHash, b)) {
-              if (_.has(fieldHash, b)) {
-                  return -1;
-              } else if (_.has(fieldHash, a)) {
-                  return 1;
-              }
-              return 0;
-          }
-          order_a = fieldHash[a]['ordinal'];
-          // TODO: need an edit order by
-          order_b = fieldHash[b]['ordinal'];
-          if (_.isNumber(order_a) && _.isNumber(order_b)) {
-              return order_a - order_b;
-          } else if (_.isNumber(order_a)) {
-              return -1;
-          } else if (_.isNumber(order_b)) {
-              return 1;
-          } else {
-              return 0;
-          }
-      });
-      return sorted;
-  };
-
-  /**
-   * convert the app model "current_options" object into a route fragment "key"
-   */
-  var getKey = Iccbl.getKey = function(options) {
-      var route_fragment = '';
-      
-      if (_.isString(options)) {
-          route_fragment += options;
-          
-      // an array is just a set of keys, to be separated by slashes
-      } else if (_.isArray(options)) {
-          route_fragment = _.reduce(options, function(route, option) {
-                  if (!_.isNull(option)) {
-                      if (!_.isEmpty(route))
-                          route += '/';
-                      route += option;
-                  }
-                  return route;
-              }, route_fragment);
-      } else if (_.isObject(options)) {// generic, option order not defined
-          if (_.has(options, 'key')) {
-              return Iccbl.getKey(options.key);
-          }
-      }
-
-      return route_fragment;
-  };
-
-  /**
-   * Get the key off the URI stack:
-   * - we don't know if the key is composite or not; so we don't know how many 
-   * items to pop off the stack; So look at the resource definition 
-   * id_attribute; which lists the keys.
-   * @param resource - a resource definition as defined by the API
-   * @param urlStack - array representation of the current unprocessed URI 
-   * elements.
-   * @param consumedStack - holds the items popped off the stack
-   */
-  var popKeyFromStack = Iccbl.popKeyFromStack = function(resource, urlStack, consumedStack){
-    var id  = '';
-    _.each(resource.id_attribute, function(attribute){
-      if (_.isEmpty(urlStack)){
-        var msg = 'not enough items on the URL to create the key for resource: ' + 
-            resource.title;
-        window.alert(msg);
-        throw msg;
-      }
-      // don't care what the id is, just pop one for each
-      var item = urlStack.shift();
-      consumedStack.push(item);
-      if ( id !== '' ){
-        id += '/' + item;
-      }
-      else {
-        id += item;
-      }
-    });
+  if (_.has(schema['resource_definition'], 'id_attribute')) {
+    var id_attribute = schema['resource_definition']['id_attribute'];
+    console.log('create id from ' + id_attribute);
+    var id = _.reduce(id_attribute, function(memo, item){
+      if(!_.isEmpty(memo)) memo += '/';
+      return memo += model.get(item);
+    }, '');
     return id;
-  };
-  
-  var getIdKeys = Iccbl.getIdKeys = function(model,schema) {
-    if (_.has(schema['resource_definition'], 'id_attribute')) {
-      var id_attribute = schema['resource_definition']['id_attribute'];
-      console.log('create id from ' + id_attribute);
-      var idList = [];
-      _.each(id_attribute, function(item){
-        idList.push(model.get(item));
-      });
-      return idList;
-    } else {
-      throw new TypeError("'id_attribute' not found on the schema: " 
-              + JSON.stringify(schema)
-              + ', for the model: ' + JSON.stringify(model.attributes));
-    }
-    
-  };
-  
-  /**
-   * Create a string ID from the 'id_attribute' of a schema resource definition.
-   * - the id_attribute is an array of field specifiers
-   * - the 'ID' will be each of these fields, concatenated with a forward slash.
-   * Note: the composite key is the public key; although there is often an
-   * 'ID' field, it should not be used for URL's, as it is a internal, possibly
-   * transient implementation detail.
-   */
-  var getIdFromIdAttribute = Iccbl.getIdFromIdAttribute = 
-      function(model, schema){
-    
-    if (_.has(schema['resource_definition'], 'id_attribute')) {
-        var id_attribute = schema['resource_definition']['id_attribute'];
-        console.log('create id from ' + id_attribute);
-        var id = _.reduce(id_attribute, function(memo, item){
-          if(!_.isEmpty(memo)) memo += '/';
-          return memo += model.get(item);
-        }, '');
-        return id;
-    } else {
-      throw new TypeError("'id_attribute' not found on the schema: " 
-              + JSON.stringify(schema)
-              + ', for the model: ' + JSON.stringify(model.attributes));
-    }
-  };
+  } else {
+    throw new TypeError("'id_attribute' not found on the schema: " 
+        + JSON.stringify(schema)
+        + ', for the model: ' + JSON.stringify(model.attributes));
+  }
+};
 
-  /**
-   * Create an string 'title' from the 'id_attribute' of a schema resource 
-   * definition.
-   * - the title_attribute is an array of field specifiers and strings.
-   * - if an array item is a field, the field value will be used,
-   * - if an array item is not a field, then it will be concatenated directly.
-   */
-  var getTitleFromTitleAttribute = Iccbl.getTitleFromTitleAttribute = 
-      function(model, schema){
-    var re_isQuoted = /['"]+/g;
-    if(_.has(schema['resource_definition'], 'title_attribute')){
-      var title_attribute = schema['resource_definition']['title_attribute'];
-      console.log('create title from ' + title_attribute);
-      var title = _.reduce(
-        schema['resource_definition']['title_attribute'],
-        function(memo, item){
-          if(item && item.match(re_isQuoted)){
-            memo += item.replace(re_isQuoted, '');
-          }else{
-            if( model.has(item) ) memo += model.get(item)
-            else memo += item
-          }
-          return memo ;
-        }, '');
-      console.log('extracted title: ' + title + ' from ' + model);
-      return title;
-    }else{
-      throw new TypeError("'title_attribute' not found on the schema: " + 
-          JSON.stringify(schema)
-          + ', for the model: ' + JSON.stringify(model.attributes));
-    }
-  };
-
-  /**
-   * Matches array items against the matchstring.  
-   * - Matches from the right to left; allowing URI fragments to match their 
-   * parent URIs.
-   * Similar the the contains function, 
-   * but using item.indexOf(matchString) || matchString.indexOf(item)
-   * for the truth test.
-   */
-  var containsByMatch = Iccbl.containsByMatch = function(array, matchstring){
-    return _.find(array, function(item) {
-      var result = false;
-      var index = matchstring.indexOf(item);
-      if (index > -1 && index+item.length == matchstring.length ){
-        result = true;
-      }
-      var index = item.indexOf(matchstring);
-      if (!result && index > -1 && index+matchstring.length == item.length){
-        result = true;
-      }
-      return result;
-    });
-  };
-
-  var createLabel = Iccbl.createLabel = function(original_label, max_line_length, break_char){
-    var lines = [];
-    var labelParts = original_label.split(/\W/);
-    var line = '';
-    _.each(labelParts, function(part){
-      if(line.length > 0){
-        if(line.length+part.length <= max_line_length){
-          line += ' ' + part;
+/**
+ * Create an string 'title' from the 'id_attribute' of a schema resource 
+ * definition.
+ * - the title_attribute is an array of field specifiers and strings.
+ * - if an array item is a field, the field value will be used,
+ * - if an array item is not a field, then it will be concatenated directly.
+ */
+var getTitleFromTitleAttribute = Iccbl.getTitleFromTitleAttribute = 
+    function(model, schema){
+  var re_isQuoted = /['"]+/g;
+  if(_.has(schema['resource_definition'], 'title_attribute')){
+    var title_attribute = schema['resource_definition']['title_attribute'];
+    console.log('create title from ' + title_attribute);
+    var title = _.reduce(
+      schema['resource_definition']['title_attribute'],
+      function(memo, item){
+        if(item && item.match(re_isQuoted)){
+          memo += item.replace(re_isQuoted, '');
         }else{
-          lines.push(line);
-          line = part;
+          if( model.has(item) ) memo += model.get(item)
+          else memo += item
         }
-      }else{
-        line += part;
-      }
-    });
-    lines.push(line);
-    
-    if(_.isUndefined(break_char)){
-      break_char = '<br>';
-    }
-    return lines.join(break_char);
-  };
-  
-  //// Network Utilities ////
-  
-  var getSchema = Iccbl.getSchema = function(schema_url, callback) {
-    $.ajax({
-      type : "GET",
-      url : schema_url, //options.url_schema,
-      data : "",
-      dataType : "json",
-      success : function(schemaResult) {
-          callback(schemaResult);
-      }, // end success outer ajax call
-      error : function(x, e) {
-          alert(x.readyState + " " + x.status + " " + e.msg);
-          // TODO: use error div in Bootstrap
-      }
-    });
-  };
+        return memo ;
+      }, '');
+    console.log('extracted title: ' + title + ' from ' + model);
+    return title;
+  }else{
+    throw new TypeError("'title_attribute' not found on the schema: " + 
+        JSON.stringify(schema)
+        + ', for the model: ' + JSON.stringify(model.attributes));
+  }
+};
 
-  /**
-   * @deprecated see app_state.getModel
-   */
-  var getModel = Iccbl.getModel = function(schemaResult, url, callback) {
+/**
+ * Matches array items against the matchstring.  
+ * - Matches from the right to left; allowing URI fragments to match their 
+ * parent URIs.
+ * Similar the the contains function, 
+ * but using item.indexOf(matchString) || matchString.indexOf(item)
+ * for the truth test.
+ */
+var containsByMatch = Iccbl.containsByMatch = function(array, matchstring){
+  return _.find(array, function(item) {
+    var result = false;
+    var index = matchstring.indexOf(item);
+    if (index > -1 && index+item.length == matchstring.length ){
+      result = true;
+    }
+    var index = item.indexOf(matchstring);
+    if (!result && index > -1 && index+matchstring.length == item.length){
+      result = true;
+    }
+    return result;
+  });
+};
+
+var createLabel = Iccbl.createLabel = function(original_label, max_line_length, break_char){
+  var lines = [];
+  var labelParts = original_label.split(/\W/);
+  var line = '';
+  _.each(labelParts, function(part){
+    if(line.length > 0){
+      if(line.length+part.length <= max_line_length){
+        line += ' ' + part;
+      }else{
+        lines.push(line);
+        line = part;
+      }
+    }else{
+      line += part;
+    }
+  });
+  lines.push(line);
+  
+  if(_.isUndefined(break_char)){
+    break_char = '<br>';
+  }
+  return lines.join(break_char);
+};
+
+//// Network Utilities ////
+
+var getSchema = Iccbl.getSchema = function(schema_url, callback) {
+  $.ajax({
+    type : "GET",
+    url : schema_url, //options.url_schema,
+    data : "",
+    dataType : "json",
+    success : function(schemaResult) {
+        callback(schemaResult);
+    }, // end success outer ajax call
+    error : function(x, e) {
+        alert(x.readyState + " " + x.status + " " + e.msg);
+        // TODO: use error div in Bootstrap
+    }
+  });
+};
+
+/**
+ * @deprecated see app_state.getModel
+ */
+var getModel = Iccbl.getModel = function(schemaResult, url, callback) {
+  var ModelClass = Backbone.Model.extend({
+      url : url,
+      defaults : {}
+  });
+  var instance = new ModelClass();
+  instance.fetch({
+      success : function(model) {
+        model.resourceSchema = schemaResult;
+        callback(schemaResult, model);
+      },
+      error : function(model, response, options) {
+          //console.log('error fetching the model: '+ model + ', response:
+          // ' + JSON.stringify(response));
+          var msg = 'Error locating resource: ' + url;
+          var sep = '\n';
+          if (!_.isUndefined(response.status))
+              msg += sep + response.status;
+          if (!_.isUndefined(response.statusText))
+              msg += sep + response.statusText;
+          if (!_.isEmpty(response.responseText))
+              msg += sep + response.responseText;
+          window.alert(msg);
+          // TODO: use Bootstrap inscreen alert classed message div
+      }
+  });
+};
+
+/**
+ * Note use this version if the model will be updated to the server.
+ * - Backbone will use "put" if the model has an ID set
+ * - also, use model.save([attribute-list], {patch: true} ) to do incremental
+ * updates,
+ * see http://backbonejs.org/#Model-save
+ */
+var getModel2 = Iccbl.getModel2 = function(schemaResult, urlRoot, id, callback) {
     var ModelClass = Backbone.Model.extend({
+        urlRoot : urlRoot,
+        defaults : {}
+    });
+    var instance = new ModelClass({
+        id : id
+    });
+    instance.fetch({
+        success : function(model) {
+            callback(schemaResult, model);
+        },
+        error : function(model, response, options) {
+            //console.log('error fetching the model: '+ model + ', response:
+            // ' + JSON.stringify(response));
+            var msg = 'Error locating resource: ' + urlRoot + ', ' + id;
+            var sep = '\n';
+            if (!_.isUndefined(response.status))
+                msg += sep + response.status;
+            if (!_.isUndefined(response.statusText))
+                msg += sep + response.statusText;
+            if (!_.isEmpty(response.responseText))
+                msg += sep + response.responseText;
+            window.alert(msg);
+            // TODO: use Bootstrap inscreen alert classed message div
+        }
+    });
+};
+
+var formatResponseError = Iccbl.formatResponseError = function(response){
+    var msg = '';
+    var sep = '\n';
+    if (!_.isUndefined(response.status))
+        msg += response.status;
+    if (!_.isUndefined(response.statusText))
+        msg += sep + response.statusText;
+    if (!_.isEmpty(response.responseText))
+        msg += sep + response.responseText;
+    return msg;
+}
+
+var getCollectionOnClient = Iccbl.getCollectionOnClient = function(url, callback){
+  var CollectionClass = Iccbl.CollectionOnClient.extend({
+    url: url 
+  });
+  var instance = new CollectionClass();
+  instance.fetch({
+    data: { limit: 0 },
+    success: function(collection, response) {
+      callback(collection);
+    },
+    error: function(model, response, options) {
+        //console.log('error fetching the model: '+ model + ', response:
+        // ' + JSON.stringify(response));
+        var msg = 'Error locating resource: ' + url;
+        var sep = '\n';
+        if (!_.isUndefined(response.status))
+            msg += sep + response.status;
+        if (!_.isUndefined(response.statusText))
+            msg += sep + response.statusText;
+        if (!_.isEmpty(response.responseText))
+            msg += sep + response.responseText;
+        window.alert(msg);
+        // TODO: 1. use Bootstrap inscreen alert classed message div
+        // TODO: 2. jquery seems to swallow json parsing exceptions, fyi
+        throw msg;
+    },
+    always: function(){
+      console.log('done: ');
+    }
+  });
+};
+
+var getCollection = Iccbl.getCollection = function(schemaResult, url, callback) {
+    var CollectionClass = Iccbl.MyCollection.extend({
         url : url,
         defaults : {}
     });
-    var instance = new ModelClass();
+    var instance = new CollectionClass();
     instance.fetch({
-        success : function(model) {
-          model.resourceSchema = schemaResult;
-          callback(schemaResult, model);
+        success : function(collection) {
+            callback(schemaResult, collection);
         },
         error : function(model, response, options) {
             //console.log('error fetching the model: '+ model + ', response:
@@ -375,312 +482,102 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
             // TODO: use Bootstrap inscreen alert classed message div
         }
     });
-  };
+};
 
-  /**
-   * Note use this version if the model will be updated to the server.
-   * - Backbone will use "put" if the model has an ID set
-   * - also, use model.save([attribute-list], {patch: true} ) to do incremental
-   * updates,
-   * see http://backbonejs.org/#Model-save
-   */
-  var getModel2 = Iccbl.getModel2 = function(schemaResult, urlRoot, id, callback) {
-      var ModelClass = Backbone.Model.extend({
-          urlRoot : urlRoot,
-          defaults : {}
-      });
-      var instance = new ModelClass({
-          id : id
-      });
-      instance.fetch({
-          success : function(model) {
-              callback(schemaResult, model);
-          },
-          error : function(model, response, options) {
-              //console.log('error fetching the model: '+ model + ', response:
-              // ' + JSON.stringify(response));
-              var msg = 'Error locating resource: ' + urlRoot + ', ' + id;
-              var sep = '\n';
-              if (!_.isUndefined(response.status))
-                  msg += sep + response.status;
-              if (!_.isUndefined(response.statusText))
-                  msg += sep + response.statusText;
-              if (!_.isEmpty(response.responseText))
-                  msg += sep + response.responseText;
-              window.alert(msg);
-              // TODO: use Bootstrap inscreen alert classed message div
-          }
-      });
-  };
-
-  var formatResponseError = Iccbl.formatResponseError = function(response){
-      var msg = '';
-      var sep = '\n';
-      if (!_.isUndefined(response.status))
-          msg += response.status;
-      if (!_.isUndefined(response.statusText))
-          msg += sep + response.statusText;
-      if (!_.isEmpty(response.responseText))
-          msg += sep + response.responseText;
-      return msg;
-  }
-
-  var getCollectionOnClient = Iccbl.getCollectionOnClient = function(url, callback){
-    var CollectionClass = Iccbl.CollectionOnClient.extend({
-      url: url 
+var getCollection2 = Iccbl.getCollection2 = function(schemaResult, url, callback) {
+    var CollectionClass = Iccbl.CollectionInColumns.extend({
+        url : url,
+        defaults : {}
     });
     var instance = new CollectionClass();
     instance.fetch({
-      data: { limit: 0 },
-      success: function(collection, response) {
-        console.log('success callback...');
-        callback(collection);
-      },
-      error: function(model, response, options) {
-          //console.log('error fetching the model: '+ model + ', response:
-          // ' + JSON.stringify(response));
-          var msg = 'Error locating resource: ' + url;
-          var sep = '\n';
-          if (!_.isUndefined(response.status))
-              msg += sep + response.status;
-          if (!_.isUndefined(response.statusText))
-              msg += sep + response.statusText;
-          if (!_.isEmpty(response.responseText))
-              msg += sep + response.responseText;
-          window.alert(msg);
-          // TODO: 1. use Bootstrap inscreen alert classed message div
-          // TODO: 2. jquery seems to swallow json parsing exceptions, fyi
-          throw msg;
-      },
-      always: function(){
-        console.log('done: ');
-      }
+        success : function(collection) {
+            callback(schemaResult, collection);
+        },
+        error : function(model, response, options) {
+            //console.log('error fetching the model: '+ model + ', response:
+            // ' + JSON.stringify(response));
+            var msg = 'Error locating resource: ' + url;
+            var sep = '\n';
+            if (!_.isUndefined(response.status))
+                msg += sep + response.status;
+            if (!_.isUndefined(response.statusText))
+                msg += sep + response.statusText;
+            if (!_.isEmpty(response.responseText))
+                msg += sep + response.responseText;
+            window.alert(msg);
+            // TODO: use Bootstrap inscreen alert classed message div
+        }
     });
-  };
-  
-  var getCollection = Iccbl.getCollection = function(schemaResult, url, callback) {
-      var CollectionClass = Iccbl.MyCollection.extend({
-          url : url,
-          defaults : {}
-      });
-      var instance = new CollectionClass();
-      instance.fetch({
-          success : function(collection) {
-              callback(schemaResult, collection);
-          },
-          error : function(model, response, options) {
-              //console.log('error fetching the model: '+ model + ', response:
-              // ' + JSON.stringify(response));
-              var msg = 'Error locating resource: ' + url;
-              var sep = '\n';
-              if (!_.isUndefined(response.status))
-                  msg += sep + response.status;
-              if (!_.isUndefined(response.statusText))
-                  msg += sep + response.statusText;
-              if (!_.isEmpty(response.responseText))
-                  msg += sep + response.responseText;
-              window.alert(msg);
-              // TODO: use Bootstrap inscreen alert classed message div
-          }
-      });
-  };
-
-  var getCollection2 = Iccbl.getCollection2 = function(schemaResult, url, callback) {
-      var CollectionClass = Iccbl.CollectionInColumns.extend({
-          url : url,
-          defaults : {}
-      });
-      var instance = new CollectionClass();
-      instance.fetch({
-          success : function(collection) {
-              callback(schemaResult, collection);
-          },
-          error : function(model, response, options) {
-              //console.log('error fetching the model: '+ model + ', response:
-              // ' + JSON.stringify(response));
-              var msg = 'Error locating resource: ' + url;
-              var sep = '\n';
-              if (!_.isUndefined(response.status))
-                  msg += sep + response.status;
-              if (!_.isUndefined(response.statusText))
-                  msg += sep + response.statusText;
-              if (!_.isEmpty(response.responseText))
-                  msg += sep + response.responseText;
-              window.alert(msg);
-              // TODO: use Bootstrap inscreen alert classed message div
-          }
-      });
-  };
+};
 
 
-  var getSchemaAndModel = Iccbl.getSchemaAndModel = function(schema_url, url, callback) {
-      Iccbl.getSchema(schema_url, function(schemaResult) {
-          console.log('schemaResult callback: ' + schemaResult + ', ' + url);
-          Iccbl.getModel(schemaResult, url, callback);
-      });
-  };
+var getSchemaAndModel = Iccbl.getSchemaAndModel = function(schema_url, url, callback) {
+    Iccbl.getSchema(schema_url, function(schemaResult) {
+        console.log('schemaResult callback: ' + schemaResult + ', ' + url);
+        Iccbl.getModel(schemaResult, url, callback);
+    });
+};
 
-  /**
-   * Note use this version if the model will be updated.
-   * - Backbone will use "put" if the model has an ID set
-   * - also, use model.save([attribute-list], {patch: true} ) to do incremental
-   * updates,
-   * see http://backbonejs.org/#Model-save
-   */
-  var getSchemaAndModel2 = Iccbl.getSchemaAndModel2 = function(urlRoot, id, callback) {
-      Iccbl.getSchema(urlRoot + '/schema', function(schemaResult) {
-          console.log('schemaResult callback: ' + schemaResult + ', ' + urlRoot);
-          Iccbl.getModel2(schemaResult, urlRoot, id, callback);
-      });
-  };
+/**
+ * Note use this version if the model will be updated.
+ * - Backbone will use "put" if the model has an ID set
+ * - also, use model.save([attribute-list], {patch: true} ) to do incremental
+ * updates,
+ * see http://backbonejs.org/#Model-save
+ */
+var getSchemaAndModel2 = Iccbl.getSchemaAndModel2 = function(urlRoot, id, callback) {
+    Iccbl.getSchema(urlRoot + '/schema', function(schemaResult) {
+        console.log('schemaResult callback: ' + schemaResult + ', ' + urlRoot);
+        Iccbl.getModel2(schemaResult, urlRoot, id, callback);
+    });
+};
 
-  var getSchemaAndCollection = Iccbl.getSchemaAndCollection = function(schema_url, url, callback) {
-      Iccbl.getSchema(schema_url, function(schemaResult) {
-          console.log('schemaResult callback: ' + schemaResult + ', ' + url);
-          Iccbl.getCollection(schemaResult, url, callback);
-      });
-  };
+var getSchemaAndCollection = Iccbl.getSchemaAndCollection = function(schema_url, url, callback) {
+    Iccbl.getSchema(schema_url, function(schemaResult) {
+        console.log('schemaResult callback: ' + schemaResult + ', ' + url);
+        Iccbl.getCollection(schemaResult, url, callback);
+    });
+};
 
-  var getSchemaAndCollection2 = Iccbl.getSchemaAndCollection2 = function(schema_url, url, callback) {
-      Iccbl.getSchema(schema_url, function(schemaResult) {
-          console.log('schemaResult callback: ' + schemaResult + ', ' + url);
-          Iccbl.getCollection2(schemaResult, url, callback);
-      });
-  };
-
-
-  var MyModel = Iccbl.MyModel = Backbone.Model.extend({
-      // TODO: we want to make sure there is a trailing slash, or tastypie
-      // doesn't work.
-      url : function() {
-          var url = Backbone.Model.prototype.url.call(this);
-          // console.log('---- url1: ' + url);
-          return url + (url.charAt(url.length - 1) === '/' ? '' : '/');
-      },
-
-      initialize : function() {
-          Backbone.Model.prototype.initialize.apply(this, arguments);
-          // console.log('x--- urlRoot: ' + this.urlRoot + ", " + this.id + ',
-          // ' + this.collection.url);
-          var self = this;
-          // we want to make sure there is a trailing slash, or tastypie doesnt
-          // work.
-          // TODO: not sure why we have to override url function like this
-          // this.url = function(){
-          // var url = Backbone.Model.prototype.url.call(self);
-          // console.log('---- url1: ' + url);
-          // return url + (url.charAt(url.length - 1) === '/' ? '' : '/') ;
-          // };
-          // definition above should work, but doesn't.
-          // however, when overriding url like above only, the function has to
-          // be attached to the prototype manually here.  why?
-          this.url = MyModel.prototype.url;
-      },
-  });
+var getSchemaAndCollection2 = Iccbl.getSchemaAndCollection2 = function(schema_url, url, callback) {
+    Iccbl.getSchema(schema_url, function(schemaResult) {
+        console.log('schemaResult callback: ' + schemaResult + ', ' + url);
+        Iccbl.getCollection2(schemaResult, url, callback);
+    });
+};
 
 
-  // TODO: redo the link cell like the UriListCell
-  var LinkCell = Iccbl.LinkCell = Backgrid.Cell.extend({
-      className : "link-cell",
-      events : {
-          "click #link" : "toLink",
-      },
-
-      initialize : function(options) {
-          Backgrid.Cell.prototype.initialize.apply(this, arguments);
-      },
-
-      render : function() {
-          this.$el.empty();
-          var formattedValue = this.formatter.fromRaw(this.model.get(this.column.get("name")));
-          this.$el.append($("<a id='link' >", {
-              tabIndex : -1,
-              href : '',
-              title : formattedValue,
-              //target : "_blank"
-          }).text(formattedValue));
-
-          this.delegateEvents();
-          return this;
-      },
-
-      toLink : function(e) {
-          e.preventDefault();
-          this.model.collection.trigger("MyCollection:link", this.model, this.column.get("name"));
-      },
-  });
-  
-  
-//  var UriListFormatter = Iccbl.UriListFormatter = function () {
-//      _.extend(this, this.defaults, options || {});
-//  };
-//  UriListFormatter.prototype = new CellFormatter();
-//  _.extend(UriListFormatter.prototype, {   
-//    fromRaw: function (val, model) {
-//    },
-//     
-//    toRaw: function(formattedData, model) {
-//      return formattedData;
-//   }
-//  });
-    
-  var UriListCell = Iccbl.UriListCell = Backgrid.Cell.extend({
-    className : "uri-list-cell",
-
-    /**
-     * @property {string} ["string with {model_key} values to interpolate"]
-     */
-    hrefTemplate: 'Http://', 
-
-    /**
-    @property {string} [title] The title attribute of the generated anchor. It
-    uses the display value formatted by the `formatter.fromRaw` by default.
-    */
-    title: null,
-
-    /**
-       @property {string} [target="_blank"] The target attribute of the generated
-       anchor.
-    */
-    target: "_blank",
-    
-    initialize : function(options) {
-        Backgrid.Cell.prototype.initialize.apply(this, arguments);
+var MyModel = Iccbl.MyModel = Backbone.Model.extend({
+    // TODO: we want to make sure there is a trailing slash, or tastypie
+    // doesn't work.
+    url : function() {
+        var url = Backbone.Model.prototype.url.call(this);
+        return url + (url.charAt(url.length - 1) === '/' ? '' : '/');
     },
 
-    render : function() {
-      var self = this;
-      this.$el.empty();
-      var rawValue = this.model.get(this.column.get("name"));
-      
-      
-//      if(Iccbl.appModel.DEBUG)  console.log('urilist, raw value: ' + rawValue 
-//            + ', hrefTemplate: ' + this.hrefTemplate);
-      
-      if(rawValue && !_.isEmpty(rawValue)){
-        var i = 0;
-        _.each(rawValue, function(val){
-          var interpolatedVal = Iccbl.replaceTokens(self.model, self.hrefTemplate, val);
-          // if(Iccbl.appModel.DEBUG) console.log('val:' + val + ', ' + interpolatedVal);
-          if(i>0) self.$el.append(',');
-          self.$el.append($('<a>', {
-            tabIndex : -1,
-            href : interpolatedVal,
-            title : val,
-            target : self.target
-          }).text(val));
-          i++;
-        });
-      }
-        
-//      this.delegateEvents();
-      return this;
+    initialize : function() {
+        Backbone.Model.prototype.initialize.apply(this, arguments);
+        var self = this;
+        // we want to make sure there is a trailing slash, or tastypie doesnt
+        // work.
+        // TODO: not sure why we have to override url function like this
+        // this.url = function(){
+        // var url = Backbone.Model.prototype.url.call(self);
+        // console.log('---- url1: ' + url);
+        // return url + (url.charAt(url.length - 1) === '/' ? '' : '/') ;
+        // };
+        // definition above should work, but doesn't.
+        // however, when overriding url like above only, the function has to
+        // be attached to the prototype manually here.  why?
+        this.url = MyModel.prototype.url;
     },
+});
 
-}); 
-  
-  var ImageCell = Iccbl.ImageCell = Backgrid.Cell.extend({
-    className : "image-cell",
+
+// TODO: redo the link cell like the UriListCell
+var LinkCell = Iccbl.LinkCell = Backgrid.Cell.extend({
+    className : "link-cell",
     events : {
         "click #link" : "toLink",
     },
@@ -691,387 +588,463 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
 
     render : function() {
         this.$el.empty();
-        this.$el.html(this.render_image());
+        var formattedValue = this.formatter.fromRaw(this.model.get(this.column.get("name")));
+        this.$el.append($("<a id='link' >", {
+            tabIndex : -1,
+            href : '',
+            title : formattedValue,
+            //target : "_blank"
+        }).text(formattedValue));
+
         this.delegateEvents();
         return this;
     },
-    
-    render_image: function(){
-      var val = this.model.get(this.column.get('name'));
-      if (!_.isEmpty(val)){
-        console.log('render image...' + val);
-        return '<img src="'+val+'" width="200" alt="" />';
-      }else{
-        return '';
-      }
 
-//      var image_src_attr = this.column.get('backgrid_cell_options')
-//      
-//      if (!_.isEmpty(image_src_attr)){
-//        // NOTE: format for backgrid cell options is "/{attribute_key}/"
-//        var src = Iccbl.replaceTokens(this.model,image_src_attr);
-//        console.log('image src: ' + src);
-//        return '<img src="'+src+'" width="100" alt="" />';
-//      }else{
-//        return '';
-//      }
-
-    },
-        
-  });
-  
-  var EditCell = Iccbl.EditCell = Backgrid.Cell.extend({
-      className : "detail-cell",
-      events : {
-          "click #edit" : "editDetail",
-      },
-
-      initialize : function(options) {
-          this.options = options;
-          Backgrid.Cell.prototype.initialize.apply(this, arguments);
-      },
-
-      render : function() {
-          this.$el.empty();
-          var formattedValue = this.formatter.fromRaw(this.model.get(this.column.get("name")));
-          this.$el.append($("<a id='edit' >", {
-              tabIndex : -1,
-              href : '',
-              title : formattedValue,
-              //target : "_blank"
-          }).text(formattedValue));
-
-          this.delegateEvents();
-          return this;
-      },
-
-      editDetail : function(e) {
-          e.preventDefault();
-          if(_.has(this.model, 'clickHandler')){
-            this.model.clickHandler(this.model);
-          }else{
-            this.model.collection.trigger("MyCollection:detail", this.model);
-          }
-      },
-  });
-  
-  
-  
-  var NumberFormatter = Backgrid.NumberFormatter;
-  var NumberCell = Backgrid.NumberCell;
-
-  var DecimalFormatter = Iccbl.DecimalFormatter = function () {
-    Backgrid.NumberFormatter.apply(this, arguments);
-   };
-   
-   DecimalFormatter.prototype = new Backgrid.NumberFormatter(),
-   
-   _.extend(DecimalFormatter.prototype, {
-   
-     fromRaw: function (number, model) {
-       var args = [].slice.call(arguments, 1);
-       if(_.isUndefined(number)){
-         return '';
-       }
-       if(_.isNull(number)){
-         return '';
-       }
-       if(!_.isNumber(number)){
-         try{
-           number = parseFloat(number);
-         }catch(e){
-           console.log('not a number: ' + number + ', ex:' + e);
-           return number;
-         }
-       }
-       
-       args.unshift(number);
-       return (NumberFormatter.prototype.fromRaw.apply(this, args) || "0");
-     }     
-   });  
-
-  /**
-  A number formatter that converts a floating point number, optionally
-  multiplied by a multiplier, to a units string and vice versa.
-
-  @class Backgrid.UnitsFormatter
-  @extends Backgrid.NumberFormatter
-  @constructor
-  @throws {RangeError} If decimals < 0 or > 20.
-  */
-  var SciUnitsFormatter = Iccbl.SciUnitsFormatter = function () {
-   Backgrid.NumberFormatter.apply(this, arguments);
-  };
-  
-  SciUnitsFormatter.prototype = new Backgrid.NumberFormatter(),
-  
-  _.extend(SciUnitsFormatter.prototype, {
-  
-   /**
-      @member Backgrid.UnitsFormatter
-      @cfg {Object} options
-  
-      @cfg {number} [options.multiplier=1] The number used to multiply the model
-      value for display.
-  
-      @cfg {string} [options.symbol='%'] The symbol to append to the Unitsage
-      string.
-    */
-   defaults: _.extend({}, NumberFormatter.prototype.defaults, {
-     sciunits: [
-                ['T', 1e12],
-                ['G', 1e9],
-                ['M', 1e6],
-                ['k', 1e3],
-                ['', 1],
-                ['m', 1e-3,],
-                ['μ', 1e-6,],
-                ['n', 1e-9 ],
-                ['p', 1e-12 ]
-                ],
-     multiplier: 1
-   }),
-  
-   /**
-      Takes a floating point number, where the number is first multiplied by
-      `multiplier`, then converted to a formatted string like
-      NumberFormatter#fromRaw, then finally append `symbol` to the end.
-  
-      @member Backgrid.UnitsFormatter
-      @param {number} rawValue
-      @param {Backbone.Model} model Used for more complicated formatting
-      @return {string}
-   */
-   fromRaw: function (number, model) {
-        //       console.log('process: ' + number + ', ' +this.multiplier 
-        //           + ', ' +  this.symbol + ', ' + this.decimals );
-       return this.getUnit(number, this.multiplier, this.symbol, this.decimals);
-   },
-
-   /**
-    * Convert the number to a sciunit value;
-    * number = .0025
-    * multiplier = 1000
-    * @return Math.round(number*multiplier,decimals) + symbol
-    */
-   getUnit: function(number, multiplier, symbol, decimals) {
-       
-       if(_.isUndefined(number)){
-         return '';
-       }
-       if(_.isNull(number)){
-         return '';
-       }
-       if(!_.isNumber(number)){
-         try{
-           number = parseFloat(number);
-         }catch(e){
-           console.log('not a number: ' + number + ', ex:' + e);
-           return number;
-         }
-       }
-       if(number == 0 ) return number;
-       if(!_.isNumber(multiplier)){
-         try{
-           multiplier = parseFloat(multiplier);
-         }catch(e){
-           console.log('not a number - multiplier: ' + multiplier+ ', ex:' + e);
-         }
-       }
-
-       if(multiplier >= 1){
-         number = number * multiplier;
-       }else{
-         console.log("Error, DecimalCell multiplier < 1: " + multiplier);
-       }
-       
-       pair = _.find(this.sciunits, function(pair){
-         return pair[1] <= Math.abs(number); 
-       });
-       
-       if(_.isUndefined(pair)){
-         console.log('could not find units for the input number: ' + number);
-         return number;
-       }
-       
-       var val = (1/pair[1])*number;
-       val = Math.round(val*Math.pow(10,decimals))/Math.pow(10,decimals);
-       return '' + val + ' ' + pair[0] + symbol;
-   },
-   
-   /**
-    * FIXME: implement = this is copied from Backgrid percentformatter
-      Takes a string, possibly appended with `symbol` and/or `decimalSeparator`,
-      and convert it back to a number for the model like NumberFormatter#toRaw,
-      and then dividing it by `multiplier`.
-  
-      @member Backgrid.UnitsFormatter
-      @param {string} formattedData
-      @param {Backbone.Model} model Used for more complicated formatting
-      @return {number|undefined} Undefined if the string cannot be converted to
-      a number.
-   */
-   toRaw: function (formattedValue, model) {
-     var tokens = formattedValue.split(this.symbol);
-     if (tokens && tokens[0] && tokens[1] ) {
-       var rawValue = NumberFormatter.prototype.toRaw.call(this, tokens[0]);
-       if (_.isUndefined(rawValue)) return rawValue;
-       var temp = rawValue / this.multiplier;
-       var power_mult = _.find(self.sciunits, function(pair){
-         if(pair[0] == tokens[1]) return true;
-       });
-       return temp*power_mult;
-     }else{
-       console.log('error, number of tokens wrong:' + tokens );
-     }
-   },
-   
-  });  
-  
-  /**
-  A DecimalCell is another Backgrid.NumberCell that takes a floating number,
-  and showing a decimals number of digits.
-  
-  @class Backgrid.DecimalCell
-  @extends Backgrid.NumberCell
-  */
-  var DecimalCell = Iccbl.DecimalCell = NumberCell.extend({
-    
-    /** @property */
-    className: "decimal-cell",
-
-    /** @property {Backgrid.CellFormatter} [formatter=Backgrid.NumberFormatter] */
-    formatter: DecimalFormatter,
-   
-    /**
-       Initializes this cell and the Units formatter.
-   
-       @param {Object} options
-       @param {Backbone.Model} options.model
-       @param {Backgrid.Column} options.column
-    */
-    initialize: function () {
-      DecimalCell.__super__.initialize.apply(this, arguments);
-      var formatter = this.formatter;
-      formatter.decimals = this.decimals;
-    }
-   
-   });  
-
-  
-  
-  /**
-  A SciUnitsCell is another Backgrid.NumberCell that takes a floating number,
-  optionally multiplied by a multiplier, 
-  showing a decimals number of digits, 
-  and displayed with a units symbol.
-
-  @class Backgrid.SciUnitsCell
-  @extends Backgrid.NumberCell
-  */
-  var SciUnitsCell = Iccbl.SciUnitsCell = NumberCell.extend({
-  
-   /** @property */
-   className: "units-cell",
-  
-   /** @property {number} [multiplier=1] */
-   multiplier: SciUnitsFormatter.prototype.defaults.multiplier,
-  
-   /** @property {string} [symbol='%'] */
-   symbol: SciUnitsFormatter.prototype.defaults.symbol,
-  
-   /** @property {Backgrid.CellFormatter} [formatter=Backgrid.UnitsFormatter] */
-   formatter: SciUnitsFormatter,
-  
-   /**
-      Initializes this cell and the Units formatter.
-  
-      @param {Object} options
-      @param {Backbone.Model} options.model
-      @param {Backgrid.Column} options.column
-   */
-   initialize: function () {
-     SciUnitsCell.__super__.initialize.apply(this, arguments);
-     var formatter = this.formatter;
-     formatter.multiplier = this.multiplier;
-     formatter.decimals = this.decimals;
-     formatter.symbol = this.symbol;
-   }
-  
-  });  
-
-  /**
-   * uses the options.attributes.label
-   */
-  var DeleteCell = Iccbl.DeleteCell = Backgrid.Cell.extend({
-    className: "delete-cell",
-    events : {
-    "click #delete" : "delete"
-    },
-  
-    initialize: function(options){
-    Backgrid.Cell.prototype.initialize.apply(this, arguments);
-    },
-  
-    render: function () {
-    this.$el.empty();
-  
-    this.$el.append("&nbsp;");
-    this.$el.append($("<a id='delete' >", {
-    tabIndex : -1,
-    href : '',
-    }).text(this.options.column.attributes['text']));
-    this.delegateEvents();
-    return this;
-    },
-  
-    delete: function(e) {
+    toLink : function(e) {
         e.preventDefault();
-        this.model.collection.trigger("MyCollection:delete", this.model);
+        this.model.collection.trigger("MyCollection:link", this.model, this.column.get("name"));
+    },
+});
+
+  
+var UriListCell = Iccbl.UriListCell = Backgrid.Cell.extend({
+  className : "uri-list-cell",
+
+  /**
+   * @property {string} ["string with {model_key} values to interpolate"]
+   */
+  hrefTemplate: 'Http://', 
+
+  /**
+  @property {string} [title] The title attribute of the generated anchor. It
+  uses the display value formatted by the `formatter.fromRaw` by default.
+  */
+  title: null,
+
+  /**
+     @property {string} [target="_blank"] The target attribute of the generated
+     anchor.
+  */
+  target: "_blank",
+  
+  initialize : function(options) {
+      Backgrid.Cell.prototype.initialize.apply(this, arguments);
+  },
+
+  render : function() {
+    var self = this;
+    this.$el.empty();
+    var rawValue = this.model.get(this.column.get("name"));
+    
+    if(rawValue && !_.isEmpty(rawValue)){
+      var i = 0;
+      _.each(rawValue, function(val){
+        var interpolatedVal = Iccbl.replaceTokens(self.model, self.hrefTemplate, val);
+        if(i>0) self.$el.append(',');
+        self.$el.append($('<a>', {
+          tabIndex : -1,
+          href : interpolatedVal,
+          title : val,
+          target : self.target
+        }).text(val));
+        i++;
+      });
     }
-  });
+    return this;
+  },
+
+}); 
+
+var ImageCell = Iccbl.ImageCell = Backgrid.Cell.extend({
+  className : "image-cell",
+  events : {
+      "click #link" : "toLink",
+  },
+
+  initialize : function(options) {
+      Backgrid.Cell.prototype.initialize.apply(this, arguments);
+  },
+
+  render : function() {
+      this.$el.empty();
+      this.$el.html(this.render_image());
+      this.delegateEvents();
+      return this;
+  },
+  
+  render_image: function(){
+    var val = this.model.get(this.column.get('name'));
+    if (!_.isEmpty(val)){
+      return '<img src="'+val+'" width="200" alt="" />';
+    }else{
+      return '';
+    }
+
+    //      var image_src_attr = this.column.get('backgrid_cell_options')
+    //      
+    //      if (!_.isEmpty(image_src_attr)){
+    //        // NOTE: format for backgrid cell options is "/{attribute_key}/"
+    //        var src = Iccbl.replaceTokens(this.model,image_src_attr);
+    //        console.log('image src: ' + src);
+    //        return '<img src="'+src+'" width="100" alt="" />';
+    //      }else{
+    //        return '';
+    //      }
+  },
+      
+});
+
+var EditCell = Iccbl.EditCell = Backgrid.Cell.extend({
+    className : "detail-cell",
+    events : {
+        "click #edit" : "editDetail",
+    },
+
+    initialize : function(options) {
+        this.options = options;
+        Backgrid.Cell.prototype.initialize.apply(this, arguments);
+    },
+
+    render : function() {
+        this.$el.empty();
+        var formattedValue = this.formatter.fromRaw(this.model.get(this.column.get("name")));
+        this.$el.append($("<a id='edit' >", {
+            tabIndex : -1,
+            href : '',
+            title : formattedValue,
+            //target : "_blank"
+        }).text(formattedValue));
+
+        this.delegateEvents();
+        return this;
+    },
+
+    editDetail : function(e) {
+        e.preventDefault();
+        if(_.has(this.model, 'clickHandler')){
+          this.model.clickHandler(this.model);
+        }else{
+          this.model.collection.trigger("MyCollection:detail", this.model);
+        }
+    },
+});
+
+
+
+var NumberFormatter = Backgrid.NumberFormatter;
+var NumberCell = Backgrid.NumberCell;
+
+var DecimalFormatter = Iccbl.DecimalFormatter = function () {
+  Backgrid.NumberFormatter.apply(this, arguments);
+};
+ 
+DecimalFormatter.prototype = new Backgrid.NumberFormatter();
+ 
+_.extend(DecimalFormatter.prototype, {
+ 
+  fromRaw: function (number, model) {
+    var args = [].slice.call(arguments, 1);
+    if(_.isUndefined(number)){
+      return '';
+    }
+    if(_.isNull(number)){
+      return '';
+    }
+    if(!_.isNumber(number)){
+      try{
+        number = parseFloat(number);
+      }catch(e){
+        console.log('not a number: ' + number + ', ex:' + e);
+        return number;
+      }
+    }
+     
+    args.unshift(number);
+    return (NumberFormatter.prototype.fromRaw.apply(this, args) || "0");
+  }     
+});  
+
+/**
+A number formatter that converts a floating point number, optionally
+multiplied by a multiplier, to a units string and vice versa.
+
+@class Backgrid.UnitsFormatter
+@extends Backgrid.NumberFormatter
+@constructor
+@throws {RangeError} If decimals < 0 or > 20.
+*/
+var SciUnitsFormatter = Iccbl.SciUnitsFormatter = function () {
+ Backgrid.NumberFormatter.apply(this, arguments);
+};
+
+SciUnitsFormatter.prototype = new Backgrid.NumberFormatter();
+
+_.extend(SciUnitsFormatter.prototype, {
+
+  /**
+    @member Backgrid.UnitsFormatter
+    @cfg {Object} options
+
+    @cfg {number} [options.multiplier=1] The number used to multiply the model
+    value for display.
+
+    @cfg {string} [options.symbol='%'] The symbol to append to the Unitsage
+    string.
+  */
+  defaults: _.extend({}, NumberFormatter.prototype.defaults, {
+    sciunits: [
+              ['T', 1e12],
+              ['G', 1e9],
+              ['M', 1e6],
+              ['k', 1e3],
+              ['', 1],
+              ['m', 1e-3,],
+              ['μ', 1e-6,],
+              ['n', 1e-9 ],
+              ['p', 1e-12 ]
+              ],
+    multiplier: 1
+  }),
+
+  /**
+    Takes a floating point number, where the number is first multiplied by
+    `multiplier`, then converted to a formatted string like
+    NumberFormatter#fromRaw, then finally append `symbol` to the end.
+
+    @member Backgrid.UnitsFormatter
+    @param {number} rawValue
+    @param {Backbone.Model} model Used for more complicated formatting
+    @return {string}
+  */
+  fromRaw: function (number, model) {
+    //       console.log('process: ' + number + ', ' +this.multiplier 
+    //           + ', ' +  this.symbol + ', ' + this.decimals );
+    return this.getUnit(number, this.multiplier, this.symbol, this.decimals);
+  },
+
+  /**
+  * Convert the number to a sciunit value;
+  * number = .0025
+  * multiplier = 1000
+  * @return Math.round(number*multiplier,decimals) + symbol
+  */
+  getUnit: function(number, multiplier, symbol, decimals) {
+     
+    if(_.isUndefined(number)){
+      return '';
+    }
+    if(_.isNull(number)){
+      return '';
+    }
+    if(!_.isNumber(number)){
+      try{
+        number = parseFloat(number);
+      }catch(e){
+        console.log('not a number: ' + number + ', ex:' + e);
+        return number;
+      }
+    }
+    if(number == 0 ) return number;
+    if(!_.isNumber(multiplier)){
+      try{
+        multiplier = parseFloat(multiplier);
+      }catch(e){
+        console.log('not a number - multiplier: ' + multiplier+ ', ex:' + e);
+      }
+    }
+
+    if(multiplier >= 1){
+      number = number * multiplier;
+    }else{
+      console.log("Error, DecimalCell multiplier < 1: " + multiplier);
+    }
+     
+    pair = _.find(this.sciunits, function(pair){
+      return pair[1] <= Math.abs(number); 
+    });
+     
+    if(_.isUndefined(pair)){
+      console.log('could not find units for the input number: ' + number);
+      return number;
+    }
+     
+    var val = (1/pair[1])*number;
+    val = Math.round(val*Math.pow(10,decimals))/Math.pow(10,decimals);
+    return '' + val + ' ' + pair[0] + symbol;
+  },
+ 
+  /**
+   * FIXME: implement = this is copied from Backgrid percentformatter
+    Takes a string, possibly appended with `symbol` and/or `decimalSeparator`,
+    and convert it back to a number for the model like NumberFormatter#toRaw,
+    and then dividing it by `multiplier`.
+
+    @member Backgrid.UnitsFormatter
+    @param {string} formattedData
+    @param {Backbone.Model} model Used for more complicated formatting
+    @return {number|undefined} Undefined if the string cannot be converted to
+    a number.
+   */
+  toRaw: function (formattedValue, model) {
+    var tokens = formattedValue.split(this.symbol);
+    if (tokens && tokens[0] && tokens[1] ) {
+      var rawValue = NumberFormatter.prototype.toRaw.call(this, tokens[0]);
+      if (_.isUndefined(rawValue)) return rawValue;
+      var temp = rawValue / this.multiplier;
+      var power_mult = _.find(self.sciunits, function(pair){
+        if(pair[0] == tokens[1]) return true;
+      });
+      return temp*power_mult;
+    }else{
+      console.log('error, number of tokens wrong:' + tokens );
+    }
+  },
+ 
+});  
+
+/**
+A DecimalCell is another Backgrid.NumberCell that takes a floating number,
+and showing a decimals number of digits.
+
+@class Backgrid.DecimalCell
+@extends Backgrid.NumberCell
+*/
+var DecimalCell = Iccbl.DecimalCell = NumberCell.extend({
+  
+  /** @property */
+  className: "decimal-cell",
+
+  /** @property {Backgrid.CellFormatter} [formatter=Backgrid.NumberFormatter] */
+  formatter: DecimalFormatter,
+ 
+  /**
+     Initializes this cell and the Units formatter.
+ 
+     @param {Object} options
+     @param {Backbone.Model} options.model
+     @param {Backgrid.Column} options.column
+  */
+  initialize: function () {
+    DecimalCell.__super__.initialize.apply(this, arguments);
+    var formatter = this.formatter;
+    formatter.decimals = this.decimals;
+  }
+ 
+ });  
+
+
+
+/**
+A SciUnitsCell is another Backgrid.NumberCell that takes a floating number,
+optionally multiplied by a multiplier, 
+showing a decimals number of digits, 
+and displayed with a units symbol.
+
+@class Backgrid.SciUnitsCell
+@extends Backgrid.NumberCell
+*/
+var SciUnitsCell = Iccbl.SciUnitsCell = NumberCell.extend({
+
+  /** @property */
+  className: "units-cell",
+
+  /** @property {number} [multiplier=1] */
+  multiplier: SciUnitsFormatter.prototype.defaults.multiplier,
+
+  /** @property {string} [symbol='%'] */
+  symbol: SciUnitsFormatter.prototype.defaults.symbol,
+
+  /** @property {Backgrid.CellFormatter} [formatter=Backgrid.UnitsFormatter] */
+  formatter: SciUnitsFormatter,
+
+  /**
+    Initializes this cell and the Units formatter.
+
+    @param {Object} options
+    @param {Backbone.Model} options.model
+    @param {Backgrid.Column} options.column
+   */
+  initialize: function () {
+    SciUnitsCell.__super__.initialize.apply(this, arguments);
+    var formatter = this.formatter;
+    formatter.multiplier = this.multiplier;
+    formatter.decimals = this.decimals;
+    formatter.symbol = this.symbol;
+  }
+
+});  
+
+/**
+ * uses the options.attributes.label
+ */
+var DeleteCell = Iccbl.DeleteCell = Backgrid.Cell.extend({
+  className: "delete-cell",
+  events : {
+  "click #delete" : "delete"
+  },
+
+  initialize: function(options){
+  Backgrid.Cell.prototype.initialize.apply(this, arguments);
+  },
+
+  render: function () {
+  this.$el.empty();
+
+  this.$el.append("&nbsp;");
+  this.$el.append($("<a id='delete' >", {
+  tabIndex : -1,
+  href : '',
+  }).text(this.options.column.attributes['text']));
+  this.delegateEvents();
+  return this;
+  },
+
+  delete: function(e) {
+      e.preventDefault();
+      this.model.collection.trigger("MyCollection:delete", this.model);
+  }
+});
 
 var CollectionOnClient = Iccbl.CollectionOnClient = Backbone.Collection.extend({
-    /**
-     *  Override collection parse method:
-     *      Parse server response data.
-     */
-    parse : function(response) {
-        console.log('Collection on client, parse called');
-        // hack the response for tastypie:
-        return response.objects;
-    },
+  /**
+   *  Override collection parse method:
+   *      Parse server response data.
+   */
+  parse : function(response) {
+    console.log('Collection on client, parse called');
+    // hack the response for tastypie:
+    return response.objects;
+  },
 });
 
 
 var CollectionInColumns = Iccbl.CollectionInColumns = Backbone.Collection.extend({
-    /**
-     *  Override collection parse method:
-     *      Parse server response data.
-     * untested
-     */
-    parse : function(response) {
-        console.log('Collection on client, parse called');
-        // hack the response for tastypie:
-        var pivoted = {};
-        var i = 0;
-        _.each(response.objects, function(obj) {
-            _.pairs(obj, function(pair) {
-                if (_.has(pivoted, pair[0])) {
-                    pivoted[pair[0]] = {};
-                }
-                pivoted[pair[0]][i] = pair[1];
-            });
-            i++;
-        });
-        return _.values(pivoted);
-    },
+  /**
+   *  Override collection parse method:
+   *      Parse server response data.
+   * untested
+   */
+  parse : function(response) {
+    console.log('Collection on client, parse called');
+    // hack the response for tastypie:
+    var pivoted = {};
+    var i = 0;
+    _.each(response.objects, function(obj) {
+      _.pairs(obj, function(pair) {
+          if (_.has(pivoted, pair[0])) {
+              pivoted[pair[0]] = {};
+          }
+          pivoted[pair[0]][i] = pair[1];
+      });
+      i++;
+    });
+    return _.values(pivoted);
+  },
 });
 
-  
+
 var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
   initialize: function(args) {
-    console.log('UriContainerView initialize');
     var model = this.model = args.model;
     var targetProperty = args.property || 'uriStack';
     this.listenTo(model, 'change:'+targetProperty , this.uriStackChange );
@@ -1105,7 +1078,7 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
         // FIXME: better global error handling
         console.log('error thrown' + e);
         // FIXME: why is the ajaxStop handler in main.js not being called anyway?
-//        $('#loading').fadeOut({duration:100});
+        //        $('#loading').fadeOut({duration:100});
       }
     }
   },
@@ -1143,7 +1116,7 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
     console.log('call setSorting: order: ' + order + ', ' + direction );
     collection.setSorting(column.get("name"), order,
         {sortValue: column.sortValue()});
-    console.log('collection fetch');
+    console.log('post-sort collection fetch');
     collection.fetch({reset: true, success: function () {
       console.log('fetch success, direction: ' + direction);
       collection.trigger("backgrid:sorted", column, direction, collection);
@@ -1155,15 +1128,8 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
   }
 });
 
-//var MyCollection = Iccbl.MyCollection = function () {
-//  Backbone.PageableCollection.apply(this, arguments);
-// };
-// MyCollection.prototype = new Backbone.PageableCollection(),
-// 
-// _.extend(MyCollection.prototype, {
 
-
- var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
+var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
 
   initialize : function(options) {
     var self = this;
@@ -1187,43 +1153,29 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
   // PageableCollection.fetch() uses the queryParams attribute to interpret 
   // the server response and to determine the data hash sent to the server.
   queryParams : {
-      // adjust the query params for tastypie
-      pageSize : 'limit',
-      offset : function() {
-          return (this.state.currentPage - 1) * this.state.pageSize;
-      },
-      use_vocabularies: true, // this signals to the api to replace out vocabularies - FIXME: make this a setting?
-      totalRecords : null, // unset for tastypie
-      totalPages : null, // unset for tastypie
-      sortKey : "order_by", // modified for tastypie
-      order : null, // unset for tastypie
-      order_by : function() {// modified for tastypie: use only
-        if ( typeof this.state !== 'undefined' 
-              && this.state.orderStack
-              && this.state.orderStack.length ) {
-          // Note: convert the orderStack using "traditional" array serialization
-          // see: http://api.jquery.com/jQuery.param/
-          //          var val = this.state.orderStack.join('&order_by=');
-          return this.state.orderStack;
-        }
-      }, 
-      includes: function(){
-        return this.listModel.get('includes');
-//        if(!_.isUndefined(this.state.includes) && !_.isEmpty(this.state.includes)){
-//          return this.state.includes;
-//        }
+    // adjust the query params for tastypie
+    pageSize : 'limit',
+    offset : function() {
+        return (this.state.currentPage - 1) * this.state.pageSize;
+    },
+    use_vocabularies: true, // this signals to the api to replace out vocabularies - FIXME: make this a setting?
+    totalRecords : null, // unset for tastypie
+    totalPages : null, // unset for tastypie
+    sortKey : "order_by", // modified for tastypie
+    order : null, // unset for tastypie
+    order_by : function() {// modified for tastypie: use only
+      if ( typeof this.state !== 'undefined' 
+            && this.state.orderStack
+            && this.state.orderStack.length ) {
+        // Note: convert the orderStack using "traditional" array serialization
+        // see: http://api.jquery.com/jQuery.param/
+        //          var val = this.state.orderStack.join('&order_by=');
+        return this.state.orderStack;
       }
-      
-//      includes: function(){
-//        if(!_.isUndefined(this.state.includes) && !_.isEmpty(this.state.includes)){
-//          return this.state.includes;
-//        }
-//      }
-      
-      //      directions : {
-      //          "-1" : "asc",
-      //          "1" : "desc"
-      //      }
+    }, 
+    includes: function(){
+      return this.listModel.get('includes');
+    }
   },
 
   /**
@@ -1357,12 +1309,6 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
       }
     }
   },
-  
-//  clearSortings: function() {
-//    console.log('clearSortings');
-//    this.state.orderStack = [];
-//    this.trigger('sort',this);    
-//  },
 
   /**
    *  Override - 
@@ -1428,244 +1374,234 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
 	  //		-> Backgrid.HeaderCell.removeCellDirection
 	  // Last note: this may be caused by not getting the sortKey from the 
 	  // queryParams on parseState.
-    	this.trigger('sort',this); 
+  	this.trigger('sort',this); 
   },
 
 });
 
 
 
- var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend({
-   filtericon_text : '<span class="pull-left glyphicon glyphicon-search" id="filter-icon" ></span>',
-   
-   initialize : function(options) {
-     this.options = options;
-     MultiSortHeaderCell.__super__.initialize.apply(this, arguments);
-     this.listenTo(this.collection,"sort",this.collectionSorted);
-     this.listenTo(this.collection,"Iccbl:clearSearches", this.removeCellDirection);
-   },
-   
-   
-//   onClick: function (e) {
-//     e.preventDefault();
-//
-//     var column = this.column;
-//     var collection = this.collection;
-//     var event = "backgrid:sort";
-//
-//     function cycleSort(header, col) {
-//       if (column.get("direction") === "ascending") collection.trigger(event, col, "descending");
-//       else if (column.get("direction") === "descending") collection.trigger(event, col, null);
-//       else collection.trigger(event, col, "ascending");
-//     }
-//
-//     function toggleSort(header, col) {
-//       if (column.get("direction") === "ascending") collection.trigger(event, col, "descending");
-//       else collection.trigger(event, col, "ascending");
-//     }
-//
-//     var sortable = Backgrid.callByNeed(column.sortable(), column, this.collection);
-//     if (sortable) {
-//       var sortType = column.get("sortType");
-//       if (sortType === "toggle") toggleSort(this, column);
-//       else cycleSort(this, column);
-//     }
-//   },
-    
-// TODO: debounced clicking - sort of working, but...
-// - at this time this method is debouncing on the cell instance:
-// --- no coordination with other headercells
-// 
-      /**
-       Event handler for the `click` event on the cell's anchor. If the column is
-       sortable, clicking on the anchor will cycle through 3 sorting orderings -
-       `ascending`, `descending`, and default.
-      */
-      onClick: function (e) {
-        console.log('onclick');
-        var self=this;
-        e.preventDefault();
-        e.stopPropagation();
-        
-        var collection = this.collection;
-        var event = "backgrid:sort"
-        var column = this.column;
-        
-        if(_.isUndefined(this.tempdirection)){
-          this.tempdirection = this.column.get("direction");
-        }
-        console.log('tempdirection1: ' + this.tempdirection);
-        if(this.tempdirection == "ascending"){
-          this.tempdirection = "descending";
-        }else if(this.tempdirection == "descending"){
-          this.tempdirection = "none";
-        }else{
-          this.tempdirection = "ascending";
-        }
-        
-        this.setCellDirection(column, self.tempdirection=="none"?null:self.tempdirection );
-        console.log('tempdirection2: ' + self.tempdirection);
-
-        var args = arguments;
-        
-        var delayedClick = function(){
-          console.log('delayedclick: tempdirection: ' + self.tempdirection);
-          if(self.tempdirection !== self.lastExecutedVal){
-            console.log('delayed click: ' + self.tempdirection );
-            collection.trigger(event, column, self.tempdirection=="none"?null:self.tempdirection);
-            self.lastExecutedVal = self.tempdirection;
-          }else{
-            console.log('this.tempdirection == self.lastExecutedVal: ' + self.lastExecutedVal);
-          }
-        };
-        _.debounce(delayedClick, 750)();
-        // FIXME: both throttle and debounce seem to work the same;
-        // that is they both are working like setTimeout
-        //        _.throttle(delayedClick, 5000, {leading: false})();
-        
-        console.log('onclick exit');
-      },   
-   
-   collectionSorted: function(collection, options){
-     var self = this;
-     var name = this.column.get('name');
-     var state = this.collection.state;
-
-     var i = 0;
-     _.each(state.orderStack, function(order_entry){
-       i++;
-       var dir = order_entry.substring(0,1);
-       var direction = null;
-       var fieldname = order_entry;
-       if(dir == '-'){
-         fieldname = order_entry.substring(1);
-         direction = 'descending';
-       }else{
-         dir = '';
-         direction = 'ascending';
-       }
-       if(fieldname == name){
-         self.$el.removeClass("ascending").removeClass("descending");
-         self.$el.addClass(direction);
-
-         var sorter = self.$el.find('#sorter');
-         sorter.empty();
-         sorter.append(
-             "<span style='margin-bottom: 2px;' class='badge pull-right'>" 
-             + i + "<b class='sort-caret'></b></span>");
-       }
-     });
-   },
-   
-   /**
-     Event handler for the column's `change:direction` event. If this
-     HeaderCell's column is being sorted on, it applies the direction given as a
-     CSS class to the header cell. Removes all the CSS direction classes
-     otherwise.
+var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend({
+  filtericon_text : '<span class="pull-left glyphicon glyphicon-search" id="filter-icon" ></span>',
+ 
+  initialize : function(options) {
+    this.options = options;
+    MultiSortHeaderCell.__super__.initialize.apply(this, arguments);
+    this.listenTo(this.collection,"sort",this.collectionSorted);
+    this.listenTo(this.collection,"Iccbl:clearSearches", this.removeCellDirection);
+  },
+ 
+  // Original onClick, for reference, from Backgrid
+  //   onClick: function (e) {
+  //     e.preventDefault();
+  //
+  //     var column = this.column;
+  //     var collection = this.collection;
+  //     var event = "backgrid:sort";
+  //
+  //     function cycleSort(header, col) {
+  //       if (column.get("direction") === "ascending") collection.trigger(event, col, "descending");
+  //       else if (column.get("direction") === "descending") collection.trigger(event, col, null);
+  //       else collection.trigger(event, col, "ascending");
+  //     }
+  //
+  //     function toggleSort(header, col) {
+  //       if (column.get("direction") === "ascending") collection.trigger(event, col, "descending");
+  //       else collection.trigger(event, col, "ascending");
+  //     }
+  //
+  //     var sortable = Backgrid.callByNeed(column.sortable(), column, this.collection);
+  //     if (sortable) {
+  //       var sortType = column.get("sortType");
+  //       if (sortType === "toggle") toggleSort(this, column);
+  //       else cycleSort(this, column);
+  //     }
+  //   },
+      
+  // TODO: debounced clicking - sort of working, but...
+  // - at this time this method is debouncing on the cell instance:
+  // --- no coordination with other headercells
+  // 
+  /**
+     Event handler for the `click` event on the cell's anchor. If the column is
+     sortable, clicking on the anchor will cycle through 3 sorting orderings -
+     `ascending`, `descending`, and default.
    */
-   setCellDirection: function (column, direction) {
-     var self = this;
-     var name = column.get('name');
-     
-     if(_.isUndefined(direction) || _.isNull(direction)){
-//       this.$el.removeClass("ascending").removeClass("descending");
-//       this.$el.find("#sorter").empty();
-       this.removeCellDirection();
-     }else{
-       this.$el.removeClass("ascending").removeClass("descending");
-       this.$el.addClass(direction);
-//       if(direction=="ascending"){
-         
-         var num = 0,i = 0;
-         _.find(self.collection.state.orderStack, function(fieldname){
-           i++;
-           if(fieldname == name || fieldname == '-' + name){ 
-             num = i;
-             console.log('found: ' + self.collection.state.orderStack[i-1]);
-             return true;
-           }
-         });
-         if(num==0){ 
-           num = self.collection.state.orderStack.length+1; 
-         }
-         sorterText = $("<span style='margin-bottom: 2px;' class='badge pull-right'>" 
-             + num + "<b class='sort-caret'></b></span>");
-         
-         self.sorter.empty();
-         self.sorter.append(sorterText);
-//         var sorter = self.$el.find('#sorter');
-//         sorter.empty();
-//         sorter.append(sorterText);
-//       }
+  onClick: function (e) {
+    var self=this;
+    e.preventDefault();
+    e.stopPropagation();
+    
+    var collection = this.collection;
+    var event = "backgrid:sort"
+    var column = this.column;
+    
+    if(_.isUndefined(this.tempdirection)){
+      this.tempdirection = this.column.get("direction");
+    }
+    console.log('tempdirection1: ' + this.tempdirection);
+    if(this.tempdirection == "ascending"){
+      this.tempdirection = "descending";
+    }else if(this.tempdirection == "descending"){
+      this.tempdirection = "none";
+    }else{
+      this.tempdirection = "ascending";
+    }
+    
+    this.setCellDirection(column, self.tempdirection=="none"?null:self.tempdirection );
+    console.log('tempdirection2: ' + self.tempdirection);
+
+    var args = arguments;
+    
+    var delayedClick = function(){
+      console.log('delayedclick: tempdirection: ' + self.tempdirection);
+      if(self.tempdirection !== self.lastExecutedVal){
+        console.log('delayed click: ' + self.tempdirection );
+        collection.trigger(event, column, self.tempdirection=="none"?null:self.tempdirection);
+        self.lastExecutedVal = self.tempdirection;
+      }else{
+        console.log('this.tempdirection == self.lastExecutedVal: ' + self.lastExecutedVal);
+      }
+    };
+    _.debounce(delayedClick, 750)();
+    // FIXME: both throttle and debounce seem to work the same;
+    // that is they both are working like setTimeout
+    //        _.throttle(delayedClick, 5000, {leading: false})();
+    
+    console.log('onclick exit');
+  },   
+ 
+  collectionSorted: function(collection, options){
+    var self = this;
+    var name = this.column.get('name');
+    var state = this.collection.state;
+
+    var i = 0;
+    _.each(state.orderStack, function(order_entry){
+      i++;
+      var dir = order_entry.substring(0,1);
+      var direction = null;
+      var fieldname = order_entry;
+      if(dir == '-'){
+        fieldname = order_entry.substring(1);
+        direction = 'descending';
+      }else{
+        dir = '';
+        direction = 'ascending';
+      }
+      if(fieldname == name){
+        self.$el.removeClass("ascending").removeClass("descending");
+        self.$el.addClass(direction); 
+
+        var sorter = self.$el.find('#sorter');
+        sorter.empty();
+        sorter.append(
+           "<span style='margin-bottom: 2px;' class='badge pull-right'>" 
+           + i + "<b class='sort-caret'></b></span>");
+      }
+    });
+  },
+ 
+  /**
+   Event handler for the column's `change:direction` event. If this
+   HeaderCell's column is being sorted on, it applies the direction given as a
+   CSS class to the header cell. Removes all the CSS direction classes
+   otherwise.
+   */
+  setCellDirection: function (column, direction) {
+    var self = this;
+    var name = column.get('name');
+    
+    if(_.isUndefined(direction) || _.isNull(direction)){
+      //       this.$el.removeClass("ascending").removeClass("descending");
+      //       this.$el.find("#sorter").empty();
+      this.removeCellDirection();
+    }else{
+      this.$el.removeClass("ascending").removeClass("descending");
+      this.$el.addClass(direction);
        
+      var num = 0,i = 0;
+      _.find(self.collection.state.orderStack, function(fieldname){
+        i++;
+        if(fieldname == name || fieldname == '-' + name){ 
+          num = i;
+          console.log('found: ' + self.collection.state.orderStack[i-1]);
+          return true;
+        }
+      });
+      if(num==0){ 
+        num = self.collection.state.orderStack.length+1; 
+      }
+      sorterText = $("<span style='margin-bottom: 2px;' class='badge pull-right'>" 
+           + num + "<b class='sort-caret'></b></span>");
+       
+      self.sorter.empty();
+      self.sorter.append(sorterText);
+    }
+  },
+  //   setCellDirection1: function (column, direction, i) {
+  //     var self = this;
+  //     if(! direction){
+  ////       this.$el.removeClass("ascending").removeClass("descending");
+  ////       this.$el.find("#sorter").empty();
+  //       this.removeCellDirection();
+  //     }else{
+  //       this.$el.removeClass("ascending").removeClass("descending");
+  //       if (column.cid == self.column.cid){
+  //         this.$el.addClass(direction);
+  //         var sorter = self.$el.find('#sorter');
+  //         sorter.empty();
+  //         if(!_.isUndefined(i) && _.isNumber(i)){
+  //           sorter.append("<span class='badge pull-right'>" + i + "<b class='sort-caret'></b></span>");
+  //         }
+  //       }
+  //     }
+  //   },
 
-     }
-   },
-//   setCellDirection1: function (column, direction, i) {
-//     var self = this;
-//     if(! direction){
-////       this.$el.removeClass("ascending").removeClass("descending");
-////       this.$el.find("#sorter").empty();
-//       this.removeCellDirection();
-//     }else{
-//       this.$el.removeClass("ascending").removeClass("descending");
-//       if (column.cid == self.column.cid){
-//         this.$el.addClass(direction);
-//         var sorter = self.$el.find('#sorter');
-//         sorter.empty();
-//         if(!_.isUndefined(i) && _.isNumber(i)){
-//           sorter.append("<span class='badge pull-right'>" + i + "<b class='sort-caret'></b></span>");
-//         }
-//       }
-//     }
-//   },
-
-   /**
-    * Backgrid event handler for the PageableCollection 'sort' event.
-    */
-   removeCellDirection: function () {
-     var self = this;
-     this.$el.removeClass("ascending").removeClass("descending");
-     if(self.sorter) self.sorter.empty();
-//     this.$el.find("#sorter").empty();
-//     this.column.set("direction", null);
-   },
-
-   
-   /**
-    * Renders a header cell with a sorter and a label.
-    */
-   render : function() {
-     var self = this;
-     console.log('render MultiSortHeaderCell:  ' + this.column.get('name'));
-     this.$el.empty();
-     var column = this.column;
-     var sortable = Backgrid.callByNeed(column.sortable(), column, this.collection);
-     if(sortable){
-       var label = Iccbl.createLabel(column.get("label"), 10);
-       self.sorter = $("<div id='sorter'></div>");
-       label = $("<a>" + label +"</a>").append(self.sorter);
-     } else {
-       // NOTE: using anchor node to set the text color/style the same as other cells
-       //       label = document.createTextNode(column.get("label"));
-       label = $("<a>" + column.get("label") +"</a>");
-     }
-     this.$el.append(label);
-     this.$el.addClass(column.get("direction"));
-     this.$el.addClass(column.get("name"));
-     this.delegateEvents();
-     return this;
-   }
-   
- });
+  /**
+  * Backgrid event handler for the PageableCollection 'sort' event.
+  */
+  removeCellDirection: function () {
+    var self = this;
+    this.$el.removeClass("ascending").removeClass("descending");
+    if(self.sorter) self.sorter.empty();
+  },
 
  
-/**
- * Override so that we can keep a handle to the containing column name.
- * TODO: can handle this with events instead (so that the filter notifies the
- * containing headercell?)
- * TODO: replace this with specific header cells -as implemented: Date,Integer,Text,Select...
- **/
+  /**
+  * Renders a header cell with a sorter and a label.
+  */
+  render : function() {
+    var self = this;
+    this.$el.empty();
+    var column = this.column;
+    var sortable = Backgrid.callByNeed(column.sortable(), column, this.collection);
+    if(sortable){
+      var label = Iccbl.createLabel(column.get("label"), 10);
+      self.sorter = $("<div id='sorter'></div>");
+      label = $("<a>" + label +"</a>").append(self.sorter);
+    } else {
+      // NOTE: using anchor node to set the text color/style the same as other
+      // cells
+      // label = document.createTextNode(column.get("label"));
+      label = $("<a>" + column.get("label") +"</a>");
+    }
+    this.$el.append(label);
+    this.$el.addClass(column.get("direction"));
+    this.$el.addClass(column.get("name"));
+      this.delegateEvents();
+      return this;
+    }
+   
+  });
+
+ 
+  /**
+ * Override so that we can keep a handle to the containing column name. TODO:
+ * can handle this with events instead (so that the filter notifies the
+ * containing headercell?) TODO: replace this with specific header cells -as
+ * implemented: Date,Integer,Text,Select...
+ */
 var MyServerSideFilter = 
 		  Iccbl.MyServerSideFilter = 
 		  Backgrid.Extension.ServerSideFilter.extend({
@@ -1698,24 +1634,25 @@ var MyServerSideFilter =
     	this.collection.addSearch(searchHash);
     	
     	
-    	// reinstated - for usability 20141203: calling super, because it will force first page.
+    	// reinstated - for usability 20141203: calling super, because it will
+      // force first page.
     	Backgrid.Extension.ServerSideFilter.prototype.search.apply(this,e);
       
     	if (e) e.preventDefault();
 
     	// REMOVED 20150113
-      //      var data = {};
-      //      var query = this.searchBox().val();
-      //      if (query) data[this.name] = query;
+      // var data = {};
+      // var query = this.searchBox().val();
+      // if (query) data[this.name] = query;
       //
-      //      var collection = this.collection;
-      //      // We're overriding this behaviour:
-      //  		//        // go back to the first page on search
-      //  		//        if (Backbone.PageableCollection &&
-      //  		//            collection instanceof Backbone.PageableCollection) {
-      //  		//          collection.getFirstPage({data: data, reset: true, fetch: true});
-      //  		//        }
-      //      collection.fetch({data: data, reset: true});
+      // var collection = this.collection;
+      // // We're overriding this behaviour:
+      // // // go back to the first page on search
+      // // if (Backbone.PageableCollection &&
+      // // collection instanceof Backbone.PageableCollection) {
+      // // collection.getFirstPage({data: data, reset: true, fetch: true});
+      // // }
+      // collection.fetch({data: data, reset: true});
       
       this.showClearButtonMaybe();
     },
@@ -1743,106 +1680,106 @@ var MyServerSideFilter =
  **/
 var MyHeaderCell = Iccbl.MyHeaderCell = MultiSortHeaderCell.extend({
 
-    _serverSideFilter : null,
+  _serverSideFilter : null,
 
-    initialize : function(options) {
-        this.options = options;
-        MyHeaderCell.__super__.initialize.apply(this, arguments);
+  initialize : function(options) {
+      this.options = options;
+      MyHeaderCell.__super__.initialize.apply(this, arguments);
 
-        this._serverSideFilter = new MyServerSideFilter({
-            collection : this.collection, 
-            name : this.column.get("name") + "__contains", 
-            placeholder : "Search " + this.column.get("label"), 
-            columnName : this.column.get("name"),
-        });
+      this._serverSideFilter = new MyServerSideFilter({
+          collection : this.collection, 
+          name : this.column.get("name") + "__contains", 
+          placeholder : "Search " + this.column.get("label"), 
+          columnName : this.column.get("name"),
+      });
 
-        this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
-        this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
-        _.bindAll(this, 'clearSearch');
-    },
+      this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
+      this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
+      _.bindAll(this, 'clearSearch');
+  },
 
-    clearSearch: function(){
-      if(this._serverSideFilter.searchBox().val()){
-        console.log('responding to clearSearch:'  + this.column.get('name') 
-            + ':' + this._serverSideFilter.searchBox().val());
-        this._serverSideFilter.clear();
-      }
-    },
-      
-
-    remove: function() {
-        console.log('headercell remove called');
-        this._serverSideFilter.remove();
-        this._serverSideFilter.unbind();
-        this._serverSideFilter.collection = null;
-        this.unbind();
-
-        MyHeaderCell.__super__.remove.apply(this);
-    },
-    
-    /**
-     * Function to listen for router generated custom search event
-     * "MyServerSideFilter:search"
-     * - add search term and show box
-     * - clear old search terms
-     **/
-    _search: function(searchHash, collection){
-        var self = this;
-        if (collection == this.collection){
-            var found = false;
-            _.each(_(searchHash).pairs(), function(pair){
-                var key = pair[0];
-                var val = pair[1];
-                if (self._serverSideFilter.name == key){
-                    console.log('--found search: ' + key + '=' + val + 
-                    		', on: ' + self.column.get('name'));
-                    found = true;
-                    // create the DOM element
-                    self.$el.append(self._serverSideFilter.render().el);
-                    // set the search term
-                    self._serverSideFilter.searchBox().val(val);
-                    // the filter search method will call collection.fetch()
-                    self._serverSideFilter.search(); 
-                }
-            });
-
-            if (!found) {
-                if (!_.isEmpty(this.$el.find("input[type=text]").val())) {
-                    this._serverSideFilter.remove();
-                    this.collection.clearSearch([self._serverSideFilter.name]);
-                }
-            }
-        }
-    },
-
-    /**
-     * Renders a header cell with a sorter and a label.
-     */
-    render : function() {
-      var self = this;
-      MyHeaderCell.__super__.render.apply(this, arguments);
-
-      var column = this.column;
-
-      this.$el.addClass(column.get("name"));
-      this.delegateEvents();
-      
-      var _handle = this;
-      
-      var searchableVal = column.get('searchable');
-      if(_.isBoolean(searchableVal) && searchableVal ){
-        var filterIcon = $(self.filtericon_text);
-        filterIcon.click(function(e) {
-            _handle.$el.append(_handle._serverSideFilter.render().el);
-        });
-        this.$el.append(filterIcon);
-      }
-
-      this.$el.prop('title', 
-      			  this.options['column']['attributes']["description"]);
-      
-      return this;
+  clearSearch: function(){
+    if(this._serverSideFilter.searchBox().val()){
+      console.log('responding to clearSearch:'  + this.column.get('name') 
+          + ':' + this._serverSideFilter.searchBox().val());
+      this._serverSideFilter.clear();
     }
+  },
+    
+
+  remove: function() {
+      console.log('headercell remove called');
+      this._serverSideFilter.remove();
+      this._serverSideFilter.unbind();
+      this._serverSideFilter.collection = null;
+      this.unbind();
+
+      MyHeaderCell.__super__.remove.apply(this);
+  },
+  
+  /**
+   * Function to listen for router generated custom search event
+   * "MyServerSideFilter:search"
+   * - add search term and show box
+   * - clear old search terms
+   **/
+  _search: function(searchHash, collection){
+      var self = this;
+      if (collection == this.collection){
+          var found = false;
+          _.each(_(searchHash).pairs(), function(pair){
+              var key = pair[0];
+              var val = pair[1];
+              if (self._serverSideFilter.name == key){
+                  console.log('--found search: ' + key + '=' + val + 
+                  		', on: ' + self.column.get('name'));
+                  found = true;
+                  // create the DOM element
+                  self.$el.append(self._serverSideFilter.render().el);
+                  // set the search term
+                  self._serverSideFilter.searchBox().val(val);
+                  // the filter search method will call collection.fetch()
+                  self._serverSideFilter.search(); 
+              }
+          });
+
+          if (!found) {
+              if (!_.isEmpty(this.$el.find("input[type=text]").val())) {
+                  this._serverSideFilter.remove();
+                  this.collection.clearSearch([self._serverSideFilter.name]);
+              }
+          }
+      }
+  },
+
+  /**
+   * Renders a header cell with a sorter and a label.
+   */
+  render : function() {
+    var self = this;
+    MyHeaderCell.__super__.render.apply(this, arguments);
+
+    var column = this.column;
+
+    this.$el.addClass(column.get("name"));
+    this.delegateEvents();
+    
+    var _handle = this;
+    
+    var searchableVal = column.get('searchable');
+    if(_.isBoolean(searchableVal) && searchableVal ){
+      var filterIcon = $(self.filtericon_text);
+      filterIcon.click(function(e) {
+          _handle.$el.append(_handle._serverSideFilter.render().el);
+      });
+      this.$el.append(filterIcon);
+    }
+
+    this.$el.prop('title', 
+    			  this.options['column']['attributes']["description"]);
+    
+    return this;
+  }
 });
 
 
@@ -1858,8 +1795,6 @@ var BackboneFormFilter = Backbone.Form.extend({
    
   initialize : function(options) {
     var self = this;
-    console.log('initialize BackboneFormFilter');
-    
     var options = this.options = options || {};
       
     if(!options.columnName){
@@ -1924,17 +1859,6 @@ var BackboneFormFilter = Backbone.Form.extend({
 
 });
 
-///** 
-// * Override: << not needed because field schema template allows override >>
-// * provide a minimal template: no label, help, or error div's
-// */
-//var HeaderFormField = Backbone.Form.Field.extend({
-//  template: _.template('\
-//    <span data-editor></span>\
-//    <div data-error></div>\
-//    ', null, Backbone.Form.templateSettings),
-//  
-//});
 
 var CriteriumFormFilter = Iccbl.CriteriumFormFilter = BackboneFormFilter.extend({
   criterium: {'=':'eq'},
@@ -1995,8 +1919,6 @@ var TextFormFilter = CriteriumFormFilter.extend({
 
   initialize : function(options) {
     var self = this;
-    console.log('initialize TextFormFilter');
-    
     var options = this.options = options || {};
     
     var formSchema = this.schema = {};
@@ -2038,7 +1960,6 @@ var TextFormFilter = CriteriumFormFilter.extend({
 
     this.listenTo(this, "change", function(e){
       var criteria = self.getValue('lower_criteria');
-      console.log('change: ' + criteria );
       if(criteria == 'blank' || criteria == 'not blank'){
         self.$el.find('[data-fields="form_textarea"]').hide();
       }else{
@@ -2153,20 +2074,16 @@ var DateEditor = Backbone.Form.editors.Date.extend({
 
   initialize : function(options) {
     var self = this;
-    console.log('initialize DateEditor');
     DateEditor.__super__.initialize.apply(this, arguments);
-    
     // now override monthnames
     self.options.monthNames = self.monthNames;
   },
-  
 });
 
 var DateFormFilter = CriteriumFormFilter.extend({
   
   criterium: {'=':'eq','>':'gt','>=':'gte','<':'lt','<=':'lte','<>':'ne',
     'between':'range', 'in': 'in','blank':'is_null','not blank':'not_blank'},
-
 
   // provide a custom form template; use Bootstrap layout/styling
   template: _.template([
@@ -2186,7 +2103,6 @@ var DateFormFilter = CriteriumFormFilter.extend({
       
   initialize : function(options) {
     var self = this;
-    console.log('initialize DateFormFilter');
     
     var options = this.options = options || {};
     var formSchema = this.schema = {};
@@ -2393,7 +2309,6 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
 
   initialize : function(options) {
     var self = this;
-    console.log('initialize TextHeaderCell');
     
     this.options = options;
     TextHeaderCell.__super__.initialize.apply(this, arguments);
@@ -2467,8 +2382,6 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
     var self = this;
     TextHeaderCell.__super__.render.apply(this);
   
-    console.log('render TextHeaderCell:  ' + this.column.get('name'));
-  
     this.$el.append(this.filterIcon);
   
     //  Backbone.View.prototype.manage = false;
@@ -2507,12 +2420,10 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
 
   initialize : function(options) {
     var self = this;
-    console.log('initialize DateHeaderCell');
     
     this.options = options;
     DateHeaderCell.__super__.initialize.apply(this, arguments);
     this.fieldinformation = _.clone(this.column.get('fieldinformation'));
-
     
     this._serverSideFilter = new DateFormFilter({
       columnName: this.column.get('name')
@@ -2582,8 +2493,6 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
     var self = this;
     DateHeaderCell.__super__.render.apply(this);
   
-    console.log('render DateHeaderCell:  ' + this.column.get('name'));
-  
     this.$el.append(this.filterIcon);
   
     //  Backbone.View.prototype.manage = false;
@@ -2636,8 +2545,6 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
     
   initialize : function(options) {
     var self = this;
-    console.log('initialize SelectorFormFilter');
-    
     var options = this.options = options || {};
     
     if(!options.choiceHash){
@@ -2885,8 +2792,6 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
   render : function() {
     var self = this;
     SelectorHeaderCell.__super__.render.apply(this);
-
-    console.log('render SelectorHeaderCell:  ' + this.column.get('name'));
   
     this.$el.append(this.filterIcon);
 
@@ -2946,8 +2851,6 @@ var NumberFormFilter = CriteriumFormFilter.extend({
       
   initialize : function(options) {
     var self = this;
-    console.log('initialize NumberFormFilter');
-
     var options = this.options = options || {};
     
     var formSchema = options.schema = options.schema || {};
@@ -2990,7 +2893,6 @@ var NumberFormFilter = CriteriumFormFilter.extend({
     };    
 
     var FormFields = Backbone.Model.extend({
-//      schema: formSchema,
       validate: function(attrs) {
         var errs = {};
         if(attrs.lower_criteria == '...' 
@@ -3145,7 +3047,6 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
   initialize : function(options) {
     var self = this;
     NumberHeaderCell.__super__.initialize.apply(this, arguments);
-    console.log('initialize NumberHeaderCell');
     this.options = options;
 
     this.fieldinformation = _.clone(this.column.get('fieldinformation'));
@@ -3218,8 +3119,6 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
     var self = this;
     NumberHeaderCell.__super__.render.apply(this);
   
-    console.log('render NumberHeaderCell:  ' + this.column.get('name'));
-  
     this.$el.append(this.filterIcon);
   
     //  Backbone.View.prototype.manage = false;
@@ -3289,7 +3188,6 @@ var SciUnitFormFilter = NumberFormFilter.extend({
 
   initialize : function(options) {
     var self = this;
-    console.log('initialize SciUnitFormFilter');
     var options = this.options = options || {};
 
     var multiplier = this.multiplier = options.multiplier || 1;
@@ -3447,8 +3345,6 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
   initialize: function(options){
 
     SciUnitHeaderCell.__super__.initialize.apply(this,arguments);
-
-    console.log('initialize SciUnitHeaderCell');
     var self = this;
     this.options = options;
     var name = this.column.get('name');
@@ -3480,7 +3376,6 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
     
     this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
     this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
-//    _.bindAll(this, '_submit', 'clearSearch');
   },
 
   
@@ -3538,8 +3433,6 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
   /** SciUnitHeaderCell **/
   render : function() {
     SelectorHeaderCell.__super__.render.apply(this);
-
-    console.log('render SelectorHeaderCell:  ' + this.column.get('name'));
     var self = this;
   
     this.$el.append(this.filterIcon);
@@ -3606,46 +3499,46 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     backgridCellType = Backgrid.DateCell;
   }
   if (!_.isEmpty(prop['backgrid_cell_type'])) {
-      backgridCellType = prop['backgrid_cell_type'];
-      cell_options = prop['backgrid_cell_options'];
-      try{
-        cell_options = JSON.parse(cell_options);
-      }catch(e){
-        console.log('warn: backgrid_cell_options is not JSON parseable, column: ' +
-            key + ', options: ' + cell_options);
+    backgridCellType = prop['backgrid_cell_type'];
+    cell_options = prop['backgrid_cell_options'];
+    try{
+      cell_options = JSON.parse(cell_options);
+    }catch(e){
+      console.log('warn: backgrid_cell_options is not JSON parseable, column: ' +
+          key + ', options: ' + cell_options);
+    }
+    
+    try {
+      var klass = Iccbl.stringToFunction(prop['backgrid_cell_type']);
+      if (!_.isUndefined(klass)) {
+        console.log('----- class found: ' + prop['backgrid_cell_type']
+          + ', cell_options: ' + JSON.stringify(cell_options));
+        backgridCellType = klass;
+        if(!_.isUndefined(cell_options)){
+          var _specialized_cell = klass.extend(cell_options);
+          backgridCellType = _specialized_cell;
+        }
       }
-      
-      try {
-          var klass = Iccbl.stringToFunction(prop['backgrid_cell_type']);
-          if (!_.isUndefined(klass)) {
-              console.log('----- class found: ' + prop['backgrid_cell_type']
-                + ', cell_options: ' + JSON.stringify(cell_options));
-              backgridCellType = klass;
-              if(!_.isUndefined(cell_options)){
-                var _specialized_cell = klass.extend(cell_options);
-                backgridCellType = _specialized_cell;
-              }
-          }
-      } catch(ex) {
-          var msg = ('----for: field: ' + key + 
-              ', no Iccbl class found for type: ' + 
-              prop['backgrid_cell_type'] + 
-              ', this may be a Backgrid cell type');
-          console.log(msg + ': ' + JSON.stringify(ex));
-      }
+    } catch(ex) {
+      var msg = ('----for: field: ' + key + 
+          ', no Iccbl class found for type: ' + 
+          prop['backgrid_cell_type'] + 
+          ', this may be a Backgrid cell type');
+      console.log(msg + ': ' + JSON.stringify(ex));
+    }
   }
   
   column = _.extend(column, {
-      'name' : key,
-      'label' : prop['title'],
-      'description' : prop['description'],
-      'cell' : backgridCellType,
-      'order' : prop['ordinal'],
-      'sortable': prop['ordering'],
-      'searchable': prop['filtering'],
-      'editable' : false,
-      'visible': visible,
-      'fieldinformation': prop
+    'name' : key,
+    'label' : prop['title'],
+    'description' : prop['description'],
+    'cell' : backgridCellType,
+    'order' : prop['ordinal'],
+    'sortable': prop['ordering'],
+    'searchable': prop['filtering'],
+    'editable' : false,
+    'visible': visible,
+    'fieldinformation': prop
   });
   if(orderStack && _.contains(orderStack, key)){
     column['direction'] = 'ascending';
@@ -3702,46 +3595,34 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
 var createBackgridColModel = Iccbl.createBackgridColModel = 
   function(restFields, optionalHeaderCell, orderStack, _manualIncludes) {
     
-    console.log('--createBackgridColModel');
-    var manualIncludes = _manualIncludes || [];
+  console.log('--createBackgridColModel');
+  var manualIncludes = _manualIncludes || [];
 
-    var colModel = [];
-    var i = 0;
-    var _total_count = 0;
-    _.each(_.pairs(restFields), function(pair) {
-        var key = pair[0];
-        var prop = pair[1];
-//        console.log('Column: ' + key );
-        var column = createBackgridColumn(key, prop, optionalHeaderCell, orderStack);
-        var visible = _.has(prop, 'visibility') && 
-          _.contains(prop['visibility'], 'list');
-        if (visible || _.contains(manualIncludes, key) ) {
-          if(_.contains(manualIncludes, '-'+key)){
-            console.log('Column: ' + key + ' is manually excluded');
-          }else{
-            colModel[i] = column;
-            i++;
-          }
-        } else {
-            //console.log('field not visible in list view: ' + key)
-        }
-    });
-    
-    colModel = new Backgrid.Columns(colModel);
-    colModel.comparator = 'order';
-    colModel.sort();
-//    colModel.sort(function(a, b) {
-//        if (_.isNumber(a['order']) && _.isNumber(b['order'])) {
-//            return a['order'] - b['order'];
-//        } else if (_.isNumber(a['order'])) {
-//            return -1;
-//        } else if (_.isNumber(b['order'])) {
-//            return 1;
-//        } else {
-//            return 0;
-//        }
-//    });
-    return colModel;
+  var colModel = [];
+  var i = 0;
+  var _total_count = 0;
+  _.each(_.pairs(restFields), function(pair) {
+    var key = pair[0];
+    var prop = pair[1];
+    var column = createBackgridColumn(key, prop, optionalHeaderCell, orderStack);
+    var visible = _.has(prop, 'visibility') && 
+      _.contains(prop['visibility'], 'list');
+    if (visible || _.contains(manualIncludes, key) ) {
+      if(_.contains(manualIncludes, '-'+key)){
+        console.log('Column: ' + key + ' is manually excluded');
+      }else{
+        colModel[i] = column;
+        i++;
+      }
+    } else {
+        //console.log('field not visible in list view: ' + key)
+    }
+  });
+  
+  colModel = new Backgrid.Columns(colModel);
+  colModel.comparator = 'order';
+  colModel.sort();
+  return colModel;
 };
 
 

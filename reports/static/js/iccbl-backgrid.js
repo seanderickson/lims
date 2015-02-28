@@ -1596,191 +1596,191 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
   });
 
  
-  /**
- * Override so that we can keep a handle to the containing column name. TODO:
- * can handle this with events instead (so that the filter notifies the
- * containing headercell?) TODO: replace this with specific header cells -as
- * implemented: Date,Integer,Text,Select...
- */
-var MyServerSideFilter = 
-		  Iccbl.MyServerSideFilter = 
-		  Backgrid.Extension.ServerSideFilter.extend({
-    columnName : null, // TODO: use "name"
-    
-    // override
-    className: "form-search",    
-    
-    // override, provide our own class
-    template: _.template([
-        '<input type="search" ',
-        '<% if (placeholder) { %> placeholder="<%- placeholder %>" <% } %>',
-        'name="<%- name %>" />',
-        '<a class="backgrid-filter clear" data-backgrid-action="clear" href="#">&times;</a>'
-        ].join(''), null, {variable: null}),
+//  /**
+// * Override so that we can keep a handle to the containing column name. TODO:
+// * can handle this with events instead (so that the filter notifies the
+// * containing headercell?) TODO: replace this with specific header cells -as
+// * implemented: Date,Integer,Text,Select...
+// */
+//var MyServerSideFilter = 
+//		  Iccbl.MyServerSideFilter = 
+//		  Backgrid.Extension.ServerSideFilter.extend({
+//    columnName : null, // TODO: use "name"
+//    
+//    // override
+//    className: "form-search",    
+//    
+//    // override, provide our own class
+//    template: _.template([
+//        '<input type="search" ',
+//        '<% if (placeholder) { %> placeholder="<%- placeholder %>" <% } %>',
+//        'name="<%- name %>" />',
+//        '<a class="backgrid-filter clear" data-backgrid-action="clear" href="#">&times;</a>'
+//        ].join(''), null, {variable: null}),
+//
+//    initialize : function(options) {
+//      this.columnName = options.columnName;
+//      Backgrid.Extension.ServerSideFilter.prototype.initialize.apply(
+//      		this, [options]);
+//    },
+//    
+//    /**
+//     * Override
+//     */
+//    search: function(e) {
+//      if (e) e.preventDefault();    	
+//    	var searchHash = {};
+//    	searchHash[this.name] = this.searchBox().val();
+//    	this.collection.addSearch(searchHash);
+//    	
+//    	
+//    	// reinstated - for usability 20141203: calling super, because it will
+//      // force first page.
+//    	Backgrid.Extension.ServerSideFilter.prototype.search.apply(this,e);
+//      
+//    	if (e) e.preventDefault();
+//
+//    	// REMOVED 20150113
+//      // var data = {};
+//      // var query = this.searchBox().val();
+//      // if (query) data[this.name] = query;
+//      //
+//      // var collection = this.collection;
+//      // // We're overriding this behaviour:
+//      // // // go back to the first page on search
+//      // // if (Backbone.PageableCollection &&
+//      // // collection instanceof Backbone.PageableCollection) {
+//      // // collection.getFirstPage({data: data, reset: true, fetch: true});
+//      // // }
+//      // collection.fetch({data: data, reset: true});
+//      
+//      this.showClearButtonMaybe();
+//    },
+//    showClearButtonMaybe: function () {
+//      this.clearButton().show();
+//    },
+//    
+//    /**
+//     * Override
+//     */
+//    clear: function(e){
+//      if (e) e.preventDefault();
+//      this.remove();
+//      this.collection.clearSearch([this.name]); 
+//      console.log('ssf prototype clear')
+//      Backgrid.Extension.ServerSideFilter.prototype.clear.apply(this,e);
+//    },    
+//});
 
-    initialize : function(options) {
-      this.columnName = options.columnName;
-      Backgrid.Extension.ServerSideFilter.prototype.initialize.apply(
-      		this, [options]);
-    },
-    
-    /**
-     * Override
-     */
-    search: function(e) {
-      if (e) e.preventDefault();    	
-    	var searchHash = {};
-    	searchHash[this.name] = this.searchBox().val();
-    	this.collection.addSearch(searchHash);
-    	
-    	
-    	// reinstated - for usability 20141203: calling super, because it will
-      // force first page.
-    	Backgrid.Extension.ServerSideFilter.prototype.search.apply(this,e);
-      
-    	if (e) e.preventDefault();
 
-    	// REMOVED 20150113
-      // var data = {};
-      // var query = this.searchBox().val();
-      // if (query) data[this.name] = query;
-      //
-      // var collection = this.collection;
-      // // We're overriding this behaviour:
-      // // // go back to the first page on search
-      // // if (Backbone.PageableCollection &&
-      // // collection instanceof Backbone.PageableCollection) {
-      // // collection.getFirstPage({data: data, reset: true, fetch: true});
-      // // }
-      // collection.fetch({data: data, reset: true});
-      
-      this.showClearButtonMaybe();
-    },
-    showClearButtonMaybe: function () {
-      this.clearButton().show();
-    },
-    
-    /**
-     * Override
-     */
-    clear: function(e){
-      if (e) e.preventDefault();
-      this.remove();
-      this.collection.clearSearch([this.name]); 
-      console.log('ssf prototype clear')
-      Backgrid.Extension.ServerSideFilter.prototype.clear.apply(this,e);
-    },    
-});
-
-
-/**
- * Override of the Backgrid.HeaderCell to:
- * - add "contains" search
- * TODO: replace this with specific header cells -as implemented: Date,Integer,Text,Select...
- **/
-var MyHeaderCell = Iccbl.MyHeaderCell = MultiSortHeaderCell.extend({
-
-  _serverSideFilter : null,
-
-  initialize : function(options) {
-      this.options = options;
-      MyHeaderCell.__super__.initialize.apply(this, arguments);
-
-      this._serverSideFilter = new MyServerSideFilter({
-          collection : this.collection, 
-          name : this.column.get("name") + "__contains", 
-          placeholder : "Search " + this.column.get("label"), 
-          columnName : this.column.get("name"),
-      });
-
-      this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
-      this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
-      _.bindAll(this, 'clearSearch');
-  },
-
-  clearSearch: function(){
-    if(this._serverSideFilter.searchBox().val()){
-      console.log('responding to clearSearch:'  + this.column.get('name') 
-          + ':' + this._serverSideFilter.searchBox().val());
-      this._serverSideFilter.clear();
-    }
-  },
-    
-
-  remove: function() {
-      console.log('headercell remove called');
-      this._serverSideFilter.remove();
-      this._serverSideFilter.unbind();
-      this._serverSideFilter.collection = null;
-      this.unbind();
-
-      MyHeaderCell.__super__.remove.apply(this);
-  },
-  
-  /**
-   * Function to listen for router generated custom search event
-   * "MyServerSideFilter:search"
-   * - add search term and show box
-   * - clear old search terms
-   **/
-  _search: function(searchHash, collection){
-      var self = this;
-      if (collection == this.collection){
-          var found = false;
-          _.each(_(searchHash).pairs(), function(pair){
-              var key = pair[0];
-              var val = pair[1];
-              if (self._serverSideFilter.name == key){
-                  console.log('--found search: ' + key + '=' + val + 
-                  		', on: ' + self.column.get('name'));
-                  found = true;
-                  // create the DOM element
-                  self.$el.append(self._serverSideFilter.render().el);
-                  // set the search term
-                  self._serverSideFilter.searchBox().val(val);
-                  // the filter search method will call collection.fetch()
-                  self._serverSideFilter.search(); 
-              }
-          });
-
-          if (!found) {
-              if (!_.isEmpty(this.$el.find("input[type=text]").val())) {
-                  this._serverSideFilter.remove();
-                  this.collection.clearSearch([self._serverSideFilter.name]);
-              }
-          }
-      }
-  },
-
-  /**
-   * Renders a header cell with a sorter and a label.
-   */
-  render : function() {
-    var self = this;
-    MyHeaderCell.__super__.render.apply(this, arguments);
-
-    var column = this.column;
-
-    this.$el.addClass(column.get("name"));
-    this.delegateEvents();
-    
-    var _handle = this;
-    
-    var searchableVal = column.get('searchable');
-    if(_.isBoolean(searchableVal) && searchableVal ){
-      var filterIcon = $(self.filtericon_text);
-      filterIcon.click(function(e) {
-          _handle.$el.append(_handle._serverSideFilter.render().el);
-      });
-      this.$el.append(filterIcon);
-    }
-
-    this.$el.prop('title', 
-    			  this.options['column']['attributes']["description"]);
-    
-    return this;
-  }
-});
+///**
+// * Override of the Backgrid.HeaderCell to:
+// * - add "contains" search
+// * TODO: replace this with specific header cells -as implemented: Date,Integer,Text,Select...
+// **/
+//var MyHeaderCell = Iccbl.MyHeaderCell = MultiSortHeaderCell.extend({
+//
+//  _serverSideFilter : null,
+//
+//  initialize : function(options) {
+//      this.options = options;
+//      MyHeaderCell.__super__.initialize.apply(this, arguments);
+//
+//      this._serverSideFilter = new MyServerSideFilter({
+//          collection : this.collection, 
+//          name : this.column.get("name") + "__contains", 
+//          placeholder : "Search " + this.column.get("label"), 
+//          columnName : this.column.get("name"),
+//      });
+//
+//      this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
+//      this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
+//      _.bindAll(this, 'clearSearch');
+//  },
+//
+//  clearSearch: function(){
+//    if(this._serverSideFilter.searchBox().val()){
+//      console.log('responding to clearSearch:'  + this.column.get('name') 
+//          + ':' + this._serverSideFilter.searchBox().val());
+//      this._serverSideFilter.clear();
+//    }
+//  },
+//    
+//
+//  remove: function() {
+//      console.log('headercell remove called');
+//      this._serverSideFilter.remove();
+//      this._serverSideFilter.unbind();
+//      this._serverSideFilter.collection = null;
+//      this.unbind();
+//
+//      MyHeaderCell.__super__.remove.apply(this);
+//  },
+//  
+//  /**
+//   * Function to listen for router generated custom search event
+//   * "MyServerSideFilter:search"
+//   * - add search term and show box
+//   * - clear old search terms
+//   **/
+//  _search: function(searchHash, collection){
+//      var self = this;
+//      if (collection == this.collection){
+//          var found = false;
+//          _.each(_(searchHash).pairs(), function(pair){
+//              var key = pair[0];
+//              var val = pair[1];
+//              if (self._serverSideFilter.name == key){
+//                  console.log('--found search: ' + key + '=' + val + 
+//                  		', on: ' + self.column.get('name'));
+//                  found = true;
+//                  // create the DOM element
+//                  self.$el.append(self._serverSideFilter.render().el);
+//                  // set the search term
+//                  self._serverSideFilter.searchBox().val(val);
+//                  // the filter search method will call collection.fetch()
+//                  self._serverSideFilter.search(); 
+//              }
+//          });
+//
+//          if (!found) {
+//              if (!_.isEmpty(this.$el.find("input[type=text]").val())) {
+//                  this._serverSideFilter.remove();
+//                  this.collection.clearSearch([self._serverSideFilter.name]);
+//              }
+//          }
+//      }
+//  },
+//
+//  /**
+//   * Renders a header cell with a sorter and a label.
+//   */
+//  render : function() {
+//    var self = this;
+//    MyHeaderCell.__super__.render.apply(this, arguments);
+//
+//    var column = this.column;
+//
+//    this.$el.addClass(column.get("name"));
+//    this.delegateEvents();
+//    
+//    var _handle = this;
+//    
+//    var searchableVal = column.get('searchable');
+//    if(_.isBoolean(searchableVal) && searchableVal ){
+//      var filterIcon = $(self.filtericon_text);
+//      filterIcon.click(function(e) {
+//          _handle.$el.append(_handle._serverSideFilter.render().el);
+//      });
+//      this.$el.append(filterIcon);
+//    }
+//
+//    this.$el.prop('title', 
+//    			  this.options['column']['attributes']["description"]);
+//    
+//    return this;
+//  }
+//});
 
 
 var BackboneFormFilter = Backbone.Form.extend({
@@ -3480,7 +3480,7 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
  *    Backgrid.Cell] } to map custom cell implementations to fields
  */
 var createBackgridColumn = Iccbl.createBackgridColumn = 
-  function(key, prop, optionalHeaderCell, _orderStack){
+  function(key, prop, _orderStack){
   
   var orderStack = _orderStack || [];
   
@@ -3547,9 +3547,9 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     column['direction'] = 'descending';
   }
   
-  if (optionalHeaderCell) {
-    column['headerCell'] = optionalHeaderCell;
-  }
+//  if (optionalHeaderCell) {
+//    column['headerCell'] = optionalHeaderCell;
+//  }
   
   // More specific header cell, if available
   if(ui_type == 'string'){
@@ -3593,7 +3593,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
 };
 
 var createBackgridColModel = Iccbl.createBackgridColModel = 
-  function(restFields, optionalHeaderCell, orderStack, _manualIncludes) {
+  function(restFields, orderStack, _manualIncludes) {
     
   console.log('--createBackgridColModel');
   var manualIncludes = _manualIncludes || [];
@@ -3604,7 +3604,7 @@ var createBackgridColModel = Iccbl.createBackgridColModel =
   _.each(_.pairs(restFields), function(pair) {
     var key = pair[0];
     var prop = pair[1];
-    var column = createBackgridColumn(key, prop, optionalHeaderCell, orderStack);
+    var column = createBackgridColumn(key, prop, orderStack);
     var visible = _.has(prop, 'visibility') && 
       _.contains(prop['visibility'], 'list');
     if (visible || _.contains(manualIncludes, key) ) {

@@ -539,6 +539,14 @@ define([
         type: 'Checkbox',
         template: altCheckboxTemplate
       };
+      formSchema['raw_lists'] = {
+        title: 'Export nested lists without list brackets',
+        help: [ 'If selected, a nested list in a cell will be quoted, ',
+                'but not denoted with brackets[]. '].join(''),
+        key: 'raw_lists',
+        type: 'Checkbox',
+        template: altCheckboxTemplate
+      };
       formSchema['content_type'] = {
         title: 'Download type',
         help: 'Select the data format',
@@ -546,7 +554,7 @@ define([
         options: _.without(resource.content_types, 'json'), // never json
         type: 'Select',
         template: _.template([
-          '<div class="input-group ">',
+          '<div class="input-group col-xs-6">',
           '   <label class="input-group-addon" for="<%= editorId %>" ',
           '         title="<%= help %>" ><%= title %></label>',
           '   <span  data-editor></span>',
@@ -561,6 +569,7 @@ define([
       var formFields = new FormFields();
       formFields.set('use_vocabularies', true);
       formFields.set('use_titles', true);
+      formFields.set('raw_lists', true);
 
       var form = new Backbone.Form({
         model: formFields,
@@ -581,9 +590,11 @@ define([
         if(content_type != 'csv' && content_type != 'xls'){
           form.$el.find('[name="use_vocabularies"]').prop('disabled', true);
           form.$el.find('[name="use_titles"]').prop('disabled', true);
+          form.$el.find('[name="raw_lists"]').prop('disabled', true);
         }else{
           form.$el.find('[name="use_vocabularies"]').prop('disabled', false);
           form.$el.find('[name="use_titles"]').prop('disabled', false);
+          form.$el.find('[name="raw_lists"]').prop('disabled', false);
         }
       });
       
@@ -594,6 +605,7 @@ define([
       if(default_content != 'csv' && default_content != 'xls'){
         $(el).find('[name="use_vocabularies"]').prop('disabled', true);
         $(el).find('[name="use_titles"]').prop('disabled', true);
+        $(el).find('[name="raw_lists"]').prop('disabled', true);
       }
       
       self.showModal({
@@ -610,10 +622,13 @@ define([
           url += '&format=' + values['content_type']
 
           if(values['use_vocabularies']){
-            url += '&vocabularies=true';
+            url += '&use_vocabularies=true';
           }
           if(values['use_titles']){
             url += '&use_titles=true';
+          }
+          if(values['raw_lists']){
+            url += '&raw_lists=true';
           }
           
           // How to trigger a download and notify JavaScript when finished:

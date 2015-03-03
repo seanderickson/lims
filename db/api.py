@@ -3253,7 +3253,7 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
         
             base_query_tables = ['well', 'reagent', 'library']
 
-            sub_resource = self.get_reagent_resource(library)
+            sub_resource = self.get_reagent_resource(library_screen_type=library.screen_type)
             if hasattr(sub_resource, 'build_sqlalchemy_columns'):
                 sub_columns = sub_resource.build_sqlalchemy_columns(
                     field_hash.values(), self.bridge)
@@ -3355,7 +3355,7 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
         
         logger.info(str(('final field list', field_hash.keys())))
         
-        sub_resource = self.get_reagent_resource(library)
+        sub_resource = self.get_reagent_resource(library_screen_type=library.screen_type)
         if hasattr(sub_resource, 'build_sqlalchemy_columns'):
             sub_columns = sub_resource.build_sqlalchemy_columns(
                 field_hash.values(), self.bridge)
@@ -3442,13 +3442,13 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
             self.well_resource = WellResource()
         return self.well_resource
     
-    def get_reagent_resource(self, library):
+    def get_reagent_resource(self, library_screen_type=None):
         # FIXME: we should store the "type" on the entity
         
-        if library.screen_type == 'rnai':
+        if library_screen_type == 'rnai':
             return self.get_sr_resource()
         else:
-            if library.library_type == 'natural_products':
+            if library_screen_type == 'natural_products':
                 return self.get_npr_resource()
             else:
                 return self.get_smr_resource()
@@ -3466,7 +3466,7 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
         
         '''
         library = Library.objects.get(short_name=library_short_name)
-        sub_resource = self.get_reagent_resource(library)
+        sub_resource = self.get_reagent_resource(library_screen_type=library.screen_type)
         query = sub_resource.get_object_list(request)
         logger.info(str(('==== query', query.query.sql_with_params())))
         
@@ -3486,7 +3486,7 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
         bundle.data.update(well_bundle.data)
         
         library = bundle.obj.well.library
-        sub_resource = self.get_reagent_resource(library)
+        sub_resource = self.get_reagent_resource(library_screen_type=library.screen_type)
         bundle = sub_resource.full_dehydrate(bundle, for_list=for_list)
         
         return bundle
@@ -3505,10 +3505,29 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
                 'no library found for short_name', library_short_name)))
                 
     def build_schema(self, library=None):
+        schema = super(ReagentResource,self).build_schema()
+
+        # grab all of the subtypes
+        
+        sub_schema = self.get_npr_resource().build_schema();
+        schema['fields'].update(sub_schema['fields']);
+        
+        sub_schema = self.get_sr_resource().build_schema();
+        schema['fields'].update(sub_schema['fields']);
+        
+        sub_schema = self.get_smr_resource().build_schema();
+        schema['fields'].update(sub_schema['fields']);
+        
+        well_schema = WellResource().build_schema()
+        schema['fields'].update(well_schema['fields'])
+
+        return schema
+
+    def build_schema_old(self, library=None):
         schema = deepcopy(super(ReagentResource,self).build_schema())
         
         if library:
-            sub_data = self.get_reagent_resource(library).build_schema()
+            sub_data = self.get_reagent_resource(library_screen_type=library.screen_type).build_schema()
             
             newfields = {}
             newfields.update(sub_data['fields'])
@@ -3621,13 +3640,13 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
             self.npr_resource = NaturalProductReagentResource()
         return self.npr_resource
     
-    def get_reagent_resource(self, library):
+    def get_reagent_resource(self, library_screen_type=None):
         # FIXME: we should store the "type" on the entity
         
-        if library.screen_type == 'rnai':
+        if library_screen_type == 'rnai':
             return self.get_sr_resource()
         else:
-            if library.library_type == 'natural_products':
+            if library_screen_type == 'natural_products':
                 return self.get_npr_resource()
             else:
                 return self.get_smr_resource()
@@ -3669,7 +3688,7 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
         data = super(WellResource,self).build_schema()
         
         if library:
-            sub_data = self.get_reagent_resource(library).build_schema()
+            sub_data = self.get_reagent_resource(library_screen_type=library.screen_type).build_schema()
             data = deepcopy(data)
             
             newfields = {}
@@ -3699,6 +3718,48 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
         return self.get_list(request, **kwargs)
 
     def get_list(self, request, **kwargs):
+    
+
+#         ### FIXME: hack: get the search term; get the 1st well or plate, 
+#         # then get the library for that well or plate            
+#         query_params = request.GET.copy()
+#         # Update with the provided kwargs.
+#         query_params.update(kwargs)
+#         logger.info(str(('query_params', query_params, 'kwargs', kwargs)))
+#
+#         lookup_sep = django.db.models.constants.LOOKUP_SEP
+#         wells = None
+#         if query_params:
+#             expressions = []
+#             filtered_fields = []
+#             for filter_expr, value in query_params.items():
+#                 if lookup_sep not in filter_expr:
+#                     continue;
+#                 filter_bits = filter_expr.split(lookup_sep)
+#                 if len(filter_bits) != 2:
+#                     logger.warn(str(('filter expression must be of the form '
+#                         '"field_name__expression"',
+#                         filter_expr, filter_bits)))
+#                 field_name = filter_bits[0]
+#                 filter_type = filter_bits[1]
+#                 value = SqlAlchemyResource.filter_value_to_python(
+#                     value, query_params, filter_expr, filter_type)  
+#                 
+#                 logger.info(str(('search', field_name,filter_type,value)))
+#                 if field_name == 'plate_number':
+#                     if filter_type == 'in' or filter_type == 'range':
+#                         wells = Well.objects.filter(plate_number=value[0])
+#                         break
+#                 if field_name == 'well_id':
+#                     wells = Well.objects.filter(well_id=value[0])
+#                     break
+#             if wells:
+#                 if wells.count() < 1:
+#                     raise NotImplementedError('must provide well or plate number '
+#                         'search information if not searching within a library')               
+#                 else:
+#                     ## HACK: only finding the first well/library
+#                     kwargs['library_short_name'] = wells[0].library.short_name   
     
         # TODO: eliminate dependency on library (for schema determination)
         library = None
@@ -3776,23 +3837,23 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
 #         return obj_list
     
         
-    def get_object_list(self, request, library_short_name=None):
-        ''' 
-        Note: any extra kwargs are there because we are injecting them into the 
-        global tastypie kwargs in one of the various "dispatch_" handlers assigned 
-        through prepend_urls.  Here we can explicitly add them to the query. 
-        
-        '''
-        query = super(WellResource, self).get_object_list(request);
-        if library_short_name:
-            query = query.filter(library__short_name=library_short_name)
-            logger.debug(str(('get well list', library_short_name, len(query))))
-            
-        return query
+#     def get_object_list(self, request, library_short_name=None):
+#         ''' 
+#         Note: any extra kwargs are there because we are injecting them into the 
+#         global tastypie kwargs in one of the various "dispatch_" handlers assigned 
+#         through prepend_urls.  Here we can explicitly add them to the query. 
+#         
+#         '''
+#         query = super(WellResource, self).get_object_list(request);
+#         if library_short_name:
+#             query = query.filter(library__short_name=library_short_name)
+#             logger.debug(str(('get well list', library_short_name, len(query))))
+#             
+#         return query
                     
 
-    def dehydrate(self, bundle):
-        
+#     def dehydrate(self, bundle):
+#         
 #         library = bundle.obj.library
 #         
 #         # TODO: migrate to using "well.reagents"
@@ -3814,12 +3875,12 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
 #             if 'resource_uri' in sub_bundle.data:
 #                 del sub_bundle.data['resource_uri'] 
 #             bundle.data.update(sub_bundle.data)
-        return bundle
+#         return bundle
     
-    def dehydrate_library(self, bundle):
-        
-        return self.get_library_resource().get_resource_uri(
-            bundle_or_obj=bundle, url_name='api_dispatch_list')
+#     def dehydrate_library(self, bundle):
+#         
+#         return self.get_library_resource().get_resource_uri(
+#             bundle_or_obj=bundle, url_name='api_dispatch_list')
 
 
     def post_list(self, request, **kwargs):
@@ -3947,7 +4008,7 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
         logger.debug(str(('updated well', well_bundle.obj)))
 
         # lookup/create the reagent
-        sub_resource = self.get_reagent_resource(library)
+        sub_resource = self.get_reagent_resource(library_screen_type=library.screen_type)
         
         reagent_bundle = sub_resource.build_bundle(
             data=well_data, request=well_bundle.request)

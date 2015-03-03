@@ -46,77 +46,22 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var library = this.library;
 
       // NOTE: library/well view is actually a "reagents" view
-      // - use the well specific schema:
-      var url = library.resource.apiUri +'/' + library.key + '/well';
-      // but get the reagent list from the link:
       var reagents_url = library.resource.apiUri +'/' + library.key + '/well';
       var url = reagents_url;
-      
-      var setupFunction = function(resource){
-        // Test for list args, if not found, then it's a detail view
-        if (!_.isEmpty(uriStack) && !_.isEmpty(uriStack[0]) &&
-                !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
-          var _key = Iccbl.popKeyFromStack(resource,uriStack,self.consumedStack);
-  
-          appModel.getModel('well', _key, function(model){
-            model.resource = resource;
-            self.showDetail(model);
-          } );
-        } else {
-          self.consumedStack = [];
-          self.showList(resource, reagents_url);
-        }
+      var resource = appModel.getResource('reagent');
+      if (!_.isEmpty(uriStack) && !_.isEmpty(uriStack[0]) &&
+              !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
+        var _key = Iccbl.popKeyFromStack(resource,uriStack,self.consumedStack);
+
+        appModel.getModel('well', _key, function(model){
+          model.resource = resource;
+          self.showDetail(model);
+        } );
+      } else {
+        self.consumedStack = [];
+        self.showList(resource, reagents_url);
+      }
         
-      };
-      
-      // get the library well specific resource
-      // TODO: the well view should also get it itself so that the well view looks correct?
-      // -or- the libary-specific well view has it's own schema and url: i.e.:
-      // library/short_name/well/schema
-      // library/short_name/well/well_id
-//      var wellResourceId = library.key + '-wells';
-      var wellResourceId = 'well';
-      console.log('get resource from server ' + appModel);
-      appModel.getResourceFromUrl(wellResourceId, url+'/schema', setupFunction );
-//      try{
-//        // try to get cached resource
-//        setupFunction(appModel.getResource(wellResourceId));
-//      } catch(e) {
-//        console.log('get resource from server ' + appModel);
-//        appModel.getResourceFromUrl(wellResourceId, url+'/schema', setupFunction );
-//      }
-      
-//      var ModelClass = Backbone.Model.extend({
-//        url : url + 'schema',
-//        defaults : {}
-//      });
-//      var instance = new ModelClass();
-//      instance.fetch({
-//          success : function(model) {
-//            
-//            var resourceId = 'well';
-//            var resource = appModel.getResource(resourceId);
-//            
-//            resource.schema = model.toJSON();
-//            resource.schema = _.extend(resource.schema, appModel.schemaClass);
-//            
-//            // Test for list args, if not found, then it's a detail view
-//            if (!_.isEmpty(uriStack) && !_.isEmpty(uriStack[0]) &&
-//                    !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
-//              var _key = Iccbl.popKeyFromStack(resource,uriStack,self.consumedStack);
-//      
-//              appModel.getModel(resourceId, _key, function(model){
-//                model.resource = resource;
-//                self.showDetail(model);
-//              } );
-//            } else {
-//              self.consumedStack = [];
-//              self.showList(resource, url);
-//            }
-//          },
-//          error: appModel.jqXHRerror
-//      });      
-          
     },    
     
     showDetail: function(model) {
@@ -136,6 +81,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       this.$('#content_title').html("");
       self.setView('#content', view).render();
       
+      // TODO: support for generic images
       if(model.has('structure_image')){
         self.$('#content').append(
             '<img style="position: absolute; top: 8em; right: 3em; height: 16em;" src="' 
@@ -147,6 +93,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
 
       var self = this;
       var uriStack = _.clone(this.uriStack);
+      
       var detailHandler = function(model) {
         var key = Iccbl.getIdFromIdAttribute(model,resource.schema);
         model.resource = resource;

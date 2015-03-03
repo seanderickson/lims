@@ -651,69 +651,138 @@ define([
       appModel.download(self.getCollectionUrl(limitForDownload), self._options.resource);
     },
      
+    /** Build the select columns dialog **/
     select_columns: function(event){
+      
       var self = this;
       var includes = self.listModel.get('includes') || [];
       var altCheckboxTemplate =  _.template('\
-              <div class="form-group" style="margin-bottom: 0px;" > \
-                <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
-                  <label for="<%= editorId %>"><span data-editor\><%= title %></label>\
-                </div>\
-              </div>\
-            ');
-
-      var formSchema = {};
-      _.each(_.pairs(this._options.schemaResult.fields), function(pair){
+          <div class="form-group" style="margin-bottom: 0px;" > \
+            <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
+              <label title="<%= help %>" for="<%= editorId %>"><span data-editor\><%= title %></label>\
+            </div>\
+          </div>\
+        ');
+      var altSubCheckboxTemplate =  _.template('\
+          <div class="form-group " style="margin-bottom: 0px;  display: none;" > \
+            <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
+              <label for="<%= editorId %>"><span data-editor\><%= title %></label>\
+            </div>\
+          </div>\
+        ');
+      var _fields = this._options.schemaResult.fields;
+      var _extra_scopes = [];
+      var formSchema= {};
+      // create the schema fields; if the scope is not the resource scope, 
+      // create a extra_scope entry
+      _.each(_.pairs(_fields), function(pair){
         var prop = pair[1];
         var key = prop['key'];
         if(key == 'resource_uri' || key == 'id') return;
-
         var title = prop['title'];
-        formSchema[key] = { 
+        var scope = prop['scope'];
+        var fieldResource = scope.split('.')[1];
+        if(fieldResource != self._options.resource.key){
+          if(!_.has(_extra_scopes, scope)){
+            _extra_scopes[scope] = [];
+          }else{ 
+            _extra_scopes[scope].push(key);
+          }
+          console.log('sub resource fields: ' + fieldResource);
+          sub_resource = appModel.getResource(fieldResource);
+          
+          formSchema[key] = {
+            title: title,
+            key: key,
+            type: 'Checkbox',
+            help: prop['description'],
+            template: altSubCheckboxTemplate
+          }
+        }else{
+          formSchema[key] = { 
             title: title, 
-            ordinal: prop['ordinal'],
             key:  key, 
             type: 'Checkbox',
+            help: prop['description'],
             template: altCheckboxTemplate };
+        }
       });
+
+      // form model
       var FormFields = Backbone.Model.extend({
         schema: formSchema
       });
-      
       var formFields = new FormFields();
+      
+      // default checkbox states
       var already_visible = {};
       var default_visible = {};
-      _.each(_.pairs(this._options.schemaResult.fields), function(pair){
+      _.each(_.pairs(_fields), function(pair){
         var key = pair[1]['key'];
         var prop = pair[1];
         if(key == 'resource_uri' || key == 'id') return;
-        
         var _visible = (_.has(prop, 'visibility') && 
             _.contains(prop['visibility'], 'list'));
         default_visible[key] = _visible;
         _visible = _visible || _.contains(includes, key);
         _visible = _visible && !_.contains(includes, '-'+key);
-        
         already_visible[key] = _visible;
         formFields.set( key, _visible);
       });
       
-      var orderedFieldKeys = _.sortBy(formFields.keys(), function(key){
-        console.log('find:' + key + ',' + formSchema[key]);
-        return formSchema[key]['ordinal'];
+      // create form structure, with sub resources toggle
+      var form_template = [
+        "<form  class='form-horizontal container' >",
+        "<div class='btn btn-default btn-sm ' id='select-all' >select all</div>",
+        "<div class='btn btn-default btn-sm ' id='clear-all' >clear all</div>"
+      ];
+      var field_template = '<div data-fields="<%= name %>" ></div>';
+      var sub_field_template = '<div data-fields="<%= name %>" style="display: none;" ></div>';
+      var header_template = '<label class="selection-group .h5" id="<%= id %>" title="<%= help %>" ><%= name %> columns</label>';
+      var main_scope = 'fields.' + self._options.resource.key;
+      var main_keys = _.filter(_.keys(_fields), function(key) {
+        return _fields[key]['scope'] == main_scope;
       });
-      console.log('orderedFields: ' + JSON.stringify(orderedFieldKeys));
-  
-      var form = new Backbone.Form({
-          model: formFields,
-          fields: orderedFieldKeys,
-          template: _.template([
-            "<form data-fieldsets class='form-horizontal container' >",
-            "<div class='btn btn-default btn-sm ' id='select-all' >select all</div>",
-            "<div class='btn btn-default btn-sm ' id='clear-all' >clear all</div>",
-            "</form>"
-            ].join(''))
+      main_keys = _.sortBy(main_keys, function(key){
+        return _fields[key]['ordinal'];
       });
+      _.each(main_keys, function(key){
+        form_template.push( _.template(field_template, { 
+          editorId: key+'-id', 
+          title: _fields[key]['title'],
+          name: key 
+        }));
+      });
+      _.each(_.keys(_extra_scopes), function(scope){
+        sub_resource = appModel.getResource(scope.split('.')[1]);
+        form_template.push(
+            _.template(header_template, {
+              id: scope,
+              name: sub_resource.title,
+              help: sub_resource.description
+            }));
+        
+        _.each(_extra_scopes[scope], function(sub_key){
+          form_template.push( _.template(field_template, { name: sub_key }) );
+        });
+        
+      });
+      form_template.push('</form>');
+      
+//      var form = new Backbone.Form({
+//        model: formFields,
+//        fields: ordered_keys,
+//        template: _.template([
+//          "<form data-fieldsets class='form-horizontal container' >",
+//          "<div class='btn btn-default btn-sm ' id='select-all' >select all</div>",
+//          "<div class='btn btn-default btn-sm ' id='clear-all' >clear all</div>",
+//          "</form>"
+//          ].join(''))
+//    });
+    var form = new Backbone.Form({
+        model: formFields,
+        template: _.template(form_template.join(''))
+    });
       
       form.events = {
         'click .btn#select-all': function(){
@@ -725,7 +794,19 @@ define([
           $("form input:checkbox").each(function(){
             $(this).prop("checked",false);
           });
+        },
+        'click label.selection-group': function(e){
+          //e.preventDefault();
+          //e.stopPropagation();
+          var debug_el = form.$el.find('input').each(function(){
+            if(_fields[$(this).attr('name')]['scope'] == e.target.id){
+              $(this).closest('.form-group').toggle();
+            }
+            console.log($(this).attr('name'));
+          })
+          console.log('click... ' );
         }
+
       };
 
       appModel.showModal({
@@ -747,7 +828,7 @@ define([
             if(value && !already_visible[key] ){
               self.grid.insertColumn(
                   Iccbl.createBackgridColumn(
-                      key,self._options.schemaResult.fields[key],
+                      key,_fields[key],
                       self.collection.state.orderStack));
             }
             if(!value && default_visible[key]){

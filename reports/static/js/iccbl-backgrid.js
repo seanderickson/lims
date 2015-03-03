@@ -1786,7 +1786,10 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
 var BackboneFormFilter = Backbone.Form.extend({
   
   template: _.template([
-    "<form data-fieldsets class='form-horizontal container' >",
+    "<form class='form-horizontal container' >",
+    '<div class="row center-block" style="margin: 0 0 0 0;" >',
+    "<div data-fieldsets   />",
+    "</div>",
     "</form>"].join('')),
   checkboxTemplate: [
     '<label data-editor title="<%= help %>" class="checkbox-inline" >',
@@ -1813,13 +1816,15 @@ var BackboneFormFilter = Backbone.Form.extend({
     var self = this;
     BackboneFormFilter.__super__.render.apply(this, arguments);
     this.$el.append([
-      '<div class="col-xs-3">',
-      '<button type="submit" class="btn btn-default btn-xs" style="width: 3em; " >ok</input>',
+      '<div id="form-last-row" class="" >',
+      '<div class="col-xs-6">',
+      '<button type="submit" class="btn btn-default btn-block" > ok </input>',
       '</div>',
-      '<div class="col-xs-3">',
-      '<a class="backgrid-filter clear" data-backgrid-action="clear"',
-      ' href="#">&times;</a></div>',
+      '<div class="col-xs-6">',
+      '<a class="backgrid-filter clear close" data-backgrid-action="clear"',
+      ' href="#">&times;</a>',
       '</div>',
+      '</div>'
       ].join(''));
 
     return this;
@@ -1908,11 +1913,13 @@ var TextFormFilter = CriteriumFormFilter.extend({
   // provide a custom form template; use Bootstrap layout/styling
   template: _.template([
       '<form class="iccbl-headerfield-form" >',
+      '<div class="row center-block" style="margin: 0 0 0 0;" >',
+      "<div class='col-xs-12' >",
       '   <div data-fields="lower_criteria" ',
       '     class="iccbl-headerfield-text" for="lower_value"   />',
-      '</div>',
       '<div class="form-group" data-fields="form_textarea" />',
-      '<div class="col-xs-6"  data-fields="invert_field" />',
+      '<div class=""  data-fields="invert_field" />',
+      '</div>',
       '</div>',
       '</form>'
     ].join('')),
@@ -2088,15 +2095,20 @@ var DateFormFilter = CriteriumFormFilter.extend({
   // provide a custom form template; use Bootstrap layout/styling
   template: _.template([
       '<form class="iccbl-headerfield-form" >',
+      '<div class="row center-block" style="margin: 0 0 0 0;" >',
       '   <div data-fields="lower_criteria" ',
       '     class="form-control" for="lower_value"   />',
       '   <div class="input-group pull-right"  data-fields="lower_value"/>',
-      '<div class="form-group" data-fields="form_textarea" style="display: none;" />',
-      '<div class="input-group" id="range_upper_block" style="display: none;" >',
-      '   <span class="input-group-addon" for="upper_value"  style="width: 4em; ">and</span>',
-      '   <span data-fields="upper_value"/>',
+      '<div class="row center-block" style="margin: 0 0 0 0;" >',
+      '   <div class="form-group" data-fields="form_textarea" style="display: none;" />',
       '</div>',
-      '<div class="col-xs-6"  data-fields="invert_field" />',
+      '<div class="row center-block" style="margin: 0 0 0 0;" >',
+      '   <div class="input-group" id="range_upper_block" style="display: none;" >',
+      '     <span class="input-group-addon" for="upper_value"  style="width: 4em; ">and</span>',
+      '     <span data-fields="upper_value"/>',
+      '   </div>',
+      '</div>',
+      '   <div class=""  data-fields="invert_field" />',
       '</div>',
       '</form>'
     ].join('')),
@@ -2532,7 +2544,10 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
   criterium: {'': 'unset', 'blank':'is_null','not blank':'not_blank'},
   
   template: _.template([
-      "<form data-fieldsets class='form-horizontal container' >",
+      "<form  class='form-horizontal container' >",
+      '<div class="row center-block" style="margin: 0 0 0 0;" >',
+      "<div data-fieldsets   />",
+      "</div>",
       "</form>"].join('')),
 
    altFieldTemplate: _.template([
@@ -2835,6 +2850,7 @@ var NumberFormFilter = CriteriumFormFilter.extend({
   // provide a custom form template; use Bootstrap layout/styling
   template: _.template([
       '<form class="iccbl-headerfield-form" >',
+      '<div class="row center-block" style="margin: 0 0 0 0;" >',
       '<div class="input-group ">',
       '   <div data-fields="lower_criteria" ',
       '     class="input-group-addon iccbl-headerfield-number" for="lower_value"   />',
@@ -2845,7 +2861,8 @@ var NumberFormFilter = CriteriumFormFilter.extend({
       '   <span class="input-group-addon" for="upper_value"  style="width: 4em; ">to</span>',
       '   <span data-fields="upper_value"/>',
       '</div>',
-      '<div class="col-xs-6"  data-fields="invert_field" />',
+      '<div class=""  data-fields="invert_field" />',
+      '</div>',
       '</form>'
     ].join('')),
       
@@ -3158,6 +3175,7 @@ var SciUnitFormFilter = NumberFormFilter.extend({
   // provide a custom form template; use Bootstrap layout/styling
   template: _.template([
       '<form class="iccbl-headerfield-form" >',
+      '<div class="row center-block" style="margin: 0 0 0 0;" >',
       '<div class="input-group ">',
       '   <div data-fields="lower_criteria" ',
       '     class="input-group-addon iccbl-headerfield-number" for="lower_value"   />',
@@ -3170,7 +3188,8 @@ var SciUnitFormFilter = NumberFormFilter.extend({
       '   <span data-fields="upper_value"/>',
       '   <div class="input-group-addon iccbl-headerfield-number" data-fields="upper_sciunit"/>',
       '</div>',
-      '<div class="col-xs-6"  data-fields="invert_field" />',
+      '</div>',
+      '<div class=""  data-fields="invert_field" />',
       '</form>'
     ].join('')),
 

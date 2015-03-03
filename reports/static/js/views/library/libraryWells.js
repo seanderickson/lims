@@ -94,6 +94,16 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var self = this;
       var uriStack = _.clone(this.uriStack);
       
+      // hack - should fit the reagent_type default columns into the metadata
+      var library_type = this.library.get('library_type');
+      console.log('library_type: ' + library_type);
+      if( library_type == 'RNAi'){
+        uriStack.push('includes');
+        uriStack.push('vendor_entrezgene_symbols,vendor_entrezgene_id');
+      }else if(library_type != 'natural_products'){
+        uriStack.push('includes');
+        uriStack.push('compound_name');
+      }
       var detailHandler = function(model) {
         var key = Iccbl.getIdFromIdAttribute(model,resource.schema);
         model.resource = resource;

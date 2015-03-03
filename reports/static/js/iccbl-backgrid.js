@@ -3511,8 +3511,8 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     try {
       var klass = Iccbl.stringToFunction(prop['backgrid_cell_type']);
       if (!_.isUndefined(klass)) {
-        console.log('----- class found: ' + prop['backgrid_cell_type']
-          + ', cell_options: ' + JSON.stringify(cell_options));
+        //console.log('----- class found: ' + prop['backgrid_cell_type']
+        //  + ', cell_options: ' + JSON.stringify(cell_options));
         backgridCellType = klass;
         if(!_.isUndefined(cell_options)){
           var _specialized_cell = klass.extend(cell_options);

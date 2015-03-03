@@ -38,6 +38,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       Iccbl.UriContainerView.prototype.initialize.apply(this,arguments);
       this.title = null;
       this.consumedStack = [];
+      this.objects_to_destroy = [];
     },
     
 //    /**
@@ -112,6 +113,11 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     
     showDetail: function(uriStack, model){
       var self = this;
+			// TODO: validate cleanup operations
+      self.removeView('#content');
+      self.cleanup();
+      self.off();
+      //
       var uriStack = _.clone(uriStack);
       var resource = model.resource;
       var viewClass = DetailLayout;
@@ -140,7 +146,14 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     
     
     showList: function(resource, uriStack, schemaResult) {
+      
       var self = this;
+			// TODO: validate cleanup operations
+      self.removeView('#content');
+      self.cleanup();
+      self.off();
+      //
+      
       var uriStack = _.clone(uriStack);
       var viewClass = ListView;
       if (_.has(resource, 'listView')){
@@ -164,7 +177,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         this.$('#content_title').html(resource.title + ' listing');
       }
       
-      view = new viewClass({ model: appModel, 
+      var view = new viewClass({ model: appModel, 
         options: { 
           uriStack: uriStack,
           schemaResult: schemaResult, 
@@ -182,9 +195,25 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       });
 
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
-    
+      
       Backbone.Layout.setupView(view);
       self.setView('#content', view ).render();
+      self.objects_to_destroy.push(view);
+    },
+    
+    /** Backbone.layoutmanager callback **/
+    cleanup: function(){
+      console.log('cleanup');
+      var oldView = this.getView('#content');
+      if(!_.isUndefined(oldView)){
+        oldView.off();
+      }
+      this.removeView('#content');
+      this.off(); //this.unbind(); 
+      _.each(this.objects_to_destroy, function(obj){
+        obj.remove();
+        obj.off();
+      });
     },
 
     changeUri: function(uriStack) {

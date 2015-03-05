@@ -190,6 +190,7 @@ class IccblBaseResource(Resource):
 
     content_types = {
                      'xls': 'application/xls',
+                     'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                      'csv': 'text/csv',
                      'sdf': 'chemical/x-mdl-sdfile',
                      'json': 'application/json',
@@ -219,6 +220,10 @@ class IccblBaseResource(Resource):
                     import mimeparse
                     format = mimeparse.best_match(
                         self.content_types.values(), request.META['HTTP_ACCEPT'])
+                    if not format:
+                        raise ImmediateHttpResponse("no best match format for HTTP_ACCEPT: " +
+                            request.META['HTTP_ACCEPT'])
+                        
                     logger.info(str(('format', format, request.META['HTTP_ACCEPT'])))
                 except ValueError:
                     logger.error(str(('Invalid Accept header')))
@@ -1047,7 +1052,7 @@ class ManagedResource(LoggingMixin):
 #             self.resource_resource = ResourceResource()
 #         return self.resource_resource
 
-    def _get_resource_def(self):
+    def _get_resource_def(self, resource_name=None):
         # TODO: delegate this to the ResourceResource
         #         res = self._get_resource_resource()
         #         r = res.obj_get(scope='resource', key=self._meta.resource_name)
@@ -1055,8 +1060,9 @@ class ManagedResource(LoggingMixin):
         #         r_bundle = res.full_dehydrate(r_bundle)
         #         logger.info(str(('r_bundle.data', r_bundle.data)))
         #         return r_bundle.data
+        resource_name = resource_name or self._meta.resource_name;
         resource_def = MetaHash.objects.get(
-            scope='resource', key=self._meta.resource_name)
+            scope='resource', key=resource_name)
         _def = resource_def.model_to_dict(scope='fields.resource')
         # content_types: all resources serve JSON and CSV
         content_types = _def.get('content_types', None)
@@ -1126,9 +1132,13 @@ class ManagedResource(LoggingMixin):
             supertype = schema['resource_definition'].get('supertype', '')
 #             logger.info(str(('supertype',supertype)))
             if supertype:
+                # TODO: better encapsulation for supertype field definitions
+                supertype_resource = self._get_resource_def(resource_name=supertype);
                 supertype_fields = deepcopy(
                     MetaHash.objects.get_and_parse(
                         scope='fields.' + supertype, field_definition_scope='fields.metahash'))
+                for field in supertype_fields.values():
+                    field['table'] = supertype_resource['table']
                 if DEBUG_BUILD_SCHEMA: 
                     logger.info(str(('supertype_fields',supertype_fields.keys())))
                 supertype_fields.update(schema['fields'])

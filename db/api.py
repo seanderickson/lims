@@ -1080,8 +1080,6 @@ class SilencingReagentResource(ManagedLinkedResource):
         
         @param fields - field definitions, from the resource schema
         
-        #FIXME: this is a hack for SIRNA, to handle the gene table
-        - sirna->(vendor,facility)gene->gene_genbank_accession_number
         '''
         DEBUG_BUILD_COLS = False or logger.isEnabledFor(logging.DEBUG)
         
@@ -1232,6 +1230,7 @@ class SilencingReagentResource(ManagedLinkedResource):
         return bundle
     
     def _create_gene(self, data, source_type):
+        
         gene_keys = ['entrezgene_id', 'gene_name', 'species_name']
         gene = Gene()
         for key in gene_keys:
@@ -1263,6 +1262,7 @@ class SilencingReagentResource(ManagedLinkedResource):
         return gene
     
     def dehydrate(self, bundle):
+        
         bundle = super(SilencingReagentResource, self).dehydrate(bundle)
         
         if bundle.obj and hasattr(bundle.obj,'silencingreagent'):
@@ -1282,6 +1282,7 @@ class SilencingReagentResource(ManagedLinkedResource):
         return bundle
         
     def _dehydrate_gene(self, gene, type, bundle):
+        
         gene_keys = ['entrezgene_id', 'gene_name', 'species_name']
 
         for key in gene_keys:
@@ -1576,7 +1577,7 @@ class SqlAlchemyResource(IccblBaseResource):
                     continue
                 
                 if DEBUG_BUILD_COLUMNS: 
-                    logger.info(str(('build column', field['key'])))
+                    logger.info(str(('build column', field['key'], field)))
                 field_name = field.get('field', None)
                 if not field_name:
                     field_name = field['key']
@@ -1649,7 +1650,8 @@ class SqlAlchemyResource(IccblBaseResource):
                                                        LIST_DELIMITER_SQL_ARRAY)])
                         stmt2 = stmt2.select_from(join_stmt).label(key)
                         columns[key] = stmt2
-                
+                else:
+                    logger.warn(str(('field is not in the base tables or in a linked field, and is not custom', key)))
             if DEBUG_BUILD_COLUMNS: logger.info(str(('columns', columns.keys())))
             return columns.values()
         except Exception, e:
@@ -2098,7 +2100,10 @@ class SqlAlchemyResource(IccblBaseResource):
             response = StreamingHttpResponse(ChunkIterWrapper(json_generator(result)))
             response['Content-Type'] = content_type
         
-        elif desired_format == 'application/xls':
+        
+        elif( desired_format == 'application/xls' or
+            desired_format == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): 
+            # NOTE: will respond with xlsx for both desired formats
             
             # FIXME: how to abstract images?
             
@@ -2206,8 +2211,10 @@ class SqlAlchemyResource(IccblBaseResource):
                 workbook.close()
                 logger.info(str(('wrote file', temp_file)))
 
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; charset=utf-8'
                 if len(file_names_to_zip) >1:
                     # create a temp zip file
+                    content_type='application/zip; charset=utf-8'
                     temp_file = os.path.join('/tmp',str(time.clock()))
                     logger.info(str(('temp ZIP file', temp_file)))
 
@@ -2221,7 +2228,7 @@ class SqlAlchemyResource(IccblBaseResource):
                 logger.info(str(('download tmp file',temp_file,_file)))
                 wrapper = FileWrapper(_file)
                 response = StreamingHttpResponse(
-                    wrapper, content_type='application/zip; charset=utf-8') 
+                    wrapper, content_type=content_type) 
                 response['Content-Disposition'] = \
                     'attachment; filename=%s' % filename
                 response['Content-Length'] = os.path.getsize(temp_file)
@@ -3146,17 +3153,16 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
     class Meta:
 
         queryset = Reagent.objects.all()
-        
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
         authorization= UserGroupAuthorization()
         resource_name = 'reagent'
-        
         ordering = []
         filtering = {}
         serializer = LimsSerializer()
         
     def __init__(self, **kwargs):
+
         self.library_resource = None
         self.sr_resource = None
         self.smr_resource = None
@@ -3183,7 +3189,7 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
     def get_list(self, request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns djanog.http.response.StreamingHttpResponse 
+        @returns django.http.response.StreamingHttpResponse 
         '''
         is_for_detail = kwargs.pop('is_for_detail', False)
        
@@ -3216,8 +3222,8 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
             if not library:
                 library = Reagent.objects.get(substance_id=substance_id).well.library
 
-        if not library:
-            raise NotImplementedError('must provide a library_short_name parameter')
+#         if not library:
+#             raise NotImplementedError('must provide a library_short_name parameter')
             
         logger.info(str(('get_list', filename, kwargs)))
 
@@ -3240,7 +3246,27 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes,
                 is_for_detail=is_for_detail)
-              
+            
+            logger.info(str(('field hash scopes', 
+                set([field.get('scope', None) 
+                    for field in field_hash.values()]) )) )
+            if library:
+                default_fields = ['fields.well','fields.reagent']
+                if library.screen_type == 'rnai':
+                    default_fields.append('fields.silencingreagent')
+                elif library.screen_type == 'natural_products':
+                    default_fields.append('fields.naturalproductreagent')
+                else:
+                    default_fields.append('fields.smallmoleculereagent')
+                    
+                _temp = { key:field for key,field in field_hash.items() 
+                    if field.get('scope', None) in default_fields }
+                field_hash = _temp
+                logger.info(str(('final field hash: ', field_hash.keys())))
+            else:
+                # consider limiting fields available
+                pass
+            
             order_params = request.GET.getlist('order_by')
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
              
@@ -3250,20 +3276,49 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
  
             # specific setup 
         
-        
             base_query_tables = ['well', 'reagent', 'library']
-
-            sub_resource = self.get_reagent_resource(library_screen_type=library.screen_type)
-            if hasattr(sub_resource, 'build_sqlalchemy_columns'):
-                sub_columns = sub_resource.build_sqlalchemy_columns(
-                    field_hash.values(), self.bridge)
+            
+            columns = []
+            sub_columns = self.get_sr_resource().build_sqlalchemy_columns(
+                field_hash.values(), self.bridge)
+            if DEBUG_GET_LIST: 
                 logger.info(str(('sub_columns', sub_columns.keys())))
-                columns = self.build_sqlalchemy_columns(
-                    field_hash.values(), base_query_tables=base_query_tables,
-                    custom_columns=sub_columns)
-            else:
-                columns = self.build_sqlalchemy_columns(
-                    field_hash.values(), base_query_tables=base_query_tables)
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                custom_columns=sub_columns)
+            
+# Could use the library param to limit the column building exercise
+# to the sub-resource, but since all columns can be joined, just include
+# the SR columns, as above.            
+#             sub_resource = None
+#             if library:
+#                 sub_resource = self.get_reagent_resource(library_screen_type=library.screen_type)
+#             if sub_resource and hasattr(sub_resource, 'build_sqlalchemy_columns'):
+#                 sub_columns = sub_resource.build_sqlalchemy_columns(
+#                     field_hash.values(), self.bridge)
+#                 if DEBUG_GET_LIST: 
+#                     logger.info(str(('sub_columns', sub_columns.keys())))
+#                 columns = self.build_sqlalchemy_columns(
+#                     field_hash.values(), base_query_tables=base_query_tables,
+#                     custom_columns=sub_columns)
+#             else:
+# 
+#                 sub_columns = sub_resource.build_sqlalchemy_columns(
+#                     field_hash.values(), self.bridge)
+#                 if DEBUG_GET_LIST: 
+#                     logger.info(str(('sub_columns', sub_columns.keys())))
+#                 columns = self.build_sqlalchemy_columns(
+#                     field_hash.values(), base_query_tables=base_query_tables,
+#                     custom_columns=sub_columns)
+#                 
+                
+#                 # Note: excludes smr,rnai,np,... tables if library not specified
+#                 logger.info(str(('build generic resource columns')))
+#                 columns = self.build_sqlalchemy_columns(
+#                     field_hash.values(), base_query_tables=base_query_tables)
+            
+            if DEBUG_GET_LIST: 
+                logger.info(str(('columns', [str(col) for col in columns])))
             
             # Start building a query; use the sqlalchemy.sql.schema.Table API:
             _well = self.bridge['well']
@@ -3271,9 +3326,10 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
             _library = self.bridge['library']
             j = _well.join(_reagent, _well.c.well_id==_reagent.c.well_id, isouter=True)
             j = j.join(_library, _well.c.library_id == _library.c.library_id )
-            stmt = select(columns).\
-                select_from(j).\
-                where(_well.c.library_id == library.library_id) 
+            stmt = select(columns).select_from(j)
+            
+            if library:
+                stmt = stmt.where(_well.c.library_id == library.library_id) 
 
             # general setup
              
@@ -3505,6 +3561,7 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
                 'no library found for short_name', library_short_name)))
                 
     def build_schema(self, library=None):
+        
         schema = super(ReagentResource,self).build_schema()
 
         # grab all of the subtypes
@@ -3524,6 +3581,7 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
         return schema
 
     def build_schema_old(self, library=None):
+        
         schema = deepcopy(super(ReagentResource,self).build_schema())
         
         if library:
@@ -3549,6 +3607,7 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
     library = fields.CharField(null=True)
     
     class Meta:
+
         queryset = Well.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
@@ -3557,13 +3616,11 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
         ordering = []
         filtering = {}
         serializer = LimsSerializer()   
-#         serializer = CursorSerializer()
 
         xls_serializer = XLSSerializer()
         # Backbone/JQuery likes to JSON.parse the returned data
         always_return_data = True 
         max_limit = 10000
-
 
     def __init__(self, **kwargs):
         self.library_resource = None
@@ -3718,6 +3775,7 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
         return self.get_list(request, **kwargs)
 
     def get_list(self, request, **kwargs):
+        return self.get_full_reagent_resource().get_list(request, **kwargs)
     
 
 #         ### FIXME: hack: get the search term; get the 1st well or plate, 
@@ -3762,25 +3820,25 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
 #                     kwargs['library_short_name'] = wells[0].library.short_name   
     
         # TODO: eliminate dependency on library (for schema determination)
-        library = None
-        library_short_name = kwargs.pop('library_short_name', None)
-        if not library_short_name:
-            logger.info(str(('no library_short_name provided')))
-        else:
-            kwargs['library_short_name__eq'] = library_short_name
-            library = Library.objects.get(short_name=library_short_name)
-
-        well_id = kwargs.pop('well_id', None)
-        if well_id:
-            kwargs['well_id__eq'] = well_id
-            if not library:
-                library = Well.objects.get(well_id=well_id).library
-
-        if not library:
-            raise NotImplementedError('must provide a library_short_name parameter')    
-        else:
-            kwargs['library_short_name'] = library.short_name
-            return self.get_full_reagent_resource().get_list(request, **kwargs)
+#         library = None
+#         library_short_name = kwargs.pop('library_short_name', None)
+#         if not library_short_name:
+#             logger.info(str(('no library_short_name provided')))
+#         else:
+#             kwargs['library_short_name__eq'] = library_short_name
+#             library = Library.objects.get(short_name=library_short_name)
+# 
+#         well_id = kwargs.pop('well_id', None)
+#         if well_id:
+#             kwargs['well_id__eq'] = well_id
+#             if not library:
+#                 library = Well.objects.get(well_id=well_id).library
+# 
+#         if not library:
+#             raise NotImplementedError('must provide a library_short_name parameter')    
+#         else:
+#             kwargs['library_short_name'] = library.short_name
+#         return self.get_full_reagent_resource().get_list(request, **kwargs)
         
 #     def obj_get_list(self, bundle, **kwargs):    
 # 

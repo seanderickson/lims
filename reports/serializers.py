@@ -21,6 +21,7 @@ import xlwt
 import xlrd
 from reports.utils.serialize import from_csv_iterate
 import six
+from xlsxwriter.workbook import Workbook
 
 logger = logging.getLogger(__name__)
 
@@ -276,23 +277,107 @@ def csv_convert(val, delimiter=LIST_DELIMITER_CSV, list_brackets='[]'):
     else:
         return None
 
+
+    
+
 class XLSSerializer(Serializer):
     
     def __init__(self,content_types=None, formats=None, **kwargs):
         if not content_types:
             content_types = Serializer.content_types.copy();
         content_types['xls'] = 'application/xls'
+        content_types['xlsx'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         
         if not formats:
             _formats = Serializer.formats # or []
             _formats = copy.copy(_formats)
             formats = _formats
         formats.append('xls')
+        formats.append('xlsx')
             
         super(XLSSerializer,self).__init__(
             formats=formats, 
             content_types=content_types,**kwargs);
 
+
+    def deserialize(self, content, format='application/json'):
+        """
+        Override - 20150304 - remove "force_text"
+        Given some data and a format, calls the correct method to deserialize
+        the data and returns the result.
+        """
+        desired_format = None
+
+        format = format.split(';')[0]
+
+        for short_format, long_format in self.content_types.items():
+            if format == long_format:
+                if hasattr(self, "from_%s" % short_format):
+                    desired_format = short_format
+                    break
+
+        if desired_format is None:
+            raise UnsupportedFormat("The format indicated '%s' had no available deserialization method. Please check your ``formats`` and ``content_types`` on your Serializer." % format)
+
+        #         if isinstance(content, six.binary_type):
+        #             content = force_text(content)
+
+        deserialized = getattr(self, "from_%s" % desired_format)(content)
+        return deserialized
+
+    def to_xlsx(self, data, options=None):
+        '''
+        Quick hack - prefer streaming solutions
+        FIXME: not tested 20150304
+        '''
+        
+        options = options or {}
+        data = self.to_simple(data, options)
+        
+        raw_data = StringIO.StringIO()
+        workbook = Workbook(raw_data)
+        
+        if 'error' in data or 'error_messsage' in data:
+            sheet = workbook.add_worksheet('error')
+            sheet.write(0, 0, 'error')
+            sheet.write(1, 0, data.get('error', data.get('error_message', 'unknown error')))
+            if data.get('traceback', None):
+                sheet.write(0,1, 'traceback')
+                sheet.write(1,1, data.get('traceback', ''))
+            book.close()
+            return raw_data.getvalue()
+        
+        # TODO: smarter way to ignore 'objects'
+        if 'objects' in data:
+            data = data['objects']
+        if len(data) == 0:
+            return data
+
+        sheet = workbook.add_worksheet('objects')
+
+        if isinstance(data, dict):
+            # usually, this happens when the data is actually an error message;
+            # but also, it could be just one item being returned
+            for i,(key,item) in enumerate(data.items()):
+                sheet.write(0,i,smart_str(key))
+                sheet.write(1,i,csv_convert(item))
+        else:    
+            # default 
+            keys = None
+            for row,item in enumerate(data):
+                if row == 0:
+                    for i, key in enumerate(item.keys()):
+                        sheet.write(0,i,smart_str(key))
+                for i, val in enumerate(item.values()):
+                    val = csv_convert(val, delimiter=LIST_DELIMITER_XLS)
+                    if val and len(val) > 32767: 
+                        logger.error(str(('warn, row too long', 
+                            row,key, val)))
+                    sheet.write(row+1,i,val)
+        
+        workbook.close()
+        
+        return raw_data.getvalue()
 
     def to_xls(self, data, options=None):
 
@@ -344,6 +429,13 @@ class XLSSerializer(Serializer):
         
         return raw_data.getvalue()
 
+    def from_xlsx(self, content, root='objects'):
+        ''' TODO: preliminary 20150304
+        '''
+        logger.info(str(('experimental, read xlsx using xlrd')))
+        return self.from_xls(content, root=root)
+        
+        
     def from_xls(self, content, root='objects'):
         
         if isinstance(content, six.string_types):

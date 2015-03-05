@@ -592,7 +592,7 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         
     def test7_load_sirnai(self):
 
-        filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_rnai.xls'
+        filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_rnai.xlsx'
         
         library_item = LibraryFactory.attributes()
         library_item.update({ 
@@ -615,7 +615,7 @@ class LibraryResource(DBMetaHashResourceBootstrap):
 #     
     def test8_sirna_duplex(self):
         
-        filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_rnai_duplex_50440_50443.xls'
+        filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_rnai_duplex_50440_50443.xlsx'
         
         library_item = LibraryFactory.attributes()
         library_item.update({ 
@@ -632,7 +632,7 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         
         self._load_xls_reagent_file(filename,library_item, 532, 1536 )
 
-        filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_rnai_pool.xls'
+        filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_rnai_pool.xlsx'
 
         library_item = LibraryFactory.attributes()
         library_item.update({ 
@@ -654,7 +654,7 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         
     def test9_natural_product(self):
         
-        filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_natural_product.xls'
+        filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_natural_product.xlsx'
         
         library_item = LibraryFactory.attributes()
         library_item.update({ 
@@ -673,7 +673,7 @@ class LibraryResource(DBMetaHashResourceBootstrap):
 
 
     def _load_xls_reagent_file(self, filename,library_item, expected_in, expected_count):
-        logger.debug(str(('==== test7_load_xls_reagent_file =====')))
+        logger.debug(str(('==== test_load_xls_reagent_file =====')))
         
         start_plate = library_item['start_plate']
         end_plate = library_item['end_plate']
@@ -687,13 +687,14 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         data_for_get={}
         data_for_get.setdefault('limit', 0)
         data_for_get.setdefault('includes', ['*'])
-        data_for_get.setdefault('HTTP_ACCEPT', 'application/xls' )
+#         data_for_get.setdefault('HTTP_ACCEPT', 'application/xls' )
+        data_for_get.setdefault('HTTP_ACCEPT', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' )
         xls_serializer = XLSSerializer()
         with open(filename) as input_file:
             
             ### NOTE: submit the data as an object, because the test framework
             ### will convert it to the target format.
-            input_data = self.serializer.from_xls(input_file.read())
+            input_data = self.serializer.from_xlsx(input_file.read())
             input_data = input_data['objects']
             #logger.info(str(('===== input data', input_data)))
         
@@ -705,10 +706,10 @@ class LibraryResource(DBMetaHashResourceBootstrap):
             logger.debug(str(('======Submitting patch...', filename, resource_uri)))
         
             resp = self.api_client.put(
-                resource_uri, format='xls', data=input_data, 
+                resource_uri, format='xlsx', data=input_data, 
                 authentication=self.get_credentials(), **data_for_get )
             self.assertTrue(resp.status_code in [200, 204], 
-                str((resp.status_code, xls_serializer.from_xls(resp.content))))
+                str((resp.status_code, xls_serializer.from_xlsx(resp.content))))
         
         logger.debug(str(('check patched data for',resource_name,
             'execute get on:',resource_uri)))
@@ -716,7 +717,7 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         resource_name = 'reagent'
         reagent_resource_uri = '/'.join([BASE_URI_DB,'library', library_item['short_name'],resource_name])
         resp = self.api_client.get(
-            reagent_resource_uri, format='sdf', authentication=self.get_credentials(), 
+            reagent_resource_uri, format='xlsx', authentication=self.get_credentials(), 
             data=data_for_get)
 
         logger.debug(str(('--------resp to get:', resp.status_code)))

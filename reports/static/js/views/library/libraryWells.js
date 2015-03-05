@@ -49,22 +49,46 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var reagents_url = library.resource.apiUri +'/' + library.key + '/well';
       var url = reagents_url;
       var resource = appModel.getResource('reagent');
+      
+      // Adjust the schema fields for the library type:
+      // TODO: consider separate SMR,SR,NPR resources
+      // - todo: generic method to display only the subtype's fields, i.e.:
+      // subtype_scope = 'fields.' + model.resource.key; and also its supertypes
+      
+      var displayed_scopes = ['fields.well', 'fields.reagent'];
+      if(this.library.get('screen_type') == 'rnai'){
+        displayed_scopes.push('fields.silencingreagent');
+      }else if(this.library.get('library_type') == 'natural_products'){
+        displayed_scopes.push('fields.naturalproductreagent');
+      }else{
+        displayed_scopes.push('fields.smallmoleculereagent');
+      }
+      var specific_schema = _.clone(resource.schema);
+      specific_schema.fields = {}
+      _.each(_.keys(resource.schema.fields), 
+          function(key){
+            var field = resource.schema.fields[key];
+            if(_.contains(displayed_scopes, field['scope'])){
+              specific_schema.fields[key] = field;
+            }
+          });
+      
       if (!_.isEmpty(uriStack) && !_.isEmpty(uriStack[0]) &&
               !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
         var _key = Iccbl.popKeyFromStack(resource,uriStack,self.consumedStack);
 
         appModel.getModel('well', _key, function(model){
           model.resource = resource;
-          self.showDetail(model);
+          self.showDetail(model, specific_schema);
         } );
       } else {
         self.consumedStack = [];
-        self.showList(resource, reagents_url);
+        self.showList(resource, reagents_url, specific_schema);
       }
         
     },    
     
-    showDetail: function(model) {
+    showDetail: function(model, specific_schema) {
       var self = this;
       var uriStack = _.clone(this.uriStack);
       // get the view class
@@ -75,7 +99,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       if(si_field){
         si_field['visibility'] = ['api'];
       }
-      var view = new viewClass({ model: model, uriStack: uriStack });
+      
+      var view = new viewClass({ schema: specific_schema, model: model, uriStack: uriStack });
 
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.$('#content_title').html("");
@@ -89,7 +114,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       }
     },
     
-    showList: function(resource, url) {
+    showList: function(resource, url, specific_schema) {
 
       var self = this;
       var uriStack = _.clone(this.uriStack);
@@ -97,13 +122,16 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       // hack - should fit the reagent_type default columns into the metadata
       var library_type = this.library.get('library_type');
       console.log('library_type: ' + library_type);
-      if( library_type == 'RNAi'){
+      if( this.library.get('screen_type') == 'rnai'){
         uriStack.push('includes');
         uriStack.push('vendor_entrezgene_symbols,vendor_entrezgene_id');
       }else if(library_type != 'natural_products'){
         uriStack.push('includes');
         uriStack.push('compound_name');
       }
+      
+      
+      // FIXME: deprecate this for the LinkCell...
       var detailHandler = function(model) {
         var key = Iccbl.getIdFromIdAttribute(model,resource.schema);
         model.resource = resource;
@@ -114,7 +142,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       };
       var view = new ListView({ options: {
         uriStack: uriStack,
-        schemaResult: resource.schema,
+        schemaResult: specific_schema,
         resource: resource,
         url: url, 
         detailHandler: detailHandler

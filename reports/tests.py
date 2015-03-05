@@ -810,6 +810,33 @@ class XLSSerializerTest(SimpleTestCase):
                     
                     self.fail('input object not found')
 
+        # Test XLSX
+        filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_rnai.xlsx'
+        with open(os.path.join(APP_ROOT_DIR, filename)) as fin:    
+            _data = serializer.from_xlsx(fin.read(), root=None)
+            logger.debug(str(('xlsx final_data', _data)))
+            
+            expected_count = 5
+            self.assertTrue(
+                len(_data)==expected_count, 
+                str(('len is', len(_data),expected_count)))
+
+            keys_not_to_check=[]
+            for i,inputobj in enumerate(test_input_data):
+                result, outputobj = find_obj_in_list(
+                    inputobj,_data, excludes=keys_not_to_check )
+                if not result:
+                    print '========xlsx input obj not found==========='
+                    print inputobj, '\n'
+                    print 'messages'
+                    print outputobj
+                    print 'final data read in:'
+                    for x in _data:
+                        print x , '\n'
+                    print_find_errors(outputobj)
+                    
+                    self.fail('xlsx input object not found')
+
 
 class HydrationTest(TestCase):
     

@@ -662,10 +662,11 @@ define([
               <label title="<%= help %>" for="<%= editorId %>"><span data-editor\><%= title %></label>\
             </div>\
           </div>\
-        ');
+        ');      
       var altSubCheckboxTemplate =  _.template('\
-          <div class="form-group " style="margin-bottom: 0px;  display: none;" > \
+          <div class="form-group sub-resource-field" style="margin-bottom: 0px;" > \
             <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
+            <label for="<%= editorId %>" > - </label>\
               <label for="<%= editorId %>"><span data-editor\><%= title %></label>\
             </div>\
           </div>\
@@ -737,8 +738,13 @@ define([
         "<div class='btn btn-default btn-sm ' id='clear-all' >clear all</div>"
       ];
       var field_template = '<div data-fields="<%= name %>" ></div>';
-      var sub_field_template = '<div data-fields="<%= name %>" style="display: none;" ></div>';
-      var header_template = '<label class="selection-group .h5" id="<%= id %>" title="<%= help %>" ><%= name %> columns</label>';
+      var sub_field_template = '<div data-fields="<%= name %>" >   </div>';
+      var header_template = [
+        '<div class="form-group" >',
+        '<input class="selection-group" type="checkbox" id="<%= id %>-checkbox"> </input>',
+        '<label class="selection-group .h5 " id="<%= id %>" title="<%= help %>" ><%= name %> columns</label>',
+        '</div>'
+        ].join('');
       var main_scope = 'fields.' + self._options.resource.key;
       var main_keys = _.filter(_.keys(_fields), function(key) {
         return _fields[key]['scope'] == main_scope;
@@ -753,6 +759,7 @@ define([
           name: key 
         }));
       });
+      var _extra_scopes_shown = [];
       _.each(_.keys(_extra_scopes), function(scope){
         sub_resource = appModel.getResource(scope.split('.')[1]);
         form_template.push(
@@ -764,25 +771,19 @@ define([
         
         _.each(_extra_scopes[scope], function(sub_key){
           form_template.push( _.template(field_template, { name: sub_key }) );
+          if(formFields.get(sub_key)){
+            _extra_scopes_shown.push(scope);
+          }
         });
         
       });
       form_template.push('</form>');
       
-//      var form = new Backbone.Form({
-//        model: formFields,
-//        fields: ordered_keys,
-//        template: _.template([
-//          "<form data-fieldsets class='form-horizontal container' >",
-//          "<div class='btn btn-default btn-sm ' id='select-all' >select all</div>",
-//          "<div class='btn btn-default btn-sm ' id='clear-all' >clear all</div>",
-//          "</form>"
-//          ].join(''))
-//    });
-    var form = new Backbone.Form({
+      console.log('extra_scopes_shown: ' + _extra_scopes_shown);
+      var form = new Backbone.Form({
         model: formFields,
         template: _.template(form_template.join(''))
-    });
+      });
       
       form.events = {
         'click .btn#select-all': function(){
@@ -799,16 +800,46 @@ define([
           //e.preventDefault();
           //e.stopPropagation();
           var debug_el = form.$el.find('input').each(function(){
-            if(_fields[$(this).attr('name')]['scope'] == e.target.id){
+            var key = $(this).attr('name');
+            if(_.has(_fields, key) && _fields[key]['scope'] == e.target.id){
               $(this).closest('.form-group').toggle();
             }
-            console.log($(this).attr('name'));
           })
-          console.log('click... ' );
-        }
-
+        },
+        'click input.selection-group': function(e){
+          e.preventDefault();
+          //e.stopPropagation();
+          var id = e.target.id;
+          var scope = id.split('-')[0];
+          console.log('id: ' + id + ', ' + scope + ', ' + e.target.checked );
+          var debug_el = form.$el.find('input').each(function(){
+            var key = $(this).attr('name');
+            if(_.has(_fields, key) && _fields[key]['scope'] == scope ){
+              $(this).closest('.form-group').show();
+              form.setValue(key, e.target.checked );
+            }
+          });
+        },
       };
+      
+      var _form_el = form.render().el;
+      
+      $(_form_el).find('.sub-resource-field').find('input').each(function(){
+        var key = $(this).attr('name');
+        var shown = !_.isUndefined(_.find(_extra_scopes_shown, function(scope){
+          return scope == _fields[key]['scope']; }));
+        $(this).closest('.form-group').toggle(shown);
+      });
 
+      _.each(_extra_scopes_shown, function(scope){
+        if(_.every(_extra_scopes[scope], function(sub_key){
+          return formFields.get(sub_key);
+        })){
+          $(_form_el).find(
+              '#' + scope.split('.').join('\\.') + '-checkbox').prop("checked", true);
+        }
+      });
+      
       appModel.showModal({
         ok: function(){
           form.commit();
@@ -857,7 +888,7 @@ define([
           self.collection.fetch();
           self.listModel.set({'includes': new_includes });
         },
-        view: form.render().el,
+        view: _form_el,
         title: 'Select columns'  
       });
       

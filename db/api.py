@@ -34,7 +34,8 @@ from PIL import Image
 
 from tastypie.validation import Validation
 from tastypie.utils import timezone
-from tastypie.exceptions import BadRequest, ImmediateHttpResponse
+from tastypie.exceptions import BadRequest, ImmediateHttpResponse,\
+    UnsupportedFormat
 from tastypie.utils.urls import trailing_slash
 from tastypie.authorization import Authorization
 from tastypie.authentication import BasicAuthentication, SessionAuthentication,\
@@ -71,6 +72,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 import hashlib
 import StringIO
 import sqlalchemy
+import urllib
 
         
 logger = logging.getLogger(__name__)
@@ -1453,7 +1455,38 @@ class SqlAlchemyResource(IccblBaseResource):
         count_stmt = select([func.count()]).select_from(stmt.alias())
         return (stmt,count_stmt)
     
-    
+    def _convert_request_to_dict(self, request):
+        '''
+        Transfer all values from GET, then POST to a dict
+        Note: uses 'getlist' to retrieve all values:
+        - if a value is single valued, then unwrap from the list
+        - downstream methods expecting a list value must deal with non-list single values
+        '''
+        _dict = {}
+        
+        for key in request.GET.keys():
+            val = request.GET.getlist(key)
+            if len(val) == 1:
+                _dict[key] = val[0]
+            else:
+                _dict[key] = val
+            
+        for key in request.POST.keys():
+            val = request.POST.getlist(key)
+            if len(val) == 1:
+                _dict[key] = val[0]
+            else:
+                _dict[key] = val
+        
+        # check for single-valued known list values
+        known_list_values = ['includes', 'order_by']
+        for key in known_list_values:
+            val = _dict.get(key,[])
+            if isinstance(val, basestring):
+                _dict[key] = [val]
+        
+        return _dict    
+       
        
     @staticmethod    
     def create_vocabulary_rowproxy_generator(field_hash):
@@ -1566,7 +1599,7 @@ class SqlAlchemyResource(IccblBaseResource):
         become simpler, and do not need to be joined in. 
         @param manual_includes - columns to include even if the field visibility is not set
         '''
-        DEBUG_BUILD_COLUMNS = False
+        DEBUG_BUILD_COLUMNS = True
         
         try:
             columns = OrderedDict()
@@ -1688,7 +1721,7 @@ class SqlAlchemyResource(IccblBaseResource):
         return order_clauses
     
     @staticmethod
-    def filter_value_to_python(value, query_params, filter_expr, filter_type):
+    def filter_value_to_python(value, param_hash, filter_expr, filter_type):
         """
         Turn the string ``value`` into a python object.
         - copied from TP
@@ -1703,10 +1736,10 @@ class SqlAlchemyResource(IccblBaseResource):
 
         # Split on ',' if not empty string and either an in or range filter.
         if filter_type in ('in', 'range') and len(value):
-            if hasattr(query_params, 'getlist'):
+            if hasattr(param_hash, 'getlist'):
                 value = []
 
-                for part in query_params.getlist(filter_expr):
+                for part in param_hash.getlist(filter_expr):
                     value.extend(part.split(LIST_DELIMITER_URL_PARAM))
             else:
                 value = value.split(LIST_DELIMITER_URL_PARAM)
@@ -1714,124 +1747,233 @@ class SqlAlchemyResource(IccblBaseResource):
         return value
 
     @staticmethod
-    def build_sqlalchemy_filters(schema, request, **kwargs):
+    def build_sqlalchemy_filters(schema, param_hash={}, **kwargs):
+        logger.info(str(('param_hash', param_hash, 'kwargs', kwargs)))
+
+        # ordinary filters
+        (filter_expression, filter_fields) = \
+            SqlAlchemyResource.build_sqlalchemy_filters_from_hash(schema, param_hash)
+        
+        # Treat the nested "search_data" as sets of params to be OR'd together,
+        # then AND'd with the regular filters (if any)
+        search_data = param_hash.get('search_data', None)
+        if search_data:
+            logger.info(str(('search_data', search_data)))
+            if search_data and isinstance(search_data, basestring):
+                # standard, convert single valued list params
+                search_data = [search_data]
+        
+            # each item in the search data array is a search hash, to be or'd
+            search_expressions = []
+            filter_fields = set(filter_fields)
+            for search_hash in search_data:
+                logger.info(str(('search_hash', search_hash)))
+                (search_expression, search_fields) = \
+                    SqlAlchemyResource.build_sqlalchemy_filters_from_hash(schema,search_hash)
+                search_expressions.append(search_expression)
+                filter_fields.update(search_fields)
+
+            if len(search_expressions) > 1:
+                search_expressions = or_(*search_expressions)
+            else:
+                search_expressions = search_expressions[0]
+            logger.info(str(('testing...', search_expressions)))
+            if filter_expression is not None:
+                filter_expression = and_(search_expressions,filter_expression)
+            else: 
+                filter_expression = search_expressions
+            logger.info(str(('testing2...', filter_expression)))
+                
+        logger.info(str(('filter_expression', filter_expression, filter_fields)))
+        
+        return (filter_expression,filter_fields)
+        
+    
+    @staticmethod
+    def build_sqlalchemy_filters_from_hash(schema, param_hash):
         '''
         Attempt to create a SqlAlchemy whereclause out of django style filters:
         - field_name__filter_expression
         '''
-        
+        DEBUG_FILTERS = True or logger.isEnabledFor(logging.DEBUG)
+        logger.info(str(('build_sqlalchemy_filters_from_hash', param_hash)))
         lookup_sep = django.db.models.constants.LOOKUP_SEP
 
-        query_params = request.GET.copy()
-        # Update with the provided kwargs.
-        logger.info(str(('query_params', query_params, 'kwargs', kwargs)))
-        query_params.update(kwargs)
 
-        if query_params is None:
+        if param_hash is None:
             return (None,None)
         
-        expressions = []
-        filtered_fields = []
-        for filter_expr, value in query_params.items():
-            if lookup_sep not in filter_expr:
-                continue;
-            filter_bits = filter_expr.split(lookup_sep)
-            if len(filter_bits) != 2:
-                logger.warn(str(('filter expression must be of the form "field_name__expression"',
-                    filter_expr, filter_bits)))
-            field_name = filter_bits[0]
+        try:
+            expressions = []
+            filtered_fields = []
             
-            inverted = False
-            if field_name and field_name[0] == '-':
-                inverted = True
-                field_name = field_name[1:]
-                        
-            filter_type = filter_bits[1]
-            if not field_name in schema['fields']:
-                logger.warn(str(('unknown filter field', field_name, filter_expr)))
-                continue
-
-            field = schema['fields'][field_name]
-            
-            value = SqlAlchemyResource.filter_value_to_python(
-                value, query_params, filter_expr, filter_type)
-
-            # TODO: all of the Django query terms:
-            # QUERY_TERMS = set([
-            #     'exact', 'iexact', 'contains', 'icontains', 'gt', 'gte', 'lt', 'lte', 'in',
-            #     'startswith', 'istartswith', 'endswith', 'iendswith', 'range', 'year',
-            #     'month', 'day', 'week_day', 'hour', 'minute', 'second', 'isnull', 'search',
-            #     'regex', 'iregex',
-            # ])
-            
-            logger.info(str(('find filter', field_name, filter_type, value)))
-            
-#             if not value:
-#                 continue
-#             
-            expression = None
-            if filter_type in ['exact','eq']:
-                expression = column(field_name)==value
-            elif filter_type == 'about':
-                decimals = 0
-                if '.' in value:
-                    decimals = len(value.split('.')[1])
-                expression = func.round(
-                    sqlalchemy.sql.expression.cast(
-                        column(field_name),sqlalchemy.types.Numeric),decimals) == value
-                logger.info(str(('create "about" expression for term:',filter_expr,
-                    value,'decimals',decimals)))
-            elif filter_type == 'contains':
-                expression = column(field_name).contains(value)
-            elif filter_type == 'icontains':
-                expression = column(field_name).ilike('%{value}%'.format(value=value))
-            elif filter_type == 'lt':
-                expression = column(field_name) < value
-            elif filter_type == 'lte':
-                expression = column(field_name) <= value
-            elif filter_type == 'gt':
-                expression = column(field_name) > value
-            elif filter_type == 'gte':
-                expression = column(field_name) >= value
-            elif filter_type == 'is_null':
-                logger.info(str(('is_null', field_name, value, str(value) )))
-                col = column(field_name)
-                if field['ui_type'] == 'string':
-                    col = func.trim(col)
-                if value and str(value).lower() == 'true':
-                    expression = col == None 
-                else:
-                    expression = col != None
-            elif filter_type == 'in':
-                expression = column(field_name).in_(value)
-            elif filter_type == 'ne':
-                expression = column(field_name) != value
-            elif filter_type == 'range':
-                if len(value) != 2:
-                    logger.error(str(('value for range expression must be list of length 2', 
-                        field_name, filter_expr, value)))
+            _values = [] # store values for debug
+            for filter_expr, value in param_hash.items():
+                if lookup_sep not in filter_expr:
+                    continue;
+                filter_bits = filter_expr.split(lookup_sep)
+                if len(filter_bits) != 2:
+                    logger.warn(str(('filter expression must be of the form "field_name__expression"',
+                        filter_expr, filter_bits)))
+                field_name = filter_bits[0]
+                
+                inverted = False
+                if field_name and field_name[0] == '-':
+                    inverted = True
+                    field_name = field_name[1:]
+                            
+                filter_type = filter_bits[1]
+                if not field_name in schema['fields']:
+                    logger.warn(str(('unknown filter field', field_name, filter_expr)))
                     continue
+    
+                field = schema['fields'][field_name]
+                
+                value = SqlAlchemyResource.filter_value_to_python(
+                    value, param_hash, filter_expr, filter_type)
+                _values.append(value)
+                # TODO: all of the Django query terms:
+                # QUERY_TERMS = set([
+                #     'exact', 'iexact', 'contains', 'icontains', 'gt', 'gte', 'lt', 'lte', 'in',
+                #     'startswith', 'istartswith', 'endswith', 'iendswith', 'range', 'year',
+                #     'month', 'day', 'week_day', 'hour', 'minute', 'second', 'isnull', 'search',
+                #     'regex', 'iregex',
+                # ])
+                
+                logger.info(str(('find filter', field_name, filter_type, value)))
+                
+    #             if not value:
+    #                 continue
+    #             
+                expression = None
+                if filter_type in ['exact','eq']:
+                    expression = column(field_name)==value
+                elif filter_type == 'about':
+                    decimals = 0
+                    if '.' in value:
+                        decimals = len(value.split('.')[1])
+                    expression = func.round(
+                        sqlalchemy.sql.expression.cast(
+                            column(field_name),sqlalchemy.types.Numeric),decimals) == value
+                    logger.info(str(('create "about" expression for term:',filter_expr,
+                        value,'decimals',decimals)))
+                elif filter_type == 'contains':
+                    expression = column(field_name).contains(value)
+                elif filter_type == 'icontains':
+                    expression = column(field_name).ilike('%{value}%'.format(value=value))
+                elif filter_type == 'lt':
+                    expression = column(field_name) < value
+                elif filter_type == 'lte':
+                    expression = column(field_name) <= value
+                elif filter_type == 'gt':
+                    expression = column(field_name) > value
+                elif filter_type == 'gte':
+                    expression = column(field_name) >= value
+                elif filter_type == 'is_null':
+                    logger.info(str(('is_null', field_name, value, str(value) )))
+                    col = column(field_name)
+                    if field['ui_type'] == 'string':
+                        col = func.trim(col)
+                    if value and str(value).lower() == 'true':
+                        expression = col == None 
+                    else:
+                        expression = col != None
+                elif filter_type == 'in':
+                    expression = column(field_name).in_(value)
+                elif filter_type == 'ne':
+                    expression = column(field_name) != value
+                elif filter_type == 'range':
+                    if len(value) != 2:
+                        logger.error(str(('value for range expression must be list of length 2', 
+                            field_name, filter_expr, value)))
+                        continue
+                    else:
+                        expression = column(field_name).between(value[0],value[1],symmetric=True)
                 else:
-                    expression = column(field_name).between(value[0],value[1],symmetric=True)
+                    logger.error(str(('--- unknown filter type: ', field_name, filter_type,
+                        'filter_expr',filter_expr )))
+                    continue
+    
+                if inverted:
+                    expression = not_(expression)
+                
+                logger.info(str(('filter_expr',filter_expr,'expression',str(expression) )))
+                expressions.append(expression)
+                filtered_fields.append(field_name)
+                
+            logger.info(str(('filtered_fields', filtered_fields)))
+            if DEBUG_FILTERS:
+                logger.info(str(('values', _values)))
+                
+            if len(expressions) > 1: 
+                return (and_(*expressions), filtered_fields)
+            elif len(expressions) == 1:
+                return (expressions[0], filtered_fields) 
             else:
-                logger.error(str(('--- unknown filter type: ', field_name, filter_type,
-                    'filter_expr',filter_expr )))
-                continue
+                return (None, filtered_fields)
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on build_sqlalchemy_filters_from_hash', 
+                msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e   
+        
 
-            if inverted:
-                expression = not_(expression)
-            
-            logger.info(str(('filter_expr',filter_expr,'expression',expression)))
-            expressions.append(expression)
-            filtered_fields.append(field_name)
-            
-        logger.info(str(('filtered_fields', filtered_fields)))
-        if len(expressions) > 1: 
-            return (and_(*expressions), filtered_fields)
-        elif len(expressions) == 1:
-            return (expressions[0], filtered_fields) 
+    def search(self, request, **kwargs):
+        '''
+        Implement a special search view to get around Tastypie deserialization
+        methods on POST-list.
+        Note: could implement a special tastypie serializer and "post_list"; but
+        choosing not to couple with the framework in this way here.
+        '''
+         
+        DEBUG_SEARCH = True or logger.isEnabledFor(logging.DEBUG)
+         
+        search_ID = kwargs['search_ID']
+         
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+ 
+        search_data = param_hash.get('search_data', None)
+        
+        # NOTE: unquote serves the purpose of an application/x-www-form-urlencoded 
+        # deserializer
+        search_data = urllib.unquote(search_data)
+         
+        if search_data:
+            # cache the search data on the session, to support subsequent requests
+            # to download or modify
+            request.session[search_ID] = search_data  
+         
+        if not search_data:
+            if search_ID in request.session:
+                search_data = request.session[search_ID]
+            else:
+                raise ImmediateHttpResponse(
+                    response=self.error_response(request, 
+                        { 'search_data for id missing: ' + search_ID: 
+                            self._meta.resource_name + '.search requires a "search_data" param'}))
+         
+        search_data = json.loads(search_data)   
+        param_hash['search_data'] = search_data
+        if DEBUG_SEARCH:
+            logger.info(str(('search', param_hash, kwargs)))
+ 
+        response = self.build_list_response(request,param_hash=param_hash, **kwargs)
+        
+        # Because this view bypasses the IccblBaseResource.dispatch method, we
+        # are implementing the downloadID cookie here, for now.
+        downloadID = param_hash.get('downloadID', None)
+        if downloadID:
+            logger.info(str(('set cookie','downloadID', downloadID )))
+            response.set_cookie('downloadID', downloadID)
         else:
-            return (None, filtered_fields)
+            logger.info(str(('no downloadID')))
+        
+        return response
+
+
 
     def get_list(self, request, **kwargs):
         '''
@@ -1839,6 +1981,12 @@ class SqlAlchemyResource(IccblBaseResource):
         handled using SqlAlchemy
         '''
         raise NotImplemented(str(('get_list must be implemented for the SqlAlchemyResource', 
+            self._meta.resource_name)) )
+
+        
+    def build_list_response(self,request, param_hash={}, **kwargs):
+
+        raise NotImplemented(str(('get_list_response must be implemented for the SqlAlchemyResource', 
             self._meta.resource_name)) )
         
     def _cached_resultproxy(self, stmt, count_stmt, limit, offset):
@@ -1919,11 +2067,13 @@ class SqlAlchemyResource(IccblBaseResource):
         
           
     def stream_response_from_cursor(self, request, stmt, count_stmt, 
-            output_filename, field_hash={}, rowproxy_generator=None, is_for_detail=False,
+            output_filename, field_hash={}, param_hash={}, 
+            rowproxy_generator=None, is_for_detail=False,
             downloadID=None, title_function=None ):
-        DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
         
-        limit = request.GET.get('limit', self._meta.limit) 
+        DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
+
+        limit = param_hash.get('limit', request.GET.get('limit', self._meta.limit))        
         try:
             limit = int(limit)
         except ValueError:
@@ -1932,7 +2082,7 @@ class SqlAlchemyResource(IccblBaseResource):
         if limit > 0:    
             stmt = stmt.limit(limit)
 
-        offset = request.GET.get('offset', 0) 
+        offset = param_hash.get('offset', request.GET.get('offset', 0) )
         try:
             offset = int(offset)
         except ValueError:
@@ -2475,8 +2625,17 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
 
+            url(r"^(?P<resource_name>%s)/search/(?P<search_ID>[\d]+)%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('search'), name="api_search"),
+
             url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w\d_.\-\+: ]+)"
                 r"/(?P<plate_number>[\d_.\-\+: ]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+
+            url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w\d_.\-\+: ]+)"
+                r"/(?P<copy_name>[\w\d_.\-\+: ]+)%s$"
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
 
@@ -2484,36 +2643,75 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
                 r"/(?P<copy_name>[\w\d_.\-\+: ]+)"
                 r"/(?P<plate_number>[\d_.\-\+: ]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
 
-    def get_list(self,request,**kwargs):
+
+    def get_detail(self, request, **kwargs):
+        # TODO: this is a strategy for refactoring get_detail to use get_list:
+        # follow this with wells/
+        logger.info(str(('get_detail')))
+
+        library_short_name = kwargs.get('library_short_name', None)
+        if not library_short_name:
+            logger.info(str(('no library_short_name provided')))
+            raise NotImplementedError('must provide a library_short_name parameter')
+
+        
+        copy_name = kwargs.get('copy_name', None)
+        if not copy_name:
+            logger.info(str(('no copy_name provided')))
+            raise NotImplementedError('must provide a copy_name parameter')
+        
+        plate_number = kwargs.get('plate_number', None)
+        if not copy_name:
+            logger.info(str(('no plate_number provided')))
+            raise NotImplementedError('must provide a plate_number parameter')
+        
+        kwargs['is_for_detail']=True
+        return self.get_list(request, **kwargs)
+
+
+    def get_list(self, request, param_hash={}, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns djanog.http.response.StreamingHttpResponse 
+        @returns django.http.response.StreamingHttpResponse 
         '''
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
 
-        is_for_detail = kwargs.pop('is_for_detail', False)
-               
-        filename = '_'.join(kwargs.values())
+        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+
         
-        library_short_name = kwargs.pop('library_short_name', None)
+    def build_list_response(self,request, param_hash={}, **kwargs):
+        
+        
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+        
+        is_for_detail = kwargs.pop('is_for_detail', False)
+        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = re.sub(r'[\W]+','_',filename)
+
+        
+        library_short_name = param_hash.pop('library_short_name', 
+            param_hash.get('library_short_name__eq',None))
         if not library_short_name:
             filename = '%s' % (self._meta.resource_name )
             logger.info(str(('no library_short_name provided')))
         else:
-            kwargs['library_short_name__eq'] = library_short_name
+            param_hash['library_short_name__eq'] = library_short_name
 
-        copy_name = kwargs.pop('copy_name', None)
+        copy_name = param_hash.pop('copy_name', 
+            param_hash.get('copy_name', None))
         if copy_name:
-            kwargs['copy_name__eq'] = copy_name
+            param_hash['copy_name__eq'] = copy_name
             
-        plate_number = kwargs.pop('plate_number', None)
+        plate_number = param_hash.pop('plate_number', 
+            param_hash.get('plate_number', None))
         if plate_number:
-            kwargs['plate_number__eq'] = plate_number
+            param_hash['plate_number__eq'] = plate_number
             
-        logger.info(str(('get_list', filename, kwargs)))
+        logger.info(str(('get_list', filename, param_hash)))
  
         try:
             
@@ -2521,22 +2719,28 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
              
             schema = super(LibraryCopyPlatesResource,self).build_schema()
           
-            manual_field_includes = set(request.GET.getlist('includes', None))
+            manual_field_includes = set(param_hash.get('includes', []))
             if DEBUG_GET_LIST: 
                 logger.info(str(('manual_field_includes', manual_field_includes)))
   
             (filter_expression, filter_fields) = \
-                SqlAlchemyResource.build_sqlalchemy_filters(schema, request, **kwargs)
+                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+
+            if filter_expression is None:
+                msgs = { 'Library copy plates resource': 'can only service requests with filter expressions' }
+                logger.info(str((msgs)))
+                raise ImmediateHttpResponse(response=self.error_response(request,msgs))
+                 
                  
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
                 is_for_detail=is_for_detail)
               
-            order_params = request.GET.getlist('order_by')
+            order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
              
             rowproxy_generator = None
-            if request.GET.get(HTTP_PARAM_USE_VOCAB,False):
+            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
                 rowproxy_generator = SqlAlchemyResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
@@ -2618,12 +2822,12 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
             (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
  
             title_function = None
-            if request.GET.get(HTTP_PARAM_USE_TITLES, False):
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
                 title_function = lambda key: field_hash[key]['title']
 
             return self.stream_response_from_cursor(
                 request, stmt, count_stmt, filename, 
-                field_hash=field_hash, is_for_detail=is_for_detail,
+                field_hash=field_hash, param_hash=param_hash, is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
                 title_function=title_function  )
             
@@ -2635,254 +2839,7 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
             logger.warn(str(('on get_list', 
                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e   
-
-
-#     def get_detail(self, request, **kwargs):
-#         
-#         logger.info(str(('get_detail rediredcted to get_list: kwargs', kwargs)))
-#         
-#         response =  self.get_list(request, **kwargs)
-#         
-#         content = response.streaming_content.getvalue()
-#         logger.info(str(('content', content)))
-#         
-#         return HttpResponse(content = content)
-        
-        
-    def get_list1(self,request,**kwargs):
-        
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
-        
-        try:
-            _p = self.bridge['plate']
-            _pl = self.bridge['plate_location']
-            _c = self.bridge['copy']
-            _l = self.bridge['library']
-            _ap = self.bridge['assay_plate']
-            
-            library = None
-            copy = None
-            plate = None
-            if 'library_short_name' in kwargs:
-                library = Library.objects.get(short_name=kwargs['library_short_name'])
-                filename = '%s_%s' % (self._meta.resource_name, library.short_name )
-                if 'name' in kwargs:
-                    copy = Copy.objects.get(name=kwargs['name'])
-                    filename = '%s_%s_%s' % (self._meta.resource_name, library.short_name, copy.name )
-            else:
-                filename = '%s' % (self._meta.resource_name )
-                logger.info(str(('no library_short_name provided')))
-    
-                
-#         # define plate_screening_statistics subquery        
-#         text_cols = ','.join([
-#             'p.plate_id', 
-#             'c.copy_id',
-#             'c.name',
-#             'l.short_name',
-#             'count(distinct(ls)) screening_count', 
-#             'count(distinct(ap)) ap_count', 
-#             'count(distinct(srdl)) dl_count',
-#             'min(srdl.date_of_activity) first_date_data_loaded', 
-#             'max(srdl.date_of_activity) last_date_data_loaded', 
-#             'min(lsa.date_of_activity) first_date_screened', 
-#             'max(lsa.date_of_activity) last_date_screened', 
-#             ])
-#         text_select = '\n'.join([
-#             'copy c', 
-#             'join plate p using(copy_id) ',
-#             'join library l using(library_id) ',
-#             'join assay_plate ap on(ap.plate_id=p.plate_id)',  
-#             'left outer join library_screening ls on(library_screening_id=ls.activity_id)',
-#             'left outer join activity lsa on(ls.activity_id=lsa.activity_id)', 
-#             'left outer join (',
-#             '    select a.activity_id, a.date_of_activity', 
-#             '    from activity a', 
-#             '    join administrative_activity using(activity_id) ) srdl', 
-#             '    on(screen_result_data_loading_id=srdl.activity_id)'  
-#             ])
-# 
-#         plate_screening_statistics = select([text(text_cols)]).\
-#             select_from( text(text_select))
-#         if library:
-#             plate_screening_statistics = \
-#                 plate_screening_statistics.where(
-#                     _l.c.library_id == library.library_id )
-#         plate_screening_statistics = plate_screening_statistics.group_by(
-#             text('p.plate_id, c.copy_id, c.name, l.short_name '))
-#         plate_screening_statistics = \
-#             plate_screening_statistics.order_by(text('p.plate_id '))
-#         plate_screening_statistics = plate_screening_statistics.cte('plate_screening_statistics')
-        
-        
-            # NOTE: precalculated version
-            plate_screening_statistics = \
-                select([text('*')]).\
-                    select_from(text('plate_screening_statistics')).cte('plate_screening_statistics')
-        
-            p1 = plate_screening_statistics.alias('p1')
-            
-            j = join(_p, _c, _p.c.copy_id == _c.c.copy_id )
-            j = j.join(p1, _p.c.plate_id == text('p1.plate_id'), isouter=True)
-            j = j.join(_pl, _p.c.plate_location_id == _pl.c.plate_location_id )
-            j = j.join(_l, _c.c.library_id == _l.c.library_id )
-        
-            logger.info(str(('get_list', kwargs)))
-            
-            schema = super(LibraryCopyPlatesResource,self).build_schema()
-        
-            # FIXME: 20150114 - includes not being sent by UI
-            includes = request.GET.getlist('includes', None)
-            logger.info(str(('includes', includes)))
-            if includes:
-                manual_field_includes = set(includes)
-            else:    
-                manual_field_includes = set()
-            logger.info(str(('manual_field_includes', manual_field_includes)))
-            include_all = '*' in manual_field_includes
-
-            (filter_expression, filter_fields) = \
-                self.build_sqlalchemy_filters(schema, request, **kwargs)
-            
-            temp = { key:field for key,field in schema['fields'].items() 
-                if ((field.get('visibility', None) and 'list' in field['visibility']) 
-                    or field['key'] in filter_fields 
-                    or field['key'] in manual_field_includes
-                    or include_all )}
-
-            # manual excludes
-            temp = { key:field for key,field in temp.items() 
-                if '-%s' % key not in manual_field_includes }
-
-            # dependency fields
-            dependency_fields = set()
-            for field in schema['fields'].values():
-                dependency_fields.update(field.get('dependencies',[]))
-            logger.info(str(('dependency_fields', dependency_fields)))
-            if dependency_fields:
-                temp.update({ key:field 
-                    for key,field in schema['fields'].items() if key in dependency_fields })
-            
-            field_hash = OrderedDict(sorted(temp.iteritems(), 
-                key=lambda x: x[1].get('ordinal',999))) 
-            logger.info(str(('field_hash final: ', field_hash.keys() )))
-            
-            base_query_tables = ['plate', 'copy','plate_location', 'library']
-            
-            custom_columns={
-                'screening_count': literal_column('p1.screening_count'), 
-                'ap_count': literal_column('p1.ap_count'), 
-                'dl_count':literal_column('p1.dl_count'),
-                'first_date_data_loaded':literal_column('p1.first_date_data_loaded'), 
-                'last_date_data_loaded':literal_column('p1.last_date_data_loaded'), 
-                'first_date_screened':literal_column('p1.first_date_screened'), 
-                'last_date_screened':literal_column('p1.last_date_screened'), 
-                'status_date': literal_column(
-                    '(select date_of_activity'
-                    ' from activity a'
-                    ' join administrative_activity aa on(aa.activity_id=a.activity_id) '
-                    ' join plate_update_activity pu on(a.activity_id=pu.update_activity_id)'
-                    ' where pu.plate_id = plate.plate_id'
-                    " and aa.administrative_activity_type='Plate Status Update' "
-                    ' order by date_created desc limit 1 )').label('status_date'),
-                'status_performed_by': literal_column(
-                    "(select su.first_name || ' ' || su.last_name "
-                    ' from activity a'
-                    ' join screensaver_user su on(a.performed_by_id=su.screensaver_user_id) '
-                    ' join administrative_activity aa on(aa.activity_id=a.activity_id) '
-                    ' join plate_update_activity pu on(a.activity_id=pu.update_activity_id)'
-                    ' where pu.plate_id = plate.plate_id'
-                    " and aa.administrative_activity_type='Plate Status Update' "
-                    ' order by a.date_created desc limit 1 )').label('status_performed_by'),
-                'date_plated': literal_column(
-                    '(select date_of_activity '
-                    ' from activity a'
-                    ' where a.activity_id=plate.plated_activity_id )').label('date_plated'),
-                'date_retired': literal_column(
-                    '(select date_of_activity '
-                    ' from activity a'
-                    ' where a.activity_id=plate.retired_activity_id )').label('date_retired'),
-                    };
-                    
-            # TODO: test "includes" and this, when working (ui is stripping args from post)
-            custom_columns = { key:field for key,field in custom_columns.iteritems()
-                if key in field_hash }
-            
-            columns = self.build_sqlalchemy_columns(
-                field_hash.values(), base_query_tables=base_query_tables,
-                custom_columns=custom_columns
-                )
-            cols = list(custom_columns.values())
-            cols.extend( [v for k,v in columns.iteritems() if k not in custom_columns] )
-#             columns['status_date']= custom_columns['status_date']
-            logger.info(str(('columns', cols)))
-            
-            stmt = select(cols).select_from(j)
-            stmt = stmt.order_by(_l.c.short_name, _c.c.name, _p.c.plate_number )
-
-            order_clauses = self.build_sqlalchemy_ordering(request)
-            if order_clauses:
-                logger.info(str(('order_clauses', [str(c) for c in order_clauses])))
-                _alias = Alias(stmt)
-                stmt = select([text('*')]).select_from(_alias)
-                stmt = stmt.order_by(*order_clauses)
-            
-            if filter_expression is not None:
-                logger.info(str(('filter_expression', str(filter_expression))))
-                if not order_clauses:
-                    _alias = Alias(stmt)
-                    stmt = select([text('*')]).select_from(_alias)
-                stmt = stmt.where(filter_expression)
-
-            count_stmt = select([func.count()]).select_from(stmt.alias())
-
-            rowproxy_generator = None
-            if request.GET.get(HTTP_PARAM_USE_VOCAB,False):
-                
-                vocabularies = {}
-                for key, field in field_hash.iteritems():
-                    if field.get('vocabulary_scope_ref', None):
-                        scope = field.get('vocabulary_scope_ref', None);
-                        vocabularies[key] = VocabulariesResource.get_vocabularies_by_scope(scope)
-                        logger.info(str(('vocabularies[key]: ',key,vocabularies[key])))
-                def vocabulary_rowproxy_generator(cursor):
-                    class Row:
-                        def __init__(self, row):
-                            self.row = row
-                        def has_key(self, key):
-                            return self.row.has_key(key)
-                        def keys(self):
-                            return self.row.keys();
-                        def __getitem__(self, key):
-                            if key in vocabularies:
-                                logger.debug(str(('getitem', key, row[key], vocabularies[key][row[key]]['title'])))
-                                return vocabularies[key][row[key]]['title']
-                            else:
-                                return self.row[key]
-                    for row in cursor:
-                        yield Row(row)
-                        
-                rowproxy_generator = vocabulary_rowproxy_generator
-            
-            title_function = None
-            if request.GET.get(HTTP_PARAM_USE_TITLES, False):
-                title_function = lambda key: field_hash[key]['title']
-
-            return self.stream_response_from_cursor(
-                request, stmt, count_stmt, filename, 
-                field_hash=field_hash, 
-                rowproxy_generator=rowproxy_generator,
-                title_function=title_function  )
-        
-            
-        except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on get_list', 
-                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
-            raise e  
-        
+   
         
 class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
     ''' 
@@ -2916,6 +2873,10 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
 
+            url(r"^(?P<resource_name>%s)/search/(?P<search_ID>[\d]+)%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('search'), name="api_search"),
+
             url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w\d_.\-\+: ]+)"
                 r"/(?P<copy_name>[\w\d_.\-\+: ]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
@@ -2944,28 +2905,37 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
         
     
     def get_list(self,request,**kwargs):
+
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+
+        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+
+        
+    def build_list_response(self,request, param_hash={}, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
         @returns djanog.http.response.StreamingHttpResponse 
         '''
-        DEBUG_GET_LIST = True #False or logger.isEnabledFor(logging.DEBUG)
-        logger.info(str(('get_list', kwargs)))
+        DEBUG_GET_LIST = True or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
+        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = re.sub(r'[\W]+','_',filename)
         
-        filename = '_'.join(kwargs.values())
-
-        library_short_name = kwargs.pop('library_short_name', None)
+        library_short_name = param_hash.pop('library_short_name',
+            param_hash.get('library_short_name__eq',None))
+        
         if not library_short_name:
             filename = '%s' % (self._meta.resource_name )
             logger.info(str(('no library_short_name provided')))
         else:
-            kwargs['library_short_name__eq'] = library_short_name
-
+            param_hash['library_short_name__eq'] = library_short_name
         
-        copy_name = kwargs.pop('copy_name', None)
+        
+        copy_name = param_hash.pop('copy_name', param_hash.get('copy_name__eq',None))
         if copy_name:
-            kwargs['copy_name__eq'] = copy_name
+            param_hash['copy_name__eq'] = copy_name
             
         logger.info(str(('get_list', filename, kwargs)))
         try:
@@ -2974,22 +2944,27 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
              
             schema = super(LibraryCopiesResource,self).build_schema()
           
-            manual_field_includes = set(request.GET.getlist('includes', None))
+            manual_field_includes = set(param_hash.get('includes', []))
             if DEBUG_GET_LIST: 
                 logger.info(str(('manual_field_includes', manual_field_includes)))
   
             (filter_expression, filter_fields) = \
-                SqlAlchemyResource.build_sqlalchemy_filters(schema, request, **kwargs)
-                 
+                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+
+            if filter_expression is None:
+                msgs = { 'Library copies resource': 'can only service requests with filter expressions' }
+                logger.info(str((msgs)))
+                raise ImmediateHttpResponse(response=self.error_response(request,msgs))
+                                  
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
                 is_for_detail=is_for_detail)
               
-            order_params = request.GET.getlist('order_by')
+            order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
              
             rowproxy_generator = None
-            if request.GET.get(HTTP_PARAM_USE_VOCAB,False):
+            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
                 rowproxy_generator = SqlAlchemyResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
@@ -3129,12 +3104,12 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
             (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
  
             title_function = None
-            if request.GET.get(HTTP_PARAM_USE_TITLES, False):
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
                 title_function = lambda key: field_hash[key]['title']
 
             return self.stream_response_from_cursor(
                 request, stmt, count_stmt, filename, 
-                field_hash=field_hash, is_for_detail=is_for_detail,
+                field_hash=field_hash, param_hash=param_hash, is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
                 title_function=title_function  )
             
@@ -3177,6 +3152,9 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
+            url(r"^(?P<resource_name>%s)/search/(?P<search_ID>[\d]+)%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('search'), name="api_search"),
 
             url(r"^(?P<resource_name>%s)/(?P<substance_id>[^:]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
@@ -3186,46 +3164,54 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
         ]
  
-    def get_list(self, request, **kwargs):
+    
+    def get_list(self, request, param_hash={}, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
         @returns django.http.response.StreamingHttpResponse 
         '''
-        is_for_detail = kwargs.pop('is_for_detail', False)
-       
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+
+        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+
+        
+    def build_list_response(self,request, param_hash={}, **kwargs):
+        
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
         
+        is_for_detail = kwargs.pop('is_for_detail', False)
+        logger.info(str(('kwargs', kwargs)))
+        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = re.sub(r'[\W]+','_',filename)
+
         # TODO: eliminate dependency on library (for schema determination)
         library = None
         
-        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
-        
-        filename = re.sub(r'[\W]+','_',filename)
-        
-        library_short_name = kwargs.pop('library_short_name', None)
+        library_short_name = param_hash.pop('library_short_name', None)
         if not library_short_name:
             filename = '%s' % (self._meta.resource_name )
             logger.info(str(('no library_short_name provided')))
         else:
-            kwargs['library_short_name__eq'] = library_short_name
+            param_hash['library_short_name__eq'] = library_short_name
             library = Library.objects.get(short_name=library_short_name)
 
-        well_id = kwargs.pop('well_id', None)
+        well_id = param_hash.pop('well_id', None)
         if well_id:
-            kwargs['well_id__eq'] = well_id
+            param_hash['well_id__eq'] = well_id
             if not library:
                 library = Well.objects.get(well_id=well_id).library
 
-        substance_id = kwargs.pop('substance_id', None)
+        substance_id = param_hash.pop('substance_id', None)
         if substance_id:
-            kwargs['substance_id__eq'] = well_id
+            param_hash['substance_id__eq'] = well_id
             if not library:
                 library = Reagent.objects.get(substance_id=substance_id).well.library
 
 #         if not library:
 #             raise NotImplementedError('must provide a library_short_name parameter')
             
-        logger.info(str(('get_list', filename, kwargs)))
+        logger.info(str(('get_list', filename, param_hash)))
 
         try:
             
@@ -3233,7 +3219,7 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
              
             schema = self.build_schema(library=library)
           
-            manual_field_includes = set(request.GET.getlist('includes', None))
+            manual_field_includes = set(param_hash.get('includes', []))
             desired_format = self.get_format(request)
             if desired_format == 'chemical/x-mdl-sdfile':
                 manual_field_includes.add('molfile')
@@ -3241,7 +3227,13 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
                 logger.info(str(('manual_field_includes', manual_field_includes)))
   
             (filter_expression, filter_fields) = \
-                SqlAlchemyResource.build_sqlalchemy_filters(schema, request, **kwargs)
+                SqlAlchemyResource.build_sqlalchemy_filters(
+                    schema, param_hash=param_hash, **kwargs)
+            
+            if filter_expression is None:
+                msgs = { 'reagent resource': 'can only service requests with filter expressions' }
+                logger.info(str((msgs)))
+                raise ImmediateHttpResponse(response=self.error_response(request,msgs))
                  
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes,
@@ -3267,11 +3259,11 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
                 # consider limiting fields available
                 pass
             
-            order_params = request.GET.getlist('order_by')
+            order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
              
             rowproxy_generator = None
-            if request.GET.get(HTTP_PARAM_USE_VOCAB,False):
+            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
                 rowproxy_generator = SqlAlchemyResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
@@ -3336,12 +3328,12 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
             (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
  
             title_function = None
-            if request.GET.get(HTTP_PARAM_USE_TITLES, False):
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
                 title_function = lambda key: field_hash[key]['title']
 
             return self.stream_response_from_cursor(
                 request, stmt, count_stmt, filename, 
-                field_hash=field_hash, is_for_detail=is_for_detail,
+                field_hash=field_hash, param_hash=param_hash, is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
                 title_function=title_function  )
             
@@ -3637,6 +3629,7 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
         Note: native TP doesn't support multipart uploads, this will support
         standard multipart form uploads in modern browsers
         '''
+        logger.info(str(('deserialize', format)))
         if not format:
             format = request.META.get('CONTENT_TYPE', 'application/json')
 
@@ -3662,6 +3655,7 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
                 file = request.FILES['sdf']
                 deserialized = self._meta.xls_serializer.from_xls(file.read())
             else:
+                logger.error(str(('UnsupportedFormat', request.FILES.keys() )))
                 raise UnsupportedFormat(str(('Unknown file type: ', request.FILES.keys()) ) )
         
         elif format == 'application/xls':
@@ -4145,7 +4139,6 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
         always_return_data = True 
         
-        
     def __init__(self, **kwargs):
         
         self.well_resource = None
@@ -4153,12 +4146,7 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         self.reagent_resource = None
         
         super(LibraryResource,self).__init__(**kwargs)
-    #         self._meta.validation = ManagedValidation(scope=self.scope)
-    
-    def get_listx(self,request,**kwargs):
-        return ManagedModelResource.get_list(self,request, **kwargs)
-    
-    
+        
     def get_apilog_resource(self):
         if not self.apilog_resource:
             self.apilog_resource = ApiLogResource()
@@ -4192,6 +4180,14 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         
     
     def get_list(self,request,**kwargs):
+
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+
+        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+
+        
+    def build_list_response(self,request, param_hash={}, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
         @returns djanog.http.response.StreamingHttpResponse 
@@ -4200,6 +4196,9 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
+
+        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = re.sub(r'[\W]+','_',filename)
         #         default_response_options = {
         #             'is_for_detail': False,
         #             'downloadID': None
@@ -4208,30 +4207,29 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         #         for key, val in default_response_options.items():
         #             options[key] = kwargs.get(key, val )
 
-        filename = '%s' % (self._meta.resource_name )
         logger.info(str(('get_list', filename, kwargs)))
 
         try:
             # general setup
             
             schema = super(LibraryResource,self).build_schema()
-         
-            manual_field_includes = set(request.GET.getlist('includes', None))
+            
+            manual_field_includes = set(param_hash.get('includes', []))
             if DEBUG_GET_LIST: 
                 logger.info(str(('manual_field_includes', manual_field_includes)))
  
             (filter_expression, filter_fields) = \
-                SqlAlchemyResource.build_sqlalchemy_filters(schema, request, **kwargs)
+                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
                 
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
                 is_for_detail=is_for_detail)
              
-            order_params = request.GET.getlist('order_by')
+            order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
             
             rowproxy_generator = None
-            if request.GET.get(HTTP_PARAM_USE_VOCAB,False):
+            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
                 rowproxy_generator = SqlAlchemyResource.create_vocabulary_rowproxy_generator(field_hash)
 
             # specific setup
@@ -4246,6 +4244,11 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
                     '    from ( select c.name from copy c '
                     '    where c.library_id=library.library_id '
                     '    order by c.name) as c1 )' % LIST_DELIMITER_SQL_ARRAY ).label('copies'), 
+                'copies2': literal_column(
+                    "(select array_to_string(array_agg(c1.name),'%s') "
+                    '    from ( select c.name from copy c '
+                    '    where c.library_id=library.library_id '
+                    '    order by c.name) as c1 )' % LIST_DELIMITER_SQL_ARRAY ).label('copies2'), 
                 'owner': literal_column(
                     "(select u.first_name || ' ' || u.last_name "
                     '    from screensaver_user u '
@@ -4268,7 +4271,7 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
             (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
             
             title_function = None
-            if request.GET.get(HTTP_PARAM_USE_TITLES, False):
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
                 title_function = lambda key: field_hash[key]['title']
             
             return self.stream_response_from_cursor(

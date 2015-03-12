@@ -140,21 +140,39 @@
         }
     },
     "well": {
-        "header_message": "Wells",
-        "title": "Well",
-        "route": "list/well",
-        "list_view": "ListView",
-        "detailView": "WellView",
-        "api_resource": "well",
-        "url_root": "/db/api/v1",
-        "description": "Well information",
-        "options": { 
-          "rpp_selections" : [24,96,384,1000],
-          "rpp": 24,
-          "order": ["plate_number","well_name"]  }
+      "header_message": "Wells",
+      "title": "Well",
+      "route": "list/well",
+      "list_view": "ListView",
+      "detailView": "WellView",
+      "api_resource": "well",
+      "url_root": "/db/api/v1",
+      "description": "Well information",
+      "options": { 
+        "rpp_selections" : [24,96,384,1000],
+        "rpp": 24,
+        "order": ["plate_number","well_name"]  }
+    },    
+    "reagent": {
+      "header_message": "Wells",
+      "title": "Well",
+      "route": "list/reagent",
+      "list_view": "ListView",
+      "detailView": "WellView",
+      "api_resource": "reagent",
+      "url_root": "/db/api/v1",
+      "description": "Reagent Well information",
+      "options": { 
+        "rpp_selections" : [24,96,384,1000],
+        "rpp": 24,
+        "order": ["plate_number","well_name"]  }
     },
     "librarycopyplates": {
       "options": { 
         "order": ["plate_number","copy_name"]  }
-    }    
+    },
+    "librarycopies": {
+      "options": { 
+        "order": ["library_short_name","copy_name"]  }
+    }
 }

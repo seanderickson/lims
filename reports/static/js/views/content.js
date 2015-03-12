@@ -169,21 +169,73 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         }
       }
       if(uriStack.length > 1 && uriStack[0] == 'children'){
-//        var subresource = appModel.getResource(uriStack[1]);
+//      var subresource = appModel.getResource(uriStack[1]);
         var substack = _.rest(uriStack,1);
         var _key = Iccbl.popKeyFromStack(resource, substack, []);
         this.$('#content_title').html('Child logs for: ' + _key);
       }else{
         this.$('#content_title').html(resource.title + ' listing');
       }
-      
-      var view = new viewClass({ model: appModel, 
-        options: { 
-          uriStack: uriStack,
-          schemaResult: schemaResult, 
-          resource: resource
+    
+      if(uriStack.length > 1 && uriStack[0] == 'search' 
+        && !_.isNaN(parseInt(uriStack[1]))){
+        // search view
+        console.log('create a collection with search data');
+        // IF search, override collection fetch; POST search data
+        // TODO: if search data contains a simple AND list, then just pass these
+        // params on to the list and conduct the searches from the header field mechanism
+        
+        this.consumedStack.push(uriStack.shift());
+        // TODO: searchID not used - will be needed to persist searches on server
+        var searchID = uriStack.shift();
+
+        this.consumedStack.push(searchID);
+        this.$('#content_title').html(resource.title + ' search');
+        
+        var url = resource.apiUri + '/search/' + searchID;
+        
+        var search_data = appModel.getSearch(searchID);
+        if(_.isUndefined(search_data) || _.isEmpty(search_data)){
+          var msg = 'Content List search requires a "search_data:'+searchID +'" in current browser state';
+          console.log(msg);
+          appModel.error(msg);
+          return;
         }
-      });
+        var Collection = Iccbl.MyCollection.extend({
+          url: url,
+          fetch: function(options){
+            // endcode for the post_data arg; post data elements are sent 
+            // as urlencoded values via a POST form for simplicity
+            console.log('execute POST for collection form data: ', search_data);
+            options = options || {};
+            var data = options.data || {};
+            options.data = _.extend({ search_data: JSON.stringify(search_data) }, data);
+            options.type = 'POST';
+            Collection.__super__.fetch.call(this, options);
+          }
+        });
+        var collection = new Collection({
+          url: url,
+        });
+
+        var view = new viewClass({ model: appModel, 
+          options: { 
+            uriStack: uriStack,
+            schemaResult: schemaResult, 
+            resource: resource, 
+            collection: collection, 
+            search_data: search_data
+          }
+        });
+      }else{ // normal list view
+        var view = new viewClass({ model: appModel, 
+          options: { 
+            uriStack: uriStack,
+            schemaResult: schemaResult, 
+            resource: resource
+          }
+        });
+      }
       self.listenTo(view, 'update_title', function(val){
         if(val) {
           this.$('#content_title').html(
@@ -193,6 +245,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           this.$('#content_title').html(resource.title);
         }
       });
+    
 
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       
@@ -216,6 +269,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       });
     },
 
+    // delegated from UriContainerView on appModel change:uriStack
     changeUri: function(uriStack) {
       var self = this;
       var consumedStack = this.consumedStack = [];
@@ -261,12 +315,13 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
 
       // Test for list args, if not found, then it's a detail view
       if (!_.isEmpty(uriStack) && 
-            !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
+            !_.contains(appModel.LIST_ARGS, uriStack[0]) &&
+            uriStack[0] != 'search') {
         // DETAIL VIEW
         
         if(uriStack[0] == '+add'){
 //        consumedStack = uriStack.unshift();
-        self.showAdd(resource, uriStack);
+          self.showAdd(resource, uriStack);
         }else{ 
           var _key = Iccbl.popKeyFromStack(resource, uriStack, consumedStack );
           appModel.getModel(uiResourceId, _key, function(model){

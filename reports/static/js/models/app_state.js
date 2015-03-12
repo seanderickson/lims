@@ -91,6 +91,19 @@ define([
       return this.currentUser;
     },
     
+    setSearch: function(searchId, search_object){
+      console.log('setSearch', searchId, search_object)
+      localStorage.setItem(''+searchId, JSON.stringify(search_object));
+      this.getSearch(searchId);
+    },
+    
+    getSearch: function(searchId){
+      var obj = localStorage.getItem(''+searchId);
+      if(obj) obj = JSON.parse(obj);
+      console.log('getSearch', searchId, obj);
+      return obj;
+    },
+    
     getVocabularies: function(callBack){
       console.log('getVocabularies from the server...');
       var self = this;
@@ -452,24 +465,24 @@ define([
       this.set({ uriStack: value });
     },
 
-//    setUriStack: function(value){
-//      var self = this;
-//      var _deferred = function(){
-//       self.set({ uriStack: value });
-//      };
-//      
-//      // TODO: push the requestPageChange method up the call stack to the client code:
-//      // - this will allow us to prevent other actions on the client side.
-//      
-//      if(self.isPagePending()){
-//        self.showModal({
-//          ok: _deferred
-//        });
-//      }else{
-//        _deferred();
-//      }
-//    },
-    
+    //    setUriStack: function(value){
+    //      var self = this;
+    //      var _deferred = function(){
+    //       self.set({ uriStack: value });
+    //      };
+    //      
+    //      // TODO: push the requestPageChange method up the call stack to the client code:
+    //      // - this will allow us to prevent other actions on the client side.
+    //      
+    //      if(self.isPagePending()){
+    //        self.showModal({
+    //          ok: _deferred
+    //        });
+    //      }else{
+    //        _deferred();
+    //      }
+    //    },
+        
     /**
      * Set flag to signal that the current page has pending changes;
      * (see setUriStack; modal confirm dialog will be triggered).
@@ -510,7 +523,8 @@ define([
       }
     },
 
-    download: function(url, resource){
+    download: function(url, resource, post_data){
+      var self = this;
       
       if(url.search(/\?/) < 1 ){
         url = url + '?';
@@ -644,7 +658,34 @@ define([
           // Server will set a cookie on the response to signal download complete
           url += "&downloadID=" + downloadID;
 
-          form.$el.find('#tmpFrame').attr('src', url);
+          if(post_data){
+            console.log('post_data found for download', post_data);
+            // create a form for posting
+            var el = form.$el.find('#tmpFrame');
+            
+            var postform = $("<form />", {
+              method: 'POST',
+              action: url
+            });
+
+            _.each(_.keys(post_data), function(key){
+              var hiddenField = $('<input/>',{
+                type: 'hidden',
+                name: key,
+                value: encodeURI(post_data[key])
+              });
+              postform.append(hiddenField);
+            });
+            el.append(postform);
+            console.log('submitting post form...' + url);
+            postform.submit();
+            
+          }else{
+            // simple GET request
+            form.$el.find('#tmpFrame').attr('src', url);
+          }
+          
+          
           $('#loading').fadeIn({duration:100});
 
           // The local cookie cache is defined in the browser
@@ -684,7 +725,6 @@ define([
       
     },
     
-    
     /**
      * options.ok = ok function
      * options.cancel = cancel function
@@ -697,7 +737,6 @@ define([
       var callbackOk = (options && options.ok)? options.ok : function(){};
       var callbackCancel = (options && options.cancel)? options.cancel: function(){};
           
-      console.log('showModal: ' + options);
       var modalDialog = new Backbone.View({
           el: _.template(modalOkCancelTemplate, { 
             body: options.body,

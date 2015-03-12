@@ -8,9 +8,10 @@ define([
     'views/menu',
     'views/content',
     'views/message',
+    'views/search_box',
     'text!templates/app_layout.html'
 ], function($, _, Backbone, layoutmanager, Iccbl, appModel, MenuView, 
-            ContentView, MessageView, layout) {
+            ContentView, MessageView, SearchView, layout) {
 
     var AppView = Backbone.Layout.extend({
       el: '#application_div',
@@ -22,7 +23,7 @@ define([
       
       views: {
         "#menu": new MenuView(),
-        "#container": new ContentView({model: appModel, property: 'uriStack'})
+        "#container": new ContentView({model: appModel, property: 'uriStack'}),
       },
       
       setMessages: function() {
@@ -33,7 +34,13 @@ define([
         }else if(this.messageView){
           this.messageView.remove();
         }
-      },      
+      },
+      
+      afterRender: function() {
+        this.searchView = new SearchView(),
+        Backbone.Layout.setupView(this.searchView);
+        this.setView("#search_box", this.searchView ).render();
+      },
       
       template: _.template(layout)
 
@@ -41,3 +48,4 @@ define([
 
     return AppView;
 });
+

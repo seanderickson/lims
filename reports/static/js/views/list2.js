@@ -47,15 +47,60 @@ define([
           preset_searches[key] = resource.options.search[key];
         });
       }
-
-      // convert the uriStack into the listmodel
+      
       var urlSuffix = self.urlSuffix = "";
       var listInitial = {};
       var searchHash = {};
       var orderings = [];
       var includes = [];
+
+      // first set presets
+      // TODO: do the same thing here to implement preset orderings
+      searchHash = _.extend({}, preset_searches,searchHash);
+      if(!_.isEmpty(searchHash)){
+        listInitial['search'] = searchHash;
+      }
+      
+      if(!_.isUndefined(resource.options)
+          && ! _.isUndefined(resource.options.order)){
+        if(!_.isEmpty(resource.options.order)){
+          // TODO: to complicated: should deal with orderings as a hash, to simplify
+          orderings = _.union(orderings,resource.options.order);
+          var orderHash = {};
+          _.each(orderings, function(item){
+            var dir = item.substring(0,1);
+            var fieldname = item;
+            if(dir == '-'){
+              fieldname = item.substring(1);
+            }else{
+              dir = '';
+            }
+            if(!_.has(orderHash,fieldname)){
+              orderHash[fieldname] = dir;
+            }else{
+              orderings = _.without(orderings, item);
+            }
+          });
+        }
+      }
+      listInitial['order'] = orderings;
+      
+      if(!_.isUndefined(resource.options)
+          && ! _.isUndefined(resource.options.includes)){
+        if(!_.isEmpty(resource.options.order)){
+          includes = _.union(includes, resource.options.includes);
+        }
+      }
+      listInitial['includes'] = includes;
+      if(!_.isUndefined(resource.options)
+          && ! _.isUndefined(resource.options.rpp)){
+        listInitial['rpp'] = resource.options.rpp;
+      }
+      
+      // second override with the uriStack values
       if(_.has(self._options,'uriStack')){
         var stack = self._options.uriStack;
+        console.log('initialize ListView: ',stack);
         for (var i=0; i<stack.length; i++){
           var key = stack[i];
           i = i+1;
@@ -106,49 +151,6 @@ define([
             }
           }
         }
-      }
-      // TODO: do the same thing here to implement preset orderings
-      searchHash = _.extend({}, preset_searches,searchHash);
-      if(!_.isEmpty(searchHash)){
-        listInitial['search'] = searchHash;
-      }
-      
-      if(!_.isUndefined(resource.options)
-          && ! _.isUndefined(resource.options.order)){
-        if(!_.isEmpty(resource.options.order)){
-          // TODO: to complicated: should deal with orderings as a hash, to simplify
-          orderings = _.union(orderings,resource.options.order);
-          var orderHash = {};
-          _.each(orderings, function(item){
-            var dir = item.substring(0,1);
-            var fieldname = item;
-            if(dir == '-'){
-              fieldname = item.substring(1);
-            }else{
-              dir = '';
-            }
-            if(!_.has(orderHash,fieldname)){
-              orderHash[fieldname] = dir;
-            }else{
-              orderings = _.without(orderings, item);
-            }
-          });
-        }
-      }
-      listInitial['order'] = orderings;
-      
-      if(!_.isUndefined(resource.options)
-          && ! _.isUndefined(resource.options.includes)){
-        if(!_.isEmpty(resource.options.order)){
-          includes = _.union(includes, resource.options.includes);
-        }
-      }
-      
-      listInitial['includes'] = includes;
-
-      if(!_.isUndefined(resource.options)
-          && ! _.isUndefined(resource.options.rpp)){
-        listInitial['rpp'] = resource.options.rpp;
       }
 
       var listModel = this.listModel = new ListModel(listInitial);
@@ -206,19 +208,23 @@ define([
       var urlparams = '';
       self.trigger('update_title', '');
       
+      var search_title_val = '';
       _.each(self.LIST_ROUTE_ORDER, function(route){
         var value = self.listModel.get(route);
         if ( (!_.isObject(value) && value ) || 
              ( _.isObject(value) && !_.isEmpty(value))) {
 
           if (route === 'search') {
+            
             var val = '';
-            _.each(value, function(v,k){
-              if (val !== '' ) val += '&';
-              
-              val += k + "=" + v;
-            });
-            self.trigger('update_title', 'Search: ' + val);
+            if( route == 'search'){
+              _.each(value, function(v,k){
+                if (val !== '' ) val += '&';
+                
+                val += k + "=" + v;
+              });
+            }
+            search_title_val = val;
             if(!_.isEmpty(urlparams)) urlparams += '&';
             urlparams += val;
           }else if (route === 'order') {
@@ -241,6 +247,30 @@ define([
                 '&limit=' + limit;
       if(!_.isEmpty(urlparams)) url += '&' + urlparams;
       console.log('collection url: ' + url)
+      
+      if(_.has(self._options, 'search_data')){
+        console.log('search data found on the self._options: ', self._options.search_data);
+        var or_clauses = '';
+        var search_list = self._options.search_data;
+        _.each(search_list, function(hash){
+          var temp = '';
+          _.each(_.keys(hash), function(k){
+            var v = hash[k];
+            if (temp !== '' ) temp += '&';
+            temp += k + "=" + v;
+          });
+          if(or_clauses != '') or_clauses += "<br>OR ";
+          or_clauses += temp
+        });
+        if(search_title_val !== '') search_title_val += '<br>AND ';
+        search_title_val += '[ ' + or_clauses + ' ]';
+      }            
+      if(search_title_val !== ''){
+        self.trigger('update_title', 'Search: ' + search_title_val);
+      }
+      
+      
+      
       return url;
       
     },
@@ -280,14 +310,43 @@ define([
         }
       });
       console.log('newStack: ' + JSON.stringify(newStack));
-      self.trigger('uriStack:change', newStack );
+      var previousStack = self.currentStack;
+      self.currentStack = newStack;
+      if(previousStack && _.isEqual(previousStack,newStack)){
+        console.log('no new stack updates');
+      }else{
+        var route_update = false;
+        var changedAttributes = self.listModel.changedAttributes();
+        var previousAttributes = self.listModel.previousAttributes();
+        _.each(_.keys(changedAttributes), function(key){
+          if(_.has(previousAttributes, key)){ 
+            route_update = true;
+            console.log('valid changed attribute', key, changedAttributes, previousAttributes);
+          }
+        });
+        
+        if(!route_update){
+          appModel.set('routing_options', {replace: true});  
+        }
+
+        // calling this to update the title
+        self.getCollectionUrl(0);
+        self.trigger('uriStack:change', newStack );
+      }
     },
     
     checkState: function(){
       var self = this;
       var state = self.collection.state;
-      var currentPage = Math.max(state.currentPage, state.firstPage);
-
+      var currentPage = 1;
+      if(state.currentPage){
+        if(state.firstPage){
+          currentPage = Math.max(state.currentPage, state.firstPage);    
+        }else{
+          currentPage = state.currentPage;
+        }
+      }
+      
       // search: set in Iccbl Collection
       
       self.listModel.set({ 
@@ -384,8 +443,11 @@ define([
       this.listenTo(rppModel, 'change', function() {
           var rpp = parseInt(rppModel.get('selection'));
           self.listModel.set('rpp', String(rpp));
+          self.listModel.set('page',1);
+          self.collection.state.currentPage = 1; // set this because of how checkstate is triggered
           console.log('===--- rppModel change: ' + rpp );
-          self.collection.setPageSize(rpp);
+          appModel.set('routing_options', {replace: false});  
+          self.collection.setPageSize(rpp, { first: true });
       });
 
       var paginator = self.paginator = new Backgrid.Extension.Paginator({
@@ -627,7 +689,7 @@ define([
       
       // Note: replace: true - to suppress router history:
       // at this point, reportState is modifying the URL to show rpp, pagesSize, etc.
-      appModel.set('routing_options', {replace: true});  
+      // appModel.set('routing_options', {replace: true});  
       this.reportState();
       return this;
     },
@@ -648,7 +710,21 @@ define([
       var self = this;
       e.preventDefault();
       var limitForDownload = 0;
-      appModel.download(self.getCollectionUrl(limitForDownload), self._options.resource);
+      
+      // find any extra search data
+      if(_.has(self._options, 'search_data')){
+        console.log('search data found on the list._options: ', self._options.search_data);
+        // endcode for the post_data arg; post data elements are sent 
+        // as urlencoded values via a POST form for simplicity
+        appModel.download(
+            self.getCollectionUrl(limitForDownload), 
+            self._options.resource, 
+            { search_data: JSON.stringify(self._options.search_data) } ); 
+      }else{
+        appModel.download(
+            self.getCollectionUrl(limitForDownload), 
+            self._options.resource);
+      }
     },
      
     /** Build the select columns dialog **/

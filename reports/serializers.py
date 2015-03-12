@@ -22,6 +22,7 @@ import xlrd
 from reports.utils.serialize import from_csv_iterate
 import six
 from xlsxwriter.workbook import Workbook
+from tastypie.exceptions import UnsupportedFormat
 
 logger = logging.getLogger(__name__)
 

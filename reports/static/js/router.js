@@ -68,7 +68,7 @@ function($, _, Backbone, appModel) {
 
       // trigger false to suppress further parsing, 
       // replace false (default) to create browser history
-      var options = { trigger: false }; // , replace:false
+      var options = { trigger: false, replace:false }; // , replace:false
       var routing_options = appModel.get('routing_options');
       appModel.set({ routing_options: {} });
       if(!_.isUndefined(routing_options)){

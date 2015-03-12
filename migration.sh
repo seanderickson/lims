@@ -17,6 +17,11 @@ function error () {
   exit 1
 }
 
+WARNINGS=''
+function warn () {
+  WARNINGS = "${WARNINGS}, $@"
+}
+
 REALPATH=${REALPATH:-"$(which realpath 2>/dev/null)"}
 if [[ -z $REALPATH ]]; then
   PROG=$( basename $0 )
@@ -351,7 +356,7 @@ function frontend_setup {
   ./node_modules/.bin/bower cache clean
   ./node_modules/.bin/grunt bowercopy >>"$LOGFILE" 2>&1 || error "grunt bowercopy failed: $?"
   
-  ./node_modules/.bin/grunt test >>"$LOGFILE" 2>&1 || error "grunt test failed: $?"
+  ./node_modules/.bin/grunt test >>"$LOGFILE" 2>&1 || warn "grunt test failed, see logfile: $?"
   
   cd ../..
   
@@ -449,7 +454,12 @@ function code_bootstrap {
   migratedb
   
   if [[ $IS_DEV_SERVER -ne 1 ]]; then
-    tail -400 migration.log | mail -s "Migration completed $(ts)" sean.erickson.hms@gmail.com
+    if [[ $WARNINGS -ne '' ]]; then
+      msg = "${WARNINGS} \n `tail -400 migration.log`"
+      echo $msg | mail -s "Migration completed $(ts), with warning" sean.erickson.hms@gmail.com
+    else
+      tail -400 migration.log | mail -s "Migration completed $(ts)" sean.erickson.hms@gmail.com
+    fi
   fi  
   # put this here to see if LSF will start reporting results
   exit 0

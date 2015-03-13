@@ -209,6 +209,22 @@ define([
       self.trigger('update_title', '');
       
       var search_title_val = '';
+      
+      var _translate_sql_specifier = function(k){
+        if(! k || _.isEmpty(k)) return k;
+        
+        var parts = k.split('__');
+        var name = k;
+        if(parts.length == 2){
+          var field = self._options.schemaResult.fields[parts[0]];
+          if(field){
+            name = field.title;
+          }
+          name += ' ' + parts[1];
+        }
+        return name;
+      };
+      
       _.each(self.LIST_ROUTE_ORDER, function(route){
         var value = self.listModel.get(route);
         if ( (!_.isObject(value) && value ) || 
@@ -219,12 +235,12 @@ define([
             var val = '';
             if( route == 'search'){
               _.each(value, function(v,k){
-                if (val !== '' ) val += '&';
-                
+                if(val !== '' ) val += '&';
+                if(search_title_val !== '' ) search_title_val += ' AND ';
                 val += k + "=" + v;
+                search_title_val += _translate_sql_specifier(k) + " (" + v + ") ";
               });
             }
-            search_title_val = val;
             if(!_.isEmpty(urlparams)) urlparams += '&';
             urlparams += val;
           }else if (route === 'order') {
@@ -256,8 +272,8 @@ define([
           var temp = '';
           _.each(_.keys(hash), function(k){
             var v = hash[k];
-            if (temp !== '' ) temp += '&';
-            temp += k + "=" + v;
+            if (temp !== '' ) temp += ' AND ';
+            temp += _translate_sql_specifier(k) + " (" + v + ") ";
           });
           if(or_clauses != '') or_clauses += "<br>OR ";
           or_clauses += temp
@@ -269,10 +285,7 @@ define([
         self.trigger('update_title', 'Search: ' + search_title_val);
       }
       
-      
-      
       return url;
-      
     },
     
     reportState: function() {

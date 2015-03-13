@@ -238,7 +238,9 @@ define([
       }
       
       var search_target = self.getValue('search_target');
-      if(_.isUndefined(search_target)||_.isEmpty(search_target.trim())){
+      if(!search_target ||
+          _.isUndefined(search_target)||
+          _.isEmpty(search_target.trim())){
         console.log('cancelling submit with nothing entered');
         return;
       }

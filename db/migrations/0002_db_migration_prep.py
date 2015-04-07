@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 
 class Migration(SchemaMigration):
     ''' 
-    Performs db schema changes needed for testing and basic functionality
+    Perform all the db schema migrations needed for screensaver 2 in this first 
+    migration after initialization.
     
     '''
 
@@ -265,6 +266,10 @@ class Migration(SchemaMigration):
         db.add_column(u'plate', 'max_remaining_volume',
                       self.gf('django.db.models.fields.FloatField')(null=True, blank=True),
                       keep_default=False)
+
+        db.add_column(u'plate', 'remaining_volume',
+                      self.gf('django.db.models.fields.FloatField')(null=True, blank=True),
+                      keep_default=False)
         
         db.add_column(u'plate', 'screening_count',
                       self.gf('django.db.models.fields.IntegerField')(null=True, blank=True),
@@ -283,15 +288,26 @@ class Migration(SchemaMigration):
         db.execute("ALTER TABLE {table} DROP COLUMN tmp_{column} ".\
                 format(**kwargs))
 
+        # cherry pick assay plate status: replaces cherrypickliquidtransfer activity
+        # note: needs "parent" activity on cherry pick to batch activities together
+        db.add_column(u'cherry_pick_assay_plate', 'status',
+                      self.gf('django.db.models.fields.TextField')(null=True),
+                      keep_default=False)
+        # Adding unique constraint on 'CherryPickAssayPlate', fields ['cherry_pick_request', 'plate_ordinal', 'attempt_ordinal']
+        db.create_unique(u'cherry_pick_assay_plate', ['cherry_pick_request_id', 'plate_ordinal', 'attempt_ordinal'])
+
         # Adding model 'CopyWell'
         db.create_table(u'copy_well', (
             (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+#             ('library', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Library'])),
             ('plate', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Plate'])),
             ('copy', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Copy'])),
-            ('well_id', self.gf('django.db.models.fields.TextField')()),
+            ('well', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Well'])),
             ('well_name', self.gf('django.db.models.fields.TextField')()),
             ('plate_number', self.gf('django.db.models.fields.IntegerField')()),
             ('volume', self.gf('django.db.models.fields.FloatField')(null=True, blank=True)),
+            ('initial_volume', self.gf('django.db.models.fields.FloatField')(null=True, blank=True)),
+            ('adjustments', self.gf('django.db.models.fields.IntegerField')(null=True)),
         ))
         db.send_create_signal(u'db', ['CopyWell'])
 
@@ -563,7 +579,7 @@ class Migration(SchemaMigration):
             'update_activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AdministrativeActivity']"})
         },
         u'db.cherrypickassayplate': {
-            'Meta': {'object_name': 'CherryPickAssayPlate', 'db_table': "u'cherry_pick_assay_plate'"},
+            'Meta': {'unique_together': "((u'cherry_pick_request', u'plate_ordinal', u'attempt_ordinal'),)", 'object_name': 'CherryPickAssayPlate', 'db_table': "u'cherry_pick_assay_plate'"},
             'assay_plate_type': ('django.db.models.fields.TextField', [], {}),
             'attempt_ordinal': ('django.db.models.fields.IntegerField', [], {}),
             'cherry_pick_assay_plate_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
@@ -572,6 +588,7 @@ class Migration(SchemaMigration):
             'cherry_pick_request': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.CherryPickRequest']"}),
             'legacy_plate_name': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'plate_ordinal': ('django.db.models.fields.IntegerField', [], {}),
+            'status': ('django.db.models.fields.TextField', [], {'null': 'True'}),
             'version': ('django.db.models.fields.IntegerField', [], {})
         },
         u'db.cherrypickassayplatescreeninglink': {

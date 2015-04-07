@@ -76,24 +76,6 @@ class ChecklistItemEventUpdateActivity(models.Model):
     class Meta:
         db_table = 'checklist_item_event_update_activity'
 
-class CherryPickLiquidTransfer(models.Model):
-    status = models.TextField()
-    activity = models.ForeignKey('LabActivity', primary_key=True)
-    class Meta:
-        db_table = 'cherry_pick_liquid_transfer'
-
-class CherryPickRequestUpdateActivity(models.Model):
-    cherry_pick_request = models.ForeignKey('CherryPickRequest')
-    update_activity = models.ForeignKey(AdministrativeActivity, unique=True)
-    class Meta:
-        db_table = 'cherry_pick_request_update_activity'
-
-class CherryPickScreening(models.Model):
-    activity = models.ForeignKey('Screening', primary_key=True)
-    cherry_pick_request = models.ForeignKey('CherryPickRequest')
-    class Meta:
-        db_table = 'cherry_pick_screening'
-
 class CopyUpdateActivity(models.Model):
     copy_id = models.IntegerField()
     update_activity_id = models.IntegerField(unique=True)
@@ -176,12 +158,6 @@ class ServiceActivity(models.Model):
     serviced_user = models.ForeignKey('ScreeningRoomUser')
     class Meta:
         db_table = 'service_activity'
-
-class WellVolumeCorrectionActivity(models.Model):
-    activity = models.ForeignKey(AdministrativeActivity, primary_key=True)
-    class Meta:
-        db_table = 'well_volume_correction_activity'
-
 
 class AnnotationType(models.Model):
     annotation_type_id = models.IntegerField(primary_key=True)
@@ -282,27 +258,9 @@ class ChecklistItemEvent(models.Model):
     class Meta:
         db_table = 'checklist_item_event'
 
-class CherryPickAssayPlate(models.Model):
-    cherry_pick_assay_plate_id = models.IntegerField(primary_key=True)
-    version = models.IntegerField()
-    cherry_pick_request = models.ForeignKey('CherryPickRequest')
-    plate_ordinal = models.IntegerField()
-    attempt_ordinal = models.IntegerField()
-    cherry_pick_liquid_transfer = models.ForeignKey('CherryPickLiquidTransfer', null=True, blank=True)
-    assay_plate_type = models.TextField()
-    legacy_plate_name = models.TextField(blank=True)
-    cherry_pick_assay_plate_type = models.CharField(max_length=31)
-    class Meta:
-        db_table = 'cherry_pick_assay_plate'
-
-class CherryPickAssayPlateScreeningLink(models.Model):
-    cherry_pick_assay_plate = models.ForeignKey(CherryPickAssayPlate)
-    cherry_pick_screening = models.ForeignKey('CherryPickScreening')
-    class Meta:
-        db_table = 'cherry_pick_assay_plate_screening_link'
-
 class CherryPickRequest(models.Model):
     cherry_pick_request_id = models.IntegerField(primary_key=True)
+    # TODO: give cpr a natural key: [screen id/CPR ordinal]
     version = models.IntegerField()
     screen = models.ForeignKey('Screen')
     comments = models.TextField(blank=True)
@@ -334,6 +292,58 @@ class CherryPickRequestEmptyWell(models.Model):
     class Meta:
         db_table = 'cherry_pick_request_empty_well'
 
+class LabCherryPick(models.Model):
+    lab_cherry_pick_id = models.IntegerField(primary_key=True)
+    version = models.IntegerField()
+    cherry_pick_request = models.ForeignKey('CherryPickRequest')
+    screener_cherry_pick = models.ForeignKey('ScreenerCherryPick')
+    source_well = models.ForeignKey('Well')
+    cherry_pick_assay_plate = models.ForeignKey('CherryPickAssayPlate', null=True, blank=True)
+    assay_plate_row = models.IntegerField(null=True, blank=True)
+    assay_plate_column = models.IntegerField(null=True, blank=True)
+    class Meta:
+        db_table = 'lab_cherry_pick'
+
+class CherryPickAssayPlate(models.Model):
+    cherry_pick_assay_plate_id = models.IntegerField(primary_key=True)
+    version = models.IntegerField()
+    cherry_pick_request = models.ForeignKey('CherryPickRequest')
+    plate_ordinal = models.IntegerField()
+    attempt_ordinal = models.IntegerField()
+    cherry_pick_liquid_transfer = models.ForeignKey('CherryPickLiquidTransfer', null=True, blank=True)
+    assay_plate_type = models.TextField()
+    legacy_plate_name = models.TextField(blank=True)
+    cherry_pick_assay_plate_type = models.CharField(max_length=31)
+    
+    status = models.TextField(null=True)
+    class Meta:
+        unique_together = (('cherry_pick_request', 'plate_ordinal','attempt_ordinal'))    
+        db_table = 'cherry_pick_assay_plate'
+
+class CherryPickScreening(models.Model):
+    activity = models.ForeignKey('Screening', primary_key=True)
+    cherry_pick_request = models.ForeignKey('CherryPickRequest')
+    class Meta:
+        db_table = 'cherry_pick_screening'
+
+class CherryPickAssayPlateScreeningLink(models.Model):
+    cherry_pick_assay_plate = models.ForeignKey(CherryPickAssayPlate)
+    cherry_pick_screening = models.ForeignKey('CherryPickScreening')
+    class Meta:
+        db_table = 'cherry_pick_assay_plate_screening_link'
+
+class CherryPickLiquidTransfer(models.Model):
+    status = models.TextField()
+    activity = models.ForeignKey('LabActivity', primary_key=True)
+    class Meta:
+        db_table = 'cherry_pick_liquid_transfer'
+
+class CherryPickRequestUpdateActivity(models.Model):
+    cherry_pick_request = models.ForeignKey('CherryPickRequest')
+    update_activity = models.ForeignKey('AdministrativeActivity', unique=True)
+    class Meta:
+        db_table = 'cherry_pick_request_update_activity'
+
 class CollaboratorLink(models.Model):
     collaborator = models.ForeignKey('ScreeningRoomUser')
     screen = models.ForeignKey('Screen')
@@ -353,18 +363,6 @@ class LabAffiliation(models.Model):
     lab_affiliation_id = models.IntegerField(primary_key=True)
     class Meta:
         db_table = 'lab_affiliation'
-
-class LabCherryPick(models.Model):
-    lab_cherry_pick_id = models.IntegerField(primary_key=True)
-    version = models.IntegerField()
-    cherry_pick_request = models.ForeignKey(CherryPickRequest)
-    screener_cherry_pick = models.ForeignKey('ScreenerCherryPick')
-    source_well = models.ForeignKey('Well')
-    cherry_pick_assay_plate = models.ForeignKey(CherryPickAssayPlate, null=True, blank=True)
-    assay_plate_row = models.IntegerField(null=True, blank=True)
-    assay_plate_column = models.IntegerField(null=True, blank=True)
-    class Meta:
-        db_table = 'lab_cherry_pick'
 
 class Publication(models.Model):
     publication_id = models.IntegerField(primary_key=True)
@@ -845,13 +843,13 @@ class GeneSymbol(models.Model):
         unique_together = (('gene', 'ordinal'))    
         db_table = 'gene_symbol'
 
-# 
-# class SilencingReagentDuplexWells(models.Model):
-#     silencing_reagent = models.ForeignKey(SilencingReagent)
-#     well = models.ForeignKey('Well')
-#     class Meta:
-#         unique_together = (('silencing_reagent', 'well'))    
-#         db_table = 'silencing_reagent_duplex_wells'
+ 
+class SilencingReagentDuplexWells(models.Model):
+    silencing_reagent = models.ForeignKey(SilencingReagent)
+    well = models.ForeignKey('Well')
+    class Meta:
+        unique_together = (('silencing_reagent', 'well'))    
+        db_table = 'silencing_reagent_duplex_wells'
 
 class SmallMoleculeReagent(models.Model):
     reagent = models.OneToOneField(Reagent, primary_key=True)
@@ -1022,14 +1020,17 @@ class Plate(models.Model):
     
 #     well_volume = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
     well_volume = models.FloatField(null=True, blank=True)
-#     remaining_volume = models.FloatField(null=True, blank=True)
-    
+
+    # TODO: decide how to handle library screening plates:
+    # - use only remaining volume, set all volumes the same, or 
+    # eliminate remaining, and set min/max/avg to the same, or
+    # can we update the queries to be efficient enough to not need min/max/avg?
+    remaining_volume = models.FloatField(null=True, blank=True)
     avg_remaining_volume = models.FloatField(null=True, blank=True)
     min_remaining_volume = models.FloatField(null=True, blank=True)
     max_remaining_volume = models.FloatField(null=True, blank=True)
     
     screening_count = models.IntegerField(null=True, blank=True)
-    
     
     copy = models.ForeignKey(Copy)
     facility_id = models.TextField(blank=True)
@@ -1054,14 +1055,16 @@ class Plate(models.Model):
 
 
 class CopyWell(models.Model):
-    plate = models.ForeignKey(Plate)
-    copy = models.ForeignKey(Copy)
-    well_id = models.TextField()
+#     library = models.ForeignKey('Library')
+    plate = models.ForeignKey('Plate')
+    copy = models.ForeignKey('Copy')
+    # FIXME: name should be "well" - also fix db.apy then
+    well = models.ForeignKey('Well')
     well_name = models.TextField()
     plate_number = models.IntegerField()
-    well_volume = models.FloatField(null=True, blank=True)
-#     micro_molar_concentration = models.FloatField(null=True, blank=True)
-#     mg_ml_concentration = models.FloatField(null=True, blank=True)
+    volume = models.FloatField(null=True, blank=True)
+    initial_volume = models.FloatField(null=True, blank=True)
+    adjustments = models.IntegerField()
  
     class Meta:
         db_table = 'copy_well'
@@ -1081,12 +1084,17 @@ class WellVolumeAdjustment(models.Model):
     well_volume_adjustment_id = models.IntegerField(primary_key=True)
     version = models.IntegerField()
     well = models.ForeignKey(Well)
-    lab_cherry_pick = models.ForeignKey(LabCherryPick, null=True, blank=True)
+    lab_cherry_pick = models.ForeignKey('LabCherryPick', null=True, blank=True)
     well_volume_correction_activity = models.ForeignKey('WellVolumeCorrectionActivity', null=True, blank=True)
     volume = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
     copy = models.ForeignKey(Copy)
     class Meta:
         db_table = 'well_volume_adjustment'
+
+class WellVolumeCorrectionActivity(models.Model):
+    activity = models.ForeignKey(AdministrativeActivity, primary_key=True)
+    class Meta:
+        db_table = 'well_volume_correction_activity'
 
 
 # this is a LINCS table

@@ -2,5 +2,5 @@ key,alias,scope,resource_uri,ordinal,comment,ui_type,filtering,description,title
 vendor_name,vendor,fields.reagent,/reports/api/v1/metahash/fields.reagent/vendor_name/,10,,string,TRUE,"The vendor of the reagent of this well.","Reagent Vendor",TRUE,,,[list;detail],,,
 vendor_identifier,vendor_reagent_id,fields.reagent,/reports/api/v1/metahash/fields.reagent/vendor_identifier/,11,,string,TRUE,"The vendor-assigned identifier for the reagent in this well.","Vendor Reagent ID",TRUE,,,[list;detail],,,
 vendor_batch_id,,fields.reagent,/reports/api/v1/metahash/fields.reagent/vendor_batch_id/,12,,string,TRUE,"The vendor-assigned batch identifier for the reagent in this well.","Vendor Batch ID",TRUE,,,[detail],,,
-substance_id,,fields.reagent,/reports/api/v1/metahash/fields.reagent/substance_id/,99,,string,TRUE,"Unique Facility substance ID","Substance ID",TRUE,,,[detail],Iccbl.LinkCell,reagent/{substance_id},
-well_id,,fields.reagent,/reports/api/v1/metahash/fields.reagent/well_id/,19,,string,TRUE,"Well ID","Well ID",TRUE,,,[list;detail],Iccbl.LinkCell,reagent/{well_id},
+substance_id,,fields.reagent,/reports/api/v1/metahash/fields.reagent/substance_id/,99,,string,TRUE,"Unique Facility substance ID","Substance ID",TRUE,,,[detail],Iccbl.LinkCell,"{ ""hrefTemplate"": ""#reagent/{substance_id}""  }",
+well_id,,fields.reagent,/reports/api/v1/metahash/fields.reagent/well_id/,19,,string,TRUE,"Well ID","Well ID",TRUE,,,[list;detail],Iccbl.LinkCell,"{ ""hrefTemplate"": ""#reagent/{well_id}"" }",

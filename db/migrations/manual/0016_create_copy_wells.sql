@@ -1,5 +1,6 @@
 BEGIN;
 
+
 INSERT INTO schema_history (screensaver_revision, date_updated, comment)
 SELECT
 20150016,
@@ -12,23 +13,84 @@ current_timestamp,
 **/
 
 
-select current_time;
+select 'begin' as action, current_time;
 
+/** Drop copy_well constraint, for now.
+    Uses postgresql 8.4 method for setting a var from select
+    Note: 9.3 offers the \gset command
+    see http://www.depesz.com/2013/02/25/variables-in-sql-what-how-when/
+\pset format unaligned
+\pset tuples_only on
+SELECT conname
+FROM pg_constraint
+WHERE conrelid =
+    (SELECT oid 
+    FROM pg_class
+    WHERE relname LIKE 'copy_well') and conname like '%well_id%' \g /tmp/sde4_copy_well_constraint_var.txt
+\pset tuples_only off
+\pset format aligned
+\set _pk_copy_well_constraint `cat /tmp/sde4_copy_well_constraint_var.txt`
+alter table copy_well drop constraint :_pk_copy_well_constraint;
+**/
+
+select 'create copy_wells' as action;
+
+/** only create wva/cpap cherry pick copy wells **/
 insert into copy_well
-    ( id, copy_id, plate_id, well_id, well_name, plate_number)  
+    ( id, copy_id, plate_id, well_id, plate_number, initial_volume,adjustments)  
     select nextval('copy_well_id_seq'), 
     c.copy_id, 
     p.plate_id,
     w.well_id, 
-    w.well_name, 
-    p.plate_number 
-    from well w 
-    left join plate p using (plate_number) 
-    left join copy c using(copy_id)
-    join library l on(c.library_id=l.library_id) 
+    p.plate_number,
+    p.well_volume,
+    '0'
+    from
+    (select distinct(plate_number) 
+      from well_volume_adjustment wva 
+      join plate using(copy_id) 
+      order by plate_number) plates 
+    join well w using(plate_number) 
+    join plate p using(plate_number)
+    join copy c using(copy_id)
     order by w.well_id;
 
-create temp table plate_volume as (
+select 'create copy_well volume from wva temp table' as action;
+
+/** check if all wva's should be used, or just some of successful, failed, canceled
+    (**yes, because wva is created only when liquid xfer is done)
+**/
+create temp table well_volume_adjustments as (
+    select 
+    c.copy_id,
+    w.well_id,
+    p.well_volume,
+    p.well_volume + sum(wva.volume) as well_remaining_volume,
+    count(wva) as adjustments
+    from well w
+    join plate p using(plate_number)
+    join copy c using(copy_id)
+    join library l on(c.library_id=l.library_id),
+    well_volume_adjustment wva
+    where wva.copy_id=c.copy_id and wva.well_id = w.well_id
+    group by c.copy_id, w.well_id, p.well_volume
+    order by w.well_id);
+
+update copy_well as cw
+  set volume = wva.well_remaining_volume, adjustments=wva.adjustments
+  from well_volume_adjustments as wva
+  where cw.copy_id = wva.copy_id and cw.well_id = wva.well_id;
+
+/** any left over copy_well's are set to the plate well volume **/
+update copy_well cw set volume = p.well_volume 
+  from plate p
+  where p.copy_id = cw.copy_id and p.plate_id=cw.plate_id
+  and volume is null;
+
+/** old - if creating copy_wells for all plates, including library screening plates
+
+  select 'set copy_well volume for library screening copy_wells' as action;
+  create temp table plate_volume as (
     select
     p.copy_id, p.plate_id,
     p.well_volume - sum(la.volume_transferred_per_well_from_library_plates) as plate_remaining_volume
@@ -40,35 +102,31 @@ create temp table plate_volume as (
     where ap.replicate_ordinal = 0
     group by p.plate_id, p.copy_id, p.well_volume order by p.plate_id, copy_id );
 
-update copy_well
-set volume = pv.plate_remaining_volume
-from plate_volume as pv
-where pv.copy_id = copy_well.copy_id and pv.plate_id=copy_well.plate_id;
+  select 'set copy_well volumes' as action;
+  
+  update copy_well
+  set volume = pv.plate_remaining_volume
+  from plate_volume as pv
+  where pv.copy_id = copy_well.copy_id and pv.plate_id=copy_well.plate_id;
+**/
 
-create temp table well_volume_adjustments as (
-    select 
-    c.copy_id,
-    w.well_id,
-    p.well_volume,
-    p.well_volume + sum(wva.volume) as well_remaining_volume
-    from well w
-    join plate p using(plate_number)
-    join copy c using(copy_id)
-    join library l on(c.library_id=l.library_id),
-    well_volume_adjustment wva
-    where wva.copy_id=c.copy_id and wva.well_id = w.well_id
-    group by c.copy_id, w.well_id, p.well_volume
-    order by w.well_id);
+select 'set plate remaining volume for library screening plates' as action;
+create temp table plate_volume as (
+  select
+  p.copy_id, p.plate_id,
+  p.well_volume - sum(la.volume_transferred_per_well_from_library_plates) as plate_remaining_volume
+  from plate p
+  join copy c using(copy_id)
+  left join assay_plate ap using(plate_id)
+  left join screening ls on(ls.activity_id = ap.library_screening_id)
+  left join lab_activity la using(activity_id)
+  where ap.replicate_ordinal = 0
+  group by p.plate_id, p.copy_id, p.well_volume order by p.plate_id, copy_id );
 
-update copy_well as cw
-set volume = wva.well_remaining_volume
-from well_volume_adjustments as wva
-where cw.copy_id = wva.copy_id and cw.well_id = wva.well_id;
-
-update copy_well cw set volume = p.well_volume 
-from plate p
-where p.copy_id = cw.copy_id and p.plate_id=cw.plate_id
-and volume is null;
+update plate
+  set remaining_volume = pv.plate_remaining_volume
+  from plate_volume pv 
+  where pv.plate_id = plate.plate_id;
 
 /** set the plate statistics **/
 
@@ -87,10 +145,9 @@ and volume is null;
     set remaining_volume = pv.plate_remaining_volume
     from plate_volume as pv
     where pv.plate_id = p.plate_id;
-
-
 **/
 
+select 'create plate volume statistics for copy_wells for cherry_picks' as action;
 
 create temp table plate_volume2 as (
   select
@@ -102,15 +159,29 @@ create temp table plate_volume2 as (
   group by cw.plate_id );
 
 update plate set 
-avg_remaining_volume = pv.avg_remaining_volume, 
-min_remaining_volume = pv.min_remaining_volume, 
-max_remaining_volume = pv.max_remaining_volume
-from plate_volume2 pv 
-where plate.plate_id = pv.plate_id;
+  avg_remaining_volume = pv.avg_remaining_volume, 
+  min_remaining_volume = pv.min_remaining_volume, 
+  max_remaining_volume = pv.max_remaining_volume
+  from plate_volume2 pv 
+  where plate.plate_id = pv.plate_id;
 
+/** Set remaining_volume == well_volume (initial volume) for anything left **/
 
-/** update plate set remaining_volume = well_volume where remaining_volume is null;
+select 'plates with remaining vol unset', count(*) 
+  from plate 
+  where remaining_volume is null 
+  and avg_remaining_volume is null;
+
+update plate set remaining_volume = well_volume 
+  where remaining_volume is null 
+  and avg_remaining_volume is null;
+
+/** 
+  Done - volume statistics
+  Next - plate screening statistics
 **/
+
+select 'default plate screening statistics ' as action;
 
 create temp table plate_screening_count as (
   select 
@@ -125,11 +196,13 @@ create temp table plate_screening_count as (
   order by plate_id );
 
 update plate as p 
-set screening_count = psc.count
-from plate_screening_count psc 
-where p.plate_id=psc.plate_id;
+  set screening_count = psc.count
+  from plate_screening_count psc 
+  where p.plate_id=psc.plate_id;
 
-/** TODO: copy screening statistics - may wish to store on copy **/
+/** TODO: copy screening statistics - may wish to store on copy 
+**/
+select 'copy screening statistics ' as action;
 
 create table copy_screening_statistics ( 
     copy_id integer, 
@@ -214,12 +287,20 @@ insert into plate_screening_statistics
     on(screen_result_data_loading_id=srdl.activity_id)  
     group by p.plate_id, p.plate_number, c.copy_id, c.name, l.library_id, l.short_name );
 
+select 'create indexes and cleanup ' as action;
 
-
+/** create indexes not already there **/
 create index assay_plate_plate_id on assay_plate (plate_id);
 create index copy_library_id on copy (library_id);
 create index plate_copy_id on plate (copy_id);
+create index well_library_id on well (library_id);
 
+/** add back in fk constraint 
+alter table copy_well 
+  add constraint well_id_refs_well_id 
+  foreign key (well_id) 
+  references well;
+**/
 
 COMMIT;
 

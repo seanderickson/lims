@@ -14,13 +14,13 @@ from tastypie.bundle import Bundle
 from reports.models import ApiLog
 from django.utils import timezone, tzinfo
 
-import logging
 from django.utils.timezone import make_aware, UTC
 from django.core.exceptions import ObjectDoesNotExist
 
 from reports.api import compare_dicts, is_empty_diff
 from db.models import SmallMoleculeReagent
 
+import logging
 logger = logging.getLogger(__name__)
 
 class Migrator:
@@ -281,8 +281,8 @@ where r.library_contents_version_id=%s order by well_id;
         log.ref_resource_name = self.wellResource._meta.resource_name
         # TODO: what types here? could also be a REST specifier, i.e. 'PATCH'
         log.api_action = 'MIGRATION'
-        log.uri = '/db/api/v1/well' # self.wellResource.get_resource_uri(bundle_or_obj=well)
         log.key = prev_dict['well_id']
+        log.uri = '/db/api/v1/well/'+log.key # self.wellResource.get_resource_uri(bundle_or_obj=well)
         log.diff_dict_to_api_log(difflog)
         
         log.json_field = json.dumps({

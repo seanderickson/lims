@@ -2219,7 +2219,7 @@ class Migration(SchemaMigration):
             'silencing_reagent_type': ('django.db.models.fields.TextField', [], {'blank': 'True'})
         },
         u'db.silencingreagentduplexwells': {
-            'Meta': {'object_name': 'SilencingReagentDuplexWells', 'db_table': "u'silencing_reagent_duplex_wells'"},
+            'Meta': {'unique_together': "((u'silencing_reagent', u'well'),)", 'object_name': 'SilencingReagentDuplexWells', 'db_table': "u'silencing_reagent_duplex_wells'"},
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'silencing_reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SilencingReagent']"}),
             'well': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']"})

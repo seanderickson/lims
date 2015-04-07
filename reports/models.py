@@ -122,7 +122,7 @@ class ApiLog(models.Model):
     objects = models.Manager()
     
     user_id = models.IntegerField(null=False, blank=False)
-    username = models.CharField(null=False, max_length=35)
+    username = models.CharField(null=False, max_length=128)
 
     # name of the resource, i.e. "apilog" or "screen", "user", etc.
     ref_resource_name = models.CharField(null=False, max_length=35)

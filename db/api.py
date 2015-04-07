@@ -1,94 +1,92 @@
-import math
-import os.path
-import sys
-import logging
-from collections import defaultdict, OrderedDict
-import cStringIO
-import json
-from __builtin__ import StopIteration
-import csv
-from wsgiref.util import FileWrapper
-from zipfile import ZipFile
-import time
-import shutil
-from copy import deepcopy
-import re
-import urllib2
-import io
-
-from django.conf.urls import url
-from django.conf import settings
-from django.forms.models import model_to_dict
-from django.http import Http404
-from django.db import connection
-from django.db import transaction
-from django.contrib.auth.models import User
-from django.core.cache import cache
-from django.db.models.aggregates import Max, Min
-from django.http.response import StreamingHttpResponse, HttpResponse
-import django.db.models.sql.constants
-import django.db.models.constants
-from django.core.urlresolvers import resolve
 
 from PIL import Image
-
-from tastypie.validation import Validation
-from tastypie.utils import timezone
-from tastypie.exceptions import BadRequest, ImmediateHttpResponse,\
-    UnsupportedFormat
-from tastypie.utils.urls import trailing_slash
-from tastypie.authorization import Authorization
-from tastypie.authentication import BasicAuthentication, SessionAuthentication,\
-    MultiAuthentication
-from tastypie.constants import ALL_WITH_RELATIONS
-from tastypie import fields
-from tastypie.resources import Resource
-from tastypie.utils.mime import build_content_type
-
-from sqlalchemy import select, asc, text
-from sqlalchemy.sql.expression import column, join
-from sqlalchemy.sql import func
-from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.sql import asc,desc, alias, Alias
-from sqlalchemy.sql import and_, or_, not_          
-from sqlalchemy.sql.expression import nullsfirst,nullslast
-
-from db.models import ScreensaverUser,Screen, LabHead, LabAffiliation, \
-    ScreeningRoomUser, ScreenResult, DataColumn, Library, Plate, Copy,\
-    PlateLocation, Reagent, Well, LibraryContentsVersion, Activity,\
-    AdministrativeActivity, SmallMoleculeReagent, SilencingReagent, GeneSymbol,\
-    NaturalProductReagent, Molfile, Gene, GeneGenbankAccessionNumber
+from __builtin__ import StopIteration
+from collections import defaultdict, OrderedDict
+from copy import deepcopy
+from db.models import ScreensaverUser, Screen, LabHead, LabAffiliation, \
+    ScreeningRoomUser, ScreenResult, DataColumn, Library, Plate, Copy, \
+    CopyWell, \
+    PlateLocation, Reagent, Well, LibraryContentsVersion, Activity, \
+    AdministrativeActivity, SmallMoleculeReagent, SilencingReagent, GeneSymbol, \
+    NaturalProductReagent, Molfile, Gene, GeneGenbankAccessionNumber,\
+    CherryPickRequest, CherryPickAssayPlate, CherryPickLiquidTransfer
 from db.support import lims_utils
-from reports.serializers import CursorSerializer, LimsSerializer, XLSSerializer
-from reports.models import MetaHash, Vocabularies, ApiLog
-from reports.api import ManagedModelResource, ManagedResource, ApiLogResource,\
-    UserGroupAuthorization, ManagedLinkedResource, log_obj_update,\
-    UnlimitedDownloadResource, IccblBaseResource, VocabulariesResource
-from reports.utils.sqlalchemy_bridge import Bridge
-from reports.serializers import LIST_DELIMITER_XLS
-from reports.serializers import csv_convert
-from sqlalchemy.sql.elements import literal_column
+from django.conf import settings
+from django.conf.urls import url
+from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.core.serializers.json import DjangoJSONEncoder
-import hashlib
+from django.db import connection
+from django.db import transaction
+from django.db.models.aggregates import Max, Min
+from django.forms.models import model_to_dict
+from django.http import Http404
+from django.http.response import StreamingHttpResponse, HttpResponse
+from reports import CSV_DELIMITER, LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
+    HTTP_PARAM_RAW_LISTS, HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, \
+    LIST_BRACKETS, MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE
+from reports.api import ManagedModelResource, ManagedResource, ApiLogResource, \
+    UserGroupAuthorization, ManagedLinkedResource, log_obj_update, \
+    UnlimitedDownloadResource, IccblBaseResource, VocabulariesResource
+from reports.models import MetaHash, Vocabularies, ApiLog
+from reports.serializers import CursorSerializer, LimsSerializer, XLSSerializer
+from reports.serializers import LIST_DELIMITER_XLS
+from reports.sqlalchemy_resource import SqlAlchemyResource
+from reports.utils.sqlalchemy_bridge import Bridge
+from sqlalchemy import select, asc, text
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.sql import and_, or_, not_          
+from sqlalchemy.sql import asc, desc, alias, Alias
+from sqlalchemy.sql import func
+from sqlalchemy.sql.elements import literal_column
+from sqlalchemy.sql.expression import column, join
+from sqlalchemy.sql.expression import nullsfirst, nullslast
+from tastypie import fields
+from tastypie.authentication import BasicAuthentication, SessionAuthentication, \
+    MultiAuthentication
+from tastypie.authorization import Authorization
+from tastypie.constants import ALL_WITH_RELATIONS
+from tastypie.exceptions import BadRequest, ImmediateHttpResponse, \
+    UnsupportedFormat
+from tastypie.resources import Resource
+from tastypie.utils import timezone
+from tastypie.utils.urls import trailing_slash
+from tastypie.validation import Validation
+from wsgiref.util import FileWrapper
+from zipfile import ZipFile
 import StringIO
+import cStringIO
+import csv
+import django.db.models.constants
+import django.db.models.sql.constants
+import hashlib
+import io
+import json
+import logging
+import math
+import os.path
+import re
+import shutil
 import sqlalchemy
+import sys
+import time
 import urllib
-
-        
+import urllib2
 logger = logging.getLogger(__name__)
 
-CSV_DELIMITER = ','
-LIST_DELIMITER_SQL_ARRAY = ';'
-LIST_DELIMITER_URL_PARAM = ','
-MAX_ROWS_PER_XLS_FILE = 100000
-MAX_IMAGE_ROWS_PER_XLS_FILE = 2000
+# CSV_DELIMITER = ','
+# LIST_DELIMITER_SQL_ARRAY = ';'
+# LIST_DELIMITER_URL_PARAM = ','
+# MAX_ROWS_PER_XLS_FILE = 100000
+# MAX_IMAGE_ROWS_PER_XLS_FILE = 2000
+# 
+# HTTP_PARAM_USE_VOCAB = 'use_vocabularies'
+# HTTP_PARAM_USE_TITLES = 'use_titles'
+# HTTP_PARAM_RAW_LISTS = 'raw_lists'
+# 
+# LIST_BRACKETS = '[]' # default char to surround nested list in xls, csv
 
-HTTP_PARAM_USE_VOCAB = 'use_vocabularies'
-HTTP_PARAM_USE_TITLES = 'use_titles'
-HTTP_PARAM_RAW_LISTS = 'raw_lists'
-
-LIST_BRACKETS = '[]' # default char to surround nested list in xls, csv
-
+    
 def _get_raw_time_string():
   return timezone.now().strftime("%Y%m%d%H%M%S")
     
@@ -1318,1285 +1316,6 @@ class SmallMoleculeReagentResource(ManagedLinkedResource):
     def __init__(self, **kwargs):
         super(SmallMoleculeReagentResource,self).__init__(**kwargs)
 
-# FIXME: Test
-class ChunkIterWrapper(object):
-    ''' 
-    Iterate in "chunks" of chunk_size chars.
-    '''
-    def __init__(self, iter_stream, chunk_size = 1024**2):
-        self.iter_stream = iter_stream
-        self.chunk_size = chunk_size
-        self.fragment = None
-    
-    def next(self):
-        logger.info(str(('chunking')))
-        # Note: cStringIO will not accept unicode strings that can not be encoded as 7-bit ascii
-        bytes = cStringIO.StringIO()
-        # NOTE: StringIO will have difficulty decoding UTF-8 mixed with ascii
-        #         bytes = StringIO.StringIO()
-        
-        bytecount = 0
-        try:
-            if self.fragment:
-                logger.info(str(('fragment', self.fragment)))
-                #  FIXME: if fragment is still > chunk_size, will just serve it here.
-                bytecount = len(self.fragment)
-                bytes.write(self.fragment)
-                self.fragment = None
-
-            while bytecount < self.chunk_size:
-                row = self.iter_stream.next()
-                rowlen = len(row)
-                if bytecount + rowlen < self.chunk_size:
-                    bytes.write(row)
-                    bytecount += rowlen
-                else:
-                    nextbytes = self.chunk_size-bytecount
-                    bytes.write(row[:nextbytes])
-                    self.fragment = row[nextbytes:]
-                    bytecount += nextbytes
-        except StopIteration:
-            if self.fragment:
-                bytes.write(self.fragment)
-                self.fragment = None
-            else:
-                raise StopIteration
-        except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on ChunkIterWrapper next', 
-                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
-            raise e   
-        finally:
-            if bytes.getvalue():
-                logger.info(str(('chunk size', len(bytes.getvalue()), 'chars')))
-                return bytes.getvalue()
-            else:
-                logger.info(str(('stop iteration', self.fragment, bytes.getvalue())))
-                raise StopIteration
-
-    def __iter__(self):
-        return self
-
-class ChunkIterWrapper1(object):
-    ''' 
-    Iterate in "chunks" of min_iteration size (final size is still dependent on
-    length of original iteration chunk size.
-    FIXME: break streamed output into exact size (buffer remainder for next iteration)
-    FIXME: 'min_iteration' replaced with bytes
-    '''
-    def __init__(self, iter_stream, min_iteration = 1000):
-        self.iter_stream = iter_stream
-        self.min_iteration = min_iteration
-    
-    def next(self):
-        logger.info(str(('chunking')))
-        bytes = cStringIO.StringIO()
-        try:
-            for i in range(self.min_iteration):
-                bytes.write(self.iter_stream.next())
-        except StopIteration:
-            raise StopIteration
-        finally:
-            if bytes.getvalue():
-                logger.info(str(('chunk size', len(bytes.getvalue()), 'chars')))
-                return bytes.getvalue()
-            else:
-                logger.info(str(('stop iteration', bytes.getvalue())))
-                raise StopIteration
-
-    def __iter__(self):
-        return self
-
-class SqlAlchemyResource(IccblBaseResource):
-    '''
-    A resource that uses SqlAlchemy to facilitate the read queries:
-    - get_list
-    - get_detail
-    Note: write operations not implemented
-    
-    FIXME: serialization of list fields: they are sent as concatenated strings with commas
-    FIXME: Reagent/SMR specific
-    '''
-    
-    class Meta:
-        queryset = Reagent.objects.all()
-#         serializer = LimsSerializer() # still have a serializer for error response
-
-    
-    def __init__(self, *args, **kwargs):
-        # get a handle to the SqlAlchemy "bridge" for its table registry and 
-        # connection handle
-        self.bridge = Bridge()
-        
-        super(SqlAlchemyResource, self).__init__(*args, **kwargs)
-
-    @classmethod
-    def wrap_statement(cls, stmt, order_clauses, filter_expression):
-        '''
-        @param stmt - a sqlalchemy.sql.expression.join instance
-        @param order_clauses - list of sqlalchemy.sql.expression.column
-        @param filter_expression - sqlalchemy.whereclause
-        '''
-        if order_clauses:
-            logger.info(str(('order_clauses', [str(c) for c in order_clauses])))
-            _alias = Alias(stmt)
-            stmt = select([text('*')]).select_from(_alias)
-            stmt = stmt.order_by(*order_clauses)
-        if filter_expression is not None:
-            logger.info(str(('filter_expression', str(filter_expression))))
-            if not order_clauses:
-                _alias = Alias(stmt)
-                logger.info(str(('filter_expression', str(filter_expression))))
-                stmt = select([text('*')]).select_from(_alias)
-            stmt = stmt.where(filter_expression)
-
-        count_stmt = select([func.count()]).select_from(stmt.alias())
-        return (stmt,count_stmt)
-    
-    def _convert_request_to_dict(self, request):
-        '''
-        Transfer all values from GET, then POST to a dict
-        Note: uses 'getlist' to retrieve all values:
-        - if a value is single valued, then unwrap from the list
-        - downstream methods expecting a list value must deal with non-list single values
-        '''
-        _dict = {}
-        
-        for key in request.GET.keys():
-            val = request.GET.getlist(key)
-            if len(val) == 1:
-                _dict[key] = val[0]
-            else:
-                _dict[key] = val
-            
-        for key in request.POST.keys():
-            val = request.POST.getlist(key)
-            if len(val) == 1:
-                _dict[key] = val[0]
-            else:
-                _dict[key] = val
-        
-        # check for single-valued known list values
-        known_list_values = ['includes', 'order_by']
-        for key in known_list_values:
-            val = _dict.get(key,[])
-            if isinstance(val, basestring):
-                _dict[key] = [val]
-        
-        return _dict    
-       
-       
-    @staticmethod    
-    def create_vocabulary_rowproxy_generator(field_hash):
-        '''
-        Create a generator that iterates over the sqlalchemy.engine.ResultProxy
-        - yields a wrapper for sqlalchemy.engine.RowProxy on each iteration
-        - the wrapper will return vocabulary titles for valid vocabulary values
-        in each row[key] for the key columns that are vocabulary columns.
-        - returns the regular row[key] value for other columns
-        '''
-        vocabularies = {}
-        for key, field in field_hash.iteritems():
-            if field.get('vocabulary_scope_ref', None):
-                scope = field.get('vocabulary_scope_ref', None);
-                vocabularies[key] = VocabulariesResource.get_vocabularies_by_scope(scope)
-        def vocabulary_rowproxy_generator(cursor):
-            class Row:
-                def __init__(self, row):
-                    self.row = row
-                def has_key(self, key):
-                    return self.row.has_key(key)
-                def keys(self):
-                    return self.row.keys();
-                def __getitem__(self, key):
-                    if not row[key]:
-                        return None
-                    if key in vocabularies:
-                        if row[key] not in vocabularies[key]:
-                            logger.error(str(('----warn, unknown vocabulary', 
-                                'column', key, 'value', row[key],
-                                'scope', field_hash[key]['vocabulary_scope_ref'], 
-                                'vocabularies defined',vocabularies[key].keys() )))
-                            return self.row[key] 
-                        else:
-                            # logger.info(str(('getitem', key, row[key], 
-                            #    vocabularies[key][row[key]]['title'])))
-                            return vocabularies[key][row[key]]['title']
-                    else:
-                        return self.row[key]
-            for row in cursor:
-                yield Row(row)
-        return vocabulary_rowproxy_generator
-
-    
-    def get_visible_fields(self, schema_fields, filter_fields, manual_field_includes,
-                           is_for_detail=False):
-        '''
-        Construct an ordered dict of schema fields that are visible, based on
-        - "list" in schema field["visibility"]
-        - field key in (filter_fields or manual_field_includes)
-        - field key in a schema field['dependencies'] 
-        
-        TODO: this method can be static
-        TODO: this method is not SqlAlchemy specific
-        '''
-        logger.info(str(('get_visible_fields: field_hash initial: ', schema_fields.keys() )))
-        try:
-            visibility_setting = 'list'
-            if is_for_detail:
-                visibility_setting = 'detail'
-            temp = { key:field for key,field in schema_fields.items() 
-                if ((field.get('visibility', None) and visibility_setting in field['visibility']) 
-                    or field['key'] in manual_field_includes
-                    or '*' in manual_field_includes )}
-            
-            # manual excludes
-            temp = { key:field for key,field in temp.items() 
-                if '-%s' % key not in manual_field_includes }
-            
-            # dependency fields
-            dependency_fields = set()
-            for field in temp.values():
-                dependency_fields.update(field.get('dependencies',[]))
-            logger.info(str(('dependency_fields', dependency_fields)))
-            if dependency_fields:
-                temp.update({ key:field 
-                    for key,field in schema_fields.items() if key in dependency_fields })
-            
-            # filter_fields
-            if filter_fields:
-                temp.update({ key:field 
-                    for key,field in schema_fields.items() if key in filter_fields })
-             
-            field_hash = OrderedDict(sorted(temp.iteritems(), 
-                key=lambda x: x[1].get('ordinal',999))) 
-    
-            logger.info(str(('field_hash final: ', field_hash.keys() )))
-            return field_hash
-
-        except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on get_visible_fields', 
-                msg, exc_type, fname, exc_tb.tb_lineno)))
-            raise e 
-
-    def build_sqlalchemy_columns(self, fields, base_query_tables=[], custom_columns={}):
-        '''
-        returns an array of sqlalchemy.sql.schema.Column objects, associated 
-        with the sqlalchemy.sql.schema.Table definitions, which are bound to 
-        the sqlalchemy.engine.Engine: 
-        "Connects a Pool and Dialect together to provide a source of database 
-        connectivity and behavior."
-        
-        @param fields - field definitions, from the resource schema
-        @param bridge - a reports.utils.sqlalchemy_bridge.Bridge
-        @param base_query_tables - if specified, the fields for these tables 
-        will be available as part of the base query, so the column definitions
-        become simpler, and do not need to be joined in. 
-        @param manual_includes - columns to include even if the field visibility is not set
-        '''
-        DEBUG_BUILD_COLUMNS = True
-        
-        try:
-            columns = OrderedDict()
-            for field in fields:
-                key = field['key']
-                if key in custom_columns:
-                    columns[key] = custom_columns[key]
-                    continue
-                
-                if DEBUG_BUILD_COLUMNS: 
-                    logger.info(str(('build column', field['key'], field)))
-                field_name = field.get('field', None)
-                if not field_name:
-                    field_name = field['key']
-                
-                field_table = field.get('table', None)
-                
-                if not field_table:
-                    logger.info(str(('skipping field because there is no '
-                        '"field_table" value set',key,field)))
-                    continue
-                if DEBUG_BUILD_COLUMNS: 
-                    logger.info(str(('field', field['key'], 'field_table', field_table )))
-                if field_table in base_query_tables:
-                    # simple case: table.fields already selected in the base query:
-                    # just need to specify them
-                    if field_name in self.bridge[field_table].c:
-                        col = self.bridge[field_table].c[field_name]
-                    else:
-                        raise Exception(str(('field', field_name, 
-                            'not found in table', field_table)))
-                    col = col.label(key)
-                    columns[key] = col
-                    
-                elif field.get('linked_field_value_field', None):
-                    link_table = field['table']
-                    link_table_def = self.bridge[link_table]
-                    linked_field_parent = field['linked_field_parent']
-                    link_field = linked_field_parent + '_id'
-                    join_args = { 
-                        'link_table': link_table, 'link_field': link_field,
-                        'parent_table': linked_field_parent
-                        }
-                    
-                    if field['linked_field_type'] != 'fields.ListField':
-                        join_stmt = select([link_table_def.c[field_name]]).\
-                            where(text('{link_table}.{link_field}='
-                                    '{parent_table}.{link_field}'.format(**join_args)))
-                        if field.get('linked_field_meta_field', None):
-                            # TODO: test - the linked meta field is the "datacolumn type"
-                            linked_field_meta_field = field['linked_field_meta_field']
-                            meta_field_obj = MetaHash.objects.get(
-                                key=field['key'], scope=field['scope'])
-                            meta_table_def = self.bridge['metahash']
-                            join_stmt.join(meta_table_def, 
-                                link_table_def.c[linked_field_meta_field]==
-                                    getattr(meta_field_obj,'pk') )
-                        join_stmt = join_stmt.label(key)
-                        columns[key] = join_stmt
-                    elif field['linked_field_type'] == 'fields.ListField':
-                        join_stmt = select([link_table_def.c[field_name]]).\
-                            where(text('{link_table}.{link_field}='
-                                    '{parent_table}.{link_field}'.format(**join_args)))
-    
-                        if field.get('linked_field_meta_field', None):
-                            # TODO: test - the linked meta field is the "datacolumn type"
-                            linked_field_meta_field = field['linked_field_meta_field']
-                            meta_field_obj = MetaHash.objects.get(
-                                key=field['key'], scope=field['scope'])
-                            meta_table_def = self.bridge['metahash']
-                            join_stmt.join(meta_table_def, 
-                                link_table_def.c[linked_field_meta_field]==
-                                    getattr(meta_field_obj,'pk') )
-                        
-                        ordinal_field = field.get('ordinal_field', None)
-                        if ordinal_field:
-                            join_stmt = join_stmt.order_by(link_table_def.c[ordinal_field])
-                        join_stmt = join_stmt.alias('a')
-                        stmt2 = select([func.array_to_string(
-                                        func.array_agg(column(field_name)),
-                                                       LIST_DELIMITER_SQL_ARRAY)])
-                        stmt2 = stmt2.select_from(join_stmt).label(key)
-                        columns[key] = stmt2
-                else:
-                    logger.warn(str(('field is not in the base tables or in a linked field, and is not custom', key)))
-            if DEBUG_BUILD_COLUMNS: logger.info(str(('columns', columns.keys())))
-            return columns.values()
-        except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on build sqlalchemy columns', 
-                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
-            raise e   
-
-    @staticmethod
-    def build_sqlalchemy_ordering(order_params, visible_fields):
-        '''
-        returns a scalar or list of ClauseElement objects which will comprise 
-        the ORDER BY clause of the resulting select.
-        This method borrows from tastypie.resources.ModelResource.apply_sorting
-        @param order_params passed as list in the request.GET hash
-        '''
-        
-        order_clauses = []
-        for order_by in order_params:
-            field_name = order_by
-            order_clause = None
-            if order_by.startswith('-'):
-                field_name = order_by[1:]
-                order_clause = nullslast(desc(column(field_name)))
-            else:
-                order_clause = nullsfirst(asc(column(field_name)))
-            if field_name in visible_fields:
-                order_clauses.append(order_clause)
-            else:
-                logger.warn(str(('order_by field not in visible fields, skipping: ', order_by )))
-        logger.debug(str(('order_clauses', order_clauses)))     
-        return order_clauses
-    
-    @staticmethod
-    def filter_value_to_python(value, param_hash, filter_expr, filter_type):
-        """
-        Turn the string ``value`` into a python object.
-        - copied from TP
-        """
-        # Simple values
-        if value in ['true', 'True', True]:
-            value = True
-        elif value in ['false', 'False', False]:
-            value = False
-        elif value in ('nil', 'none', 'None', None):
-            value = None
-
-        # Split on ',' if not empty string and either an in or range filter.
-        if filter_type in ('in', 'range') and len(value):
-            if hasattr(param_hash, 'getlist'):
-                value = []
-
-                for part in param_hash.getlist(filter_expr):
-                    value.extend(part.split(LIST_DELIMITER_URL_PARAM))
-            else:
-                value = value.split(LIST_DELIMITER_URL_PARAM)
-        logger.info(str(('filter value', filter_expr, value)))
-        return value
-
-    @staticmethod
-    def build_sqlalchemy_filters(schema, param_hash={}, **kwargs):
-        logger.info(str(('param_hash', param_hash, 'kwargs', kwargs)))
-
-        # ordinary filters
-        (filter_expression, filter_fields) = \
-            SqlAlchemyResource.build_sqlalchemy_filters_from_hash(schema, param_hash)
-        
-        # Treat the nested "search_data" as sets of params to be OR'd together,
-        # then AND'd with the regular filters (if any)
-        search_data = param_hash.get('search_data', None)
-        if search_data:
-            logger.info(str(('search_data', search_data)))
-            if search_data and isinstance(search_data, basestring):
-                # standard, convert single valued list params
-                search_data = [search_data]
-        
-            # each item in the search data array is a search hash, to be or'd
-            search_expressions = []
-            filter_fields = set(filter_fields)
-            for search_hash in search_data:
-                logger.info(str(('search_hash', search_hash)))
-                (search_expression, search_fields) = \
-                    SqlAlchemyResource.build_sqlalchemy_filters_from_hash(schema,search_hash)
-                search_expressions.append(search_expression)
-                filter_fields.update(search_fields)
-
-            if len(search_expressions) > 1:
-                search_expressions = or_(*search_expressions)
-            else:
-                search_expressions = search_expressions[0]
-            logger.info(str(('testing...', search_expressions)))
-            if filter_expression is not None:
-                filter_expression = and_(search_expressions,filter_expression)
-            else: 
-                filter_expression = search_expressions
-            logger.info(str(('testing2...', filter_expression)))
-                
-        logger.info(str(('filter_expression', filter_expression, filter_fields)))
-        
-        return (filter_expression,filter_fields)
-        
-    
-    @staticmethod
-    def build_sqlalchemy_filters_from_hash(schema, param_hash):
-        '''
-        Attempt to create a SqlAlchemy whereclause out of django style filters:
-        - field_name__filter_expression
-        '''
-        DEBUG_FILTERS = True or logger.isEnabledFor(logging.DEBUG)
-        logger.info(str(('build_sqlalchemy_filters_from_hash', param_hash)))
-        lookup_sep = django.db.models.constants.LOOKUP_SEP
-
-
-        if param_hash is None:
-            return (None,None)
-        
-        try:
-            expressions = []
-            filtered_fields = []
-            
-            _values = [] # store values for debug
-            for filter_expr, value in param_hash.items():
-                if lookup_sep not in filter_expr:
-                    continue;
-                filter_bits = filter_expr.split(lookup_sep)
-                if len(filter_bits) != 2:
-                    logger.warn(str(('filter expression must be of the form "field_name__expression"',
-                        filter_expr, filter_bits)))
-                field_name = filter_bits[0]
-                
-                inverted = False
-                if field_name and field_name[0] == '-':
-                    inverted = True
-                    field_name = field_name[1:]
-                            
-                filter_type = filter_bits[1]
-                if not field_name in schema['fields']:
-                    logger.warn(str(('unknown filter field', field_name, filter_expr)))
-                    continue
-    
-                field = schema['fields'][field_name]
-                
-                value = SqlAlchemyResource.filter_value_to_python(
-                    value, param_hash, filter_expr, filter_type)
-                _values.append(value)
-                # TODO: all of the Django query terms:
-                # QUERY_TERMS = set([
-                #     'exact', 'iexact', 'contains', 'icontains', 'gt', 'gte', 'lt', 'lte', 'in',
-                #     'startswith', 'istartswith', 'endswith', 'iendswith', 'range', 'year',
-                #     'month', 'day', 'week_day', 'hour', 'minute', 'second', 'isnull', 'search',
-                #     'regex', 'iregex',
-                # ])
-                
-                logger.info(str(('find filter', field_name, filter_type, value)))
-                
-    #             if not value:
-    #                 continue
-    #             
-                expression = None
-                if filter_type in ['exact','eq']:
-                    expression = column(field_name)==value
-                elif filter_type == 'about':
-                    decimals = 0
-                    if '.' in value:
-                        decimals = len(value.split('.')[1])
-                    expression = func.round(
-                        sqlalchemy.sql.expression.cast(
-                            column(field_name),sqlalchemy.types.Numeric),decimals) == value
-                    logger.info(str(('create "about" expression for term:',filter_expr,
-                        value,'decimals',decimals)))
-                elif filter_type == 'contains':
-                    expression = column(field_name).contains(value)
-                elif filter_type == 'icontains':
-                    expression = column(field_name).ilike('%{value}%'.format(value=value))
-                elif filter_type == 'lt':
-                    expression = column(field_name) < value
-                elif filter_type == 'lte':
-                    expression = column(field_name) <= value
-                elif filter_type == 'gt':
-                    expression = column(field_name) > value
-                elif filter_type == 'gte':
-                    expression = column(field_name) >= value
-                elif filter_type == 'is_null':
-                    logger.info(str(('is_null', field_name, value, str(value) )))
-                    col = column(field_name)
-                    if field['ui_type'] == 'string':
-                        col = func.trim(col)
-                    if value and str(value).lower() == 'true':
-                        expression = col == None 
-                    else:
-                        expression = col != None
-                elif filter_type == 'in':
-                    expression = column(field_name).in_(value)
-                elif filter_type == 'ne':
-                    expression = column(field_name) != value
-                elif filter_type == 'range':
-                    if len(value) != 2:
-                        logger.error(str(('value for range expression must be list of length 2', 
-                            field_name, filter_expr, value)))
-                        continue
-                    else:
-                        expression = column(field_name).between(value[0],value[1],symmetric=True)
-                else:
-                    logger.error(str(('--- unknown filter type: ', field_name, filter_type,
-                        'filter_expr',filter_expr )))
-                    continue
-    
-                if inverted:
-                    expression = not_(expression)
-                
-                logger.info(str(('filter_expr',filter_expr,'expression',str(expression) )))
-                expressions.append(expression)
-                filtered_fields.append(field_name)
-                
-            logger.info(str(('filtered_fields', filtered_fields)))
-            if DEBUG_FILTERS:
-                logger.info(str(('values', _values)))
-                
-            if len(expressions) > 1: 
-                return (and_(*expressions), filtered_fields)
-            elif len(expressions) == 1:
-                return (expressions[0], filtered_fields) 
-            else:
-                return (None, filtered_fields)
-        except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on build_sqlalchemy_filters_from_hash', 
-                msg, exc_type, fname, exc_tb.tb_lineno)))
-            raise e   
-        
-
-    def search(self, request, **kwargs):
-        '''
-        Implement a special search view to get around Tastypie deserialization
-        methods on POST-list.
-        Note: could implement a special tastypie serializer and "post_list"; but
-        choosing not to couple with the framework in this way here.
-        '''
-         
-        DEBUG_SEARCH = True or logger.isEnabledFor(logging.DEBUG)
-         
-        search_ID = kwargs['search_ID']
-         
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
- 
-        search_data = param_hash.get('search_data', None)
-        
-        # NOTE: unquote serves the purpose of an application/x-www-form-urlencoded 
-        # deserializer
-        search_data = urllib.unquote(search_data)
-         
-        if search_data:
-            # cache the search data on the session, to support subsequent requests
-            # to download or modify
-            request.session[search_ID] = search_data  
-         
-        if not search_data:
-            if search_ID in request.session:
-                search_data = request.session[search_ID]
-            else:
-                raise ImmediateHttpResponse(
-                    response=self.error_response(request, 
-                        { 'search_data for id missing: ' + search_ID: 
-                            self._meta.resource_name + '.search requires a "search_data" param'}))
-         
-        search_data = json.loads(search_data)   
-        param_hash['search_data'] = search_data
-        if DEBUG_SEARCH:
-            logger.info(str(('search', param_hash, kwargs)))
- 
-        response = self.build_list_response(request,param_hash=param_hash, **kwargs)
-        
-        # Because this view bypasses the IccblBaseResource.dispatch method, we
-        # are implementing the downloadID cookie here, for now.
-        downloadID = param_hash.get('downloadID', None)
-        if downloadID:
-            logger.info(str(('set cookie','downloadID', downloadID )))
-            response.set_cookie('downloadID', downloadID)
-        else:
-            logger.info(str(('no downloadID')))
-        
-        return response
-
-
-
-    def get_list(self, request, **kwargs):
-        '''
-        Override the Tastypie/Django ORM get_list method - list/reporting operations will be 
-        handled using SqlAlchemy
-        '''
-        raise NotImplemented(str(('get_list must be implemented for the SqlAlchemyResource', 
-            self._meta.resource_name)) )
-
-        
-    def build_list_response(self,request, param_hash={}, **kwargs):
-
-        raise NotImplemented(str(('get_list_response must be implemented for the SqlAlchemyResource', 
-            self._meta.resource_name)) )
-        
-    def _cached_resultproxy(self, stmt, count_stmt, limit, offset):
-        ''' ad-hoc cache for some resultsets
-        NOTE: limit and offset are included because this version of sqlalchemy
-        does not support printing of them with the select.compile() function.
-        TODO: cache clearing
-        '''
-        
-        from django.core.cache import cache
-        
-        conn = self.bridge.get_engine().connect()
-        try:
-            # use a hexdigest because statements can contain problematic chars 
-            # for the memcache
-            m = hashlib.md5()
-            compiled_stmt = str(stmt.compile(compile_kwargs={"literal_binds": True}))
-            key_digest = '%s_%s_%s' %(compiled_stmt, str(limit), str(offset))
-            m.update(key_digest)
-            key = m.hexdigest()
-#             logger.info(str(('hash key:', key_digest, key)))
-            cache_hit = cache.get(key)
-            if cache_hit:
-                if ('stmt' not in cache_hit or
-                        cache_hit['stmt'] != compiled_stmt):
-                    cache_hit = None
-                    logger.warn(str(('cache collision for key', key, stmt)))
-            
-            if not cache_hit:
-                # Note: if no cache hit, then retrive limit*n results, and 
-                # cache several iterations at once.
-                prefetch_number = 5
-                new_limit = limit * prefetch_number 
-                logger.info(str(('limit', limit, 'new limit for caching', new_limit)))
-                stmt = stmt.limit(new_limit)
-                logger.info('executing stmt')
-                resultset = conn.execute(stmt)
-                prefetched_result = [dict(row) for row in resultset] if resultset else []
-                logger.info('executed stmt')
-                
-                logger.info(str(('no cache hit, execute count')))
-                count = conn.execute(count_stmt).scalar()
-                logger.info(str(('count', count)))
-                for y in range(prefetch_number):
-                    new_offset = offset + limit*y;
-                    _start = limit*y
-                    if _start < len(prefetched_result):
-                        key_digest = '%s_%s_%s' %(compiled_stmt, str(limit), str(new_offset))
-                        m = hashlib.md5()
-                        m.update(key_digest)
-                        key = m.hexdigest()
-#                         logger.info(str((y, 'hash key:', key_digest, m.hexdigest())))
-                        _result = prefetched_result[_start:_start+limit]
-                        _cache = {
-                            'stmt': compiled_stmt,
-                            'cached_result': _result,
-                            'count': count }
-                        cache.set( key, _cache, None)
-                        if y == 0:
-                            cache_hit = _cache
-                    else:
-                        logger.info(str(('prefetched length: ', len(prefetched_result), _start, 'end')))
-                        break
-                logger.info(str(('cached iterations:', y)))
-#                 cached_result = [dict(row) for row in resultset] if resultset else []
-            else:
-                logger.info(str(('cache hit')))   
-                
-            return cache_hit
- 
-        except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on conn execute', 
-                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
-            raise e   
-        
-          
-    def stream_response_from_cursor(self, request, stmt, count_stmt, 
-            output_filename, field_hash={}, param_hash={}, 
-            rowproxy_generator=None, is_for_detail=False,
-            downloadID=None, title_function=None ):
-        
-        DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
-
-        limit = param_hash.get('limit', request.GET.get('limit', self._meta.limit))        
-        try:
-            limit = int(limit)
-        except ValueError:
-            raise BadRequest(
-                "Invalid limit '%s' provided. Please provide a positive integer." % limit)
-        if limit > 0:    
-            stmt = stmt.limit(limit)
-
-        offset = param_hash.get('offset', request.GET.get('offset', 0) )
-        try:
-            offset = int(offset)
-        except ValueError:
-            raise BadRequest(
-                "Invalid offset '%s' provided. Please provide a positive integer." % offset)
-        if offset < 0:    
-            offset = -offset
-        stmt = stmt.offset(offset)
-
-
-        list_brackets = LIST_BRACKETS
-        if request.GET.get(HTTP_PARAM_RAW_LISTS, False):
-            list_brackets = None
-
-        conn = self.bridge.get_engine().connect()
-        
-        logger.info(str(('stmt', str(stmt))))
-        if DEBUG_STREAMING:
-            logger.info(str(('count stmt', str(count_stmt))))
-        
-        logger.info('excute stmt')
-        result = conn.execute(stmt)
-        logger.info('excuted stmt')
-        
-        logger.info(str(('rowproxy_generator', rowproxy_generator)))
-        if rowproxy_generator:
-            result = rowproxy_generator(result)
-            # FIXME: test this for generators other than json generator
-
-        
-        desired_format = self.get_format(request)
-        content_type=build_content_type(desired_format)
-        logger.info(str(('desired_format', desired_format, 
-            'content_type', content_type)))
-
-        
-        def interpolate_value_template(value_template, row):
-            ''' 
-            Utility class for transforming cell values:
-            a "value_template" is of the form:
-            "text... {field_name} ..text"
-            wherein the {field_name} is replaced with the field-value
-            '''                
-            def get_value_from_template(matchobj):
-                val = matchobj.group()
-                val = re.sub(r'[{}]+', '', val)
-                if row.has_key(val):
-                    return row[val]
-                else:
-                    logger.error(str(('field needed for value template is not available', val, row)))
-                    return ''
-            return re.sub(r'{([^}]+)}', get_value_from_template, value_template)
-        
-        response = None
-        
-        if desired_format == 'application/json':
-            
-            if not is_for_detail:
-                cache_hit = self._cached_resultproxy(stmt, count_stmt, limit, offset)
-                if cache_hit:
-                    result = cache_hit['cached_result']
-                    count = cache_hit['count']
-                    if rowproxy_generator:
-                        result = rowproxy_generator(result)
-                else:
-                    # use result from before
-                    logger.info(str(('execute count')))
-                    count = conn.execute(count_stmt).scalar()
-                logger.info(str(('====count====', count)))
-        
-                meta = {
-                    'limit': limit,
-                    'offset': offset,
-                    'total_count': count
-                    }    
-                        
-            def json_generator(cursor):
-                if DEBUG_STREAMING: logger.info(str(('meta', meta)))
-                # NOTE, using "ensure_ascii" = True to force encoding of all 
-                # chars to be encoded using ascii or escaped unicode; 
-                # because some chars in db might be non-UTF8
-                # and downstream programs have trouble with mixed encoding (cStringIO)
-                if not is_for_detail:
-                    yield '{ "meta": %s, "objects": [' % json.dumps(meta, ensure_ascii=True, encoding="utf-8")
-                i=0
-                for row in cursor:
-                    if DEBUG_STREAMING: logger.info(str(('row', row, row.keys())))
-                    if field_hash:
-                        _dict = OrderedDict()
-                        for key, field in field_hash.iteritems():
-                            if DEBUG_STREAMING: 
-                                logger.info(str(('key', key,  row.has_key(key))))
-                            value = None
-                            try:
-                                if row.has_key(key):
-                                    value = row[key]
-                                if value and ( field.get('json_field_type',None) == 'fields.ListField' 
-                                     or field.get('linked_field_type',None) == 'fields.ListField'
-                                     or field.get('ui_type', None) == 'list' ):
-                                    # FIXME: need to do an escaped split
-                                    if DEBUG_STREAMING: logger.info(str(('split', key, value)))
-                                    value = value.split(LIST_DELIMITER_SQL_ARRAY)
-    
-                                if DEBUG_STREAMING: logger.info(str(('key val', key, value, field)))
-                                _dict[key] = value
-                                
-                                if field.get('value_template', None):
-                                    value_template = field['value_template']
-                                    if DEBUG_STREAMING: logger.info(str(('field', key, value_template)))
-                                    newval = interpolate_value_template(value_template, row)
-                                    if field['ui_type'] == 'image':
-                                        # hack to speed things up:
-                                        if ( key == 'structure_image' and
-                                                row.has_key('library_well_type') and
-                                                row['library_well_type'] == 'empty' ):
-                                            continue
-                                        # see if the specified url is available
-                                        try:
-                                            view, args, kwargs = resolve(newval)
-                                            kwargs['request'] = request
-                                            view(*args, **kwargs)
-                                            _dict[key] = newval
-                                        except Exception, e:
-                                            logger.info(str(('no image at', newval,e)))
-                                    else:
-                                        _dict[key]=newval
-
-                            except Exception, e:
-                                exc_type, exc_obj, exc_tb = sys.exc_info()
-                                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-                                msg = str(e)
-                                logger.warn(str(('on get_vocabularies_by_scope', 
-                                    msg, exc_type, fname, exc_tb.tb_lineno)))
-                                raise e                      
-                    else:
-                        if DEBUG_STREAMING: logger.info(str(('raw', row)))
-                        _dict = dict((x,y) for x, y in row.items())
-
-                    i += 1
-                    try:
-                        if DEBUG_STREAMING: logger.info(str(('_dict',i, _dict)))
-                        if i == 1:
-                            # NOTE, using "ensure_ascii" = True to force encoding of all 
-                            # chars to the ascii charset; otherwise, cStringIO has problems
-                            yield json.dumps(_dict, cls=DjangoJSONEncoder,
-                                sort_keys=True, ensure_ascii=True, indent=2, encoding="utf-8")
-                        else:
-                            # NOTE, using "ensure_ascii" = True to force encoding of all 
-                            # chars to the ascii charset; otherwise, cStringIO has problems
-                            # so "tm" becomes \u2122
-                            # Upon fp.write  the unicode is converted to the default charset?
-                            # also, CStringIO doesn't support UTF-8 mixed with ascii, for instance
-                            yield ', ' + json.dumps(_dict, cls=DjangoJSONEncoder,
-                                sort_keys=True, ensure_ascii=True, indent=2, encoding="utf-8")
-                    except Exception, e:
-                        print 'Exception'
-                        logger.info(str(('exception')))
-                        logger.error(str(('ex', _dict, e)))
-                logger.info('streaming finished')
-                
-                if not is_for_detail:
-                    yield ' ] }'
-            
-            if DEBUG_STREAMING: logger.info(str(('ready to stream 1...')))
-            response = StreamingHttpResponse(ChunkIterWrapper(json_generator(result)))
-            response['Content-Type'] = content_type
-        
-        
-        elif( desired_format == 'application/xls' or
-            desired_format == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): 
-            # NOTE: will respond with xlsx for both desired formats
-            
-            # FIXME: how to abstract images?
-            
-            structure_image_dir = os.path.abspath(settings.WELL_STRUCTURE_IMAGE_DIR)
-            # create a temp dir
-            # FIXME: temp directory as a setting
-            temp_dir = os.path.join('/tmp', str(time.clock()).replace('.', '_'))
-            os.mkdir(temp_dir)
-            try:
-                from xlsxwriter.workbook import Workbook
-                irow=0
-                # Create an new Excel file and add a worksheet.
-                filename = '%s.xlsx' % (output_filename)
-                temp_file = os.path.join(temp_dir, filename)
-                if DEBUG_STREAMING: logger.info(str(('temp file', temp_file)))
-                workbook = Workbook(temp_file)
-                worksheet = workbook.add_worksheet()
-                
-                # FIXME: only need max rows if the file will be too big (structure images)
-                # or too long (>65535, for some versions of xls; for that case
-                # should implement a mult-sheet solution.
-                max_rows_per_file = MAX_ROWS_PER_XLS_FILE
-                file_names_to_zip = [temp_file]
-                filerow = 0
-                for row in result:
-                    if filerow == 0:
-                        if field_hash:
-                            for col, (key, field) in enumerate(field_hash.items()):
-                                if title_function:
-                                    key = title_function(key) 
-                                worksheet.write(filerow,col,key)
-                                ## TODO: option to write titles
-                                # worksheet.write(filerow,col,field['title'])
-                        else:
-                            for col,name in enumerate(row.keys()):
-                                worksheet.write(filerow,col,name)
-                        filerow += 1
-                    
-                    if field_hash:
-                        for col, (key, field) in enumerate(field_hash.iteritems()):
-                            value = None
-                            if row.has_key(key):
-                                value = row[key]
-                            
-                            if value and ( field.get('json_field_type',None) == 'fields.ListField' 
-                                 or field.get('linked_field_type',None) == 'fields.ListField'
-                                 or field.get('ui_type', None) == 'list' ):
-                                value = value.split(LIST_DELIMITER_SQL_ARRAY)
-                            worksheet.write(filerow, col, 
-                                csv_convert(value, delimiter=LIST_DELIMITER_XLS, 
-                                    list_brackets=list_brackets))
-
-                            if field.get('value_template', None):
-                                value_template = field['value_template']
-                                if DEBUG_STREAMING: logger.info(str(('field', key, value_template)))
-                                newval = interpolate_value_template(value_template, row)
-                                if field['ui_type'] == 'image':
-                                    max_rows_per_file = MAX_IMAGE_ROWS_PER_XLS_FILE
-                                    # hack to speed things up:
-                                    if ( key == 'structure_image' and
-                                            row.has_key('library_well_type') and
-                                            row['library_well_type'] == 'empty' ):
-                                        continue
-                                    # see if the specified url is available
-                                    try:
-                                        view, args, kwargs = resolve(newval)
-                                        kwargs['request'] = request
-                                        response = view(*args, **kwargs)
-                                        image = Image.open(io.BytesIO(response.content))
-                                        height = image.size[1]
-                                        width = image.size[0]
-                                        worksheet.set_row(filerow, height)
-                                        scaling = 0.130 # trial and error width in default excel font
-                                        worksheet.set_column(col,col, width*scaling)
-                                        worksheet.insert_image(
-                                            filerow, col, newval, 
-                                            {'image_data': io.BytesIO(response.content)})
-                                    except Exception, e:
-                                        logger.info(str(('no image at', newval,e)))
-                                else:
-                                    worksheet.write(filerow, col, newval)
-
-                    else:
-                        
-                        for col,val in enumerate(row.values()):
-                            worksheet.write(filerow, col, val)
-
-                    irow +=1
-                    filerow +=1
-                    
-                    if irow % max_rows_per_file == 0:
-                        workbook.close()
-                        logger.info(str(('wrote file', temp_file)))
-
-                        # Create an new Excel file and add a worksheet.
-                        filename = '%s_%s.xlsx' % (output_filename, irow)
-                        temp_file = os.path.join(temp_dir, filename)
-                        logger.info(str(('temp file', temp_file)))
-                        workbook = Workbook(temp_file)
-                        worksheet = workbook.add_worksheet()
-                        
-                        file_names_to_zip.append(temp_file)
-                        filerow = 0
-                    
-                workbook.close()
-                logger.info(str(('wrote file', temp_file)))
-
-                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; charset=utf-8'
-                if len(file_names_to_zip) >1:
-                    # create a temp zip file
-                    content_type='application/zip; charset=utf-8'
-                    temp_file = os.path.join('/tmp',str(time.clock()))
-                    logger.info(str(('temp ZIP file', temp_file)))
-
-                    with ZipFile(temp_file, 'w') as zip_file:
-                        for _file in file_names_to_zip:
-                            zip_file.write(_file, os.path.basename(_file))
-                    logger.info(str(('wrote file', temp_file)))
-                    filename = '%s.zip' % output_filename
-
-                _file = file(temp_file)
-                logger.info(str(('download tmp file',temp_file,_file)))
-                wrapper = FileWrapper(_file)
-                response = StreamingHttpResponse(
-                    wrapper, content_type=content_type) 
-                response['Content-Disposition'] = \
-                    'attachment; filename=%s' % filename
-                response['Content-Length'] = os.path.getsize(temp_file)
-            except Exception, e:
-                exc_type, exc_obj, exc_tb = sys.exc_info()
-                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-                msg = str(e)
-                logger.warn(str(('on xlsx & zip file process', 
-                    self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
-                raise e   
-            finally:
-                try:
-                    logger.info(str(('rmdir', temp_dir)))
-                    shutil.rmtree(temp_dir)
-                    if os.path.exists(temp_file):
-                        logger.info(str(('remove', temp_file)))
-                        os.remove(temp_file)     
-                    logger.info(str(('removed', temp_dir)))
-                except Exception, e:
-                    exc_type, exc_obj, exc_tb = sys.exc_info()
-                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-                    msg = str(e)
-                    logger.warn(str(('on xlsx & zip file process', self._meta.resource_name, 
-                        msg, exc_type, fname, exc_tb.tb_lineno)))
-                    raise ImmediateHttpResponse(str(('ex during rmdir', e)))
-        elif desired_format == 'chemical/x-mdl-sdfile':
-            import reports.utils.sdf2py
-            MOLDATAKEY = reports.utils.sdf2py.MOLDATAKEY
-            try:
-                def sdf_generator(cursor):
-                    i = 0
-                    for row in cursor:
-                        i += 1
-
-                        if row.has_key(MOLDATAKEY) and row[MOLDATAKEY]:
-                            yield str(row[MOLDATAKEY])
-                            yield '\n' 
-
-                        if field_hash:
-                            for col, (key, field) in enumerate(field_hash.iteritems()):
-                                if key == MOLDATAKEY: 
-                                    continue
-                                yield '> <%s>\n' % key
-                                # according to 
-                                # http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip
-                                # "only one blank line should terminate a data item"
-                                value = None
-                                
-                                if row.has_key(key):
-                                    value = row[key]
-                                
-                                if field.get('value_template', None):
-                                    value_template = field['value_template']
-                                    if DEBUG_STREAMING:     
-                                        logger.info(str(('field', key, value_template)))
-                                    value = interpolate_value_template(value_template, row)
-                                if value and ( field.get('json_field_type',None) == 'fields.ListField' 
-                                     or field.get('linked_field_type',None) == 'fields.ListField'
-                                     or field.get('ui_type', None) == 'list' ):
-                                    value = value.split(LIST_DELIMITER_SQL_ARRAY)
-
-                                if value:
-                                    # find lists, but not strings (or dicts)
-                                    # Note: a dict here will be non-standard; probably an error 
-                                    # report, so just stringify dicts as is.
-                                    if not hasattr(value, "strip") and isinstance(value, (list,tuple)): 
-                                        for x in value:
-                                            # DB should be UTF-8, so this should not be necessary,
-                                            # however, it appears we have legacy non-utf data in 
-                                            # some tables (i.e. small_molecule_compound_name 193090
-                                            yield unicode.encode(x,'utf-8')
-                                            yield '\n'
-                                    else:
-                                        yield str(value)
-                                        yield '\n'
-            
-                                yield '\n'
-                            yield '$$$$\n'
-                                    
-                        else:
-                        
-                            for k,v in row.items():
-                                if k == MOLDATAKEY: 
-                                    continue
-                                yield '> <%s>\n' % k
-                                # according to 
-                                # http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip
-                                # "only one blank line should terminate a data item"
-                                if v:
-                                    # find lists, but not strings (or dicts)
-                                    # Note: a dict here will be non-standard; probably an error 
-                                    # report, so just stringify dicts as is.
-                                    if not hasattr(v, "strip") and isinstance(v, (list,tuple)): 
-                                        for x in v:
-                                            # DB should be UTF-8, so this should not be necessary,
-                                            # however, it appears we have legacy non-utf data in 
-                                            # some tables (i.e. small_molecule_compound_name 193090
-                                            yield unicode.encode(x,'utf-8')
-                                            yield '\n'
-                                    else:
-                                        yield str(v)
-                                        yield '\n'
-                
-                                yield '\n'
-                            yield '$$$$\n'
-        
-                    logger.info(str(('wrote i', i)))    
-    
-                response = StreamingHttpResponse(
-                    ChunkIterWrapper(sdf_generator(result)),
-                    content_type=content_type)
-                response['Content-Disposition'] = \
-                    'attachment; filename=%s.sdf' % output_filename
-            except Exception, e:
-                exc_type, exc_obj, exc_tb = sys.exc_info()
-                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-                msg = str(e)
-                logger.warn(str(('sdf export process', self._meta.resource_name, 
-                    msg, exc_type, fname, exc_tb.tb_lineno)))
-                raise ImmediateHttpResponse(str(('ex during sdf export', e)))
-                
-        
-        elif desired_format == 'text/csv':
-            class Echo(object):
-                """An object that implements just the write method of the file-like
-                interface.
-                """
-                def write(self, value):
-                    return value
-
-            pseudo_buffer = Echo()
-            csvwriter = csv.writer(
-                pseudo_buffer, delimiter=CSV_DELIMITER, quotechar='"', 
-                quoting=csv.QUOTE_ALL, lineterminator="\n")
-            def csv_generator(cursor):
-                i=0
-                for row in cursor:
-                    i += 1
-                    if i == 1:
-                        if field_hash:
-                            titles = field_hash.keys()
-                            logger.info(str(('keys', titles, title_function)))
-                            if title_function:
-                                titles = [title_function(key) for key in titles]
-                            logger.info(str(('titles', titles)))
-                            yield csvwriter.writerow(titles)
-                            # TODO: option to write titles:
-                            # yield csvwriter.writerow([field['title'] for field in field_hash.values()])
-                        else:
-                            yield csvwriter.writerow(row.keys())
-
-                    if field_hash:
-                        values = []
-                        for col, (key, field) in enumerate(field_hash.iteritems()):
-                            value = ''
-                            if row.has_key(key):
-                                value = row[key]
-                            if value and ( field.get('json_field_type',None) == 'fields.ListField' 
-                                 or field.get('linked_field_type',None) == 'fields.ListField'
-                                 or field.get('ui_type', None) == 'list' ):
-                                # FIXME: must quote special strings?
-#                                 value = '[' + ",".join(value.split(LIST_DELIMITER_SQL_ARRAY)) + ']'
-                                value = value.split(LIST_DELIMITER_SQL_ARRAY)
-                            
-#                             if field.get('data_type', None):
-#                                 data_type = field['data_type']
-#                                 if data_type == "float":
-#                                     value = 
-                                
-                            if field.get('value_template', None):
-                                value_template = field['value_template']
-                                newval = interpolate_value_template(value_template, row)
-                                if field['ui_type'] == 'image':
-                                    # hack to speed things up:
-                                    if ( key == 'structure_image' and
-                                            row.has_key('library_well_type') and
-                                            row['library_well_type'] == 'empty' ):
-                                        continue
-                                    # see if the specified url is available
-                                    try:
-                                        view, args, kwargs = resolve(newval)
-                                        kwargs['request'] = request
-                                        response = view(*args, **kwargs)
-                                        value = newval
-                                    except Exception, e:
-                                        logger.info(str(('no image at', newval,e)))
-                                else:
-                                    value = newval
-
-                            values.append(value)
-                        yield csvwriter.writerow([
-                            csv_convert(val, list_brackets=list_brackets) 
-                                for val in values])
-                    
-                    else:
-                        yield csvwriter.writerow([
-                            csv_convert(val, list_brackets=list_brackets) 
-                                for val in row.values()])
-
-            response = StreamingHttpResponse(csv_generator(result),
-                content_type=content_type)
-            name = self._meta.resource_name
-            response['Content-Disposition'] = \
-                'attachment; filename=%s.csv' % output_filename
-        else:
-            msg = str(('unknown format', desired_format, output_filename))
-            logger.error(msg)
-            raise ImmediateHttpResponse(msg)
-
-#         downloadID = request.GET.get('downloadID', None)
-#         if downloadID:
-#             logger.info(str(('set cookie','downloadID', downloadID )))
-#             response.set_cookie('downloadID', downloadID)
-#         else:
-#             logger.info(str(('no downloadID', request.GET )))
-
-        return response
-
 
 class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
     class Meta:
@@ -2741,7 +1460,7 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
              
             rowproxy_generator = None
             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-                rowproxy_generator = SqlAlchemyResource.create_vocabulary_rowproxy_generator(field_hash)
+                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
  
@@ -2821,6 +1540,9 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
              
             (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
  
+            if not order_clauses:
+                stmt = stmt.order_by("plate_number","copy_name")
+
             title_function = None
             if param_hash.get(HTTP_PARAM_USE_TITLES, False):
                 title_function = lambda key: field_hash[key]['title']
@@ -2839,11 +1561,867 @@ class LibraryCopyPlatesResource(SqlAlchemyResource, ManagedModelResource):
             logger.warn(str(('on get_list', 
                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e   
+
+
+# Deprecate - use apilog viewer
+class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
+    class Meta:
+        queryset = CopyWell.objects.all().order_by('well_id')
+        
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= UserGroupAuthorization()
+        resource_name = 'copywellhistory'
+        
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
+        always_return_data = True 
+
+        
+    def __init__(self, **kwargs):
+        super(CopyWellHistoryResource,self).__init__(**kwargs)
+
+    def prepend_urls(self):
+        # Note: because this prepends the other list, we have to make sure 
+        # "schema" is matched
+        
+        return [
+            # override the parent "base_urls" so that we don't need to worry about schema again
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+
+            url(r"^(?P<resource_name>%s)/search/(?P<search_ID>[\d]+)%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('search'), name="api_search"),
+
+            url(r"^(?P<resource_name>%s)"
+                r"/(?P<copy_name>[\w\d_.\-\+ ]+)" 
+                r"/(?P<well_id>[\w\d_.\-\+:]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+
+            url(r"^(?P<resource_name>%s)"
+                r"/(?P<copy_name>[\w\d_.\-\+: ]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+        ]
+
+
+    def get_detail(self, request, **kwargs):
+        # TODO: this is a strategy for refactoring get_detail to use get_list:
+        # follow this with wells/
+        logger.info(str(('get_detail')))
+
+        copy_name = kwargs.get('copy_name', None)
+        if not copy_name:
+            logger.info(str(('no copy_name provided')))
+            raise NotImplementedError('must provide a copy_name parameter')
+        
+        well_id = kwargs.get('well_id', None)
+        if not well_id:
+            logger.info(str(('no well_id provided')))
+            raise NotImplementedError('must provide a well_id parameter')
+        
+        kwargs['is_for_detail']=True
+        return self.get_list(request, **kwargs)
+        
+    
+    def get_list(self,request,**kwargs):
+
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+
+        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+
+        
+    def build_list_response(self,request, param_hash={}, **kwargs):
+        ''' 
+        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
+        @returns django.http.response.StreamingHttpResponse 
+        '''
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        is_for_detail = kwargs.pop('is_for_detail', False)
+        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = re.sub(r'[\W]+','_',filename)
+        logger.info(str(('get_list', filename, kwargs)))
+        
+        well_id = param_hash.pop('well_id', None)
+        if well_id:
+            param_hash['well_id__eq'] = well_id
+
+        copy_name = param_hash.pop('copy_name', None)
+        if copy_name:
+            param_hash['copy_name__eq'] = copy_name
+
+        try:
+            
+            # general setup
+             
+            schema = super(CopyWellHistoryResource,self).build_schema()
+          
+            manual_field_includes = set(param_hash.get('includes', []))
+            if DEBUG_GET_LIST: 
+                logger.info(str(('manual_field_includes', manual_field_includes)))
+  
+            (filter_expression, filter_fields) = \
+                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+
+            if filter_expression is None:
+                msgs = { 'Copy well resource': 'can only service requests with filter expressions' }
+                logger.info(str((msgs)))
+                raise ImmediateHttpResponse(response=self.error_response(request,msgs))
+                                  
+            field_hash = self.get_visible_fields(
+                schema['fields'], filter_fields, manual_field_includes, 
+                is_for_detail=is_for_detail)
+              
+            order_params = param_hash.get('order_by',[])
+            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
+             
+            rowproxy_generator = None
+            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
+                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+ 
+            # specific setup 
+            base_query_tables = [
+                'copy_well', 'copy', 'plate', 'well','library',
+                'well_volume_adjustment','activity']
+            
+            # NOTE: date_time is included here as an exercise:
+            # why db table structure needs to be redone
+            custom_columns = {
+                'consumed_volume': literal_column(
+                    'initial_volume-copy_well.volume').label('consumed_volume'),
+                'date_time': literal_column('\n'.join([
+                    'case when wva.well_volume_correction_activity_id is not null then (', 
+                    'select a1.date_created from activity a1', 
+                    'where a1.activity_id = wva.well_volume_correction_activity_id )',  
+                    'else ( select a2.date_created from activity a2', 
+                    'join cherry_pick_assay_plate cpap on(cpap.cherry_pick_liquid_transfer_id=a2.activity_id)',
+                    'join lab_cherry_pick lcp on(lcp.cherry_pick_assay_plate_id=cpap.cherry_pick_assay_plate_id)',
+                    'where lcp.lab_cherry_pick_id = wva.lab_cherry_pick_id ) ',
+                    'end',
+                    ])).label('date_time'),
+            }
+            
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                custom_columns=custom_columns )
+
+            # build the query statement
+
+            _cw = self.bridge['copy_well']
+            _c = self.bridge['copy']
+            _l = self.bridge['library']
+            _p = self.bridge['plate']
+            _w = self.bridge['well']
+            _wva = self.bridge['well_volume_adjustment']
+            _a = self.bridge['activity']
+            
+            _wva = _wva.alias('wva')
+            j = join(_cw, _c, _c.c.copy_id == _cw.c.copy_id )
+            j = j.join(_p, _cw.c.plate_id == _p.c.plate_id )
+            j = j.join(_w, _cw.c.well_id == _w.c.well_id )
+            j = j.join(_l, _w.c.library_id == _l.c.library_id )
+            j = j.join(_wva,onclause=(and_(
+                _cw.c.copy_id == _wva.c.copy_id,_cw.c.well_id == _wva.c.well_id)),
+                isouter=True)
+#             j = j.join(_wva,_cw.c.well_id == _wva.c.well_id)
+            j = j.join(_a, _wva.c.well_volume_correction_activity_id == _a.c.activity_id, isouter=True )
+            stmt = select(columns).select_from(j)
+
+            # general setup
+             
+            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+            
+            title_function = None
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                title_function = lambda key: field_hash[key]['title']
+            
+            return self.stream_response_from_cursor(
+                request, stmt, count_stmt, filename, 
+                field_hash=field_hash, 
+                is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function  )
+             
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on get_list', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e  
    
+
+class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
+    
+    class Meta:
+        queryset = CopyWell.objects.all().order_by('well_id')
+        
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= UserGroupAuthorization()
+        resource_name = 'copywell'
+        
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
+        always_return_data = True 
+
+        
+    def __init__(self, **kwargs):
+        super(CopyWellResource,self).__init__(**kwargs)
+
+    def prepend_urls(self):
+        # Note: because this prepends the other list, we have to make sure 
+        # "schema" is matched
+        
+        return [
+            # override the parent "base_urls" so that we don't need to worry about schema again
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+
+            url(r"^(?P<resource_name>%s)/search/(?P<search_ID>[\d]+)%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('search'), name="api_search"),
+
+            url(r"^(?P<resource_name>%s)"
+                r"/(?P<copy_name>[\w\d_.\-\+ ]+)" 
+                r"/(?P<well_id>[\w\d_.\-\+:]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+
+            url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w\d_.\-\+: ]+)"
+                r"/(?P<copy_name>[\w\d_.\-\+ ]+)" 
+                r"/(?P<well_id>[\w\d_.\-\+:]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+
+            url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w\d_.\-\+: ]+)"
+                r"/(?P<copy_name>[\w\d_.\-\+: ]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+        ]
+
+
+    def get_detail(self, request, **kwargs):
+        # TODO: this is a strategy for refactoring get_detail to use get_list:
+        # follow this with wells/
+        logger.info(str(('get_detail', kwargs)))
+
+        library_short_name = kwargs.get('library_short_name', None)
+        if not library_short_name:
+            logger.info(str(('no library_short_name provided')))
+            #             raise NotImplementedError('must provide a library_short_name parameter')
+
+        
+        copy_name = kwargs.get('copy_name', None)
+        if not copy_name:
+            logger.info(str(('no copy_name provided')))
+            raise NotImplementedError('must provide a copy_name parameter')
+        
+        well_id = kwargs.get('well_id', None)
+        if not well_id:
+            logger.info(str(('no well_id provided')))
+            raise NotImplementedError('must provide a well_id parameter')
+        
+        kwargs['is_for_detail']=True
+        
+        return self.get_list(request, **kwargs)
+        
+    
+    def get_list(self,request,**kwargs):
+
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+
+        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+
+        
+    def build_list_response(self,request, param_hash={}, **kwargs):
+        ''' 
+        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
+        @returns django.http.response.StreamingHttpResponse 
+        '''
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        is_for_detail = kwargs.pop('is_for_detail', False)
+        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = re.sub(r'[\W]+','_',filename)
+        logger.info(str(('get_list', filename, kwargs)))
+        
+        well_id = param_hash.pop('well_id', None)
+        if well_id:
+            param_hash['well_id__eq'] = well_id
+
+        copy_name = param_hash.pop('copy_name', None)
+        if copy_name:
+            param_hash['copy_name__eq'] = copy_name
+
+        library_short_name = param_hash.pop('library_short_name', None)
+        if library_short_name:
+            param_hash['library_short_name__eq'] = library_short_name
+
+        try:
+            
+            # general setup
+             
+            schema = super(CopyWellResource,self).build_schema()
+          
+            manual_field_includes = set(param_hash.get('includes', []))
+            if DEBUG_GET_LIST: 
+                logger.info(str(('manual_field_includes', manual_field_includes)))
+  
+            (filter_expression, filter_fields) = \
+                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+
+            if filter_expression is None:
+                msgs = { 'Copy well resource': 'can only service requests with filter expressions' }
+                logger.info(str((msgs)))
+                raise ImmediateHttpResponse(response=self.error_response(request,msgs))
+                                  
+            field_hash = self.get_visible_fields(
+                schema['fields'], filter_fields, manual_field_includes, 
+                is_for_detail=is_for_detail)
+              
+            order_params = param_hash.get('order_by',[])
+            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
+             
+            rowproxy_generator = None
+            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
+                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+ 
+            # specific setup 
+            base_query_tables = ['copy_well', 'copy', 'plate', 'well','library']
+            
+            custom_columns = {
+                'consumed_volume': literal_column('initial_volume-volume').label('consumed_volume'),
+                # query plan makes this faster than the hash join of copy-copy_well
+#                 'copy_name': literal_column(
+#                     '( select copy.name from copy where copy.copy_id=copy_well.copy_id )'
+#                     ).label('copy_name')
+            }
+            
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                custom_columns=custom_columns )
+
+            # build the query statement
+
+            _cw = self.bridge['copy_well']
+            _c = self.bridge['copy']
+            _l = self.bridge['library']
+            _p = self.bridge['plate']
+            _w = self.bridge['well']
+            
+#             j = join(_cw, _c, _c.c.copy_id == _cw.c.copy_id )
+            j = join(_cw, _w, _cw.c.well_id == _w.c.well_id )
+            j = j.join(_p, _cw.c.plate_id == _p.c.plate_id )
+            j = j.join(_c, _cw.c.copy_id == _c.c.copy_id )
+            j = j.join(_l, _w.c.library_id == _l.c.library_id )
+            
+            stmt = select(columns).select_from(j)
+
+            # general setup
+             
+            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+            
+            if not order_clauses:
+                stmt = stmt.order_by('copy_name','plate_number', 'well_id')
+            
+            title_function = None
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                title_function = lambda key: field_hash[key]['title']
+            
+            return self.stream_response_from_cursor(
+                request, stmt, count_stmt, filename, 
+                field_hash=field_hash, 
+                is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function  )
+             
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on get_list', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e  
+  
+class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):        
+    class Meta:
+        queryset = CherryPickRequest.objects.all().order_by('well_id')
+        
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= UserGroupAuthorization()
+        resource_name = 'cherrypickrequest'
+        
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
+        always_return_data = True 
+
+        
+    def __init__(self, **kwargs):
+        super(CherryPickRequestResource,self).__init__(**kwargs)
+
+    def prepend_urls(self):
+        # Note: because this prepends the other list, we have to make sure 
+        # "schema" is matched
+        
+        return [
+            # override the parent "base_urls" so that we don't need to worry about schema again
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+
+            url(r"^(?P<resource_name>%s)"
+                r"/(?P<cherry_pick_request_id>[\d]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ]
+
+    def get_detail(self, request, **kwargs):
+        # TODO: this is a strategy for refactoring get_detail to use get_list:
+        # follow this with wells/
+        logger.info(str(('get_detail', kwargs)))
+
+        cherry_pick_request_id = kwargs.get('cherry_pick_request_id', None)
+        if not cherry_pick_request_id:
+            logger.info(str(('no cherry_pick_request_id provided')))
+            raise NotImplementedError('must provide a cherry_pick_request_id parameter')
+        
+        kwargs['is_for_detail']=True
+        
+        return self.get_list(request, **kwargs)
+        
+    
+    def get_list(self,request,**kwargs):
+
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+
+        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+
+        
+    def build_list_response(self,request, param_hash={}, **kwargs):
+        ''' 
+        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
+        @returns django.http.response.StreamingHttpResponse 
+        '''
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        is_for_detail = kwargs.pop('is_for_detail', False)
+        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = re.sub(r'[\W]+','_',filename)
+        logger.info(str(('get_list', filename, kwargs)))
+        
+        cherry_pick_request_id = param_hash.pop('cherry_pick_request_id', None)
+        if cherry_pick_request_id:
+            param_hash['cherry_pick_request_id__eq'] = cherry_pick_request_id
+
+        try:
+            
+            # general setup
+             
+            schema = super(CherryPickRequestResource,self).build_schema()
+          
+            manual_field_includes = set(param_hash.get('includes', []))
+            if DEBUG_GET_LIST: 
+                logger.info(str(('manual_field_includes', manual_field_includes)))
+  
+            (filter_expression, filter_fields) = \
+                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+                                  
+            field_hash = self.get_visible_fields(
+                schema['fields'], filter_fields, manual_field_includes, 
+                is_for_detail=is_for_detail)
+              
+            order_params = param_hash.get('order_by',[])
+            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
+             
+            rowproxy_generator = None
+            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
+                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+ 
+            # specific setup 
+            base_query_tables = ['cherry_pick_request']
+            
+        
+            custom_columns = {
+                'screen_id': literal_column(
+                    '( select facility_id '
+                    '  from screen where screen.screen_id=cherry_pick_request.screen_id )'
+                    ).label('screen_id'),
+                'requested_by_name': literal_column(
+                    '( select su.first_name || $$ $$ || su.last_name'
+                    '  from screensaver_user su '
+                    '  where su.screensaver_user_id=cherry_pick_request.requested_by_id )'
+                    ).label('requested_by_name'),
+                'lab_head_name': literal_column(
+                    '( select su.first_name || $$ $$ || su.last_name'
+                    '  from screensaver_user su '
+                    '  join screen s on(lab_head_id=su.screensaver_user_id) '
+                    '  where s.screen_id=cherry_pick_request.screen_id )'
+                    ).label('lab_head_name'),
+                'lab_head_id': literal_column(
+                    '( select s.lab_head_id'
+                    '  from screen s  '
+                    '  where s.screen_id=cherry_pick_request.screen_id )'
+                    ).label('lab_head_id'),
+                'lead_screener_name': literal_column(
+                    '( select su.first_name || $$ $$ || su.last_name'
+                    '  from screensaver_user su '
+                    '  join screen s on(lead_screener_id=su.screensaver_user_id) '
+                    '  where s.screen_id=cherry_pick_request.screen_id )'
+                    ).label('lead_screener_name'),
+                'lead_screener_id': literal_column(
+                    '( select s.lead_screener_id'
+                    '  from screen s '
+                    '  where s.screen_id=cherry_pick_request.screen_id )'
+                    ).label('lead_screener_id'),
+                'screen_type': literal_column(
+                    '( select s.screen_type'
+                    '  from screen s  '
+                    '  where s.screen_id=cherry_pick_request.screen_id )'
+                    ).label('screen_type'),
+                # REDO as cherry pick status - not correct yet
+                # query is wrong because iscompleted means has cplt's but no cplt's that have no status
+                'is_completed': literal_column('\n'.join([
+                    '( select count(*) > 0 ',
+                    '  from cherry_pick_assay_plate cpap ',
+                    '  join cherry_pick_liquid_transfer cplt ',
+                    '    on( cpap.cherry_pick_liquid_transfer_id=cplt.activity_id ) ',
+                    '  where cpap.cherry_pick_request_id=cherry_pick_request.cherry_pick_request_id ',
+                    '  AND cplt.status is not null )'])).label('is_completed'), 
+                # 
+                'number_plates': literal_column('\n'.join([
+                    '( select count(distinct(plate_ordinal)) ',
+                    '  from cherry_pick_assay_plate cpap ',
+                    '  where cpap.cherry_pick_request_id=cherry_pick_request.cherry_pick_request_id )'])
+                    ).label('number_plates'), 
+                'number_plates_completed': literal_column('\n'.join([
+                    '( select count(*) ',
+                    '  from cherry_pick_assay_plate cpap ',
+                    '  join cherry_pick_liquid_transfer cplt ',
+                    '    on( cpap.cherry_pick_liquid_transfer_id=cplt.activity_id ) ',
+                    '  where cpap.cherry_pick_request_id=cherry_pick_request.cherry_pick_request_id ',
+                    '  AND cplt.status in ($$Successful$$,$$Canceled$$) )'])
+                    ).label('number_plates_completed'), 
+                'total_number_lcps': literal_column(
+                    'lcp.count ' 
+                    ).label('total_number_lcps'),
+                # following not performant
+#                 'total_number_lcps': literal_column(
+#                     '( select count(*) from lab_cherry_pick lcp ' 
+#                     '  where lcp.cherry_pick_request_id=cherry_pick_request.cherry_pick_request_id )'
+#                     ).label('total_number_lcps'),
+                'plating_activity_date': literal_column('\n'.join([
+                    '( select date_of_activity ',
+                    '  from activity ',
+                    '  join cherry_pick_liquid_transfer cplt using(activity_id) ',
+                    ('  join cherry_pick_assay_plate cpap on(cpap.cherry_pick_liquid_transfer_id='
+                        'cplt.activity_id) '),
+                    '  where cpap.cherry_pick_request_id=cherry_pick_request.cherry_pick_request_id ',
+                    '  order by date_of_activity desc LIMIT 1 ) '])).label('plating_activity_date')
+            }
+            
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                custom_columns=custom_columns )
+
+            # build the query statement
+            _cpr = self.bridge['cherry_pick_request']
+            _count_lcp_stmt = text(
+                '( select cherry_pick_request_id, count(*) '
+                ' from lab_cherry_pick '
+                ' group by cherry_pick_request_id '
+                ' order by cherry_pick_request_id ) as lcp ' )
+#             _count_lcp_stmt = _count_lcp_stmt.alias('lcp') 
+            j = join(_cpr,_count_lcp_stmt, 
+                _cpr.c.cherry_pick_request_id == literal_column('lcp.cherry_pick_request_id'), 
+                isouter=True)
+            stmt = select(columns).select_from(j)
+            # general setup
+             
+            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+            
+            if not order_clauses:
+                stmt = stmt.order_by(nullslast(desc(column('cherry_pick_request_id'))))
+            
+            title_function = None
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                title_function = lambda key: field_hash[key]['title']
+            
+            return self.stream_response_from_cursor(
+                request, stmt, count_stmt, filename, 
+                field_hash=field_hash, 
+                is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function  )
+             
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on get_list', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e  
+
+
+class CherryPickPlateResource(SqlAlchemyResource,ManagedModelResource):        
+
+    class Meta:
+        queryset = CherryPickAssayPlate.objects.all().order_by('cherry_pick_request_id')
+        
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= UserGroupAuthorization()
+        resource_name = 'cherrypickassayplate'
+        
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
+        always_return_data = True 
+
+        
+    def __init__(self, **kwargs):
+        super(CherryPickPlateResource,self).__init__(**kwargs)
+
+    def prepend_urls(self):
+        # Note: because this prepends the other list, we have to make sure 
+        # "schema" is matched
+        
+        return [
+            # override the parent "base_urls" so that we don't need to worry about schema again
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+
+            url(r"^(?P<resource_name>%s)"
+                r"/(?P<cherry_pick_request_id>[\d]+)"
+                r"/(?P<plate_ordinal>[\d]+)"
+                r"/(?P<attempt_ordinal>[\d]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ]
+
+    def get_detail(self, request, **kwargs):
+        # TODO: this is a strategy for refactoring get_detail to use get_list:
+        # follow this with wells/
+        logger.info(str(('get_detail', kwargs)))
+
+        cherry_pick_request_id = kwargs.get('cherry_pick_request_id', None)
+        if not cherry_pick_request_id:
+            logger.info(str(('no cherry_pick_request_id provided')))
+            raise NotImplementedError('must provide a cherry_pick_request_id parameter')
+
+        plate_ordinal = kwargs.get('plate_ordinal', None)
+        if not plate_ordinal:
+            logger.info(str(('no plate_ordinal provided')))
+            raise NotImplementedError('must provide a plate_ordinal parameter')
+
+        attempt_ordinal = kwargs.get('attempt_ordinal', None)
+        if not attempt_ordinal:
+            logger.info(str(('no attempt_ordinal provided')))
+            raise NotImplementedError('must provide a attempt_ordinal parameter')
+
+        kwargs['is_for_detail']=True
+        
+        return self.get_list(request, **kwargs)
+        
+    
+    def get_list(self,request,**kwargs):
+
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+
+        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+
+        
+    def build_list_response(self,request, param_hash={}, **kwargs):
+        ''' 
+        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
+        @returns django.http.response.StreamingHttpResponse 
+        '''
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        is_for_detail = kwargs.pop('is_for_detail', False)
+        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = re.sub(r'[\W]+','_',filename)
+        logger.info(str(('get_list', filename, kwargs)))
+        
+        cherry_pick_request_id = param_hash.pop('cherry_pick_request_id', None)
+        if cherry_pick_request_id:
+            param_hash['cherry_pick_request_id__eq'] = cherry_pick_request_id
+
+        plate_ordinal = param_hash.pop('plate_ordinal', None)
+        if plate_ordinal:
+            param_hash['plate_ordinal__eq'] = plate_ordinal
+
+        attempt_ordinal = param_hash.pop('attempt_ordinal', None)
+        if attempt_ordinal:
+            param_hash['attempt_ordinal__eq'] = attempt_ordinal
+
+        try:
+            
+            # general setup
+             
+            schema = super(CherryPickPlateResource,self).build_schema()
+          
+            manual_field_includes = set(param_hash.get('includes', []))
+            if DEBUG_GET_LIST: 
+                logger.info(str(('manual_field_includes', manual_field_includes)))
+  
+            (filter_expression, filter_fields) = \
+                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+                                  
+            field_hash = self.get_visible_fields(
+                schema['fields'], filter_fields, manual_field_includes, 
+                is_for_detail=is_for_detail)
+              
+            order_params = param_hash.get('order_by',[])
+            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
+             
+            rowproxy_generator = None
+            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
+                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+ 
+            # specific setup 
+            base_query_tables = [
+                'cherry_pick_assay_plate',
+                'cherry_pick_request',
+                'cherry_pick_liquid_transfer',
+                'activity']
+        
+            custom_columns = {
+                'screen_id': literal_column(
+                    '( select facility_id '
+                    '  from screen where screen.screen_id=cherry_pick_request.screen_id )'
+                    ).label('screen_id'),
+                'plated_by_name': literal_column(
+                    '( select su.first_name || $$ $$ || su.last_name'
+                    '  from screensaver_user su '
+                    '  where su.screensaver_user_id=activity.performed_by_id )'
+                    ).label('plated_by_name'),
+                'plated_by_id': literal_column(
+                    'activity.performed_by_id').label('plated_by_id'),
+                 # plate name will be constructed further from other parts
+                'plate_name': literal_column(
+                    ('cherry_pick_assay_plate.cherry_pick_request_id '
+                        '|| $$:$$ || plate_ordinal || $$:$$ || attempt_ordinal ')
+                    ).label('plate_name'),
+                'number_plates': literal_column('\n'.join([
+                    '( select count(distinct(plate_ordinal)) ',
+                    '  from cherry_pick_assay_plate cpap ',
+                    '  where cpap.cherry_pick_request_id=cherry_pick_assay_plate.cherry_pick_request_id )'])
+                    ).label('number_plates'), 
+                # TODO: is_plated, is_screened replacing status label for now
+                'is_screened': literal_column(
+                    '(exists ( '
+                    '     select null from cherry_pick_assay_plate_screening_link '
+                    '     where cherry_pick_assay_plate_id'
+                        '=cherry_pick_assay_plate.cherry_pick_assay_plate_id )) '
+                        ).label('is_screened'),
+                'last_screening_date': literal_column('\n'.join([
+                    '( select date_of_activity ',
+                    '  from activity ',
+                    '  join cherry_pick_assay_plate_screening_link cpapsl ',
+                    '     on(cherry_pick_screening_id=activity_id) ',
+                    ('  where cpapsl.cherry_pick_assay_plate_id'
+                        '=cherry_pick_assay_plate.cherry_pick_assay_plate_id '),
+                    '  order by date_of_activity desc LIMIT 1 ) '])
+                    ).label('plating_activity_date'),
+                'last_screened_by_id': literal_column('\n'.join([
+                    '( select performed_by_id ',
+                    '  from activity ',
+                    '  join cherry_pick_assay_plate_screening_link cpapsl ',
+                    '     on(cherry_pick_screening_id=activity_id) ',
+                    ('  where cpapsl.cherry_pick_assay_plate_id'
+                        '=cherry_pick_assay_plate.cherry_pick_assay_plate_id '),
+                    '  order by date_of_activity desc LIMIT 1 ) '])
+                    ).label('last_screened_by_id'),
+                'last_screened_by_name': literal_column('\n'.join([
+                    '( select su.first_name || $$ $$ || su.last_name'
+                    '  from screensaver_user su ',
+                    '  join activity a on(a.performed_by_id=su.screensaver_user_id) ',
+                    '  join cherry_pick_assay_plate_screening_link cpapsl ',
+                    '     on(cherry_pick_screening_id=activity_id) ',
+                    ('  where cpapsl.cherry_pick_assay_plate_id'
+                        '=cherry_pick_assay_plate.cherry_pick_assay_plate_id '),
+                    '  order by date_of_activity desc LIMIT 1 ) '])
+                    ).label('last_screened_by_name'),
+                'screening_activities': literal_column('\n'.join([
+                    '(select array_to_string(array_agg(activity_id),$$,$$) ',
+                    '  from (select activity_id from ', 
+                    '    activity ',
+                    '    join cherry_pick_assay_plate_screening_link cpapsl ',
+                    '      on(cherry_pick_screening_id=activity_id) ',
+                    ('  where cpapsl.cherry_pick_assay_plate_id'
+                        '=cherry_pick_assay_plate.cherry_pick_assay_plate_id '),
+                    '  order by date_of_activity desc ) a ) '])
+                    ).label('screening_activities')
+            }
+            
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                custom_columns=custom_columns )
+
+            # build the query statement
+            _cpap = self.bridge['cherry_pick_assay_plate']
+            _cpr = self.bridge['cherry_pick_request']
+            _cplt = self.bridge['cherry_pick_liquid_transfer']
+            _cplta = self.bridge['activity']
+            j = join(_cpap,_cpr,
+                _cpap.c.cherry_pick_request_id==_cpr.c.cherry_pick_request_id)
+            j = j.join(_cplt,
+                _cpap.c.cherry_pick_liquid_transfer_id==_cplt.c.activity_id,
+                isouter=True)
+            j = j.join(_cplta,
+                _cplt.c.activity_id==_cplta.c.activity_id)
+            stmt = select(columns).select_from(j)
+            # general setup
+             
+            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+            
+            if not order_clauses:
+                stmt = stmt.order_by(nullslast(desc(column('cherry_pick_request_id'))))
+            
+            title_function = None
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                title_function = lambda key: field_hash[key]['title']
+            
+            return self.stream_response_from_cursor(
+                request, stmt, count_stmt, filename, 
+                field_hash=field_hash, 
+                is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function  )
+             
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on get_list', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e  
+
+
+    
         
 class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
     ''' 
-    Testing class for the "freeze copy thaw" reports
+    "freeze copy thaw" reports
     '''
 
     class Meta:
@@ -2915,9 +2493,9 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
     def build_list_response(self,request, param_hash={}, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns djanog.http.response.StreamingHttpResponse 
+        @returns django.http.response.StreamingHttpResponse 
         '''
-        DEBUG_GET_LIST = True or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
@@ -2965,7 +2543,7 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
              
             rowproxy_generator = None
             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-                rowproxy_generator = SqlAlchemyResource.create_vocabulary_rowproxy_generator(field_hash)
+                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
 
@@ -3036,10 +2614,8 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
                 select_from( text(text_select))
                 
             if library_short_name:
-                # FIXME: can
                 copy_volume_statistics = \
                     copy_volume_statistics.where(literal_column('l.short_name') == library_short_name )
-#                     copy_volume_statistics.where(_l.c.library_id == 140 )
             copy_volume_statistics = \
                 copy_volume_statistics.group_by(text('c.copy_id, c.name, l.short_name '))
             copy_volume_statistics = copy_volume_statistics.order_by(text('c.name '))
@@ -3067,11 +2643,14 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
                 select_from( text(text_select))
             if library_short_name:
                 copy_plate_screening_statistics = \
-                    copy_plate_screening_statistics.where(literal_column('l.short_name') == library_short_name )
-#                     copy_plate_screening_statistics.where(_l.c.library_id == 140 )
+                    copy_plate_screening_statistics.where(
+                        literal_column('l.short_name') == library_short_name )
+            
             copy_plate_screening_statistics = \
-                copy_plate_screening_statistics.group_by('c.copy_id, c.name, l.short_name')
-            copy_plate_screening_statistics = copy_plate_screening_statistics.cte('copy_plate_screening_statistics')
+                copy_plate_screening_statistics.group_by(
+                    'c.copy_id, c.name, l.short_name')
+            copy_plate_screening_statistics = \
+                copy_plate_screening_statistics.cte('copy_plate_screening_statistics')
     
             # = copy screening statistics = 
             
@@ -3094,14 +2673,17 @@ class LibraryCopiesResource(SqlAlchemyResource, ManagedModelResource):
             j = j.outerjoin(c1, _c.c.copy_id == text('c1.copy_id'))
             j = j.outerjoin(c2,text('c1.copy_id = c2.copy_id') )
             j = j.outerjoin(c3, text('c1.copy_id = c3.copy_id') )
-    
+            
             logger.info(str(('====j', str(j))))
             
             stmt = select(columns).select_from(j)
-
+            
             # general setup
              
             (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+            
+            if not order_clauses:
+                stmt = stmt.order_by("library_short_name","copy_name")
  
             title_function = None
             if param_hash.get(HTTP_PARAM_USE_TITLES, False):
@@ -3264,7 +2846,7 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
              
             rowproxy_generator = None
             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-                rowproxy_generator = SqlAlchemyResource.create_vocabulary_rowproxy_generator(field_hash)
+                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
         
@@ -3429,6 +3011,10 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
 
         # perform ordering and filters     
         
+        
+        # Fixme: why not:             
+        # (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+
         order_clauses = self.build_sqlalchemy_ordering(request)
         logger.info(str(('order_clauses', [str(c) for c in order_clauses])))
         if order_clauses:
@@ -3442,6 +3028,9 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
                 _alias = Alias(stmt)
                 stmt = select([text('*')]).select_from(_alias)
             stmt = stmt.where(filter_expression)
+ 
+        if not order_clauses:
+            stmt = stmt.order_by("plate_number","well_name")
 
         # need the count
         # TODO: select (and join) only the columns that are being shown
@@ -4082,8 +3671,9 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
         
         return well_bundle
 
-# FIXME: will replace this with the ApiLog resource?
-class ActivityResource(ManagedModelResource):
+# TODO: Eventually, replace much of this with the ApiLog resource; 
+# after determining best way to handle m2m reln's
+class ActivityResource(SqlAlchemyResource,ManagedModelResource):
 
     performed_by = fields.ToOneField(
         'db.api.ScreensaverUserResource', 
@@ -4103,27 +3693,143 @@ class ActivityResource(ManagedModelResource):
         filtering = {}
         serializer = LimsSerializer()
 
+        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
+        always_return_data = True 
+
         
     def __init__(self, **kwargs):
         super(ActivityResource,self).__init__(**kwargs)
 
-    def dehydrate(self, bundle):
-        # FIXME: hack for demo
-        bundle.data['activity_type'] = 'library_contents_update' 
-        return bundle
-    
-#     def prepend_urls(self):
-#         # NOTE: this match "((?=(schema))__|(?!(schema))[^/]+)" 
-#         # allows us to match any word (any char except forward slash), 
-#         # except "schema", and use it as the key value to search for.
-#         # also note the double underscore "__" is because we also don't want to 
-#         # match in the first clause.
-#         # We don't want "schema" since that reserved word is used by tastypie 
-#         # for the schema definition for the resource (used by the UI)
-#         return [
-#             url((r"^(?P<resource_name>%s)/(?P<plate_id>((?=(schema))__|(?!(schema))[^/]+))%s$"
-#                 )  % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),]
+    def prepend_urls(self):
+        # Note: because this prepends the other list, we have to make sure 
+        # "schema" is matched
+        
+        return [
+            # override the parent "base_urls" so that we don't need to worry about schema again
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+
+            url(r"^(?P<resource_name>%s)"
+                r"/(?P<cherry_pick_request_id>[\d]+)"
+                r"/(?P<plate_ordinal>[\d]+)"
+                r"/(?P<attempt_ordinal>[\d]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ]
+
+    def get_detail(self, request, **kwargs):
+        # TODO: this is a strategy for refactoring get_detail to use get_list:
+        # follow this with wells/
+        logger.info(str(('get_detail', kwargs)))
+
+        kwargs['is_for_detail']=True
+        
+        return self.get_list(request, **kwargs)
+            
+    def get_list(self,request,**kwargs):
+
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+
+        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+
+    def build_list_response(self,request, param_hash={}, **kwargs):
+        ''' 
+        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
+        @returns django.http.response.StreamingHttpResponse 
+        '''
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        is_for_detail = kwargs.pop('is_for_detail', False)
+        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = re.sub(r'[\W]+','_',filename)
+        logger.info(str(('get_list', filename, kwargs)))
+        
+        try:
+            
+            # general setup
+             
+            schema = super(ActivityResource,self).build_schema()
+          
+            manual_field_includes = set(param_hash.get('includes', []))
+            if DEBUG_GET_LIST: 
+                logger.info(str(('manual_field_includes', manual_field_includes)))
+  
+            (filter_expression, filter_fields) = \
+                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+                                  
+            field_hash = self.get_visible_fields(
+                schema['fields'], filter_fields, manual_field_includes, 
+                is_for_detail=is_for_detail)
+              
+            order_params = param_hash.get('order_by',[])
+            order_clauses = \
+                SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
+             
+            rowproxy_generator = None
+            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
+                rowproxy_generator = \
+                    IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+ 
+            # specific setup 
+            base_query_tables = ['activity']
+        
+            custom_columns = {
+                'screen_id': literal_column(
+                    '( select facility_id '
+                    '  from screen where screen.screen_id=cherry_pick_request.screen_id )'
+                    ).label('screen_id'),
+                'performed_by_name': literal_column(
+                    "(select su.first_name || ' ' || su.last_name "
+                    ' from activity a'
+                    ' join screensaver_user su on(a.performed_by_id=su.screensaver_user_id) '
+                    ' where a.activity_id=activity.id )').label('performed_by_name'),
+                'activity_type': literal_column(
+                    '()'
+                    ).label('activity_type')
+                    
+            }
+            
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                custom_columns=custom_columns )
+
+            # build the query statement
+            _a = self.bridge['activity']
+            _u = self.bridge['screensaver_user']
+            
+            
+            j = join(_a,_u,
+                _a.c.performed_by_id==_u.c.screensaver_user_id)
+            stmt = select(columns).select_from(j)
+            # general setup
+             
+            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+            
+            if not order_clauses:
+                stmt = stmt.order_by(nullslast(desc(column('date_performed'))))
+            
+            title_function = None
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                title_function = lambda key: field_hash[key]['title']
+            
+            return self.stream_response_from_cursor(
+                request, stmt, count_stmt, filename, 
+                field_hash=field_hash, 
+                is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function  )
+             
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on get_list', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e  
+
+
 
 class LibraryResource(SqlAlchemyResource, ManagedModelResource):
     
@@ -4230,7 +3936,7 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
             
             rowproxy_generator = None
             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-                rowproxy_generator = SqlAlchemyResource.create_vocabulary_rowproxy_generator(field_hash)
+                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
 
             # specific setup
                                      
@@ -4319,6 +4025,24 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
                  r"/plate%s$") % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_library_copyplateview'), 
                 name="api_dispatch_library_copyplateview"),
+
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/copy/(?P<copy_name>[^/]+)"
+                 r"/copywell/(?P<well_id>[^/]+)%s$") % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_library_copywellview'), 
+                name="api_dispatch_library_copywellview"),
+
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/copy/(?P<copy_name>[^/]+)"
+                 r"/copywellhistory/(?P<well_id>[^/]+)%s$") % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_library_copywellhistoryview'), 
+                name="api_dispatch_library_copywellhistoryview"),
+
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/copy/(?P<copy_name>[^/]+)"
+                 r"/copywell%s$") % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_library_copywellview'), 
+                name="api_dispatch_library_copywellview"),
 
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
                  r"/copy/(?P<copy_name>[^/]+)%s$") % (self._meta.resource_name, trailing_slash()), 
@@ -4412,21 +4136,21 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         logger.info(str(('short_name',kwargs['short_name'])))
         kwargs['library_short_name'] = kwargs.pop('short_name')
         return LibraryCopiesResource().dispatch('list', request, **kwargs)    
- 
-#     def dispatch_libraryplateview(self, request, **kwargs):
-#         kwargs['library_short_name'] = kwargs.pop('short_name')
-#         return LibraryCopyPlateResource().dispatch('list', request, **kwargs)   
-    
-#     def dispatch_librarycopyplatesview(self, request, **kwargs): 
-#         kwargs['library_short_name'] = kwargs.pop('short_name')
-#         return LibraryCopyPlatesResource().dispatch('list', request, **kwargs)   
 
     def dispatch_library_copyplateview(self, request, **kwargs):
         logger.info(str(('dispatch_library_copyplateview', kwargs)))
         kwargs['library_short_name'] = kwargs.pop('short_name')
         return LibraryCopyPlatesResource().dispatch('list', request, **kwargs)   
-#         return LibraryCopyPlateResource().dispatch('list', request, **kwargs)    
-        
+
+    def dispatch_library_copywellview(self, request, **kwargs):
+        logger.info(str(('dispatch_library_copywellview', kwargs)))
+        kwargs['library_short_name'] = kwargs.pop('short_name')
+        return CopyWellResource().dispatch('list', request, **kwargs)   
+
+    def dispatch_library_copywellhistoryview(self, request, **kwargs):
+        logger.info(str(('dispatch_library_copywellhistoryview', kwargs)))
+        kwargs['library_short_name'] = kwargs.pop('short_name')
+        return CopyWellHistoryResource().dispatch('list', request, **kwargs)   
 
     def dispatch_library_wellview(self, request, **kwargs):
         kwargs['library_short_name'] = kwargs.pop('short_name')
@@ -4436,11 +4160,6 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         logger.info(str(('dispatch_library_reagentview ', kwargs)))
         kwargs['library_short_name'] = kwargs.pop('short_name')
         return self.get_reagent_resource().dispatch('list', request, **kwargs)    
-                    
-#     def dispatch_library_reagentview2(self, request, **kwargs):
-#         logger.info(str(('dispatch_library_reagentview ', kwargs)))
-#         kwargs['library_short_name'] = kwargs.pop('short_name')
-#         return ReagentResource2().dispatch('list', request, **kwargs)    
                     
     def dispatch_libraryversionview(self, request, **kwargs):
         kwargs['library_short_name'] = kwargs.pop('short_name')

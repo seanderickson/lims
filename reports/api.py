@@ -1,56 +1,72 @@
-import datetime
-import json
-import logging
-import sys
-import os
-import re
-import traceback
 from collections import defaultdict, OrderedDict
 from copy import deepcopy
-from django.conf.urls import url
+import csv
+import datetime
+from functools import wraps
+import json
+import logging
+import os
+import re
+import sys
+import traceback
+
 from django.conf import settings
+from django.conf.urls import url
+from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
-from django.contrib.auth.models import User
-from django.db.models.aggregates import Max
-from django.db.models import Q
 from django.db import transaction
-from django.utils.encoding import smart_text
-from django.utils import timezone, importlib
+from django.db.models import Q
+from django.db.models.aggregates import Max
 from django.forms.models import model_to_dict
-from django.http.response import HttpResponseBase
-from tastypie.exceptions import NotFound, ImmediateHttpResponse, Unauthorized,\
-    BadRequest
-from tastypie.bundle import Bundle
-from tastypie.authorization import Authorization, ReadOnlyAuthorization
-from tastypie.authentication import BasicAuthentication, SessionAuthentication,\
-    MultiAuthentication
-from tastypie.constants import ALL, ALL_WITH_RELATIONS
-# NOTE: tastypie.fields is required for dynamic field instances using eval
-from tastypie import fields 
-import tastypie.resources
-from tastypie.resources import Resource, ModelResource
-from tastypie.utils.urls import trailing_slash
-
-from reports.serializers import LimsSerializer, CsvBooleanField, CSVSerializer
-from reports.models import MetaHash, Vocabularies, ApiLog, ListLog, Permission,\
-                           UserGroup, UserProfile, Record
-# import lims.settings 
-from tastypie.utils.timezone import make_naive
-from tastypie.http import HttpForbidden
-from tastypie.validation import Validation
-from reports.dump_obj import dumpObj
-from tastypie.utils.dict import dict_strip_unicode_keys
-from functools import wraps
-import six
-from django.http.response import HttpResponse
-import csv
-from tastypie.utils.mime import build_content_type
 from django.http.request import HttpRequest
+from django.http.response import HttpResponse
+from django.http.response import HttpResponseBase
+from django.utils import timezone, importlib
+from django.utils.encoding import smart_text
+import six
+from sqlalchemy import select, asc, text
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.sql import and_, or_, not_          
+from sqlalchemy.sql import asc, desc, alias, Alias
+from sqlalchemy.sql import func
+from sqlalchemy.sql.elements import literal_column
+from sqlalchemy.sql.expression import column, join
+from sqlalchemy.sql.expression import nullsfirst, nullslast
+from tastypie import fields 
+from tastypie.authentication import BasicAuthentication, SessionAuthentication, \
+    MultiAuthentication
+from tastypie.authorization import Authorization, ReadOnlyAuthorization
+from tastypie.bundle import Bundle
+from tastypie.constants import ALL, ALL_WITH_RELATIONS
+from tastypie.exceptions import NotFound, ImmediateHttpResponse, Unauthorized, \
+    BadRequest
+from tastypie.http import HttpForbidden
+from tastypie.resources import Resource, ModelResource
+import tastypie.resources
+from tastypie.resources import convert_post_to_put
+from tastypie.utils.dict import dict_strip_unicode_keys
+from tastypie.utils.mime import build_content_type
+from tastypie.utils.timezone import make_naive
+from tastypie.utils.urls import trailing_slash
+from tastypie.validation import Validation
 
+from reports.dump_obj import dumpObj
+from reports.models import MetaHash, Vocabularies, ApiLog, ListLog, Permission, \
+                           UserGroup, UserProfile, Record
+from reports.serializers import LimsSerializer, CsvBooleanField, CSVSerializer
+from reports.utils.profile_decorator import profile
+from reports.sqlalchemy_resource import SqlAlchemyResource
+from sqlalchemy.sql.elements import literal_column
+
+# NOTE: tastypie.fields is required for dynamic field instances using eval
+# import lims.settings 
 logger = logging.getLogger(__name__)
 
-
+from reports import CSV_DELIMITER,LIST_DELIMITER_SQL_ARRAY,LIST_DELIMITER_URL_PARAM,\
+    HTTP_PARAM_RAW_LISTS,HTTP_PARAM_USE_TITLES,HTTP_PARAM_USE_VOCAB,\
+    LIST_BRACKETS, MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE
+    
 class UserGroupAuthorization(Authorization):
     
     def _is_resource_authorized(self, resource_name, user, permission_type):
@@ -175,7 +191,6 @@ class SuperUserAuthorization(ReadOnlyAuthorization):
         raise Unauthorized("Only superuser may update.")
 
 
-
 class IccblBaseResource(Resource):
 #  class StreamingResource(Resource):
     """
@@ -259,7 +274,7 @@ class IccblBaseResource(Resource):
         self.throttle_check(request)
 
         # All clear. Process the request.
-        tastypie.resources.convert_post_to_put(request)
+        convert_post_to_put(request)
         response = method(request, **kwargs)
 
         # Add the throttled request.
@@ -282,6 +297,50 @@ class IccblBaseResource(Resource):
             logger.info(str(('no downloadID', request.GET )))
 
         return response
+
+       
+    @staticmethod    
+    def create_vocabulary_rowproxy_generator(field_hash):
+        '''
+        Create a generator that iterates over the sqlalchemy.engine.ResultProxy
+        - yields a wrapper for sqlalchemy.engine.RowProxy on each iteration
+        - the wrapper will return vocabulary titles for valid vocabulary values
+        in each row[key] for the key columns that are vocabulary columns.
+        - returns the regular row[key] value for other columns
+        '''
+        vocabularies = {}
+        for key, field in field_hash.iteritems():
+            if field.get('vocabulary_scope_ref', None):
+                scope = field.get('vocabulary_scope_ref', None);
+                vocabularies[key] = VocabulariesResource.get_vocabularies_by_scope(scope)
+        def vocabulary_rowproxy_generator(cursor):
+            class Row:
+                def __init__(self, row):
+                    self.row = row
+                def has_key(self, key):
+                    return self.row.has_key(key)
+                def keys(self):
+                    return self.row.keys();
+                def __getitem__(self, key):
+                    if not row[key]:
+                        return row[key]
+                    if key in vocabularies:
+                        if row[key] not in vocabularies[key]:
+                            logger.error(str(('----warn, unknown vocabulary', 
+                                'column', key, 'value', row[key],
+                                'scope', field_hash[key]['vocabulary_scope_ref'], 
+                                'vocabularies defined',vocabularies[key].keys() )))
+                            return self.row[key] 
+                        else:
+                            # logger.info(str(('getitem', key, row[key], 
+                            #    vocabularies[key][row[key]]['title'])))
+                            return vocabularies[key][row[key]]['title']
+                    else:
+                        return self.row[key]
+            for row in cursor:
+                yield Row(row)
+        return vocabulary_rowproxy_generator
+
 
 
 
@@ -714,7 +773,6 @@ class LoggingMixin(IccblBaseResource):
 #     
 #         return response        
     
-from reports.utils.profile_decorator import profile
 
 class UnlimitedDownloadResource(IccblBaseResource):
     ''' 
@@ -890,8 +948,8 @@ class ManagedResource(LoggingMixin):
             scope=self.scope, 
             field_definition_scope=field_definition_scope)
         for key,fieldhash in metahash.items():
-            if 'filtering' in fieldhash and fieldhash['filtering']:
-                self.Meta.filtering[key] = ALL_WITH_RELATIONS
+#             if 'filtering' in fieldhash and fieldhash['filtering']:
+            self.Meta.filtering[key] = ALL_WITH_RELATIONS
         
         for key,fieldhash in metahash.items():
             if 'ordering' in fieldhash and fieldhash['ordering']:
@@ -1080,7 +1138,7 @@ class ManagedResource(LoggingMixin):
         '''
         Override
         '''
-        DEBUG_BUILD_SCHEMA = False or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_BUILD_SCHEMA = True or logger.isEnabledFor(logging.DEBUG)
         # FIXME: consider using the cache decorator or a custom memoize decorator?
         schema = cache.get(self._meta.resource_name + ":schema")
         if schema:
@@ -2063,7 +2121,7 @@ class ApiLogAuthorization(UserGroupAuthorization):
             return True
 
 
-class ApiLogResource(ManagedModelResource):
+class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
     
     class Meta:
         queryset = ApiLog.objects.all().order_by(
@@ -2083,6 +2141,202 @@ class ApiLogResource(ManagedModelResource):
         self.scope = 'fields.apilog'
         super(ApiLogResource,self).__init__(**kwargs)
 
+    def prepend_urls(self):
+        return [
+            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail1'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)/children%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_apilog_childview'), name="api_dispatch_apilog_childview"),
+            url((r"^(?P<resource_name>%s)/children/(?P<ref_resource_name>[\w\d_.\-:]+)"
+                 r"/(?P<key>[\w\d_.\-\+: \/]+)"
+                 r"/(?P<date_time>[\w\d_.\-\+:]+)%s$")
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_apilog_childview2'), name="api_dispatch_apilog_childview2"),
+            url((r"^(?P<resource_name>%s)/(?P<ref_resource_name>[\w\d_.\-:]+)"
+                 r"/(?P<key>[\w\d_.\-\+: \/]+)"
+                 r"/(?P<date_time>[\w\d_.\-\+:]+)%s$")
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail2'), name="api_dispatch_detail"),
+        ]    
+
+
+
+    def get_detail(self, request, **kwargs):
+        # TODO: this is a strategy for refactoring get_detail to use get_list:
+        # follow this with wells/
+        logger.info(str(('get_detail', kwargs)))
+
+        
+        ref_resource_name = kwargs.get('ref_resource_name', None)
+        if not ref_resource_name:
+            logger.info(str(('no ref_resource_name provided')))
+            raise NotImplementedError('must provide a ref_resource_name parameter')
+        
+        key = kwargs.get('key', None)
+        if not key:
+            logger.info(str(('no key provided')))
+            raise NotImplementedError('must provide a key parameter')
+        
+        date_time = kwargs.get('date_time', None)
+        if not date_time:
+            logger.info(str(('no date_time provided')))
+            raise NotImplementedError('must provide a date_time parameter')
+        
+        kwargs['is_for_detail']=True
+        
+        return self.get_list(request, **kwargs)
+        
+    
+    def get_list(self,request,**kwargs):
+
+        parent_log_id = None
+        if 'parent_log_id' in kwargs:
+            parent_log_id = kwargs.pop('parent_log_id')
+            
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+
+        if parent_log_id:
+            kwargs['parent_log_id'] = parent_log_id
+        
+        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+
+        
+    def build_list_response(self,request, param_hash={}, **kwargs):
+        ''' 
+        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
+        @returns django.http.response.StreamingHttpResponse 
+        '''
+        DEBUG_GET_LIST = True or logger.isEnabledFor(logging.DEBUG)
+
+        if DEBUG_GET_LIST:
+            logger.info(str(('param_hash', param_hash, 'kwargs', kwargs )))
+        is_for_detail = kwargs.pop('is_for_detail', False)
+
+             
+        schema = super(ApiLogResource,self).build_schema()
+        filename = None
+        if 'id_attribute' in schema:
+            filename = self._meta.resource_name + '_' + '_'.join(kwarg[key] for key in schema['id_attribute'] if key in kwargs)
+        if not filename:
+            filename = self._meta.resource_name + '_' + '_'.join([str(v) for v in kwargs.values()])
+        filename = re.sub(r'[\W]+','_',filename)
+        logger.info(str(('get_list', filename, kwargs)))
+        
+        ref_resource_name = param_hash.pop('ref_resource_name', None)
+        if ref_resource_name:
+            param_hash['ref_resource_name__eq'] = ref_resource_name
+
+        key = param_hash.pop('key', None)
+        if key:
+            param_hash['key__eq'] = key
+
+        date_time = param_hash.pop('date_time', None)
+        if date_time:
+            param_hash['date_time__eq'] = date_time
+
+        try:
+            
+            # general setup
+          
+            manual_field_includes = set(param_hash.get('includes', []))
+            if DEBUG_GET_LIST: 
+                logger.info(str(('manual_field_includes', manual_field_includes)))
+  
+            (filter_expression, filter_fields) = \
+                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+
+            if filter_expression is None and 'parent_log_id' not in kwargs:
+                msgs = { 'ApiLogResource': 'can only service requests with filter expressions' }
+                logger.info(str((msgs)))
+                raise ImmediateHttpResponse(response=self.error_response(request,msgs))
+                                  
+            field_hash = self.get_visible_fields(
+                schema['fields'], filter_fields, manual_field_includes, 
+                is_for_detail=is_for_detail)
+              
+            order_params = param_hash.get('order_by',[])
+            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
+             
+            rowproxy_generator = None
+            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
+                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+ 
+            # specific setup 
+            base_query_tables = ['reports_apilog']
+            
+            custom_columns = {
+                #  create a full ISO-8601 date format
+                'parent_log_uri': literal_column(
+                    "parent_log.ref_resource_name "
+                    "|| '/' || parent_log.key || '/' "
+                    "|| to_char(parent_log.date_time, 'YYYY-MM-DD\"T\"HH24:MI:SS.MS') "
+                    "|| to_char(extract('timezone_hour' from parent_log.date_time),'S00')" 
+                    "||':'" 
+                    "|| to_char(extract('timezone_minute' from parent_log.date_time),'FM00')" 
+                    ).label('parent_log_uri'),
+                'child_logs': literal_column(
+                    "(select count(*) from reports_apilog ra where ra.parent_log_id=reports_apilog.id)"
+                    ).label('child_logs')
+            }
+            
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                custom_columns=custom_columns )
+
+            # build the query statement
+
+            _log = self.bridge['reports_apilog']
+            _log2 = self.bridge['reports_apilog']
+            _log2 = _log2.alias('parent_log')
+            
+#             j = join(_cw, _c, _c.c.copy_id == _cw.c.copy_id )
+            j = join(_log, _log2, _log.c.parent_log_id == _log2.c.id, isouter=True )
+            
+            stmt = select(columns).select_from(j)
+            
+            if 'parent_log_id' in kwargs:
+                stmt = stmt.where(_log2.c.id == kwargs.pop('parent_log_id'))
+
+            # general setup
+             
+            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+            
+            if not order_clauses:
+                stmt = stmt.order_by('ref_resource_name','key', 'date_time')
+            
+            title_function = None
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                title_function = lambda key: field_hash[key]['title']
+            
+            return self.stream_response_from_cursor(
+                request, stmt, count_stmt, filename, 
+                field_hash=field_hash, 
+                is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function  )
+             
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on get_list', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e  
+        
+    
+    def build_schema(self):
+        schema = super(ApiLogResource,self).build_schema()
+        temp = [ x.key for x in 
+            MetaHash.objects.all().filter(scope='resource').distinct('key')]
+        schema['extraSelectorOptions'] = { 
+            'label': 'Resource', 
+            'searchColumn': 'ref_resource_name', 'options': temp }
+        return schema        
+    
+    # Legacy TP methods
     def get_resource_uri(self,bundle_or_obj=None):
         '''
         for efficiency, return a localized URI:
@@ -2138,35 +2392,14 @@ class ApiLogResource(ManagedModelResource):
 #             return keys
 #         else:
 #             return bundle.obj.added_keys
-    
-    def build_schema(self):
-        schema = super(ApiLogResource,self).build_schema()
-        temp = [ x.key for x in 
-            MetaHash.objects.all().filter(scope='resource').distinct('key')]
-        schema['extraSelectorOptions'] = { 
-            'label': 'Resource', 
-            'searchColumn': 'ref_resource_name', 'options': temp }
-        return schema
 
-    def prepend_urls(self):
-        return [
-            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)/children%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_apilog_childview'), name="api_dispatch_apilog_childview"),
-            url((r"^(?P<resource_name>%s)/children/(?P<ref_resource_name>[\w\d_.\-:]+)"
-                 r"/(?P<key>[\w\d_.\-\+: ]+)"
-                 r"/(?P<date_time>[\w\d_.\-\+:]+)%s$")
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_apilog_childview2'), name="api_dispatch_apilog_childview2"),
-            url((r"^(?P<resource_name>%s)/(?P<ref_resource_name>[\w\d_.\-:]+)"
-                 r"/(?P<key>[\w\d_.\-\+: ]+)"
-                 r"/(?P<date_time>[\w\d_.\-\+:]+)%s$")
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-        ]    
+
+    def dispatch_detail1(self, request, **kwargs):
+        return ApiLogResource().dispatch('detail', request, **kwargs)    
+
+    def dispatch_detail2(self, request, **kwargs):
+        return ApiLogResource().dispatch('detail', request, **kwargs)    
+
 
     def dispatch_apilog_childview(self, request, **kwargs):
         kwargs['parent_log_id'] = kwargs.pop('id')
@@ -2179,6 +2412,7 @@ class ApiLogResource(ManagedModelResource):
         date_time = kwargs.pop('date_time')
         logger.info(str(('childview2', ref_resource_name, key, date_time)))
         parent_log = ApiLog.objects.get(ref_resource_name=ref_resource_name, key=key, date_time=date_time)
+        logger.info(str(('parent_log', parent_log)))
         kwargs['parent_log_id'] = parent_log.id
         return ApiLogResource().dispatch('list', request, **kwargs)    
 

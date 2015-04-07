@@ -2,15 +2,739 @@
 from south.utils import datetime_utils as datetime
 from south.db import db
 from south.v2 import SchemaMigration
+from django.utils import timezone, tzinfo
 from django.db import models
+from reports.models import ApiLog
+import json
+from django.utils.timezone import make_aware
+import datetime
+import logging
+from collections import OrderedDict
+from db.models import CherryPickScreening, CherryPickLiquidTransfer,\
+    LibraryScreening
+import sys
+import os
+logger = logging.getLogger(__name__)
 
 
 class Migration(SchemaMigration):
 
-    def forwards(self, orm):
+
+    def forwards(self,orm):
+        # 1. for WVA's
         
-        pass;
-        # TODO: Migrate logs for library screenings, well volume adjustments
+        base_uri = '/db/api/v1'
+        
+        # a. get all cplt's
+        # strategy:
+        # - create a state (variable?) on CPR that will be changed with the uber-parent log
+        # - create a state variable on cpap, change the state with a log
+        # - iterate through all wva's, create the copywell log for each vol xfer,
+        # then look up the wva-lcp-cpap-cplt and find the log for it & set it as the parent log
+        # for that cw log, lcp log
+        # 
+        
+        cpap_parent_logs = {}
+        times_seen = set() # hack, because some activities have identical date_of_activity
+        
+        liquid_transfers = CherryPickLiquidTransfer.objects.all()
+        logger.info(str(('create logs for ', len(liquid_transfers), 'liquid_transfers')))
+        for cplt in liquid_transfers:
+            lab_activity = cplt.activity
+            activity = lab_activity.activity
+            cpr = cplt.cherrypickassayplate_set.all()[0].cherry_pick_request
+            screen_facility_id = lab_activity.screen.facility_id
+
+            # 1. create a parent log on the cherry pick
+            cpr_log = ApiLog()
+            extra_information = {}
+            
+            cpr_log.username = activity.performed_by.ecommons_id
+            if not cpr_log.username:
+                cpr_log.username = '%s: %s' % (
+                    activity.performed_by.screensaver_user_id,
+                    activity.performed_by.email)
+            
+            cpr_log.user_id = activity.performed_by.screensaver_user_id
+            
+            cpr_log.ref_resource_name = 'cherrypickrequest'
+            cpr_log.key = str(cpr.cherry_pick_request_id)
+            cpr_log.uri = '/'.join([base_uri,cpr_log.ref_resource_name,cpr_log.key])
+            cpr_log.api_action = 'PATCH'
+            
+            # Note: "plating_activity" is a pseudo-key: this belies the need for 
+            # an "activity" controlleed vocabulary for batch activities.
+            cpr_log.diff_keys = json.dumps(['plating_activity'])
+            previous_state = 'not_plated'
+            cpap_state = 'not_plated'
+            if cplt.status == 'Successful':
+                cpap_state = 'plated'
+            elif cplt.status == 'Failed':
+                cpap_state = 'failed'
+            elif cplt.status == 'Canceled':
+                cpap_state = 'canceled'
+            else:
+                logger.warn(str(('unknown state', cplt.status,cpr,cplt)))
+                
+            cpr_log.diffs = json.dumps({
+                'plating_activity': [previous_state, cpap_state]
+                })
+            cpr_log.comment = activity.comments
+            cpr_log.date_time = datetime.datetime.combine(
+                activity.date_of_activity, datetime.time())
+#             cpr_log.date_time = make_aware(
+#                 activity.date_of_activity, timezone.get_default_timezone())
+            if cpr_log.date_time not in times_seen:
+                times_seen.add(cpr_log.date_time)
+            else:
+                i = 0
+                while cpr_log.date_time in times_seen:
+                    i += 1
+                    cpr_log.date_time += datetime.timedelta(0,i)
+                times_seen.add(cpr_log.date_time)
+            cpr_log.date_time = make_aware(cpr_log.date_time, timezone.get_default_timezone())
+            extra_information['date_of_activity'] = str(activity.date_of_activity)
+            extra_information['created_by_id'] = activity.created_by_id
+            # n/a for cherrypick plates
+            # extra_information['volume_transferred_per_well_from_library_plates'] = \
+            #    lab_activity.volume_transferred_per_well_from_library_plates
+            extra_information['screen'] = screen_facility_id
+            
+            cpr_log.json_field = json.dumps(extra_information)
+            logger.info(str(('create cpr_log', cpr_log)))
+            cpr_log.save()
+            
+            # b. cpap's for cplt's
+            for cpap in cplt.cherrypickassayplate_set.all():
+                cpap_log = ApiLog()
+                cpap_log.parent_log = cpr_log
+                cpap_log.username = cpr_log.username
+                cpap_log.user_id = cpr_log.user_id
+                cpap_log.date_time = cpr_log.date_time
+                cpap_log.api_action = cpr_log.api_action
+                cpap_log.comment = cpr_log.comment
+                
+                cpap_log.ref_resource_name = "cherrypickassayplate"
+                cpap_log.key = '/'.join(str(x) for x in [
+                    cpap.cherry_pick_request_id, 
+                    cpap.plate_ordinal, 
+                    cpap.attempt_ordinal ])
+                cpap_log.uri = '/'.join([base_uri,cpap_log.ref_resource_name,cpap_log.key])
+                
+                cpap_log.diff_keys = json.dumps(['state'])
+                cpap_log.diffs = json.dumps([previous_state,cpap_state])
+                
+                cpap_log.save()
+                
+                cpap_parent_logs[cpap.cherry_pick_assay_plate_id] = cpap_log
+                
+                # lcp/cpap logs
+
+        logger.info(str(('finished step 1:',len(liquid_transfers), 'cpap parent logs',len(cpap_parent_logs))))        
+        self.forward1(orm,cpap_parent_logs)
+        
+    def forward1(self, orm,cpap_parent_logs):
+        
+        logger.info(str(('now create the child logs for all of the cplt\'s' )))
+        
+        # create apilogs for
+        # 1. well volume adjustments (copy_id, well_id)
+        #    a. well volume correction activities
+        #    - get date time from correction activity, who, comment
+        #    b. lab_cherry_pick -> cherry_pick_assay_plate -> cherry_pick_liquid_transfer -> lab_activity
+        #     or cherry_pick_screening -> cpap's -> lcp -> wva
+        cols = OrderedDict({
+            'well_id': 'well_id' ,
+            'copy_name':'c.name',
+            'plate_number':'p.plate_number',
+            'volume_adjustment': 'wva.volume',
+            'initial_volume': 'p.well_volume',
+            'comments': 'a.comments',
+            'ecommons_id': 'u.ecommons_id',
+            'email': 'u.email',
+            'date_created': 'a.date_created',
+            'date_of_activity': 'a.date_of_activity',
+            'performed_by_id': 'performed_by_id',
+            'login_id': 'u.login_id',
+            'legacy_plate_name': 'cpap.legacy_plate_name',
+            'cpap_id': 'cpap.cherry_pick_assay_plate_id'
+            })
+        _cols = ', '.join([ '%s as %s' % (value,key) for key, value in cols.items() ])
+        query_sql = '\n'.join([
+            'select ',
+            _cols ,
+            'from well_volume_adjustment wva ' ,
+            'join copy c using(copy_id) ',
+            'join well w using(well_id) ',
+            'join plate p on(wva.copy_id=p.copy_id and w.plate_number=p.plate_number) ',
+            'join lab_cherry_pick lcp on (wva.lab_cherry_pick_id=lcp.lab_cherry_pick_id) ',
+            'join cherry_pick_assay_plate cpap ',
+            '  on (cpap.cherry_pick_assay_plate_id = lcp.cherry_pick_assay_plate_id)',
+            'join cherry_pick_liquid_transfer cplt ', 
+            '    on(cpap.cherry_pick_liquid_transfer_id=cplt.activity_id) '
+            'join activity a on(a.activity_id = cplt.activity_id)',
+            'join screensaver_user u on(u.screensaver_user_id=a.performed_by_id)' 
+            ' where a.activity_id=%s ',
+            'AND p.well_volume is not null ',
+            'order by c.name, well_id,wva.well_volume_adjustment_id ',
+            ])        
+        logger.info(str(('query_sql', query_sql)))
+
+        copywell_resource_name = 'copywell'
+        copywell_uri = '/db/api/v1/' + copywell_resource_name
+        cpap_resource_name = 'cherrypickassayplate'
+        cpap_uri = '/db/api/v1/' + cpap_resource_name
+        plate_resource_name = 'plate'
+        plate_uri = '/db/api/v1/' + plate_resource_name
+
+        
+        liquid_transfers = CherryPickLiquidTransfer.objects.all()
+        logger.info(str(('create logs for ', len(liquid_transfers), 'liquid_transfers')))
+        
+        count = 0
+        parent_log_count = 0
+        
+        copywells = {}
+        prev_logs = set()
+        
+        for xfer in liquid_transfers:
+            cpap = xfer.cherrypickassayplate_set.all()[0] 
+            
+            if cpap.cherry_pick_assay_plate_id not in cpap_parent_logs:
+                raise Exception(str(('could not find a parent log for cpap', cpap,xfer)))
+                
+            parent_log = cpap_parent_logs[cpap.cherry_pick_assay_plate_id]
+            
+#             lab_activity = xfer.activity
+#             activity = lab_activity.activity
+#             # create a log for the cpap
+#             screen_facility_id = cpap.cherry_pick_request.screen.facility_id
+#             
+#             parent_log = ApiLog()
+#             extra_information = {}
+#             
+#             parent_log.username = activity.performed_by.ecommons_id
+#             if not parent_log.username:
+#                 parent_log.username = '%s: %s' % (
+#                     activity.performed_by.screensaver_user_id,
+#                     activity.performed_by.email)
+#             
+#             parent_log.user_id = activity.performed_by.screensaver_user_id
+#             
+#             parent_log.ref_resource_name = cpap_resource_name
+#             parent_log.key = '/'.join(str(x) for x in [
+#                 cpap.cherry_pick_request_id, 
+#                 cpap.plate_ordinal, 
+#                 cpap.attempt_ordinal ])
+#             parent_log.uri = cpap_uri + '/' + parent_log.key
+#             parent_log.api_action = 'PATCH'
+#             
+#             parent_log.diff_keys = json.dumps(['state','cherry_pick_liquid_transfer'])
+#             state = 'plated'
+#             if xfer.status != 'Successful':
+#                 state = xfer.status
+#             parent_log.diffs = json.dumps({
+#                 'state': ['not plated',state],
+#                 'cherry_pick_liquid_transfer': ['', xfer.status]
+#                 })
+#             parent_log.comment = activity.comments
+#             parent_log.date_time = make_aware(
+#                         activity.date_created, timezone.get_default_timezone())
+#             
+#             extra_information['date_of_activity'] = str(activity.date_of_activity)
+#             extra_information['created_by_id'] = activity.created_by_id
+#             # n/a for cherrypick plates
+#             # extra_information['volume_transferred_per_well_from_library_plates'] = \
+#             #    lab_activity.volume_transferred_per_well_from_library_plates
+#             extra_information['screen'] = screen_facility_id
+#             
+#             parent_log.json_field = json.dumps(extra_information)
+#             logger.info(str(('create parent_log', parent_log)))
+#             parent_log.save()
+#             
+            parent_log_count += 1
+            
+            colkeys = cols.keys()
+            # FIXME: create a log for each activity/cpap
+            _list = db.execute(query_sql, [xfer.activity_id])
+
+            if len(_list) == 0:
+                logger.info(str(('no adjustments for ', parent_log,xfer,xfer.status )))
+                continue;
+        
+            i = 0
+            prev_volume = None
+            for adjustment in _list:
+                
+                adj = dict(zip(colkeys, adjustment))
+                log = ApiLog()
+
+                try:
+                    log.username = parent_log.username
+                    log.user_id = parent_log.user_id
+                    
+                    log.ref_resource_name = copywell_resource_name
+                    log.api_action = 'PATCH'
+    
+                    log.key = adj['copy_name'] + '/'+ adj['well_id']
+                    log.uri = copywell_uri + '/' + log.key
+                    log.diff_keys = json.dumps(['volume'])
+                    
+                    if log.key in copywells:
+                        prev_volume = copywells[log.key]
+                    else:
+                        prev_volume = round(adj['initial_volume'], 10)
+                        copywells[log.key] = prev_volume
+                    
+                    new_volume = round(prev_volume + float(adj['volume_adjustment']),10)
+                    log.diffs = json.dumps({ 
+                        'volume':[prev_volume, new_volume ]})
+                    copywells[log.key] = new_volume
+                    
+                    log.comment = adj['comments'] or ''
+                    if  adj['legacy_plate_name']:
+                        log.comment = log.comment + '. ' + adj['legacy_plate_name']
+    
+                    log.date_time = parent_log.date_time
+                    log.json_field = json.dumps({
+                        'volume_adjustment': round(float(adj['volume_adjustment']),10) })
+                    if (log.ref_resource_name,log.key,log.date_time) in prev_logs :
+                        logger.warn(str(('log key already exists!', log)))
+                        log.date_time = log.date_time + datetime.timedelta(0,i+parent_log_count) # hack, add second
+                    
+                    log.parent_log = parent_log
+                    log.save()
+                    prev_logs.add((log.ref_resource_name,log.key,log.date_time))
+                    count += 1
+                    i += 1
+                except Exception, e:
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+                    msg = str((e,activity.activity_id, screen_facility_id ))
+                    
+                    logger.warn(str(('on migrate', 
+                         msg, exc_type, fname, exc_tb.tb_lineno)))
+                    raise e
+                if count % 10000 == 0:
+                    logger.info(str(( 'parent_log_count: ', parent_log_count, ' logs created', datetime.datetime.now() )))
+            logger.info(str(('done, parent_log_count',parent_log_count,'cplt count', i, 'total',count)))
+            
+#             if parent_log_count > 10:
+#                 break
+            
+        logger.info(str(('total', count, 'parent_log_count',parent_log_count)))   
+            
+        
+        # 2. assay_plate / library screenings xfers:
+        #    - assay_plate -> library_screening ->> lab_activity
+        
+        #for screening in LibraryScreening.objects.all():
+            # plate volume remaining log
+            
+        
+    def forward2(self, orm):
+        
+        # temporarily add this for the next migration test - 20150324
+        # Adding model 'CopyWell'
+#         db.create_table(u'copy_well', (
+#             (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+# #             ('library', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Library'])),
+#             ('plate', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Plate'])),
+#             ('copy', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Copy'])),
+#             ('well', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Well'])),
+#             ('well_name', self.gf('django.db.models.fields.TextField')()),
+#             ('plate_number', self.gf('django.db.models.fields.IntegerField')()),
+#             ('volume', self.gf('django.db.models.fields.FloatField')(null=True, blank=True)),
+#             ('initial_volume', self.gf('django.db.models.fields.FloatField')(null=True, blank=True)),
+#             ('adjustments', self.gf('django.db.models.fields.IntegerField')(null=True)),
+#         ))
+#         db.send_create_signal(u'db', ['CopyWell'])
+        
+        i = 0
+#         for copy in orm.Copy.objects.all().filter(library__short_name='ActiMolTimTec1').order_by('library__short_name','name'):
+        for copy in orm.Copy.objects.all().order_by('library__short_name','name'):
+            logger.info(str(('create logs for ', copy.name, copy.library.short_name)))
+            self.create_logs(copy)
+            i = i+1
+#             if i == 10: 
+#                 break
+        logger.info(str(('done, processed ', i, ' copies')))        
+        
+    def create_logs(self, copy):
+        
+        cols = OrderedDict({
+            'well_id': 'well_id' ,
+            'copy_name':'c.name',
+            'plate_number':'p.plate_number',
+            'volume_adjustment': 'wva.volume',
+            'initial_volume': 'p.well_volume',
+            'comments': 'a.comments',
+            'ecommons_id': 'u.ecommons_id',
+            'email': 'u.email',
+            'date_created': 'a.date_created',
+            'date_of_activity': 'a.date_of_activity',
+            'performed_by_id': 'performed_by_id',
+            'login_id': 'u.login_id'
+            })
+        _cols = ', '.join([ '%s as %s' % (value,key) for key, value in cols.items() ])
+
+        # TODO: re-organize this by 
+        # 1. cpap, as the parent log
+        # 1.a or cpap->cherry_pick_screening
+        #    cherry pick assay plate states: 
+        #    - not plated: 
+        #    - plated: _cherryPickLiquidTransfer != null && _cherryPickLiquidTransfer.isSuccessful();
+        #    - failed: cherryPickLiquidTransfer != null && _cherryPickLiquidTransfer.isFailed();
+        #    - cancelled: _cherryPickLiquidTransfer != null && _cherryPickLiquidTransfer.isCancelled();
+        #    - plated & screened: !_cherryPickScreenings.isEmpty();
+        # ** wva occurs even if the cplt is failed, see
+        # LibrariesDao.findRemainingVolumesInWellCopies
+        
+        #    lab cherry pick states:
+        #    - unfulfilled 
+        #    - allocated: wva's > 0
+        #    - mapped: CherryPickAssayPlate != null
+        #    - mapped+unallocated
+        #    - mapped+allocated
+        #    - failed
+        #    - canceled: assayPlate.isCancelled
+        #    - plated: wva's>0, assayPlate.isPlated: cherryPickLiquidTransfer != null
+        # 2. cherry_pick_request as the parent, parent
+        adjustment_queries = {
+            'corrections': '\n'.join([
+                'select ',
+                _cols ,
+                'from well_volume_adjustment wva ' ,
+                'join copy c using(copy_id) ',
+                'join well w using(well_id) ',
+                'join plate p on(wva.copy_id=p.copy_id and w.plate_number=p.plate_number) ',
+                'join activity a on(wva.well_volume_correction_activity_id = a.activity_id) ', 
+                'join screensaver_user u on(u.screensaver_user_id=a.performed_by_id)' 
+                ' where c.copy_id=%s ',
+                'order by c.name, well_id,wva.well_volume_adjustment_id ',
+                ]),
+            'cherry_picks': '\n'.join([
+                'select ',
+                _cols ,
+                ', cpap.legacy_plate_name as legacy_plate_name',
+                'from well_volume_adjustment wva ' ,
+                'join copy c using(copy_id) ',
+                'join well w using(well_id) ',
+                'join plate p on(wva.copy_id=p.copy_id and w.plate_number=p.plate_number) ',
+                'join lab_cherry_pick lcp on (wva.lab_cherry_pick_id=lcp.lab_cherry_pick_id) ',
+                'join cherry_pick_assay_plate cpap on (cpap.cherry_pick_assay_plate_id = lcp.cherry_pick_assay_plate_id)',
+                'join activity a on(a.activity_id = cpap.cherry_pick_liquid_transfer_id)',
+                'join screensaver_user u on(u.screensaver_user_id=a.performed_by_id)' 
+                ' where c.copy_id=%s ',
+                'AND p.well_volume is not null ',
+                'order by c.name, well_id,wva.well_volume_adjustment_id ',
+                ]),
+            
+        }
+            
+        copywell_resource_name = 'copywell'
+        copywell_uri = '/db/api/v1/' + copywell_resource_name
+        plate_resource_name = 'plate'
+        plate_uri = '/db/api/v1/' + plate_resource_name
+        
+        # 1. well volume adjustments (copy_id, well_id)
+        count = 0
+        prev_volume = None
+        prev_well_id = None
+        
+        prev_times = set() # this one is a hack,because some of the activity times are not uniq
+        current_plate_id = None
+        current_volume = None
+        
+        prev_logs = set()
+        
+        for key,query_sql in adjustment_queries.items():
+#             logger.info(str(('sql', key, query_sql)))
+#             logger.info(str(('key', key,copy.copy_id, copy.library.short_name,copy.name,query_sql )))
+            colkeys = cols.keys()
+            if key == 'cherry_picks':
+                colkeys.append('legacy_plate_name')
+            _list = db.execute(query_sql, [copy.copy_id])
+
+            if len(_list) == 0:
+                logger.info(str(('no adjustments for ', key, copy.library.short_name, copy.name )))
+            
+            i = 0;
+            prev_log = None
+            for adjustment in _list:
+                
+                adj = dict(zip(colkeys, adjustment))
+#                 logger.info(str(('adj', adj)))
+                
+                if adj['well_id'] != prev_well_id:
+                    prev_well_id = adj['well_id']
+                    plate_id = (adj['copy_name'],adj['plate_number'])
+                    if ( not current_plate_id or
+                            plate_id != current_plate_id):
+                        current_plate_id = plate_id
+                        prev_volume = round(adj['initial_volume'], 10)
+                    prev_times = set()
+                log = ApiLog()
+
+                try:
+                    log.username = adj['ecommons_id']
+                    if not log.username:
+                        # TODO: construct a username
+                        log.username = adj['login_id']
+                    
+                    if not log.username:
+                        log.username = adj['performed_by_id']
+    #                     logger.debug(str(('no username found: ', copy.copy_id, adj)))
+                    
+                    # log.user_id = getattr(activity.performed_by.user, 'id', log.username)
+                    log.user_id = 1    
+                    if 'performed_by_id' in adj:
+                        log.user_id = adj['performed_by_id']
+                        
+                    log.ref_resource_name = copywell_resource_name
+                    log.api_action = 'PATCH'
+    
+                    log.key = adj['copy_name'] + '/'+ adj['well_id']
+                    log.uri = copywell_uri + '/' + log.key
+                    log.diff_keys = json.dumps(['volume'])
+                    
+                    new_volume = round(prev_volume + float(adj['volume_adjustment']),10)
+                    log.diffs = json.dumps([
+                        prev_volume, new_volume ])
+                    prev_volume = new_volume
+                    
+                    log.comment = adj['comments']
+                    if key == 'cherry_picks' and adj['legacy_plate_name']:
+                        if log.comment:
+                            log.comment = log.comment + '. ' + adj['legacy_plate_name']
+                        else:
+                            log.comment = adj['legacy_plate_name']
+    #                 logger.info(str(('created log', log)))
+    
+                    log.date_time = make_aware(
+                        adj['date_created'], timezone.get_default_timezone())
+                    
+                    if (log.ref_resource_name,log.key,log.date_time) in prev_logs :
+                        log.date_time = log.date_time + datetime.timedelta(0,count) # hack, add second
+    
+                    # TODO: create a parent log for the lab_cherry_pick, and/or for
+                    # the cherry_pick_assay_plate creation
+                    # log.parent_id = cherry_pick_assay_plate_log_id
+                
+                    # finally, dump everything known into the json field
+                    log.json_field = json.dumps({
+                        k:str(v) for k,v in adj.items() if k not in [
+                            'comments','date_created','plate_number','copy_name','well_id']})
+
+                    log.save()
+                    prev_logs.add((log.ref_resource_name,log.key,log.date_time))
+                    count += 1
+                    i += 1
+                except Exception, e:
+                    msg = str(('exception on save: ', log,', sql', query_sql, copy, adj, e))
+                    logger.info(msg)
+                    raise e
+                if count % 10000 == 0:
+                    logger.info(str(( 'Count: ', count, ' logs created', datetime.datetime.now() )))
+            logger.info(str((key, ',', i)))
+
+        # TODO: reorganize this using the library screening, screen as the parent logs
+        logger.info(str(('2. assay_plate / library screenings xfers for ', copy.name)))
+        cols = OrderedDict({
+            'copy_name':'c.name',
+            'plate_number':'p.plate_number',
+            'volume_adjustment': '-la.volume_transferred_per_well_from_library_plates',
+            'initial_volume': 'p.well_volume',
+            'comments': 'a.comments',
+            'ecommons_id': 'u.ecommons_id',
+            'email': 'u.email',
+            'date_created': 'a.date_created',
+            'date_of_activity': 'a.date_of_activity',
+            'performed_by_id': 'performed_by_id',
+            'login_id': 'u.login_id'
+            })
+        colkeys = cols.keys()
+        _cols = ', '.join([ '%s as %s' % (value,key) 
+            for key, value in cols.items() ])
+        query_sql = '\n'.join([
+            'select',
+            _cols ,
+            'from ',
+            'plate p ',
+            'join copy c on(p.copy_id=c.copy_id) ',
+            'join assay_plate ap using(plate_id) ',
+            'join screening ls on(ls.activity_id = ap.library_screening_id) ',
+            'join lab_activity la using(activity_id) ',
+            'join activity a using(activity_id) ',
+            'join screensaver_user u on(u.screensaver_user_id=a.performed_by_id)' 
+            'where ap.replicate_ordinal = 0 ',
+            'AND la.volume_transferred_per_well_from_library_plates is not null '
+            'AND p.well_volume is not null ',
+            'AND c.copy_id=%s ',
+            'order by p.plate_number, c.name,a.activity_id '
+            ])
+        _list = db.execute(query_sql, [copy.copy_id])
+
+        if len(_list) == 0:
+            logger.info(str(('no library screening adjustments for ', 
+                key, copy.library.short_name, copy.name )))
+        i = 0;
+        prev_log = None
+        prev_resource_id = None
+        prev_volume = None
+        for adjustment in _list:
+            
+            adj = dict(zip(colkeys, adjustment))
+#             logger.info(str((adj)))
+            resource_id = '%s/%s' % (adj['plate_number'],adj['copy_name'])
+            
+            if resource_id != prev_resource_id:
+                prev_resource_id = resource_id
+                prev_times = set()
+                prev_volume = adj['initial_volume']
+    
+            log = ApiLog()
+            
+            try:
+    
+                log.username = adj['ecommons_id']
+                if not log.username:
+                    log.username = adj['login_id']
+                if not log.username:
+                    log.username = adj['performed_by_id']
+                
+                log.user_id = 1    
+                if 'performed_by_id' in adj:
+                    log.user_id = adj['performed_by_id']
+                    
+                log.ref_resource_name = plate_resource_name
+                log.api_action = 'PATCH'
+    
+                log.key = resource_id
+                log.uri = plate_uri  + '/' + log.key
+                log.diff_keys = json.dumps(['remaining_volume'])
+                
+                new_volume = round(prev_volume + float(adj['volume_adjustment']),10)
+                log.diffs = json.dumps([
+                    prev_volume, new_volume ])
+                prev_volume = new_volume
+                
+                log.comment = adj['comments']
+    
+                log.date_time = make_aware(
+                    adj['date_created'], timezone.get_default_timezone())
+                
+                if (log.ref_resource_name,log.key,log.date_time) in prev_logs :
+                    log.date_time = log.date_time + datetime.timedelta(0,count) # hack, add second
+    
+                # TODO: create a parent log for the library screening, and/or for
+                # the assay_plate creation
+                # log.parent_id = assay_plate_log_id
+                
+                # finally, dump everything known into the json field
+                log.json_field = json.dumps({
+                    k:str(v) for k,v in adj.items() if k not in ['comments','date_created','plate_number','copy_name']})
+
+                log.save()
+                prev_logs.add((log.ref_resource_name,log.key,log.date_time))
+                count += 1
+                i = i+1
+            except Exception, e:
+                msg = str(('exception on save,', log, ', sql', query_sql, copy, adj, e))
+                logger.info(msg)
+                raise e
+        
+        logger.info(str(('library_screening', i)))
+        logger.info(str(('Completed', copy.library.short_name, copy.name, count, ' logs')))
+        
+#     def forwards_old(self, orm):
+#         
+#         copywell_resource_name = 'copywell'
+#         copywell_uri = '/db/api/v1/' + copywell_resource_name
+#         
+#         # 1. well volume adjustments (copy_id, well_id)
+#         count = 0
+#         prev_volume = None
+#         prev_well_id = None
+#         
+#         prev_times = set() # this one is a hack,because some of the activity times are not uniq
+#         current_plate = None
+#         
+#         query = orm.WellVolumeAdjustment.objects.all().\
+#             order_by('well__well_id', 'well_volume_adjustment_id')
+#         for wva in query:
+#             if wva.well.well_id != prev_well_id:
+#                 prev_well_id = wva.well.well_id
+#                 plate_id = (wva.copy.name,wva.well.plate_number)
+#                 if ( not current_plate or
+#                         plate_id != (current_plate.copy.name,current_plate.plate_number ) ):
+#                     current_plate = orm.Plate.objects.get(copy=wva.copy,plate_number=wva.well.plate_number) 
+#                     prev_volume = round(current_plate.well_volume, 10)
+#                 prev_times = set()
+#             log = ApiLog()
+#             
+#             activity = None
+#             if wva.well_volume_correction_activity:
+#                 wvaca = wva.well_volume_correction_activity
+#                 activity = wvaca.activity.activity
+#                 log.json_field = json.dumps( {
+#                     'administrative_activity_type': 
+#                     wvaca.activity.administrative_activity_type
+#                     })
+#             elif wva.lab_cherry_pick and wva.lab_cherry_pick.cherry_pick_assay_plate:
+#                 cpap = wva.lab_cherry_pick.cherry_pick_assay_plate
+#                 # TODO: create cpap log, or lcp log
+#                 lab_activity = cpap.cherry_pick_liquid_transfer.activity
+#                 activity = lab_activity.activity
+#                 log.json_field = json.dumps( {
+#                     'cherry_pick_liquid_transfer_status': 
+#                         cpap.cherry_pick_liquid_transfer.status,
+#                     'screen_facility_id': lab_activity.screen.facility_id
+#                 })
+#             
+#             if not activity:
+#                 # there are inactive wva's, specifically for screener cherry picks (and?)
+#                 continue
+#             
+#             if getattr(activity.performed_by, 'ecommons_id', None):
+#                 log.username = activity.performed_by.ecommons_id
+#             if getattr(activity.performed_by, 'user', None):
+#                 log.user_id = getattr(activity.performed_by.user, 'id', log.username)
+#             if not log.user_id:
+# #                     logger.info(str(("can't find a user id for version", version, activity)))
+#                 log.user_id = 1    
+#             log.date_time = make_aware(
+#                 activity.date_created, timezone.get_default_timezone())
+#             
+#             if log.date_time in prev_times:
+#                 log.date_time = log.date_time + datetime.timedelta(0,len(prev_times)) # hack, add second
+#                 logger.warn(str(('prev activity has the same date_created, add seconds', log)))
+#             prev_times.add(log.date_time)
+#             
+#             log.ref_resource_name = copywell_resource_name
+#             log.api_action = 'PUT'
+#             log.uri = copywell_uri
+#             log.key = wva.copy.name + '/'+ wva.well.well_id
+#             log.diff_keys = json.dumps(['volume'])
+#             
+#             new_volume = round(prev_volume + float(wva.volume),10)
+#             log.diffs = json.dumps([
+#                 prev_volume, new_volume ])
+#             prev_volume = new_volume
+#             
+#             log.comment = activity.comments
+#             logger.info(str(('created log', log)))
+#             log.save()
+#             count += 1
+#         
+#             if count % 10000 == 0:
+#                 print 'Count: ', count, ' logs created', datetime.datetime.now()
+#                 
+#             if count > 10000:
+#                 break
+#                 
+#         print 'Completed', count, ' logs'
+#         # TODO 2. assay_plate / library screenings xfers:
 
     def backwards(self, orm):
         # Deleting field 'Plate.remaining_volume'
@@ -196,7 +920,7 @@ class Migration(SchemaMigration):
             'update_activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AdministrativeActivity']"})
         },
         u'db.cherrypickassayplate': {
-            'Meta': {'object_name': 'CherryPickAssayPlate', 'db_table': "u'cherry_pick_assay_plate'"},
+            'Meta': {'unique_together': "((u'cherry_pick_request', u'plate_ordinal', u'attempt_ordinal'),)", 'object_name': 'CherryPickAssayPlate', 'db_table': "u'cherry_pick_assay_plate'"},
             'assay_plate_type': ('django.db.models.fields.TextField', [], {}),
             'attempt_ordinal': ('django.db.models.fields.IntegerField', [], {}),
             'cherry_pick_assay_plate_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
@@ -205,6 +929,7 @@ class Migration(SchemaMigration):
             'cherry_pick_request': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.CherryPickRequest']"}),
             'legacy_plate_name': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'plate_ordinal': ('django.db.models.fields.IntegerField', [], {}),
+            'status': ('django.db.models.fields.TextField', [], {'null': 'True'}),
             'version': ('django.db.models.fields.IntegerField', [], {})
         },
         u'db.cherrypickassayplatescreeninglink': {
@@ -300,13 +1025,16 @@ class Migration(SchemaMigration):
         },
         u'db.copywell': {
             'Meta': {'object_name': 'CopyWell', 'db_table': "u'copy_well'"},
+            'adjustments': ('django.db.models.fields.IntegerField', [], {}),
             'copy': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Copy']"}),
-            'plate': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Plate']"}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'initial_volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
+#             'library': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Library']"}),
+            'plate': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Plate']"}),
             'plate_number': ('django.db.models.fields.IntegerField', [], {}),
-            'well_id': ('django.db.models.fields.TextField', [], {}),
-            'well_name': ('django.db.models.fields.TextField', [], {}),
-            'volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'})
+            'volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
+            'well': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']"}),
+            'well_name': ('django.db.models.fields.TextField', [], {})
         },
         u'db.datacolumn': {
             'Meta': {'object_name': 'DataColumn', 'db_table': "u'data_column'"},
@@ -473,6 +1201,7 @@ class Migration(SchemaMigration):
         },
         u'db.plate': {
             'Meta': {'object_name': 'Plate', 'db_table': "u'plate'"},
+            'avg_remaining_volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
             'copy': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Copy']"}),
             'created_by': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreensaverUser']", 'null': 'True', 'blank': 'True'}),
             'date_created': ('django.db.models.fields.DateTimeField', [], {}),
@@ -481,8 +1210,10 @@ class Migration(SchemaMigration):
             'facility_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'max_mg_ml_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '5', 'decimal_places': '3', 'blank': 'True'}),
             'max_molar_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '13', 'decimal_places': '12', 'blank': 'True'}),
+            'max_remaining_volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
             'min_mg_ml_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '5', 'decimal_places': '3', 'blank': 'True'}),
             'min_molar_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '13', 'decimal_places': '12', 'blank': 'True'}),
+            'min_remaining_volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
             'plate_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
             'plate_location': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.PlateLocation']", 'null': 'True', 'blank': 'True'}),
             'plate_number': ('django.db.models.fields.IntegerField', [], {}),
@@ -493,6 +1224,7 @@ class Migration(SchemaMigration):
             'quadrant': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'remaining_volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
             'retired_activity_id': ('django.db.models.fields.IntegerField', [], {'unique': 'True', 'null': 'True', 'blank': 'True'}),
+            'screening_count': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'status': ('django.db.models.fields.TextField', [], {}),
             'stock_plate_number': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'version': ('django.db.models.fields.IntegerField', [], {}),
@@ -530,7 +1262,7 @@ class Migration(SchemaMigration):
             'Meta': {'object_name': 'Reagent', 'db_table': "u'reagent'"},
             'library_contents_version': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.LibraryContentsVersion']", 'null': 'True'}),
             'reagent_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UWPRH34L'", 'unique': 'True', 'max_length': '8'}),
+            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UWPRH2ZJ'", 'unique': 'True', 'max_length': '8'}),
             'vendor_batch_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_identifier': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_name': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -780,6 +1512,12 @@ class Migration(SchemaMigration):
             'silencing_reagent_type': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_gene': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "u'vendor_reagent'", 'unique': 'True', 'null': 'True', 'to': u"orm['db.Gene']"})
         },
+        u'db.silencingreagentduplexwells': {
+            'Meta': {'unique_together': "((u'silencing_reagent', u'well'),)", 'object_name': 'SilencingReagentDuplexWells', 'db_table': "u'silencing_reagent_duplex_wells'"},
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'silencing_reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SilencingReagent']"}),
+            'well': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']"})
+        },
         u'db.smallmoleculechembankid': {
             'Meta': {'object_name': 'SmallMoleculeChembankId', 'db_table': "u'small_molecule_chembank_id'"},
             'chembank_id': ('django.db.models.fields.IntegerField', [], {}),
@@ -845,7 +1583,7 @@ class Migration(SchemaMigration):
             'library': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Library']"}),
             'library_well_type': ('django.db.models.fields.TextField', [], {}),
             'mg_ml_concentration': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
-            'micro_molar_concentration': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
+            'molar_concentration': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
             'plate_number': ('django.db.models.fields.IntegerField', [], {}),
             'version': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'well_id': ('django.db.models.fields.TextField', [], {'primary_key': 'True'}),
@@ -868,3 +1606,5 @@ class Migration(SchemaMigration):
     }
 
     complete_apps = ['db']
+    
+    

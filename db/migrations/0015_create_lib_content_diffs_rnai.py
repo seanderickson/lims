@@ -307,6 +307,19 @@ class Migration(SchemaMigration):
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'update_activity_id': ('django.db.models.fields.IntegerField', [], {'unique': 'True'})
         },
+        u'db.copywell': {
+            'Meta': {'object_name': 'CopyWell', 'db_table': "u'copy_well'"},
+            'adjustments': ('django.db.models.fields.IntegerField', [], {}),
+            'copy': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Copy']"}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'initial_volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
+            'library': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Library']"}),
+            'plate': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Plate']"}),
+            'plate_number': ('django.db.models.fields.IntegerField', [], {}),
+            'volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
+            'well_id': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']"}),
+            'well_name': ('django.db.models.fields.TextField', [], {})
+        },
         u'db.datacolumn': {
             'Meta': {'object_name': 'DataColumn', 'db_table': "u'data_column'"},
             'assay_phenotype': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -472,6 +485,7 @@ class Migration(SchemaMigration):
         },
         u'db.plate': {
             'Meta': {'object_name': 'Plate', 'db_table': "u'plate'"},
+            'avg_remaining_volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
             'copy': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Copy']"}),
             'created_by': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreensaverUser']", 'null': 'True', 'blank': 'True'}),
             'date_created': ('django.db.models.fields.DateTimeField', [], {}),
@@ -480,8 +494,10 @@ class Migration(SchemaMigration):
             'facility_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'max_mg_ml_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '5', 'decimal_places': '3', 'blank': 'True'}),
             'max_molar_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '13', 'decimal_places': '12', 'blank': 'True'}),
+            'max_remaining_volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
             'min_mg_ml_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '5', 'decimal_places': '3', 'blank': 'True'}),
             'min_molar_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '13', 'decimal_places': '12', 'blank': 'True'}),
+            'min_remaining_volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
             'plate_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
             'plate_location': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.PlateLocation']", 'null': 'True', 'blank': 'True'}),
             'plate_number': ('django.db.models.fields.IntegerField', [], {}),
@@ -490,11 +506,13 @@ class Migration(SchemaMigration):
             'primary_well_mg_ml_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '5', 'decimal_places': '3', 'blank': 'True'}),
             'primary_well_molar_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '13', 'decimal_places': '12', 'blank': 'True'}),
             'quadrant': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
+            'remaining_volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
             'retired_activity_id': ('django.db.models.fields.IntegerField', [], {'unique': 'True', 'null': 'True', 'blank': 'True'}),
+            'screening_count': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'status': ('django.db.models.fields.TextField', [], {}),
             'stock_plate_number': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'version': ('django.db.models.fields.IntegerField', [], {}),
-            'well_volume': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '10', 'decimal_places': '9', 'blank': 'True'})
+            'well_volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'})
         },
         u'db.platelocation': {
             'Meta': {'object_name': 'PlateLocation', 'db_table': "u'plate_location'"},
@@ -528,7 +546,7 @@ class Migration(SchemaMigration):
             'Meta': {'object_name': 'Reagent', 'db_table': "u'reagent'"},
             'library_contents_version': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.LibraryContentsVersion']", 'null': 'True'}),
             'reagent_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UWPRH2ZD'", 'unique': 'True', 'max_length': '8'}),
+            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UWPRH2ZJ'", 'unique': 'True', 'max_length': '8'}),
             'vendor_batch_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_identifier': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_name': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -778,12 +796,12 @@ class Migration(SchemaMigration):
             'silencing_reagent_type': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_gene': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "u'vendor_reagent'", 'unique': 'True', 'null': 'True', 'to': u"orm['db.Gene']"})
         },
-#         u'db.silencingreagentduplexwells': {
-#             'Meta': {'object_name': 'SilencingReagentDuplexWells', 'db_table': "u'silencing_reagent_duplex_wells'"},
-#             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-#             'silencing_reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SilencingReagent']"}),
-#             'well': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']"})
-#         },
+        u'db.silencingreagentduplexwells': {
+            'Meta': {'unique_together': "((u'silencing_reagent', u'well'),)", 'object_name': 'SilencingReagentDuplexWells', 'db_table': "u'silencing_reagent_duplex_wells'"},
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'silencing_reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SilencingReagent']"}),
+            'well': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']"})
+        },
         u'db.smallmoleculechembankid': {
             'Meta': {'object_name': 'SmallMoleculeChembankId', 'db_table': "u'small_molecule_chembank_id'"},
             'chembank_id': ('django.db.models.fields.IntegerField', [], {}),
@@ -849,7 +867,7 @@ class Migration(SchemaMigration):
             'library': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Library']"}),
             'library_well_type': ('django.db.models.fields.TextField', [], {}),
             'mg_ml_concentration': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
-            'micro_molar_concentration': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
+            'molar_concentration': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
             'plate_number': ('django.db.models.fields.IntegerField', [], {}),
             'version': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'well_id': ('django.db.models.fields.TextField', [], {'primary_key': 'True'}),
@@ -871,4 +889,6 @@ class Migration(SchemaMigration):
         }
     }
 
-    complete_apps = ['db']    
+    complete_apps = ['db']
+    
+    

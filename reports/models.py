@@ -125,7 +125,7 @@ class ApiLog(models.Model):
     username = models.CharField(null=False, max_length=128)
 
     # name of the resource, i.e. "apilog" or "screen", "user", etc.
-    ref_resource_name = models.CharField(null=False, max_length=35)
+    ref_resource_name = models.CharField(null=False, max_length=128)
 
     # full public key of the resource instance being logged (may be composite, 
     # separted by '/')
@@ -193,7 +193,7 @@ class ListLog(models.Model):
     apilog = models.ForeignKey('ApiLog')
 
     # name of the resource, i.e. "apilog" or "screen", "user", etc.
-    ref_resource_name = models.CharField(max_length=35)
+    ref_resource_name = models.CharField(max_length=64)
 
     # full public key of the resource instance being logged (may be composite, 
     # separted by '/')
@@ -215,9 +215,9 @@ class MetaHash(models.Model):
     objects                 = MetaManager()
     #    objects                 = models.Manager() # default manager
     
-    scope = models.CharField(max_length=35, blank=True)
-    key = models.CharField(max_length=35, blank=True)
-    alias = models.CharField(max_length=35, blank=True)
+    scope = models.CharField(max_length=64, blank=True)
+    key = models.CharField(max_length=64, blank=True)
+    alias = models.CharField(max_length=64, blank=True)
     ordinal = models.IntegerField();
 
     # required if the record represents a JSON field; choices are from the TastyPie 
@@ -299,7 +299,7 @@ class Vocabularies(models.Model):
     
     scope                   = models.CharField(max_length=128, blank=True)
     key                     = models.CharField(max_length=128, blank=True)
-    alias                   = models.CharField(max_length=35, blank=True)
+    alias                   = models.CharField(max_length=64, blank=True)
     ordinal                 = models.IntegerField();
     title                   = models.CharField(max_length=512, blank=True)
     
@@ -337,9 +337,9 @@ class Vocabularies(models.Model):
 
         
 class Permission(models.Model):
-    scope = models.CharField(max_length=35, blank=True) # scope of the permission
-    key = models.CharField(max_length=35, blank=True)  # key of the permission
-    type = models.CharField(max_length=15)
+    scope = models.CharField(max_length=64, blank=True) # scope of the permission
+    key = models.CharField(max_length=64, blank=True)  # key of the permission
+    type = models.CharField(max_length=35)
 
 #     user_permissions = models.ManyToManyField('reports.UserProfile')
     
@@ -530,7 +530,7 @@ class Record(models.Model):
     # the scope key points to the particular type of resource represented
     # when joining with the RecordValue table, we will get the field key we 
     # want by finding the "fields" for this scope in the Metahash:fields table
-    scope = models.CharField(max_length=35, blank=True)
+    scope = models.CharField(max_length=64, blank=True)
     
 class RecordValue(models.Model):
     # name of the parent field will be stored in the meta hash

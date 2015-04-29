@@ -89,4 +89,39 @@ update copy set usage_type = 'stock_plates' where usage_type = 'Stock Plates';
 update copy set usage_type = '96_stock_plates' where usage_type = '96 Stock Plates';
 
 
+/** 
+ assay_well_control_type 
+-------------------------
+ 
+ assay control
+ experimental
+ empty
+ assay positive control
+ buffer
+ other
+ library control
+
+**/
+
+update assay_well set assay_well_control_type = 'assay_control' where assay_well_control_type = 'assay control';
+update assay_well set assay_well_control_type = 'assay_positive_control' where assay_well_control_type = 'assay positive control';
+update assay_well set assay_well_control_type = 'library_control' where assay_well_control_type = 'library control';
+
+/**
+          data_type           
+------------------------------
+ Numeric
+ Partition Positive Indicator
+ Text
+ Confirmed Positive Indicator
+ Boolean Positive Indicator
+**/
+
+update data_column set data_type = 'numeric' where data_type = 'Numeric';
+update data_column set data_type = 'partition_positive_indicator' where data_type = 'Partition Positive Indicator';
+update data_column set data_type = 'text' where data_type = 'Text';
+update data_column set data_type = 'confirmed_positive_indicator' where data_type = 'Confirmed Positive Indicator';
+update data_column set data_type = 'boolean_positive_indicator' where data_type = 'Boolean Positive Indicator';
+
+
 COMMIT;

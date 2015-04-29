@@ -29,10 +29,10 @@ retired,library.screening_status,/reports/api/v1/vocabularies/library.screening_
 requires_permission,library.screening_status,/reports/api/v1/vocabularies/library.screening_status/requires_permission/,4,,"Requires Permission","Requires Permission"
 not_recommended,library.screening_status,/reports/api/v1/vocabularies/library.screening_status/not_recommended/,5,,"Not Recommended","Not Recommended"
 allowed,library.screening_status,/reports/api/v1/vocabularies/library.screening_status/allowed/,6,,Allowed,Allowed
-primary_screen,project.phase,/reports/api/v1/vocabularies/project.phase/primary_screen/,1,,"Primary Screen","Primary Screen"
-counter_screen,project.phase,/reports/api/v1/vocabularies/project.phase/counter_screen/,2,,"Counter Screen","Counter Screen"
-follow_up_screen,project.phase,/reports/api/v1/vocabularies/project.phase/follow_up_screen/,3,,"Follow Up Screen","Follow Up Screen"
-annotation,project.phase,/reports/api/v1/vocabularies/project.phase/annotation/,4,,Annotation,Annotation
+primary_screen,screen.project_phase,/reports/api/v1/vocabularies/screen.project_phase/primary_screen/,1,,"Primary Screen","Primary Screen"
+counter_screen,screen.project_phase,/reports/api/v1/vocabularies/screen.project_phase/counter_screen/,2,,"Counter Screen","Counter Screen"
+follow_up_screen,screen.project_phase,/reports/api/v1/vocabularies/screen.project_phase/follow_up_screen/,3,,"Follow Up Screen","Follow Up Screen"
+annotation,screen.project_phase,/reports/api/v1/vocabularies/screen.project_phase/annotation/,4,,Annotation,Annotation
 0,screen.data_sharing_level,/reports/api/v1/vocabularies/screen.data_sharing_level/0/,0,,Shared,Shared
 1,screen.data_sharing_level,/reports/api/v1/vocabularies/screen.data_sharing_level/1/,1,,"Level 1 (Mutual Screens)","Level 1 (Mutual Screens)"
 2,screen.data_sharing_level,/reports/api/v1/vocabularies/screen.data_sharing_level/2/,2,,"Level 2 (Mutual Positives)","Level 2 (Mutual Positives)"
@@ -90,3 +90,34 @@ stock_plates,copy.usage_type,vocabularies/copy.usage_type/stock_plates/,1,,"Stoc
 library_screening_plates,copy.usage_type,vocabularies/copy.usage_type/library_screening_plates/,2,,"Library Screening Plates","Library Screening Plates"
 96_stock_plates,copy.usage_type,vocabularies/copy.usage_type/96_stock_plates/,3,,"96 Stock Plates","96 Stock Plates"
 cherry_pick_source_plates,copy.usage_type,vocabularies/copy.usage_type/cherry_pick_source_plates/,4,,"Cherry Pick Source Plates","Cherry Pick Source Plates"
+cell_based,screen.assay_type,vocabularies/screen.assay_type/cell_based/,1,,Cell-based,Cell-based
+multi_cellular_organism,screen.assay_type,vocabularies/screen.assay_type/multi_cellular_organism/,2,,"Multi-cellular organism","Multi-cellular organism"
+biochemical,screen.assay_type,vocabularies/screen.assay_type/biochemical/,3,,Biochemical,Biochemical
+flourescence_activated_cell_sorting,datacolumn.assay_readout_type,vocabularies/datacolumn.assay_readout_type/flourescence_activated_cell_sorting/,1,,"Fluorescence Activated Cell Sorting","Fluorescence Activated Cell Sorting"
+flourescence_intensity,datacolumn.assay_readout_type,vocabularies/datacolumn.assay_readout_type/flourescence_intensity/,2,,"Fluorescence Intensity","Fluorescence Intensity"
+fp,datacolumn.assay_readout_type,vocabularies/datacolumn.assay_readout_type/fp/,3,,FP,FP
+fret,datacolumn.assay_readout_type,vocabularies/datacolumn.assay_readout_type/fret/,4,,FRET,FRET
+imaging,datacolumn.assay_readout_type,vocabularies/datacolumn.assay_readout_type/imaging/,5,,Imaging,Imaging
+luminescence,datacolumn.assay_readout_type,vocabularies/datacolumn.assay_readout_type/luminescence/,6,,Luminescence,Luminescence
+absorbance,datacolumn.assay_readout_type,vocabularies/datacolumn.assay_readout_type/absorbance/,7,,Absorbance,Absorbance
+unspecified,datacolumn.assay_readout_type,vocabularies/datacolumn.assay_readout_type/unspecified/,8,,Unspecified,Unspecified
+buffer,assaywell.control_type,vocabularies/assaywell.control_type/buffer/,0,,Buffer,Buffer
+empty,assaywell.control_type,vocabularies/assaywell.control_type/empty/,1,,Empty,Empty
+experimental,assaywell.control_type,vocabularies/assaywell.control_type/experimental/,2,,Experimental,Experimental
+assay_control,assaywell.control_type,vocabularies/assaywell.control_type/assay_control/,3,,"Assay Negative Control","Assay Control"
+assay_positive_control,assaywell.control_type,vocabularies/assaywell.control_type/assay_positive_control/,4,,"Assay Positive Control","Assay Positive Control"
+library_control,assaywell.control_type,vocabularies/assaywell.control_type/library_control/,5,,"Library Control","Library Control"
+other,assaywell.control_type,vocabularies/assaywell.control_type/other/,6,,Other,Other
+0,resultvalue.confirmed_positive_indicator,vocabularies/resultvalue.confirmed_positive_indicator/0/,0,,"Not tested",NT
+1,resultvalue.confirmed_positive_indicator,vocabularies/resultvalue.confirmed_positive_indicator/1/,1,,Inconclusive,I
+2,resultvalue.confirmed_positive_indicator,vocabularies/resultvalue.confirmed_positive_indicator/2/,2,,"False positive",FP
+3,resultvalue.confirmed_positive_indicator,vocabularies/resultvalue.confirmed_positive_indicator/3/,3,,"Confirmed positive",CP
+numeric,datacolumn.data_type,vocabularies/datacolumn.data_type/numeric/,0,,Numeric,Numeric
+text,datacolumn.data_type,vocabularies/datacolumn.data_type/text/,1,,Text,Text
+boolean_positive_indicator,datacolumn.data_type,vocabularies/datacolumn.data_type/boolean_positive_indicator/,2,"DataColumn contains positive determinations data as true/false values, indicating whether a tested Well Reagent has been identified as having the desired biological activity in the screening assay.","Boolean Positive Indicator","Boolean Positive Indicator"
+partition_positive_indicator,datacolumn.data_type,vocabularies/datacolumn.data_type/partition_positive_indicator/,3,"DataColumn contains the positive determinations: ""strong"", ""medium"", ""weak"", or ""not positive"", indicating indicating whether a tested Well Reagent has been identified as having the desired biological activity in the screening assay, and if so, with what strength.","Partition Positive Indicator","Partition Positive Indicator"
+confirmed_positive_indicator,datacolumn.data_type,vocabularies/datacolumn.data_type/confirmed_positive_indicator/,4,"DataColumn contains confirmed positive determinations data, indicating whether a follow-up screen has confirmed (reproduced) the original positive determination of a related, primary Screen","Confirmed Positive Indicator","Confirmed Positive Indicator"
+0,resultvalue.partitioned_positive,vocabularies/resultvalue.partitioned_positive/0/,0,,"Not Positve",NP
+1,resultvalue.partitioned_positive,vocabularies/resultvalue.partitioned_positive/1/,1,,Weak,W
+2,resultvalue.partitioned_positive,vocabularies/resultvalue.partitioned_positive/2/,2,,Medium,M
+3,resultvalue.partitioned_positive,vocabularies/resultvalue.partitioned_positive/3/,3,,Strong,S

@@ -278,9 +278,9 @@ function migratedb {
     migration='0016'
     if [[ ! $completed_migrations =~ $migration ]]; then
       echo "migration $migration: $(ts) ..." >> "$LOGFILE"
-      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
       psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
           -f ./db/migrations/manual/0016_create_copy_wells.sql >>"$LOGFILE" 2>&1 || error "manual script 0016 failed: $?"
+      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
       echo "migration $migration complete: $(ts)" >> "$LOGFILE"
     fi
   fi
@@ -470,17 +470,17 @@ function code_bootstrap {
 echo "start migration: $(ts) ..."
 
 main "$@"
+# frontend_setup
+# maybe_activate_virtualenv
 
-#maybe_activate_virtualenv
+#   django_syncdb
 
-#  django_syncdb
+#   premigratedb  
 
-#  premigratedb  
-
-#  bootstrap
+#   bootstrap
   
   # the later migrations require the bootstrapped data
-#  migratedb
+#   migratedb
 
 # $DJANGO_CMD test --verbosity=2 --settings=lims.settings_testing || error "django tests failed: $?"
 # $DJANGO_CMD test --verbosity=2 --settings=lims.settings_testing

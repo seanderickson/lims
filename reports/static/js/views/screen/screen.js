@@ -1,258 +1,407 @@
 /**
  * Screen form/view
- *
+ * 
  */
 define([
-  'jquery',
-  'underscore',
-  'backbone',
+  'jquery', 
+  'underscore', 
+  'backbone', 
+  'backgrid',
   'iccbl_backgrid',
-//'views/detail_stickit_backbone_forms',
-  'views/generic_detail_layout',
-  'views/list',
+  'layoutmanager',
+  'models/app_state',
+  'views/generic_detail_layout', 
+  'views/list2', 
   'views/collectionColumns',
-  'text!templates/generic-tabbed.html',
-], function($, _, Backbone, Iccbl, DetailView, ListView, CollectionColumnView, tabbedTemplate) {
-    var ScreenView = Backbone.View.extend({
-      events: {
-        // TODO: how to make this specific to this view? 
-        // (it is also catching clicks on the table paginator)
-//            'click .tabbable li': 'click_tab', 
-          'click li': 'click_tab',
-      },
+  'text!templates/generic-tabbed.html'
+], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, DetailView, 
+            ListView, CollectionColumnView, tabbedTemplate){
 
-      initialize : function(attributes, options) {
-          this.options = options;
-          Iccbl.assert( !_.isUndefined(options.url_root), 'ScreenView: options.url_root must be defined');
-          Iccbl.assert( !_.isUndefined(options.current_options), 'ScreenView: options.current_options must be defined');
+  var ScreenView = Backbone.Layout.extend({
 
-          if(_.isArray(options.current_options) || _.isString(options.current_options) ){
-              options.current_options= { key: options.current_options };
-          }
-          console.log('initialize ScreenView: current options: ' + JSON.stringify(options.current_options));
-
-          _.bindAll(this, 'setDetail', 'setSummary', 'setResults', 'setDatacolumns');
-
-          this._tabbed_resources = {
-              detail: { description: 'Screen Details', title: 'Screen Details', invoke : this.setDetail },
-              summary: { description: 'Screening Summary', title: 'Screening Summary', invoke : this.setSummary },
-              datacolumns: { description: 'Data Columns', title: 'Data Columns', invoke : this.setDatacolumns },
-              results: { description: 'Screen Results', title: 'Screen Results', invoke : this.setResults },
-          };
-
-          var compiledTemplate = _.template( tabbedTemplate,
-              { tab_resources: this._tabbed_resources, });
-
-          this.$el.html(compiledTemplate);
-
-          var tab = options.current_options['tab'];
-          if(_.isUndefined(tab) || _.isEmpty(tab) ) tab = 'detail';
-
-          this._tabbed_resources[tab].invoke();
-          this.$('#' + tab).addClass('active');
-          this.listenTo(this.model, 'change:current_detail', this.change_current_detail);
-      },
-
-      change_current_detail: function(){
-          var _current_options = this.model.get('current_detail');
-          console.log('change_current_detail: ' + JSON.stringify(_current_options) );
-
-          //TODO: will there be a case where we have to reset all the options?
-          var tab = _current_options['tab'];
-          if(this.options.current_options['tab'] != tab)
-              if(!_.isUndefined(tab)) this.change_to_tab(tab);
-      },
-
-      setDetail: function(){
-          var self = this;
-          if(_.isUndefined(this.detail)){
-              var createDetail = function(schemaResult, model){
-                  self.screen = model;
-                  if(! self.screen.get('has_screen_result' )){
-                      self.$('#results').hide();
-                      self.$('#datacolumns').hide();
-                      console.log('no results');
-                  }
-                  var detailView =
-                      new DetailView({ model: model},
-                          {
-                              schemaResult:schemaResult,
-                              router:self.options.router,
-                              isEditMode: false
-                          });
-                  self.detail = detailView;
-                  self.$('#tab_container').html(self.detail.render().el);
-              };
-              if(_.isUndefined(this.options.screen_schema ) ||_.isUndefined(this.options.screen_model)){  // allow reloading
-                  var resource_url = this.options.url_root + '/screen';
-                  var schema_url =  resource_url + '/schema';
-                  var url = resource_url  + '/' + Iccbl.getKey(this.options.current_options);
-
-                  Iccbl.getSchemaAndModel(schema_url, url, createDetail);
-
-              }else{
-                  createDetail(this.options.screen_schema,this.options.screen_model);
-              }
-          }else{
-              self.$('#tab_container').html(this.detail.render().el);
-          }
-
-          self.$('#detail').addClass('active'); // first time not clicked so set manually
-      },
-
+    initialize: function(args) {
+      var self = this;
+      this.tabViews = {}; // view cache
+      this.uriStack = args.uriStack;
+      this.consumedStack = [];
       
-      setSummary: function(){
-          var self = this;
-          if(_.isUndefined(this.summary)){
+      _.each(_.keys(this.tabbed_resources), function(key){
+        if(key !== 'detail' && !appModel.hasPermission(self.tabbed_resources[key].resource)){
+          delete self.tabbed_resources[key];
+        }
+      });
+      _.bindAll(this, 'click_tab');
+    },
 
-              var createDetail = function(schemaResult, model){
-                      var detailView =
-                          new DetailView({ model: model},
-                              {
-                                  schemaResult:schemaResult,
-                                  router:self.options.router,
-                                  isEditMode: false
-                              });
-                      self.summary = detailView;
-                      $('#tab_container').html(self.summary.render().el);
-                  };
-              var resource_url = this.options.url_root + '/screensummary'; // to test
-              var schema_url =  resource_url + '/schema';
-              var url = resource_url  + '/'+ Iccbl.getKey(this.options.current_options);
+    template: _.template(tabbedTemplate),
 
-              Iccbl.getSchemaAndModel(schema_url, url, createDetail);
-          }else{
-              $('#tab_container').html(self.summary.render().el);
-          }
+    tabbed_resources: {
+      detail : {
+        description : 'Screen Details',
+        title : 'Screen Details',
+        invoke : 'setDetail'
       },
-
-
-      setDatacolumns: function(){
-          var self = this;
-          if(_.isUndefined(this.datacolumns)){
-              var _id = Iccbl.getKey(self.options.current_options);
-              var resource_url = this.options.url_root + '/datacolumn'; // to test
-              var schema_url =  resource_url + '/schema';
-              var url = resource_url + '/?facility_id=' + _id;
-
-              var createDataColumns = function(schemaResult){
-
-                  var columns = Iccbl.createBackgridColModel(schemaResult.fields, Iccbl.MyHeaderCell);//, col_options );
-                  var ListModel = Backbone.Model.extend({
-                      defaults: {
-                          rpp: 25,
-                          page: 1,
-                          order: {},
-                          search: {}}
-                      });
-                  var listModel = new ListModel();
-
-                  var collection  = new Iccbl.MyCollection({
-                          'url': url,
-                          currentPage: parseInt(listModel.get('page')),
-                          pageSize: parseInt(listModel.get('rpp')),
-                          listModel: listModel
-                      });
-
-                  collection.fetch({
-                      success: function(){
-                          console.log('create datacolumns, schemaResult: ' + schemaResult);
-                          var datacolumnView =
-                              new CollectionColumnView({ model: self.model},
-                                  {
-                                      schemaResult:schemaResult,
-                                      router:self.options.router,
-                                      isEditMode: false,
-                                      collection: collection
-                                  });
-                          self.datacolumns = datacolumnView;
-                          $('#tab_container').html(self.datacolumns.render().el);
-                      },
-                      error: function(model, response, options){
-                          window.alert('Could not get: ' + usr + '\n' + Iccbl.formatResponseError(response));
-                      }
-                  });
-              };
-
-              Iccbl.getSchema(schema_url, createDataColumns);
-          }else{
-              self.datacolumns.setElement(self.$('#tab_container')).render();
-          }
-          self.$('#datacolumn').addClass('active'); // first time not clicked so set manually
+      summary : {
+        description : 'Screening Summary',
+        title : 'Screening Summary',
+        invoke : 'setSummary'
       },
-
-      setResults: function(){
-          var self = this;
-          if(_.isUndefined(this.results)){
-              var _id = Iccbl.getKey(self.options.current_options);
-              var createResults = function(schemaResult){
-                  var _url = self.options.url_root + '/screenresult/'+ _id;
-                  var options = _.extend({},self.options.current_options,
-                      {
-                          schemaResult:schemaResult,
-                          router:self.options.router,
-                          ui_resource_id : 'screenresults',
-                          url: _url,
-                          title: 'Screen Results for ' + _id,
-                          header_message: 'Screen Results for ' + _id
-                      });
-
-                  var listView = new ListView({ model: self.model},options);
-                  self.results = listView;
-                  self.results.setElement(self.$('#tab_container')).render();
-              };
-              var resource_url = self.options.url_root + '/screenresult/' +_id;
-              if(resource_url.charAt(resource_url.length-1)!= '/') resource_url += '/'
-              var schema_url =  resource_url + 'schema';
-              Iccbl.getSchema(schema_url, createResults);
-          }else{
-              self.results.setElement(self.$('#tab_container')).render();
-          }
-
-          self.$('#results').addClass('active'); // first time not clicked so set manually
+      datacolumns : {
+        description : 'Data Columns',
+        title : 'Data Columns',
+        invoke : 'setDatacolumns'
       },
-
-      click_tab : function(event){
-          event.preventDefault();
-
-          // Block clicks from the wrong elements
-          // TODO: how to make this specific to this view? (it is also catching clicks on the table paginator)
-          var key = event.currentTarget.id;
-          if(_.isEmpty(key)) return;
-
-          console.log('tab click: ' + key + ', options: ' + JSON.stringify(this.options.current_options));
-          this.change_to_tab(key);
-
-          // notify the model listeners
-          var _current_options = {'tab': key, 'key':Iccbl.getKey(this.options.current_options) };
-          this.model.set({ current_options: {}, current_detail: {} },{ silent: true });
-          this.model.set({
-              current_options: _current_options,
-              routing_options: {trigger: false, replace: false}
-          }); // signal to the app_model that the current view has changed // todo: separate out app_model from list_model
-
+      results : {
+        description : 'Screen Results',
+        title : 'Screen Results',
+        invoke : 'setResults'
       },
+    },
 
-      change_to_tab: function(key){
-          console.log('change to tab called: ' + key);
-          this.$('li').removeClass('active');
-          this.$('#' + key).addClass('active');
+    events: {
+      // TODO: how to make this specific to this view? 
+      // (it is also catching clicks on the table paginator)
+        'click li': 'click_tab',
+    },
+    
+    /**
+     * Child view bubble up URI stack change event
+     */
+    reportUriStack: function(reportedUriStack) {
+      var consumedStack = this.consumedStack || [];
+      var actualStack = consumedStack.concat(reportedUriStack);
+      this.trigger('uriStack:change', actualStack );
+    },
+    
+    /**
+     * Layoutmanager hook
+     */
+    serialize: function() {
+      return {
+        'tab_resources': this.tabbed_resources
+      }      
+    }, 
+    
+    /**
+     * Layoutmanager hook
+     */
+    afterRender: function(){
+      var viewId = 'detail';
+      if (!_.isEmpty(this.uriStack)){
+        viewId = this.uriStack.shift();
+        if (viewId == '+add') {
+          this.uriStack.unshift(viewId);
+          this.showAdd();
+          return;
+        }else if (viewId == 'edit'){
+          this.uriStack.unshift(viewId);
+          this.showEdit();
+          return;
+        }
 
-          if( _.has(this._tabbed_resources, key)){
-              // NOTE: calling empty like this removes all of the event handlers from the views,
-              // so we have to call delegateEvents when adding it back.  figure out a better way.
-              $('#tab_container').empty();
-              this._tabbed_resources[key].invoke();
-          }else{
-              window.alert('Unknown tab: ' + key);
-          }
-      },
-
-      render : function() {
-          window.scrollTo(0, 0);
-          return this;
+        if (!_.has(this.tabbed_resources, viewId)){
+          var msg = 'could not find the tabbed resource: ' + viewId;
+          appModel.error(msg);
+          throw msg;
+        }
       }
-    });
+      this.change_to_tab(viewId);
+    },
 
-    return ScreenView;
+    click_tab : function(event){
+      event.preventDefault();
+      // Block clicks from the wrong elements
+      // TODO: how to make this specific to this view? (it is also catching
+      // clicks on the table paginator)
+      var key = event.currentTarget.id;
+      if(_.isEmpty(key)) return;
+      this.change_to_tab(key);
+    },
+
+    change_to_tab: function(key){
+      if(_.has(this.tabbed_resources, key)){
+        this.$('li').removeClass('active');
+        this.$('#' + key).addClass('active');
+        if(key !== 'detail'){
+          this.consumedStack = [key];
+        }else{
+          this.consumedStack = [];
+        }
+        var delegateStack = _.clone(this.uriStack);
+        this.uriStack = [];
+        var method = this[this.tabbed_resources[key]['invoke']];
+        if (_.isFunction(method)) {
+          method.apply(this,[delegateStack]);
+        } else {
+          throw "Tabbed resources refers to a non-function: " + this.tabbed_resources[key]['invoke']
+        }
+      }else{
+        var msg = 'Unknown tab: ' + key;
+        appModel.error(msg);
+        throw msg;
+      }
+    },
+
+    render : function(){
+      window.scrollTo(0, 0);
+      return this;
+    },
+
+    showAdd: function() {
+      var self = this;
+      var delegateStack = _.clone(this.uriStack);
+      var view = new DetailLayout({
+        model: self.model,
+        uriStack: delegateStack
+      });
+      Backbone.Layout.setupView(view);
+
+      // NOTE: have to re-listen after removing a view
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      this.setView("#tab_container", view ).render();
+      this.$('li').removeClass('active');
+      this.$('#detail').addClass('active');
+    },
+    
+    showEdit: function() {
+      var self = this;
+      var delegateStack = _.clone(this.uriStack);
+      var view = new DetailLayout({
+        model: self.model,
+        uriStack: delegateStack, 
+        buttons: ['download', 'upload']
+      });
+      Backbone.Layout.setupView(view);
+
+      // NOTE: have to re-listen after removing a view
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      this.setView("#tab_container", view ).render();
+      this.$('li').removeClass('active');
+      this.$('#detail').addClass('active');
+    },
+
+    setDetail: function(delegateStack){
+      var key = 'detail';
+      
+      var view = this.tabViews[key];
+      if ( !view ) {
+        view = new DetailView({ 
+          model: this.model,
+          uriStack: delegateStack, 
+          buttons: ['download'] });
+        this.tabViews[key] = view;
+      } 
+      // NOTE: have to re-listen after removing a view
+      this.listenTo(view , 'uriStack:change', this.reportUriStack);
+      // NOTE: if subview doesn't report stack, report it here
+      //      this.reportUriStack([]);
+      this.setView("#tab_container", view ).render();
+
+//      if(!self.screen.get('has_screen_result')){
+//        self.$('#results').hide();
+//        self.$('#datacolumns').hide();
+//        console.log('no results');
+//      }
+
+    },
+
+    setSummary : function(){
+      var self = this;
+      if(_.isUndefined(this.summary)){
+
+        var createDetail = function(schemaResult, model){
+          var detailView = new DetailView({
+            model : model
+          }, {
+            schemaResult : schemaResult,
+            router : self.options.router,
+            isEditMode : false
+          });
+          self.summary = detailView;
+          $('#tab_container').html(self.summary.render().el);
+        };
+        var url = [self.model.resource.apiUri, 
+                   self.model.key,
+                   'screensummary'].join('/');
+        var schema_url= self.model.resource.apiUri + '/screensummary/schema'; 
+        Iccbl.getSchemaAndModel(schema_url, url, createDetail);
+      }else{
+        $('#tab_container').html(self.summary.render().el);
+      }
+    },
+
+    setDatacolumns: function(delegateStack){
+      // pivot the datacolumn list
+      
+      var self = this;
+      var datacolumnResource = appModel.getResource('datacolumn'); 
+      var url = datacolumnResource.apiUri + '?limit=0&screen_facility_id=' + self.model.key;
+      
+      // construct a collection-in-columns
+      Iccbl.getCollectionOnClient(url, function(collection){
+        
+        // create a colModel for the list
+        var columns = [];
+        var TextWrapCell = Backgrid.Cell.extend({
+          className: 'text-wrap-cell'
+        })
+        var colTemplate = {
+          'cell' : 'string',
+          'order' : -1,
+          'sortable': false,
+          'searchable': false,
+          'editable' : false,
+          'visible': true,
+          'headerCell': Backgrid.HeaderCell
+        };
+        // setup the first column - schema field titles (that are visible)
+        var col0 = _.extend({},colTemplate,{
+          'name' : 'label',
+          'label' : 'labels',
+          'description' : 'Datacolumn field',
+        });
+        columns.push(col0);
+        
+        collection.each(function(datacolumn){
+          var col = _.extend({},colTemplate,{
+            'name' : datacolumn.get('key'),
+            'label' : datacolumn.get('title'),
+            'description' : datacolumn.get('description'),
+            'order': datacolumn.get('ordinal'),
+            'sortable': true,
+            'cell': TextWrapCell
+          });
+          columns.push(col);
+        });
+        var colModel = new Backgrid.Columns(columns);
+        colModel.comparator = 'order';
+        colModel.sort();
+        
+        // create the collection by pivoting
+        orderedFields = _.sortBy(datacolumnResource.schema.fields,'ordinal');
+        var pivotCollection = new Backbone.Collection();
+        _.each(orderedFields, function(field){
+          if(_.contains(field.visibility, 'list') && field.key != 'name' ){
+            var row = {'key': field.key, 'label': field.title };
+            collection.each(function(datacolumn){
+              row[datacolumn.get('key')] = datacolumn.get(field.key);
+            });
+            pivotCollection.push(row);
+          }
+        });
+        
+        // now show as a list view
+        var view = new Backgrid.Grid({
+          columns: colModel,
+          collection: pivotCollection,
+          className: 'backgrid table-striped table-condensed table-hover'
+        });
+        var view = view.render();
+        Backbone.Layout.setupView(view);
+        self.reportUriStack([]);
+
+        self.setView("#tab_container", view ).render();
+     });
+      
+    },
+    
+    setDatacolumnsOld : function(){
+      var self = this;
+      
+      if(_.isUndefined(this.datacolumns)){
+        var url = [appModel.dbApiUri,
+                   'screenresult',
+                   self.model.key,
+                   'schema'].join('/');
+
+        var createDataColumns = function(schemaResult){
+          var columns = Iccbl.createBackgridColModel(schemaResult.fields,
+            Iccbl.MyHeaderCell);// , col_options );
+          var ListModel = Backbone.Model.extend({
+            defaults : {
+              rpp : 25,
+              page : 1,
+              order : {},
+              search : {}
+            }
+          });
+          var listModel = new ListModel();
+
+          var collection = new Iccbl.MyCollection({
+            'url' : url,
+            currentPage : parseInt(listModel.get('page')),
+            pageSize : parseInt(listModel.get('rpp')),
+            listModel : listModel
+          });
+
+          collection.fetch({
+            success : function(){
+              console.log('create datacolumns, schemaResult: '
+                + schemaResult);
+              var datacolumnView = new CollectionColumnView({
+                model : self.model
+              }, {
+                schemaResult : schemaResult,
+                router : self.options.router,
+                isEditMode : false,
+                collection : collection
+              });
+              self.datacolumns = datacolumnView;
+              $('#tab_container').html(self.datacolumns.render().el);
+            },
+            error : function(model, response, options){
+              window.alert('Could not get: ' + usr + '\n'
+                + Iccbl.formatResponseError(response));
+            }
+          });
+        };
+
+        Iccbl.getSchema(url, createDataColumns);
+      }else{
+        self.datacolumns.setElement(self.$('#tab_container')).render();
+      }
+      self.$('#datacolumn').addClass('active'); // first time not clicked so
+                                                // set manually
+    },
+
+    setResults : function(delegateStack){
+      var self = this;
+      var screenResultResource = appModel.getResource('screenresult'); 
+      var schemaUrl = [appModel.dbApiUri,
+                       'screenresult',
+                       self.model.key,
+                       'schema'].join('/');
+      var url = [appModel.dbApiUri,
+                       'screenresult',
+                       self.model.key].join('/');
+
+      var _id = self.model.key;
+      var createResults = function(schemaResult){
+        view = new ListView({ options: {
+          uriStack: _.clone(delegateStack),
+          schemaResult: schemaResult,
+          resource: screenResultResource,
+          url: url
+        }});
+        Backbone.Layout.setupView(view);
+        self.reportUriStack([]);
+        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        self.setView("#tab_container", view ).render();
+      };
+      Iccbl.getSchema(schemaUrl, createResults);
+//
+//      self.$('#results').addClass('active'); // first time not clicked so
+//                                              // set manually
+    },
+    
+    onClose: function() {
+      // TODO: is this necessary when using Backbone LayoutManager
+      this.tabViews = {};
+      this.remove();
+    }
+  
+
+  });
+
+  return ScreenView;
 });

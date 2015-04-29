@@ -1,33 +1,35 @@
-import csv
-import copy
-from collections import OrderedDict
-import cStringIO
 import StringIO
+import cStringIO
+from collections import OrderedDict
+import copy
+import csv
 import json
 import logging
 import re
 
-from django.utils.encoding import smart_str
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.backends.util import CursorDebugWrapper
+from django.utils.encoding import smart_str
 from psycopg2.psycopg1 import cursor
+import six
 from tastypie import fields
 from tastypie.bundle import Bundle
+from tastypie.exceptions import UnsupportedFormat
 from tastypie.serializers import Serializer
+import xlrd
+from xlsxwriter.workbook import Workbook
+import xlwt
 
 import reports.utils.sdf2py as s2p
-import reports.utils.serialize
-import xlwt
-import xlrd
 from reports.utils.serialize import from_csv_iterate
-import six
-from xlsxwriter.workbook import Workbook
-from tastypie.exceptions import UnsupportedFormat
+from reports import LIST_DELIMITER_CSV, LIST_DELIMITER_XLS
+import reports.utils.serialize
+
 
 logger = logging.getLogger(__name__)
 
-LIST_DELIMITER_CSV = ';'
-LIST_DELIMITER_XLS = ';' 
+# LIST_DELIMITER_CSV = ';'
+# LIST_DELIMITER_XLS = ';' 
 
 class CsvBooleanField(fields.ApiField):
     """
@@ -750,7 +752,7 @@ class CursorSerializer(Serializer):
                     # chars to the ascii charset; otherwise, cStringIO has problems
                     raw_data.write(json.dumps(
                         value,skipkeys=False,check_circular=True,ensure_ascii=True,
-                        allow_nan=True, default=lambda x: str(x)), encoding="utf-8")
+                        allow_nan=True, default=lambda x: str(x), encoding="utf-8"))
                 count += 1
                 
             raw_data.write('}')

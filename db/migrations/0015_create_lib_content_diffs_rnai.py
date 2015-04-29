@@ -18,13 +18,13 @@ class Migration(SchemaMigration):
        
 
     def backwards(self, orm):
-        # Adding model 'SilencingReagentDuplexWells'
-        db.create_table(u'silencing_reagent_duplex_wells', (
-            ('well', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Well'])),
-            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('silencing_reagent', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.SilencingReagent'])),
-        ))
-        db.send_create_signal(u'db', ['SilencingReagentDuplexWells'])
+#         # Adding model 'SilencingReagentDuplexWells'
+#         db.create_table(u'silencing_reagent_duplex_wells', (
+#             ('well', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Well'])),
+#             (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+#             ('silencing_reagent', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.SilencingReagent'])),
+#         ))
+#         db.send_create_signal(u'db', ['SilencingReagentDuplexWells'])
 
         raise RuntimeError("Cannot reverse the Screensaver initial migrations: "
             "re-import the database to restore")
@@ -205,7 +205,7 @@ class Migration(SchemaMigration):
             'update_activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AdministrativeActivity']"})
         },
         u'db.cherrypickassayplate': {
-            'Meta': {'object_name': 'CherryPickAssayPlate', 'db_table': "u'cherry_pick_assay_plate'"},
+            'Meta': {'unique_together': "((u'cherry_pick_request', u'plate_ordinal', u'attempt_ordinal'),)", 'object_name': 'CherryPickAssayPlate', 'db_table': "u'cherry_pick_assay_plate'"},
             'assay_plate_type': ('django.db.models.fields.TextField', [], {}),
             'attempt_ordinal': ('django.db.models.fields.IntegerField', [], {}),
             'cherry_pick_assay_plate_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
@@ -214,6 +214,7 @@ class Migration(SchemaMigration):
             'cherry_pick_request': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.CherryPickRequest']"}),
             'legacy_plate_name': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'plate_ordinal': ('django.db.models.fields.IntegerField', [], {}),
+            'status': ('django.db.models.fields.TextField', [], {'null': 'True'}),
             'version': ('django.db.models.fields.IntegerField', [], {})
         },
         u'db.cherrypickassayplatescreeninglink': {
@@ -313,12 +314,11 @@ class Migration(SchemaMigration):
             'copy': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Copy']"}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'initial_volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
-            'library': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Library']"}),
+#             'library': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Library']"}),
             'plate': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Plate']"}),
             'plate_number': ('django.db.models.fields.IntegerField', [], {}),
             'volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
-            'well_id': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']"}),
-            'well_name': ('django.db.models.fields.TextField', [], {})
+            'well': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']"}),
         },
         u'db.datacolumn': {
             'Meta': {'object_name': 'DataColumn', 'db_table': "u'data_column'"},

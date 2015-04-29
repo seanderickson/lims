@@ -303,7 +303,6 @@ class Migration(SchemaMigration):
             ('plate', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Plate'])),
             ('copy', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Copy'])),
             ('well', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Well'])),
-            ('well_name', self.gf('django.db.models.fields.TextField')()),
             ('plate_number', self.gf('django.db.models.fields.IntegerField')()),
             ('volume', self.gf('django.db.models.fields.FloatField')(null=True, blank=True)),
             ('initial_volume', self.gf('django.db.models.fields.FloatField')(null=True, blank=True)),
@@ -311,6 +310,18 @@ class Migration(SchemaMigration):
         ))
         db.send_create_signal(u'db', ['CopyWell'])
 
+        # Adding model 'CachedQuery'
+        db.create_table(u'cached_query', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('uri', self.gf('django.db.models.fields.TextField')()),
+            ('params', self.gf('django.db.models.fields.TextField')(null=True)),
+            ('sql', self.gf('django.db.models.fields.TextField')()),
+            ('key', self.gf('django.db.models.fields.TextField')(unique=True)),
+            ('datetime', self.gf('django.db.models.fields.DateTimeField')(default=datetime.datetime.now)),
+            ('username', self.gf('django.db.models.fields.CharField')(max_length=128)),
+            ('count', self.gf('django.db.models.fields.IntegerField')(null=True)),
+        ))
+        db.send_create_signal(u'db', ['CachedQuery'])
 
     
     def _update_table_autofield(self, table, column):
@@ -543,6 +554,17 @@ class Migration(SchemaMigration):
             'attached_file': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AttachedFile']"}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'update_activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AdministrativeActivity']"})
+        },
+        u'db.cachedquery': {
+            'Meta': {'object_name': 'CachedQuery', 'db_table': "u'cached_query'"},
+            'count': ('django.db.models.fields.IntegerField', [], {'null': 'True'}),
+            'datetime': ('django.db.models.fields.DateTimeField', [], {'default': 'datetime.datetime.now'}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'key': ('django.db.models.fields.TextField', [], {'unique': 'True'}),
+            'params': ('django.db.models.fields.TextField', [], {'null': 'True'}),
+            'sql': ('django.db.models.fields.TextField', [], {}),
+            'uri': ('django.db.models.fields.TextField', [], {}),
+            'username': ('django.db.models.fields.CharField', [], {'max_length': '128'})
         },
         u'db.cellline': {
             'Meta': {'object_name': 'CellLine', 'db_table': "u'cell_line'"},
@@ -943,6 +965,7 @@ class Migration(SchemaMigration):
             'abase_study_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'amount_to_be_charged_for_screen': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '9', 'decimal_places': '2', 'blank': 'True'}),
             'assay_plates_screened_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
+            'assay_type': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'billing_comments': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'billing_info_return_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'comments': ('django.db.models.fields.TextField', [], {'blank': 'True'}),

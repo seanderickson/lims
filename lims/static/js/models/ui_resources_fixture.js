@@ -12,6 +12,13 @@
     "view": "AboutView",
     "content_header": "ICCB-L Screensaver LIMS",
     "description": "About page"
+  },  
+  "reports": {
+    "title": "Reports",
+    "route": "",
+    "view": "AboutView",
+    "content_header": "ICCB-L Screensaver LIMS",
+    "description": "Reports"
   },
 
   "screensaveruser": {
@@ -58,7 +65,7 @@
         "title": "Screens",
         "route": "list/screen",
         "list_view": "ListView",
-        "detailView": "DetailView",
+        "detailView": "ScreenView",
         "api_resource": "screen",
         "url_root": "/db/api/v1",
         "description": "View screen information",
@@ -76,8 +83,9 @@
         "url_root": "/db/api/v1",
         "description": "View small molecule screen information",
         "options": { 
-          "search": { "screen_type__eq": "small_molecule",
-                      "project_phase__ne": "annotation" },
+          "search": { "screen_type__in": "small_molecule",
+                      "project_phase__ne": "annotation"
+                    },
           "order": ["facility_id"] }
     },
     "rnai_screens": {
@@ -90,7 +98,7 @@
         "url_root": "/db/api/v1",
         "description": "View rnai screen information",
         "options": { 
-          "search": { "screen_type__eq": "rnai",
+          "search": { "screen_type__in": "rnai",
                       "project_phase__ne": "annotation" },
           "order": ["facility_id"] }
     },
@@ -117,9 +125,9 @@
         "options": { 
           "rpp": 500, 
           "includes": ["-screen_type","-is_pool"],
-          "order": ["short_name"], 
+          "order": ["-start_plate"], 
           "search": { 
-            "screen_type__eq": "small_molecule"
+            "screen_type__in": "small_molecule"
            } 
         }
     },
@@ -134,7 +142,7 @@
         "description": "View RNAi library information",
         "options": { 
           "rpp": 500, 
-          "search": { "screen_type__eq": "rnai"}, 
+          "search": { "screen_type__in": "rnai"}, 
           "includes": ["-screen_type"],
           "order": ["short_name"]  
         }
@@ -151,8 +159,13 @@
       "options": { 
         "rpp_selections" : [24,96,384,1000],
         "rpp": 24,
-        "order": ["plate_number","well_name"]  }
-    },    
+        "order": []  }
+    },
+    "copywell": {
+      "options": { 
+        "rpp_selections" : [24,96,384,1000],
+        "rpp": 24 }
+    },
     "reagent": {
       "header_message": "Wells",
       "title": "Well",
@@ -165,14 +178,18 @@
       "options": { 
         "rpp_selections" : [24,96,384,1000],
         "rpp": 24,
-        "order": ["plate_number","well_name"]  }
+        "order": []  }
     },
     "librarycopyplates": {
       "options": { 
-        "order": ["plate_number","copy_name"]  }
+        "order": []  }
     },
     "librarycopies": {
       "options": { 
-        "order": ["library_short_name","copy_name"]  }
+        "order": []  }
+    },
+    "activities": {
+      "options": { 
+        "order": []  }
     }
 }

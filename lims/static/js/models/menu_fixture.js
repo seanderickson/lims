@@ -13,11 +13,32 @@
         }
       }
     },
-    "librarycopies": {
-      "view": "list"
-    },
-    "librarycopyplates": {
-      "view": "list"
+    "reports": {
+      "expanded": false,
+      "view": "",
+      "submenus": {
+        "librarycopies": {
+          "view": "list"
+        },
+        "librarycopyplates": {
+          "view": "list"
+        },
+        "copywell": {
+          "view": "list"
+        },
+        "reagent":{
+          "view": "list"
+        },
+        "cherrypickrequest":{
+          "view": "list"
+        },
+        "cherrypickassayplate":{
+          "view": "list"
+        },
+        "activity":{
+          "view": "list"
+        }
+      }
     },
     "screensaveruser": {
       "expanded": false,

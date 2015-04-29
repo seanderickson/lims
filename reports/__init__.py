@@ -1,0 +1,15 @@
+
+
+LIST_DELIMITER_CSV = ';'
+LIST_DELIMITER_XLS = ';' 
+LIST_DELIMITER_SQL_ARRAY = ';'
+LIST_DELIMITER_URL_PARAM = ','
+MAX_ROWS_PER_XLS_FILE = 100000
+MAX_IMAGE_ROWS_PER_XLS_FILE = 2000
+
+HTTP_PARAM_USE_VOCAB = 'use_vocabularies'
+HTTP_PARAM_USE_TITLES = 'use_titles'
+HTTP_PARAM_RAW_LISTS = 'raw_lists'
+
+LIST_BRACKETS = '[]' # default char to surround nested list in xls, csv
+

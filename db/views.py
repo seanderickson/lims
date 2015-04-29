@@ -17,7 +17,6 @@ def main(request):
     logger.debug(str(('main search: ', search)))
     return render(request, 'db/index.html', {'search': search})
 
-
 def well_image(request, well_id):
     
     if not request.user.is_authenticated():

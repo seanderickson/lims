@@ -1,25 +1,27 @@
-from django.test import TestCase
+import cStringIO
 import json
-import factory
-import os
 import logging
-from tastypie.test import ResourceTestCase, TestApiClient
+import os
 
-import db.models
-from test.factories import *
-from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, find_obj_in_list
-from reports.serializers import CSVSerializer, XLSSerializer
-from reports.tests import MetaHashResourceBootstrap
-import reports.tests
-from db.models import Reagent, Substance, Library
+from django.http.response import StreamingHttpResponse
+from django.test import TestCase
+from django.utils.timezone import now
+import factory
+from south.migration import get_migrator
 from south.migration.base import Migrations
 from south.migration.migrators import FakeMigrator
-from south.migration import get_migrator
+from tastypie.test import ResourceTestCase, TestApiClient
+
+from db.models import Reagent, Substance, Library
+import db.models
+from db.support import lims_utils
 from db.test.factories import LibraryFactory
-from django.utils.timezone import now
 from reports.dump_obj import dumpObj
-from django.http.response import StreamingHttpResponse
-import cStringIO
+from reports.serializers import CSVSerializer, XLSSerializer
+from reports.tests import MetaHashResourceBootstrap
+from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, find_obj_in_list
+import reports.tests
+from test.factories import *
 
 
 logger = logging.getLogger(__name__)
@@ -475,7 +477,7 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         substance_ids = set()
         for inputobj in input_data:
             # first just search for the well
-            search = { 'well_id': '%s:%s' %(inputobj['plate_number'],inputobj['well_name']) }
+            search = { 'well_id': lims_utils.well_id(inputobj['plate_number'],inputobj['well_name']) }
             result, outputobj = find_obj_in_list(
                 search,returned_data) #, excludes=excludes )
             self.assertTrue(result, 
@@ -737,7 +739,7 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         substance_ids = set()
         for inputobj in input_data:
             # first just search for the well
-            search = { 'well_id': '%s:%s' %(inputobj['plate_number'],inputobj['well_name']) }
+            search = { 'well_id': lims_utils.well_id(inputobj['plate_number'],inputobj['well_name']) }
             result, outputobj = find_obj_in_list(search,returned_data)
             self.assertTrue(result, 
                 str(('not found', search,outputobj,'=== objects returned ===', 
@@ -759,7 +761,7 @@ class LibraryResource(DBMetaHashResourceBootstrap):
             substance_ids.add(substance_id)
                     
 
-class ScreenResource(DBMetaHashResourceBootstrap,ResourceTestCase):
+class ScreenResource(DBMetaHashResourceBootstrap):
         
     def setUp(self):
         logger.debug('============== ScreenResource setup ============')
@@ -793,7 +795,8 @@ class ScreenResource(DBMetaHashResourceBootstrap,ResourceTestCase):
         resp = self.api_client.post(
             resource_uri, format='json', data=screen_item, 
             authentication=self.get_credentials())
-        self.assertTrue(resp.status_code in [201], str((resp.status_code, resp)))
+        self.assertTrue(resp.status_code in [201], 
+            str((resp.status_code, self.deserialize(resp))))
         
         screen_item = ScreenFactory.attributes()
         
@@ -803,13 +806,15 @@ class ScreenResource(DBMetaHashResourceBootstrap,ResourceTestCase):
             authentication=self.get_credentials())
         self.assertTrue(resp.status_code in [201], str((resp.status_code, resp)))
         
+        data_for_get={ 'limit': 0, 'includes': ['*'] }        
+
         resp = self.api_client.get(
             resource_uri, format='json', authentication=self.get_credentials(), 
-            data={ 'limit': 0 })
+            data=data_for_get)
         logger.debug(str(('--------resp to get:', resp.status_code)))
         new_obj = self.deserialize(resp)
         self.assertValidJSONResponse(resp)
-        self.assertEqual(len(new_obj['objects']), 2, str((new_obj)))
+        self.assertEqual(len(new_obj['objects']), 4, str((new_obj)))
         
         result, obj = find_obj_in_list(screen_item, new_obj['objects'])
         self.assertTrue(
@@ -844,18 +849,24 @@ class ScreenResource(DBMetaHashResourceBootstrap,ResourceTestCase):
         resource_uri = BASE_URI_DB + '/screen'
         logger.debug(str(('--posting to:', resource_uri)))
         for i,item in enumerate(self.bootstrap_items):
-            logger.debug(str(('item', item)))         
+            logger.info(str(('post item', item)))         
             resp = self.api_client.post(
                 resource_uri, format='json', data=item, 
                 authentication=self.get_credentials())
-            self.assertTrue(resp.status_code in [201], str((resp.status_code, resp)))
+            self.assertTrue(resp.status_code in [201], 
+                str((resp.status_code, self.deserialize(resp))))
+            logger.info(str(('resp to create', self.deserialize(resp))))
+#             from django import db
+#             db.close_connection()            
 #             self.assertHttpCreated(resp)
             
+        data_for_get={ 'limit': 0, 'includes': ['*'] }        
+
         logger.debug('created items, now get them')
         resp = self.api_client.get(
             resource_uri, format='json', authentication=self.get_credentials(), 
-            data={ 'limit': 0 })
-        logger.debug(str(('--------resp to get:', resp.status_code)))
+            data=data_for_get)
+        logger.info(str(('--------resp to get:', resp.status_code)))
         new_obj = self.deserialize(resp)
         self.assertValidJSONResponse(resp)
         self.assertEqual(len(new_obj['objects']), 2, str((new_obj)))

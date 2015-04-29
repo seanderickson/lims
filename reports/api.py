@@ -26,7 +26,7 @@ from django.utils import timezone, importlib
 from django.utils.encoding import smart_text
 import six
 from sqlalchemy import select, asc, text
-from sqlalchemy.dialects.postgresql import ARRAY
+# from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.sql import and_, or_, not_          
 from sqlalchemy.sql import asc, desc, alias, Alias
 from sqlalchemy.sql import func
@@ -43,29 +43,27 @@ from tastypie.exceptions import NotFound, ImmediateHttpResponse, Unauthorized, \
     BadRequest
 from tastypie.http import HttpForbidden
 from tastypie.resources import Resource, ModelResource
-import tastypie.resources
 from tastypie.resources import convert_post_to_put
+import tastypie.resources
 from tastypie.utils.dict import dict_strip_unicode_keys
 from tastypie.utils.mime import build_content_type
 from tastypie.utils.timezone import make_naive
 from tastypie.utils.urls import trailing_slash
 from tastypie.validation import Validation
 
+from reports import HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB
 from reports.dump_obj import dumpObj
 from reports.models import MetaHash, Vocabularies, ApiLog, ListLog, Permission, \
                            UserGroup, UserProfile, Record
 from reports.serializers import LimsSerializer, CsvBooleanField, CSVSerializer
-from reports.utils.profile_decorator import profile
 from reports.sqlalchemy_resource import SqlAlchemyResource
-from sqlalchemy.sql.elements import literal_column
+from reports.utils.profile_decorator import profile
+
 
 # NOTE: tastypie.fields is required for dynamic field instances using eval
 # import lims.settings 
 logger = logging.getLogger(__name__)
 
-from reports import CSV_DELIMITER,LIST_DELIMITER_SQL_ARRAY,LIST_DELIMITER_URL_PARAM,\
-    HTTP_PARAM_RAW_LISTS,HTTP_PARAM_USE_TITLES,HTTP_PARAM_USE_VOCAB,\
-    LIST_BRACKETS, MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE
     
 class UserGroupAuthorization(Authorization):
     
@@ -1160,10 +1158,23 @@ class ManagedResource(LoggingMixin):
             # all TP resources have an resource_uri field
             if not 'resource_uri' in schema['fields']:
                 schema['fields']['resource_uri'] = { 
-                    'key': 'resource_uri','table': 'None', 'visibility':[] }
+                    'key': 'resource_uri',
+                    'scope': 'fields.%s' % self._meta.resource_name,
+                    'title': 'URI',
+                    'description': 'URI for the record',
+                    'ui_type': 'string',
+                    'table': 'None', 
+                    'visibility':[] }
             # all TP resources have an id field
             if not 'id' in schema['fields']:
-                schema['fields']['id'] = { 'key': 'id', 'table':'None', 'visibility':[] }
+                schema['fields']['id'] = { 
+                    'key': 'id', 
+                    'scope': 'fields.%s' % self._meta.resource_name,
+                    'title': 'ID',
+                    'description': 'Internal ID for the record',
+                    'ui_type': 'string',
+                    'table':'None', 
+                    'visibility':[] }
             
         except Exception, e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -1216,10 +1227,10 @@ class ManagedResource(LoggingMixin):
                 dep_fields = set()
                 if field.get('value_template', None):
                     dep_fields.update(
-                        re.findall(r'{([^}]+)}', field['value_template']))
+                        re.findall(r'{([a-zA-Z0-9_-]+)}', field['value_template']))
                 if field.get('backgrid_cell_options', None):
                     dep_fields.update(
-                        re.findall(r'{([^}]+)}', field['backgrid_cell_options']))
+                        re.findall(r'{([a-zA-Z0-9_-]+)}', field['backgrid_cell_options']))
                 if DEBUG_BUILD_SCHEMA: 
                     logger.info(str(('field', key, 'dependencies', dep_fields)))
                 field['dependencies'] = dep_fields
@@ -1302,12 +1313,12 @@ class ManagedResource(LoggingMixin):
             if 'choices' in field and field['choices']:
                 logger.debug(str(('check choices: ', name, value, field['choices'])))
                 if field['ui_type'] != 'Checkboxes':
-                    if value not in field['choices']:
+                    if str(value) not in field['choices']: # note: comparing as string
                         keyerrors.append(
                             str((value, 'is not one of', field['choices'])))
                 else:
                     for x in value:
-                        if x not in field['choices']:
+                        if str(x) not in field['choices']: # note: comparing as string
                             keyerrors.append(
                                 str((value, 'are not members of', field['choices'])))
 
@@ -1812,7 +1823,7 @@ class ManagedModelResource(FilterModelResourceMixin,
 class MetaHashResource(ManagedModelResource):
     '''
     This table serves as a relatively low volume triple/quad store;
-    - values can be defined at will for the text-based, software-implemented
+    - values can be defined in configuration data for the text-based, software-implemented
     json_value storage field:
       - these values are defined by "virtual" fields in the quad store, keyed by
         a "field.tablename" scope.
@@ -2295,7 +2306,7 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
 #             j = join(_cw, _c, _c.c.copy_id == _cw.c.copy_id )
             j = join(_log, _log2, _log.c.parent_log_id == _log2.c.id, isouter=True )
             
-            stmt = select(columns).select_from(j)
+            stmt = select(columns.values()).select_from(j)
             
             if 'parent_log_id' in kwargs:
                 stmt = stmt.where(_log2.c.id == kwargs.pop('parent_log_id'))
@@ -2311,9 +2322,10 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
             if param_hash.get(HTTP_PARAM_USE_TITLES, False):
                 title_function = lambda key: field_hash[key]['title']
             
-            return self.stream_response_from_cursor(
+            return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 
                 field_hash=field_hash, 
+                param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
                 title_function=title_function  )

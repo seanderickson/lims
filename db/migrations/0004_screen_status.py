@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 import datetime
+import json
+import logging
+import re
+
+from django.db import models
+from django.utils import timezone
 from south.db import db
 from south.v2 import DataMigration
-from django.db import models
-import json
-from reports.models import ApiLog
-from django.utils import timezone
-
-import re
-import logging
 
 from db.support.data_converter import default_converter
+from reports.models import ApiLog
 
 
 logger = logging.getLogger(__name__)

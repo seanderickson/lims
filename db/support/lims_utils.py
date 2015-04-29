@@ -14,7 +14,8 @@ def well_name(col, row):
     return name
 
 def well_id(plate, well_name):    
-    return '%s:%s' % (plate, well_name)
+    #return '%05d:%s' % (plate, well_name)
+    return '%s:%s' % (str(plate).zfill(5), well_name)
 
 def well_name_from_index(index, platesize):
     '''

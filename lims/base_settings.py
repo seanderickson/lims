@@ -159,6 +159,9 @@ PROFILE_LOG_BASE='/tmp'
 # if structure image cache directory is available.  see db.api for details.
 WELL_STRUCTURE_IMAGE_DIR=''
 
+# maximum rows to cache in the database table well_query_index
+# see db/api.ScreenResultResource
+MAX_WELL_INDEXES_TO_CACHE=3e+07
 
 # set SQLALCHEMY_POOL_CLASS=sqlalchemy.pool.NullPool for testing
 # environments, so that the test database can be destroyed

@@ -104,7 +104,6 @@ requirejs(['require-config'],
 
     var loadCount = 0
     $(document).bind("ajaxSend", function(){
-      
       $('#loading').fadeIn({duration:100});
       loadCount++;
       console.log('add to loadCount: ' + loadCount );

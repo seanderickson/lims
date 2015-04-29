@@ -780,8 +780,9 @@ define([
   appState.reportsApiUri = REPORTS_API_URI;
   appState.dbApiUri = DB_API_URI;
   appState.DEBUG = DEBUG;
-  appState.LIST_ARGS = ['page','rpp','includes','order','search','log', 'children'];      
-  
+  appState.LIST_ARGS = ['page','rpp','includes','order','log', 'children','search'];      
+  appState.SEARCH_DELIMITER = ';';
+
   Iccbl.appModel = appState;
   
   return appState;

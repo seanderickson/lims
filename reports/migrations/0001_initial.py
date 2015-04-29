@@ -12,8 +12,8 @@ class Migration(SchemaMigration):
         db.create_table(u'reports_apilog', (
             (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
             ('user_id', self.gf('django.db.models.fields.IntegerField')()),
-            ('username', self.gf('django.db.models.fields.CharField')(max_length=35)),
-            ('ref_resource_name', self.gf('django.db.models.fields.CharField')(max_length=35)),
+            ('username', self.gf('django.db.models.fields.CharField')(max_length=128)),
+            ('ref_resource_name', self.gf('django.db.models.fields.CharField')(max_length=128)),
             ('key', self.gf('django.db.models.fields.CharField')(max_length=128)),
             ('uri', self.gf('django.db.models.fields.TextField')()),
             ('date_time', self.gf('django.db.models.fields.DateTimeField')()),
@@ -187,6 +187,23 @@ class Migration(SchemaMigration):
         ))
         db.send_create_signal(u'reports', ['RecordValueComplex'])
 
+        # Adding model 'Job'
+        db.create_table(u'reports_job', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('remote_addr', self.gf('django.db.models.fields.TextField')(null=True)),
+            ('request_method', self.gf('django.db.models.fields.TextField')(null=True)),
+            ('path_info', self.gf('django.db.models.fields.TextField')(null=True)),
+            ('comment', self.gf('django.db.models.fields.TextField')(null=True)),
+            ('input_filename', self.gf('django.db.models.fields.TextField')(null=True)),
+            ('date_time_fullfilled', self.gf('django.db.models.fields.DateTimeField')(null=True)),
+            ('date_time_processing', self.gf('django.db.models.fields.DateTimeField')(null=True)),
+            ('date_time_requested', self.gf('django.db.models.fields.DateTimeField')(default=datetime.datetime.now)),
+            ('response_filename', self.gf('django.db.models.fields.TextField')(null=True)),
+            ('response_content', self.gf('django.db.models.fields.TextField')(null=True)),
+            ('response_code', self.gf('django.db.models.fields.IntegerField')()),
+        ))
+        db.send_create_signal(u'reports', ['Job'])
+
 
     def backwards(self, orm):
         # Removing unique constraint on 'RecordMultiValue', fields ['field_meta', 'parent', 'ordinal']
@@ -252,6 +269,9 @@ class Migration(SchemaMigration):
         # Deleting model 'RecordValueComplex'
         db.delete_table(u'reports_recordvaluecomplex')
 
+        # Deleting model 'Job'
+        db.delete_table(u'reports_job')
+
 
     models = {
         u'auth.group': {
@@ -302,11 +322,26 @@ class Migration(SchemaMigration):
             'json_field': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
             'key': ('django.db.models.fields.CharField', [], {'max_length': '128'}),
             'parent_log': ('django.db.models.fields.related.ForeignKey', [], {'related_name': "'child_logs'", 'null': 'True', 'to': u"orm['reports.ApiLog']"}),
-            'ref_resource_name': ('django.db.models.fields.CharField', [], {'max_length': '35'}),
+            'ref_resource_name': ('django.db.models.fields.CharField', [], {'max_length': '128'}),
             'removed_keys': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
             'uri': ('django.db.models.fields.TextField', [], {}),
             'user_id': ('django.db.models.fields.IntegerField', [], {}),
-            'username': ('django.db.models.fields.CharField', [], {'max_length': '35'})
+            'username': ('django.db.models.fields.CharField', [], {'max_length': '128'})
+        },
+        u'reports.job': {
+            'Meta': {'object_name': 'Job'},
+            'comment': ('django.db.models.fields.TextField', [], {'null': 'True'}),
+            'date_time_fullfilled': ('django.db.models.fields.DateTimeField', [], {'null': 'True'}),
+            'date_time_processing': ('django.db.models.fields.DateTimeField', [], {'null': 'True'}),
+            'date_time_requested': ('django.db.models.fields.DateTimeField', [], {'default': 'datetime.datetime.now'}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'input_filename': ('django.db.models.fields.TextField', [], {'null': 'True'}),
+            'path_info': ('django.db.models.fields.TextField', [], {'null': 'True'}),
+            'remote_addr': ('django.db.models.fields.TextField', [], {'null': 'True'}),
+            'request_method': ('django.db.models.fields.TextField', [], {'null': 'True'}),
+            'response_code': ('django.db.models.fields.IntegerField', [], {}),
+            'response_content': ('django.db.models.fields.TextField', [], {'null': 'True'}),
+            'response_filename': ('django.db.models.fields.TextField', [], {'null': 'True'})
         },
         u'reports.listlog': {
             'Meta': {'unique_together': "(('apilog', 'ref_resource_name', 'key', 'uri'),)", 'object_name': 'ListLog'},

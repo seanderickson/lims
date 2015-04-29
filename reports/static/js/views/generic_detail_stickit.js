@@ -99,11 +99,11 @@ define([
           }else if(fi.backgrid_cell_type == 'Iccbl.LinkCell'){
               var c_options = _.extend({
                 hrefTemplate: '#',
-                target: '_blank'
+                target: '_self'
               }, cell_options );                
               
-              // - check for non-json option for backward compatability -
-              // simple string to be interpolated, and not a JSON object
+              // Backward compatability: Check for non-json backgrid_cell_options.
+              // interpret as simple string to be interpolated, and not a JSON object.
               if( c_options.hrefTemplate == '#' && 
                   _.has(fi,'backgrid_cell_options')) {
                 // NOTE: format for backgrid cell options is "/{attribute_key}/"
@@ -118,7 +118,7 @@ define([
               var originalOnGet = bindings['#'+key].onGet;
               bindings['#'+key].onGet = function(rawValue){
                 rawValue = originalOnGet(rawValue);
-                if(Iccbl.appModel.DEBUG) 
+                if(false && Iccbl.appModel.DEBUG) 
                   console.log('urilist, raw value: ' + rawValue  + ', ' + interpolatedVal 
                     + ', hrefTemplate: ' + c_options.hrefTemplate);
                 
@@ -182,18 +182,23 @@ define([
         else if(ui_type == 'select' 
                   || ui_type == 'radio'
                   || ui_type == 'checkboxes' ){
-          var vocabulary = Iccbl.appModel.getVocabulary(fi.vocabulary_scope_ref);
-          if(!_.isUndefined(vocabulary)){
-            bindings['#'+key].onGet = function(value){
-              if(_.has(vocabulary, value)){
-                  return vocabulary[value].title;
-              }
-              console.log('no vocab: ' + key + ', ' + vocabulary );
-              return value;
-            };
-          }else{
-            console.log('Warning, no vocabulary found for: ' 
-                + fi.key + ', ' + fi.vocabulary_scope_ref);
+          try{
+            var vocabulary = Iccbl.appModel.getVocabulary(fi.vocabulary_scope_ref);
+            if(vocabulary && !_.isUndefined(vocabulary)){
+              bindings['#'+key].onGet = function(value){
+                if(_.has(vocabulary, value)){
+                    return vocabulary[value].title;
+                }
+                console.log('no vocab: ' + key + ', ' + vocabulary );
+                return value;
+              };
+            }else{
+              console.log('Warning, no vocabulary found for: ' 
+                  + fi.key + ', ' + fi.vocabulary_scope_ref);
+            }
+          }catch(e){
+            appModel.error('Warning, no vocabulary found for: ' 
+              + fi.key + ', ' + fi.vocabulary_scope_ref);
           }
 
         }else if(ui_type == 'date'){

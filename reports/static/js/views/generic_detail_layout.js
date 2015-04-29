@@ -127,7 +127,7 @@ define([
       event.preventDefault();
       var self = this;
       
-      var newUriStack = ['apilog','search'];
+      var newUriStack = ['apilog','order','-date_time', 'search'];
       var search = {};
       search['ref_resource_name'] = this.model.resource.key;
       search['key'] = this.model.key;
@@ -136,8 +136,7 @@ define([
             _.pairs(search), 
             function(keyval) {
               return keyval.join('=');
-            }).join(','));
-      newUriStack.push('order/-date_time');
+            }).join(appModel.SEARCH_DELIMITER));
       var route = newUriStack.join('/');
       console.log('history route: ' + route);
       appModel.router.navigate(route, {trigger: true});

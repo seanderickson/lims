@@ -18,10 +18,10 @@
         <ul  class="menu nav-sidebar">
   <%
 				_.each(_.keys(submenus), function(key){
-			    var ui_resource = ui_resources[key];
-			    if(_.isUndefined(ui_resource)){
+			    if(!_.has(ui_resources,key)){
 			      console.log('menu.html: error, undefined ui_resource:' + JSON.stringify(key) );
 			    }else{
+            var ui_resource = ui_resources[key];
 			      // console.log('found ' + key);
    %>
             <li  class="" id="<%= key %>" title="<%=ui_resource.description %>"><a href="#"><%= ui_resource.title %></a></li>

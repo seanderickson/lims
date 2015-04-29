@@ -9,6 +9,7 @@ define([
   'views/generic_detail_layout',
   'views/generic_edit',
   'views/library/library',
+  'views/screen/screen',
   'views/user/user2',
   'views/usergroup/usergroup2',
   'text!templates/content.html',
@@ -16,7 +17,7 @@ define([
   'text!templates/about.html'
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
-         EditView, LibraryView, UserAdminView, UserGroupAdminView, layout, welcomeLayout, 
+         EditView, LibraryView, ScreenView, UserAdminView, UserGroupAdminView, layout, welcomeLayout, 
          aboutLayout) {
   
   
@@ -24,6 +25,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     'ListView': ListView, 
     'DetailView': DetailLayout, 
     'LibraryView': LibraryView,
+    'ScreenView': ScreenView,
     'UserAdminView': UserAdminView,
     'UserGroupAdminView': UserGroupAdminView
   };
@@ -40,35 +42,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       this.consumedStack = [];
       this.objects_to_destroy = [];
     },
-    
-//    /**
-//     * Child view bubble up URI stack change event
-//     */
-//    reportUriStack: function(reportedUriStack) {
-//      var consumedStack = this.consumedStack || [];
-//      var actualStack = consumedStack.concat(reportedUriStack);
-//      appModel.set({'uriStack': actualStack}, {source: this});     
-//    },
-//    
-//    /**
-//     * Backbone.Model change event handler
-//     * @param options.source = the event source triggering view
-//     */
-//    uriStackChange: function(model, val, options) {
-//      if(options.source === this){
-//        console.log('self generated uristack change');
-//        return;
-//      }else{
-//        this.changeUri();
-//      }
-//    },
-    
-//    serialize: function(){
-//      return {
-//        'title': this.title
-//      };
-//    },
-    
+        
     showAdd: function(resource, uriStack){
       var self = this;
 
@@ -133,16 +107,19 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         }
       }
       
-      this.$('#content_title').html(
-          model.resource.title + 
-          ': ' + Iccbl.getTitleFromTitleAttribute(model,model.resource.schema) + '' 
-          );
+      var titleFunc = function setContentTitle(val){
+        this.$('#content_title').html(val);
+      }
       
-
+      titleFunc(model.resource.title + ': ' + 
+        Iccbl.getTitleFromTitleAttribute(model,model.resource.schema) );
+      
       var view = new viewClass({ model: model, uriStack: uriStack});
+      self.listenTo(view, 'update_title', titleFunc );
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView('#content', view).render();
-    },
+    
+    }, // end showDetail
     
     
     showList: function(resource, uriStack, schemaResult) {
@@ -236,6 +213,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           }
         });
       }
+    
       self.listenTo(view, 'update_title', function(val){
         if(val) {
           this.$('#content_title').html(
@@ -246,13 +224,13 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         }
       });
     
-
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       
       Backbone.Layout.setupView(view);
       self.setView('#content', view ).render();
       self.objects_to_destroy.push(view);
-    },
+
+    }, // end showList
     
     /** Backbone.layoutmanager callback **/
     cleanup: function(){
@@ -320,7 +298,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         // DETAIL VIEW
         
         if(uriStack[0] == '+add'){
-//        consumedStack = uriStack.unshift();
+          //        consumedStack = uriStack.unshift();
           self.showAdd(resource, uriStack);
         }else{ 
           var _key = Iccbl.popKeyFromStack(resource, uriStack, consumedStack );

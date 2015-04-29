@@ -80,7 +80,14 @@ define([
           appModel.set({'menu':menus});
           this.render();
         }
+        this.ui_resource_id = ui_resource_id;
         this.$('#' + ui_resource_id).addClass('active');
+      },
+      
+      afterRender: function(){
+        if(this.ui_resource_id){
+          this.$('#' + this.ui_resource_id).addClass('active');
+        }
       },
 
       find_submenu_path : function(menu, id){

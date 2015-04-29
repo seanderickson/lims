@@ -180,9 +180,22 @@ ul.backgrid-paginator {
   width: 3em !important;
 }
 
+/** todo: these selectors should be redone 
+  
+**/
 .iccbl-headerfield-text *{
 /*   padding: 0 0 0 0 !important; */
   width: 9em !important;
+}
+
+.iccbl-headerfield-form-last-row *{
+	padding: 0 0 0 0;
+}
+
+td.text-wrap-cell {
+  text-overflow: inherit;
+  white-space: inherit;
+  vertical-align: top;
 }
 
 /* .iccbl-min-width { */

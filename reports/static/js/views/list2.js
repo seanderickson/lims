@@ -17,8 +17,9 @@ define([
   
   var ListView = Backbone.View.extend({
 
-    LIST_ROUTE_ORDER: ['rpp', 'page', 'includes', 'order','search'],
-    SEARCH_DELIMITER: ';',
+    //LIST_ROUTE_ORDER: ['rpp', 'page', 'includes', 'order','search'],
+    LIST_ROUTE_ORDER: appModel.LIST_ARGS,
+    SEARCH_DELIMITER: appModel.SEARCH_DELIMITER,
     
     events: {
       'click .btn#select_columns': 'select_columns',
@@ -50,54 +51,26 @@ define([
       
       var urlSuffix = self.urlSuffix = "";
       var listInitial = {};
-      var searchHash = {};
-      var orderings = [];
-      var includes = [];
+//      var orderings = [];
+//      var includes = [];
 
       // first set presets
-      // TODO: do the same thing here to implement preset orderings
-      searchHash = _.extend({}, preset_searches,searchHash);
-      if(!_.isEmpty(searchHash)){
-        listInitial['search'] = searchHash;
-      }
       
-      if(!_.isUndefined(resource.options)
-          && ! _.isUndefined(resource.options.order)){
-        if(!_.isEmpty(resource.options.order)){
-          // TODO: to complicated: should deal with orderings as a hash, to simplify
-          orderings = _.union(orderings,resource.options.order);
-          var orderHash = {};
-          _.each(orderings, function(item){
-            var dir = item.substring(0,1);
-            var fieldname = item;
-            if(dir == '-'){
-              fieldname = item.substring(1);
-            }else{
-              dir = '';
-            }
-            if(!_.has(orderHash,fieldname)){
-              orderHash[fieldname] = dir;
-            }else{
-              orderings = _.without(orderings, item);
-            }
-          });
-        }
-      }
-      listInitial['order'] = orderings;
-      
-      if(!_.isUndefined(resource.options)
-          && ! _.isUndefined(resource.options.includes)){
-        if(!_.isEmpty(resource.options.order)){
-          includes = _.union(includes, resource.options.includes);
-        }
-      }
-      listInitial['includes'] = includes;
       if(!_.isUndefined(resource.options)
           && ! _.isUndefined(resource.options.rpp)){
         listInitial['rpp'] = resource.options.rpp;
       }
+      if(resource.options && !_.isEmpty(resource.options.order)){
+        listInitial['order'] = _.clone(resource.options.order);
+      }
+      if(resource.options && !_.isEmpty(resource.options.includes)){
+        listInitial['includes'] = _.clone(resource.options.includes);
+      }
+      if(resource.options && !_.isEmpty(resource.options.search)){
+        listInitial['search'] = _.clone(resource.options.search);
+      }
       
-      // second override with the uriStack values
+      // set with the uriStack values
       if(_.has(self._options,'uriStack')){
         var stack = self._options.uriStack;
         console.log('initialize ListView: ',stack);
@@ -128,6 +101,7 @@ define([
           if(_.contains(this.LIST_ROUTE_ORDER, key)){
             
             if(key === 'search') {
+              var searchHash = {};
               var searches = value.split(this.SEARCH_DELIMITER);
               _.each(searches, function(search){
                 var parts = search.split('=');
@@ -141,17 +115,65 @@ define([
                   searchHash[parts[0]] = parts[1];
                 }
               });
+              listInitial[key] = searchHash;
             } else if (key === 'order') {
-              orderings = value.split(',');
-              //listInitial[key] = value.split(',');        
+//              orderings = value.split(',');
+              listInitial[key] = value.split(',');        
             } else if (key === 'includes') {
-              includes = value.split(',');
+//              includes = value.split(',');
+              listInitial[key] = value.split(',');        
             }else {
               listInitial[key] = value;
             }
           }
         }
       }
+////      if(!_.isUndefined(resource.options)
+////          && ! _.isUndefined(resource.options.order)){
+////        if(!_.isEmpty(resource.options.order)){
+////          // TODO: too complicated: should deal with orderings as a hash, to simplify
+////          orderings = _.union(orderings,resource.options.order);
+////          var orderHash = {};
+////          _.each(orderings, function(item){
+////            var dir = item.substring(0,1);
+////            var fieldname = item;
+////            if(dir == '-'){
+////              fieldname = item.substring(1);
+////            }else{
+////              dir = '';
+////            }
+////            if(!_.has(orderHash,fieldname)){
+////              orderHash[fieldname] = dir;
+////            }else{
+////              orderings = _.without(orderings, item);
+////            }
+////          });
+////        }
+////      }
+//      
+//      if(!_.isEmpty(orderings)){
+//        listInitial['order'] = orderings;
+//      }else if(!_.isEmpty(resource.options.order)){
+//        listInitial['order'] = resource.options.order;
+//      }
+//      
+////      if(!_.isUndefined(resource.options)
+////          && ! _.isUndefined(resource.options.includes)){
+////        if(!_.isEmpty(resource.options.includes)){
+////          includes = _.union(includes, resource.options.includes);
+////        }
+////      }
+////      listInitial['includes'] = includes;
+//      if(!_.isEmpty(includes)){
+//        listInitial['includes'] = includes;
+//      }else if(!_.isEmpty(resource.options.includes)){
+//        listInitial['includes'] = resource.options.includes;
+//      }
+//
+//      searchHash = _.extend({}, preset_searches,searchHash);
+//      if(!_.isEmpty(searchHash)){
+//        listInitial['search'] = searchHash;
+//      }
 
       var listModel = this.listModel = new ListModel(listInitial);
 
@@ -194,7 +216,7 @@ define([
         columns = Iccbl.createBackgridColModel(
             this._options.schemaResult.fields, 
             orderStack,
-            includes);
+            listModel.get('includes'));
       }else{
         columns = _options.columns;
       }
@@ -328,20 +350,21 @@ define([
       if(previousStack && _.isEqual(previousStack,newStack)){
         console.log('no new stack updates');
       }else{
-        var route_update = false;
-        var changedAttributes = self.listModel.changedAttributes();
-        var previousAttributes = self.listModel.previousAttributes();
-        _.each(_.keys(changedAttributes), function(key){
-          if(_.has(previousAttributes, key)){ 
-            route_update = true;
-            console.log('valid changed attribute', key, changedAttributes, previousAttributes);
-          }
-        });
-        
-        if(!route_update){
-          appModel.set('routing_options', {replace: true});  
-        }
-
+//        var route_update = false;
+//        var changedAttributes = self.listModel.changedAttributes();
+//        var previousAttributes = self.listModel.previousAttributes();
+//        _.each(_.keys(changedAttributes), function(key){
+//          if(_.has(previousAttributes, key)){ 
+//            route_update = true;
+//            console.log('valid changed attribute', key, changedAttributes, previousAttributes);
+//          }
+//        });
+//        
+////        if(route_update){
+////            // replace false (default) to create browser history
+////          appModel.set('routing_options', {replace: true});  
+////        }
+//
         // calling this to update the title
         self.getCollectionUrl(0);
         self.trigger('uriStack:change', newStack );
@@ -459,6 +482,7 @@ define([
           self.listModel.set('page',1);
           self.collection.state.currentPage = 1; // set this because of how checkstate is triggered
           console.log('===--- rppModel change: ' + rpp );
+//        // replace false (default) to create browser history
           appModel.set('routing_options', {replace: false});  
           self.collection.setPageSize(rpp, { first: true });
       });
@@ -702,7 +726,7 @@ define([
       
       // Note: replace: true - to suppress router history:
       // at this point, reportState is modifying the URL to show rpp, pagesSize, etc.
-      // appModel.set('routing_options', {replace: true});  
+      appModel.set('routing_options', {replace: true});  
       this.reportState();
       return this;
     },
@@ -713,7 +737,7 @@ define([
     },
     
     clear_sorts: function(){
-      this.collection.trigger("Iccbl:clearSearches");
+      this.collection.trigger("Iccbl:clearSorts");
       this.listModel.unset('order');
       this.collection.state.orderStack = [];
       this.collection.getFirstPage({reset: true, fetch: true});
@@ -760,15 +784,23 @@ define([
             </div>\
           </div>\
         ');
+      
       var _fields = this._options.schemaResult.fields;
       var _extra_scopes = [];
       var formSchema= {};
-      // create the schema fields; if the scope is not the resource scope, 
-      // create a extra_scope entry
+      
+      // Create the schema fields:
+      // - fields for the current resource are shown as normal
+      // - if the scope is not the resource scope, create an extra_scope entry,
+      // these items are indented.
       _.each(_.pairs(_fields), function(pair){
         var prop = pair[1];
         var key = prop['key'];
-        if(key == 'resource_uri' || key == 'id') return;
+        
+        //  20150428 - need to start using resource_uri (need to update sqlalchemy methods
+        //        if(key == 'resource_uri' || key == 'id'){
+        //          return;
+        //        }
         var title = prop['title'];
         var scope = prop['scope'];
         var fieldResource = scope.split('.')[1];
@@ -810,7 +842,8 @@ define([
       _.each(_.pairs(_fields), function(pair){
         var key = pair[1]['key'];
         var prop = pair[1];
-        if(key == 'resource_uri' || key == 'id') return;
+        //  20150428 - need to start using resource_uri (need to update sqlalchemy methods
+        // if(key == 'resource_uri' || key == 'id') return;
         var _visible = (_.has(prop, 'visibility') && 
             _.contains(prop['visibility'], 'list'));
         default_visible[key] = _visible;
@@ -930,7 +963,9 @@ define([
       });
       
       appModel.showModal({
+
         ok: function(){
+        
           form.commit();
           if(_.isUndefined(
               _.find(formFields.values(),function(val){ return val==true; }))){
@@ -975,7 +1010,10 @@ define([
           console.log('new_includes: ' + JSON.stringify(new_includes));
           self.listModel.set({'includes': new_includes });
           self.collection.fetch();
-          self.listModel.set({'includes': new_includes });
+          
+          // trigger an event to notify new header forms to self-display
+          self.collection.trigger("MyServerSideFilter:search", 
+            self.listModel.get('search'), self.collection);
         },
         view: _form_el,
         title: 'Select columns'  

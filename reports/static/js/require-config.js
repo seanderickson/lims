@@ -1,4 +1,6 @@
 require.config({
+  // TODO: how to use the newest version of underscore.js? current version is 1.8.x
+  // but we are using 1.5.2
   
   // Note: baseUrl is the current working directory.
   

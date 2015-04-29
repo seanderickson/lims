@@ -8,16 +8,15 @@ define([
   'iccbl_backgrid',
   'layoutmanager',
   'models/app_state',
-  'views/library/libraryCopies', 
-  'views/library/libraryCopyPlates', 
+  'views/library/libraryCopy', 
   'views/library/libraryWells', 
   'views/library/libraryVersions',
   'views/generic_detail_layout',
   'views/generic_edit',
   'views/list2',
-  'text!templates/library.html'
-], function($, _, Backbone, Iccbl, layoutmanager, appModel, LibraryCopiesView, 
-            LibraryCopyPlatesView, LibraryWellsView, LibraryVersionsView,
+  'text!templates/generic-tabbed.html'
+], function($, _, Backbone, Iccbl, layoutmanager, appModel, LibraryCopyView, 
+            LibraryWellsView, LibraryVersionsView,
             DetailLayout, EditView, ListView, 
             libraryTemplate) {
   
@@ -89,8 +88,8 @@ define([
       // We are using this as a non-standard way to signal the upload type to the 
       // serializer. (TP doesn't support mulitpart uploads, so this is patched in).
       data.append('sdf', file);
-//      data.append('file', file, {'Content-type': 'chemical/x-mdl-sdfile'});
-//      data.append('Content-type','chemical/x-mdl-sdfile');
+      //      data.append('file', file, {'Content-type': 'chemical/x-mdl-sdfile'});
+      //      data.append('Content-type','chemical/x-mdl-sdfile');
       $.ajax({
         url: url,    
         data: data,
@@ -168,6 +167,30 @@ define([
       this.change_to_tab(key);
     },
 
+    change_to_tab: function(key){
+      if(_.has(this.tabbed_resources, key)){
+        this.$('li').removeClass('active');
+        this.$('#' + key).addClass('active');
+        if(key !== 'detail'){
+          this.consumedStack = [key];
+        }else{
+          this.consumedStack = [];
+        }
+        var delegateStack = _.clone(this.uriStack);
+        this.uriStack = [];
+        var method = this[this.tabbed_resources[key]['invoke']];
+        if (_.isFunction(method)) {
+          method.apply(this,[delegateStack]);
+        } else {
+          throw "Tabbed resources refers to a non-function: " + this.tabbed_resources[key]['invoke']
+        }
+      }else{
+        var msg = 'Unknown tab: ' + key;
+        appModel.error(msg);
+        throw msg;
+      }
+    },
+    
     showAdd: function() {
       var self = this;
       var delegateStack = _.clone(this.uriStack);
@@ -201,30 +224,6 @@ define([
       this.$('#detail').addClass('active');
     },
     
-    change_to_tab: function(key){
-      if(_.has(this.tabbed_resources, key)){
-        this.$('li').removeClass('active');
-        this.$('#' + key).addClass('active');
-        if(key !== 'detail'){
-          this.consumedStack = [key];
-        }else{
-          this.consumedStack = [];
-        }
-        var delegateStack = _.clone(this.uriStack);
-        this.uriStack = [];
-        var method = this[this.tabbed_resources[key]['invoke']];
-        if (_.isFunction(method)) {
-          method.apply(this,[delegateStack]);
-        } else {
-          throw "Tabbed resources refers to a non-function: " + this.tabbed_resources[key]['invoke']
-        }
-      }else{
-        var msg = 'Unknown tab: ' + key;
-        appModel.error(msg);
-        throw msg;
-      }
-    },
-    
     setDetail: function(delegateStack) {
       var key = 'detail';
       
@@ -244,6 +243,8 @@ define([
     },
 
     setVersions: function(delegateStack) {
+      // FIXME: this is old, remove
+      
       var self = this;
       var key = 'version';
       var view = this.tabViews[key];
@@ -265,94 +266,99 @@ define([
     setWells: function(delegateStack) {
       var self = this;
       var key = 'well';
-      var view = this.tabViews[key];
-      if ( !view ) {
-        var view = new LibraryWellsView({
-          library: self.model,
-          uriStack: delegateStack
-        });
-        self.tabViews[key] = view;
-        Backbone.Layout.setupView(view);
-      } else {
-        self.reportUriStack([]);
-      }
+      var view = new LibraryWellsView({
+        library: self.model,
+        uriStack: delegateStack
+      });
+      self.tabViews[key] = view;
+      Backbone.Layout.setupView(view);
+      self.reportUriStack([]);
       // NOTE: have to re-listen after removing a view
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
     },
 
-    setPlates: function(delegateStack, copyName) {
+    setPlates: function(delegateStack) {
       var self = this;
-      var key = 'plate';
-      var view = this.tabViews[key];
-      
-      var plateNumber;
-      if(_.isUndefined(copyName) && !_.isUndefined(_.first(delegateStack))){
-        try{
-          var temp = parseInt(_.first(delegateStack));
-          if(!_.isNaN(temp)){
-            plateNumber = temp;
-            delegateStack.shift();
-            this.consumedStack.push(plateNumber);
-          }
-        }catch(e){
-          // not a number, so not a plate_number, so process normally
-        }
-      }
-      
-      if ( !view ) {
-        var view = new LibraryCopyPlatesView({
-          library: self.model,
-          uriStack: delegateStack,
-          copyName: copyName,
-          plateNumber: plateNumber
-        });
-        
-        self.tabViews[key] = view;
-        Backbone.Layout.setupView(view);
-      } else {
-        self.reportUriStack([]);
-      }
-      // NOTE: have to re-listen after removing a view
+      var copyPlateResource = appModel.getResource('librarycopyplate'); 
+
+      // List view
+      // special url because list is a child view for library
+      var url = [self.model.resource.apiUri, 
+                 self.model.key,
+                 'plate'].join('/');
+      view = new ListView({ options: {
+        uriStack: _.clone(delegateStack),
+        schemaResult: copyPlateResource.schema,
+        resource: copyPlateResource,
+        url: url
+      }});
+      Backbone.Layout.setupView(view);
+      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
     },
 
     setCopies: function(delegateStack) {
       var self = this;
-
-      if(!_.isEmpty(delegateStack) && delegateStack.length >= 2 
-          && delegateStack[1] == 'plate'){
-        // if delegateStack = [copy/<copyname>/plate/...] then redirect this as 
-        // a library/copy/plates view
-        var copyName = delegateStack.shift();
-        this.consumedStack.push(copyName);
-        var plateKey = delegateStack.shift(); // "plate"
-        this.consumedStack.push(plateKey);
-
-        this.$('li').removeClass('active');
-        this.$('#' + plateKey).addClass('active');
-
-        this.setPlates(delegateStack, copyName);
-        return;
-      }
-
+      // Note, no longer caching view; if user clicks on it then refresh
+      // var key = 'copy';
+      // var view = this.tabViews[key];
+      // if ( !view ) {
+        
+      // FIXME: UI Architecture: 
+      // should either:
+      // 1. show List view for copies query,
+      // 2. or employ the the LibraryCopy (detail) view in the content space:
+      var copyResource = appModel.getResource('librarycopy'); 
       
-      var key = 'copy';
-      var view = this.tabViews[key];
-      if ( !view ) {
-        var view = new LibraryCopiesView({
-          library: self.model,
-          uriStack: delegateStack
-        });
-        self.tabViews[key] = view;
+      // List or detail?
+      // List: check for list args, or empty
+      
+      // TODO: allow LibraryCopy model to be provided, with an empty uriStack?
+      // (this facilitates in-memory model sharing)
+      // (prefer: not to do this, rather, implement model caching on the app-state,
+      //  - needs cache-busting technique as well)
+      
+      if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
+          !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
+        // Detail view
+        var copyname = delegateStack.shift();
+        self.consumedStack.push(copyname);
+        var _key = [self.model.key,copyname].join('/');
+        appModel.getModel(copyResource.key, _key, function(model){
+          view = new LibraryCopyView({
+            model: model, 
+            uriStack: _.clone(delegateStack),
+            library: self.model
+          });
+          Backbone.Layout.setupView(view);
+          //self.tabViews[key] = view;
+
+          // NOTE: have to re-listen after removing a view
+          self.listenTo(view , 'uriStack:change', self.reportUriStack);
+          self.setView("#tab_container", view ).render();
+        });        
+        return;
+      }else{
+        // List view
+        // special url because list is a child view for library
+        var url = [self.model.resource.apiUri, 
+                   self.model.key,
+                   'copy'].join('/');
+        view = new ListView({ options: {
+          uriStack: _.clone(delegateStack),
+          schemaResult: copyResource.schema,
+          resource: copyResource,
+          url: url
+        }});
         Backbone.Layout.setupView(view);
-      } else {
+        //self.tabViews[key] = view;
         self.reportUriStack([]);
+        // NOTE: have to re-listen after removing a view
+        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        this.setView("#tab_container", view ).render();
       }
-      // NOTE: have to re-listen after removing a view
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      this.setView("#tab_container", view ).render();
     },
 
     onClose: function() {

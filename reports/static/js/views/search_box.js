@@ -64,6 +64,7 @@ define([
         options: [{ val: 'reagent', label: 'Wells'},
                   { val: 'librarycopyplates', label: 'Plate copies'},
                   { val: 'librarycopies', label: 'Copies'},
+                  { val: 'copywell', label: 'Copy Wells'},
                   ],
         template: _.template(self.fieldTemplate),
         editorClass: 'form-control'
@@ -239,8 +240,7 @@ define([
       
       var search_target = self.getValue('search_target');
       if(!search_target ||
-          _.isUndefined(search_target)||
-          _.isEmpty(search_target.trim())){
+          _.isUndefined(search_target)||_.isEmpty(search_target.trim())){
         console.log('cancelling submit with nothing entered');
         return;
       }
@@ -253,6 +253,7 @@ define([
       if(search_target == 'reagent'){
       
         matching_hash = {
+          matching_order: ['plate_number','well_id','well_name'],
           plate_number: {
             title: 'Plate number',
             pattern: /^\d{1,5}$/,
@@ -279,6 +280,7 @@ define([
         };
       }else if(search_target == 'librarycopyplates'){
         matching_hash = {
+          matching_order: ['plate_number','copy_name'],
           copy_name: {
             title: 'Copy name',
             pattern: /\b([a-zA-Z0-9]*[a-zA-Z][a-zA-Z0-9]*)\b/,
@@ -292,6 +294,7 @@ define([
         };
       }else if(search_target == 'librarycopies'){
         matching_hash = {
+          matching_order: ['copy_name','library_short_name'],
           library_short_name: {
             title: 'Library short name',
             pattern: /\w+/,
@@ -303,6 +306,34 @@ define([
             pattern: /\b([a-zA-Z0-9]*[a-zA-Z][a-zA-Z0-9]*)\b/,
             help: 'letters and numbers with no spaces'            
           },
+        };
+      }else if(search_target == 'copywell'){
+        matching_hash = {
+          matching_order: ['well_name','plate_number','copy_name'],
+          copy_name: {
+            title: 'Copy name',
+            pattern: /\b([a-zA-Z0-9]*[a-zA-Z][a-zA-Z0-9]*)\b/,
+            help: 'letters and numbers with no spaces'            
+          },
+          plate_number: {
+            title: 'Plate number',
+            pattern: /^\d{1,5}$/,
+            help: 'a 1-5 digit number'
+          },
+          well_name: {
+            title: 'Well name',
+            pattern: /([a-zA-Z]{1,2})(\d{1,2})/,
+            help: '[row][col] in the form A01,A12,B01 etc.',
+            parser: function(val_list){
+              return _.map(val_list, function(term){
+                var rowcol = matching_hash.well_name.pattern.exec(term);
+                // check the col, 2 digits
+                if(rowcol[2].length == 1) term = rowcol[1] + '0'+rowcol[2];
+                return term.toUpperCase();
+              });
+            }
+          }          
+          
         };
       }else{
         var msg = 'Unknown search target: ' + search_target;
@@ -327,7 +358,7 @@ define([
             type='range';
             var testing_val = testing_val.split('-')[0];
           }
-          entity = _.find(_.keys(matching_hash),function(key){
+          entity = _.find(matching_hash.matching_order,function(key){
             if(matching_hash[key].pattern.exec(testing_val)) return true;
           });
           
@@ -342,12 +373,12 @@ define([
             if(matching_hash[entity].type) type = matching_hash[entity].type;
             
             var search_entry = entity + '__' + type;
-            // Hack because pattern for library_short_name is equivalent to the copy_name pattern
-            if( search_entry == 'library_short_name__icontains'){
-              if(!_.has(and_hash, 'copy_name__in')){
-                search_entry = 'copy_name__in';
-              }
-            }
+//            // Hack because pattern for library_short_name is equivalent to the copy_name pattern
+//            if( search_entry == 'library_short_name__icontains'){
+//              if(!_.has(and_hash, 'copy_name__in')){
+//                search_entry = 'copy_name__in';
+//              }
+//            }
             
             if(type == 'range'){
               and_hash[search_entry] = terms[0].split('-').join(',');
@@ -402,8 +433,13 @@ define([
         var _serialized = JSON.stringify(or_list);
         appModel.setSearch(searchID,or_list);
         this.searchID = searchID;
-        appModel.set({'uriStack': newStack});     
-
+        appModel.set('routing_options', {replace: false});  
+        var _route = search_target + '/search/'+ searchID;
+        appModel.router.navigate(_route, {trigger:true});
+        // NOTE: easier to control the router history using navigate: 
+        // when using uristack, there is the problem of who set appModel.routing_options last:
+        // a race condition is set up between list2.js and search_box.js
+        //        appModel.set({'uriStack': newStack});     
       }else{
         // this is a simple "AND" search -which be translated to the list for handling
         var _route = search_target + '/search/';
@@ -416,6 +452,7 @@ define([
           routes.push(pair[0] + '=' + val);
         });
         _route += routes.join(';')
+        appModel.set('routing_options', {replace: false});  
         appModel.router.navigate(_route, {trigger:true});
       }
     }

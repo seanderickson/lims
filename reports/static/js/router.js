@@ -8,7 +8,7 @@ function($, _, Backbone, appModel) {
 
   var AppRouter = Backbone.Router.extend({
 
-//    LIST_ROUTE_ORDER: ['rpp', 'page','include', 'order','search'],
+//    LIST_ROUTE_ORDER: ['rpp', 'page','includes', 'order','search'],
     
     initialize : function() {
       // send all routes to URIstack processing function
@@ -27,7 +27,17 @@ function($, _, Backbone, appModel) {
     toPath: function(path){
       console.log('toPath: ' + path);
       var uriStack = [];
-      if (path) uriStack = path.split('/');
+      if (path){
+        uriStack = path.split('/');
+        // special search case, as last item
+        var searchIndex = _.indexOf(uriStack,'search');
+        if(searchIndex > -1){
+          var temp = uriStack.slice(0,searchIndex+1);
+          temp.push(_.rest(uriStack,searchIndex+1).join('/'));
+          uriStack = temp;
+          console.log('new uriStack', uriStack);
+        }
+      }
       appModel.set({ uriStack: uriStack }, { source: this });
     },
 
@@ -65,6 +75,9 @@ function($, _, Backbone, appModel) {
       var uriStack = appModel.get('uriStack');
       console.log('model_set_route: ' + JSON.stringify(uriStack));
       var route = this.get_route(uriStack);
+      
+      // TODO: this mirrors the handler for route match in main.js
+      document.title = 'Screensaver LIMS' + ': ' + route;
 
       // trigger false to suppress further parsing, 
       // replace false (default) to create browser history

@@ -35,7 +35,7 @@ LOGGING = {
             'format': '%(levelname)s %(asctime)s %(module)s:%(lineno)d %(process)d %(thread)d %(message)s'
         },
         'simple': {
-            'format': '%(levelname)s %(msecs)s: %(name)s:%(funcName)s:%(lineno)d: %(message)s'
+            'format': '%(levelname)s %(asctime)s: %(name)s:%(funcName)s:%(lineno)d: %(message)s'
         },
     },
     'filters': {
@@ -70,7 +70,7 @@ LOGGING = {
             'propagate': False,
         },
         'db': {  # set a default handler
-            'handlers': ['console'],
+            'handlers': ['logfile'],
             'propagate': False,
             'level': 'INFO',
         },        
@@ -80,22 +80,22 @@ LOGGING = {
             'level': 'INFO',
         },               
         'reports': {  # set a default handler
-            'handlers': ['console'],
+            'handlers': ['logfile'],
             'propagate': False,
             'level': 'INFO',
         },
         'db.tests': {  # set a default handler
-            'handlers': ['console'],
+            'handlers': ['logfile'],
             'propagate': False,
             'level': 'INFO',
         },        
         'lims.tests': {  # set a default handler
-            'handlers': ['console'],
+            'handlers': ['logfile'],
             'propagate': False,
             'level': 'INFO',
         },               
         'reports.tests': {  # set a default handler
-            'handlers': ['console'],
+            'handlers': ['logfile'],
             'propagate': False,
             'level': 'INFO',
         },        
@@ -105,7 +105,7 @@ LOGGING = {
             'level': 'INFO',
         },        
         'django.db.backends': {  # for SQL
-            'handlers': ['console'],
+            'handlers': ['logfile'],
             'propagate': True,
             'level': 'INFO',
         },        

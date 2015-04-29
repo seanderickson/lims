@@ -54,6 +54,11 @@ LOGGING = {
         },
     },
     'loggers': {
+        '': {  # set a default handler
+            'handlers': ['logfile'],
+            'propagate': True,
+            'level': 'INFO',
+        },        
         'django.request': {
             'handlers': ['mail_admins'],
             'level': 'ERROR',
@@ -82,7 +87,7 @@ LOGGING = {
         'django.db.backends': {  # for SQL
             'handlers': ['logfile'],
             'propagate': False,
-            'level': 'DEBUG',
+            'level': 'INFO',
         },        
         'utils': {  # 
             'handlers': ['logfile'],

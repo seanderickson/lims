@@ -47,7 +47,7 @@ LOGGING = {
             'format': '%(levelname)s %(asctime)s %(module)s:%(lineno)d %(process)d %(thread)d %(message)s'
         },
         'simple': {
-            'format': '%(levelname)s %(msecs)s: %(name)s:%(funcName)s:%(lineno)d: %(message)s'
+            'format': '%(levelname)s %(asctime)s: %(name)s:%(funcName)s:%(lineno)d: %(message)s'
         },
     },
     'filters': {

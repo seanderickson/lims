@@ -5,22 +5,26 @@ import csv
 import hashlib
 import io
 import json
+import logging
 import math
 import os.path
 import re
 import shutil
 import sys
 import time
+import urllib
 
 from PIL import Image
-
+from django.conf import settings
+from django.core.serializers.json import DjangoJSONEncoder
 from django.core.urlresolvers import resolve
+from django.core.cache import cache
+import django.db.models.constants
+import django.db.models.sql.constants
 from django.http.response import HttpResponseBase
 from django.http.response import StreamingHttpResponse, HttpResponse
-import django.db.models.constants
-from django.core.serializers.json import DjangoJSONEncoder
-import django.db.models.sql.constants
 from sqlalchemy import select, asc, text
+import sqlalchemy
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.sql import and_, or_, not_          
 from sqlalchemy.sql import asc, desc, alias, Alias
@@ -28,21 +32,19 @@ from sqlalchemy.sql import func
 from sqlalchemy.sql.elements import literal_column
 from sqlalchemy.sql.expression import column, join
 from sqlalchemy.sql.expression import nullsfirst, nullslast
-from tastypie.resources import Resource
-from tastypie.utils.mime import build_content_type
 from tastypie.exceptions import BadRequest, ImmediateHttpResponse, \
     UnsupportedFormat
-import sqlalchemy
-from reports.utils.sqlalchemy_bridge import Bridge
-from reports.serializers import csv_convert
-
-import logging
-
-from reports import CSV_DELIMITER,LIST_DELIMITER_SQL_ARRAY,LIST_DELIMITER_URL_PARAM,\
-    HTTP_PARAM_RAW_LISTS,HTTP_PARAM_USE_TITLES,HTTP_PARAM_USE_VOCAB,\
-    LIST_BRACKETS, MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE
 from tastypie.http import HttpNotFound
-    
+from tastypie.resources import Resource
+from tastypie.utils.mime import build_content_type
+
+from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
+    LIST_BRACKETS, MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE, \
+    LIST_DELIMITER_XLS, LIST_DELIMITER_CSV, HTTP_PARAM_RAW_LISTS
+from reports.serializers import csv_convert
+from reports.utils.sqlalchemy_bridge import Bridge
+from wsgiref.util import FileWrapper
+from db.models import Screen
 
 
 logger = logging.getLogger(__name__)
@@ -292,7 +294,11 @@ class SqlAlchemyResource(Resource):
             columns = OrderedDict()
             for field in fields:
                 key = field['key']
+                if DEBUG_BUILD_COLUMNS:
+                    logger.info(str(('field:', key)))
                 if key in custom_columns:
+                    if DEBUG_BUILD_COLUMNS: 
+                        logger.info(str(('custom field', key,custom_columns[key])))
                     columns[key] = custom_columns[key]
                     continue
                 
@@ -373,7 +379,7 @@ class SqlAlchemyResource(Resource):
                 else:
                     logger.warn(str(('field is not in the base tables or in a linked field, and is not custom', key)))
             if DEBUG_BUILD_COLUMNS: logger.info(str(('columns', columns.keys())))
-            return columns.values()
+            return columns
         except Exception, e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
@@ -430,7 +436,7 @@ class SqlAlchemyResource(Resource):
                     value.extend(part.split(LIST_DELIMITER_URL_PARAM))
             else:
                 value = value.split(LIST_DELIMITER_URL_PARAM)
-        logger.info(str(('filter value', filter_expr, value)))
+        logger.debug(str(('filter value', filter_expr, value)))
         return value
 
     @staticmethod
@@ -527,7 +533,8 @@ class SqlAlchemyResource(Resource):
                 #     'regex', 'iregex',
                 # ])
                 
-                logger.info(str(('find filter', field_name, filter_type, value)))
+                if DEBUG_FILTERS:
+                    logger.info(str(('find filter', field_name, filter_type, value)))
                 
     #             if not value:
     #                 continue
@@ -542,8 +549,9 @@ class SqlAlchemyResource(Resource):
                     expression = func.round(
                         sqlalchemy.sql.expression.cast(
                             column(field_name),sqlalchemy.types.Numeric),decimals) == value
-                    logger.info(str(('create "about" expression for term:',filter_expr,
-                        value,'decimals',decimals)))
+                    if DEBUG_FILTERS:
+                        logger.info(str(('create "about" expression for term:',filter_expr,
+                            value,'decimals',decimals)))
                 elif filter_type == 'contains':
                     expression = column(field_name).contains(value)
                 elif filter_type == 'icontains':
@@ -556,8 +564,21 @@ class SqlAlchemyResource(Resource):
                     expression = column(field_name) > value
                 elif filter_type == 'gte':
                     expression = column(field_name) >= value
+                elif filter_type == 'is_blank':
+                    col = column(field_name)
+                    if field['ui_type'] == 'string':
+                        col = func.trim(col)
+                    if value and str(value).lower() == 'true':
+                        expression = col == None 
+                        if field['ui_type'] == 'string':
+                            expression = col == ''
+                    else:
+                        expression = col != None
+                        if ( field['ui_type'] == 'string' 
+                             or field['ui_type'] == 'list'
+                             or field['ui_type'] == 'Checkboxes' ):
+                            expression = col != ''
                 elif filter_type == 'is_null':
-                    logger.info(str(('is_null', field_name, value, str(value) )))
                     col = column(field_name)
                     if field['ui_type'] == 'string':
                         col = func.trim(col)
@@ -677,13 +698,20 @@ class SqlAlchemyResource(Resource):
             self._meta.resource_name)) )
         
     def _cached_resultproxy(self, stmt, count_stmt, limit, offset):
-        ''' ad-hoc cache for some resultsets
+        ''' 
+        ad-hoc cache for some resultsets:
+        - Always returns the cache object with a resultset, either from the cache,
+        or executed herein.
+        
         NOTE: limit and offset are included because this version of sqlalchemy
         does not support printing of them with the select.compile() function.
-        TODO: cache clearing
-        '''
         
-        from django.core.cache import cache
+        TODO: cache clearing on database writes
+        '''
+        if limit == 0:
+            raise Exception('limit for caching must be >0')
+        
+        prefetch_number = 5
         
         conn = self.bridge.get_engine().connect()
         try:
@@ -705,10 +733,10 @@ class SqlAlchemyResource(Resource):
             if not cache_hit:
                 # Note: if no cache hit, then retrive limit*n results, and 
                 # cache several iterations at once.
-                prefetch_number = 5
                 new_limit = limit * prefetch_number 
                 logger.info(str(('limit', limit, 'new limit for caching', new_limit)))
-                stmt = stmt.limit(new_limit)
+                if new_limit > 0:
+                    stmt = stmt.limit(new_limit)
                 logger.info('executing stmt')
                 resultset = conn.execute(stmt)
                 prefetched_result = [dict(row) for row in resultset] if resultset else []
@@ -750,16 +778,18 @@ class SqlAlchemyResource(Resource):
             logger.warn(str(('on conn execute', 
                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e   
-        
-          
-    def stream_response_from_cursor(self, request, stmt, count_stmt, 
+
+    def stream_response_from_statement(self, request, stmt, count_stmt, 
             output_filename, field_hash={}, param_hash={}, 
             rowproxy_generator=None, is_for_detail=False,
-            downloadID=None, title_function=None ):
-        
+            downloadID=None, title_function=None, use_caching=True, meta=None ):
         DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
+        logger.info(str(('stream_response_from_statement',param_hash)))
 
-        limit = param_hash.get('limit', request.GET.get('limit', self._meta.limit))        
+#         self.bridge.get_engine().connect().invalidate()
+#         self.bridge = Bridge()
+        
+        limit = param_hash.get('limit', 0)        
         try:
             limit = int(limit)
         except ValueError:
@@ -768,7 +798,7 @@ class SqlAlchemyResource(Resource):
         if limit > 0:    
             stmt = stmt.limit(limit)
 
-        offset = param_hash.get('offset', request.GET.get('offset', 0) )
+        offset = param_hash.get('offset', 0 )
         try:
             offset = int(offset)
         except ValueError:
@@ -778,32 +808,103 @@ class SqlAlchemyResource(Resource):
             offset = -offset
         stmt = stmt.offset(offset)
 
+        logger.info(str(('offset', offset, 'limit', limit)))
+        conn = self.bridge.get_engine().connect()
+        
+        logger.info(str(('stmt', str(stmt.compile()), 'param_hash', param_hash)))
+        if DEBUG_STREAMING:
+            logger.info(str(('count stmt', str(count_stmt))))
+        
+        desired_format = self.get_format(request)
+        result = None
+        if desired_format == 'application/json':
+            
+            if not is_for_detail and use_caching and limit > 0:
+                cache_hit = self._cached_resultproxy(stmt, count_stmt, limit, offset)
+                if cache_hit:
+                    result = cache_hit['cached_result']
+                    count = cache_hit['count']
+                else:
+                    # cache routine should always return a cache object
+                    logger.error(str(('error, cache not set: execute stmt')))
+                    count = conn.execute(count_stmt).scalar()
+                    result = conn.execute(stmt)
+                logger.info(str(('====count====', count)))
+                
+            else:
+                logger.info(str(('execute stmt')))
+                count = conn.execute(count_stmt).scalar()
+                logger.info('excuted count stmt')
+                result = conn.execute(stmt)
+                logger.info('excuted stmt')
 
+            if not meta:
+                meta = {
+                    'limit': limit,
+                    'offset': offset,
+                    'total_count': count
+                    }
+            else:
+                temp = {
+                    'limit': limit,
+                    'offset': offset,
+                    'total_count': count
+                    }
+                temp.update(meta)    
+                meta = temp
+                
+            if rowproxy_generator:
+                result = rowproxy_generator(result)
+
+            # TODO: create a short-circuit if count==0
+            # if count == 0:
+            #    raise ImmediateHttpResponse(
+            #        response=self.error_response(
+            #            request, {'empty result': 'no records found'},
+            #            response_class=HttpNotFound))
+            if DEBUG_STREAMING:
+                logger.info(str(('meta', meta)))
+
+        else: # not json
+        
+            logger.info('excute stmt')
+            result = conn.execute(stmt)
+            logger.info('excuted stmt')
+            
+            logger.info(str(('rowproxy_generator', rowproxy_generator)))
+            if rowproxy_generator:
+                result = rowproxy_generator(result)
+                # FIXME: test this for generators other than json generator        
+        
+        
+        return self.stream_response_from_cursor(request, result, output_filename, 
+            field_hash=field_hash, 
+            param_hash=param_hash, 
+            rowproxy_generator=rowproxy_generator, 
+            is_for_detail=is_for_detail, 
+            downloadID=downloadID, 
+            title_function=title_function, 
+            meta=meta)
+        
+        
+    def stream_response_from_cursor(self,request,result,output_filename,
+            field_hash={}, param_hash={}, 
+            rowproxy_generator=None, is_for_detail=False,
+            downloadID=None, title_function=None, meta=None):
+          
+        
+        DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
+        logger.info(str(('meta', meta, 'session', request.session, request.session.session_key)))
+
+        
         list_brackets = LIST_BRACKETS
         if request.GET.get(HTTP_PARAM_RAW_LISTS, False):
             list_brackets = None
 
-        conn = self.bridge.get_engine().connect()
-        
-        logger.info(str(('stmt', str(stmt))))
-        if DEBUG_STREAMING:
-            logger.info(str(('count stmt', str(count_stmt))))
-        
-        logger.info('excute stmt')
-        result = conn.execute(stmt)
-        logger.info('excuted stmt')
-        
-        logger.info(str(('rowproxy_generator', rowproxy_generator)))
-        if rowproxy_generator:
-            result = rowproxy_generator(result)
-            # FIXME: test this for generators other than json generator
-
-        
         desired_format = self.get_format(request)
         content_type=build_content_type(desired_format)
         logger.info(str(('desired_format', desired_format, 
             'content_type', content_type)))
-
         
         def interpolate_value_template(value_template, row):
             ''' 
@@ -826,33 +927,9 @@ class SqlAlchemyResource(Resource):
         
         if desired_format == 'application/json':
             
-            if not is_for_detail:
-                cache_hit = self._cached_resultproxy(stmt, count_stmt, limit, offset)
-                if cache_hit:
-                    result = cache_hit['cached_result']
-                    count = cache_hit['count']
-                    if rowproxy_generator:
-                        result = rowproxy_generator(result)
-                else:
-                    # use result from before
-                    logger.info(str(('execute count')))
-                    count = conn.execute(count_stmt).scalar()
-                logger.info(str(('====count====', count)))
-                
-                if count == 0:
-                    raise ImmediateHttpResponse(
-                        response=self.error_response(
-                            request, {'empty result': 'no records found'},
-                            response_class=HttpNotFound))
-                
-                meta = {
-                    'limit': limit,
-                    'offset': offset,
-                    'total_count': count
-                    }    
-                        
+                    
             def json_generator(cursor):
-                if DEBUG_STREAMING: logger.info(str(('meta', meta)))
+                if DEBUG_STREAMING: logger.info(str(('meta', meta )))
                 # NOTE, using "ensure_ascii" = True to force encoding of all 
                 # chars to be encoded using ascii or escaped unicode; 
                 # because some chars in db might be non-UTF8
@@ -970,6 +1047,7 @@ class SqlAlchemyResource(Resource):
                 max_rows_per_file = MAX_ROWS_PER_XLS_FILE
                 file_names_to_zip = [temp_file]
                 filerow = 0
+                            
                 for row in result:
                     if filerow == 0:
                         if field_hash:
@@ -1178,6 +1256,7 @@ class SqlAlchemyResource(Resource):
                             yield '$$$$\n'
         
                     logger.info(str(('wrote i', i)))    
+
     
                 response = StreamingHttpResponse(
                     ChunkIterWrapper(sdf_generator(result)),
@@ -1203,7 +1282,7 @@ class SqlAlchemyResource(Resource):
 
             pseudo_buffer = Echo()
             csvwriter = csv.writer(
-                pseudo_buffer, delimiter=CSV_DELIMITER, quotechar='"', 
+                pseudo_buffer, delimiter=LIST_DELIMITER_CSV, quotechar='"', 
                 quoting=csv.QUOTE_ALL, lineterminator="\n")
             def csv_generator(cursor):
                 i=0
@@ -1243,11 +1322,11 @@ class SqlAlchemyResource(Resource):
                             if field.get('value_template', None):
                                 value_template = field['value_template']
                                 newval = interpolate_value_template(value_template, row)
-                                if field['ui_type'] == 'image':
-                                    # hack to speed things up:
+                                if field['ui_type'] == 'image': 
                                     if ( key == 'structure_image' and
                                             row.has_key('library_well_type') and
                                             row['library_well_type'] == 'empty' ):
+                                        # hack to speed things up:
                                         continue
                                     # see if the specified url is available
                                     try:
@@ -1269,6 +1348,8 @@ class SqlAlchemyResource(Resource):
                         yield csvwriter.writerow([
                             csv_convert(val, list_brackets=list_brackets) 
                                 for val in row.values()])
+
+
 
             response = StreamingHttpResponse(csv_generator(result),
                 content_type=content_type)

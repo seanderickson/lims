@@ -15,7 +15,8 @@ current_timestamp,
 
 select 'begin' as action, current_time;
 
-/** Drop copy_well constraint, for now.
+/** not used **
+    Drop copy_well constraint, for now.
     Uses postgresql 8.4 method for setting a var from select
     Note: 9.3 offers the \gset command
     see http://www.depesz.com/2013/02/25/variables-in-sql-what-how-when/
@@ -39,21 +40,20 @@ select 'create copy_wells' as action;
 insert into copy_well
     ( id, copy_id, plate_id, well_id, plate_number, initial_volume,adjustments)  
     select nextval('copy_well_id_seq'), 
-    c.copy_id, 
-    p.plate_id,
+    cp.copy_id, 
+    cp.plate_id,
     w.well_id, 
-    p.plate_number,
-    p.well_volume,
+    cp.plate_number,
+    cp.well_volume,
     '0'
     from
-    (select distinct(plate_number) 
-      from well_volume_adjustment wva 
-      join plate using(copy_id) 
-      order by plate_number) plates 
-    join well w using(plate_number) 
-    join plate p using(plate_number)
-    join copy c using(copy_id)
-    order by w.well_id;
+    (select p.copy_id,p.plate_id,p.well_volume,p.plate_number
+      from plate p join copy c using(copy_id) 
+      where usage_type = 'cherry_pick_source_plates'
+      order by plate_number ) cp
+    left join well w using(plate_number)
+    order by w.well_id; 
+    
 
 select 'create copy_well volume from wva temp table' as action;
 
@@ -124,7 +124,10 @@ create temp table plate_volume as (
   group by p.plate_id, p.copy_id, p.well_volume order by p.plate_id, copy_id );
 
 update plate
-  set remaining_volume = pv.plate_remaining_volume
+  set remaining_volume = pv.plate_remaining_volume,
+  avg_remaining_volume = pv.plate_remaining_volume,
+  min_remaining_volume = pv.plate_remaining_volume,
+  max_remaining_volume = pv.plate_remaining_volume
   from plate_volume pv 
   where pv.plate_id = plate.plate_id;
 

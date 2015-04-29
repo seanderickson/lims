@@ -8,15 +8,21 @@
 # into your database.
 from __future__ import unicode_literals
 
+import datetime
+import logging
+
+from django.conf import settings
+from django.contrib.auth.models import User
+from django.db import connection
 from django.db import models
 from django.db.models.query import QuerySet
-from django.db.models.sql.query import Query
 from django.db.models.sql.compiler import SQLCompiler
-from django.db import connection
+from django.db.models.sql.query import Query
+from django.utils import timezone
 
 from reports.utils.gray_codes import create_substance_id
+from reports.utils.gray_codes import create_substance_id
 
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +96,8 @@ class LabActivity(models.Model):
     class Meta:
         db_table = 'lab_activity'
 
+# TODO consider how can refactor Screening-[libraryscreening, cherrypickscreening] 
+# hierarchy
 class LibraryScreening(models.Model):
     abase_testset_id = models.TextField(blank=True)
     is_for_external_library_plates = models.BooleanField()
@@ -192,7 +200,9 @@ class AssayPlate(models.Model):
     
     class Meta:
         db_table = 'assay_plate'
-
+    def __unicode__(self):
+        return str((self.plate.copy.name, self.plate_number, self.replicate_ordinal))
+        
 class AssayWell(models.Model):
     assay_well_id = models.IntegerField(primary_key=True)
     version = models.IntegerField()
@@ -234,6 +244,7 @@ class CellLine(models.Model):
     version = models.IntegerField()
     class Meta:
         db_table = 'cell_line'
+        
 class ChecklistItem(models.Model):
     checklist_item_id = models.IntegerField(primary_key=True)
     checklist_item_group = models.TextField()
@@ -283,8 +294,11 @@ class CherryPickRequest(models.Model):
     date_loaded = models.DateTimeField(null=True, blank=True)
     date_publicly_available = models.DateTimeField(null=True, blank=True)
     max_skipped_wells_per_plate = models.IntegerField(null=True, blank=True)
+    
     class Meta:
         db_table = 'cherry_pick_request'
+    def __unicode__(self):
+        return str((self.screen.facility_id, self.cherry_pick_request_id)) 
 
 class CherryPickRequestEmptyWell(models.Model):
     cherry_pick_request = models.ForeignKey(CherryPickRequest)
@@ -468,6 +482,8 @@ class Screen(models.Model):
     status = models.TextField(null=True, blank=True)
     status_date = models.DateField(null=True, blank=True)
     
+    assay_type = models.TextField(null=True, blank=True)
+    
     class Meta:
         db_table = 'screen'
 
@@ -579,8 +595,6 @@ class ScreenerCherryPick(models.Model):
 
 
 
-from django.contrib.auth.models import User
-from django.conf import settings
 class ScreensaverUser(models.Model):
 #    objects = PostgresManager()
 
@@ -692,7 +706,6 @@ class ScreensaverUserRole(models.Model):
 # #     cursor.execute("SELECT setval('reagent_reagent_id_seq', %s)", [val-1])
 #     return new_id
 
-from reports.utils.gray_codes import create_substance_id
 
 def create_id():
     # TODO: There is no way to pass an argument to
@@ -738,6 +751,35 @@ class Well(models.Model):
         db_table = 'well'
     def __unicode__(self):
         return str(self.well_id) 
+        
+        
+class CachedQuery(models.Model):
+    ''' For caching large resultvalue queries '''
+    # unique hash of the query sql
+    key = models.TextField(unique=True)
+    # query sql
+    sql = models.TextField()
+    # resource uri
+    uri = models.TextField(null=False)
+    # query params
+    params = models.TextField(null=True)
+    
+    datetime = models.DateTimeField(default=timezone.now)
+    username = models.CharField(null=False, max_length=128)
+    count = models.IntegerField(null=True)
+    
+    class Meta:
+#         unique_together = (('sql', 'key'))   
+        db_table = 'cached_query' 
+
+# Note: this model is not in the Django models, as it does not have the id field needed
+# class WellQueryIndex(models.Model):
+#     ''' For caching large resultvalue queries '''
+#     
+#     well = models.ForeignKey('Well', null=False)
+#     query = models.ForeignKey('CachedQuery', null=False)
+#     class Meta:
+#         db_table = 'well_query_index'
         
 # create a substance table, as an easy way of creating the db_substance_id_seq
 class Substance(models.Model):
@@ -843,13 +885,13 @@ class GeneSymbol(models.Model):
         unique_together = (('gene', 'ordinal'))    
         db_table = 'gene_symbol'
 
- 
-class SilencingReagentDuplexWells(models.Model):
-    silencing_reagent = models.ForeignKey(SilencingReagent)
-    well = models.ForeignKey('Well')
-    class Meta:
-        unique_together = (('silencing_reagent', 'well'))    
-        db_table = 'silencing_reagent_duplex_wells'
+# Django creates this when it creates the many-to-many relationship 
+# class SilencingReagentDuplexWells(models.Model):
+#     silencing_reagent = models.ForeignKey(SilencingReagent)
+#     well = models.ForeignKey('Well')
+#     class Meta:
+#         unique_together = (('silencing_reagent', 'well'))    
+#         db_table = 'silencing_reagent_duplex_wells'
 
 class SmallMoleculeReagent(models.Model):
     reagent = models.OneToOneField(Reagent, primary_key=True)
@@ -1060,7 +1102,6 @@ class CopyWell(models.Model):
     copy = models.ForeignKey('Copy')
     # FIXME: name should be "well" - also fix db.apy then
     well = models.ForeignKey('Well')
-    well_name = models.TextField()
     plate_number = models.IntegerField()
     volume = models.FloatField(null=True, blank=True)
     initial_volume = models.FloatField(null=True, blank=True)

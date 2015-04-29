@@ -1365,7 +1365,7 @@ class MetaHashResourceBootstrap(IResourceTestCase):
             logger.debug(str(('Response: ' , resp.status_code)))
 #            self.assertHttpAccepted(resp)
             self.assertTrue(resp.status_code in [200, 202, 204], 
-                            str((resp.status_code, resp.serialize() )) )
+                            str((resp.status_code, self.serialize(resp) )) )
     
             logger.debug(str(('check put data for',resource_name,
                              'execute get on:',resource_uri)))

@@ -55,7 +55,9 @@ class Bridge(object):
             # set SQLALCHEMY_POOL_CLASS == sqlalchemy.pool.NullPool for testing
             # environments, so that the test database can be destroyed
             if getattr(settings, 'SQLALCHEMY_POOL_CLASS', None):
-                self._meta.bind = create_engine(self.connection_url(), poolclass=settings.SQLALCHEMY_POOL_CLASS)
+                logger.info(str(('using the SQLALCHEMY_POOL_CLASS',settings.SQLALCHEMY_POOL_CLASS)))
+                self._meta.bind = create_engine(self.connection_url(), 
+                    poolclass=settings.SQLALCHEMY_POOL_CLASS)
             else:
                 self._meta.bind = create_engine(self.connection_url())
         return self._meta

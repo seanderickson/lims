@@ -791,7 +791,7 @@ class ScreenResource(DBMetaHashResourceBootstrap):
         
         screen_item = ScreenFactory.attributes()
         
-        logger.debug(str(('screen_item',screen_item)))
+        logger.info(str(('screen_item',screen_item)))
         resp = self.api_client.post(
             resource_uri, format='json', data=screen_item, 
             authentication=self.get_credentials())
@@ -800,7 +800,7 @@ class ScreenResource(DBMetaHashResourceBootstrap):
         
         screen_item = ScreenFactory.attributes()
         
-        logger.debug(str(('item', screen_item)))
+        logger.info(str(('item', screen_item)))
         resp = self.api_client.post(
             resource_uri, format='json', data=screen_item, 
             authentication=self.get_credentials())
@@ -814,7 +814,7 @@ class ScreenResource(DBMetaHashResourceBootstrap):
         logger.debug(str(('--------resp to get:', resp.status_code)))
         new_obj = self.deserialize(resp)
         self.assertValidJSONResponse(resp)
-        self.assertEqual(len(new_obj['objects']), 4, str((new_obj)))
+        self.assertEqual(len(new_obj['objects']), 2, str((new_obj)))
         
         result, obj = find_obj_in_list(screen_item, new_obj['objects'])
         self.assertTrue(
@@ -823,7 +823,8 @@ class ScreenResource(DBMetaHashResourceBootstrap):
         self.assertTrue('facility_id' in obj, 'the facility_id was not created')
         logger.debug(str(('item found', obj)))
 
-    def test0_create_screen(self):
+    # DISABLE this test - does not use Factory
+    def _test0_create_screen(self):
         logger.debug(str(('==== test_create_screen =====')))
         
         # the simplest of tests, create some simple screens

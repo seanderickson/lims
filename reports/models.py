@@ -161,12 +161,10 @@ class ApiLog(models.Model):
     class Meta:
         unique_together = (('ref_resource_name', 'key', 'date_time'))    
 
-    def __unicode__(self):
-        return unicode(
-            str((self.api_action, self.ref_resource_name, self.key, 
+    def __str__(self):
+        return str((self.api_action, self.ref_resource_name, self.key, 
             str(self.date_time), self.username, self.added_keys, self.removed_keys, 
-            self.diff_keys, self.diffs, 
-                self.comment, self.json_field)))
+            self.diff_keys, self.diffs, self.comment, self.json_field))
     
     def diff_dict_to_api_log(self, log):
         '''
@@ -206,9 +204,8 @@ class ListLog(models.Model):
         # -- so probably better to handle in software
         unique_together = (('apilog', 'ref_resource_name', 'key','uri'))    
     
-    def __unicode__(self):
-        return unicode(
-            str((self.ref_resource_name, self.key, self.uri )))
+    def __str__(self):
+        return str((self.ref_resource_name, self.key, self.uri ))
     
     
 class MetaHash(models.Model):
@@ -288,8 +285,8 @@ class MetaHash(models.Model):
             dict[key] = self.get_field(key)
         return dict
     
-    def __unicode__(self):
-        return unicode(str((self.scope, self.key, self.id, self.alias)))
+    def __str__(self):
+        return str((self.scope, self.key, self.id, self.alias))
     
     
 class Vocabularies(models.Model):
@@ -332,8 +329,8 @@ class Vocabularies(models.Model):
         temp[field] = value;
         self.json_field = json.dumps(temp)
     
-    def __unicode__(self):
-        return unicode(str((self.scope, self.key, self.id)))
+    def __str__(self):
+        return str((self.scope, self.key, self.id))
 
         
 class Permission(models.Model):
@@ -347,8 +344,8 @@ class Permission(models.Model):
     class Meta:
         unique_together = (('scope', 'key', 'type'))    
         
-    def __unicode__(self):
-        return unicode(str((self.scope, self.key, self.type)))
+    def __str__(self):
+        str((self.scope, self.key, self.type))
    
     
 class UserGroup(models.Model):
@@ -403,8 +400,8 @@ class UserGroup(models.Model):
 #             
 #         return users
     
-    def __unicode__(self):
-        return unicode(str((self.name)) )
+    def __str__(self):
+        return str((self.name)) 
 #         return unicode(str((self.name, [x for x in self.users.all()])))
     
     
@@ -433,7 +430,7 @@ class UserGroup(models.Model):
 #         
 #         return members
 #     
-#     def __unicode__(self):
+#     def __str__(self):
 #         return unicode(str((self.name, self.users)))
 # 
 #         
@@ -473,9 +470,8 @@ class UserProfile(models.Model):
     # This is the "meta" field, it contains "virtual" json fields
     json_field = models.TextField(blank=True) 
 
-    def __unicode__(self):
-        return unicode(
-            str((self.ecommons_id, self.username)))
+    def __str__(self):
+        return str((self.ecommons_id, self.username))
 
     def get_field_hash(self):
         if self.json_field:
@@ -594,7 +590,7 @@ class Job(models.Model):
     # HTTP response code, saved from the endpoint job submission on completion
     response_code = models.IntegerField();
     
-    def __unicode__(self):
-        return unicode(str((self.id, self.path_info, self.date_time_requested)))
+    def __str__(self):
+        return str((self.id, self.path_info, self.date_time_requested))
     
     

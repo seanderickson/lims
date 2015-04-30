@@ -157,6 +157,7 @@ def assert_obj1_to_obj2(
     obj2 output 
     '''
     original_keys = set(obj1.keys())
+    original_keys = original_keys.difference(excludes)
     updated_keys = set(obj2.keys())
     
     intersect_keys = original_keys.intersection(updated_keys)

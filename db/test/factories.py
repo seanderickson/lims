@@ -4,17 +4,19 @@ from django.utils.timezone import now
 from factory.fuzzy import FuzzyChoice, FuzzyInteger
 
 class ScreenFactory(factory.django.DjangoModelFactory):
-    FACTORY_FOR=db.models.Screen
-
+    class Meta:
+        model = db.models.Screen
+    
     data_sharing_level = 1
     facility_id = factory.Sequence(lambda n: str(n))
     project_phase = "primary_screen"
     screen_type = "small_molecule"
-    title = "Test screen 1"
+    title = "Test screen %s" % facility_id
 
 
 class LibraryFactory(factory.django.DjangoModelFactory):
-    FACTORY_FOR=db.models.Library
+    class Meta:
+        model = db.models.Library
     
     short_name = factory.Sequence(lambda n: 'library_'+ str(n) )
     library_name = factory.Sequence(lambda n: 'library_'+ str(n) + '_long' )
@@ -26,7 +28,8 @@ class LibraryFactory(factory.django.DjangoModelFactory):
 #     date_created = now()
         
 class WellFactory(factory.django.DjangoModelFactory):
-    FACTORY_FOR=db.models.Well
+    class Meta:
+        model = db.models.Well
     plate_number = '{:0>5d}'.format(FuzzyInteger(0, 55000).fuzz())
     col = FuzzyInteger(0, 23).fuzz()
     row = FuzzyInteger(0, 16).fuzz()
@@ -39,13 +42,15 @@ class WellFactory(factory.django.DjangoModelFactory):
     
         
 class ReagentFactory(factory.django.DjangoModelFactory):
-    FACTORY_FOR=db.models.Reagent
+    class Meta:
+        model = db.models.Reagent
     vendor_identifier = factory.Sequence(lambda n: 'rvi_'+ str(n) )
     vendor_name = factory.Sequence(lambda n: 'vendor_'+ str(n) )
     vendor_batch_id = factory.Sequence(lambda n: 'vendor_batch_'+ str(n) + '_long' )
         
 class SmallMoleculeReagentFactory(factory.django.DjangoModelFactory):
-    FACTORY_FOR=db.models.SmallMoleculeReagent
+    class Meta:
+        model = db.models.SmallMoleculeReagent
     smiles = factory.Sequence(lambda n: 'CC[C@H](CO)NC1=NC2=C(C(=N1)NCC3=CC=CC=C3)N=CN2C(C)C%d' % n )
     moldata = r'''Structure89
 csChFnd70/04290511482D
@@ -87,4 +92,5 @@ csChFnd70/04290511482D
 M  END'''         
     
 class SubstanceFactory(factory.django.DjangoModelFactory):
-    FACTORY_FOR=db.models.Substance
+    class Meta:
+        model = db.models.Substance

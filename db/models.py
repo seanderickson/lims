@@ -200,8 +200,8 @@ class AssayPlate(models.Model):
     
     class Meta:
         db_table = 'assay_plate'
-    def __str__(self):
-        return str((self.plate.copy.name, self.plate_number, self.replicate_ordinal))
+    def __unicode__(self):
+        return unicode(str((self.plate.copy.name, self.plate_number, self.replicate_ordinal)))
         
 class AssayWell(models.Model):
     assay_well_id = models.IntegerField(primary_key=True)
@@ -297,8 +297,8 @@ class CherryPickRequest(models.Model):
     
     class Meta:
         db_table = 'cherry_pick_request'
-    def __str__(self):
-        return str((self.screen.facility_id, self.cherry_pick_request_id)) 
+    def __unicode__(self):
+        return unicode(str((self.screen.facility_id, self.cherry_pick_request_id))) 
 
 class CherryPickRequestEmptyWell(models.Model):
     cherry_pick_request = models.ForeignKey(CherryPickRequest)
@@ -625,7 +625,7 @@ class ScreensaverUser(models.Model):
     class Meta:
         db_table = 'screensaver_user'
         
-    def __str__(self):
+    def __unicode__(self):
         return unicode(str((self.screensaver_user_id, self.first_name, self.last_name, self.email, self.login_id, self.ecommons_id)))
 
 class ScreeningRoomUser(models.Model):
@@ -676,7 +676,7 @@ class ScreensaverUserRole(models.Model):
 #     class Meta:
 #         db_table = 'substance'
 #     
-#     def __str__(self):
+#     def __unicode__(self):
 #         return str(self.id)    
 #     
 #         
@@ -749,8 +749,8 @@ class Well(models.Model):
     mg_ml_concentration = models.FloatField(null=True, blank=True)
     class Meta:
         db_table = 'well'
-    def __str__(self):
-        return str(self.well_id) 
+    def __unicode__(self):
+        return unicode(str(self.well_id)) 
         
         
 class CachedQuery(models.Model):
@@ -784,8 +784,8 @@ class CachedQuery(models.Model):
 # create a substance table, as an easy way of creating the db_substance_id_seq
 class Substance(models.Model):
     comment = models.TextField()
-    def __str__(self):
-        return str(self.id) 
+    def __unicode__(self):
+        return unicode(str(self.id)) 
 
 class Reagent(models.Model):
     # Note: migration scripts have converted this to use a sequence 
@@ -839,8 +839,8 @@ class Gene(models.Model):
     class Meta:
         db_table = 'gene'
 
-    def __str__(self):
-        return str((self.entrezgene_id, self.gene_name)) 
+    def __unicode__(self):
+        return unicode(str((self.entrezgene_id, self.gene_name)))
 
 # class ReagentFacilityGenes(models.Model):
 #     reagent = models.ForeignKey(SilencingReagent, primary_key=True)
@@ -1014,8 +1014,8 @@ class Library(models.Model):
                                   null=True, blank=True)
     class Meta:
         db_table = 'library'
-    def __str__(self):
-        return str((self.short_name, self.start_plate, self.end_plate)) 
+    def __unicode__(self):
+        return unicode(str((self.short_name, self.start_plate, self.end_plate))) 
 
 class LibraryContentsVersion(models.Model):
     library_contents_version_id = models.IntegerField(primary_key=True)

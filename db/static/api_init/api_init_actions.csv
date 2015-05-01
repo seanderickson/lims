@@ -18,6 +18,5 @@ patch,metahash,metahash_fields_smallmoleculereagent.csv
 patch,metahash,metahash_fields_silencingreagent.csv
 patch,metahash,metahash_fields_naturalproductreagent.csv
 patch,metahash,metahash_fields_copywell.csv
-patch,metahash,metahash_fields_copywellhistory.csv
 patch,metahash,metahash_fields_cherrypickrequest.csv
 patch,metahash,metahash_fields_cherrypickassayplate.csv

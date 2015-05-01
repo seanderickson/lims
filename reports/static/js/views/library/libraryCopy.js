@@ -12,11 +12,9 @@ define([
   'views/generic_edit',
   'views/list2',
   'views/library/libraryCopyWells',
-  'views/library/libraryCopyWellHistory',
   'text!templates/generic-tabbed.html'
 ], function($, _, Backbone, Iccbl, layoutmanager, appModel, 
             DetailLayout, EditView, ListView, LibraryCopyWellsView, 
-            LibraryCopyWellHistoryView, 
             libraryCopyTemplate ) {
   
   var LibraryCopyView = Backbone.Layout.extend({
@@ -232,32 +230,13 @@ define([
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();      
     },
-    // Obsolete code: history from apilog view
-    setCopyWellHistory: function(delegateStack){
-      var self = this;
-      var key = 'copywell';
-      var view = this.tabViews[key];
-      if ( !view ) {
-        var view = new LibraryCopyWellHistoryView({
-          library: self.library,
-          copy: self.model,
-          uriStack: delegateStack
-        });
-        self.tabViews[key] = view;
-        Backbone.Layout.setupView(view);
-      } else {
-        self.reportUriStack([]);
-      }
-      // NOTE: have to re-listen after removing a view
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      this.setView("#tab_container", view ).render();      
-    },
 
     setCopyWells: function(delegateStack) {
       var self = this;
       var key = 'copywell';
       var view = this.tabViews[key];
       if ( !view ) {
+        // TODO: review the way this is done in screen.js with sub-tabs
         var view = new LibraryCopyWellsView({
           library: self.library,
           copy: self.model,

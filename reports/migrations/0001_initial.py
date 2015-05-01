@@ -35,7 +35,7 @@ class Migration(SchemaMigration):
         db.create_table(u'reports_listlog', (
             (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
             ('apilog', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['reports.ApiLog'])),
-            ('ref_resource_name', self.gf('django.db.models.fields.CharField')(max_length=35)),
+            ('ref_resource_name', self.gf('django.db.models.fields.CharField')(max_length=64)),
             ('key', self.gf('django.db.models.fields.CharField')(max_length=128)),
             ('uri', self.gf('django.db.models.fields.TextField')()),
         ))
@@ -47,9 +47,9 @@ class Migration(SchemaMigration):
         # Adding model 'MetaHash'
         db.create_table(u'reports_metahash', (
             (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('scope', self.gf('django.db.models.fields.CharField')(max_length=35, blank=True)),
-            ('key', self.gf('django.db.models.fields.CharField')(max_length=35, blank=True)),
-            ('alias', self.gf('django.db.models.fields.CharField')(max_length=35, blank=True)),
+            ('scope', self.gf('django.db.models.fields.CharField')(max_length=64, blank=True)),
+            ('key', self.gf('django.db.models.fields.CharField')(max_length=64, blank=True)),
+            ('alias', self.gf('django.db.models.fields.CharField')(max_length=64, blank=True)),
             ('ordinal', self.gf('django.db.models.fields.IntegerField')()),
             ('json_field_type', self.gf('django.db.models.fields.CharField')(max_length=128, null=True, blank=True)),
             ('json_field', self.gf('django.db.models.fields.TextField')(blank=True)),
@@ -65,7 +65,7 @@ class Migration(SchemaMigration):
             (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
             ('scope', self.gf('django.db.models.fields.CharField')(max_length=128, blank=True)),
             ('key', self.gf('django.db.models.fields.CharField')(max_length=128, blank=True)),
-            ('alias', self.gf('django.db.models.fields.CharField')(max_length=35, blank=True)),
+            ('alias', self.gf('django.db.models.fields.CharField')(max_length=64, blank=True)),
             ('ordinal', self.gf('django.db.models.fields.IntegerField')()),
             ('title', self.gf('django.db.models.fields.CharField')(max_length=512, blank=True)),
             ('json_field', self.gf('django.db.models.fields.TextField')(blank=True)),
@@ -78,9 +78,9 @@ class Migration(SchemaMigration):
         # Adding model 'Permission'
         db.create_table(u'reports_permission', (
             (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('scope', self.gf('django.db.models.fields.CharField')(max_length=35, blank=True)),
-            ('key', self.gf('django.db.models.fields.CharField')(max_length=35, blank=True)),
-            ('type', self.gf('django.db.models.fields.CharField')(max_length=15)),
+            ('scope', self.gf('django.db.models.fields.CharField')(max_length=64, blank=True)),
+            ('key', self.gf('django.db.models.fields.CharField')(max_length=64, blank=True)),
+            ('type', self.gf('django.db.models.fields.CharField')(max_length=35)),
         ))
         db.send_create_signal(u'reports', ['Permission'])
 
@@ -152,7 +152,7 @@ class Migration(SchemaMigration):
         db.create_table(u'reports_record', (
             (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
             ('base_value1', self.gf('django.db.models.fields.TextField')()),
-            ('scope', self.gf('django.db.models.fields.CharField')(max_length=35, blank=True)),
+            ('scope', self.gf('django.db.models.fields.CharField')(max_length=64, blank=True)),
         ))
         db.send_create_signal(u'reports', ['Record'])
 
@@ -348,32 +348,32 @@ class Migration(SchemaMigration):
             'apilog': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.ApiLog']"}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'key': ('django.db.models.fields.CharField', [], {'max_length': '128'}),
-            'ref_resource_name': ('django.db.models.fields.CharField', [], {'max_length': '35'}),
+            'ref_resource_name': ('django.db.models.fields.CharField', [], {'max_length': '64'}),
             'uri': ('django.db.models.fields.TextField', [], {})
         },
         u'reports.metahash': {
             'Meta': {'unique_together': "(('scope', 'key'),)", 'object_name': 'MetaHash'},
-            'alias': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
+            'alias': ('django.db.models.fields.CharField', [], {'max_length': '64', 'blank': 'True'}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'json_field': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'json_field_type': ('django.db.models.fields.CharField', [], {'max_length': '128', 'null': 'True', 'blank': 'True'}),
-            'key': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
+            'key': ('django.db.models.fields.CharField', [], {'max_length': '64', 'blank': 'True'}),
             'linked_field_type': ('django.db.models.fields.CharField', [], {'max_length': '128', 'null': 'True', 'blank': 'True'}),
             'ordinal': ('django.db.models.fields.IntegerField', [], {}),
-            'scope': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'})
+            'scope': ('django.db.models.fields.CharField', [], {'max_length': '64', 'blank': 'True'})
         },
         u'reports.permission': {
             'Meta': {'unique_together': "(('scope', 'key', 'type'),)", 'object_name': 'Permission'},
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'key': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
-            'scope': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
-            'type': ('django.db.models.fields.CharField', [], {'max_length': '15'})
+            'key': ('django.db.models.fields.CharField', [], {'max_length': '64', 'blank': 'True'}),
+            'scope': ('django.db.models.fields.CharField', [], {'max_length': '64', 'blank': 'True'}),
+            'type': ('django.db.models.fields.CharField', [], {'max_length': '35'})
         },
         u'reports.record': {
             'Meta': {'object_name': 'Record'},
             'base_value1': ('django.db.models.fields.TextField', [], {}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'scope': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'})
+            'scope': ('django.db.models.fields.CharField', [], {'max_length': '64', 'blank': 'True'})
         },
         u'reports.recordmultivalue': {
             'Meta': {'unique_together': "(('field_meta', 'parent', 'ordinal'),)", 'object_name': 'RecordMultiValue'},
@@ -424,7 +424,7 @@ class Migration(SchemaMigration):
         },
         u'reports.vocabularies': {
             'Meta': {'unique_together': "(('scope', 'key'),)", 'object_name': 'Vocabularies'},
-            'alias': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
+            'alias': ('django.db.models.fields.CharField', [], {'max_length': '64', 'blank': 'True'}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'json_field': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'key': ('django.db.models.fields.CharField', [], {'max_length': '128', 'blank': 'True'}),

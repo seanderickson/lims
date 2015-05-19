@@ -322,20 +322,27 @@ var containsByMatch = Iccbl.containsByMatch = function(array, matchstring){
   });
 };
 
+/**
+ * Split label strings on non-word characters, then re-join into lines, where
+ * each line is less than max_line_length (or, if a part is longer than max_line_length,
+ * then that part becomes an entire line).
+ */
 var createLabel = Iccbl.createLabel = function(original_label, max_line_length, break_char){
   var lines = [];
-  var labelParts = original_label.split(/\W/);
+  var labelParts = original_label.split(/([\s_\-\.,])/);
   var line = '';
   _.each(labelParts, function(part){
     if(line.length > 0){
       if(line.length+part.length <= max_line_length){
-        line += ' ' + part;
+        line += part;
       }else{
         lines.push(line);
         line = part;
       }
     }else{
-      line += part;
+      if( part != ' '){
+        line = part;
+      }
     }
   });
   lines.push(line);
@@ -1306,7 +1313,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
       //      self.fetch({data:_.clone(_data), reset: true});
     }else{
       // TODO: test further, part of the double network hit on search - REMOVED 20150113
-      //      self.fetch();
+            self.fetch();
     }
   },
 
@@ -2408,7 +2415,7 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash);
-      self.collection.fetch({ reset: true });
+//      self.collection.fetch({ reset: true });
     }else{
       console.log('nothing submitted');
     }
@@ -2428,6 +2435,9 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
     if(found){
       self._serverSideFilter.$el.show();
       self.filterIcon.hide();
+    }else{
+      self._serverSideFilter.$el.hide();
+      self.filterIcon.show();
     }
   },  
   
@@ -2462,7 +2472,7 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
       e.preventDefault();
       e.stopPropagation();
       self.clearSearch();
-      self.collection.fetch({ reset: true });
+//      self.collection.fetch({ reset: true });
     });
     
     this.filterIcon.click(function(e){
@@ -2520,7 +2530,7 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash);
-      self.collection.fetch({ reset: true });
+//      self.collection.fetch({ reset: true });
     }else{
       console.log('Date Cell nothing submitted');
     }
@@ -2539,6 +2549,9 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
     if(found){
       self._serverSideFilter.$el.show();
       self.filterIcon.hide();
+    }else{
+      self._serverSideFilter.$el.hide();
+      self.filterIcon.show();
     }
   },  
 
@@ -2573,7 +2586,7 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
       e.preventDefault();
       e.stopPropagation();
       self.clearSearch();
-      self.collection.fetch({ reset: true });
+//      self.collection.fetch({ reset: true });
     });
     
     this.filterIcon.click(function(e){
@@ -2744,7 +2757,7 @@ var BooleanHeaderCell = MultiSortHeaderCell.extend({
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash);
-      self.collection.fetch({ reset: true });
+//      self.collection.fetch({ reset: true });
     }else{
       console.log('nothing submitted');
     }
@@ -2764,6 +2777,9 @@ var BooleanHeaderCell = MultiSortHeaderCell.extend({
     if(found){
       self._serverSideFilter.$el.show();
       self.filterIcon.hide();
+    }else{
+      self._serverSideFilter.$el.hide();
+      self.filterIcon.show();
     }
   },  
   
@@ -2798,7 +2814,7 @@ var BooleanHeaderCell = MultiSortHeaderCell.extend({
       e.preventDefault();
       e.stopPropagation();
       self.clearSearch();
-      self.collection.fetch({ reset: true });
+//      self.collection.fetch({ reset: true });
     });
     
     this.filterIcon.click(function(e){
@@ -3048,7 +3064,7 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash);
-      self.collection.fetch({ reset: true });
+//      self.collection.fetch({ reset: true });
     }else{
       self.collection.fetch({});
     }
@@ -3066,6 +3082,9 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
     if(found){
       self._serverSideFilter.$el.show();
       self.filterIcon.hide();
+    }else{
+      self._serverSideFilter.$el.hide();
+      self.filterIcon.show();
     }
   },  
 
@@ -3098,7 +3117,7 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
       e.preventDefault();
       e.stopPropagation();
       self.clearSearch();
-      self.collection.fetch({ reset: true });
+//      self.collection.fetch({ reset: true });
     });
     
     this.filterIcon.click(function(e){
@@ -3375,7 +3394,7 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash);
-      self.collection.fetch({ reset: true });
+//      self.collection.fetch({ reset: true });
     }else{
       console.log('nothing submitted');
     }
@@ -3394,6 +3413,9 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
     if(found){
       self._serverSideFilter.$el.show();
       self.filterIcon.hide();
+    }else{
+      self._serverSideFilter.$el.hide();
+      self.filterIcon.show();
     }
   },  
 
@@ -3428,7 +3450,7 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
       e.preventDefault();
       e.stopPropagation();
       self.clearSearch();
-      self.collection.fetch({ reset: true });
+//      self.collection.fetch({ reset: true });
     });
     
     this.filterIcon.click(function(e){
@@ -3694,7 +3716,7 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash);
-      self.collection.fetch({ reset: true });
+//      self.collection.fetch({ reset: true });
     }else{
       console.log('nothing submitted');
     }
@@ -3713,6 +3735,9 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
     if(found){
       self._serverSideFilter.$el.show();
       self.filterIcon.hide();
+    }else{
+      self._serverSideFilter.$el.hide();
+      self.filterIcon.show();
     }
   },  
 
@@ -3744,7 +3769,7 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
       e.preventDefault();
       e.stopPropagation();
       self.clearSearch();
-      self.collection.fetch({ reset: true });
+//      self.collection.fetch({ reset: true });
     });
     
     this.filterIcon.click(function(e){
@@ -3808,8 +3833,6 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     try {
       var klass = Iccbl.stringToFunction(prop['backgrid_cell_type']);
       if (!_.isUndefined(klass)) {
-        //console.log('----- class found: ' + prop['backgrid_cell_type']
-        //  + ', cell_options: ' + JSON.stringify(cell_options));
         backgridCellType = klass;
         if(!_.isUndefined(cell_options)){
           var _specialized_cell = klass.extend(cell_options);

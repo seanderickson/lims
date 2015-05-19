@@ -310,7 +310,7 @@ define([
       return url;
     },
     
-    reportState: function() {
+    reportState: function(args) {
       var self = this;
       var newStack = [];
       
@@ -507,6 +507,13 @@ define([
     	});            
       this.objects_to_destroy.push(paginator);
 
+      self.listenTo(self.listModel, 'change:search', function(){
+        // TODO: this listener should be set in the collection initializer
+        var searchHash = _.clone(self.listModel.get('search'));
+        self.collection.setSearch(searchHash);
+
+//        self.collection.fetch();
+      });
       // Extraselector
       if( _.has(schemaResult, 'extraSelectorOptions')){
         var searchHash = self.listModel.get('search');
@@ -535,8 +542,8 @@ define([
             new genericSelector({ model: extraSelectorModel }, selectorOptions );
         this.objects_to_destroy.push(extraSelectorInstance);
 
-        this.listenTo(this.listModel, 'change: search', function(){
-            var searchHash = self.listModel.get('search');
+        self.listenTo(self.listModel, 'change:search', function(){
+            var searchHash = _.clone(self.listModel.get('search'));
             console.log('extraselector, search changed: ' + JSON.stringify(searchHash));
             _.each(_.keys(searchHash), function(key){
                 console.log('key: ' + key + ', extrSelectorKey: ' + extraSelectorKey);
@@ -549,6 +556,8 @@ define([
             var searchHash = _.clone(self.listModel.get('search'));
             var val = extraSelectorModel.get('selection');
             var value =  _.isUndefined(val.value) ? val: val.value ;
+            
+            console.log('extra selector change:' + value);
 
             delete searchHash[extraSelectorKey + '__exact']
             delete searchHash[extraSelectorKey + '__ne']
@@ -569,11 +578,12 @@ define([
               }
             }
             self.listModel.set('search', searchHash);
-            self.collection.setSearch(searchHash);
-            self.collection.fetch();
+
+            
+//            self.collection.setSearch(searchHash);
+//            self.collection.fetch();
         });
       }
-
       var grid = this.grid = new Backgrid.Grid({
         columns: columns,
         body: Iccbl.MultiSortBody,
@@ -597,7 +607,6 @@ define([
       console.log('list view initialized');
     },
 
-
     remove: function(){
       console.log('ListView remove called');
       Backbone.View.prototype.remove.apply(this,arguments);
@@ -607,6 +616,7 @@ define([
     cleanup: function(){
       this.onClose();
     },
+
     onClose: function(){
       this.$el.empty();
       
@@ -634,7 +644,10 @@ define([
       this.off();
     },
     
-
+    beforeRender: function(){
+      this.$el.html(_.template(listTemplate));
+    },
+      
     afterRender: function(){
       var self = this;
       self.listenTo(self.collection, "add", self.checkState);
@@ -642,7 +655,6 @@ define([
       self.listenTo(self.collection, "reset", self.checkState);
       self.listenTo(self.collection, "sort", self.checkState);
 
-      this.$el.html(_.template(listTemplate));
       var finalGrid = self.finalGrid = this.grid.render();
       self.objects_to_destroy.push(finalGrid);
       self.$("#example-table").append(finalGrid.el);
@@ -685,6 +697,12 @@ define([
                                
       if(appModel.hasPermission(self._options.resource.key, 'write')){
         self.$("#table-footer-div").append(self.footer.$el);
+      }
+      
+      if(_.has(self._options,'extraControls')){
+        _.each(self._options.extraControls, function(control){
+          self.$('#extra_controls').append(control);
+        });
       }
 
       this.delegateEvents();
@@ -768,7 +786,19 @@ define([
     select_columns: function(event){
       
       var self = this;
-      var includes = self.listModel.get('includes') || [];
+      var form_template = [
+        "<form  class='form-horizontal container' >",
+        "<div class='btn btn-default btn-sm ' id='select-all' >select all</div>",
+        "<div class='btn btn-default btn-sm ' id='clear-all' >clear all</div>"
+      ];
+      var field_template = '<div data-fields="<%= name %>" ></div>';
+      var sub_field_template = '<div data-fields="<%= name %>" >   </div>';
+      var header_template = [
+        '<div class="form-group" >',
+        '<input class="selection-group" type="checkbox" id="<%= id %>-checkbox"> </input>',
+        '<label class="selection-group .h5 " id="<%= id %>" title="<%= help %>" ><%= name %> columns</label>',
+        '</div>'
+        ].join('');
       var altCheckboxTemplate =  _.template('\
           <div class="form-group" style="margin-bottom: 0px;" > \
             <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
@@ -785,6 +815,7 @@ define([
           </div>\
         ');
       
+      var includes = self.listModel.get('includes') || [];
       var _fields = this._options.schemaResult.fields;
       var _extra_scopes = [];
       var formSchema= {};
@@ -794,27 +825,21 @@ define([
       // - if the scope is not the resource scope, create an extra_scope entry,
       // these items are indented.
       _.each(_.pairs(_fields), function(pair){
+
         var prop = pair[1];
         var key = prop['key'];
-        
-        //  20150428 - need to start using resource_uri (need to update sqlalchemy methods
-        //        if(key == 'resource_uri' || key == 'id'){
-        //          return;
-        //        }
-        var title = prop['title'];
         var scope = prop['scope'];
+        var fieldType = scope.split('.')[0]
         var fieldResource = scope.split('.')[1];
+        
         if(fieldResource != self._options.resource.key){
+          console.log('sub resource: ' + fieldResource + ',' + key);
           if(!_.has(_extra_scopes, scope)){
             _extra_scopes[scope] = [];
-          }else{ 
-            _extra_scopes[scope].push(key);
           }
-          console.log('sub resource fields: ' + fieldResource);
-          sub_resource = appModel.getResource(fieldResource);
-          
+          _extra_scopes[scope].push(key);
           formSchema[key] = {
-            title: title,
+            title: prop['title'],
             key: key,
             type: 'Checkbox',
             help: prop['description'],
@@ -822,28 +847,26 @@ define([
           }
         }else{
           formSchema[key] = { 
-            title: title, 
+            title: prop['title'], 
             key:  key, 
             type: 'Checkbox',
             help: prop['description'],
             template: altCheckboxTemplate };
         }
       });
-
-      // form model
-      var FormFields = Backbone.Model.extend({
-        schema: formSchema
-      });
-      var formFields = new FormFields();
       
       // default checkbox states
       var already_visible = {};
       var default_visible = {};
+
+      // Build the form model
+      var FormFields = Backbone.Model.extend({
+        schema: formSchema
+      });
+      var formFields = new FormFields();
       _.each(_.pairs(_fields), function(pair){
         var key = pair[1]['key'];
         var prop = pair[1];
-        //  20150428 - need to start using resource_uri (need to update sqlalchemy methods
-        // if(key == 'resource_uri' || key == 'id') return;
         var _visible = (_.has(prop, 'visibility') && 
             _.contains(prop['visibility'], 'list'));
         default_visible[key] = _visible;
@@ -853,20 +876,8 @@ define([
         formFields.set( key, _visible);
       });
       
-      // create form structure, with sub resources toggle
-      var form_template = [
-        "<form  class='form-horizontal container' >",
-        "<div class='btn btn-default btn-sm ' id='select-all' >select all</div>",
-        "<div class='btn btn-default btn-sm ' id='clear-all' >clear all</div>"
-      ];
-      var field_template = '<div data-fields="<%= name %>" ></div>';
-      var sub_field_template = '<div data-fields="<%= name %>" >   </div>';
-      var header_template = [
-        '<div class="form-group" >',
-        '<input class="selection-group" type="checkbox" id="<%= id %>-checkbox"> </input>',
-        '<label class="selection-group .h5 " id="<%= id %>" title="<%= help %>" ><%= name %> columns</label>',
-        '</div>'
-        ].join('');
+      // Build the form template: build and append a field template for each field
+      // "main scope" first - the fields for this resource
       var main_scope = 'fields.' + self._options.resource.key;
       var main_keys = _.filter(_.keys(_fields), function(key) {
         return _fields[key]['scope'] == main_scope;
@@ -881,11 +892,24 @@ define([
           name: key 
         }));
       });
+      // second, any fields from other scopes/resources
       var _extra_scopes_shown = [];
       _.each(_.keys(_extra_scopes), function(scope){
-        sub_resource = appModel.getResource(scope.split('.')[1]);
+        console.log('scope',scope)
+        var fieldType = scope.split('.')[0]
+        var fieldResource = scope.split('.')[1];
+        var sub_resource;
+        if(fieldType == 'datacolumn'){
+          sub_resource = {
+            title: fieldResource,
+            help: 'Screen result data column field'
+          }
+        }else{
+          sub_resource = appModel.getResource(fieldResource);
+        }
         form_template.push(
-            _.template(header_template, {
+          _.template(header_template, 
+            {
               id: scope,
               name: sub_resource.title,
               help: sub_resource.description
@@ -1019,6 +1043,55 @@ define([
         title: 'Select columns'  
       });
       
+    },
+
+    /**
+     * Special function for screen result lists
+     */
+    show_mutual_positives: function(show_mutual_positives){
+      var self = this;
+      var _fields = this._options.schemaResult.fields;
+
+      if (show_mutual_positives){
+        
+        _.each(_.pairs(_fields), function(pair){
+          var key = pair[1]['key'];
+          var prop = pair[1];
+          var fieldType = prop['scope'].split('.')[0]
+          if(fieldType == 'datacolumn'){
+            var currentColumn = self.grid.columns.findWhere(
+              { name: key });
+            if(! currentColumn){
+              self.grid.insertColumn(
+                Iccbl.createBackgridColumn(
+                    key,prop,
+                    self.collection.state.orderStack));
+            }
+          }
+        });
+        
+        var searchHash = _.clone(self.listModel.get('search'));
+        searchHash['show_mutual_positives'] = 'true';
+        self.listModel.set('search',searchHash);
+      }else{
+        _.each(_.pairs(_fields), function(pair){
+          var key = pair[1]['key'];
+          var prop = pair[1];
+          var fieldType = prop['scope'].split('.')[0]
+          if(fieldType == 'datacolumn'){
+            var currentColumn = self.grid.columns.findWhere(
+              { name: key });
+            if(currentColumn){
+              self.grid.removeColumn(currentColumn);
+            }
+          }
+        });
+        var searchHash = _.clone(view.listModel.get('search'));
+        if(_.has(searchHash,'show_mutual_positives')){
+          delete searchHash['show_mutual_positives'];
+          view.listModel.set('search',searchHash);
+        }        
+      }
     },
     
   });

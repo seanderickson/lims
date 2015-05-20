@@ -221,7 +221,7 @@ class SqlAlchemyResource(Resource):
        
     
     def get_visible_fields(self, schema_fields, filter_fields, manual_field_includes,
-                           is_for_detail=False):
+                           is_for_detail=False, visibilities=[]):
         '''
         Construct an ordered dict of schema fields that are visible, based on
         - "list" in schema field["visibility"]
@@ -233,13 +233,17 @@ class SqlAlchemyResource(Resource):
         '''
         logger.info(str(('get_visible_fields: field_hash initial: ', schema_fields.keys() )))
         try:
-            visibility_setting = 'list'
+            if visibilities:
+                visibilities = set(visibilities)
+            else:
+                visibilities = set(['list'])
             if is_for_detail:
-                visibility_setting = 'detail'
+                visibilities.add('detail')
             temp = { key:field for key,field in schema_fields.items() 
-                if ((field.get('visibility', None) and visibility_setting in field['visibility']) 
+                if ((field.get('visibility', None) 
+                        and visibilities & set(field['visibility'])) 
                     or field['key'] in manual_field_includes
-                    or '*' in manual_field_includes )}
+                    or '*' in manual_field_includes ) }
             
             # manual excludes
             temp = { key:field for key,field in temp.items() 
@@ -297,9 +301,9 @@ class SqlAlchemyResource(Resource):
                 if DEBUG_BUILD_COLUMNS:
                     logger.info(str(('field:', key)))
                 if key in custom_columns:
-                    if DEBUG_BUILD_COLUMNS: 
-                        logger.info(str(('custom field', key,custom_columns[key])))
-                    columns[key] = custom_columns[key]
+#                     if DEBUG_BUILD_COLUMNS: 
+                    logger.info(str(('custom field', key,custom_columns[key])))
+                    columns[key] = custom_columns[key].label(key)
                     continue
                 
                 if DEBUG_BUILD_COLUMNS: 
@@ -718,11 +722,12 @@ class SqlAlchemyResource(Resource):
             # use a hexdigest because statements can contain problematic chars 
             # for the memcache
             m = hashlib.md5()
-            compiled_stmt = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+            compiled_stmt = str(stmt.compile())
+            logger.info(str(('compiled_stmt for hash key', compiled_stmt)))
             key_digest = '%s_%s_%s' %(compiled_stmt, str(limit), str(offset))
             m.update(key_digest)
             key = m.hexdigest()
-#             logger.info(str(('hash key:', key_digest, key)))
+            logger.info(str(('hash key:', key, limit, offset)))
             cache_hit = cache.get(key)
             if cache_hit:
                 if ('stmt' not in cache_hit or
@@ -737,7 +742,7 @@ class SqlAlchemyResource(Resource):
                 logger.info(str(('limit', limit, 'new limit for caching', new_limit)))
                 if new_limit > 0:
                     stmt = stmt.limit(new_limit)
-                logger.info('executing stmt')
+                logger.info('no cache hit, executing stmt')
                 resultset = conn.execute(stmt)
                 prefetched_result = [dict(row) for row in resultset] if resultset else []
                 logger.info('executed stmt')
@@ -745,6 +750,8 @@ class SqlAlchemyResource(Resource):
                 logger.info(str(('no cache hit, execute count')))
                 count = conn.execute(count_stmt).scalar()
                 logger.info(str(('count', count)))
+                
+                # now fill in the cache with the prefetched sets or rows
                 for y in range(prefetch_number):
                     new_offset = offset + limit*y;
                     _start = limit*y
@@ -758,13 +765,15 @@ class SqlAlchemyResource(Resource):
                             'stmt': compiled_stmt,
                             'cached_result': _result,
                             'count': count }
+                        logger.info(str(('add to cache, key', key, limit, new_offset)))
                         cache.set( key, _cache, None)
                         if y == 0:
                             cache_hit = _cache
                     else:
-                        logger.info(str(('prefetched length: ', len(prefetched_result), _start, 'end')))
+                        logger.info(str(('not caching: prefetched length: ',
+                            len(prefetched_result), _start, 'end')))
                         break
-                logger.info(str(('cached iterations:', y)))
+                logger.info(str(('cached iterations:', y+1)))
 #                 cached_result = [dict(row) for row in resultset] if resultset else []
             else:
                 logger.info(str(('cache hit')))   
@@ -916,8 +925,10 @@ class SqlAlchemyResource(Resource):
             def get_value_from_template(matchobj):
                 val = matchobj.group()
                 val = re.sub(r'[{}]+', '', val)
+                if DEBUG_STREAMING:
+                    logger.info(str(('val from value template',val, row.has_key(val), row[val])))
                 if row.has_key(val):
-                    return row[val]
+                    return str(row[val])
                 else:
                     logger.error(str(('field needed for value template is not available', val, row)))
                     return ''
@@ -960,7 +971,8 @@ class SqlAlchemyResource(Resource):
                                 
                                 if field.get('value_template', None):
                                     value_template = field['value_template']
-                                    if DEBUG_STREAMING: logger.info(str(('field', key, value_template)))
+                                    if DEBUG_STREAMING: 
+                                        logger.info(str(('field', key, value_template)))
                                     newval = interpolate_value_template(value_template, row)
                                     if field['ui_type'] == 'image':
                                         # hack to speed things up:

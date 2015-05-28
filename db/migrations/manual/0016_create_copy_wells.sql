@@ -298,6 +298,10 @@ create index copy_library_id on copy (library_id);
 create index plate_copy_id on plate (copy_id);
 create index well_library_id on well (library_id);
 
+/** indexes for the result_value and assay_well queries **/
+create index assay_well_sr_is_positive_idx2 on assay_well(screen_result_id, is_positive, well_id);
+
+
 /** add back in fk constraint 
 alter table copy_well 
   add constraint well_id_refs_well_id 

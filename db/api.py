@@ -39,7 +39,8 @@ from sqlalchemy.sql import and_, or_, not_
 from sqlalchemy.sql import asc, desc, alias, Alias
 from sqlalchemy.sql import func
 from sqlalchemy.sql.elements import literal_column
-from sqlalchemy.sql.expression import column, join, insert, delete
+from sqlalchemy.sql.expression import column, join, insert, delete, distinct,\
+    exists
 from sqlalchemy.sql.expression import nullsfirst, nullslast
 from tastypie import fields
 from tastypie.authentication import BasicAuthentication, SessionAuthentication, \
@@ -92,6 +93,149 @@ logger = logging.getLogger(__name__)
     
 def _get_raw_time_string():
   return timezone.now().strftime("%Y%m%d%H%M%S")
+    
+class ScreensaverUserResourceNew(SqlAlchemyResource, ManagedModelResource):    
+
+    class Meta:
+        queryset = ScreensaverUser.objects.all()
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= UserGroupAuthorization()
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+        excludes = ['digested_password']
+        detail_uri_name = 'screensaver_user_id'
+        resource_name = 'screensaveruser'
+        max_limit = 10000
+
+    def __init__(self, **kwargs):
+#        self.
+        super(ScreensaverUserResource,self).__init__(**kwargs)
+
+    def prepend_urls(self):
+        return [
+            # override the parent "base_urls" so that we don't need to worry about schema again
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+
+            url((r"^(?P<resource_name>%s)/"
+                 r"(?P<facility_id>([\w\d_]+))%s$") 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ]    
+
+    def get_detail(self, request, **kwargs):
+        logger.info(str(('get_detail')))
+
+        facility_id = kwargs.get('facility_id', None)
+        if not facility_id:
+            logger.info(str(('no facility_id provided')))
+            raise NotImplementedError('must provide a facility_id parameter')
+        
+        kwargs['is_for_detail']=True
+        return self.get_list(request, **kwargs)
+        
+    
+    def get_list(self,request,**kwargs):
+
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+
+        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+
+        
+    def build_list_response(self,request, param_hash={}, **kwargs):
+        ''' 
+        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
+        @returns django.http.response.StreamingHttpResponse 
+        '''
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        is_for_detail = kwargs.pop('is_for_detail', False)
+        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = re.sub(r'[\W]+','_',filename)
+        logger.info(str(('get_list', filename, kwargs)))
+        
+        facility_id = param_hash.pop('facility_id', None)
+        if facility_id:
+            param_hash['facility_id__eq'] = facility_id
+
+        screen_type = param_hash.get('screen_type__eq', None)
+
+        try:
+            
+            # general setup
+             
+            schema = super(ScreensaverUserResource,self).build_schema()
+          
+            manual_field_includes = set(param_hash.get('includes', []))
+            
+            if DEBUG_GET_LIST: 
+                logger.info(str(('manual_field_includes', manual_field_includes)))
+  
+            (filter_expression, filter_fields) = \
+                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+                  
+            visibilities = set()                
+            if is_for_detail:
+                visibilities.update(['detail','summary'])
+            field_hash = self.get_visible_fields(
+                schema['fields'], filter_fields, manual_field_includes, 
+                is_for_detail=is_for_detail, visibilities=visibilities)
+              
+            order_params = param_hash.get('order_by',[])
+            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
+             
+            rowproxy_generator = None
+            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
+                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+ 
+            # specific setup 
+
+
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                custom_columns=custom_columns )
+
+            # build the query statement
+            _su = self.bridge['screensaver_user']
+            _admin = self.bridge['administrator_user']
+            _sru = self.bridge['screening_room_user']
+            _lh = self.bridge['lab_head']
+            
+            
+            
+            j = _screen
+            j = j.join(_screen_result, 
+                _screen.c.screen_id==_screen_result.c.screen_id, isouter=True)
+            stmt = select(columns.values()).select_from(j)
+
+            # general setup
+             
+            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+            
+            title_function = None
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                title_function = lambda key: field_hash[key]['title']
+            
+            return self.stream_response_from_statement(
+                request, stmt, count_stmt, filename, 
+                field_hash=field_hash, 
+                param_hash=param_hash,
+                is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function  )
+             
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on get_list', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e  
+
     
 class ScreensaverUserResource(ManagedModelResource):
 #    screens = fields.ToManyField('db.api.ScreenResource', 'screens', 
@@ -910,10 +1054,13 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
   
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
-                                  
+                  
+            visibilities = set()                
+            if is_for_detail:
+                visibilities.update(['detail','summary'])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail)
+                is_for_detail=is_for_detail, visibilities=visibilities)
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
@@ -923,21 +1070,116 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
                 rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
-            base_query_tables = ['screen',]
+            base_query_tables = ['screen','screen_result']
+            _screen = self.bridge['screen']
+            _screen_result = self.bridge['screen_result']
+            _ap = self.bridge['assay_plate']
+            _library = self.bridge['library']
+            _copy = self.bridge['copy']
+            _plate = self.bridge['plate']
+            _cpr = self.bridge['cherry_pick_request']
+            _lcp = self.bridge['lab_cherry_pick']
+            _cpap = self.bridge['cherry_pick_assay_plate']
+            _cplt = self.bridge['cherry_pick_liquid_transfer']
+
+            # create CTEs -  Common Table Expressions for the intensive queries:
             
-            # NOTE: date_time is included here as an exercise:
-            # why db table structure needs to be redone
+            # create a cte for the max screened replicates_per_assay_plate
+            # - cross join version:
+            # select ap.screen_id, ap.plate_number, ap.replicate_ordinal,lesser.replicate_ordinal  
+            # from assay_plate ap 
+            # left outer join assay_plate lesser 
+            # on ap.plate_number=lesser.plate_number 
+            # and ap.screen_id=lesser.screen_id 
+            # and lesser.replicate_ordinal > ap.replicate_ordinal  
+            # where lesser.replicate_ordinal is null;
+            # - aggregate version:
+            # select 
+            # ap.screen_id, 
+            # ap.plate_number, 
+            # max(replicate_ordinal) as max_ordinal 
+            # from assay_plate ap 
+            # group by screen_id, plate_number
+            # order by screen_id, plate_number            
+            
+            aps = select([_ap.c.screen_id, func.count(1).label('count')]).\
+                select_from(_ap).\
+                where(_ap.c.library_screening_id != None).\
+                group_by(_ap.c.screen_id).\
+                order_by(_ap.c.screen_id)
+            aps = aps.cte('aps')
+
+            apdl = select([_ap.c.screen_id, func.count(1).label('count')]).\
+                select_from(_ap).\
+                where(_ap.c.screen_result_data_loading_id != None ).\
+                group_by(_ap.c.screen_id).\
+                order_by(_ap.c.screen_id)
+            apdl = apdl.cte('apdl')
+            
+            # create a cte for the max screened replicates_per_assay_plate
+            apsrc = select([
+                _ap.c.screen_id,
+                _ap.c.plate_number,
+                func.max(_ap.c.replicate_ordinal).label('max_per_plate') ]).\
+                    select_from(_ap).\
+                    group_by(_ap.c.screen_id, _ap.c.plate_number).\
+                    order_by(_ap.c.screen_id, _ap.c.plate_number)
+            apsrc = apsrc.cte('apsrc')
+            
+            # similarly, create a cte for the max data loaded replicates per assay_plate
+            apdlrc = select([
+                _ap.c.screen_id,
+                _ap.c.plate_number,
+                func.max(_ap.c.replicate_ordinal).label('max_per_plate') ]).\
+                    select_from(_ap).\
+                    where(_ap.c.screen_result_data_loading_id != None ).\
+                    group_by(_ap.c.screen_id, _ap.c.plate_number).\
+                    order_by(_ap.c.screen_id, _ap.c.plate_number)
+            apdlrc = apdlrc.cte('apdlrc')
+            
+            lps = select([
+                _ap.c.screen_id,
+                func.count(distinct(_ap.c.plate_number)).label('count')]).\
+                    select_from(_ap).\
+                    where(_ap.c.library_screening_id != None).\
+                    group_by(_ap.c.screen_id).cte('lps')
+            lpdl = select([
+                _ap.c.screen_id,
+                func.count(distinct(_ap.c.plate_number)).label('count')]).\
+                    select_from(_ap).\
+                    where(_ap.c.screen_result_data_loading_id != None).\
+                    group_by(_ap.c.screen_id).cte('lpdl')
+
+            libraries_screened = select([
+                func.count(distinct(_library.c.library_id)).label('count'),
+                _ap.c.screen_id]).\
+                    select_from(
+                        _ap.join(_plate,_ap.c.plate_id==_plate.c.plate_id).\
+                        join(_copy, _plate.c.copy_id==_copy.c.copy_id).\
+                        join(_library,_copy.c.library_id==_library.c.library_id)).\
+                    group_by(_ap.c.screen_id).cte('libraries_screened')
+                    
+            tplcps = select([
+                _cpr.c.screen_id,
+                func.count(1).label('count')]).\
+                    select_from(_cpr.join(
+                        _lcp,_cpr.c.cherry_pick_request_id==_lcp.c.cherry_pick_request_id).\
+                        join(_cpap, _lcp.c.cherry_pick_assay_plate_id==_cpap.c.cherry_pick_assay_plate_id).\
+                        join(_cplt,_cplt.c.activity_id==_cpap.c.cherry_pick_liquid_transfer_id)).\
+                    group_by(_cpr.c.screen_id).\
+                    where(_cplt.c.status == 'Successful' ).cte('tplcps')
+                        
             custom_columns = {
                 'lab_head_name': literal_column(
                     '( select su.first_name || $$ $$ || su.last_name'
                     '  from screensaver_user su '
                     '  where su.screensaver_user_id=screen.lab_head_id )'
-                    ).label('lab_head_name'),
+                    ),
                 'lead_screener_name': literal_column(
                     '( select su.first_name || $$ $$ || su.last_name'
                     '  from screensaver_user su '
                     '  where su.screensaver_user_id=screen.lead_screener_id )'
-                    ).label('lead_screener_name'),
+                    ),
                 'lab_affiliation': literal_column(
                     '( select lf.affiliation_name '
                     '  from lab_affiliation lf '
@@ -947,9 +1189,9 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
                 'has_screen_result': literal_column(
                     '(select exists(select null from screen_result '
                     '     where screen_id=screen.screen_id ) ) '
-                    ).label('has_screen_result'),
+                    ),
                 # TODO: convert to vocabulary
-                'cell_lines': text("'tbd'"),
+                'cell_lines': literal_column("'tbd'"),
 #                 'cell_lines': literal_column(
 #                     "(select array_to_string(array_agg(c1.value),'%s') "
 #                     '    from ( select c.value from cell_line c '
@@ -961,29 +1203,51 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
                 'transfection_agent': literal_column(
                     '( select value from transfection_agent '
                     '  where screen.transfection_agent_id=transfection_agent_id) '
-                    ).label('transfection_agent'),
+                    ),
                 'date_of_first_activity': literal_column(
                     '( select date_of_activity '
                     '  from activity '
                     '  join lab_activity la using(activity_id) '
                     '  where la.screen_id=screen.screen_id '
                     '  order by date_of_activity asc LIMIT 1 )'
-                    ).label('date_of_first_activity'),
+                    ),
                 'date_of_last_activity': literal_column(
                     '( select date_of_activity '
                     '  from activity '
                     '  join lab_activity la using(activity_id) '
                     '  where la.screen_id=screen.screen_id '
                     '  order by date_of_activity desc LIMIT 1 )'
-                    ).label('date_of_last_activity'),
+                    ),
+                'screenresult_last_imported': literal_column(
+                    '( select date_of_activity '
+                    '  from activity '
+                    '  join screen_result_update_activity srua on(update_activity_id=activity_id) '
+                    '  join screen_result sr using(screen_result_id) '
+                    '  where sr.screen_id=screen.screen_id '
+                    '  order by date_of_activity desc LIMIT 1 )'
+                    ),
                 # TODO: convert to vocabulary
                 'funding_supports': literal_column(
                     "(select array_to_string(array_agg(f1.value),'%s') "
                     '    from ( select fs.value from funding_support fs '
                     '        join screen_funding_support_link using(funding_support_id) '
                     '        where screen_id=screen.screen_id '
-                    '        order by fs.value) as f1 )' % LIST_DELIMITER_SQL_ARRAY )
-                    .label('funding_supports'), 
+                    '        order by fs.value) as f1 )' % LIST_DELIMITER_SQL_ARRAY ), 
+                # FIXME: use cherry_pick_liquid_transfer status vocabulary 
+                'total_plated_lab_cherry_picks': 
+                    select([tplcps.c.count]).\
+                        select_from(tplcps).\
+                        where(tplcps.c.screen_id==_screen.c.screen_id),
+                # 'total_plated_lab_cherry_picks': literal_column(
+                # '( select count(*) '                                             
+                # '  from cherry_pick_request cpr '
+                # '  join lab_cherry_pick lcp using(cherry_pick_request_id) '
+                # '  join cherry_pick_assay_plate cpap using(cherry_pick_assay_plate_id) '
+                # '  join cherry_pick_liquid_transfer cplt '
+                # '    on(cherry_pick_liquid_transfer_id=activity_id)'
+                # "  where cplt.status = 'Successful' "  
+                # '  and cpr.screen_id=screen.screen_id )'),
+                
                 # TODO: convert to vocabulary
                 'assay_readout_types': literal_column(
                     "(select array_to_string(array_agg(f1.assay_readout_type),'%s') "
@@ -991,11 +1255,109 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
                     '        from data_column ds '
                     '        join screen_result using(screen_result_id) '
                     '        where screen_id=screen.screen_id ) as f1 )' 
-                    % LIST_DELIMITER_SQL_ARRAY )
-                    .label('assay_readout_types'), 
+                    % LIST_DELIMITER_SQL_ARRAY ), 
+                'library_plates_screened': 
+                    select([lps.c.count]).\
+                        select_from(lps).where(lps.c.screen_id==_screen.c.screen_id),
+                # 'library_plates_screened': literal_column(
+                #     '( select count(distinct(plate_number)) '
+                #     '  from assay_plate where screen_id=screen.screen_id)'),
+                'library_plates_data_loaded': 
+                    select([lpdl.c.count]).\
+                        select_from(lpdl).where(lpdl.c.screen_id==_screen.c.screen_id),
+                # 'library_plates_data_loaded': literal_column(
+                #     '( select count(distinct(plate_number)) '
+                #     '  from assay_plate ' 
+                #     '  where screen_result_data_loading_id is not null '
+                #     '  and screen_id=screen.screen_id )'),
+                'assay_plates_screened': 
+                    select([aps.c.count]).\
+                        select_from(aps).where(aps.c.screen_id==_screen.c.screen_id),
+                # 'assay_plates_screened': literal_column(
+                #     '( select count(*) '
+                #     '  from assay_plate where screen_id=screen.screen_id )') ,
+                'assay_plates_data_loaded': 
+                    select([apdl.c.count]).\
+                        select_from(apdl).where(apdl.c.screen_id==_screen.c.screen_id),
+                # 'assay_plates_data_loaded': literal_column(
+                #     '( select count(1) '
+                #     '  from assay_plate '
+                #     '  where screen_result_data_loading_id is not null '
+                #     '  and screen_id=screen.screen_id )'),
+                'libraries_screened_count': 
+                    select([libraries_screened.c.count]).\
+                        select_from(libraries_screened).\
+                        where(libraries_screened.c.screen_id==_screen.c.screen_id ),
+                # 'libraries_screened_count': literal_column(
+                #     '( select count(distinct(l.library_id)) '
+                #     '  from assay_plate ap '
+                #     '  join plate p using(plate_id)' 
+                #     '  join copy using(copy_id) '
+                #     '  join library l using(library_id) '
+                #     '  where screen_id=screen.screen_id )'),
                     
-                    
+                # FIXME: use administrative activity vocabulary
+                'last_data_loading_date': literal_column(
+                    '( select activity.date_created '
+                    '  from activity '
+                    '  join administrative_activity aa using(activity_id) '
+                    '  join screen_update_activity on update_activity_id=activity_id  '
+                    "  where administrative_activity_type = 'Screen Result Data Loading' " 
+                    '  and screen_id=screen.screen_id '
+                    '  order by date_created desc limit 1 )'
+                    ),
+                'min_screened_replicate_count': 
+                    select([func.min(apsrc.c.max_per_plate)+1]).\
+                        select_from(apsrc).where(apsrc.c.screen_id==_screen.c.screen_id),
+                'max_screened_replicate_count': 
+                    select([func.max(apsrc.c.max_per_plate)+1]).\
+                        select_from(apsrc).where(apsrc.c.screen_id==_screen.c.screen_id),
+                'min_data_loaded_replicate_count': 
+                    select([func.min(apdlrc.c.max_per_plate)+1]).\
+                        select_from(apdlrc).where(apdlrc.c.screen_id==_screen.c.screen_id),
+                'max_data_loaded_replicate_count': 
+                    select([func.max(apdlrc.c.max_per_plate)+1]).\
+                        select_from(apdlrc).where(apdlrc.c.screen_id==_screen.c.screen_id),
+                
+#                 'min_screened_replicate_count': literal_column(
+#                     '( select max +1 from '
+#                     '  ( select plate_number, max(replicate_ordinal) from '
+#                     '    ( select plate_number, replicate_ordinal '
+#                     '      from assay_plate where screen_id=screen.screen_id  '
+#                     '      group by plate_number, replicate_ordinal '
+#                     '      order by plate_number, replicate_ordinal asc nulls last) a '
+#                     '  group by plate_number order by max asc nulls last) b limit 1 )'),
+#                 'max_screened_replicate_count': literal_column(
+#                     '( select max +1 from '
+#                     '  ( select plate_number, max(replicate_ordinal) from '
+#                     '    ( select plate_number, replicate_ordinal '
+#                     '      from assay_plate where screen_id=screen.screen_id  '
+#                     '      group by plate_number, replicate_ordinal '
+#                     '      order by plate_number, replicate_ordinal desc nulls last) a '
+#                     '  group by plate_number order by max desc nulls last) b limit 1 )'),
+#                 'min_data_loaded_replicate_count': literal_column('\n'.join([
+#                     '( select max +1 from ',
+#                     '  ( select plate_number, max(replicate_ordinal) from ',
+#                     '    ( select plate_number, replicate_ordinal ',
+#                     '      from assay_plate ',
+#                     '      where screen_id=screen.screen_id  ',
+#                     '      and screen_result_data_loading_id is not null ',
+#                     '      group by plate_number, replicate_ordinal ',
+#                     '      order by plate_number, replicate_ordinal asc nulls last) a ',
+#                     '  group by plate_number order by max asc nulls last) b limit 1 )'])),
+#                 'max_data_loaded_replicate_count': literal_column('\n'.join([
+#                     '( select max +1 from ',
+#                     '  ( select plate_number, max(replicate_ordinal) from ',
+#                     '    ( select plate_number, replicate_ordinal ',
+#                     '      from assay_plate ',
+#                     '      where screen_id=screen.screen_id  ',
+#                     '      and screen_result_data_loading_id is not null ',
+#                     '      group by plate_number, replicate_ordinal ',
+#                     '      order by plate_number, replicate_ordinal desc nulls last) a ',
+#                     '  group by plate_number order by max desc nulls last) b limit 1 )'])),
             }
+            
+            
             
             columns = self.build_sqlalchemy_columns(
                 field_hash.values(), base_query_tables=base_query_tables,
@@ -1003,11 +1365,9 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
 
             # build the query statement
 
-            _screen = self.bridge['screen']
-            
             j = _screen
-            
-            
+            j = j.join(_screen_result, 
+                _screen.c.screen_id==_screen_result.c.screen_id, isouter=True)
             stmt = select(columns.values()).select_from(j)
 
             # general setup
@@ -1034,27 +1394,6 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e  
 
-#     def dehydrate(self, bundle):
-#         if bundle.obj.lead_screener:
-#             sru = bundle.obj.lead_screener.screensaver_user
-#             bundle.data['lead_screener'] =  sru.first_name + ' ' + sru.last_name
-#         if bundle.obj.lab_head:
-#             lh = bundle.obj.lab_head.screensaver_user.screensaver_user
-#             bundle.data['lab_head'] =  lh.first_name + ' ' + lh.last_name
-#         # TODO: the status table does not utilize a primary key, thus it is 
-#         # incompatible with the standard manager
-#         #        status_item = ScreenStatusItem.objects.filter(
-#         #               screen=bundle.obj).order_by('status_date')[0]
-#         #        bundle.data['status'] = status_item.status
-#         #        bundle.data['status_date'] = status_item.status_date
-# 
-#         bundle.data['has_screen_result'] = False
-#         try:
-#             bundle.data['has_screen_result'] = bundle.obj.screenresult != None
-#         except ScreenResult.DoesNotExist, e:
-#             logger.debug(str(('no screenresult for ', bundle.obj)))
-#         return bundle
-    
     def build_schema(self):
         schema = super(ScreenResource,self).build_schema()
         temp = [ x.screen_type for x in self.Meta.queryset.distinct('screen_type')]
@@ -1062,76 +1401,14 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
             'label': 'Type', 'searchColumn': 'screen_type', 'options': temp }
         return schema
 
-#     def apply_sorting(self, obj_list, options):
-#         options = options.copy()
-#         logger.info(str(('options', options)))
-#         
-#         extra_order_by = []
-#         order_by = options.getlist('order_by',None)
-#         if order_by:
-#             logger.info(str(('order_by',order_by)))
-#             for field in order_by:
-#                 temp = field
-#                 dir=''
-#                 if field.startswith('-'):
-#                     dir = '-'
-#                     field = field[1:]
-#                 if field == 'lead_screener':
-#                     order_by.remove(temp)
-#                     extra_order_by.append(
-#                         dir+'lead_screener__screensaver_user__last_name')
-#                     extra_order_by.append(
-#                         dir+'lead_screener__screensaver_user__first_name')
-#                 if field == 'lab_head':
-#                     order_by.remove(temp)
-#                     extra_order_by.append(
-#                         dir+'lab_head__screensaver_user__screensaver_user__last_name')
-#                     extra_order_by.append(
-#                         dir+'lab_head__screensaver_user__screensaver_user__first_name')
-#                 if field == 'has_screen_result':
-#                     order_by.remove(temp)
-#                     obj_list = obj_list.extra({
-#                         'screenresult_isnull': (
-#                             '(select sr.screen_id is null '
-#                             'from screen_result sr where sr.screen_id = screen.screen_id) ')})
-#                     is_null_dir = '-'
-#                     if dir == '-': is_null_dir = ''
-#                     extra_order_by.append(is_null_dir+'screenresult_isnull')
-#             if len(order_by) > 0:
-#                 options.setlist('order_by', order_by)
-#             else:
-#                 del options['order_by'] 
-#         logger.info(str(('options',options)))
-#         obj_list = super(ScreenResource, self).apply_sorting(obj_list, options)
-#         
-#         if len(extra_order_by)>0:
-#             logger.info(str(('extra_order_by', extra_order_by)))
-#             obj_list = obj_list.order_by(*extra_order_by)
-#         return obj_list
-#     
-#     def hydrate(self, bundle):
-#         bundle = super(ScreenResource, self).hydrate(bundle);
-#         return bundle
-
     @transaction.atomic()
     def obj_create(self, bundle, **kwargs):
         bundle.data['date_created'] = timezone.now()
-        
-#         key = 'total_plated_lab_cherry_picks'
-#         if key not in bundle.data:
-#             field_def = self.get_field_def(key)
-#             bundle.data['total_plated_lab_cherry_picks'] = int(field_def['default'])
         bundle.data['version'] = 1
-            
         bundle = super(ScreenResource, self).obj_create(bundle, **kwargs)
         logger.info(str(('created', bundle)))
         return bundle
     
-#     def save(self, bundle, skip_errors=False):
-#         ''' returns bundle
-#         '''
-#         return super(ScreenResource, self).save(bundle, skip_errors=skip_errors)
-
 
 class ScreenResultResource(SqlAlchemyResource,ManagedResource):
 
@@ -1144,7 +1421,6 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
         
         ordering = []
         filtering = {}
-#         serializer = CursorSerializer()
         serializer = LimsSerializer()
         allowed_methods = ['get']
 
@@ -1171,16 +1447,31 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
                 str(e), e, 'note that this exception is normal if the table already exists',
                 '(PostgreSQL <9.1 has no "CREATE TABLE IF NOT EXISTS" clause')))
 
-    # FIXME: test cases for this
+        try:
+            # create the well_data_column_positive_index table if it does not exist
+            conn.execute(text(
+                'CREATE TABLE well_data_column_positive_index ('
+                ' "well_id" text NOT NULL REFERENCES "well" ("well_id") DEFERRABLE INITIALLY DEFERRED,'
+                ' "data_column_id" integer NOT NULL ' 
+                ' REFERENCES "data_column" ("data_column_id") DEFERRABLE INITIALLY DEFERRED'
+                ');'
+            ));
+            logger.info(str(('the well_data_column_positive_index table has been created')))
+        except Exception, e:
+            logger.warn(str(('on trying to create the well_data_column_positive_index table', 
+                str(e), e, 'note that this exception is normal if the table already exists',
+                '(PostgreSQL <9.1 has no "CREATE TABLE IF NOT EXISTS" clause')))
+            
+    # FIXME: need test cases for this
     def clear_cache(self, all=False, by_date=None, by_uri=None, by_size=False):
         ManagedResource.clear_cache(self)
 
         max_indexes_to_cache = getattr(settings, 'MAX_WELL_INDEXES_TO_CACHE',2e+07)
-
         
         logger.info(str(('max_indexes_to_cache', max_indexes_to_cache)))
         conn = self.bridge.get_engine().connect()
         _wellQueryIndex = self.bridge['well_query_index']
+        _well_data_column_positive_index = self.bridge['well_data_column_positive_index']
         
         try:
             query = CachedQuery.objects.filter(uri__contains='/screenresult/')
@@ -1202,30 +1493,37 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
                         logger.info(str(('ids', ids)))
                         break
                 
-            if by_date:
+            if by_date: # TODO: test
                 logger.info(str(('by_date', by_date)))
                 query = query.filter(datetime__lte=by_date)
                 ids.update([q.id for q in query])
-            if by_uri:
+            if by_uri: # TODO: test
                 logger.info(str(('by_uri', by_uri)))
                 query = query.filter(uri__eq=by_uri)
                 ids.update([q.id for q in query])
                 
             logger.info(str(('clear CachedQuery by ids:', ids, 'all', all, 
                 'by_date', by_date, 'by_uri', by_uri, 'by_size', by_size)))
-            if ids:
-                logger.info(str(('clear cachedQueries',ids)))
+            if ids or all:
+                logger.info(str(('clear cachedQueries',ids, 'all', all)))
                 if all:
                     stmt = delete(_wellQueryIndex)
                     conn.execute(stmt)
-                    logger.info(str(('cleared cached wellQueryIndexes', ids)))
-                    CachedQuery.objects.filter(id__in=ids).delete()
+                    logger.info(str(('cleared all cached wellQueryIndexes')))
+                    CachedQuery.objects.all().delete()
+                    
+                    stmt = delete(_well_data_column_positive_index)
+                    conn.execute(stmt)
+                    logger.info(str(('cleared all cached well_data_column_positive_indexes')))
                 else:
                     
                     stmt = delete(_wellQueryIndex).where(_wellQueryIndex.c.query_id.in_(ids))
                     conn.execute(stmt)
                     logger.info(str(('cleared cached wellQueryIndexes', ids)))
                     CachedQuery.objects.filter(id__in=ids).delete()
+                    
+                    # delete the well_data_column_positive_indexes related to this uri
+                    
             else:
                 logger.info(str(('no CachedQueries or well_query_index values need to be cleared')))
 
@@ -1292,7 +1590,7 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
         (SELECT <value_field> 
          FROM result_value
          WHERE result_value.data_column_id=<id> 
-         AND rv.well_id=assay_well.well_id) as <data_column_value_alias>
+         AND rv.well_id=assay_well.well_id limit 1) as <data_column_value_alias>
         '''
         _rv = self.bridge['result_value']
         field_name = field_information['key']
@@ -1306,6 +1604,7 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
         rv_select = select([column_to_select]).select_from(_rv)
         rv_select = rv_select.where(_rv.c.data_column_id == field_information['data_column_id'])
         rv_select = rv_select.where(_rv.c.well_id == text('assay_well.well_id'))
+        rv_select = rv_select.limit(1) # FIXME: this is due to the duplicated result value issue
         rv_select = rv_select.label(field_name)
         return rv_select
     
@@ -1350,17 +1649,18 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
         param_hash['offset'] = 0
         
         logger.info(str(('offset', offset, 'limit', limit )))
-
+            
+        show_mutual_possitives = param_hash.get('show_mutual_positives', False)
+        
+        manual_field_includes = set(param_hash.get('includes', []))
+                        
 
         try:
             screenresult = ScreenResult.objects.get(screen__facility_id=screen_facility_id)              
             logger.info(str(('screen_facility_id', screen_facility_id)))
             # general setup
              
-            schema = self.build_schema(screenresult=screenresult)
-          
-            manual_field_includes = set(param_hash.get('includes', []))
-                        
+            schema = self.build_schema(screenresult=screenresult,show_mutual_possitives=show_mutual_possitives)
             if DEBUG_GET_LIST: 
                 logger.info(str(('manual_field_includes', manual_field_includes)))
   
@@ -1386,19 +1686,20 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
             _s = self.bridge['screen']
             _rv = self.bridge['result_value']
             
-
             # strategy: 
-            # 1. create the base clause, selecting Wellids into temp table
-            base_clause = join(_aw,_sr, _aw.c.screen_result_id==_sr.c.screen_result_id)
-            base_clause = base_clause.join(_s, _sr.c.screen_id==_s.c.screen_id)
+            # 1. create the base clause, which will build a stored index in 
+            # the table: well_query_index;
+            # the base query uses only columns: well_id, +filters, +orderings
+            base_clause = _aw
             base_custom_columns = {
-                'well_id': literal_column('assay_well.well_id')
+                'well_id': literal_column('assay_well.well_id'),
                 }
 
-            # all fields not part of result value lookups, and
-            # any result_value lookukps that are used in sort or where:
+            # The base all fields not part of result value lookups, and
+            # any result_value lookups that are used in sort or where:
+            # TODO: if doing mutual positives query, then need to grab those datacolumns.
             base_fields = [ fi for fi in field_hash.values() 
-                if ( not fi.get('data_type',None) 
+                if ( not fi.get('data_type',None) # don't include datacolumns, unless:
                      or fi['key'] in order_params
                      or '-%s'%fi['key'] in order_params
                      or fi['key'] in filter_fields )]
@@ -1408,22 +1709,25 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
                 rv_select = self._build_result_value_column(fi)
                 base_custom_columns[fi['key']] = rv_select
             
-            base_query_tables = ['assay_well','screen']
+            base_query_tables = ['assay_well']
             base_columns = self.build_sqlalchemy_columns(
                 base_fields, base_query_tables=base_query_tables,
                 custom_columns=base_custom_columns ) 
 
+            # remove is_positive if not needed, to help the query planner
+            if 'is_positive' not in filter_fields:
+                del base_columns['is_positive']
+            
             base_stmt = select(base_columns.values()
                 ).select_from(base_clause)
             base_stmt = base_stmt.where(
                 _aw.c.screen_result_id == screenresult.screen_result_id )
+            # always add well_id order
+            base_stmt = base_stmt.order_by(asc(column('well_id'))) # no need for nulls first
             
             (base_stmt,count_stmt) = \
                 self.wrap_statement(base_stmt,order_clauses,filter_expression )
 
-            # always add well_id order
-            base_stmt = base_stmt.order_by(nullsfirst(asc(column('well_id'))))
-            
             meta = {
                 'limit': limit,
                 'offset': offset,
@@ -1433,6 +1737,7 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
             
             m = hashlib.md5()
             compiled_stmt = str(base_stmt.compile(compile_kwargs={"literal_binds": True}))
+            logger.info(str(('compiled_stmt', compiled_stmt)))
             m.update(compiled_stmt)
             key = m.hexdigest()
             
@@ -1456,7 +1761,8 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
                                 literal_column(str(cachedQuery.id)).label('query_id')
                                 ]).select_from(base_stmt))
                     
-                    logger.info(str(('insert stmt', str(insert_statement.compile()))))
+                    logger.info(str(('insert stmt', 
+                        str(insert_statement.compile(compile_kwargs={"literal_binds": True})))))
                     conn.execute(insert_statement)
                     logger.info(str(('executed', compiled_stmt)))
                     
@@ -1515,7 +1821,7 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
             
             stmt = select(columns.values()).select_from(j)
             stmt = stmt.where(_aw.c.screen_result_id == screenresult.screen_result_id )
-            logger.info('excute stmt')
+            logger.info(str(('excute stmt', str(stmt.compile() ))))
             result = conn.execute(stmt)
             logger.info('excuted stmt')
             
@@ -1533,7 +1839,6 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
                 rowproxy_generator=rowproxy_generator,
                 title_function=title_function,
                 meta=meta  )
-
     
         except Exception, e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -1543,279 +1848,90 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e  
 
-
-    # base query version
-    def build_list_responseA(self,request, param_hash={}, **kwargs):
-        ''' 
-        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns django.http.response.StreamingHttpResponse 
-        '''
-        DEBUG_GET_LIST = True or logger.isEnabledFor(logging.DEBUG)
+    def get_mutual_positives_columns(self, screen_result_id):
         
-        if DEBUG_GET_LIST:
-            logger.info(str(('kwargs',kwargs,'param_hash',param_hash)))
-
-        is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
-        filename = re.sub(r'[\W]+','_',filename)
-        logger.info(str(('get_list', filename, kwargs)))
         
-        screen_facility_id = param_hash.pop('screen_facility_id', None)
-        if not screen_facility_id:
-            logger.info(str(('no screen_facility_id provided')))
-            raise NotImplementedError('must provide a screen_facility_id parameter')
-            
-        well_id = param_hash.pop('well_id', None)
-        if well_id:
-            param_hash['well_id__eq'] = well_id
-
+        # TODO: cache this / clear cache when any screen_results referenced by 
+        # a datacolumn are re-loaded
+        # 
+        # SS1 Methodology:
+        # select distinct(dc.data_column_id) 
+        # from assay_well aw0
+        # cross join assay_well aw1
+        # inner join screen_result sr on aw1.screen_result_id=sr.screen_result_id
+        # inner join data_column dc on sr.screen_result_id=dc.screen_result_id
+        # where aw0.well_id=aw1.well_id
+        # and aw0.is_positive
+        # and aw1.is_positive
+        # and ( dc.data_type = 'boolean_positive_indicator' or dc.data_type = 'partition_positive_indicator' )
+        # and aw0.screen_result_id = 941
+        # and aw1.screen_result_id <> 941;
         try:
-            screenresult = ScreenResult.objects.get(screen__facility_id=screen_facility_id)              
-            logger.info(str(('screen_facility_id', screen_facility_id)))
-            # general setup
-             
-            schema = self.build_schema(screenresult=screenresult)
-          
-            manual_field_includes = set(param_hash.get('includes', []))
-                        
-            if DEBUG_GET_LIST: 
-                logger.info(str(('manual_field_includes', manual_field_includes)))
-  
-            (filter_expression, filter_fields) = \
-                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
-                                  
-            field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail)
-              
-            order_params = param_hash.get('order_by',[])
-            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
-             
-            rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
- 
-            # specific setup 
+            conn = self.bridge.get_engine().connect()
             
+            _well_data_column_positive_index = self.bridge['well_dc_positive_index']
             _aw = self.bridge['assay_well']
             _sr = self.bridge['screen_result']
-            _s = self.bridge['screen']
-
-            # strategy: 
-            # 1. create the base clause 
-            base_clause = join(_aw,_sr, _aw.c.screen_result_id==_sr.c.screen_result_id)
-            base_clause = base_clause.join(_s, _sr.c.screen_id==_s.c.screen_id)
-            
-            # all fields not part of result value lookups, and
-            # any result_value lookukps that are used in sort or where:
-            base_fields = [ fi for fi in field_hash.values() 
-                if ( not fi.get('data_type',None) 
-                     or fi['key'] in order_params
-                     or '-%s'%fi['key'] in order_params
-                     or fi['key'] in filter_fields )]
-            
-            logger.info(str(('base_fields', [fi['key'] for fi in base_fields],
-                'order_params', order_params,
-                'filter_fields',filter_fields)))
-            base_query_tables = ['assay_well','screen']
-            
-            base_custom_columns = {}
-            # TODO: using "data_type" presence as a marker for the result_value columns
-            for fi in [fi for fi in base_fields if fi.get('data_type',None)]:
-                rv_select = self._build_result_value_column(fi)
-                base_custom_columns[fi['key']] = rv_select
-            
-            base_columns = self.build_sqlalchemy_columns(
-                base_fields, base_query_tables=base_query_tables,
-                custom_columns=base_custom_columns ) 
-            base_column_names = base_columns.keys()
-            logger.info(str(('base_column_names',base_column_names)))
-            base_stmt = select(base_columns.values()).select_from(base_clause)
-            base_stmt = base_stmt.where(
-                _aw.c.screen_result_id == screenresult.screen_result_id )
-            
-            (base_stmt,count_stmt) = \
-                self.wrap_statement(base_stmt,order_clauses,filter_expression )
-
-            # FIXME: refactor this into the sqlalchemy file:
-            # - pass the base query in
-            # - cache can decide strategy for caching the base query
-            # - presumably, cache will set the limit/offset to the base query
-            # - boil the base_query down to just the keys, in order (well_id) here
-            # - then store this query, either in the session or in temp db table
-            limit = param_hash.get('limit', 0)        
-            try:
-                limit = int(limit)
-            except ValueError:
-                raise BadRequest(
-                    "Invalid limit '%s' provided. Please provide a positive integer." % limit)
-            if limit > 0:    
-                base_stmt = base_stmt.limit(limit)
-            param_hash['limit'] = 0
-            
-            offset = param_hash.get('offset', 0 )
-            try:
-                offset = int(offset)
-            except ValueError:
-                raise BadRequest(
-                    "Invalid offset '%s' provided. Please provide a positive integer." % offset)
-            if offset < 0:    
-                offset = -offset
-            base_stmt = base_stmt.offset(offset)
-            param_hash['offset'] = 0
-            
-            logger.info(str(('offset', offset, 'limit', limit )))
-            logger.info(str(('base stmt', str(base_stmt.compile()))))
-
-            meta = {
-                'limit': limit,
-                'offset': offset,
-            }    
-
-            
-            base_stmt = base_stmt.alias('assay_well')
-            # Now make the rest of the query, using the base statement
-            
-            regular_fields = [fi for fi in field_hash.values()
-                if fi not in base_fields ]
-            custom_columns = []
-            for fi in [fi for fi in regular_fields
-                if ( fi.get('data_type',None) 
-                     and fi not in base_fields ) ]:
-                rv_select = self._build_result_value_column(fi)
-                custom_columns.append(rv_select)
-            
-            final_columns = custom_columns
-            final_columns.extend(base_column_names)
-            stmt = select(final_columns).select_from(base_stmt)
-            # general setup
-            
-            title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
-                title_function = lambda key: field_hash[key]['title']
-            
-            return self.stream_response_from_statement(
-                request, stmt, count_stmt, filename, 
-                field_hash=field_hash, 
-                param_hash=param_hash,
-                is_for_detail=is_for_detail,
-                rowproxy_generator=rowproxy_generator,
-                title_function=title_function, use_caching=False, meta=meta )
-             
-        except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on get_list', 
-                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
-            raise e  
+            _dc = self.bridge['data_column']
     
-    def build_list_response1(self,request, param_hash={}, **kwargs):
-        ''' 
-        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns django.http.response.StreamingHttpResponse 
-        '''
-        DEBUG_GET_LIST = True or logger.isEnabledFor(logging.DEBUG)
-        
-        if DEBUG_GET_LIST:
-            logger.info(str(('kwargs',kwargs,'param_hash',param_hash)))
-
-        is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
-        filename = re.sub(r'[\W]+','_',filename)
-        logger.info(str(('get_list', filename, kwargs)))
-        
-        screen_facility_id = param_hash.pop('screen_facility_id', None)
-        if not screen_facility_id:
-            logger.info(str(('no screen_facility_id provided')))
-            raise NotImplementedError('must provide a screen_facility_id parameter')
+            count_stmt = _well_data_column_positive_index
+            count_stmt = select([func.count()]).select_from(count_stmt)
+            count = int(conn.execute(count_stmt).scalar())        
             
-        well_id = param_hash.pop('well_id', None)
-        if well_id:
-            param_hash['well_id__eq'] = well_id
-
-        try:
-            screenresult = ScreenResult.objects.get(screen__facility_id=screen_facility_id)              
-            logger.info(str(('screen_facility_id', screen_facility_id)))
-            # general setup
-             
-            schema = self.build_schema(screenresult=screenresult)
-          
-            manual_field_includes = set(param_hash.get('includes', []))
-                        
-            if DEBUG_GET_LIST: 
-                logger.info(str(('manual_field_includes', manual_field_includes)))
-  
-            (filter_expression, filter_fields) = \
-                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
-                                  
-            field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail)
-              
-            order_params = param_hash.get('order_by',[])
-            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
-             
-            rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
- 
-            # specific setup 
-            base_query_tables = ['assay_well','screen']
+            if count == 0:
+                # cleared, recreate
+                logger.info(str(('recreate well_data_column_positive_index')))
+                base_stmt = join(_aw,_dc,_aw.c.screen_result_id==_dc.c.screen_result_id)
+                base_stmt = select([
+                    literal_column("well_id"),
+                    literal_column('data_column_id')
+                    ]).select_from(base_stmt)            
+                base_stmt = base_stmt.where(_aw.c.is_positive)
+                base_stmt = base_stmt.where(
+                    _dc.c.data_type.in_(['boolean_positive_indicator','partition_positive_indicator']))
+                base_stmt = base_stmt.order_by(_dc.c.data_column_id, _aw.c.well_id)
+                insert_statement = insert(_well_data_column_positive_index).\
+                    from_select(['well_id','data_column_id'], base_stmt)
+                    
+                logger.info(str(('mutual pos insert statement', str(insert_statement.compile()))))
+                conn.execute(insert_statement)
+    
+            # now run the query
+            # select distinct(wdc.data_column_id)
+            # from
+            # well_dc_positive_index wdc
+            # join data_column dc using(data_column_id)
+            # where 
+            # dc.screen_result_id <> 941
+            # and exists(
+            # select null 
+            # from well_dc_positive_index wdc1 
+            # join data_column dc1 using(data_column_id) 
+            # where wdc1.well_id=wdc.well_id 
+            # and dc1.screen_result_id = 941 );        
+            _wdc = _well_data_column_positive_index.alias('wdc')
+            j = _wdc.join(_dc,_wdc.c.data_column_id==_dc.c.data_column_id)
+            stmt = select([distinct(_wdc.c.data_column_id)]).select_from(j)
+            stmt = stmt.where(_dc.c.screen_result_id != screen_result_id )
             
-            custom_columns = {}
+            _wdc1 = _well_data_column_positive_index.alias('wdc1')
+            _dc1 = _dc.alias('dc1')
+            j2 = _wdc1.join(_dc1, _wdc1.c.data_column_id==_dc1.c.data_column_id)
+            stmt2 = select([text('null')]).select_from(j2)
+            stmt2 = stmt2.where(_wdc.c.well_id==_wdc1.c.well_id)
+            stmt2 = stmt2.where(_dc1.c.screen_result_id == screen_result_id )
             
-            _rv = self.bridge['result_value']
+            stmt = stmt.where(exists(stmt2))
             
-            for fi in [fi for fi in field_hash.values() if fi.get('data_type',None)]:
-                field_name = fi['key']
-                data_column_type = fi.get('data_type') 
-                column_to_select = None
-                if(data_column_type == 'numeric'): #TODO: use controlled vocabulary
-                    column_to_select = 'numeric_value'
-                else:
-                    column_to_select = 'value'
-                
-                rv_select = select([column_to_select]).select_from(_rv)
-                rv_select = rv_select.where(_rv.c.data_column_id == fi['data_column_id'])
-                rv_select = rv_select.where(_rv.c.well_id == text('assay_well.well_id'))
-                rv_select = rv_select.label(field_name)
-                custom_columns[field_name] = rv_select
+            logger.info(str(('mutual positives statement', 
+                str(stmt.compile(compile_kwargs={"literal_binds": True})))))
             
-            columns = self.build_sqlalchemy_columns(
-                field_hash.values(), base_query_tables=base_query_tables,
-                custom_columns=custom_columns )
-
-            _aw = self.bridge['assay_well']
-            _sr = self.bridge['screen_result']
-            _s = self.bridge['screen']
-            j = join(_aw,_sr, _aw.c.screen_result_id==_sr.c.screen_result_id)
-            j = j.join(_s, _sr.c.screen_id==_s.c.screen_id)
-            
-            
-            stmt = select(columns.values()).select_from(j)
-            stmt = stmt.where(_aw.c.screen_result_id == screenresult.screen_result_id )
-            # general setup
-             
-            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
-            
-            title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
-                title_function = lambda key: field_hash[key]['title']
-            
-            return self.stream_response_from_statement(
-                request, stmt, count_stmt, filename, 
-                field_hash=field_hash, 
-                param_hash=param_hash,
-                is_for_detail=is_for_detail,
-                rowproxy_generator=rowproxy_generator,
-                title_function=title_function  )
-             
+            return [x.data_column_id for x in conn.execute(stmt)]
         except Exception, e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
             msg = str(e)
-            logger.warn(str(('on get_list', 
+            logger.warn(str(('on get_mutual_positives_columns', 
                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e  
 
@@ -1832,11 +1948,6 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
             logger.info(str(('screenresult resource', 
                              facility_id,screenresult.screen)))
             
-            # TODO: Not sure what to return for get_obj_list ? since in the
-            # CursorSerializer, you can see that we have to either look 
-            # at the passed arg as a cursor, or as a bundle with the cursor as 
-            # the obj.  how does TP want this done?
-            
             if screenresult:
                 return self.create_response(
                     request, self.build_schema(screenresult))
@@ -1846,63 +1957,105 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
         except ObjectDoesNotExist, e:
             raise Http404(unicode((
                 'no screen found for facility id', facility_id)))
-            
-    def build_schema(self, screenresult=None):
-        logger.debug(str(('==========build schema for screen result', screenresult)))
-        data = super(ScreenResultResource,self).build_schema()
-        
-        max_ordinal = 0
-        for fi in data['fields'].values():
-            if fi.get('ordinal',0) > max_ordinal:
-                max_ordinal = fi['ordinal']
-        data_type_lookup = {
-            'partition_positive_indicator': {
-                'vocabulary_scope_ref': 'resultvalue.partitioned_positive',
-                'ui_type': 'Select'
-                },
-            'boolean_positive_indicator': {
-                'ui_type': 'boolean' 
-                },
-            'confirmed_positive_indicator': {
-                'vocabulary_scope_ref': 'resultvalue.confirmed_positive_indicator',
-                'ui_type': 'Select' 
-                },
-        }
-        if screenresult:
-            # translate the datacolumn definitions into field information definitions
-            field_defaults = {
-                'visibility': ['list','detail'],
-                'ui_type': 'string',
-                'filtering': True,
-                'scope': 'fields.screenresult'
-                }
-            for i,dc in enumerate(
-                    DataColumn.objects.filter(screen_result=screenresult)):
-                columnName = "dc_%s" % (default_converter(dc.name))
-                _dict = field_defaults.copy()
-                _dict.update(model_to_dict(dc))
-                
-                _dict['title'] = dc.name
-                _dict['comment'] = dc.comments
-                _dict['key'] = columnName
-                # so that the value columns come last
-                _dict['ordinal'] += max_ordinal +1 + dc.ordinal 
-                
-                if dc.data_type == 'numeric':
-                    if _dict.get('decimal_places', 0) > 0:
-                        _dict['ui_type'] = 'float'
-                        _dict['backgrid_cell_type'] = 'Iccbl.DecimalCell'
-                        _dict['backgrid_cell_options'] = \
-                            '{ "decimals": %s }' % _dict['decimal_places']
-                    else:
-                        _dict['ui_type'] = 'integer'
-                if dc.data_type in data_type_lookup:
-                    _dict.update(data_type_lookup[dc.data_type])
-                    
-                data['fields'][columnName] = _dict
-            # TODO: get the data columns; convert column aliases to real names
-        return data
     
+    data_type_lookup = {
+        'partition_positive_indicator': {
+            'vocabulary_scope_ref': 'resultvalue.partitioned_positive',
+            'ui_type': 'Select'
+            },
+        'boolean_positive_indicator': {
+            'ui_type': 'boolean' 
+            },
+        'confirmed_positive_indicator': {
+            'vocabulary_scope_ref': 'resultvalue.confirmed_positive_indicator',
+            'ui_type': 'Select' 
+            },
+    }
+            
+    def build_schema(self, screenresult=None,show_mutual_possitives=False):
+        logger.debug(str(('==========build schema for screen result', screenresult)))
+        try:
+            data = super(ScreenResultResource,self).build_schema()
+            
+            if screenresult:
+                # find the highest ordinal in the non-data_column fields
+                max_ordinal = 0
+                for fi in data['fields'].values():
+                    if fi.get('ordinal',0) > max_ordinal:
+                        max_ordinal = fi['ordinal']
+                # translate the datacolumn definitions into field information definitions
+                field_defaults = {
+                    'visibility': ['list','detail'],
+                    'ui_type': 'string',
+                    'filtering': True,
+                    'scope': 'datacolumn.screenresult-%s' % screenresult.screen.facility_id
+                    }
+                for i,dc in enumerate(
+                        DataColumn.objects.filter(screen_result=screenresult).order_by('ordinal')):
+                    (columnName,_dict) = self.create_datacolumn(
+                        dc, field_defaults=field_defaults)
+                    _dict['ordinal'] = max_ordinal + dc.ordinal + 1
+                    data['fields'][columnName] = _dict
+                    
+                max_ordinal += dc.ordinal + 1
+                field_defaults = {
+                    'visibility': ['api'],
+                    'ui_type': 'string',
+                    'filtering': True,
+                    }
+                
+                _current_sr = None
+                _ordinal = max_ordinal
+                for i,dc in enumerate(DataColumn.objects.
+                        filter(data_column_id__in=
+                        self.get_mutual_positives_columns(screenresult.screen_result_id)).
+                        order_by('screen_result__screen__facility_id','ordinal')):
+
+                    if _current_sr != dc.screen_result.screen_result_id:
+                        _current_sr = dc.screen_result.screen_result_id
+                        max_ordinal = _ordinal
+                    _ordinal = max_ordinal + dc.ordinal + 1
+                    
+                    field_defaults['scope'] = 'mutual_positive.%s' \
+                        % dc.screen_result.screen.facility_id
+                    (columnName,_dict) = self.create_datacolumn(
+                        dc, field_defaults=field_defaults)
+                    _dict['ordinal'] = _ordinal
+                    data['fields'][columnName] = _dict
+                    if show_mutual_possitives:
+                        _visibility = set(_dict['visibility'])
+                        _visibility.update(['list','detail'])
+                        _dict['visibility'] = list(_visibility)
+            return data
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on build_schema', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e  
+    
+    def create_datacolumn(self,dc,field_defaults={}):
+        screen_facility_id = dc.screen_result.screen.facility_id
+        columnName = "dc_%s_%s" % (screen_facility_id, default_converter(dc.name))
+        _dict = field_defaults.copy()
+        _dict.update(model_to_dict(dc))
+        _dict['title'] = '%s [%s]' % (dc.name, screen_facility_id) 
+        _dict['description'] = _dict['description'] or _dict['title']
+        _dict['comment'] = dc.comments
+        _dict['key'] = columnName
+        _dict['scope'] = 'datacolumn.screenresult-%s' % screen_facility_id
+        if dc.data_type == 'numeric':
+            if _dict.get('decimal_places', 0) > 0:
+                _dict['ui_type'] = 'float'
+                _dict['backgrid_cell_type'] = 'Iccbl.DecimalCell'
+                _dict['backgrid_cell_options'] = \
+                    '{ "decimals": %s }' % _dict['decimal_places']
+            else:
+                _dict['ui_type'] = 'integer'
+        if dc.data_type in self.data_type_lookup:
+            _dict.update(self.data_type_lookup[dc.data_type])
+        return (columnName,_dict)
 
 class DataColumnResource(ManagedModelResource):
     '''
@@ -1950,6 +2103,8 @@ class DataColumnResource(ManagedModelResource):
         return schema
     
     def dehydrate(self, bundle):
+        # FIXME: use the same method here and in the ScreenResultResource
+        
         # Custom dehydrate: each datacolumn extends a Metahash Field
         # - augment each datacolumn with the Metahash field (supertype) fields
         # - these fields are critical to UI interpretation

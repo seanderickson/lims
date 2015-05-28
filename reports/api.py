@@ -309,7 +309,7 @@ class IccblBaseResource(Resource):
         vocabularies = {}
         for key, field in field_hash.iteritems():
             if field.get('vocabulary_scope_ref', None):
-                scope = field.get('vocabulary_scope_ref', None);
+                scope = field.get('vocabulary_scope_ref', {});
                 vocabularies[key] = VocabulariesResource.get_vocabularies_by_scope(scope)
         def vocabulary_rowproxy_generator(cursor):
             class Row:
@@ -321,7 +321,7 @@ class IccblBaseResource(Resource):
                     return self.row.keys();
                 def __getitem__(self, key):
                     if not row[key]:
-                        return row[key]
+                        return None
                     if key in vocabularies:
                         if row[key] not in vocabularies[key]:
                             logger.error(str(('----warn, unknown vocabulary', 
@@ -338,8 +338,6 @@ class IccblBaseResource(Resource):
             for row in cursor:
                 yield Row(row)
         return vocabulary_rowproxy_generator
-
-
 
 
 # TODO: this class should be constructed as a Mixin, not inheritor of ModelResource
@@ -1965,8 +1963,11 @@ class VocabulariesResource(ManagedModelResource):
                          vocabularies[_scope] = {}
                     vocabularies[_scope][vocabulary_instance['key']] = vocabulary_instance
                 cache.set('vocabularies', vocabularies);
-            
-            return deepcopy(vocabularies[scope])    
+            if scope in vocabularies:
+                return deepcopy(vocabularies[scope])
+            else:
+                logger.warn(str(('---unknown vocabulary scope:', scope)))
+                return {}
         except Exception, e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      

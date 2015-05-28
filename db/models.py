@@ -772,6 +772,9 @@ class CachedQuery(models.Model):
 #         unique_together = (('sql', 'key'))   
         db_table = 'cached_query' 
 
+    def __unicode__(self):
+        return unicode(str((self.id, self.uri,self.username,self.count))) 
+
 # Note: this model is not in the Django models, as it does not have the id field needed
 # class WellQueryIndex(models.Model):
 #     ''' For caching large resultvalue queries '''

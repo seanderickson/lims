@@ -75,7 +75,7 @@
     },
     "small_molecule_screens": {
         "header_message": "Small Molecule Screens",
-        "title": "Small Molecule",
+        "title": "Small Molecule Screen",
         "route": "list/small_molecule_screens",
         "list_view": "ListView",
         "detailView": "DetailView",
@@ -90,7 +90,7 @@
     },
     "rnai_screens": {
         "header_message": "All screens (Small Molecule and RNAi)",
-        "title": "RNAi",
+        "title": "RNAi Screen",
         "route": "list/rnai_screens",
         "list_view": "ListView",
         "detailView": "DetailView",

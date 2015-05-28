@@ -14,17 +14,20 @@ define([
   var SchemaClass = function() {};
   SchemaClass.prototype.detailKeys = function()
   {
+    return this.filterKeys('detail');
+  };  
+  SchemaClass.prototype.filterKeys = function(visibility_term)
+  {
+    console.log('filter keys for: ' + visibility_term );
     var self = this;
-    
     var keys = Iccbl.sortOnOrdinal(
       _.keys(self.fields), self.fields)
     var detailKeys = _(keys).filter(function(key){
       return _.has(self.fields, key) && 
           _.has(self.fields[key], 'visibility') && 
-          _.contains(self.fields[key]['visibility'], 'detail');
+          _.contains(self.fields[key]['visibility'], visibility_term);
     });
     return detailKeys;
-
   };  
 
   var AppState = Backbone.Model.extend({

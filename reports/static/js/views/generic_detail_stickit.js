@@ -32,7 +32,7 @@ define([
         this.buttons.unshift('delete');
       }
       
-      var keys = this.detailKeys = schema.detailKeys(this.model);
+      var keys = this.detailKeys = args.detailKeys || schema.detailKeys(); //this.model);
       var events = this.events = {};
       var bindings = this.bindings = {};
       var schemaBindings = this.schemaBindings = {};
@@ -236,14 +236,6 @@ define([
         };
       });      
 	  },
-//    events: {
-//      'click a#child_logsa':'testfunction'
-//    },
-    
-    testfunction: function(event){
-      event.preventDefault();
-      console.log('testfunction called, ' + event);
-    },
     
     afterRender : function() {
       var self = this;

@@ -207,27 +207,12 @@ define([
 
     setSummary : function(){
       var self = this;
-      if(_.isUndefined(this.summary)){
-
-        var createDetail = function(schemaResult, model){
-          var detailView = new DetailView({
-            model : model
-          }, {
-            schemaResult : schemaResult,
-            router : self.options.router,
-            isEditMode : false
-          });
-          self.summary = detailView;
-          $('#tab_container').html(self.summary.render().el);
-        };
-        var url = [self.model.resource.apiUri, 
-                   self.model.key,
-                   'screensummary'].join('/');
-        var schema_url= self.model.resource.apiUri + '/screensummary/schema'; 
-        Iccbl.getSchemaAndModel(schema_url, url, createDetail);
-      }else{
-        $('#tab_container').html(self.summary.render().el);
-      }
+      var summaryKeys = self.model.resource.schema.filterKeys('summary')
+      var detailView = new DetailView({
+        model : self.model,
+        detailKeys: summaryKeys
+      });
+      $('#tab_container').html(detailView.render().el);
     },
 
     setDatacolumns: function(delegateStack){
@@ -372,26 +357,65 @@ define([
                        self.model.key,
                        'schema'].join('/');
       var url = [appModel.dbApiUri,
-                       'screenresult',
-                       self.model.key].join('/');
+                 'screenresult',
+                 self.model.key].join('/');
 
       var _id = self.model.key;
+      
+      // TODO: have to add the "extra_control" because the list rendering is delayed
+      var show_positives_control = $([
+        '<form>',
+        '<div class="checkbox">',
+        '<label>',
+        '  <input type="checkbox">positives',
+        '</label>',
+        '</div>',
+        '</form>'
+        ].join(''));
+      var show_mutual_positives_control = $([
+         '<form>',
+         '<div class="checkbox">',
+         '<label>',
+         '  <input type="checkbox">mutual positives',
+         '</label>',
+         '</div>',
+         '</form>'
+         ].join(''));      
       var createResults = function(schemaResult){
         view = new ListView({ options: {
           uriStack: _.clone(delegateStack),
           schemaResult: schemaResult,
           resource: screenResultResource,
-          url: url
+          url: url,
+          extraControls: [show_positives_control, show_mutual_positives_control]
         }});
         Backbone.Layout.setupView(view);
         self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.setView("#tab_container", view ).render();
+        show_positives_control.click(function(e){
+          if(e.target.checked){
+            var searchHash = _.clone(view.listModel.get('search'));
+            searchHash['is_positive__eq'] = 'true';
+            view.listModel.set('search',searchHash);
+          }else{
+            // make sure unset
+            var searchHash = _.clone(view.listModel.get('search'));
+            if(_.has(searchHash,'is_positive__eq')){
+              delete searchHash['is_positive__eq'];
+              view.listModel.set('search',searchHash);
+            }
+          }
+        });
+        show_mutual_positives_control.click(function(e){
+          if(e.target.checked){
+            view.show_mutual_positives(true);
+          }else{
+            view.show_mutual_positives(false);
+          }
+        });
       };
       Iccbl.getSchema(schemaUrl, createResults);
-//
-//      self.$('#results').addClass('active'); // first time not clicked so
-//                                              // set manually
     },
     
     onClose: function() {

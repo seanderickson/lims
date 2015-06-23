@@ -94,7 +94,7 @@ logger = logging.getLogger(__name__)
 def _get_raw_time_string():
   return timezone.now().strftime("%Y%m%d%H%M%S")
     
-class ScreensaverUserResourceNew(SqlAlchemyResource, ManagedModelResource):    
+class ScreensaverUserResource(SqlAlchemyResource, ManagedModelResource):    
 
     class Meta:
         queryset = ScreensaverUser.objects.all()
@@ -105,7 +105,6 @@ class ScreensaverUserResourceNew(SqlAlchemyResource, ManagedModelResource):
         filtering = {}
         serializer = LimsSerializer()
         excludes = ['digested_password']
-        detail_uri_name = 'screensaver_user_id'
         resource_name = 'screensaveruser'
         max_limit = 10000
 
@@ -121,7 +120,7 @@ class ScreensaverUserResourceNew(SqlAlchemyResource, ManagedModelResource):
                 self.wrap_view('get_schema'), name="api_get_schema"),
 
             url((r"^(?P<resource_name>%s)/"
-                 r"(?P<facility_id>([\w\d_]+))%s$") 
+                 r"(?P<screensaver_user_id>([\w\d_]+))%s$") 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
@@ -129,10 +128,10 @@ class ScreensaverUserResourceNew(SqlAlchemyResource, ManagedModelResource):
     def get_detail(self, request, **kwargs):
         logger.info(str(('get_detail')))
 
-        facility_id = kwargs.get('facility_id', None)
+        facility_id = kwargs.get('screensaver_user_id', None)
         if not facility_id:
-            logger.info(str(('no facility_id provided')))
-            raise NotImplementedError('must provide a facility_id parameter')
+            logger.info(str(('no screensaver_user_id provided')))
+            raise NotImplementedError('must provide a screensaver_user_id parameter')
         
         kwargs['is_for_detail']=True
         return self.get_list(request, **kwargs)
@@ -158,11 +157,9 @@ class ScreensaverUserResourceNew(SqlAlchemyResource, ManagedModelResource):
         filename = re.sub(r'[\W]+','_',filename)
         logger.info(str(('get_list', filename, kwargs)))
         
-        facility_id = param_hash.pop('facility_id', None)
-        if facility_id:
-            param_hash['facility_id__eq'] = facility_id
-
-        screen_type = param_hash.get('screen_type__eq', None)
+        screensaver_user_id = param_hash.pop('screensaver_user_id', None)
+        if screensaver_user_id:
+            param_hash['screensaver_user_id__eq'] = screensaver_user_id
 
         try:
             
@@ -192,24 +189,69 @@ class ScreensaverUserResourceNew(SqlAlchemyResource, ManagedModelResource):
             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
                 rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
  
-            # specific setup 
+            # specific setup
+            _s = self.bridge['screen']
+            _cl = self.bridge['collaborator_link']
+            _su = self.bridge['screensaver_user']
+            _admin = self.bridge['administrator_user']
+            _sru = self.bridge['screening_room_user']
+            _lh = self.bridge['lab_head']
+            __sru_fr = self.bridge['screening_room_user_facility_usage_role']
 
+            
+            base_query_tables = ['screensaver_user'] 
+            custom_columns = {
+                'facility_usage_roles': literal_column(
+                     '( )'),
+                'name': literal_column(
+                    "last_name || ', ' || first_name"),
+                # TODO: redo classification
+                'classification': literal_column(
+                    "( select coalesce( user_classification, 'admin') "
+                    ' from  screensaver_user s1'
+                    ' left join screening_room_user using(screensaver_user_id) '
+                    ' where s1.screensaver_user_id = screensaver_user.screensaver_user_id)'),
+                'screens_lead':
+                    select([func.array_agg(_s.c.facility_id,LIST_DELIMITER_SQL_ARRAY)]).\
+                        select_from(_s).\
+                        where(_s.c.lead_screener_id==_su.c.screensaver_user_id),
+                'screens_lab_head':
+                    select([func.array_to_string(
+                            func.array_agg(_s.c.facility_id),LIST_DELIMITER_SQL_ARRAY)]).\
+                        select_from(_s).\
+                        where(_s.c.lab_head_id==_su.c.screensaver_user_id),
+                'screens_lead':
+                    select([func.array_to_string(
+                            func.array_agg(_s.c.facility_id),LIST_DELIMITER_SQL_ARRAY)]).\
+                        select_from(_s).\
+                        where(_s.c.lead_screener_id==_su.c.screensaver_user_id),
+                'screens_collaborator':
+                    select([func.array_to_string(
+                            func.array_agg(_s.c.facility_id),LIST_DELIMITER_SQL_ARRAY)]).\
+                        select_from(_s.join(_cl,_s.c.screen_id==_cl.c.screen_id)).\
+                        where(_cl.c.collaborator_id==_su.c.screensaver_user_id),
+                'facility_usage_roles': 
+                    select([func.array_to_string(
+                            func.array_agg(_sru_fr.c.facility_usage_role),LIST_DELIMITER_SQL_ARRAY)]).\
+                        select_from(_sru_fr).\
+                        where(_sru_fr.c.screening_room_user_id==_su.c.screensaver_user_id),
+                'data_access_roles': 
+                    select([func.array_to_string(
+                            func.array_agg(_sru_fr.c.facility_usage_role),LIST_DELIMITER_SQL_ARRAY)]).\
+                        select_from(_sru_fr).\
+                        where(_sru_fr.c.screening_room_user_id==_su.c.screensaver_user_id),
+
+                
+                }
 
             columns = self.build_sqlalchemy_columns(
                 field_hash.values(), base_query_tables=base_query_tables,
                 custom_columns=custom_columns )
 
             # build the query statement
-            _su = self.bridge['screensaver_user']
-            _admin = self.bridge['administrator_user']
-            _sru = self.bridge['screening_room_user']
-            _lh = self.bridge['lab_head']
             
             
-            
-            j = _screen
-            j = j.join(_screen_result, 
-                _screen.c.screen_id==_screen_result.c.screen_id, isouter=True)
+            j = _su
             stmt = select(columns.values()).select_from(j)
 
             # general setup
@@ -237,7 +279,7 @@ class ScreensaverUserResourceNew(SqlAlchemyResource, ManagedModelResource):
             raise e  
 
     
-class ScreensaverUserResource(ManagedModelResource):
+class ScreensaverUserResource1(ManagedModelResource):
 #    screens = fields.ToManyField('db.api.ScreenResource', 'screens', 
 # related_name='lab_head_id', blank=True, null=True)
 
@@ -4622,7 +4664,6 @@ class ActivityResource(SqlAlchemyResource,ManagedModelResource):
             logger.warn(str(('on get_list', 
                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e  
-
 
 
 class LibraryResource(SqlAlchemyResource, ManagedModelResource):

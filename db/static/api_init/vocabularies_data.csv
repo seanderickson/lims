@@ -121,3 +121,6 @@ confirmed_positive_indicator,datacolumn.data_type,vocabularies/datacolumn.data_t
 1,resultvalue.partitioned_positive,vocabularies/resultvalue.partitioned_positive/1/,1,,Weak,W
 2,resultvalue.partitioned_positive,vocabularies/resultvalue.partitioned_positive/2/,2,,Medium,M
 3,resultvalue.partitioned_positive,vocabularies/resultvalue.partitioned_positive/3/,3,,Strong,S
+female,user.gender,vocabularies/user.gender/female,1,,Female,Female
+male,user.gender,vocabularies/user.gender/male,2,,Male,Male
+other,user.gender,vocabularies/user.gender/other,3,,Other,Other

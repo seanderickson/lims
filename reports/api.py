@@ -27,11 +27,11 @@ from django.utils.encoding import smart_text
 import six
 from sqlalchemy import select, asc, text
 # from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.sql import and_, or_, not_          
+from sqlalchemy.sql import and_, or_, not_          , operators
 from sqlalchemy.sql import asc, desc, alias, Alias
 from sqlalchemy.sql import func
 from sqlalchemy.sql.elements import literal_column
-from sqlalchemy.sql.expression import column, join
+from sqlalchemy.sql.expression import column, join, distinct
 from sqlalchemy.sql.expression import nullsfirst, nullslast
 from tastypie import fields 
 from tastypie.authentication import BasicAuthentication, SessionAuthentication, \
@@ -51,7 +51,8 @@ from tastypie.utils.timezone import make_naive
 from tastypie.utils.urls import trailing_slash
 from tastypie.validation import Validation
 
-from reports import HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB
+from reports import LIST_DELIMITER_SQL_ARRAY,  \
+    HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB
 from reports.dump_obj import dumpObj
 from reports.models import MetaHash, Vocabularies, ApiLog, ListLog, Permission, \
                            UserGroup, UserProfile, Record
@@ -624,7 +625,7 @@ def log_patch_list(patch_list_func):
       
     @transaction.atomic()
     def _inner(self, request, **kwargs):
-        logger.info(str(('create an apilog for the patch list')))
+        logger.info(str(('create an apilog for the patch list', self._meta.resource_name)))
         listlog = ApiLog()
         listlog.username = request.user.username 
         listlog.user_id = request.user.id 
@@ -985,6 +986,11 @@ class ManagedResource(LoggingMixin):
         # provisional 20140825
         logger.info('clear cache')
         cache.delete(self._meta.resource_name + ':schema')
+        
+        try:
+            super(ManagedResource,self).clear_cache()
+        except Exception,e:
+            logger.warn(str(('try to clear cache', e)))
 
         self.field_alias_map = {}
         
@@ -1134,15 +1140,15 @@ class ManagedResource(LoggingMixin):
         '''
         Override
         '''
-        DEBUG_BUILD_SCHEMA = True or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_BUILD_SCHEMA = logger.isEnabledFor(logging.DEBUG)
         # FIXME: consider using the cache decorator or a custom memoize decorator?
         schema = cache.get(self._meta.resource_name + ":schema")
         if schema:
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(str(('====cached schema:', self._meta.resource_name)))
+#             if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(str(('====cached schema:', self._meta.resource_name)))
             return schema
         
-        if DEBUG_BUILD_SCHEMA: logger.info('------build_schema: ' + self.scope)
+        logger.info('------build_schema: ' + self.scope)
         schema = {}
         
         try:
@@ -2429,8 +2435,38 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
         kwargs['parent_log_id'] = parent_log.id
         return ApiLogResource().dispatch('list', request, **kwargs)    
 
+class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
+    '''
+    This class exists to make sure that the cache clearing is called on the 
+    SqlAlchemyResource
+    '''
 
-class UserResource(ManagedModelResource):
+    def patch_list(self, request, **kwargs):
+        SqlAlchemyResource.clear_cache(self)
+        return super(ManagedSqlAlchemyResourceMixin,self).patch_list(request,**kwargs)
+
+    def patch_detail(self, request, **kwargs):
+        SqlAlchemyResource.clear_cache(self)
+        return super(ManagedSqlAlchemyResourceMixin,self).patch_detail(request,**kwargs)
+
+    def post_list(self, request, **kwargs):
+        SqlAlchemyResource.clear_cache(self)
+        return super(ManagedSqlAlchemyResourceMixin,self).post_list(request,**kwargs)
+    
+    def obj_delete(self, bundle, **kwargs):
+        SqlAlchemyResource.clear_cache(self)
+        return super(ManagedSqlAlchemyResourceMixin, self).obj_delete(bundle, **kwargs);
+    
+    def obj_update(self, bundle, skip_errors=False, **kwargs):
+        SqlAlchemyResource.clear_cache(self)
+        return super(ManagedSqlAlchemyResourceMixin, self).obj_update(bundle, **kwargs);
+        
+    def obj_create(self, bundle, **kwargs):
+        SqlAlchemyResource.clear_cache(self)
+        return super(ManagedSqlAlchemyResourceMixin, self).obj_create(bundle, **kwargs);
+
+
+class UserResource(ManagedSqlAlchemyResourceMixin):
 
     username = fields.CharField('user__username', null=False, readonly=True)
     first_name = fields.CharField('user__first_name', null=False, readonly=True)
@@ -2470,13 +2506,442 @@ class UserResource(ManagedModelResource):
 
     def prepend_urls(self):
         return [
-            url(r"^(?P<resource_name>%s)/(?P<username>((?=(schema))__|(?!(schema))[^/]+))%s$" 
+            # override the parent "base_urls" so that we don't need to worry about schema again
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),            
+            
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<username>((?=(schema))__|(?!(schema))[^/]+))/groups%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))/groups%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_user_groupview'), name="api_dispatch_user_groupview"),
-            url(r"^(?P<resource_name>%s)/(?P<username>((?=(schema))__|(?!(schema))[^/]+))/permissions%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))/permissions%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_user_permissionview'), name="api_dispatch_user_permissionview"),
+            ]    
+
+    def dispatch_user_groupview(self, request, **kwargs):
+        # signal to include extra column
+        return UserGroupResource().dispatch('list', request, **kwargs)    
+    
+    def dispatch_user_permissionview(self, request, **kwargs):
+        # signal to include extra column
+        return PermissionResource().dispatch('list', request, **kwargs)    
+
+    def get_detail(self, request, **kwargs):
+        logger.info(str(('get_detail')))
+
+        username = kwargs.get('username', None)
+        if not username:
+            logger.info(str(('no username provided')))
+            raise NotImplementedError('must provide a username parameter')
+        
+        kwargs['is_for_detail']=True
+        return self.get_list(request, **kwargs)
+        
+    
+    def get_list(self,request,**kwargs):
+
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+
+        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+
+        
+    def build_list_response(self,request, param_hash={}, **kwargs):
+        ''' 
+        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
+        @returns django.http.response.StreamingHttpResponse 
+        '''
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        is_for_detail = kwargs.pop('is_for_detail', False)
+        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = re.sub(r'[\W]+','_',filename)
+        logger.info(str(('get_list', filename, kwargs)))
+        
+        username = param_hash.pop('username', None)
+        if username:
+            param_hash['username__eq'] = username
+
+        try:
+            
+            # general setup
+             
+            schema = super(UserResource,self).build_schema()
+          
+            manual_field_includes = set(param_hash.get('includes', []))
+            
+            if DEBUG_GET_LIST: 
+                logger.info(str(('manual_field_includes', manual_field_includes)))
+  
+            (filter_expression, filter_fields) = \
+                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+                  
+            visibilities = set()                
+            if is_for_detail:
+                visibilities.update(['detail','summary'])
+            field_hash = self.get_visible_fields(
+                schema['fields'], filter_fields, manual_field_includes, 
+                is_for_detail=is_for_detail, visibilities=visibilities)
+              
+            order_params = param_hash.get('order_by',[])
+            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
+             
+            rowproxy_generator = None
+            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
+                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+            
+ 
+            # specific setup
+            _au = self.bridge['auth_user']
+            _up = self.bridge['reports_userprofile']
+            _p = self.bridge['reports_permission']
+            _ug = self.bridge['reports_usergroup']
+            _upp = self.bridge['reports_userprofile_permissions']
+            _ugu = self.bridge['reports_usergroup_users']
+            base_query_tables = ['auth_user','reports_userprofile'] 
+            
+            ### TODO: work in progress - 20150617
+            # Create a recursive CTE to enumerate all groups/supergroups/subgroups
+            group_all_supergroups = \
+                UserGroupResource.recursive_supergroup_query(self.bridge)
+#             group_all_supergroups1 = group_all_supergroups.alias('gasg1')
+
+            group_all_permissions = \
+                UserGroupResource.recursive_permissions_query(self.bridge,group_all_supergroups)
+            
+            group_all_subgroups = \
+                UserGroupResource.recursive_subgroups_query(self.bridge,group_all_supergroups)
+                
+            group_all_users = \
+                UserGroupResource.recursive_group_all_users(self.bridge,group_all_subgroups)
+
+            user_all_group_permissions = select([
+                _ugu.c.userprofile_id,
+                func.array_agg(distinct(_p.c.id)).label('all_permissions')]).\
+                select_from(
+                    _ugu.join(group_all_permissions,_ugu.c.usergroup_id
+                        ==group_all_permissions.c.usergroup_id)).\
+                where(_p.c.id==text('any(gap.permission_ids)')).\
+                group_by(_ugu.c.userprofile_id)
+            user_all_group_permissions = user_all_group_permissions.cte('uagp') 
+            
+            user_all_permissions = user_all_group_permissions.union(
+                select([_upp.c.userprofile_id, func.array_agg(_p.c.id)]).\
+                select_from(_p.join(_upp,_upp.c.permission_id==_p.c.id)).\
+                group_by(_upp.c.userprofile_id)).alias('uap')
+            
+            
+            #             user_all_permissions = select([
+            #                 user_all_group_permissions.c.userprofile_id,
+            #                 user_all_group_permissions.c.all_permissions]).\
+            #                 union(select([
+            #                     _upp.c.userprofile_id,
+            #                     text('array[reports_userprofile_permissions.permission_id]')]))
+            #             user_all_permissions = user_all_permissions.cte('uap')
+                             
+            _ugu1=_ugu.alias('ugu1')
+            _ugx = _ug.alias('ugx')
+            custom_columns = {
+                'resource_uri': func.concat('/reports/api/v1/user','/',text('reports_userprofile.username')),
+                'permissions': 
+                    select([func.array_to_string(
+                            func.array_agg(text('inner_perms.permission')),
+                            LIST_DELIMITER_SQL_ARRAY)]).\
+                    select_from(
+                        select([func.concat_ws(
+                                '/','permission',_p.c.scope,_p.c.key,_p.c.type).label('permission')
+                                ]).\
+                        select_from(_p.join(_upp,_p.c.id==_upp.c.permission_id)).\
+                        where(text('reports_userprofile.id')==_upp.c.userprofile_id).\
+                        order_by('permission').alias('inner_perms')),
+                'usergroups': 
+                    select([func.array_to_string(
+                            func.array_agg(text('inner_groups.name')), 
+                            LIST_DELIMITER_SQL_ARRAY)]).\
+                    select_from(
+                        select([func.concat_ws(
+                            '/','usergroup',_ugx.c.name).label('name')]).\
+                        select_from(_ugx.join(_ugu1,_ugx.c.id==_ugu1.c.usergroup_id)).\
+                        where(_ugu1.c.userprofile_id==text('reports_userprofile.id')).\
+                        order_by('name').alias('inner_groups')),
+                'all_permissions':
+                    select([func.array_to_string(func.array_agg(
+                        text('innerp.permission')),LIST_DELIMITER_SQL_ARRAY)]).\
+                    select_from(
+                        select([func.concat_ws(
+                                '/','permission',_p.c.scope,_p.c.key,_p.c.type).label('permission')
+                            ]).\
+                        select_from(user_all_permissions).\
+                        where(and_(
+                            user_all_permissions.c.userprofile_id==text('reports_userprofile.id'),
+                            _p.c.id==text('any(uap.all_permissions)'))
+                            ).\
+                        order_by('permission').alias('innerp')),
+                }
+
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                custom_columns=custom_columns )
+
+            # build the query statement
+            
+            j = _up
+            j = j.join(_au,_up.c.user_id==_au.c.id, isouter=True)
+            stmt = select(columns.values()).select_from(j)
+
+            # general setup
+             
+            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+            
+            title_function = None
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                title_function = lambda key: field_hash[key]['title']
+            
+            return self.stream_response_from_statement(
+                request, stmt, count_stmt, filename, 
+                field_hash=field_hash, 
+                param_hash=param_hash,
+                is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function  )
+             
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on get_list', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e  
+
+
+    def get_resource_uri(self, bundle_or_obj=None, url_name='api_dispatch_list'):
+        ''' 
+        Override - Either have to generate localized resource uri, or, 
+        in client, equate localized uri with non-localized uri's (* see user.js,
+        where _.without() is used).
+        This modification represents the first choice
+        '''
+        return self.get_local_resource_uri(
+            bundle_or_obj=bundle_or_obj, url_name=url_name)
+
+#     def dehydrate_permissions(self, bundle):
+#         uri_list = []
+#         P = PermissionResource()
+#         # todo https://docs.djangoproject.com/en/dev/topics/db/queries/#lookups-that-span-relationships        
+#          
+#         #         userprofile = bundle.obj.userprofile_set.all()[0]
+#         for p in bundle.obj.permissions.all():
+#             uri_list.append(P.get_local_resource_uri(p))
+#         return uri_list;
+#     
+#     def dehydrate_all_permissions(self, bundle):
+#         uri_list = set()
+#         uri_list.update(self.dehydrate_permissions(bundle))
+#         P = PermissionResource()
+#         for permission in [ permission
+#             for usergroup in bundle.obj.usergroup_set.all()
+#             for permission in usergroup.get_all_permissions()]:
+#             uri_list.add(P.get_local_resource_uri(permission))
+#         
+#         return list(uri_list)
+#        
+#     def dehydrate_usergroups(self, bundle):
+#         uri_list = []
+#         UR = UserGroupResource()
+#         for g in bundle.obj.usergroup_set.all():
+#             uri_list.append(UR.get_local_resource_uri(g))
+#         return uri_list;
+    def patch_list(self, request, **kwargs):
+        return super(UserResource,self).patch_list(request,**kwargs)
+    
+    def obj_delete(self, bundle, **kwargs):
+        bundle = super(UserResource, self).obj_delete(bundle, **kwargs);
+        return bundle
+    
+    def obj_update(self, bundle, skip_errors=False, **kwargs):
+        bundle = super(UserResource, self).obj_update(bundle, **kwargs);
+        
+        # Update the auth.user 
+        django_user = bundle.obj.user
+        
+        # TODO validate these fields
+        django_user.first_name = bundle.data.get('first_name')
+        django_user.last_name = bundle.data.get('last_name')
+        django_user.email = bundle.data.get('email')
+        # Note cannot update username
+        
+        # FIXME: 20150616 - corrects for users w/o is staff set
+        if not django_user.is_staff:
+            django_user.is_staff = False
+        
+        django_user.save()
+        return bundle
+        
+    def obj_create(self, bundle, **kwargs):
+        bundle = super(UserResource, self).obj_create(bundle, **kwargs);
+        return bundle
+
+    def hydrate(self, bundle):
+        ''' 
+        Called by full_hydrate 
+        sequence is obj_create->full_hydrate(hydrate, then full)->save
+        
+        Our custom implementation will create an auth_user for the input; so 
+        there will be a reports_userprofile.user -> auth_user.
+        '''
+        bundle = super(UserResource, self).hydrate(bundle);
+        
+        # fixup the username; stock hydrate will set either, but if it's not 
+        # specified, then we will use the ecommons        
+        ecommons = bundle.data.get('ecommons_id')
+        username = bundle.data.get('username')
+        email=bundle.data.get('email')
+        first_name=bundle.data.get('first_name')
+        last_name=bundle.data.get('last_name')
+        is_staff = self.is_staff.convert(bundle.data.get('is_staff'))
+        
+        if not username:
+            username = ecommons;
+        bundle.obj.username = username
+        
+        django_user = None
+        from django.contrib.auth.models import User as DjangoUser
+        if bundle.obj and bundle.obj.user:
+            django_user = bundle.obj.user
+        else:
+            try:
+                django_user = DjangoUser.objects.get(username=username)
+            except ObjectDoesNotExist, e:
+                logger.info(str(('Auth.user does not exist, creating', username)))
+                # ok, will create
+                pass;
+
+        if django_user:            
+            django_user.first_name = first_name
+            django_user.last_name = last_name
+            django_user.email = email
+            django_user.save();
+        else:
+            django_user = DjangoUser.objects.create_user(
+                username, 
+                email=email, 
+                first_name=first_name, 
+                last_name=last_name)
+            django_user.save()
+            # NOTE: we'll use user.is_password_usable() to verify if the 
+            # user has a staff/manual django password account
+            #             logger.debug(str(('save django user', django_user)))
+            # Note: don't save yet, since the userprofile should be saved first
+            # django_user.save()
+            # this has to be done to set the FK on obj; since we're the only
+            # side maintaining this rel' with auth_user
+
+        django_user.is_staff = is_staff
+        bundle.obj.user=django_user 
+        return bundle
+    
+    def is_valid(self, bundle):
+        """
+        Should return a dictionary of error messages. If the dictionary has
+        zero items, the data is considered valid. If there are errors, keys
+        in the dictionary should be field names and the values should be a list
+        of errors, even if there is only one.
+        """
+        
+        # cribbed from tastypie.validation.py:
+        # - mesh data and obj values, then validate
+        data = {}
+        if bundle.obj.pk:
+            data = model_to_dict(bundle.obj)
+        if data is None:
+            data = {}
+        data.update(bundle.data)
+        
+        # do validations
+        errors = defaultdict(list)
+        
+        # TODO: rework this to be driven by the metahash
+        
+        if not data.get('first_name'):
+            errors['first_name'] = ['first_name must be specified']
+        
+        if not data.get('last_name'):
+            errors['last_name'] = ['last_name must be specified']
+        
+        if not data.get('email'):
+            errors['email'] = ['email must be specified']
+        
+        ecommons = data.get('ecommons_id')
+        username = data.get('username')
+        
+        if ecommons and username and (ecommons != username) :
+            errors['specify either username or ecommons, not both']
+        elif ecommons:
+            bundle.obj.username = ecommons;
+            
+        if errors:
+            bundle.errors[self._meta.resource_name] = errors
+            logger.warn(str(('bundle errors', bundle.errors, len(bundle.errors.keys()))))
+            return False
+        return True
+
+
+class UserResourceOld(ManagedModelResource):
+
+    username = fields.CharField('user__username', null=False, readonly=True)
+    first_name = fields.CharField('user__first_name', null=False, readonly=True)
+    last_name = fields.CharField('user__last_name', null=False, readonly=True)
+    email = fields.CharField('user__email', null=False, readonly=True)
+    is_staff = CsvBooleanField('user__is_staff', null=True, readonly=True)
+    is_superuser = CsvBooleanField('user__is_superuser', null=True, readonly=True)
+
+    usergroups = fields.ToManyField(
+        'reports.api.UserGroupResource', 'usergroup_set', related_name='users', 
+        blank=True, null=True)
+    permissions = fields.ToManyField(
+        'reports.api.PermissionResource', 'permissions', null=True) #, related_name='users', blank=True, null=True)
+    
+    all_permissions = fields.ListField(attribute='all_permissions', blank=True, null=True, readonly=True)
+
+    is_for_group = fields.BooleanField(attribute='is_for_group', blank=True, null=True)
+
+    def __init__(self, **kwargs):
+        super(UserResource,self).__init__(**kwargs)
+
+    class Meta:
+        queryset = UserProfile.objects.all().order_by('username') 
+        authentication = MultiAuthentication(
+            BasicAuthentication(), SessionAuthentication())
+        
+        # FIXME: should override UserGroupAuthorization, and should allow user to view
+        # (1) record by default: their own.
+        authorization = SuperUserAuthorization()
+#         authorization= UserGroupAuthorization() #SuperUserAuthorization()        
+        ordering = []
+        filtering = {'scope':ALL, 'key': ALL, 'alias':ALL}
+        serializer = LimsSerializer()
+        excludes = [] #['json_field']
+        always_return_data = True # this makes Backbone happy
+        resource_name = 'user'
+
+    def prepend_urls(self):
+        return [
+            # override the parent "base_urls" so that we don't need to worry about schema again
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),            
+            
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))/groups%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_user_groupview'), name="api_dispatch_user_groupview"),
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))/permissions%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_user_permissionview'), name="api_dispatch_user_permissionview"),
             ]    
@@ -2489,6 +2954,118 @@ class UserResource(ManagedModelResource):
         # signal to include extra column
         return PermissionResource().dispatch('list', request, **kwargs)    
         
+    def get_object_list(self, request, groupname=None):
+        ''' 
+        Called immediately before filtering, actually grabs the (ModelResource) 
+        query - 
+        
+        Override this and apply_filters, so that we can control the 
+        extra column "is_for_group".  This extra column is present when 
+        navigating to users from a usergroup; see prepend_urls.
+        '''
+        query = super(UserResource, self).get_object_list(request);
+        
+        logger.debug(str(('get_obj_list', groupname)))
+        if groupname:
+            query = query.extra(select = {
+                'is_for_group': ( 
+                    '(select count(*)>0 '
+                    ' from reports_usergroup ug '
+                    ' join reports_usergroup_users ruu on(ug.id=ruu.usergroup_id) '
+                    ' where ruu.userprofile_id=reports_userprofile.id '
+                    ' and ug.name like %s )' ),
+              },
+              select_params = [groupname] )
+            query = query.order_by('-is_for_group','user__last_name', 'user__first_name')
+        return query
+
+    def apply_filters_xx(self, request, applicable_filters, **kwargs):
+
+        query = self.get_object_list(request, **kwargs)
+        logger.info(str(('applicable_filters', applicable_filters)))
+        filters = applicable_filters.get('filter')
+        if filters:
+            
+            # Grab the groups/users filter out of the dict
+            groups_filter_val = None
+            for f in filters.keys():
+                if 'usergroup' in f:
+                    groups_filter_val = filters.pop(f)
+
+            query = query.filter(**filters)
+            
+            # then add the groups filter back in
+            if groups_filter_val:
+                ids = [x.id for x in UserProfile.objects.filter(
+                        usergroup__name__iexact=groups_filter_val)]
+                query = query.filter(id__in=ids)
+            
+        e = applicable_filters.get('exclude')
+        if e:
+            groups_filter_val = None
+            for x in e.keys():
+                if 'usergroup' in x:
+                    groups_filter_val = e.pop(x)
+            for exclusion_filter, value in e.items():
+                query = query.exclude(**{exclusion_filter: value})
+
+            # then add the user/groups filter back in
+            if groups_filter_val:
+                ids = [x.id for x in UserProfile.objects.filter(
+                        usergroup__name__iexact=groups_filter_val)]
+                query = query.exclude(id__in=ids)
+
+        return query                 
+
+    def apply_sortingxx(self, obj_list, options):
+        '''
+        Override to exclude certain fields from the PostgresSortingResource
+        ''' 
+        options = options.copy()
+        options['non_null_fields'] = ['groups','is_for_group','user__first_name', 'user__last_name'] 
+        obj_list = super(UserResource, self).apply_sorting(obj_list, options)
+        return obj_list
+
+    def get_resource_uri(self, bundle_or_obj=None, url_name='api_dispatch_list'):
+        ''' 
+        Override - Either have to generate localized resource uri, or, 
+        in client, equate localized uri with non-localized uri's (* see user.js,
+        where _.without() is used).
+        This modification represents the first choice
+        '''
+        return self.get_local_resource_uri(
+            bundle_or_obj=bundle_or_obj, url_name=url_name)
+
+    def dehydrate_permissions(self, bundle):
+        uri_list = []
+        P = PermissionResource()
+        # todo https://docs.djangoproject.com/en/dev/topics/db/queries/#lookups-that-span-relationships        
+         
+        #         userprofile = bundle.obj.userprofile_set.all()[0]
+        for p in bundle.obj.permissions.all():
+            uri_list.append(P.get_local_resource_uri(p))
+        return uri_list;
+    
+    def dehydrate_all_permissions(self, bundle):
+        uri_list = set()
+        uri_list.update(self.dehydrate_permissions(bundle))
+        P = PermissionResource()
+        for permission in [ permission
+            for usergroup in bundle.obj.usergroup_set.all()
+            for permission in usergroup.get_all_permissions()]:
+            uri_list.add(P.get_local_resource_uri(permission))
+        
+        return list(uri_list)
+       
+    def dehydrate_usergroups(self, bundle):
+        uri_list = []
+        UR = UserGroupResource()
+        for g in bundle.obj.usergroup_set.all():
+            uri_list.append(UR.get_local_resource_uri(g))
+        return uri_list;
+
+
+        
     def obj_update(self, bundle, skip_errors=False, **kwargs):
         bundle = super(UserResource, self).obj_update(bundle, **kwargs);
         
@@ -2500,6 +3077,11 @@ class UserResource(ManagedModelResource):
         django_user.last_name = bundle.data.get('last_name')
         django_user.email = bundle.data.get('email')
         # Note cannot update username
+        
+        # FIXME: 20150616 - corrects for users w/o is staff set
+        if not django_user.is_staff:
+            django_user.is_staff = False
+        
         django_user.save()
         
     def obj_create(self, bundle, **kwargs):
@@ -2530,13 +3112,14 @@ class UserResource(ManagedModelResource):
         bundle.obj.username = username
         
         django_user = None
-        try:
+        from django.contrib.auth.models import User as DjangoUser
+        if bundle.obj and bundle.obj.user:
             django_user = bundle.obj.user
-        except ObjectDoesNotExist, e:
-            from django.contrib.auth.models import User as DjangoUser
+        else:
             try:
                 django_user = DjangoUser.objects.get(username=username)
             except ObjectDoesNotExist, e:
+                logger.info(str(('Auth.user does not exist, creating', username)))
                 # ok, will create
                 pass;
 
@@ -2607,119 +3190,9 @@ class UserResource(ManagedModelResource):
             logger.warn(str(('bundle errors', bundle.errors, len(bundle.errors.keys()))))
             return False
         return True
-        
-    def get_object_list(self, request, groupname=None):
-        ''' 
-        Called immediately before filtering, actually grabs the (ModelResource) 
-        query - 
-        
-        Override this and apply_filters, so that we can control the 
-        extra column "is_for_group".  This extra column is present when 
-        navigating to users from a usergroup; see prepend_urls.
-        '''
-        query = super(UserResource, self).get_object_list(request);
-        
-        logger.debug(str(('get_obj_list', groupname)))
-        if groupname:
-            query = query.extra(select = {
-                'is_for_group': ( 
-                    '(select count(*)>0 '
-                    ' from reports_usergroup ug '
-                    ' join reports_usergroup_users ruu on(ug.id=ruu.usergroup_id) '
-                    ' where ruu.userprofile_id=reports_userprofile.id '
-                    ' and ug.name like %s )' ),
-              },
-              select_params = [groupname] )
-            query = query.order_by('-is_for_group','user__last_name', 'user__first_name')
-        return query
-
-    def apply_filters(self, request, applicable_filters, **kwargs):
-
-        query = self.get_object_list(request, **kwargs)
-        logger.info(str(('applicable_filters', applicable_filters)))
-        filters = applicable_filters.get('filter')
-        if filters:
-            
-            # Grab the groups/users filter out of the dict
-            groups_filter_val = None
-            for f in filters.keys():
-                if 'usergroup' in f:
-                    groups_filter_val = filters.pop(f)
-
-            query = query.filter(**filters)
-            
-            # then add the groups filter back in
-            if groups_filter_val:
-                ids = [x.id for x in UserProfile.objects.filter(
-                        usergroup__name__iexact=groups_filter_val)]
-                query = query.filter(id__in=ids)
-            
-        e = applicable_filters.get('exclude')
-        if e:
-            groups_filter_val = None
-            for x in e.keys():
-                if 'usergroup' in x:
-                    groups_filter_val = e.pop(x)
-            for exclusion_filter, value in e.items():
-                query = query.exclude(**{exclusion_filter: value})
-
-            # then add the user/groups filter back in
-            if groups_filter_val:
-                ids = [x.id for x in UserProfile.objects.filter(
-                        usergroup__name__iexact=groups_filter_val)]
-                query = query.exclude(id__in=ids)
-
-        return query                 
-
-    def apply_sorting(self, obj_list, options):
-        '''
-        Override to exclude certain fields from the PostgresSortingResource
-        ''' 
-        options = options.copy()
-        options['non_null_fields'] = ['groups','is_for_group','user__first_name', 'user__last_name'] 
-        obj_list = super(UserResource, self).apply_sorting(obj_list, options)
-        return obj_list
-
-    def get_resource_uri(self, bundle_or_obj=None, url_name='api_dispatch_list'):
-        ''' 
-        Override - Either have to generate localized resource uri, or, 
-        in client, equate localized uri with non-localized uri's (* see user.js,
-        where _.without() is used).
-        This modification represents the first choice
-        '''
-        return self.get_local_resource_uri(
-            bundle_or_obj=bundle_or_obj, url_name=url_name)
-
-    def dehydrate_permissions(self, bundle):
-        uri_list = []
-        P = PermissionResource()
-        # todo https://docs.djangoproject.com/en/dev/topics/db/queries/#lookups-that-span-relationships        
-         
-        #         userprofile = bundle.obj.userprofile_set.all()[0]
-        for p in bundle.obj.permissions.all():
-            uri_list.append(P.get_local_resource_uri(p))
-        return uri_list;
-    
-    def dehydrate_all_permissions(self, bundle):
-        uri_list = set()
-        uri_list.update(self.dehydrate_permissions(bundle))
-        P = PermissionResource()
-        for permission in [ permission
-            for usergroup in bundle.obj.usergroup_set.all()
-            for permission in usergroup.get_all_permissions()]:
-            uri_list.add(P.get_local_resource_uri(permission))
-        
-        return list(uri_list)
-       
-    def dehydrate_usergroups(self, bundle):
-        uri_list = []
-        UR = UserGroupResource()
-        for g in bundle.obj.usergroup_set.all():
-            uri_list.append(UR.get_local_resource_uri(g))
-        return uri_list;
 
        
-class UserGroupResource(ManagedModelResource):
+class UserGroupResource(ManagedSqlAlchemyResourceMixin):
     
     # relational fields must be defined   
     permissions = fields.ToManyField(
@@ -2760,25 +3233,397 @@ class UserGroupResource(ManagedModelResource):
 
     def prepend_urls(self):
         return [
+            # override the parent "base_urls" so that we don't need to worry about schema again
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),            
+            
             url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[^/]+))%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<name>[^/]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[^/]+))/users%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<name>[^/]+)/users%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_group_userview'), name="api_dispatch_group_userview"),
-            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[^/]+))/permissions%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<name>[^/]+)/permissions%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_group_permissionview'), 
                 name="api_dispatch_group_permissionview"),
-            url(r"^(?P<resource_name>%s)/(?P<name>((?=(schema))__|(?!(schema))[^/]+))/supergroups%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<name>[^/]+)/supergroups%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_group_supergroupview'), 
                 name="api_dispatch_group_supergroupview"),
             ]
+        
+    @staticmethod    
+    def recursive_supergroup_query(bridge):
+        '''
+        Create a recursive CTE to enumerate all groups/supergroups.
+        - For use in building sqlalchemy statements.
+        columns: 
+        - id: the usergroup id
+        - name: the usergroup name
+        - sg_ids: supergroup ids (recursive) for the usergroup
+        @param bridge an instance of reports.utils.sqlalchemy_bridge.Bridge
+        @return: an sqlalchemy statement
+        WITH group_super_rpt as (
+            WITH RECURSIVE group_supergroups(from_id, sg_ids, cycle) AS 
+            (
+                SELECT 
+                    ugsg.from_usergroup_id,
+                    array[ugsg.to_usergroup_id],
+                    false as cycle
+                from reports_usergroup_super_groups ugsg
+                UNION ALL
+                SELECT
+                    sgs.from_usergroup_id,
+                    sgs.to_usergroup_id || g_s.sg_ids as sg_ids,
+                    sgs.from_usergroup_id = any(sg_ids)
+                from reports_usergroup_super_groups sgs, group_supergroups g_s
+                where sgs.to_usergroup_id=g_s.from_id
+                and not cycle 
+            )
+            select 
+                ug.id, ug.name,gs.* 
+            from reports_usergroup ug 
+            left join group_supergroups gs on gs.from_id=ug.id 
+            order by name 
+        )
+        select ug1.id, ug1.name,
+        (
+            select array_agg(distinct(ug2.id)) 
+            from reports_usergroup ug2, group_super_rpt
+            where ug2.id=any(group_super_rpt.sg_ids) 
+            and group_super_rpt.from_id=ug1.id) as sg_ids 
+        from
+        reports_usergroup ug1 order by name;
+        '''
+        
+        #Note: using the postgres specific ARRAY and "any" operator
+        try:
+            _ug = bridge['reports_usergroup']
+            _ugsg = bridge['reports_usergroup_super_groups']
+    
+            ugsg1 = _ugsg.alias('ugsg1')
+            group_supergroups = \
+                select([
+                    ugsg1.c.from_usergroup_id.label('from_id'),
+                    literal_column('array[ugsg1.to_usergroup_id]').label('sg_ids'),
+                    literal_column('false').label('cycle')
+                ]).\
+                select_from(ugsg1).\
+                cte('group_supergroups',recursive=True)
+            
+            gsg_alias = group_supergroups.alias('gsg')
+            _ugsg_outer = _ugsg.alias('ugsg2')
+            group_all_supergroups = gsg_alias.union(
+                select([
+                    _ugsg_outer.c.from_usergroup_id,
+                    func.array_append(gsg_alias.c.sg_ids,_ugsg_outer.c.to_usergroup_id),
+                    _ugsg_outer.c.from_usergroup_id==text('any(gsg.sg_ids)')
+                    ]).\
+                select_from(gsg_alias).\
+                where(and_(
+                    _ugsg_outer.c.to_usergroup_id==gsg_alias.c.from_id,
+                    gsg_alias.c.cycle==False)))
+            group_all_supergroups = group_all_supergroups.alias('gsg_union')
+            
+            # The query so far returns each path to a supergroup as a separate row,
+            # so the following query will return one row of all supergroups per item
+            _ug1 = _ug.alias('ug1')
+            _ug2 = _ug.alias('ug2')
+            group_supergroup_rpt = \
+                select([
+                    _ug2.c.id,
+                    _ug2.c.name,
+                    select([
+                        func.array_agg(distinct(_ug1.c.id))]).\
+                        select_from(group_all_supergroups).\
+                        where(and_(
+                            _ug1.c.id==text('any(gsg_union.sg_ids)'),
+                            group_all_supergroups.c.from_id==_ug2.c.id)).label('sg_ids')
+                    ]).\
+                select_from(_ug2).\
+                order_by(_ug2.c.name)
+            return group_supergroup_rpt.cte('group_sg_rpt')
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on recursive query construction', 
+                msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e  
 
+    @staticmethod
+    def recursive_permissions_query(bridge,group_all_supergroups):
+
+        _ugp = bridge['reports_usergroup_permissions']
+        
+        group_all_permissions = select([
+            group_all_supergroups.c.id.label('usergroup_id'),
+            func.array_agg(_ugp.c.permission_id).label('permission_ids')]).\
+            where(or_(
+                _ugp.c.usergroup_id==group_all_supergroups.c.id,
+                _ugp.c.usergroup_id==text('any(group_sg_rpt.sg_ids)'))).\
+            group_by(group_all_supergroups.c.id)
+        group_all_permissions = group_all_permissions.cte('gap')
+        
+        return group_all_permissions
+    
+    @staticmethod    
+    def recursive_subgroups_query(bridge, group_all_supergroups):
+        _ug = bridge['reports_usergroup']
+        group_all_subgroups = \
+            select([
+                _ug.c.id,
+                select([func.array_agg(group_all_supergroups.c.id)]).\
+                    select_from(group_all_supergroups).\
+                    where(_ug.c.id==text('any(group_sg_rpt.sg_ids)')).\
+                label('subgroup_ids')
+            ]).select_from(_ug)
+        
+        return group_all_subgroups.cte('gasubg')
+
+    @staticmethod
+    def recursive_group_all_users(bridge,group_all_subgroups):
+        _up = bridge['reports_userprofile']
+        _ugu = bridge['reports_usergroup_users']
+        group_all_users = \
+            select([
+                group_all_subgroups.c.id,
+                select([func.array_agg(_up.c.id)]).\
+                    select_from(_up.join(_ugu,_up.c.id==_ugu.c.userprofile_id)).\
+                    where(or_(
+                        _ugu.c.usergroup_id==text('any(gasubg.subgroup_ids)'),
+                        _ugu.c.usergroup_id==group_all_subgroups.c.id)).label('userprofile_ids')
+                ]).\
+            select_from(group_all_subgroups)
+
+        return group_all_users.cte('gau')
+    
+    def get_detail(self, request, **kwargs):
+        logger.info(str(('get_detail')))
+
+        name = kwargs.get('name', None)
+        if not name:
+            logger.info(str(('no group name provided')))
+            raise NotImplementedError('must provide a group name parameter')
+        
+        kwargs['is_for_detail']=True
+        return self.get_list(request, **kwargs)
+        
+    
+    def get_list(self,request,**kwargs):
+
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+
+        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+
+        
+    def build_list_response(self,request, param_hash={}, **kwargs):
+        ''' 
+        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
+        @returns django.http.response.StreamingHttpResponse 
+        '''
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        is_for_detail = kwargs.pop('is_for_detail', False)
+        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = re.sub(r'[\W]+','_',filename)
+        logger.info(str(('get_list', filename, kwargs)))
+        
+        name = param_hash.pop('name', None)
+        if name:
+            param_hash['name__eq'] = name
+
+        try:
+            
+            # general setup
+             
+            schema = super(UserGroupResource,self).build_schema()
+          
+            manual_field_includes = set(param_hash.get('includes', []))
+            
+            if DEBUG_GET_LIST: 
+                logger.info(str(('manual_field_includes', manual_field_includes)))
+  
+            (filter_expression, filter_fields) = \
+                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+                  
+            visibilities = set()                
+            if is_for_detail:
+                visibilities.update(['detail','summary'])
+            field_hash = self.get_visible_fields(
+                schema['fields'], filter_fields, manual_field_includes, 
+                is_for_detail=is_for_detail, visibilities=visibilities)
+              
+            order_params = param_hash.get('order_by',[])
+            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
+             
+            rowproxy_generator = None
+            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
+                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+            
+            # specific setup
+            _up = self.bridge['reports_userprofile']
+            _p = self.bridge['reports_permission']
+            _ug = self.bridge['reports_usergroup']
+            _ugu = self.bridge['reports_usergroup_users']
+            _ugp = self.bridge['reports_usergroup_permissions']
+            _ugsg = self.bridge['reports_usergroup_super_groups']
+            base_query_tables = ['reports_usergroup'] 
+            
+            # Create a recursive CTE to enumerate all groups/supergroups/subgroups
+            group_all_supergroups = \
+                UserGroupResource.recursive_supergroup_query(self.bridge)
+#             group_all_supergroups1 = group_all_supergroups.alias('gasg1')
+
+            group_all_permissions = \
+                UserGroupResource.recursive_permissions_query(self.bridge,group_all_supergroups)
+            
+            group_all_subgroups = \
+                UserGroupResource.recursive_subgroups_query(self.bridge,group_all_supergroups)
+                
+            group_all_users = \
+                UserGroupResource.recursive_group_all_users(self.bridge,group_all_subgroups)
+            _ug1 = _ug.alias('ug1')
+            _ug2 = _ug.alias('ug2')
+            custom_columns = {
+                'resource_uri': func.concat('/reports/api/v1/usergroup','/',text('reports_usergroup.name')),
+                'permissions': 
+                    select([func.array_to_string(
+                            func.array_agg(text('innerperm.permission')),
+                            LIST_DELIMITER_SQL_ARRAY)]).\
+                    select_from(
+                        select([func.concat_ws(
+                            '/','permission',_p.c.scope,_p.c.key,_p.c.type).\
+                            label('permission')]).\
+                        select_from(_p.join(_ugp,_p.c.id==_ugp.c.permission_id)).\
+                        #FIXME: using "text" override to reference the outer reports_usergroup
+                        # can be fixed by making an alias on the outer reports_usergroup
+                        where(_ugp.c.usergroup_id==text('reports_usergroup.id')).\
+                        order_by('permission').\
+                        alias('innerperm')
+                    ),
+                'users': 
+                    select([func.array_to_string(
+                            func.array_agg(text('inner1.username')),
+                            LIST_DELIMITER_SQL_ARRAY)]).\
+                    select_from(
+                        select([func.concat_ws(
+                            '/','user',_up.c.username).\
+                            label('username')]).\
+                        select_from(_up.join(_ugu,_up.c.id==_ugu.c.userprofile_id)).\
+                        #FIXME: using "text" override to reference the outer reports_usergroup
+                        # can be fixed by making an alias on the outer reports_usergroup
+                        where(_ugu.c.usergroup_id==text('reports_usergroup.id')).\
+                        order_by('username').\
+                        alias('inner1')
+                    ),
+                'sub_groups': 
+                    select([func.array_to_string(
+                            func.array_agg(text('inner1.name')),
+                            LIST_DELIMITER_SQL_ARRAY)]).\
+                    select_from(
+                        select([func.concat_ws(
+                            '/','usergroup',_ug2.c.name).\
+                            label('name')]).\
+                        select_from(_ug2.join(_ugsg,_ug2.c.id==_ugsg.c.from_usergroup_id)).\
+                        #FIXME: using "text" override to reference the outer reports_usergroup
+                        # can be fixed by making an alias on the outer reports_usergroup
+                        where(_ugsg.c.to_usergroup_id==text('reports_usergroup.id')).\
+                        order_by('name').\
+                        alias('inner1')
+                    ),
+                'all_permissions':
+                    select([func.array_to_string(
+                        func.array_agg(text('allperm.permission')),                            
+                        LIST_DELIMITER_SQL_ARRAY)]).\
+                    select_from(
+                        select([func.concat_ws(
+                            '/','permission',_p.c.scope,_p.c.key,_p.c.type).\
+                            label('permission'),
+                            group_all_permissions.c.usergroup_id ]).\
+                        select_from(group_all_permissions).\
+                        where(_p.c.id==text('any(gap.permission_ids)')).\
+                        where(group_all_permissions.c.usergroup_id==\
+                            text('reports_usergroup.id')).\
+                        order_by('permission').\
+                        alias('allperm')),
+                'super_groups': 
+                    select([func.array_to_string(
+                        func.array_agg(text('supergroup.name')),
+                        LIST_DELIMITER_SQL_ARRAY)]).\
+                    select_from(
+                        select([func.concat_ws(
+                            '/','usergroup',
+                            _ug1.c.name).label('name')]).\
+                        select_from(group_all_supergroups).\
+                        where(and_(_ug1.c.id==text('any(group_sg_rpt.sg_ids)'),
+                            group_all_supergroups.c.id==text('reports_usergroup.id'))).\
+                        order_by(_ug1.c.name).alias('supergroup')),
+                'all_sub_groups': 
+                    select([func.array_to_string(
+                        func.array_agg(text('subgroup.name')),
+                        LIST_DELIMITER_SQL_ARRAY)]).\
+                    select_from(
+                        select([func.concat(
+                                'usergroup','/',group_all_supergroups.c.name
+                                ).label('name')]).\
+                        select_from(group_all_supergroups).\
+                        where(text('reports_usergroup.id=any(group_sg_rpt.sg_ids)')).\
+                        order_by(group_all_supergroups.c.name).alias('subgroup')
+                    ),
+                'all_users':
+                    select([func.array_to_string(
+                        func.array_agg(text('inneruser.username')),
+                            LIST_DELIMITER_SQL_ARRAY)]).\
+                    select_from( 
+                        select([func.concat_ws(
+                            '/','user',_up.c.username).\
+                            label('username')]).\
+                        select_from(group_all_users).\
+                        where(_up.c.id==text('any(gau.userprofile_ids)')).\
+                        where(group_all_users.c.id==text('reports_usergroup.id')).\
+                        order_by(_up.c.username).alias('inneruser')),
+                }
+
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                custom_columns=custom_columns )
+
+            # build the query statement
+            
+            j = _ug
+            stmt = select(columns.values()).select_from(j)
+
+            # general setup
+             
+            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+            
+            title_function = None
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                title_function = lambda key: field_hash[key]['title']
+            
+            return self.stream_response_from_statement(
+                request, stmt, count_stmt, filename, 
+                field_hash=field_hash, 
+                param_hash=param_hash,
+                is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function  )
+             
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on get_list', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e  
+        
     def dispatch_group_userview(self, request, **kwargs):
         # signal to include extra column
         kwargs['groupname'] = kwargs.pop('name')  
@@ -2798,14 +3643,20 @@ class UserGroupResource(ManagedModelResource):
         '''Override to shorten the URI'''
         return self.get_local_resource_uri(
             bundle_or_obj=bundle_or_obj, url_name=url_name)
-    
-    def obj_create(self, bundle, **kwargs):
-        bundle = super(UserGroupResource, self).obj_create(bundle=bundle, **kwargs)
-        return bundle
 
     def hydrate(self, bundle):
         bundle = super(UserGroupResource, self).hydrate(bundle);
         return bundle;
+    
+    def hydrate_super_groupsx(self,bundle):
+        val = bundle.data.get_default('super_groups',None)
+        if val:
+            for name in val:
+                try:
+                    sg = UserGroup.objects.get(name=name)
+                    bundle.obj.super_groups.add(sg)
+                except Exception, e:
+                    raise Exception(str(('no such supergroup')), e)
     
     def build_schema(self):
         schema = super(UserGroupResource,self).build_schema()
@@ -3175,6 +4026,7 @@ class PermissionResource(ManagedModelResource):
         it is created
         '''
         try:
+#             logger.info(str(('lookup with kwargs', kwargs)))
             return super(PermissionResource, self).obj_get(bundle, **kwargs)
         except ObjectDoesNotExist:
             logger.info(str(('create permission on the fly', kwargs)))

@@ -1,14 +1,16 @@
 import json
 import logging
 
-from django.db import models
 from django.conf import settings
-from tastypie.utils.dict import dict_strip_unicode_keys
+from django.contrib.auth.models import User
+from django.core.cache import cache
+from django.db import models
 from django.utils import timezone
+from tastypie.utils.dict import dict_strip_unicode_keys
+
 
 logger = logging.getLogger(__name__)
 
-from django.core.cache import cache
 
 class GetOrNoneManager(models.Manager):
     """Adds get_or_none method to objects
@@ -354,6 +356,7 @@ class UserGroup(models.Model):
     permissions = models.ManyToManyField('reports.Permission')
     
     # inherit permissions from super_groups, this group is a sub_group to them
+    # super_groups inherit users from this group
     super_groups = models.ManyToManyField('self', symmetrical=False, 
         related_name='sub_groups')
 
@@ -392,72 +395,35 @@ class UserGroup(models.Model):
                     super_groups=super_groups, **kwargs))
         
         return list(users)
-    
-#     def get_group_members(self, **kwargs):
-#         users = set(self.users.filter(**kwargs))
-#         for group in self.groups.filter(sub_groups__super_group=self):
-#             users.update(group.get_group_members(**kwargs));
-#             
-#         return users
-    
+        
     def __unicode__(self):
         return unicode(str((self.name)) )
-#         return unicode(str((self.name, [x for x in self.users.all()])))
-    
-    
-#     groups = models.ManyToManyField('self', through='reports.Membership', 
-#                                            symmetrical=False, 
-#                                            related_name='member_of')
-# #     permission_super_groups = models.ManyToManyField('self', through='reports.Membership', 
-# #                                            symmetrical=False, 
-# #                                            related_name='sub_group')
-# 
-#     def get_group_permissions(self, **kwargs):
-#         # start with this groups permissions
-#         permissions = set(self.permissions.all().filter(**kwargs));
-#         
-#         for group in self.groups.filter(super_groups__sub_group=self):
-#             permissions.update(group.get_group_permissions(**kwargs))
-#         
-#         return permissions
-#     
-#     def get_group_members(self, **kwargs):
-#         # start with this groups permissions
-#         members = set(self.users.all().filter(**kwargs));
-#         
-#         for group in self.groups.filter(sub_groups__super_group=self):
-#             members.update(group.get_group_permissions(**kwargs))
-#         
-#         return members
-#     
-#     def __unicode__(self):
-#         return unicode(str((self.name, self.users)))
-# 
-#         
-# 
-# class Membership(models.Model):
-#     sub_group = models.ForeignKey(UserGroup, related_name='sub_groups')
-#     super_group = models.ForeignKey(UserGroup, related_name='super_groups')
-    
+
  
 class UserProfile(models.Model):
     objects                 = MetaManager()
     # link to django.contrib.auth.models.User, note: allow null so that it
     # can be created at the same time, but it is not allowed to be null in practice
-    user = models.OneToOneField(settings.AUTH_USER_MODEL) #, null=True, blank=True) 
+#     user = models.OneToOneField(settings.AUTH_USER_MODEL, null=True) #, null=True, blank=True) 
+    user = models.OneToOneField(User, null=True, on_delete=models.SET_NULL) #, null=True, blank=True) 
     # will mirror the auth_user.username field
-    username = models.TextField(null=False,blank=False) 
+    username = models.TextField(null=False,blank=False, unique=True) 
     
     # Harvard specific fields
-    gender = models.CharField(null=True, max_length=15)
-    phone = models.TextField(blank=True)
-    mailing_address = models.TextField(blank=True)
-    comments = models.TextField(blank=True)
-    ecommons_id = models.TextField(blank=True)
-    harvard_id = models.TextField(blank=True)
+#     first_name = models.TextField()
+#     last_name = models.TextField()
+    email = models.TextField(null=True, blank=True)
+    phone = models.TextField(null=True, blank=True)
+    mailing_address = models.TextField(null=True, blank=True)
+    comments = models.TextField(null=True, blank=True)
+    ecommons_id = models.TextField(null=True, blank=True)
+    harvard_id = models.TextField(null=True, blank=True)
     harvard_id_expiration_date = models.DateField(null=True, blank=True)
     harvard_id_requested_expiration_date = models.DateField(null=True, blank=True)
     
+    created_by_username = models.TextField(null=True)
+
+    gender = models.CharField(null=True, max_length=15)    
     
     # permissions assigned directly to the user, as opposed to by group
     permissions = models.ManyToManyField('reports.Permission')

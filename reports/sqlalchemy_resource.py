@@ -700,6 +700,11 @@ class SqlAlchemyResource(Resource):
 
         raise NotImplemented(str(('get_list_response must be implemented for the SqlAlchemyResource', 
             self._meta.resource_name)) )
+    
+    def clear_cache(self):
+        logger.warn(str(('clearing the cache',self._meta.resource_name)))
+        cache.clear()
+
         
     def _cached_resultproxy(self, stmt, count_stmt, limit, offset):
         ''' 
@@ -946,7 +951,8 @@ class SqlAlchemyResource(Resource):
                 # because some chars in db might be non-UTF8
                 # and downstream programs have trouble with mixed encoding (cStringIO)
                 if not is_for_detail:
-                    yield '{ "meta": %s, "objects": [' % json.dumps(meta, ensure_ascii=True, encoding="utf-8")
+                    yield ( '{ "meta": %s, "objects": [' 
+                        % json.dumps(meta, ensure_ascii=True, encoding="utf-8"))
                 i=0
                 for row in cursor:
                     if DEBUG_STREAMING: logger.info(str(('row', row, row.keys())))
@@ -954,17 +960,19 @@ class SqlAlchemyResource(Resource):
                         _dict = OrderedDict()
                         for key, field in field_hash.iteritems():
                             if DEBUG_STREAMING: 
-                                logger.info(str(('key', key,  row.has_key(key))))
+                                logger.info(str(('key', key,  str(row), row.has_key(key))))
                             value = None
                             try:
                                 if row.has_key(key):
+                                    # logger.info(str(('val:',str(row[key]))))
                                     value = row[key]
                                 if value and ( field.get('json_field_type',None) == 'fields.ListField' 
                                      or field.get('linked_field_type',None) == 'fields.ListField'
                                      or field.get('ui_type', None) == 'list' ):
                                     # FIXME: need to do an escaped split
                                     if DEBUG_STREAMING: logger.info(str(('split', key, value)))
-                                    value = value.split(LIST_DELIMITER_SQL_ARRAY)
+                                    if hasattr(value, 'split'):
+                                        value = value.split(LIST_DELIMITER_SQL_ARRAY)
     
                                 if DEBUG_STREAMING: logger.info(str(('key val', key, value, field)))
                                 _dict[key] = value
@@ -1372,13 +1380,6 @@ class SqlAlchemyResource(Resource):
             msg = str(('unknown format', desired_format, output_filename))
             logger.error(msg)
             raise ImmediateHttpResponse(msg)
-
-#         downloadID = request.GET.get('downloadID', None)
-#         if downloadID:
-#             logger.info(str(('set cookie','downloadID', downloadID )))
-#             response.set_cookie('downloadID', downloadID)
-#         else:
-#             logger.info(str(('no downloadID', request.GET )))
 
         return response
 

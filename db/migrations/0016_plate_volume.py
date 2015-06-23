@@ -605,8 +605,6 @@ class Migration(DataMigration):
             current_wellcopy_volume = new_volume
             log.json_field = json.dumps({ 'volume_adjustment': log.json_field })
             log.save()
-#             logger.info(str(('log', log.key, current_wellcopy_volume, 
-#                 float(log.json_field), log.diffs)))
             j += 1
             if j % 10000 == 0:
                 logger.info(str(('processed',j)))

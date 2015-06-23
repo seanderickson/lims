@@ -134,7 +134,9 @@ def equivocal(val1, val2):
             return False, ('val1', val1, 'val2', val2 )
     else: # better be a list
         if not isinstance(val1, list) and isinstance(val2, list):
-            return false, ('Must be a list if not a string', 'val1', val1, 'val2', val2)
+            return False, ('Must be a list if not a string', 'val1', val1, 'val2', val2)
+        if not val2:
+            return False, ('val2 is None', 'val1', val1 )
         for v in val1:
             if not v: 
                 if val2 and len(val2) > 0:
@@ -190,7 +192,7 @@ def assert_obj1_to_obj2(
                 if val2.endswith('/'): val2 = val2[0:len(val2)-1]
                 if val1 != val2:
                     if val1 not in val2:
-                        return False, ('resource uri', val1, val2)
+                        return False, ('resource uri not equal', val1, val2, obj2)
                     logger.warn(str((
                         'imprecise uri matching, equivocating:', val1, val2)))
     
@@ -1279,15 +1281,16 @@ class MetaHashResourceBootstrap(IResourceTestCase):
             data={ 'limit': 999 })
         logger.debug(str(('--------resp to get:', resp.status_code)))
         self.assertTrue(resp.status_code in [200], 
-                        str((resp.status_code, resp.serialize())))
+                        str((resp.status_code, self.serialize(resp))))
         return self.deserialize(resp)
     
     def _patch_test(self,resource_name, filename, keys_not_to_check=[], 
                     id_keys_to_check=[], data_for_get={}):
         '''
-        data_for_get - dict of extra header krmation to send with the GET request
+        data_for_get - dict of extra header information to send with the GET request
         '''
         data_for_get.setdefault('limit', 999 )
+        data_for_get.setdefault('includes', '*' )
         data_for_get.setdefault('HTTP_APILOG_COMMENT', 'patch_test: %s' % filename )
         resource_uri = BASE_URI + '/' + resource_name
         
@@ -1315,7 +1318,7 @@ class MetaHashResourceBootstrap(IResourceTestCase):
                 resource_uri, format='json', authentication=self.get_credentials(), 
                 data=data_for_get)
             logger.debug(str(('--------resp to get:', resp.status_code)))
-            self.assertTrue(resp.status_code in [200], str((resp.status_code, resp.serialize())))
+            self.assertTrue(resp.status_code in [200], str((resp.status_code, self.serialize(resp))))
 #             self.assertTrue(resp.status_code in [200], str((resp.status_code, dumpObj(resp))))
             new_obj = self.deserialize(resp)
             
@@ -1351,6 +1354,7 @@ class MetaHashResourceBootstrap(IResourceTestCase):
             the returned resource_uri field
         '''
         data_for_get.setdefault('limit', 999 )
+        data_for_get.setdefault('includes', '*' )
         data_for_get.setdefault('HTTP_APILOG_COMMENT', 'put_test: %s' % filename )
         resource_uri = BASE_URI + '/' + resource_name
 
@@ -1374,11 +1378,13 @@ class MetaHashResourceBootstrap(IResourceTestCase):
                 resource_uri, format='json', 
                 authentication=self.get_credentials(), data=data_for_get)
             logger.debug(str(('--------resp to get:', resp.status_code)))
-            self.assertTrue(resp.status_code in [200], str((resp.status_code, resp.serialize())))
+            self.assertTrue(resp.status_code in [200], str((resp.status_code, self.serialize(resp))))
             new_obj = self.deserialize(resp)
             # do a length check, since put will delete existing resources
             self.assertEqual(len(new_obj['objects']), len(input_data['objects']), 
                              'input length != output length: ' + str((new_obj)))
+            # logger.info(str((len(new_obj['objects']), len(input_data['objects']), 
+            #                 'input length != output length: ' + str((new_obj)))))
             
             for inputobj in input_data['objects']:
                 result, outputobj = find_obj_in_list(
@@ -1634,7 +1640,7 @@ class TestApiInit(ResourceTestCase):
                         else:
                             self.fail('unknown command: ' + command + ', ' + json.dumps(action))
                     
-class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
+class UserResource(MetaHashResourceBootstrap):
     
     def setUp(self):
         logger.debug('============== User setup ============')
@@ -1657,7 +1663,7 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
         logger.debug(str(('==== test_create_user =====')))
         
         # the simplest of tests, create some simple users
-        self.bootstrap_items = [   
+        self.bootstrap_items = { 'objects': [   
             {
                 'ecommons_id': 'st1',
                 'first_name': 'Sally',
@@ -1676,17 +1682,25 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
                 'last_name': 'TestsALot',    
                 'email': 'bad.tester@slimstest.com',    
             },
-        ]
+        ]}
+        try:       
+            resp = self.api_client.put(self.resource_uri, 
+                format='json', data=self.bootstrap_items, authentication=self.get_credentials())
+            self.assertTrue(resp.status_code in [200,201], str((resp.status_code, self.serialize(resp))))
+            #                 self.assertHttpCreated(resp)
+        except Exception, e:
+            logger.error(str(('on creating', self.bootstrap_items, '==ex==', e)))
+            raise
 
-        for i,item in enumerate(self.bootstrap_items):  
-            try:       
-                resp = self.api_client.post(self.resource_uri, 
-                    format='json', data=item, authentication=self.get_credentials())
-                self.assertTrue(resp.status_code in [201], str((resp.status_code, resp.serialize())))
-                #                 self.assertHttpCreated(resp)
-            except Exception, e:
-                logger.error(str(('on creating', item, '==ex==', e)))
-                raise
+#         for i,item in enumerate(self.bootstrap_items):  
+#             try:       
+#                 resp = self.api_client.post(self.resource_uri, 
+#                     format='json', data=item, authentication=self.get_credentials())
+#                 self.assertTrue(resp.status_code in [201], str((resp.status_code, self.serialize(resp))))
+#                 #                 self.assertHttpCreated(resp)
+#             except Exception, e:
+#                 logger.error(str(('on creating', item, '==ex==', e)))
+#                 raise
             
         logger.debug('created items, now get them')
         resp = self.api_client.get(self.resource_uri, format='json', 
@@ -1696,7 +1710,7 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
         self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
         self.assertEqual(len(new_obj['objects']), 3, str((new_obj)))
         
-        for i,item in enumerate(self.bootstrap_items):
+        for i,item in enumerate(self.bootstrap_items['objects']):
             result, obj = find_obj_in_list(item, new_obj['objects'])
             self.assertTrue(
                 result, str(('bootstrap item not found', item, new_obj['objects'])))
@@ -1762,7 +1776,7 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
                     format='json', data=user_patch, 
                     authentication=self.get_credentials())
         self.assertTrue(resp.status_code in [202, 204], 
-                        str((resp.status_code, resp.serialize())))  
+                        str((resp.status_code, self.serialize(resp))))  
         
         #         # is it set?
         #         resp = self.api_client.get(
@@ -1775,7 +1789,7 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
             resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password) )
         self.assertTrue(resp.status_code in [200], 
-                        str((resp.status_code, resp.serialize())))
+                        str((resp.status_code, self.serialize(resp))))
        
         logger.debug(str(('==== test3_user_read_permissions done =====')))
 
@@ -1809,7 +1823,7 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
         resp = self.api_client.patch(
             resource_uri, format='json', data=json_data, 
             authentication=self.create_basic(username, password) )
-        self.assertTrue(resp.status_code in [403], str((resp.status_code, resp.serialize())))
+        self.assertTrue(resp.status_code in [403], str((resp.status_code, self.serialize(resp))))
         
         # Now add the needed permission
         
@@ -1823,7 +1837,7 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
                     format='json', data=user_patch, 
                     authentication=self.get_credentials())
         self.assertTrue(resp.status_code in [202, 204], 
-                        str((resp.status_code, resp.serialize())))  
+                        str((resp.status_code, self.serialize(resp))))  
         
         # now try again as the updated user:
         
@@ -1831,7 +1845,7 @@ class UserResource(MetaHashResourceBootstrap,ResourceTestCase):
             resource_uri, format='json', data=json_data, 
             authentication=self.create_basic(username, password) )
         self.assertTrue(resp.status_code in [202, 204], 
-                        str((resp.status_code, resp.serialize())))
+                        str((resp.status_code, self.serialize(resp))))
 
         #         # is it set?
         #         resp = self.api_client.get(
@@ -1934,7 +1948,7 @@ class UserGroupResource(UserResource):
         resp = self.api_client.get(
             resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password ))
-        self.assertTrue(resp.status_code in [200], str((resp.status_code, resp.serialize())))
+        self.assertTrue(resp.status_code in [200], str((resp.status_code, self.serialize(resp))))
         
         #         # is it set?
         #         uri = self.resource_uri + '/' + username
@@ -1952,7 +1966,7 @@ class UserGroupResource(UserResource):
         resp = self.api_client.patch(uri, format='json', data=user_patch, 
                                      authentication=self.get_credentials())
         self.assertTrue(resp.status_code in [202, 204], 
-                        str((resp.status_code, resp.serialize())))  
+                        str((resp.status_code, self.serialize(resp))))  
         
         #         # is it set?
         #         resp = self.api_client.get(
@@ -1964,7 +1978,7 @@ class UserGroupResource(UserResource):
             resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password) )
         self.assertTrue(resp.status_code in [403], 
-                        str((resp.status_code, resp.serialize())))
+                        str((resp.status_code, self.serialize(resp))))
        
         logger.debug(str(('==== test4_user_group_permissions done =====')))
 
@@ -1994,7 +2008,7 @@ class UserGroupResource(UserResource):
         resp = self.api_client.get(
             resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password ))
-        self.assertTrue(resp.status_code in [403], str((resp.status_code, resp.serialize())))
+        self.assertTrue(resp.status_code in [403], str((resp.status_code, self.serialize(resp))))
         
         # now create a new group, with previous user's group as a member,
         # then add permissions to this new group to read (vocabularies)
@@ -2017,7 +2031,7 @@ class UserGroupResource(UserResource):
             data=usergroup_patch, 
             authentication=self.get_credentials())
         self.assertTrue(resp.status_code in [202, 204], 
-                        str((resp.status_code, resp.serialize())))  
+                        str((resp.status_code, self.serialize(resp))))  
         
         # is it set?
         resp = self.api_client.get(
@@ -2049,7 +2063,7 @@ class UserGroupResource(UserResource):
         resp = self.api_client.get(
             resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password ))
-        self.assertTrue(resp.status_code in [200], str((resp.status_code, resp.serialize())))
+        self.assertTrue(resp.status_code in [200], str((resp.status_code, self.serialize(resp))))
 
         logger.debug(str(('==== Done: test5_usergroup_can_contain_group_permissions =====')))
 
@@ -2069,9 +2083,11 @@ class UserGroupResource(UserResource):
         # now create a new group, with a previous group as a sub_group
         usergroup_patch = { 'objects': [
             {
+            'resource_uri': 'usergroup/testGroup5',
             'name': 'testGroup5',
             'sub_groups': ['usergroup/testGroup2'] },
             {
+            'resource_uri': 'usergroup/testGroup6',
             'name': 'testGroup6',
             'sub_groups': ['usergroup/testGroup5'] },
         ]}
@@ -2083,17 +2099,22 @@ class UserGroupResource(UserResource):
             data=usergroup_patch, 
             authentication=self.get_credentials())
         self.assertTrue(resp.status_code in [202, 204], 
-                        str((resp.status_code, resp.serialize())))  
+                        str((resp.status_code, self.serialize(resp))))  
         
         # is it set?
+        data_for_get={ 'includes': '*'}
         resp = self.api_client.get(
-                uri + '/testGroup6', format='json', authentication=self.get_credentials())
+                uri + '/testGroup6', 
+                format='json', 
+                authentication=self.get_credentials(),
+                data=data_for_get)
         self.assertTrue(resp.status_code in [200], 
-                        str((resp.status_code, resp.serialize())))
+                        str((resp.status_code, self.serialize(resp))))
         new_obj = self.deserialize(resp)
         
         self.assertTrue(new_obj['all_users'])
-        self.assertTrue('user/sde4' in new_obj['all_users'])
+        self.assertTrue('user/sde4' in new_obj['all_users'],
+            str(('could not find user', 'user/sde4', new_obj['all_users'])))
         
         # TODO: could also test that testGroup2 now has super_group=testGroup5
         

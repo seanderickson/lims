@@ -233,6 +233,16 @@ alter table screen alter column date_created SET DATA TYPE timestamp with time z
 alter table screen alter column date_loaded SET DATA TYPE timestamp with time zone; 
 alter table screen alter column date_publicly_available SET DATA TYPE timestamp with time zone;
 
+/**
+  *** Add id field to screensaver_user_role ***
+  Purpose: add an id to capture the natural ordering of the screensaver_user_role table; 
+  because the table has no ID, Django ORM doesn't know what to do with it -
+  and the South migration cannot do it either.
+**/
+
+alter table screensaver_user_role add column id integer;
+create sequence screensaver_user_role_sequence;
+update screensaver_user_role set id=nextval('screensaver_user_role_sequence');
 
 
 

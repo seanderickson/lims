@@ -6,24 +6,22 @@
 #
 # Also note: You'll have to insert the output of 'django-admin.py sqlcustom [appname]'
 # into your database.
+
+
+
+
+
 from __future__ import unicode_literals
-
-import datetime
-import logging
-
 from django.conf import settings
-from django.contrib.auth.models import User
 from django.db import connection
 from django.db import models
 from django.db.models.query import QuerySet
 from django.db.models.sql.compiler import SQLCompiler
 from django.db.models.sql.query import Query
 from django.utils import timezone
-
 from reports.utils.gray_codes import create_substance_id
-from reports.utils.gray_codes import create_substance_id
-
-
+import datetime
+import logging
 logger = logging.getLogger(__name__)
 
 
@@ -618,15 +616,19 @@ class ScreensaverUser(models.Model):
     date_publicly_available = models.DateTimeField(null=True, blank=True)
 
     # TODO: it would be nice to move user out of db
-#    user = models.OneToOneField(User, null=True, blank=True)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True)
-#     permissions = models.ManyToManyField('reports.Permission')
-#    usergroups = models.ManyToManyField('reports.UserGroup')
+    user = models.ForeignKey('reports.UserProfile', null=True,on_delete=models.SET_NULL)
+
     class Meta:
         db_table = 'screensaver_user'
         
     def __unicode__(self):
-        return unicode(str((self.screensaver_user_id, self.first_name, self.last_name, self.email, self.login_id, self.ecommons_id)))
+        return unicode(str((
+            self.screensaver_user_id, 
+            self.first_name, 
+            self.last_name, 
+            self.email, 
+            self.login_id, 
+            self.ecommons_id)))
 
 class ScreeningRoomUser(models.Model):
     screensaver_user = models.OneToOneField('ScreensaverUser', primary_key=True)
@@ -747,6 +749,9 @@ class Well(models.Model):
     molar_concentration = models.FloatField(null=True, blank=True)
 #     micro_molar_concentration = models.FloatField(null=True, blank=True)
     mg_ml_concentration = models.FloatField(null=True, blank=True)
+    
+    barcode = models.TextField(null=True, unique=True)
+    
     class Meta:
         db_table = 'well'
     def __unicode__(self):

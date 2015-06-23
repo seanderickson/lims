@@ -1,5 +1,5 @@
-resource_uri,usergroups
-user/yal1/,"[usergroup/testGroup1;usergroup/testGroup2]"
-user/sde4/,[usergroup/testGroup1]
-user/bra2,[usergroup/testGroup4]
-user/tester4/,"[usergroup/testGroup3;usergroup/testGroup4]"
+resource_uri,usergroups,permissions
+user/yal1/,[usergroup/testGroup1;usergroup/testGroup2],
+user/sde4/,[usergroup/testGroup1],[permission/fields.user/username/write;permission/resource/user/write]
+user/bra2,[usergroup/testGroup4],
+user/tester4/,[usergroup/testGroup3;usergroup/testGroup4],

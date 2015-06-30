@@ -30,6 +30,100 @@ define([
     }
   });            
   
+  // FIXME: 20150624 - overriding the checkbox editor, to use "div" instead of "<ul><li>
+  // - something in CSS/JS is overriding the click function and not allowing 
+  // selection of checkboxes in the <ul>,<li> elements
+  Backbone.Form.editors.Checkboxes = Backbone.Form.editors.Checkboxes.extend({
+
+    tagName: 'div',
+
+    groupNumber: 0,
+
+    events: {
+      'click input[type=checkbox]': function() {
+        this.trigger('change', this);
+      },
+      'focus input[type=checkbox]': function() {
+        if (this.hasFocus) return;
+        this.trigger('focus', this);
+      },
+      'blur input[type=checkbox]':  function() {
+        if (!this.hasFocus) return;
+        var self = this;
+        setTimeout(function() {
+          if (self.$('input[type=checkbox]:focus')[0]) return;
+          self.trigger('blur', self);
+        }, 0);
+      }
+    },
+
+    getValue: function() {
+      var values = [];
+      this.$('input[type=checkbox]:checked').each(function() {
+        values.push($(this).val());
+      });
+      return values;
+    },
+
+    setValue: function(values) {
+      if (!_.isArray(values)) values = [values];
+      this.$('input[type=checkbox]').val(values);
+    },
+
+    focus: function() {
+      if (this.hasFocus) return;
+
+      this.$('input[type=checkbox]').first().focus();
+    },
+
+    blur: function() {
+      if (!this.hasFocus) return;
+
+      this.$('input[type=checkbox]:focus').blur();
+    },
+
+    /**
+     * Create the checkbox list HTML
+     * @param {Array}   Options as a simple array e.g. ['option1', 'option2']
+     *                      or as an array of objects e.g. [{val: 543, label: 'Title for object 543'}]
+     * @return {String} HTML
+     */
+    _arrayToHtml: function (array) {
+      var html = $();
+      var self = this;
+
+      _.each(array, function(option, index) {
+        var itemHtml = $('<div>');
+        if (_.isObject(option)) {
+          if (option.group) {
+            var originalId = self.id;
+            self.id += "-" + self.groupNumber++;
+            itemHtml = $('<fieldset class="group">').append( $('<legend>').text(option.group) );
+            itemHtml = itemHtml.append( self._arrayToHtml(option.options) );
+            self.id = originalId;
+            close = false;
+          }else{
+            var val = (option.val || option.val === 0) ? option.val : '';
+            itemHtml.append( $('<input type="checkbox" name="'+self.getName()+'" id="'+self.id+'-'+index+'" />').val(val) );
+            if (option.labelHTML){
+              itemHtml.append( $('<label for="'+self.id+'-'+index+'">').html(option.labelHTML) );
+            }
+            else {
+              itemHtml.append( $('<label for="'+self.id+'-'+index+'">').text(option.label) );
+            }
+          }
+        }
+        else {
+          itemHtml.append( $('<input type="checkbox" name="'+self.getName()+'" id="'+self.id+'-'+index+'" />').val(option) );
+          itemHtml.append( $('<label for="'+self.id+'-'+index+'">').text(option) );
+        }
+        html = html.add(itemHtml);
+      });
+
+      return html;
+    }
+
+  });
   
   var EditView = Backbone.Form.extend({
 
@@ -55,7 +149,11 @@ define([
         console.log('chg evt:' + target);
       });
       this.on('change', function(t){
-        console.log('all:' + t);
+        console.log('all:', t);
+      });
+      
+      this.model.on('change', function(t){
+        console.log('model change', t);
       });
     },
 
@@ -95,139 +193,146 @@ define([
       var schema = this.model.resource.schema;
       var keys = Iccbl.sortOnOrdinal(
           _.keys(this.model.attributes), schema.fields)
-      
       var editKeys = _(keys).filter(function(key){
           return _.has(schema.fields, key) &&
               _.has(schema.fields[key], 'visibility') &&
               _.contains(schema.fields[key]['visibility'], 'edit');
       });
-                  
+      
       var editSchema = {};
       var itemcount = 0;
-      // process the ui_types - convert to backbone-forms schema editor type
+      var typeMap = {
+        'boolean': 'Checkbox',
+        'string': 'Text',
+        'uri': 'Text',
+        'float': 'Number',
+        'integer': 'Number',
+        'list': 'Checkboxes' // FIXME: redo with editor_type metadata
+      };
+      
+      // process the data_types - convert to backbone-forms schema editor type
       _.each(editKeys, function(key){
-        if( _(schema.fields).has(key)){
-          var option = schema.fields[key];
-          var fieldSchema = editSchema[key] = {};
 
-          var typeMap = {
-              'boolean': 'Checkbox',
-              'string': 'Text',
-              'uri': 'Text',
-              'float': 'Number',
-              'integer': 'Number'
-          }
-          
-          var temp = option.ui_type || 'Text';
-          temp = temp.toLowerCase();
-          fieldSchema['type'] = temp.charAt(0).toUpperCase() + temp.slice(1);
-          if(_.has(typeMap, option.ui_type)){
-            fieldSchema['type'] = typeMap[option.ui_type];
-          }
-          var validators = [];
-          
-          if(option.ui_type == 'Select' 
-              || option.ui_type == 'Radio'
-              || option.ui_type == 'Checkboxes' ){
-            fieldSchema['options'] = option.choices || [];
-            if(_.isEmpty(option.choices)){
-              appModel.error('no choices defined for: ' + key);
-            }
-          }
-          
-          if(option.ui_type == 'Radio'){
-            editSchema[key]['template'] = self.altRadioFieldTemplate;
-          }else{
-            editSchema[key]['template'] = self.altFieldTemplate;
-          }
-
-          // validation stuff
-          if(fieldSchema['type']  == 'Number'){
-            // TODO: check for the "min" "max","range" validation properties and implement
-            if( !_.isUndefined(option.min)){
-              var validator = function checkMin(value, formValues) {
-                var err = {
-                    type: 'Min',
-                    message: 'must be >= ' + option.min
-                };
-
-                if (value <= option.min ) return err;
-              };
-              validators.unshift(validator);
-            }
-            if( !_.isUndefined(option.range)){
-              var validator = function checkRange(value, formValues) {
-                
-                var last = '';
-                var rangeMsg = '';
-                var value_ok = false;
-                var schema_lower = 0, schema_upper = 0
-                for(var i=0; i<option.range.length; i++){
-                  var schema_val = option.range[i]
-                  if(i>0) rangeMsg += ', ';
-                  if(i%2 == 0){
-                    rangeMsg += '> ' + schema_val
-                  }else{
-                    rangeMsg += '< ' + schema_val
-                  }
-                }
-                // compare range in pairs
-                for(var i=0; i<option.range.length; i+=2){
-                  schema_lower = parseInt(option.range[i])
-                  if(option.range.length > i+1){
-                    schema_upper = parseInt(option.range[i+1])
-                    if(value >schema_lower && value<schema_upper){
-                      value_ok = true;
-                      break;
-                    }
-                  }else{
-                    if(value > schema_lower){
-                      value_ok = true;
-                      break; // not nec
-                    }
-                  }
-                }
-                var result = {
-                    type: 'Range',
-                    message: 'value not in range: ' + value + ' range: ' + rangeMsg
-                };
-
-                if (!value_ok) return result;
-              };
-              validators.unshift(validator);
-            }
-          }
-          if(option.required){
-            validators.unshift('required');
-          }
-          if(!_.isUndefined(option.regex) && !_.isEmpty(option.regex)){
-            var validator = { type: 'regexp', regexp: new RegExp(option.regex) };
-            if(!_.isUndefined(option.validation_message) && !_.isEmpty(option.validation_message)){
-              validator.message = option.validation_message;
-              // TODO: rework, if req'd, to use tokenized strings (will need 
-              // to reimplement backbone-forms
-              //  function(value, formValues){
-              //    //                TODO: figure out how to get the pending model
-              //    return 'value: ' + value + ' is incorrect: ' + Iccbl.replaceTokens(new Backbone.Model(formValues), option.validation_message);
-              //  };
-            }
-            validators.unshift(validator);
-          }
-          if(!_.isEmpty(validators)){
-            editSchema[key].validators = validators;
-          }
-          
-          editSchema[key]['maxlength'] = 50;
-
-          if(itemcount++ == 0){
-            // Set autofocus (HTML5) on the first field
-            // NOTE: see
-            // http://stackoverflow.com/questions/20457902/how-to-automatically-focus-first-backbone-forms-input-field
-            // - we may want to revisit this for a more robust solution
-            editSchema[key]['editorAttrs'] = { autofocus: 'autofocus'}
+        var option = schema.fields[key];
+        console.log('build edit schema for key: ',key,option );
+        
+        var validators = [];
+        var fieldSchema = editSchema[key] = {};
+        
+        var temp = option.data_type || 'Text';
+        temp = temp.toLowerCase();
+        fieldSchema['type'] = temp.charAt(0).toUpperCase() + temp.slice(1);
+        if(_.has(typeMap, option.data_type)){
+          fieldSchema['type'] = typeMap[option.data_type];
+        }
+        if(option.edit_type == 'select'){
+          fieldSchema['type'] = 'Select';
+        } 
+        if(option.edit_type == 'multiselect'){
+          fieldSchema['type'] = 'Checkboxes';
+        } 
+        
+        if(option.edit_type == 'select' 
+            || option.edit_type == 'multiselect'){
+          fieldSchema['options'] = option.choices || [];
+          if(_.isEmpty(option.choices)){
+            appModel.error('no choices defined for: ' + key);
           }
         }
-        console.log('editSchema[' + key + '] = ' + JSON.stringify(editSchema[key]));
+        
+        if(option.edit_type == 'radio'){
+          editSchema[key]['template'] = self.altRadioFieldTemplate;
+        }else{
+          editSchema[key]['template'] = self.altFieldTemplate;
+        }
+
+        // validation stuff
+        if(fieldSchema['type']  == 'Number')
+        {
+          // TODO: check for the "min" "max","range" validation properties and implement
+          if( !_.isUndefined(option.min)){
+            var validator = function checkMin(value, formValues) {
+              var err = {
+                  type: 'Min',
+                  message: 'must be >= ' + option.min
+              };
+
+              if (value <= option.min ) return err;
+            };
+            validators.unshift(validator);
+          }
+          if( !_.isUndefined(option.range)){
+            var validator = function checkRange(value, formValues) {
+              
+              var last = '';
+              var rangeMsg = '';
+              var value_ok = false;
+              var schema_lower = 0, schema_upper = 0
+              for(var i=0; i<option.range.length; i++){
+                var schema_val = option.range[i]
+                if(i>0) rangeMsg += ', ';
+                if(i%2 == 0){
+                  rangeMsg += '> ' + schema_val
+                }else{
+                  rangeMsg += '< ' + schema_val
+                }
+              }
+              // compare range in pairs
+              for(var i=0; i<option.range.length; i+=2){
+                schema_lower = parseInt(option.range[i])
+                if(option.range.length > i+1){
+                  schema_upper = parseInt(option.range[i+1])
+                  if(value >schema_lower && value<schema_upper){
+                    value_ok = true;
+                    break;
+                  }
+                }else{
+                  if(value > schema_lower){
+                    value_ok = true;
+                    break; // not nec
+                  }
+                }
+              }
+              var result = {
+                  type: 'Range',
+                  message: 'value not in range: ' + value + ' range: ' + rangeMsg
+              };
+
+              if (!value_ok) return result;
+            };
+            validators.unshift(validator);
+          }
+        }
+        if(option.required){
+          validators.unshift('required');
+        }
+        if(!_.isUndefined(option.regex) && !_.isEmpty(option.regex)){
+          var validator = { type: 'regexp', regexp: new RegExp(option.regex) };
+          if(!_.isUndefined(option.validation_message) && !_.isEmpty(option.validation_message)){
+            validator.message = option.validation_message;
+            // TODO: rework, if req'd, to use tokenized strings (will need 
+            // to reimplement backbone-forms
+            //  function(value, formValues){
+            //    //                TODO: figure out how to get the pending model
+            //    return 'value: ' + value + ' is incorrect: ' + Iccbl.replaceTokens(new Backbone.Model(formValues), option.validation_message);
+            //  };
+          }
+          validators.unshift(validator);
+        }
+        if(!_.isEmpty(validators)){
+          editSchema[key].validators = validators;
+        }
+        
+        editSchema[key]['maxlength'] = 50;
+
+        if(itemcount++ == 0){
+          // Set autofocus (HTML5) on the first field
+          // NOTE: see
+          // http://stackoverflow.com/questions/20457902/how-to-automatically-focus-first-backbone-forms-input-field
+          // - we may want to revisit this for a more robust solution
+          editSchema[key]['editorAttrs'] = { autofocus: 'autofocus'}
+        }
+        console.log('editSchema', key, editSchema[key]);
       });      
       
       // Note: Enforced comment
@@ -257,7 +362,7 @@ define([
       });
       
       editKeys.push('comment');
-      schema.fields['comment'] = { key: 'comment', title: 'Comment', ui_type:'string'};
+      schema.fields['comment'] = { key: 'comment', title: 'Comment', data_type:'string'};
                   
       return {
         'fieldDefinitions': schema.fields,

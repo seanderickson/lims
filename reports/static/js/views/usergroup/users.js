@@ -182,7 +182,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView,
           name: "is_for_group",
           label: "Member",
           cell: "boolean",
-          ui_type: "boolean",
+          data_type: "boolean",
           editable: editable
       });
 

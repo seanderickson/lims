@@ -565,7 +565,7 @@ define([
             
             if(!_.isEmpty(value) && !_.isEmpty(value.trim())){
               var field = self._options.schemaResult.fields[extraSelectorKey];
-              if(field.ui_type=='boolean'){
+              if(field.data_type=='boolean'){
                 searchHash[extraSelectorKey] = value;
               }else{
                 // Convert the !negated values to value__ne 

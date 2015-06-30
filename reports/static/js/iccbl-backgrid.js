@@ -1,24 +1,24 @@
 /**
- * @summary     ICCBL-lims Backgrid Extension Functions
+ * @summary ICCBL-lims Backgrid Extension Functions
  * @description Utility Functions for the iccbl-lims
- * @version     0.1
- * @file        iccbl-backgrid.js
- * @author      Sean Erickson
- * @contact     sean_erickson “AT” hms.harvard.edu
- *
+ * @version 0.1
+ * @file iccbl-backgrid.js
+ * @author Sean Erickson
+ * @contact sean_erickson “AT” hms.harvard.edu
+ * 
  * @copyright 2014 Harvard University, all rights reserved.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
+ * 
+ * This program is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free Software
+ * Foundation; either version 2 of the License, or (at your option) any later
+ * version.
+ * 
  * This source file is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the license files for details.
- *
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the license files for details.
+ * 
  * For details please refer to: https://github.com/hmsiccbl/lims
- **/
+ */
 
 // FIXME: lunr should not be a requirement - for server side filtering,
 // and backgrid_filter is requiring it.
@@ -27,10 +27,10 @@
 // "Warning: PhantomJS timed out, possibly due to a missing Mocha run() call"
 
 define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms', 
-        'backgrid_filter', 'backgrid_paginator', 'lunr', //'backgrid_select_all',  
+        'backgrid_filter', 'backgrid_paginator', 'lunr', // 'backgrid_select_all',
         'layoutmanager'],
     function($, _, Backbone, Backgrid, BackboneForms,
-             BackgridFilter, BackgridPaginator, lunr, //BackgridSelectAll,
+             BackgridFilter, BackgridPaginator, lunr, // BackgridSelectAll,
              layoutmanager ) {
 
 var root = window;
@@ -58,8 +58,8 @@ requireOptions = Iccbl.requireOptions = function(options,requireOptionKeys){
 };
 
 /**
- * Replace all {tokens} in the string with model attributes.
- * - fallback to "token" if model attribute is not set.
+ * Replace all {tokens} in the string with model attributes. - fallback to
+ * "token" if model attribute is not set.
  */
 var replaceTokens = Iccbl.replaceTokens = function(model,stringWithTokens, default_val) {
   var interpolatedString = stringWithTokens.replace(/{([^}]+)}/g, 
@@ -174,14 +174,16 @@ var getKey = Iccbl.getKey = function(options) {
 };
 
 /**
- * Get the key off the URI stack:
- * - we don't know if the key is composite or not; so we don't know how many 
- * items to pop off the stack; So look at the resource definition 
- * id_attribute; which lists the keys.
- * @param resource - a resource definition as defined by the API
- * @param urlStack - array representation of the current unprocessed URI 
- * elements.
- * @param consumedStack - holds the items popped off the stack
+ * Get the key off the URI stack: - we don't know if the key is composite or
+ * not; so we don't know how many items to pop off the stack; So look at the
+ * resource definition id_attribute; which lists the keys.
+ * 
+ * @param resource -
+ *          a resource definition as defined by the API
+ * @param urlStack -
+ *          array representation of the current unprocessed URI elements.
+ * @param consumedStack -
+ *          holds the items popped off the stack
  */
 var popKeyFromStack = Iccbl.popKeyFromStack = function(resource, urlStack, consumedStack){
   var id  = '';
@@ -241,12 +243,11 @@ var getIdKeys = Iccbl.getIdKeys = function(model,schema) {
 };
 
 /**
- * Create a string ID from the 'id_attribute' of a schema resource definition.
- * - the id_attribute is an array of field specifiers
- * - the 'ID' will be each of these fields, concatenated with a forward slash.
- * Note: the composite key is the public key; although there is often an
- * 'ID' field, it should not be used for URL's, as it is a internal, possibly
- * transient implementation detail.
+ * Create a string ID from the 'id_attribute' of a schema resource definition. -
+ * the id_attribute is an array of field specifiers - the 'ID' will be each of
+ * these fields, concatenated with a forward slash. Note: the composite key is
+ * the public key; although there is often an 'ID' field, it should not be used
+ * for URL's, as it is a internal, possibly transient implementation detail.
  */
 var getIdFromIdAttribute = Iccbl.getIdFromIdAttribute = 
   function(model, schema){
@@ -267,11 +268,10 @@ var getIdFromIdAttribute = Iccbl.getIdFromIdAttribute =
 };
 
 /**
- * Create an string 'title' from the 'id_attribute' of a schema resource 
- * definition.
- * - the title_attribute is an array of field specifiers and strings.
- * - if an array item is a field, the field value will be used,
- * - if an array item is not a field, then it will be concatenated directly.
+ * Create an string 'title' from the 'id_attribute' of a schema resource
+ * definition. - the title_attribute is an array of field specifiers and
+ * strings. - if an array item is a field, the field value will be used, - if an
+ * array item is not a field, then it will be concatenated directly.
  */
 var getTitleFromTitleAttribute = Iccbl.getTitleFromTitleAttribute = 
     function(model, schema){
@@ -300,12 +300,10 @@ var getTitleFromTitleAttribute = Iccbl.getTitleFromTitleAttribute =
 };
 
 /**
- * Matches array items against the matchstring.  
- * - Matches from the right to left; allowing URI fragments to match their 
- * parent URIs.
- * Similar the the contains function, 
- * but using item.indexOf(matchString) || matchString.indexOf(item)
- * for the truth test.
+ * Matches array items against the matchstring. - Matches from the right to
+ * left; allowing URI fragments to match their parent URIs. Similar the the
+ * contains function, but using item.indexOf(matchString) ||
+ * matchString.indexOf(item) for the truth test.
  */
 var containsByMatch = Iccbl.containsByMatch = function(array, matchstring){
   return _.find(array, function(item) {
@@ -324,8 +322,8 @@ var containsByMatch = Iccbl.containsByMatch = function(array, matchstring){
 
 /**
  * Split label strings on non-word characters, then re-join into lines, where
- * each line is less than max_line_length (or, if a part is longer than max_line_length,
- * then that part becomes an entire line).
+ * each line is less than max_line_length (or, if a part is longer than
+ * max_line_length, then that part becomes an entire line).
  */
 var createLabel = Iccbl.createLabel = function(original_label, max_line_length, break_char){
   var lines = [];
@@ -353,12 +351,12 @@ var createLabel = Iccbl.createLabel = function(original_label, max_line_length, 
   return lines.join(break_char);
 };
 
-//// Network Utilities ////
+// // Network Utilities ////
 
 var getSchema = Iccbl.getSchema = function(schema_url, callback) {
   $.ajax({
     type : "GET",
-    url : schema_url, //options.url_schema,
+    url : schema_url, // options.url_schema,
     data : "",
     dataType : "json",
     success : function(schemaResult) {
@@ -386,7 +384,7 @@ var getModel = Iccbl.getModel = function(schemaResult, url, callback) {
         callback(schemaResult, model);
       },
       error : function(model, response, options) {
-          //console.log('error fetching the model: '+ model + ', response:
+          // console.log('error fetching the model: '+ model + ', response:
           // ' + JSON.stringify(response));
           var msg = 'Error locating resource: ' + url;
           var sep = '\n';
@@ -403,11 +401,10 @@ var getModel = Iccbl.getModel = function(schemaResult, url, callback) {
 };
 
 /**
- * Note use this version if the model will be updated to the server.
- * - Backbone will use "put" if the model has an ID set
- * - also, use model.save([attribute-list], {patch: true} ) to do incremental
- * updates,
- * see http://backbonejs.org/#Model-save
+ * Note use this version if the model will be updated to the server. - Backbone
+ * will use "put" if the model has an ID set - also, use
+ * model.save([attribute-list], {patch: true} ) to do incremental updates, see
+ * http://backbonejs.org/#Model-save
  */
 var getModel2 = Iccbl.getModel2 = function(schemaResult, urlRoot, id, callback) {
     var ModelClass = Backbone.Model.extend({
@@ -422,7 +419,7 @@ var getModel2 = Iccbl.getModel2 = function(schemaResult, urlRoot, id, callback) 
             callback(schemaResult, model);
         },
         error : function(model, response, options) {
-            //console.log('error fetching the model: '+ model + ', response:
+            // console.log('error fetching the model: '+ model + ', response:
             // ' + JSON.stringify(response));
             var msg = 'Error locating resource: ' + urlRoot + ', ' + id;
             var sep = '\n';
@@ -461,7 +458,7 @@ var getCollectionOnClient = Iccbl.getCollectionOnClient = function(url, callback
       callback(collection);
     },
     error: function(model, response, options) {
-        //console.log('error fetching the model: '+ model + ', response:
+        // console.log('error fetching the model: '+ model + ', response:
         // ' + JSON.stringify(response));
         var msg = 'Error locating resource: ' + url;
         var sep = '\n';
@@ -493,7 +490,7 @@ var getCollection = Iccbl.getCollection = function(schemaResult, url, callback) 
             callback(schemaResult, collection);
         },
         error : function(model, response, options) {
-            //console.log('error fetching the model: '+ model + ', response:
+            // console.log('error fetching the model: '+ model + ', response:
             // ' + JSON.stringify(response));
             var msg = 'Error locating resource: ' + url;
             var sep = '\n';
@@ -520,7 +517,7 @@ var getCollection2 = Iccbl.getCollection2 = function(schemaResult, url, callback
             callback(schemaResult, collection);
         },
         error : function(model, response, options) {
-            //console.log('error fetching the model: '+ model + ', response:
+            // console.log('error fetching the model: '+ model + ', response:
             // ' + JSON.stringify(response));
             var msg = 'Error locating resource: ' + url;
             var sep = '\n';
@@ -545,11 +542,9 @@ var getSchemaAndModel = Iccbl.getSchemaAndModel = function(schema_url, url, call
 };
 
 /**
- * Note use this version if the model will be updated.
- * - Backbone will use "put" if the model has an ID set
- * - also, use model.save([attribute-list], {patch: true} ) to do incremental
- * updates,
- * see http://backbonejs.org/#Model-save
+ * Note use this version if the model will be updated. - Backbone will use "put"
+ * if the model has an ID set - also, use model.save([attribute-list], {patch:
+ * true} ) to do incremental updates, see http://backbonejs.org/#Model-save
  */
 var getSchemaAndModel2 = Iccbl.getSchemaAndModel2 = function(urlRoot, id, callback) {
     Iccbl.getSchema(urlRoot + '/schema', function(schemaResult) {
@@ -594,7 +589,7 @@ var MyModel = Iccbl.MyModel = Backbone.Model.extend({
         // };
         // definition above should work, but doesn't.
         // however, when overriding url like above only, the function has to
-        // be attached to the prototype manually here.  why?
+        // be attached to the prototype manually here. why?
         this.url = MyModel.prototype.url;
     },
 });
@@ -610,15 +605,16 @@ var LinkCell = Iccbl.LinkCell = Backgrid.Cell.extend({
     hrefTemplate: 'Http://', 
 
     /**
-    @property {string} [title] The title attribute of the generated anchor. It
-    uses the display value formatted by the `formatter.fromRaw` by default.
-    */
+     * @property {string} [title] The title attribute of the generated anchor.
+     *           It uses the display value formatted by the `formatter.fromRaw`
+     *           by default.
+     */
     title: null,
 
     /**
-       @property {string} [target="_blank"] The target attribute of the generated
-       anchor.
-    */
+     * @property {string} [target="_blank"] The target attribute of the
+     *           generated anchor.
+     */
     target: "_self",
     
     initialize : function(options) {
@@ -638,24 +634,26 @@ var LinkCell = Iccbl.LinkCell = Backgrid.Cell.extend({
       return this;
     },
     
-//    renderOld : function() {
-//        this.$el.empty();
-//        var formattedValue = this.formatter.fromRaw(this.model.get(this.column.get("name")));
-//        this.$el.append($("<a id='link' >", {
-//            tabIndex : -1,
-//            href : '',
-//            title : formattedValue,
-//            //target : "_blank"
-//        }).text(formattedValue));
+// renderOld : function() {
+// this.$el.empty();
+// var formattedValue =
+// this.formatter.fromRaw(this.model.get(this.column.get("name")));
+// this.$el.append($("<a id='link' >", {
+// tabIndex : -1,
+// href : '',
+// title : formattedValue,
+// //target : "_blank"
+// }).text(formattedValue));
 //
-//        this.delegateEvents();
-//        return this;
-//    },
+// this.delegateEvents();
+// return this;
+// },
 //
-//    toLink : function(e) {
-//        e.preventDefault();
-//        this.model.collection.trigger("MyCollection:link", this.model, this.column.get("name"));
-//    },
+// toLink : function(e) {
+// e.preventDefault();
+// this.model.collection.trigger("MyCollection:link", this.model,
+// this.column.get("name"));
+// },
 });
 
   
@@ -668,15 +666,16 @@ var UriListCell = Iccbl.UriListCell = Backgrid.Cell.extend({
   hrefTemplate: 'Http://', 
 
   /**
-  @property {string} [title] The title attribute of the generated anchor. It
-  uses the display value formatted by the `formatter.fromRaw` by default.
-  */
+   * @property {string} [title] The title attribute of the generated anchor. It
+   *           uses the display value formatted by the `formatter.fromRaw` by
+   *           default.
+   */
   title: null,
 
   /**
-     @property {string} [target="_blank"] The target attribute of the generated
-     anchor.
-  */
+   * @property {string} [target="_blank"] The target attribute of the generated
+   *           anchor.
+   */
   target: "_blank",
   
   initialize : function(options) {
@@ -732,16 +731,16 @@ var ImageCell = Iccbl.ImageCell = Backgrid.Cell.extend({
       return '';
     }
 
-    //      var image_src_attr = this.column.get('backgrid_cell_options')
+    // var image_src_attr = this.column.get('backgrid_cell_options')
     //      
-    //      if (!_.isEmpty(image_src_attr)){
-    //        // NOTE: format for backgrid cell options is "/{attribute_key}/"
-    //        var src = Iccbl.replaceTokens(this.model,image_src_attr);
-    //        console.log('image src: ' + src);
-    //        return '<img src="'+src+'" width="100" alt="" />';
-    //      }else{
-    //        return '';
-    //      }
+    // if (!_.isEmpty(image_src_attr)){
+    // // NOTE: format for backgrid cell options is "/{attribute_key}/"
+    // var src = Iccbl.replaceTokens(this.model,image_src_attr);
+    // console.log('image src: ' + src);
+    // return '<img src="'+src+'" width="100" alt="" />';
+    // }else{
+    // return '';
+    // }
   },
       
 });
@@ -764,7 +763,7 @@ var EditCell = Iccbl.EditCell = Backgrid.Cell.extend({
             tabIndex : -1,
             href : '',
             title : formattedValue,
-            //target : "_blank"
+            // target : "_blank"
         }).text(formattedValue));
 
         this.delegateEvents();
@@ -817,14 +816,15 @@ _.extend(DecimalFormatter.prototype, {
 });  
 
 /**
-A number formatter that converts a floating point number, optionally
-multiplied by a multiplier, to a units string and vice versa.
-
-@class Backgrid.UnitsFormatter
-@extends Backgrid.NumberFormatter
-@constructor
-@throws {RangeError} If decimals < 0 or > 20.
-*/
+ * A number formatter that converts a floating point number, optionally
+ * multiplied by a multiplier, to a units string and vice versa.
+ * 
+ * @class Backgrid.UnitsFormatter
+ * @extends Backgrid.NumberFormatter
+ * @constructor
+ * @throws {RangeError}
+ *           If decimals < 0 or > 20.
+ */
 var SciUnitsFormatter = Iccbl.SciUnitsFormatter = function () {
  Backgrid.NumberFormatter.apply(this, arguments);
 };
@@ -834,15 +834,15 @@ SciUnitsFormatter.prototype = new Backgrid.NumberFormatter();
 _.extend(SciUnitsFormatter.prototype, {
 
   /**
-    @member Backgrid.UnitsFormatter
-    @cfg {Object} options
-
-    @cfg {number} [options.multiplier=1] The number used to multiply the model
-    value for display.
-
-    @cfg {string} [options.symbol='%'] The symbol to append to the Unitsage
-    string.
-  */
+   * @member Backgrid.UnitsFormatter
+   * @cfg {Object} options
+   * 
+   * @cfg {number} [options.multiplier=1] The number used to multiply the model
+   *      value for display.
+   * 
+   * @cfg {string} [options.symbol='%'] The symbol to append to the Unitsage
+   *      string.
+   */
   defaults: _.extend({}, NumberFormatter.prototype.defaults, {
     sciunits: [
               ['T', 1e12],
@@ -859,27 +859,28 @@ _.extend(SciUnitsFormatter.prototype, {
   }),
 
   /**
-    Takes a floating point number, where the number is first multiplied by
-    `multiplier`, then converted to a formatted string like
-    NumberFormatter#fromRaw, then finally append `symbol` to the end.
-
-    @member Backgrid.UnitsFormatter
-    @param {number} rawValue
-    @param {Backbone.Model} model Used for more complicated formatting
-    @return {string}
-  */
+   * Takes a floating point number, where the number is first multiplied by
+   * `multiplier`, then converted to a formatted string like
+   * NumberFormatter#fromRaw, then finally append `symbol` to the end.
+   * 
+   * @member Backgrid.UnitsFormatter
+   * @param {number}
+   *          rawValue
+   * @param {Backbone.Model}
+   *          model Used for more complicated formatting
+   * @return {string}
+   */
   fromRaw: function (number, model) {
-    //       console.log('process: ' + number + ', ' +this.multiplier 
-    //           + ', ' +  this.symbol + ', ' + this.decimals );
+    // console.log('process: ' + number + ', ' +this.multiplier
+    // + ', ' + this.symbol + ', ' + this.decimals );
     return this.getUnit(number, this.multiplier, this.symbol, this.decimals);
   },
 
   /**
-  * Convert the number to a sciunit value;
-  * number = .0025
-  * multiplier = 1000
-  * @return Math.round(number*multiplier,decimals) + symbol
-  */
+   * Convert the number to a sciunit value; number = .0025 multiplier = 1000
+   * 
+   * @return Math.round(number*multiplier,decimals) + symbol
+   */
   getUnit: function(number, multiplier, symbol, decimals) {
      
     if(_.isUndefined(number)){
@@ -926,16 +927,18 @@ _.extend(SciUnitsFormatter.prototype, {
   },
  
   /**
-   * FIXME: implement = this is copied from Backgrid percentformatter
-    Takes a string, possibly appended with `symbol` and/or `decimalSeparator`,
-    and convert it back to a number for the model like NumberFormatter#toRaw,
-    and then dividing it by `multiplier`.
-
-    @member Backgrid.UnitsFormatter
-    @param {string} formattedData
-    @param {Backbone.Model} model Used for more complicated formatting
-    @return {number|undefined} Undefined if the string cannot be converted to
-    a number.
+   * FIXME: implement = this is copied from Backgrid percentformatter Takes a
+   * string, possibly appended with `symbol` and/or `decimalSeparator`, and
+   * convert it back to a number for the model like NumberFormatter#toRaw, and
+   * then dividing it by `multiplier`.
+   * 
+   * @member Backgrid.UnitsFormatter
+   * @param {string}
+   *          formattedData
+   * @param {Backbone.Model}
+   *          model Used for more complicated formatting
+   * @return {number|undefined} Undefined if the string cannot be converted to a
+   *         number.
    */
   toRaw: function (formattedValue, model) {
     var tokens = formattedValue.split(this.symbol);
@@ -955,12 +958,12 @@ _.extend(SciUnitsFormatter.prototype, {
 });  
 
 /**
-A DecimalCell is another Backgrid.NumberCell that takes a floating number,
-and showing a decimals number of digits.
-
-@class Backgrid.DecimalCell
-@extends Backgrid.NumberCell
-*/
+ * A DecimalCell is another Backgrid.NumberCell that takes a floating number,
+ * and showing a decimals number of digits.
+ * 
+ * @class Backgrid.DecimalCell
+ * @extends Backgrid.NumberCell
+ */
 var DecimalCell = Iccbl.DecimalCell = NumberCell.extend({
   
   /** @property */
@@ -970,12 +973,15 @@ var DecimalCell = Iccbl.DecimalCell = NumberCell.extend({
   formatter: DecimalFormatter,
  
   /**
-     Initializes this cell and the Units formatter.
- 
-     @param {Object} options
-     @param {Backbone.Model} options.model
-     @param {Backgrid.Column} options.column
-  */
+   * Initializes this cell and the Units formatter.
+   * 
+   * @param {Object}
+   *          options
+   * @param {Backbone.Model}
+   *          options.model
+   * @param {Backgrid.Column}
+   *          options.column
+   */
   initialize: function () {
     DecimalCell.__super__.initialize.apply(this, arguments);
     var formatter = this.formatter;
@@ -987,14 +993,13 @@ var DecimalCell = Iccbl.DecimalCell = NumberCell.extend({
 
 
 /**
-A SciUnitsCell is another Backgrid.NumberCell that takes a floating number,
-optionally multiplied by a multiplier, 
-showing a decimals number of digits, 
-and displayed with a units symbol.
-
-@class Backgrid.SciUnitsCell
-@extends Backgrid.NumberCell
-*/
+ * A SciUnitsCell is another Backgrid.NumberCell that takes a floating number,
+ * optionally multiplied by a multiplier, showing a decimals number of digits,
+ * and displayed with a units symbol.
+ * 
+ * @class Backgrid.SciUnitsCell
+ * @extends Backgrid.NumberCell
+ */
 var SciUnitsCell = Iccbl.SciUnitsCell = NumberCell.extend({
 
   /** @property */
@@ -1010,11 +1015,14 @@ var SciUnitsCell = Iccbl.SciUnitsCell = NumberCell.extend({
   formatter: SciUnitsFormatter,
 
   /**
-    Initializes this cell and the Units formatter.
-
-    @param {Object} options
-    @param {Backbone.Model} options.model
-    @param {Backgrid.Column} options.column
+   * Initializes this cell and the Units formatter.
+   * 
+   * @param {Object}
+   *          options
+   * @param {Backbone.Model}
+   *          options.model
+   * @param {Backgrid.Column}
+   *          options.column
    */
   initialize: function () {
     SciUnitsCell.__super__.initialize.apply(this, arguments);
@@ -1059,8 +1067,7 @@ var DeleteCell = Iccbl.DeleteCell = Backgrid.Cell.extend({
 
 var CollectionOnClient = Iccbl.CollectionOnClient = Backbone.Collection.extend({
   /**
-   *  Override collection parse method:
-   *      Parse server response data.
+   * Override collection parse method: Parse server response data.
    */
   parse : function(response) {
     console.log('Collection on client, parse called');
@@ -1072,9 +1079,7 @@ var CollectionOnClient = Iccbl.CollectionOnClient = Backbone.Collection.extend({
 
 var CollectionInColumns = Iccbl.CollectionInColumns = Backbone.Collection.extend({
   /**
-   *  Override collection parse method:
-   *      Parse server response data.
-   * untested
+   * Override collection parse method: Parse server response data. untested
    */
   parse : function(response) {
     console.log('Collection on client, parse called');
@@ -1116,7 +1121,9 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
   
   /**
    * Backbone.Model change event handler
-   * @param options.source = the event source triggering view
+   * 
+   * @param options.source =
+   *          the event source triggering view
    */
   uriStackChange: function(model, val, options) {
     if(options.source === this){
@@ -1130,8 +1137,9 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
         // FIXME: better global error handling
         console.log('error thrown: ' + e);
         Iccbl.appModel.error('error: ' + e);
-        // FIXME: why is the ajaxStop handler in main.js not being called anyway?
-        //        $('#loading').fadeOut({duration:100});
+        // FIXME: why is the ajaxStop handler in main.js not being called
+        // anyway?
+        // $('#loading').fadeOut({duration:100});
       }
     }
   },
@@ -1146,10 +1154,9 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
 var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
   
   /**
-   * See Backgrid.Body.sort:
-   * - created to solve the multisort case for the server side backbone-pageable
-   * collection only.
-   * triggered by "backgrid:sort" - sent from the column header cells.
+   * See Backgrid.Body.sort: - created to solve the multisort case for the
+   * server side backbone-pageable collection only. triggered by "backgrid:sort" -
+   * sent from the column header cells.
    */
   sort: function (column, direction) {
     if (_.isString(column)) column = this.columns.findWhere({name: column});
@@ -1162,9 +1169,9 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
     else if (direction === "descending") order = 1;
     else order = null;
     
-    // Replaces:    
-    //    collection.setSorting(order && column.get("name"), order,
-    //        {sortValue: column.sortValue()});
+    // Replaces:
+    // collection.setSorting(order && column.get("name"), order,
+    // {sortValue: column.sortValue()});
     
     console.log('call setSorting: order: ' + order + ', ' + direction );
     collection.setSorting(column.get("name"), order,
@@ -1203,7 +1210,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
       pageSize : 25,  // TODO: probably not necessary
   },
   
-  // PageableCollection.fetch() uses the queryParams attribute to interpret 
+  // PageableCollection.fetch() uses the queryParams attribute to interpret
   // the server response and to determine the data hash sent to the server.
   queryParams : {
     // adjust the query params for tastypie
@@ -1211,7 +1218,8 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     offset : function() {
         return (this.state.currentPage - 1) * this.state.pageSize;
     },
-    use_vocabularies: true, // this signals to the api to replace out vocabularies - FIXME: make this a setting?
+    use_vocabularies: true, // this signals to the api to replace out
+                            // vocabularies - FIXME: make this a setting?
     totalRecords : null, // unset for tastypie
     totalPages : null, // unset for tastypie
     sortKey : "order_by", // modified for tastypie
@@ -1222,7 +1230,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
             && this.state.orderStack.length ) {
         // Note: convert the orderStack using "traditional" array serialization
         // see: http://api.jquery.com/jQuery.param/
-        //          var val = this.state.orderStack.join('&order_by=');
+        // var val = this.state.orderStack.join('&order_by=');
         return this.state.orderStack;
       }
     }, 
@@ -1232,7 +1240,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
   },
 
   /**
-   *  Override 
+   * Override
    */
   parseState : function(response, queryParams, state, options) {
     // hack the response for tastypie:
@@ -1257,14 +1265,14 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
   },
   
   /**
-   *  Override 
+   * Override
    */
   parseRecords: function (resp, options) {
       return resp.objects;
   },
       
   /**
-   *  Method for external callers to set the search
+   * Method for external callers to set the search
    */
   setSearch: function(searchHash) {
     var self = this;
@@ -1304,15 +1312,17 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     if(!_.isEmpty(_data)){
       self.fetch();
       // TODO: 2014-04-11: not sure why removing this works:
-      // removed to fix sort not working when custom searches 
+      // removed to fix sort not working when custom searches
       // are used. Custom searches seem to still work: further testing of search
-      // may reveal problems. (problem was that sort badge indicators would not render
+      // may reveal problems. (problem was that sort badge indicators would not
+      // render
       // when there was a custom search).
       // (this was cargo culted from backgrid header search)
       // 
-      //      self.fetch({data:_.clone(_data), reset: true});
+      // self.fetch({data:_.clone(_data), reset: true});
     }else{
-      // TODO: test further, part of the double network hit on search - REMOVED 20150113
+      // TODO: test further, part of the double network hit on search - REMOVED
+      // 20150113
             self.fetch();
     }
   },
@@ -1339,8 +1349,8 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
   },
 
   /**
-   * Proxy for the search elements to clear search terms from the listModel
-   * on the collection.
+   * Proxy for the search elements to clear search terms from the listModel on
+   * the collection.
    */ 
   clearSearch: function(searchKeys, options) {
     console.log('clearsearch: ' + JSON.stringify(searchKeys) 
@@ -1369,10 +1379,9 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
   },
 
   /**
-   *  Override - 
-   *  HeaderCell.onClick -> backgrid:sort -> body.sort -> 
-   *    -> (BackbonePageable)Collection.setSorting
-   *    -> Collection.fetch() -> grab data from state based on "queryParams"
+   * Override - HeaderCell.onClick -> backgrid:sort -> body.sort -> ->
+   * (BackbonePageable)Collection.setSorting -> Collection.fetch() -> grab data
+   * from state based on "queryParams"
    */
   setSorting : function(sortKey, order, options) {
     var state = this.state;
@@ -1413,24 +1422,25 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
         + ', new: ' + JSON.stringify(newStack));
     state.orderStack = newStack;
     
-    //  	Backbone.PageableCollection.prototype.setSorting.call(this, sortKey, order);
-	  // TODO: Investigate why PageableCollection.setSorting is not triggering 
+    // Backbone.PageableCollection.prototype.setSorting.call(this, sortKey,
+    // order);
+	  // TODO: Investigate why PageableCollection.setSorting is not triggering
 	  // a 'sort' event (needed to clear old sort indicators).
 	  // Sequence of a sort:
 	  // Backgrid.HeaderCell.onClick-> collection.trigger('backgrid:sort')
-	  // 	-> 'backgrid:sort' -> Backgrid.Body.sort()
-	  //    	-> PageableCollection.setSorting(): sets state.sortKey
-	  //		-> if(fullCollection) (client mode) collection.sort()
-	  //		-> else
-	  //		-> Collection.fetch(reset:true) 
-	  //			*so in this case, no sort(), if reset:false, then a "set" 
-	  //				would be called, and a 'sort' triggered
-	  //		* also calls column.set to put the new indicator 
-	  //		column.set('direction')
+	  // -> 'backgrid:sort' -> Backgrid.Body.sort()
+	  // -> PageableCollection.setSorting(): sets state.sortKey
+	  // -> if(fullCollection) (client mode) collection.sort()
+	  // -> else
+	  // -> Collection.fetch(reset:true)
+	  // *so in this case, no sort(), if reset:false, then a "set"
+	  // would be called, and a 'sort' triggered
+	  // * also calls column.set to put the new indicator
+	  // column.set('direction')
 	  // without a sort, there is no erasing of the old sort indicators:
 	  // Collection.sort() -> trigger('sort') ->
-	  //		-> Backgrid.HeaderCell.removeCellDirection
-	  // Last note: this may be caused by not getting the sortKey from the 
+	  // -> Backgrid.HeaderCell.removeCellDirection
+	  // Last note: this may be caused by not getting the sortKey from the
 	  // queryParams on parseState.
   	this.trigger('sort',this); 
   },
@@ -1450,40 +1460,44 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
   },
  
   // Original onClick, for reference, from Backgrid
-  //   onClick: function (e) {
-  //     e.preventDefault();
+  // onClick: function (e) {
+  // e.preventDefault();
   //
-  //     var column = this.column;
-  //     var collection = this.collection;
-  //     var event = "backgrid:sort";
+  // var column = this.column;
+  // var collection = this.collection;
+  // var event = "backgrid:sort";
   //
-  //     function cycleSort(header, col) {
-  //       if (column.get("direction") === "ascending") collection.trigger(event, col, "descending");
-  //       else if (column.get("direction") === "descending") collection.trigger(event, col, null);
-  //       else collection.trigger(event, col, "ascending");
-  //     }
+  // function cycleSort(header, col) {
+  // if (column.get("direction") === "ascending") collection.trigger(event, col,
+  // "descending");
+  // else if (column.get("direction") === "descending")
+  // collection.trigger(event, col, null);
+  // else collection.trigger(event, col, "ascending");
+  // }
   //
-  //     function toggleSort(header, col) {
-  //       if (column.get("direction") === "ascending") collection.trigger(event, col, "descending");
-  //       else collection.trigger(event, col, "ascending");
-  //     }
+  // function toggleSort(header, col) {
+  // if (column.get("direction") === "ascending") collection.trigger(event, col,
+  // "descending");
+  // else collection.trigger(event, col, "ascending");
+  // }
   //
-  //     var sortable = Backgrid.callByNeed(column.sortable(), column, this.collection);
-  //     if (sortable) {
-  //       var sortType = column.get("sortType");
-  //       if (sortType === "toggle") toggleSort(this, column);
-  //       else cycleSort(this, column);
-  //     }
-  //   },
+  // var sortable = Backgrid.callByNeed(column.sortable(), column,
+  // this.collection);
+  // if (sortable) {
+  // var sortType = column.get("sortType");
+  // if (sortType === "toggle") toggleSort(this, column);
+  // else cycleSort(this, column);
+  // }
+  // },
       
   // TODO: debounced clicking - sort of working, but...
   // - at this time this method is debouncing on the cell instance:
   // --- no coordination with other headercells
   // 
   /**
-     Event handler for the `click` event on the cell's anchor. If the column is
-     sortable, clicking on the anchor will cycle through 3 sorting orderings -
-     `ascending`, `descending`, and default.
+   * Event handler for the `click` event on the cell's anchor. If the column is
+   * sortable, clicking on the anchor will cycle through 3 sorting orderings -
+   * `ascending`, `descending`, and default.
    */
   onClick: function (e) {
     var self=this;
@@ -1524,7 +1538,7 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
     _.debounce(delayedClick, 750)();
     // FIXME: both throttle and debounce seem to work the same;
     // that is they both are working like setTimeout
-    //        _.throttle(delayedClick, 5000, {leading: false})();
+    // _.throttle(delayedClick, 5000, {leading: false})();
     
     console.log('onclick exit');
   },   
@@ -1561,18 +1575,18 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
   },
  
   /**
-   Event handler for the column's `change:direction` event. If this
-   HeaderCell's column is being sorted on, it applies the direction given as a
-   CSS class to the header cell. Removes all the CSS direction classes
-   otherwise.
+   * Event handler for the column's `change:direction` event. If this
+   * HeaderCell's column is being sorted on, it applies the direction given as a
+   * CSS class to the header cell. Removes all the CSS direction classes
+   * otherwise.
    */
   setCellDirection: function (column, direction) {
     var self = this;
     var name = column.get('name');
     
     if(_.isUndefined(direction) || _.isNull(direction)){
-      //       this.$el.removeClass("ascending").removeClass("descending");
-      //       this.$el.find("#sorter").empty();
+      // this.$el.removeClass("ascending").removeClass("descending");
+      // this.$el.find("#sorter").empty();
       this.removeCellDirection();
     }else{
       this.$el.removeClass("ascending").removeClass("descending");
@@ -1602,28 +1616,29 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
       self.sorter.append(sorterText);
     }
   },
-  //   setCellDirection1: function (column, direction, i) {
-  //     var self = this;
-  //     if(! direction){
-  ////       this.$el.removeClass("ascending").removeClass("descending");
-  ////       this.$el.find("#sorter").empty();
-  //       this.removeCellDirection();
-  //     }else{
-  //       this.$el.removeClass("ascending").removeClass("descending");
-  //       if (column.cid == self.column.cid){
-  //         this.$el.addClass(direction);
-  //         var sorter = self.$el.find('#sorter');
-  //         sorter.empty();
-  //         if(!_.isUndefined(i) && _.isNumber(i)){
-  //           sorter.append("<span class='badge pull-right'>" + i + "<b class='sort-caret'></b></span>");
-  //         }
-  //       }
-  //     }
-  //   },
+  // setCellDirection1: function (column, direction, i) {
+  // var self = this;
+  // if(! direction){
+  // // this.$el.removeClass("ascending").removeClass("descending");
+  // // this.$el.find("#sorter").empty();
+  // this.removeCellDirection();
+  // }else{
+  // this.$el.removeClass("ascending").removeClass("descending");
+  // if (column.cid == self.column.cid){
+  // this.$el.addClass(direction);
+  // var sorter = self.$el.find('#sorter');
+  // sorter.empty();
+  // if(!_.isUndefined(i) && _.isNumber(i)){
+  // sorter.append("<span class='badge pull-right'>" + i + "<b
+  // class='sort-caret'></b></span>");
+  // }
+  // }
+  // }
+  // },
 
   /**
-  * Backgrid event handler for the PageableCollection 'sort' event.
-  */
+   * Backgrid event handler for the PageableCollection 'sort' event.
+   */
   removeCellDirection: function () {
     var self = this;
     this.$el.removeClass("ascending").removeClass("descending");
@@ -1632,8 +1647,8 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
 
  
   /**
-  * Renders a header cell with a sorter and a label.
-  */
+   * Renders a header cell with a sorter and a label.
+   */
   render : function() {
     var self = this;
     this.$el.empty();
@@ -1659,191 +1674,193 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
   });
 
  
-//  /**
+// /**
 // * Override so that we can keep a handle to the containing column name. TODO:
 // * can handle this with events instead (so that the filter notifies the
 // * containing headercell?) TODO: replace this with specific header cells -as
 // * implemented: Date,Integer,Text,Select...
 // */
-//var MyServerSideFilter = 
-//		  Iccbl.MyServerSideFilter = 
-//		  Backgrid.Extension.ServerSideFilter.extend({
-//    columnName : null, // TODO: use "name"
+// var MyServerSideFilter =
+// Iccbl.MyServerSideFilter =
+// Backgrid.Extension.ServerSideFilter.extend({
+// columnName : null, // TODO: use "name"
 //    
-//    // override
-//    className: "form-search",    
+// // override
+// className: "form-search",
 //    
-//    // override, provide our own class
-//    template: _.template([
-//        '<input type="search" ',
-//        '<% if (placeholder) { %> placeholder="<%- placeholder %>" <% } %>',
-//        'name="<%- name %>" />',
-//        '<a class="backgrid-filter clear" data-backgrid-action="clear" href="#">&times;</a>'
-//        ].join(''), null, {variable: null}),
+// // override, provide our own class
+// template: _.template([
+// '<input type="search" ',
+// '<% if (placeholder) { %> placeholder="<%- placeholder %>" <% } %>',
+// 'name="<%- name %>" />',
+// '<a class="backgrid-filter clear" data-backgrid-action="clear"
+// href="#">&times;</a>'
+// ].join(''), null, {variable: null}),
 //
-//    initialize : function(options) {
-//      this.columnName = options.columnName;
-//      Backgrid.Extension.ServerSideFilter.prototype.initialize.apply(
-//      		this, [options]);
-//    },
+// initialize : function(options) {
+// this.columnName = options.columnName;
+// Backgrid.Extension.ServerSideFilter.prototype.initialize.apply(
+// this, [options]);
+// },
 //    
-//    /**
-//     * Override
-//     */
-//    search: function(e) {
-//      if (e) e.preventDefault();    	
-//    	var searchHash = {};
-//    	searchHash[this.name] = this.searchBox().val();
-//    	this.collection.addSearch(searchHash);
+// /**
+// * Override
+// */
+// search: function(e) {
+// if (e) e.preventDefault();
+// var searchHash = {};
+// searchHash[this.name] = this.searchBox().val();
+// this.collection.addSearch(searchHash);
 //    	
 //    	
-//    	// reinstated - for usability 20141203: calling super, because it will
-//      // force first page.
-//    	Backgrid.Extension.ServerSideFilter.prototype.search.apply(this,e);
+// // reinstated - for usability 20141203: calling super, because it will
+// // force first page.
+// Backgrid.Extension.ServerSideFilter.prototype.search.apply(this,e);
 //      
-//    	if (e) e.preventDefault();
+// if (e) e.preventDefault();
 //
-//    	// REMOVED 20150113
-//      // var data = {};
-//      // var query = this.searchBox().val();
-//      // if (query) data[this.name] = query;
-//      //
-//      // var collection = this.collection;
-//      // // We're overriding this behaviour:
-//      // // // go back to the first page on search
-//      // // if (Backbone.PageableCollection &&
-//      // // collection instanceof Backbone.PageableCollection) {
-//      // // collection.getFirstPage({data: data, reset: true, fetch: true});
-//      // // }
-//      // collection.fetch({data: data, reset: true});
+// // REMOVED 20150113
+// // var data = {};
+// // var query = this.searchBox().val();
+// // if (query) data[this.name] = query;
+// //
+// // var collection = this.collection;
+// // // We're overriding this behaviour:
+// // // // go back to the first page on search
+// // // if (Backbone.PageableCollection &&
+// // // collection instanceof Backbone.PageableCollection) {
+// // // collection.getFirstPage({data: data, reset: true, fetch: true});
+// // // }
+// // collection.fetch({data: data, reset: true});
 //      
-//      this.showClearButtonMaybe();
-//    },
-//    showClearButtonMaybe: function () {
-//      this.clearButton().show();
-//    },
+// this.showClearButtonMaybe();
+// },
+// showClearButtonMaybe: function () {
+// this.clearButton().show();
+// },
 //    
-//    /**
-//     * Override
-//     */
-//    clear: function(e){
-//      if (e) e.preventDefault();
-//      this.remove();
-//      this.collection.clearSearch([this.name]); 
-//      console.log('ssf prototype clear')
-//      Backgrid.Extension.ServerSideFilter.prototype.clear.apply(this,e);
-//    },    
-//});
+// /**
+// * Override
+// */
+// clear: function(e){
+// if (e) e.preventDefault();
+// this.remove();
+// this.collection.clearSearch([this.name]);
+// console.log('ssf prototype clear')
+// Backgrid.Extension.ServerSideFilter.prototype.clear.apply(this,e);
+// },
+// });
 
 
-///**
+// /**
 // * Override of the Backgrid.HeaderCell to:
 // * - add "contains" search
-// * TODO: replace this with specific header cells -as implemented: Date,Integer,Text,Select...
+// * TODO: replace this with specific header cells -as implemented:
+// Date,Integer,Text,Select...
 // **/
-//var MyHeaderCell = Iccbl.MyHeaderCell = MultiSortHeaderCell.extend({
+// var MyHeaderCell = Iccbl.MyHeaderCell = MultiSortHeaderCell.extend({
 //
-//  _serverSideFilter : null,
+// _serverSideFilter : null,
 //
-//  initialize : function(options) {
-//      this.options = options;
-//      MyHeaderCell.__super__.initialize.apply(this, arguments);
+// initialize : function(options) {
+// this.options = options;
+// MyHeaderCell.__super__.initialize.apply(this, arguments);
 //
-//      this._serverSideFilter = new MyServerSideFilter({
-//          collection : this.collection, 
-//          name : this.column.get("name") + "__contains", 
-//          placeholder : "Search " + this.column.get("label"), 
-//          columnName : this.column.get("name"),
-//      });
+// this._serverSideFilter = new MyServerSideFilter({
+// collection : this.collection,
+// name : this.column.get("name") + "__contains",
+// placeholder : "Search " + this.column.get("label"),
+// columnName : this.column.get("name"),
+// });
 //
-//      this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
-//      this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
-//      _.bindAll(this, 'clearSearch');
-//  },
+// this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
+// this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
+// _.bindAll(this, 'clearSearch');
+// },
 //
-//  clearSearch: function(){
-//    if(this._serverSideFilter.searchBox().val()){
-//      console.log('responding to clearSearch:'  + this.column.get('name') 
-//          + ':' + this._serverSideFilter.searchBox().val());
-//      this._serverSideFilter.clear();
-//    }
-//  },
+// clearSearch: function(){
+// if(this._serverSideFilter.searchBox().val()){
+// console.log('responding to clearSearch:' + this.column.get('name')
+// + ':' + this._serverSideFilter.searchBox().val());
+// this._serverSideFilter.clear();
+// }
+// },
 //    
 //
-//  remove: function() {
-//      console.log('headercell remove called');
-//      this._serverSideFilter.remove();
-//      this._serverSideFilter.unbind();
-//      this._serverSideFilter.collection = null;
-//      this.unbind();
+// remove: function() {
+// console.log('headercell remove called');
+// this._serverSideFilter.remove();
+// this._serverSideFilter.unbind();
+// this._serverSideFilter.collection = null;
+// this.unbind();
 //
-//      MyHeaderCell.__super__.remove.apply(this);
-//  },
+// MyHeaderCell.__super__.remove.apply(this);
+// },
 //  
-//  /**
-//   * Function to listen for router generated custom search event
-//   * "MyServerSideFilter:search"
-//   * - add search term and show box
-//   * - clear old search terms
-//   **/
-//  _search: function(searchHash, collection){
-//      var self = this;
-//      if (collection == this.collection){
-//          var found = false;
-//          _.each(_(searchHash).pairs(), function(pair){
-//              var key = pair[0];
-//              var val = pair[1];
-//              if (self._serverSideFilter.name == key){
-//                  console.log('--found search: ' + key + '=' + val + 
-//                  		', on: ' + self.column.get('name'));
-//                  found = true;
-//                  // create the DOM element
-//                  self.$el.append(self._serverSideFilter.render().el);
-//                  // set the search term
-//                  self._serverSideFilter.searchBox().val(val);
-//                  // the filter search method will call collection.fetch()
-//                  self._serverSideFilter.search(); 
-//              }
-//          });
+// /**
+// * Function to listen for router generated custom search event
+// * "MyServerSideFilter:search"
+// * - add search term and show box
+// * - clear old search terms
+// **/
+// _search: function(searchHash, collection){
+// var self = this;
+// if (collection == this.collection){
+// var found = false;
+// _.each(_(searchHash).pairs(), function(pair){
+// var key = pair[0];
+// var val = pair[1];
+// if (self._serverSideFilter.name == key){
+// console.log('--found search: ' + key + '=' + val +
+// ', on: ' + self.column.get('name'));
+// found = true;
+// // create the DOM element
+// self.$el.append(self._serverSideFilter.render().el);
+// // set the search term
+// self._serverSideFilter.searchBox().val(val);
+// // the filter search method will call collection.fetch()
+// self._serverSideFilter.search();
+// }
+// });
 //
-//          if (!found) {
-//              if (!_.isEmpty(this.$el.find("input[type=text]").val())) {
-//                  this._serverSideFilter.remove();
-//                  this.collection.clearSearch([self._serverSideFilter.name]);
-//              }
-//          }
-//      }
-//  },
+// if (!found) {
+// if (!_.isEmpty(this.$el.find("input[type=text]").val())) {
+// this._serverSideFilter.remove();
+// this.collection.clearSearch([self._serverSideFilter.name]);
+// }
+// }
+// }
+// },
 //
-//  /**
-//   * Renders a header cell with a sorter and a label.
-//   */
-//  render : function() {
-//    var self = this;
-//    MyHeaderCell.__super__.render.apply(this, arguments);
+// /**
+// * Renders a header cell with a sorter and a label.
+// */
+// render : function() {
+// var self = this;
+// MyHeaderCell.__super__.render.apply(this, arguments);
 //
-//    var column = this.column;
+// var column = this.column;
 //
-//    this.$el.addClass(column.get("name"));
-//    this.delegateEvents();
+// this.$el.addClass(column.get("name"));
+// this.delegateEvents();
 //    
-//    var _handle = this;
+// var _handle = this;
 //    
-//    var searchableVal = column.get('searchable');
-//    if(_.isBoolean(searchableVal) && searchableVal ){
-//      var filterIcon = $(self.filtericon_text);
-//      filterIcon.click(function(e) {
-//          _handle.$el.append(_handle._serverSideFilter.render().el);
-//      });
-//      this.$el.append(filterIcon);
-//    }
+// var searchableVal = column.get('searchable');
+// if(_.isBoolean(searchableVal) && searchableVal ){
+// var filterIcon = $(self.filtericon_text);
+// filterIcon.click(function(e) {
+// _handle.$el.append(_handle._serverSideFilter.render().el);
+// });
+// this.$el.append(filterIcon);
+// }
 //
-//    this.$el.prop('title', 
-//    			  this.options['column']['attributes']["description"]);
+// this.$el.prop('title',
+// this.options['column']['attributes']["description"]);
 //    
-//    return this;
-//  }
-//});
+// return this;
+// }
+// });
 
 
 var BackboneFormFilter = Backbone.Form.extend({
@@ -1872,8 +1889,7 @@ var BackboneFormFilter = Backbone.Form.extend({
   },
 
   /**
-   * - add a submit button
-   * - add a clear button
+   * - add a submit button - add a clear button
    */
   render: function () {
     var self = this;
@@ -1901,9 +1917,9 @@ var BackboneFormFilter = Backbone.Form.extend({
     return this.$el.find(':submit');
   },
   
-  /** 
-   * Override the Backbone Layoutmanager template rendering to use 
-   * Backbone Forms
+  /**
+   * Override the Backbone Layoutmanager template rendering to use Backbone
+   * Forms
    */
   renderTemplate: function() {
     return Backbone.Form.prototype.render.apply(this);
@@ -2052,9 +2068,8 @@ var TextFormFilter = CriteriumFormFilter.extend({
   },
   
   /**
-   * TextFormFilter
-   * handles router generated searches
-   **/
+   * TextFormFilter handles router generated searches
+   */
   _search: function(hash){
     var self = this;
     var searchHash = _.clone(hash);
@@ -2093,8 +2108,7 @@ var TextFormFilter = CriteriumFormFilter.extend({
   },  
 
   /**
-   * TextFormFilter
-   * Form submit handler
+   * TextFormFilter Form submit handler
    */
   _submit: function(){
     var self  = this;
@@ -2103,13 +2117,14 @@ var TextFormFilter = CriteriumFormFilter.extend({
     
     var searchHash = {};
     
-    // validate:true: tells bbf to run model.validate(), in addition to field[].validate()
+    // validate:true: tells bbf to run model.validate(), in addition to
+    // field[].validate()
     var errors = self.commit({ validate: true }); 
     if(!_.isEmpty(errors)){
       console.log('form errors, abort submit: ' + JSON.stringify(errors));
       return;
     }else{
-      //      this.$el.find('#range_upper_block').removeClass(self.errorClass);
+      // this.$el.find('#range_upper_block').removeClass(self.errorClass);
     }
     
     var values = self.getValue();
@@ -2133,12 +2148,10 @@ var TextFormFilter = CriteriumFormFilter.extend({
 
 var DateEditor = Backbone.Form.editors.Date.extend({
 
-  /** need to extend because an error in the bbf initializer makes it impossible
-   * to override the monthnames otherwise.
-   * (Using var Self = Form.editors.Date; 
-   * this.options = _.extend({
-   *   monthNames: Self.monthNames,
-   * why?
+  /**
+   * need to extend because an error in the bbf initializer makes it impossible
+   * to override the monthnames otherwise. (Using var Self = Form.editors.Date;
+   * this.options = _.extend({ monthNames: Self.monthNames, why?
    */
   monthNames: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
 
@@ -2270,8 +2283,9 @@ var DateFormFilter = CriteriumFormFilter.extend({
     
   },
 
-  /**DateFormFilter
-   **/
+  /**
+   * DateFormFilter
+   */
   _search: function(hash){
     var self = this;
     var searchHash = _.clone(hash);
@@ -2329,15 +2343,16 @@ var DateFormFilter = CriteriumFormFilter.extend({
     return found;
   },  
 
-  /**DateFormFilter
-   * Form submit handler
+  /**
+   * DateFormFilter Form submit handler
    */
   _submit: function(){
     var self  = this;
     if(!self.isSet()) return;
     var searchHash = {};
     
-    // validate:true: tells bbf to run model.validate(), in addition to field[].validate()
+    // validate:true: tells bbf to run model.validate(), in addition to
+    // field[].validate()
     var errors = self.commit({ validate: true }); 
     if(!_.isEmpty(errors)){
       console.log('form errors, abort submit: ' + JSON.stringify(errors));
@@ -2399,8 +2414,8 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
   },
 
   
-  /**TextHeaderCell
-   * Form submit handler
+  /**
+   * TextHeaderCell Form submit handler
    */
   _submit: function(e){
     var self  = this;
@@ -2415,15 +2430,15 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash);
-//      self.collection.fetch({ reset: true });
+// self.collection.fetch({ reset: true });
     }else{
       console.log('nothing submitted');
     }
   },
 
-  /**TextHeaderCell
-   * Listen for router generated search events
-   **/
+  /**
+   * TextHeaderCell Listen for router generated search events
+   */
   _search: function(hash, collection){
     var self = this;
     var name = this.column.get('name');
@@ -2441,9 +2456,9 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
     }
   },  
   
-  /**TextHeaderCell
-   * clears all possible searches
-   * if options.reset, then trigger a collection fetch
+  /**
+   * TextHeaderCell clears all possible searches if options.reset, then trigger
+   * a collection fetch
    */
   clearSearch: function(options){
     var self=this;
@@ -2454,7 +2469,8 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
     self.collection.clearSearch(possibleSearches);
   },      
   
-  /**TextHeaderCell
+  /**
+   * TextHeaderCell
    */
   render : function() {
     var self = this;
@@ -2462,17 +2478,17 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
   
     this.$el.append(this.filterIcon);
   
-    //  Backbone.View.prototype.manage = false;
+    // Backbone.View.prototype.manage = false;
     this._serverSideFilter.render();
     this.$el.append(this._serverSideFilter.el);
     this._serverSideFilter.$el.hide();
-    //  Backbone.View.prototype.manage = false;
+    // Backbone.View.prototype.manage = false;
     
     this._serverSideFilter.clearButton().click(function(e){
       e.preventDefault();
       e.stopPropagation();
       self.clearSearch();
-//      self.collection.fetch({ reset: true });
+// self.collection.fetch({ reset: true });
     });
     
     this.filterIcon.click(function(e){
@@ -2514,8 +2530,8 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
   },
   
   
-  /**DateHeaderCell
-   * Form submit handler
+  /**
+   * DateHeaderCell Form submit handler
    */
   _submit: function(e){
     var self  = this;
@@ -2530,15 +2546,15 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash);
-//      self.collection.fetch({ reset: true });
+// self.collection.fetch({ reset: true });
     }else{
       console.log('Date Cell nothing submitted');
     }
   },
   
-  /**DateHeaderCell
-   * Listen for router generated search events
-   **/
+  /**
+   * DateHeaderCell Listen for router generated search events
+   */
   _search: function(hash, collection){
     var self = this;
     var name = this.column.get('name');
@@ -2555,9 +2571,9 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
     }
   },  
 
-  /**DateHeaderCell
-   * clears all possible searches
-   * if options.reset, then trigger a collection fetch
+  /**
+   * DateHeaderCell clears all possible searches if options.reset, then trigger
+   * a collection fetch
    */
   clearSearch: function(options){
     var self=this;
@@ -2568,7 +2584,8 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
     self.collection.clearSearch(possibleSearches);
   },      
 
-  /**DateHeaderCell
+  /**
+   * DateHeaderCell
    */
   render : function() {
     var self = this;
@@ -2576,17 +2593,17 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
   
     this.$el.append(this.filterIcon);
   
-    //  Backbone.View.prototype.manage = false;
+    // Backbone.View.prototype.manage = false;
     this._serverSideFilter.render();
     this.$el.append(this._serverSideFilter.el);
     this._serverSideFilter.$el.hide();
-    //  Backbone.View.prototype.manage = false;
+    // Backbone.View.prototype.manage = false;
     
     this._serverSideFilter.clearButton().click(function(e){
       e.preventDefault();
       e.stopPropagation();
       self.clearSearch();
-//      self.collection.fetch({ reset: true });
+// self.collection.fetch({ reset: true });
     });
     
     this.filterIcon.click(function(e){
@@ -2672,9 +2689,9 @@ var BooleanFormFilter = CriteriumFormFilter.extend({
     return searchHash
   },
 
-  /**BooleanFormFilter
-   * Set the form from router generated event
-   **/
+  /**
+   * BooleanFormFilter Set the form from router generated event
+   */
   _search: function(hash){
     var self = this;
     var searchHash = _.clone(hash);
@@ -2704,8 +2721,9 @@ var BooleanFormFilter = CriteriumFormFilter.extend({
     return found;
   },  
   
-  /**BooleanFormFilter
-   * Convenience - determine if the form has been set with any values
+  /**
+   * BooleanFormFilter Convenience - determine if the form has been set with any
+   * values
    */
   isSet: function(){
     var values = this.getValue();
@@ -2741,8 +2759,8 @@ var BooleanHeaderCell = MultiSortHeaderCell.extend({
   },
 
   
-  /**BooleanHeaderCell
-   * Form submit handler
+  /**
+   * BooleanHeaderCell Form submit handler
    */
   _submit: function(e){
     var self  = this;
@@ -2757,15 +2775,15 @@ var BooleanHeaderCell = MultiSortHeaderCell.extend({
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash);
-//      self.collection.fetch({ reset: true });
+// self.collection.fetch({ reset: true });
     }else{
       console.log('nothing submitted');
     }
   },
 
-  /**BooleanHeaderCell
-   * Listen for router generated search events
-   **/
+  /**
+   * BooleanHeaderCell Listen for router generated search events
+   */
   _search: function(hash, collection){
     var self = this;
     var name = this.column.get('name');
@@ -2783,9 +2801,9 @@ var BooleanHeaderCell = MultiSortHeaderCell.extend({
     }
   },  
   
-  /**BooleanHeaderCell
-   * clears all possible searches
-   * if options.reset, then trigger a collection fetch
+  /**
+   * BooleanHeaderCell clears all possible searches if options.reset, then
+   * trigger a collection fetch
    */
   clearSearch: function(options){
     var self=this;
@@ -2796,7 +2814,8 @@ var BooleanHeaderCell = MultiSortHeaderCell.extend({
     self.collection.clearSearch(possibleSearches);
   },      
   
-  /**BooleanHeaderCell
+  /**
+   * BooleanHeaderCell
    */
   render : function() {
     var self = this;
@@ -2804,17 +2823,17 @@ var BooleanHeaderCell = MultiSortHeaderCell.extend({
   
     this.$el.append(this.filterIcon);
   
-    //  Backbone.View.prototype.manage = false;
+    // Backbone.View.prototype.manage = false;
     this._serverSideFilter.render();
     this.$el.append(this._serverSideFilter.el);
     this._serverSideFilter.$el.hide();
-    //  Backbone.View.prototype.manage = false;
+    // Backbone.View.prototype.manage = false;
     
     this._serverSideFilter.clearButton().click(function(e){
       e.preventDefault();
       e.stopPropagation();
       self.clearSearch();
-//      self.collection.fetch({ reset: true });
+// self.collection.fetch({ reset: true });
     });
     
     this.filterIcon.click(function(e){
@@ -2923,8 +2942,8 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
     });
   },
 
-  /**SelectorFormFilter
-   * Form submit handler
+  /**
+   * SelectorFormFilter Form submit handler
    */
   _submit: function(){
     var self  = this;
@@ -2956,9 +2975,9 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
     return searchHash
   },
 
-  /**SelectorFormFilter
-   * Set the form from router generated event
-   **/
+  /**
+   * SelectorFormFilter Set the form from router generated event
+   */
   _search: function(hash){
     var self = this;
     var searchHash = _.clone(hash);
@@ -2991,8 +3010,9 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
     return found;
   },  
   
-  /**SelectorFormFilter
-   * Convenience - determine if the form has been set with any values
+  /**
+   * SelectorFormFilter Convenience - determine if the form has been set with
+   * any values
    */
   isSet: function(){
     var values = this.getValue();
@@ -3049,8 +3069,8 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
     _.bindAll(this, '_submit', 'clearSearch');
   },
   
-  /**SelectorHeaderCell
-   * Form submit handler
+  /**
+   * SelectorHeaderCell Form submit handler
    */
   _submit: function(e){
     var self  = this;
@@ -3064,15 +3084,15 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash);
-//      self.collection.fetch({ reset: true });
+// self.collection.fetch({ reset: true });
     }else{
       self.collection.fetch({});
     }
   },
   
-  /**SelectorHeaderCell
-   * Listen for router generated search events
-   **/
+  /**
+   * SelectorHeaderCell Listen for router generated search events
+   */
   _search: function(hash, collection){
     var self = this;
     var searchHash = _.clone(hash);
@@ -3088,9 +3108,9 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
     }
   },  
 
-  /**SelectorHeaderCell
-   * clears all possible searches
-   * if options.reset, then trigger a collection fetch
+  /**
+   * SelectorHeaderCell clears all possible searches if options.reset, then
+   * trigger a collection fetch
    */
   clearSearch: function(options){
     var self=this;
@@ -3101,7 +3121,8 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
     self.collection.clearSearch(possibleSearches);
   },      
 
-  /**SelectorHeaderCell
+  /**
+   * SelectorHeaderCell
    */
   render : function() {
     var self = this;
@@ -3117,7 +3138,7 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
       e.preventDefault();
       e.stopPropagation();
       self.clearSearch();
-//      self.collection.fetch({ reset: true });
+// self.collection.fetch({ reset: true });
     });
     
     this.filterIcon.click(function(e){
@@ -3247,8 +3268,9 @@ var NumberFormFilter = CriteriumFormFilter.extend({
     
   },
 
-  /**NumberFormFilter
-   * Convenience - determine if the form has been set with any values
+  /**
+   * NumberFormFilter Convenience - determine if the form has been set with any
+   * values
    */
   isSet: function(){
     var values = this.getValue();
@@ -3258,9 +3280,9 @@ var NumberFormFilter = CriteriumFormFilter.extend({
     return !_.isEmpty(found);
   },
   
-  /**NumberFormFilter
-   * Set the form from router generated event
-   **/
+  /**
+   * NumberFormFilter Set the form from router generated event
+   */
   _search: function(hash){
     var self = this;
     var searchHash = _.clone(hash);
@@ -3308,15 +3330,16 @@ var NumberFormFilter = CriteriumFormFilter.extend({
     return found;
   },  
 
-  /**NumberFormFilter
-   * Form submit handler
+  /**
+   * NumberFormFilter Form submit handler
    */
   _submit: function(){
     var self  = this;
     if(!self.isSet()) return;
     var searchHash = {};
     
-    // validate:true: tells bbf to run model.validate(), in addition to field[].validate()
+    // validate:true: tells bbf to run model.validate(), in addition to
+    // field[].validate()
     var errors = self.commit({ validate: true }); 
     if(!_.isEmpty(errors)){
       console.log('form errors, abort submit: ' + JSON.stringify(errors));
@@ -3378,8 +3401,8 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
   },
   
   
-  /**NumberHeaderCell
-   * Form submit handler
+  /**
+   * NumberHeaderCell Form submit handler
    */
   _submit: function(e){
     var self  = this;
@@ -3394,15 +3417,15 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash);
-//      self.collection.fetch({ reset: true });
+// self.collection.fetch({ reset: true });
     }else{
       console.log('nothing submitted');
     }
   },
   
-  /**NumberHeaderCell
-   * Listen for router generated search events
-   **/
+  /**
+   * NumberHeaderCell Listen for router generated search events
+   */
   _search: function(hash, collection){
     var self = this;
     var name = this.column.get('name');
@@ -3419,9 +3442,9 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
     }
   },  
 
-  /**NumberHeaderCell
-   * clears all possible searches
-   * if options.reset, then trigger a collection fetch
+  /**
+   * NumberHeaderCell clears all possible searches if options.reset, then
+   * trigger a collection fetch
    */
   clearSearch: function(options){
     var self=this;
@@ -3432,7 +3455,8 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
     self.collection.clearSearch(possibleSearches);
   },      
   
-  /**NumberHeaderCell
+  /**
+   * NumberHeaderCell
    */
   render : function() {
     var self = this;
@@ -3440,17 +3464,17 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
   
     this.$el.append(this.filterIcon);
   
-    //  Backbone.View.prototype.manage = false;
+    // Backbone.View.prototype.manage = false;
     this._serverSideFilter.render();
     this.$el.append(this._serverSideFilter.el);
     this._serverSideFilter.$el.hide();
-    //  Backbone.View.prototype.manage = false;
+    // Backbone.View.prototype.manage = false;
     
     this._serverSideFilter.clearButton().click(function(e){
       e.preventDefault();
       e.stopPropagation();
       self.clearSearch();
-//      self.collection.fetch({ reset: true });
+// self.collection.fetch({ reset: true });
     });
     
     this.filterIcon.click(function(e){
@@ -3548,8 +3572,9 @@ var SciUnitFormFilter = NumberFormFilter.extend({
     SciUnitFormFilter.__super__.initialize.call(this, options);
   },
   
-  /**SciUnitFormFilter
-   * Convenience - determine if the form has been set with any values
+  /**
+   * SciUnitFormFilter Convenience - determine if the form has been set with any
+   * values
    */
   isSet: function(){
     var values = this.getValue();
@@ -3563,8 +3588,8 @@ var SciUnitFormFilter = NumberFormFilter.extend({
     return !_.isEmpty(found);
   },
   
-  /**SciUnitFormFilter
-   * Form submit handler
+  /**
+   * SciUnitFormFilter Form submit handler
    */
   _submit: function(){
     var self = this;
@@ -3612,7 +3637,8 @@ var SciUnitFormFilter = NumberFormFilter.extend({
   },
   
   _findNumberAndUnit: function(number){
-    var decimals = 3; // TODO: users will not be expected to enter values beyond 3 decimals
+    var decimals = 3; // TODO: users will not be expected to enter values beyond
+                      // 3 decimals
     
     var self = this;
     function strip(number) {
@@ -3634,9 +3660,9 @@ var SciUnitFormFilter = NumberFormFilter.extend({
     return {number:val, unit: pair[1]};
   },
   
-  /**SciUnitFormFilter
-   * Set the form from router generated event
-   **/
+  /**
+   * SciUnitFormFilter Set the form from router generated event
+   */
   _search: function(hash){
     var self = this;
     var searchHash = _.clone(hash);
@@ -3700,8 +3726,8 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
   },
 
   
-  /**SciUnitHeaderCell
-   * Form submit handler
+  /**
+   * SciUnitHeaderCell Form submit handler
    */
   _submit: function(e){
     var self  = this;
@@ -3716,15 +3742,15 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash);
-//      self.collection.fetch({ reset: true });
+// self.collection.fetch({ reset: true });
     }else{
       console.log('nothing submitted');
     }
   },
   
-  /**SciUnitHeaderCell
-   * Listen for router generated search events
-   **/
+  /**
+   * SciUnitHeaderCell Listen for router generated search events
+   */
   _search: function(hash, collection){
     var self = this;
     var name = this.column.get('name');
@@ -3741,9 +3767,9 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
     }
   },  
 
-  /**SciUnitHeaderCell
-   * clears all possible searches
-   * if options.reset, then trigger a collection fetch
+  /**
+   * SciUnitHeaderCell clears all possible searches if options.reset, then
+   * trigger a collection fetch
    */
   clearSearch: function(options){
     var self=this;
@@ -3754,7 +3780,7 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
     self.collection.clearSearch(possibleSearches);
   }, 
   
-  /** SciUnitHeaderCell **/
+  /** SciUnitHeaderCell * */
   render : function() {
     SelectorHeaderCell.__super__.render.apply(this);
     var self = this;
@@ -3769,7 +3795,7 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
       e.preventDefault();
       e.stopPropagation();
       self.clearSearch();
-//      self.collection.fetch({ reset: true });
+// self.collection.fetch({ reset: true });
     });
     
     this.filterIcon.click(function(e){
@@ -3795,13 +3821,18 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
 
 /**
  * Return an array for backgrid column descriptors.
- * @param {Object} fields_from_rest - hash of fields for the current dataset:
- *    field properties { visibility: [array of strings], title: a label for
- *    the field, order: display order of the field }
- * @param {Object} optionalHeaderCell - a Backgrid.HeaderCell to use for each
- *    column
- * @param {Object} options - a hash of { fieldKey: [custom cell: extend
- *    Backgrid.Cell] } to map custom cell implementations to fields
+ * 
+ * @param {Object}
+ *          prop - hash of field properties from REST metadata: field properties {
+ *          visibility: [array of strings], title: a label for the field, order:
+ *          display order of the field , data_type: determines the type of header
+ *          cell }
+ * @param {Object}
+ *          optionalHeaderCell - a Backgrid.HeaderCell to use for each column
+ * @param {string}
+ *          key - field information key in the metahash
+ * @param {array}
+ *          orderStack - for rendering ordered columns
  */
 var createBackgridColumn = Iccbl.createBackgridColumn = 
   function(key, prop, _orderStack, optionalHeaderCell ){
@@ -3810,42 +3841,39 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   var column = {};
   var visible = _.has(prop, 'visibility') && 
                     _.contains(prop['visibility'], 'list');
-  var backgridCellType = 'string';
-  var cell_options = null;
-  var ui_type = prop['ui_type'];
-  if(!_.isUndefined(ui_type)){
-    ui_type = ui_type.toLowerCase();
-  }
-  
-  if(ui_type == 'date'){
-    backgridCellType = Backgrid.DateCell;
-  }
-  if (!_.isEmpty(prop['backgrid_cell_type'])) {
-    backgridCellType = prop['backgrid_cell_type'];
-    cell_options = prop['backgrid_cell_options'];
+
+  var data_type = _.isEmpty(prop.data_type)?'string':prop.data_type.toLowerCase();
+  var display_type = _.isEmpty(prop.display_type)?data_type:prop.display_type.toLowerCase();
+  console.log(key, 'data_type', data_type, 'display_type', display_type, prop);
+  var cell_options;
+  if(_.has(prop,'display_options') && ! _.isEmpty(prop.display_options)){
+    cell_options = prop['display_options'];
     try{
       cell_options = JSON.parse(cell_options);
     }catch(e){
-      console.log('warn: backgrid_cell_options is not JSON parseable, column: ' +
+      console.log('warn: display_options is not JSON parseable, column: ' +
           key + ', options: ' + cell_options);      
     }
-    
-    try {
-      var klass = Iccbl.stringToFunction(prop['backgrid_cell_type']);
-      if (!_.isUndefined(klass)) {
-        backgridCellType = klass;
-        if(!_.isUndefined(cell_options)){
-          var _specialized_cell = klass.extend(cell_options);
-          backgridCellType = _specialized_cell;
-        }
-      }
-    } catch(ex) {
-      var msg = ('----for: field: ' + key + 
-          ', no Iccbl class found for type: ' + 
-          prop['backgrid_cell_type'] + 
-          ', this may be a Backgrid cell type');
-      console.log(msg + ': ' + JSON.stringify(ex));
+  } 
+  var edit_type = _.isEmpty(prop.edit_type)?display_type:prop.edit_type.toLowerCase();
+
+  var backgridCellType = 'string';
+  var typeMap = {
+    'date': Backgrid.DateCell,
+    'link': Iccbl.LinkCell,
+    'siunit': Iccbl.SciUnitsCell,
+    'float': 'Number',
+    'decimal': Iccbl.DecimalCell
+  }
+  
+  if(_.has(typeMap,display_type)){
+    console.log('field', key, display_type, 'typemap',typeMap[display_type])
+    var backgridCellType = typeMap[display_type];
+    if(!_.isUndefined(cell_options)){
+      backgridCellType = backgridCellType.extend(cell_options);
     }
+  }else{
+    console.log('no special cell type for', data_type);
   }
   
   column = _.extend(column, {
@@ -3871,44 +3899,39 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     column['headerCell'] = optionalHeaderCell;
   }else{
     // More specific header cell, if available
-    if(ui_type == 'string'){
+    if(data_type == 'string'){
       column['headerCell'] = TextHeaderCell;
-    }else if(ui_type == 'integer'
-      || ui_type == 'float'){
-      var headerCell;
-      if(prop['backgrid_cell_type'] && 
-          prop['backgrid_cell_type']=='Iccbl.SciUnitsCell'){          
-        if(!cell_options.symbol){
-          console.log('Error constructing SciUnit header cell: ' +
-              'missing required "symbol" backgrid_cell_option');
-        }
-        else{
-          headerCell = SciUnitHeaderCell;
-          // Note: we actually need the column instance to properly initialize
-          // an instance here; would require override of HeaderRow.makeCell
-          //            headerCell = new SciUnitHeaderCell({
-          //              column: key,
-          //              collection: this.collection,
-          //              symbol: cell_options.symbol,
-          //              multiplier: multiplier
-          //            });
-        }
-      }
+    }
+    else if(data_type == 'integer'
+      || data_type == 'float'
+      || data_type == 'decimal' ){
+      var headerCell = NumberHeaderCell;
       
-      if(!headerCell){
-        headerCell = NumberHeaderCell;
+      if(display_type == 'siunit'){
+        headerCell = SciUnitHeaderCell;
+        if(!cell_options.symbol){
+          var msg = ('Error constructing SIUnit header cell: ' +
+              'missing required "symbol" backgrid_cell_option');
+          Iccbl.appModel.error('error: ' + e);
+        }
+        
       }
       column['headerCell'] = headerCell;
-    }else if( ui_type == 'select' 
-      || ui_type == 'radio'
-      || ui_type == 'checkboxes' ){
-      column['headerCell'] = SelectorHeaderCell;
     }
-    else if( ui_type == 'date'){
+    else if( data_type == 'date'){
       column['headerCell'] = DateHeaderCell;
     }
-    else if( ui_type == 'boolean'){
+    else if( data_type == 'boolean'){
       column['headerCell'] = BooleanHeaderCell;
+    }
+
+    if( edit_type == 'select' 
+      || edit_type == 'multiselect' ){
+      column['headerCell'] = SelectorHeaderCell;
+    }
+    
+    if(!_.has(column, 'headerCell')){
+      console.log('no special header cell found for dt: ', data_type,'edit_type', edit_type);
     }
     
   }
@@ -3939,7 +3962,7 @@ var createBackgridColModel = Iccbl.createBackgridColModel =
         i++;
       }
     } else {
-        //console.log('field not visible in list view: ' + key)
+        // console.log('field not visible in list view: ' + key)
     }
   });
   
@@ -3948,8 +3971,6 @@ var createBackgridColModel = Iccbl.createBackgridColModel =
   colModel.sort();
   return colModel;
 };
-
-
 
 
 return Iccbl;

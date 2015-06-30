@@ -2,7 +2,6 @@ define([
     'jquery',
     'underscore',
     'backbone',
-//    'backbone_modelbinder',
     'backgrid',
     'iccbl_backgrid',
     'layoutmanager',
@@ -16,12 +15,18 @@ define([
 	
 	var DetailView = Backbone.Layout.extend({
 	
+	  /**
+	   * args:
+	   * this.model - implicit as the first argument the constructor
+	   * schema - resource schema hash/object
+	   * schema.detailKeys() returns the metahash field keys 'detail' in 'visibility'
+	   */
 	  initialize: function(args) {
 	    var self = this;
       var schema = args.schema || this.model.resource.schema;
       
-//      var buttons = this.buttons = 
-//          args.buttons || ['edit','delete','download','history','back'];
+      //      var buttons = this.buttons = 
+      //          args.buttons || ['edit','delete','download','history','back'];
       var buttons = this.buttons = args.buttons || ['download','history','back'];
       
       if(appModel.hasPermission(self.model.resource.key, 'edit')){
@@ -40,27 +45,10 @@ define([
       var nestedLists = this.nestedLists = {};
       _.each(keys, function(key) {
         var fi = schema.fields[key];
-        var ui_type = _.isEmpty(fi.ui_type)?'string':fi.ui_type.toLowerCase();
-
-        if(ui_type === 'nested'){
-          nestedModels[key] = new Backbone.Model(self.model.get(key));
-          nestedModels[key].resourceId = fi.nested_resource || key;
-        }
-        if(ui_type === 'nested_list'){
-          nestedLists[key] = {};
-          nestedLists[key].list = self.model.get(key);
-          nestedLists[key].resourceId = fi.nested_resource || key;
-          if(!nestedLists[key].list || nestedLists[key].list.length == 0){
-            delete nestedLists[key];
-            self.model.unset(key); // to signal empty
-          }else if (nestedLists[key].length==1) {
-            nestedModels[key] = nestedLists[key][0];
-            nestedModels[key].resourceId = nestedLists[key].resourceId;
-            delete nestedLists[key];
-            self.model.unset(key); // to signal empty
-          }
-        }
-
+        var data_type = _.isEmpty(fi.data_type)?'string':fi.data_type.toLowerCase();
+        var display_type = _.isEmpty(fi.display_type)?data_type:fi.display_type.toLowerCase();
+        var edit_type = _.isEmpty(fi.edit_type)?display_type:fi.edit_type.toLowerCase();
+        
         // Default binding
         bindings['#'+key] = {
           observe: key,
@@ -73,115 +61,139 @@ define([
         };
         
         // cell type specific render:
-        // backgrid_cell_type has precedence
-        if(!_.isEmpty(fi['backgrid_cell_type'])){
-          var cell_options;
-          if(!_.isEmpty(fi['backgrid_cell_options'])){
-            cell_options = fi['backgrid_cell_options'];
-            try{
-              cell_options = JSON.parse(cell_options);
-            }catch(e){
-              console.log('warn: backgrid_cell_options is not JSON parseable, column: ' +
-                  key + ', options: ' + cell_options);
-            }
+        // display_type has precedence
+        var cell_options;
+        if(!_.isEmpty(fi['display_options'])){
+          cell_options = fi['display_options'];
+          try{
+            cell_options = JSON.parse(cell_options);
+          }catch(e){
+            console.log('warn: display_options is not JSON parseable, column: ' +
+                key + ', options: ' + cell_options);
           }
+        }
+        
+        if(display_type == 'date'){
+          bindings['#'+key].onGet = function(value){
+            try{
+              var date = new Date(value);
+              var month = (date.getUTCMonth()+1);
+              if(month < 10) month = '0' + month;
+              var day = date.getUTCDate();
+              if(day < 10) day = '0' + day;
+              return date.getUTCFullYear() 
+                + '-' + month
+                + '-' + day;
+            }catch(e){
+              console.log('warn: unable to parse date value: ' + key + ', ' + value );
+            }
+            return value;
+          };
           
-          if(fi.backgrid_cell_type == 'Iccbl.SciUnitsCell'){
-            var formatter = new Iccbl.SciUnitsFormatter(cell_options)
-            bindings['#'+key].onGet = function(value){
-              return formatter.fromRaw(value);
-            }
-          }else if(fi.backgrid_cell_type == 'Iccbl.DecimalCell'){
-            var formatter = new Iccbl.DecimalFormatter(cell_options);
-            bindings['#'+key].onGet = function(value){
-              return formatter.fromRaw(value);
-            }
-          }else if(fi.backgrid_cell_type == 'Iccbl.LinkCell'){
-              var c_options = _.extend({
-                hrefTemplate: '#',
-                target: '_self'
-              }, cell_options );                
-              
-              // Backward compatability: Check for non-json backgrid_cell_options.
-              // interpret as simple string to be interpolated, and not a JSON object.
-              if( c_options.hrefTemplate == '#' && 
-                  _.has(fi,'backgrid_cell_options')) {
-                // NOTE: format for backgrid cell options is "/{attribute_key}/"
-                // NOTE: interpreting *all* links as *hash* values only, for now - 
-                // TODO: make this switchable, using a flag in c_options
-                c_options.hrefTemplate = window.location.pathname + '#' + fi['backgrid_cell_options'];
-                c_options.target = '_self';
-              } 
-              var interpolatedVal = Iccbl.replaceTokens(self.model,c_options.hrefTemplate);
- 
-              bindings['#'+key].updateMethod = 'html';
-              var originalOnGet = bindings['#'+key].onGet;
-              bindings['#'+key].onGet = function(rawValue){
-                rawValue = originalOnGet(rawValue);
-                if(false && Iccbl.appModel.DEBUG) 
-                  console.log('urilist, raw value: ' + rawValue  + ', ' + interpolatedVal 
-                    + ', hrefTemplate: ' + c_options.hrefTemplate);
-                
-                if(rawValue && rawValue != '-'){
-                  var _html = ( '<a ' + 
-                      'id="link-' + key + '" ' + 
-                      'href="' + interpolatedVal + '" ' +
-                      'target="' + c_options.target + '" ' +
-                      'tabIndex=-1 ' +
-                      '>' + rawValue + '</a>'
-                      );
-                  return _html;
-                }
-                return rawValue;
-              };
-            
-          }else if(fi.backgrid_cell_type == 'Iccbl.UriListCell'){
-
+        }else if(display_type == 'siunit'){
+          var formatter = new Iccbl.SciUnitsFormatter(cell_options)
+          bindings['#'+key].onGet = function(value){
+            return formatter.fromRaw(value);
+          }
+        }else if(display_type == 'decimal'){
+          var formatter = new Iccbl.DecimalFormatter(cell_options);
+          bindings['#'+key].onGet = function(value){
+            return formatter.fromRaw(value);
+          }
+        }else if(display_type == 'link' && data_type != 'list' ){
             var c_options = _.extend({
-              hrefTemplate: 'http//',
-              target: '_blank'
-            }, cell_options );
+              hrefTemplate: '#',
+              target: '_self'
+            }, cell_options );                
+            
+            // Backward compatability: Check for non-json backgrid_cell_options.
+            // interpret as simple string to be interpolated, and not a JSON object.
+            if( c_options.hrefTemplate == '#' && 
+                _.has(fi,'display_options')) {
+              // NOTE: format for backgrid cell options is "/{attribute_key}/"
+              // NOTE: interpreting *all* links as *hash* values only, for now - 
+              // TODO: make this switchable, using a flag in c_options
+              c_options.hrefTemplate = window.location.pathname + '#' + fi['display_options'];
+              c_options.target = '_self';
+            } 
+            var interpolatedVal = Iccbl.replaceTokens(self.model,c_options.hrefTemplate);
+ 
             bindings['#'+key].updateMethod = 'html';
+            var originalOnGet = bindings['#'+key].onGet;
             bindings['#'+key].onGet = function(rawValue){
-              if(Iccbl.appModel.DEBUG) 
-                console.log('urilist, raw value: ' + rawValue 
+              rawValue = originalOnGet(rawValue);
+              if(false && Iccbl.appModel.DEBUG) 
+                console.log('urilist, raw value: ' + rawValue  + ', ' + interpolatedVal 
                   + ', hrefTemplate: ' + c_options.hrefTemplate);
               
-              if(rawValue && !_.isEmpty(rawValue) && rawValue != '-'){
-                var i = 0;
-                var _html = '';
-                _.each(rawValue, function(val){
-                  var interpolatedVal = Iccbl.replaceTokens(self.model,c_options.hrefTemplate,val);
-                  if(i>0) _html += ',';
-                  _html += ( '<a ' + 
-                      'id="link-' + key + '-'+ i + '" ' + 
-                      'href="' + interpolatedVal + '" ' +
-                      'target="' + c_options.target + '" ' +
-                      '>' + val + '</a>'
-                      );
-                  i++;
-                });
+              if(rawValue && rawValue != '-'){
+                var _html = ( '<a ' + 
+                    'id="link-' + key + '" ' + 
+                    'href="' + interpolatedVal + '" ' +
+                    'target="' + c_options.target + '" ' +
+                    'tabIndex=-1 ' +
+                    '>' + rawValue + '</a>'
+                    );
                 return _html;
               }
-              return '-';
+              return rawValue;
             };
-           
-          }else if(fi.backgrid_cell_type == 'Iccbl.ImageCell'){
-            console.log('todo: implement ImageCell');
-          }else if(fi.backgrid_cell_type == 'Iccbl.EditCell'){
-            // do nothing, "edit" cells link to self, are for List usage
-          }else{
-            var msg = 'key: ' + key + ', unknown backgrid_cell_type: ' 
-              + fi.backgrid_cell_type + JSON.stringify(fi);
-            if(Iccbl.appModel.DEBUG) console.log(msg + ', ' + self.model.resource.key );
-            appModel.error(msg);
-          }
           
+        }else if(display_type == 'link' && data_type == 'list'){
 
-        } // some ui_type's; for if backgrid_cell_type has not been defined
-        else if(ui_type == 'select' 
-                  || ui_type == 'radio'
-                  || ui_type == 'checkboxes' ){
+          var c_options = _.extend({
+            hrefTemplate: 'http//',
+            target: '_blank'
+          }, cell_options );
+          bindings['#'+key].updateMethod = 'html';
+          bindings['#'+key].onGet = function(rawValue){
+            if(Iccbl.appModel.DEBUG) 
+              console.log('urilist, raw value: ' + rawValue 
+                + ', hrefTemplate: ' + c_options.hrefTemplate);
+            
+            if(rawValue && !_.isEmpty(rawValue) && rawValue != '-'){
+              var i = 0;
+              var _html = '';
+              _.each(rawValue, function(val){
+                var interpolatedVal = Iccbl.replaceTokens(self.model,c_options.hrefTemplate,val);
+                if(i>0) _html += ',';
+                _html += ( '<a ' + 
+                    'id="link-' + key + '-'+ i + '" ' + 
+                    'href="' + interpolatedVal + '" ' +
+                    'target="' + c_options.target + '" ' +
+                    '>' + val + '</a>'
+                    );
+                i++;
+              });
+              return _html;
+            }
+            return '-';
+          };
+        }else if(display_type == 'image'){
+          console.log('todo: implement ImageCell');
+        
+        // FIXME: "nested" and "nested_list" are unused 20150629 after ui_type refactor to data_type
+        }else if(display_type === 'nested'){
+            nestedModels[key] = new Backbone.Model(self.model.get(key));
+            nestedModels[key].resourceId = fi.nested_resource || key;
+        }else if(display_type === 'nested_list'){
+            nestedLists[key] = {};
+            nestedLists[key].list = self.model.get(key);
+            nestedLists[key].resourceId = fi.nested_resource || key;
+            if(!nestedLists[key].list || nestedLists[key].list.length == 0){
+              delete nestedLists[key];
+              self.model.unset(key); // to signal empty
+            }else if (nestedLists[key].length==1) {
+              nestedModels[key] = nestedLists[key][0];
+              nestedModels[key].resourceId = nestedLists[key].resourceId;
+              delete nestedLists[key];
+              self.model.unset(key); // to signal empty
+            }
+        }else{
+          console.log('field', key,'using default display for display_type:',display_type);
+        }
+        
+        if(edit_type == 'select' || edit_type == 'multiselect' ){
           try{
             var vocabulary = Iccbl.appModel.getVocabulary(fi.vocabulary_scope_ref);
             if(vocabulary && !_.isUndefined(vocabulary)){
@@ -201,25 +213,7 @@ define([
               + fi.key + ', ' + fi.vocabulary_scope_ref);
           }
 
-        }else if(ui_type == 'date'){
-          bindings['#'+key].onGet = function(value){
-            try{
-              var date = new Date(value);
-              var month = (date.getUTCMonth()+1);
-              if(month < 10) month = '0' + month;
-              var day = date.getUTCDate();
-              if(day < 10) day = '0' + day;
-              return date.getUTCFullYear() 
-                + '-' + month
-                + '-' + day;
-            }catch(e){
-              console.log('warn: unable to parse date value: ' + key + ', ' + value );
-            }
-            return value;
-          };
-          
         }
-        
 
         // Also build a binding hash for the titles
         schemaBindings['#title-'+key] = {
@@ -285,19 +279,6 @@ define([
               ));
           var commentFields = _.pick(resource.schema.fields, ['username','date_time','comment']);
           var columns = Iccbl.createBackgridColModel(commentFields);
-          
-//          var date_col = _.find(columns, function(column){
-//            return column['name'] == 'date_time';
-//          });
-//          if(!_.isUndefined(date_col)){
-////            date_col.cell =new Iccbl.EditCell();
-//            date_col.cell = new Iccbl.EditCell({
-//              clickHandler: function(model){
-//                console.log('clickhandler for model, ' + model.get('toString'));
-//              }
-//            });
-//          }
-          
           var view = new Backgrid.Grid({
             columns: columns,
             collection: collection,
@@ -313,27 +294,6 @@ define([
           view.$el.addClass('nested');
         });
       }
-
-//      _.each(self.detailKeys, function(key) {
-//        var schema = self.model.resource.schema;
-//        var fi = schema.fields[key];
-//        if(fi.backgrid_cell_type == 'Iccbl.LinkCell'){
-//          if( _.has(fi,'backgrid_cell_options')) {
-//            // NOTE: format for backgrid cell options is "/{attribute_key}/"
-//            var backgrid_cell_options = fi['backgrid_cell_options'];
-//            var _route = Iccbl.replaceTokens(self.model,backgrid_cell_options);
-//            
-//            // FIXME: would rather add this to the backbone "events" hash, but that is not working
-//            $('#link-'+key).click(function(e){
-//              e.preventDefault();
-//              console.log('route: ' + _route);
-//              appModel.router.navigate(_route, {trigger:true});
-//            });
-//          }else{
-//            console.log('no options defined for link cell');
-//          }
-//        }
-//      });
 
       return this;
     },

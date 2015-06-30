@@ -8,12 +8,10 @@ require.config({
     jquery: 'libs/jquery',
     underscore: 'libs/underscore',
     backbone: 'libs/backbone',
-//    backbone_pageable: 'libs/backbone-pageable',
     'backbone.paginator': 'libs/backbone.paginator',
     backgrid: 'libs/backgrid',
     backgrid_filter: 'libs/backgrid-filter',
     backgrid_paginator: 'libs/backgrid-paginator',
-//    backgrid_select_all: 'libs/backgrid-select-all',
     backbone_stickit: 'libs/backbone.stickit',
     backbone_modelbinder: 'libs/Backbone.ModelBinder',
     backbone_forms: 'libs/backbone-forms', // TODO: evaluating vs. backbone.stickit
@@ -50,10 +48,6 @@ require.config({
       deps: ['backgrid', 'backbone', 'underscore', 'jquery'],
       exports: 'BackgridFilter'
     },
-//    backgrid_paginator: {
-//      deps: ['backgrid', 'backbone', 'underscore', 'jquery', 'backbone.paginator'],
-//      exports: 'BackgridPaginator'
-//    },
     backgrid_select_all: {
         deps: ['backgrid', 'backbone', 'underscore', 'jquery'],
       exports: 'BackgridSelectAll'

@@ -69,7 +69,7 @@ from reports import LIST_DELIMITER_SQL_ARRAY,  \
 from reports.api import ManagedModelResource, ManagedResource, ApiLogResource, \
     UserGroupAuthorization, ManagedLinkedResource, log_obj_update, \
     UnlimitedDownloadResource, IccblBaseResource, VocabulariesResource, \
-    MetaHashResource
+    MetaHashResource, UserResource
 from reports.models import MetaHash, Vocabularies, ApiLog
 from reports.serializers import CursorSerializer, LimsSerializer, XLSSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource
@@ -94,7 +94,7 @@ logger = logging.getLogger(__name__)
 def _get_raw_time_string():
   return timezone.now().strftime("%Y%m%d%H%M%S")
     
-class ScreensaverUserResource(SqlAlchemyResource, ManagedModelResource):    
+class ScreensaverUserResourceOld(SqlAlchemyResource, ManagedModelResource):    
 
     class Meta:
         queryset = ScreensaverUser.objects.all()
@@ -196,8 +196,10 @@ class ScreensaverUserResource(SqlAlchemyResource, ManagedModelResource):
             _admin = self.bridge['administrator_user']
             _sru = self.bridge['screening_room_user']
             _lh = self.bridge['lab_head']
-            __sru_fr = self.bridge['screening_room_user_facility_usage_role']
-
+            _la = self.bridge['lab_affiliation']
+            _sru_fr = self.bridge['screening_room_user_facility_usage_role']
+            
+            _lhsu = _su.alias('lhsu')
             
             base_query_tables = ['screensaver_user'] 
             custom_columns = {
@@ -230,6 +232,13 @@ class ScreensaverUserResource(SqlAlchemyResource, ManagedModelResource):
                             func.array_agg(_s.c.facility_id),LIST_DELIMITER_SQL_ARRAY)]).\
                         select_from(_s.join(_cl,_s.c.screen_id==_cl.c.screen_id)).\
                         where(_cl.c.collaborator_id==_su.c.screensaver_user_id),
+                'lab_name':
+                    select([func.concat(_lhsu.c.last_name,', ',_lhsu.c.first_name,' - ',_la.c.affiliation_name)]).\
+                    select_from(
+                        _la.join(_lh,_la.c.lab_affiliation_id==_lh.c.lab_affiliation_id).\
+                        join(_lhsu, _lh.c.screensaver_user_id==_lhsu.c.screensaver_user_id).\
+                        join(_sru,_lh.c.screensaver_user_id==_sru.c.lab_head_id )).\
+                    where(_sru.c.screensaver_user_id==_su.c.screensaver_user_id),
                 'facility_usage_roles': 
                     select([func.array_to_string(
                             func.array_agg(_sru_fr.c.facility_usage_role),LIST_DELIMITER_SQL_ARRAY)]).\
@@ -2003,14 +2012,16 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
     data_type_lookup = {
         'partition_positive_indicator': {
             'vocabulary_scope_ref': 'resultvalue.partitioned_positive',
-            'ui_type': 'Select'
+            'data_type': 'string',
+            'edit_type': 'select'
             },
         'boolean_positive_indicator': {
-            'ui_type': 'boolean' 
+            'data_type': 'boolean' 
             },
         'confirmed_positive_indicator': {
             'vocabulary_scope_ref': 'resultvalue.confirmed_positive_indicator',
-            'ui_type': 'Select' 
+            'data_type': 'string',
+            'edit_type': 'select' 
             },
     }
             
@@ -2028,7 +2039,7 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
                 # translate the datacolumn definitions into field information definitions
                 field_defaults = {
                     'visibility': ['list','detail'],
-                    'ui_type': 'string',
+                    'data_type': 'string',
                     'filtering': True,
                     'scope': 'datacolumn.screenresult-%s' % screenresult.screen.facility_id
                     }
@@ -2042,7 +2053,7 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
                 max_ordinal += dc.ordinal + 1
                 field_defaults = {
                     'visibility': ['api'],
-                    'ui_type': 'string',
+                    'data_type': 'string',
                     'filtering': True,
                     }
                 
@@ -2089,12 +2100,11 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
         _dict['scope'] = 'datacolumn.screenresult-%s' % screen_facility_id
         if dc.data_type == 'numeric':
             if _dict.get('decimal_places', 0) > 0:
-                _dict['ui_type'] = 'float'
-                _dict['backgrid_cell_type'] = 'Iccbl.DecimalCell'
-                _dict['backgrid_cell_options'] = \
+                _dict['data_type'] = 'decimal'
+                _dict['display_options'] = \
                     '{ "decimals": %s }' % _dict['decimal_places']
             else:
-                _dict['ui_type'] = 'integer'
+                _dict['data_type'] = 'integer'
         if dc.data_type in self.data_type_lookup:
             _dict.update(self.data_type_lookup[dc.data_type])
         return (columnName,_dict)
@@ -2155,20 +2165,22 @@ class DataColumnResource(ManagedModelResource):
         
         field_defaults = {
             'visibility': ['list','detail'],
-            'ui_type': 'string',
+            'data_type': 'string',
             'filtering': True,
             }
         data_type_lookup = {
             'partition_positive_indicator': {
                 'vocabulary_scope_ref': 'resultvalue.partitioned_positive',
-                'ui_type': 'Select'
+                'data_type': 'string',
+                'edit_type': 'select'
                 },
             'boolean_positive_indicator': {
-                'ui_type': 'boolean' 
+                'data_type': 'boolean' 
                 },
             'confirmed_positive_indicator': {
                 'vocabulary_scope_ref': 'resultvalue.confirmed_positive_indicator',
-                'ui_type': 'Select' 
+                'data_type': 'string',
+                'edit_type': 'select' 
                 },
         }
         
@@ -2187,12 +2199,12 @@ class DataColumnResource(ManagedModelResource):
         
         if dc.data_type == 'numeric':
             if _dict.get('decimal_places', 0) > 0:
-                _dict['ui_type'] = 'float'
+                _dict['data_type'] = 'decimal'
                 _dict['backgrid_cell_type'] = 'Iccbl.DecimalCell'
-                _dict['backgrid_cell_options'] = \
+                _dict['display_options'] = \
                     '{ "decimals": %s }' % _dict['decimal_places']
             else:
-                _dict['ui_type'] = 'integer'
+                _dict['data_type'] = 'integer'
         if dc.data_type in data_type_lookup:
             _dict.update(data_type_lookup[dc.data_type])
             
@@ -3527,6 +3539,308 @@ class LibraryCopyResource(SqlAlchemyResource, ManagedModelResource):
             return False
         return True
 
+     
+     
+class ScreensaverUserResource(SqlAlchemyResource, ManagedModelResource):    
+
+    class Meta:
+        queryset = ScreensaverUser.objects.all()
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= UserGroupAuthorization()
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+        excludes = ['digested_password']
+        resource_name = 'screensaveruser'
+        max_limit = 10000
+
+    def __init__(self, **kwargs):
+#        self.
+        self.user_resource = None
+        super(ScreensaverUserResource,self).__init__(**kwargs)
+
+    def prepend_urls(self):
+        return [
+            # override the parent "base_urls" so that we don't need to worry about schema again
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+
+            url((r"^(?P<resource_name>%s)/"
+                 r"(?P<screensaver_user_id>([\d]+))%s$") 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ]    
+
+    def build_schema(self):
+        
+        schema = super(ScreensaverUserResource,self).build_schema()
+        logger.info(str(('--------------at schema1', schema['fields']['usergroups'])))
+        
+        sub_schema = self.get_user_resource().build_schema();
+        logger.info(str(('--------------at screensaver_user', sub_schema['fields']['usergroups'])))
+        fields = {}
+        fields.update(sub_schema['fields'])
+        for key,val in schema['fields'].items():
+            if key in fields:
+                fields[key].update(val)
+            else:
+                fields[key] = val
+        
+        logger.info(str(('--------------at schema2', fields['usergroups'])))
+#         fields.update(schema['fields'])
+        logger.info(str(('--------------at schema3', fields['usergroups'])))
+        schema['fields'] = fields;
+        logger.info(str(('--------------at screensaver_user', schema['fields']['usergroups'])))
+        
+        return schema
+
+    def get_user_resource(self):
+        if not self.user_resource:
+            self.user_resource = UserResource()
+        return self.user_resource
+    
+    def patch_detail(self, request, **kwargs):
+        logger.info(str(('patch_detail:', kwargs)))
+        return self.put_patch_detail(request, **kwargs)
+
+    def put_detail(self, request, **kwargs):
+        logger.info(str(('put_detail:', kwargs)))
+        return self.put_patch_detail(request, **kwargs)
+    
+    def put_patch_detail(self,request,**kwargs):
+        
+        deserialized = self.deserialize(
+            request, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'),
+            data=request.body)
+        
+        screensaver_user_id = kwargs.get('screensaver_user_id', None)
+        username = kwargs.get('username', None)
+        if not (screensaver_user_id or username):
+            logger.info(str(('no screensaver_user_id or username provided',kwargs)))
+            raise NotImplementedError('must provide a screensaver_user_id or username parameter')
+        
+        try:
+            if screensaver_user_id:
+                obj = ScreensaverUser.objects.get(screensaver_user_id=screensaver_user_id)
+            if username:
+                obj = ScreensaverUser.objects.get(user__username=username)
+        except ObjectDoesNotExist,e:
+            logger.info(str(('create user: ', kwargs)))
+            
+        return self.update(obj, deserialized, **kwargs)
+            
+    def patch_list(self, request, **kwargs):
+        logger.info(str(('patch_list:', kwargs)))
+        return self.put_patch_detail(request, **kwargs)
+
+    def put_list(self,request, **kwargs):
+        logger.info(str(('put_list:', kwargs)))
+        deserialized = self.deserialize(
+            request, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'))
+        if not self._meta.collection_name in deserialized:
+            raise BadRequest(str(("Invalid data sent. missing: " , self._meta.collection_name)))
+        
+        logger.info(str(('put/patch:', deserialized)))
+        
+        return self.create_or_update(deserialized[self._meta.collection_name])
+        
+    def update(self,data,**kwargs):
+        try:
+            logger.info(str(('create_or_update', data, kwargs)))
+            
+            
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on put_list', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e  
+    
+    def get_detail(self, request, **kwargs):
+        logger.info(str(('get_detail')))
+
+        screensaver_user_id = kwargs.get('screensaver_user_id', None)
+        username = kwargs.get('username', None)
+        if not (screensaver_user_id or username):
+            logger.info(str(('no screensaver_user_id or username provided',kwargs)))
+            raise NotImplementedError('must provide a screensaver_user_id or username parameter')
+        
+        kwargs['is_for_detail']=True
+        return self.get_list(request, **kwargs)
+       
+    
+    def get_list(self,request,**kwargs):
+
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+
+        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+
+    def build_list_response(self,request, param_hash={}, **kwargs):
+        ''' 
+        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
+        @returns django.http.response.StreamingHttpResponse 
+        '''
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        is_for_detail = kwargs.pop('is_for_detail', False)
+        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = re.sub(r'[\W]+','_',filename)
+        logger.info(str(('get_list', filename, kwargs)))
+        
+        screensaver_user_id = param_hash.pop('screensaver_user_id', None)
+        if screensaver_user_id:
+            param_hash['screensaver_user_id__eq'] = screensaver_user_id
+
+        username = param_hash.pop('username', None)
+        if username:
+            param_hash['username__eq'] = username
+
+        try:
+            
+            # general setup
+             
+            schema = self.build_schema()
+          
+            manual_field_includes = set(param_hash.get('includes', []))
+            
+            if DEBUG_GET_LIST: 
+                logger.info(str(('manual_field_includes', manual_field_includes)))
+  
+            (filter_expression, filter_fields) = \
+                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+                  
+            visibilities = set()                
+            if is_for_detail:
+                visibilities.update(['detail','summary'])
+            field_hash = self.get_visible_fields(
+                schema['fields'], filter_fields, manual_field_includes, 
+                is_for_detail=is_for_detail, visibilities=visibilities)
+              
+            order_params = param_hash.get('order_by',[])
+            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
+             
+            rowproxy_generator = None
+            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
+                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+ 
+            # specific setup
+            _s = self.bridge['screen']
+            _cl = self.bridge['collaborator_link']
+            _su = self.bridge['screensaver_user']
+            _admin = self.bridge['administrator_user']
+            _sru = self.bridge['screening_room_user']
+            _lh = self.bridge['lab_head']
+            _la = self.bridge['lab_affiliation']
+            _sru_fr = self.bridge['screening_room_user_facility_usage_role']
+            _su_r = self.bridge['screensaver_user_role']
+            
+            _lhsu = _su.alias('lhsu')
+            
+            custom_columns = {
+                'name': literal_column(
+                    "screensaver_user.last_name || ', ' || screensaver_user.first_name"),
+                # TODO: redo classification
+                'classification': literal_column(
+                    "( select coalesce( user_classification, 'admin') "
+                    ' from  screensaver_user s1'
+                    ' left join screening_room_user using(screensaver_user_id) '
+                    ' where s1.screensaver_user_id = screensaver_user.screensaver_user_id)'),
+                'screens_lead':
+                    select([func.array_agg(_s.c.facility_id,LIST_DELIMITER_SQL_ARRAY)]).\
+                        select_from(_s).\
+                        where(_s.c.lead_screener_id==_su.c.screensaver_user_id),
+                'screens_lab_head':
+                    select([func.array_to_string(
+                            func.array_agg(_s.c.facility_id),LIST_DELIMITER_SQL_ARRAY)]).\
+                        select_from(_s).\
+                        where(_s.c.lab_head_id==_su.c.screensaver_user_id),
+                'screens_lead':
+                    select([func.array_to_string(
+                            func.array_agg(_s.c.facility_id),LIST_DELIMITER_SQL_ARRAY)]).\
+                        select_from(_s).\
+                        where(_s.c.lead_screener_id==_su.c.screensaver_user_id),
+                'screens_collaborator':
+                    select([func.array_to_string(
+                            func.array_agg(_s.c.facility_id),LIST_DELIMITER_SQL_ARRAY)]).\
+                        select_from(_s.join(_cl,_s.c.screen_id==_cl.c.screen_id)).\
+                        where(_cl.c.collaborator_id==_su.c.screensaver_user_id),
+                'lab_name':
+                    select([func.concat(_lhsu.c.last_name,', ',_lhsu.c.first_name,' - ',_la.c.affiliation_name)]).\
+                    select_from(
+                        _la.join(_lh,_la.c.lab_affiliation_id==_lh.c.lab_affiliation_id).\
+                        join(_lhsu, _lh.c.screensaver_user_id==_lhsu.c.screensaver_user_id).\
+                        join(_sru,_lh.c.screensaver_user_id==_sru.c.lab_head_id )).\
+                    where(_sru.c.screensaver_user_id==_su.c.screensaver_user_id),
+                'facility_usage_roles': 
+                    select([func.array_to_string(
+                            func.array_agg(_sru_fr.c.facility_usage_role),LIST_DELIMITER_SQL_ARRAY)]).\
+                        select_from(_sru_fr).\
+                        where(_sru_fr.c.screening_room_user_id==_su.c.screensaver_user_id),
+                'data_access_roles': 
+                    select([func.array_to_string(
+                            func.array_agg(_su_r.c.screensaver_user_role),LIST_DELIMITER_SQL_ARRAY)]).\
+                        select_from(_su_r).\
+                        where(_su_r.c.screensaver_user_id==_su.c.screensaver_user_id),
+                }
+
+            # delegate to the user resource
+            default_fields = ['fields.screensaveruser','fields.user']
+            _temp = { key:field for key,field in field_hash.items() 
+                if field.get('scope', None) in default_fields }
+            field_hash = _temp
+            logger.info(str(('final field hash: ', field_hash.keys())))
+            logger.info(str(('key','last_name',field_hash['last_name'])))
+            sub_columns = self.get_user_resource().build_sqlalchemy_columns(
+                field_hash.values(),
+                custom_columns=custom_columns)
+
+            base_query_tables = ['screensaver_user','reports_user','auth_user'] 
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                custom_columns=sub_columns )
+
+            # build the query statement
+            _au = self.bridge['auth_user']
+            _up = self.bridge['reports_userprofile']
+            
+            j = _su
+            j = _su.join(_up,_su.c.user_id==_up.c.id).\
+                    join(_au,_up.c.user_id==_au.c.id)
+            stmt = select(columns.values()).select_from(j)
+
+            # general setup
+             
+            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+            
+            title_function = None
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                title_function = lambda key: field_hash[key]['title']
+            
+            return self.stream_response_from_statement(
+                request, stmt, count_stmt, filename, 
+                field_hash=field_hash, 
+                param_hash=param_hash,
+                is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function  )
+             
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on get_list', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e  
+
        
         
 class ReagentResource(SqlAlchemyResource, ManagedModelResource):
@@ -4194,170 +4508,6 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
 
     def get_list(self, request, **kwargs):
         return self.get_full_reagent_resource().get_list(request, **kwargs)
-    
-
-#         ### FIXME: hack: get the search term; get the 1st well or plate, 
-#         # then get the library for that well or plate            
-#         query_params = request.GET.copy()
-#         # Update with the provided kwargs.
-#         query_params.update(kwargs)
-#         logger.info(str(('query_params', query_params, 'kwargs', kwargs)))
-#
-#         lookup_sep = django.db.models.constants.LOOKUP_SEP
-#         wells = None
-#         if query_params:
-#             expressions = []
-#             filtered_fields = []
-#             for filter_expr, value in query_params.items():
-#                 if lookup_sep not in filter_expr:
-#                     continue;
-#                 filter_bits = filter_expr.split(lookup_sep)
-#                 if len(filter_bits) != 2:
-#                     logger.warn(str(('filter expression must be of the form '
-#                         '"field_name__expression"',
-#                         filter_expr, filter_bits)))
-#                 field_name = filter_bits[0]
-#                 filter_type = filter_bits[1]
-#                 value = SqlAlchemyResource.filter_value_to_python(
-#                     value, query_params, filter_expr, filter_type)  
-#                 
-#                 logger.info(str(('search', field_name,filter_type,value)))
-#                 if field_name == 'plate_number':
-#                     if filter_type == 'in' or filter_type == 'range':
-#                         wells = Well.objects.filter(plate_number=value[0])
-#                         break
-#                 if field_name == 'well_id':
-#                     wells = Well.objects.filter(well_id=value[0])
-#                     break
-#             if wells:
-#                 if wells.count() < 1:
-#                     raise NotImplementedError('must provide well or plate number '
-#                         'search information if not searching within a library')               
-#                 else:
-#                     ## HACK: only finding the first well/library
-#                     kwargs['library_short_name'] = wells[0].library.short_name   
-    
-        # TODO: eliminate dependency on library (for schema determination)
-#         library = None
-#         library_short_name = kwargs.pop('library_short_name', None)
-#         if not library_short_name:
-#             logger.info(str(('no library_short_name provided')))
-#         else:
-#             kwargs['library_short_name__eq'] = library_short_name
-#             library = Library.objects.get(short_name=library_short_name)
-# 
-#         well_id = kwargs.pop('well_id', None)
-#         if well_id:
-#             kwargs['well_id__eq'] = well_id
-#             if not library:
-#                 library = Well.objects.get(well_id=well_id).library
-# 
-#         if not library:
-#             raise NotImplementedError('must provide a library_short_name parameter')    
-#         else:
-#             kwargs['library_short_name'] = library.short_name
-#         return self.get_full_reagent_resource().get_list(request, **kwargs)
-        
-#     def obj_get_list(self, bundle, **kwargs):    
-# 
-#         if 'library_short_name' in kwargs:
-#             library_short_name = kwargs.pop('library_short_name')
-#             try:
-#                 library = Library.objects.get(short_name=library_short_name)
-#                 reagent_resource = self.get_reagent_resource(library)
-#                 
-#                 reagent_query = reagent_resource.obj_get_list(bundle, **kwargs)
-#                 
-#                 
-#                 sql = ('select w.*,r.* '
-#                     'from well w left outer join ({reagent_query}) r on(r.well_id=w.well_id) '
-#                     'where w.library=%s')
-#                 sql = sql.format(reagent_query=reagent_query.query.sql_with_params())
-#                 logger.info(str(('===sql', sql)))
-#                 
-#                 cursor = connection.cursor()
-#                 cursor.execute(sql, library.library_id)
-#                 logger.info(str(('===sql2', sql)))
-#                 
-#                 
-#                 class CursorIterator:
-#                     def __init__(self, cursor):
-#                         self.cursor = cursor
-#                 
-#                     def __iter__(self):
-#                         return self
-#                 
-#                     def next(self): # Python 3: def __next__(self)
-#                         obj = cursor.fetchone()
-#                         if obj:
-#                             bundle = self.build_bundle(obj=obj,request=bundle.request)
-#                             bundle = reagent_resource.full_dehydrate(bundle)
-#                             bundle = self.full_dehydrate(bundle)
-#                             return bundle
-#                         else:
-#                             raise StopIteration
-#                 
-#                 return CursorIterator(cursor)
-#                 
-#             except Exception, e:
-#                 exc_type, exc_obj, exc_tb = sys.exc_info()
-#                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-#                 msg = str(e)
-#                 logger.warn(str(('on obj_get_list',msg,
-#                     self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
-#                 raise e 
-# #                 raise Http404(str(('err', e)))
-#                 
-#     def apply_sorting(self, obj_list, options=None):
-#         # disabled, for now
-#         return obj_list
-    
-        
-#     def get_object_list(self, request, library_short_name=None):
-#         ''' 
-#         Note: any extra kwargs are there because we are injecting them into the 
-#         global tastypie kwargs in one of the various "dispatch_" handlers assigned 
-#         through prepend_urls.  Here we can explicitly add them to the query. 
-#         
-#         '''
-#         query = super(WellResource, self).get_object_list(request);
-#         if library_short_name:
-#             query = query.filter(library__short_name=library_short_name)
-#             logger.debug(str(('get well list', library_short_name, len(query))))
-#             
-#         return query
-                    
-
-#     def dehydrate(self, bundle):
-#         
-#         library = bundle.obj.library
-#         
-#         # TODO: migrate to using "well.reagents"
-#         # FIXME: need to create a migration script that will invalidate all of the
-#         # reagent.well_id's for reagents other than the "latest released reagent"
-#         reagent_resource = self.get_reagent_resource(library)
-#         if bundle.obj.reagent_set.exists():
-#             reagent = bundle.obj.reagent_set.all()[0]            
-#             sub_bundle = reagent_resource.build_bundle(
-#                 obj=reagent, request=bundle.request)
-#             sub_bundle = reagent_resource.full_dehydrate(sub_bundle)
-#             if 'resource_uri' in sub_bundle.data:
-#                 del sub_bundle.data['resource_uri'] 
-#             bundle.data.update(sub_bundle.data)
-#         else:
-#             sub_bundle = reagent_resource.build_bundle(
-#                 obj=Reagent(), request=bundle.request)
-#             sub_bundle = reagent_resource.full_dehydrate(sub_bundle)
-#             if 'resource_uri' in sub_bundle.data:
-#                 del sub_bundle.data['resource_uri'] 
-#             bundle.data.update(sub_bundle.data)
-#         return bundle
-    
-#     def dehydrate_library(self, bundle):
-#         
-#         return self.get_library_resource().get_resource_uri(
-#             bundle_or_obj=bundle, url_name='api_dispatch_list')
-
 
     def post_list(self, request, **kwargs):
         raise NotImplementedError("Post is not implemented for ReagentResource, use patch instead")

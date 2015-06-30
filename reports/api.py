@@ -59,6 +59,7 @@ from reports.models import MetaHash, Vocabularies, ApiLog, ListLog, Permission, 
 from reports.serializers import LimsSerializer, CsvBooleanField, CSVSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.utils.profile_decorator import profile
+from db.models import ScreensaverUser
 
 
 # NOTE: tastypie.fields is required for dynamic field instances using eval
@@ -1166,7 +1167,7 @@ class ManagedResource(LoggingMixin):
                     'scope': 'fields.%s' % self._meta.resource_name,
                     'title': 'URI',
                     'description': 'URI for the record',
-                    'ui_type': 'string',
+                    'data_type': 'string',
                     'table': 'None', 
                     'visibility':[] }
             # all TP resources have an id field
@@ -1176,7 +1177,7 @@ class ManagedResource(LoggingMixin):
                     'scope': 'fields.%s' % self._meta.resource_name,
                     'title': 'ID',
                     'description': 'Internal ID for the record',
-                    'ui_type': 'string',
+                    'data_type': 'string',
                     'table':'None', 
                     'visibility':[] }
             
@@ -1211,7 +1212,8 @@ class ManagedResource(LoggingMixin):
                     MetaHash.objects.get_and_parse(
                         scope='fields.' + supertype, field_definition_scope='fields.metahash'))
                 for field in supertype_fields.values():
-                    field['table'] = supertype_resource['table']
+                    if not field['table']:
+                        field['table'] = supertype_resource['table']
                 if DEBUG_BUILD_SCHEMA: 
                     logger.info(str(('supertype_fields',supertype_fields.keys())))
                 supertype_fields.update(schema['fields'])
@@ -1316,7 +1318,7 @@ class ManagedResource(LoggingMixin):
             ##FIXME: some vocab fields are not choices fields
             if 'choices' in field and field['choices']:
                 logger.debug(str(('check choices: ', name, value, field['choices'])))
-                if field['ui_type'] != 'Checkboxes':
+                if field['data_type'] != 'list':
                     if str(value) not in field['choices']: # note: comparing as string
                         keyerrors.append(
                             str((value, 'is not one of', field['choices'])))
@@ -1464,14 +1466,6 @@ class ManagedResource(LoggingMixin):
                 msg = str(e.response)
             logger.warn(str(('==ex on get',bundle.request.path,e, msg, kwargs)))
             raise e
-#             extype, ex, tb = sys.exc_info()
-#             logger.warn(str((
-#                 'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
-#                 tb.tb_lineno, extype, ex)))
-#             logger.warn(str(('==ex on get, kwargs', kwargs, e)))
-#             raise e
-# #             raise type(e), str((type(e), e,
-# #                                 'request.path', bundle.request.path, kwargs))
 
     def _get_attribute(self, obj, attribute):
         '''
@@ -2530,6 +2524,112 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         # signal to include extra column
         return PermissionResource().dispatch('list', request, **kwargs)    
 
+    def build_schema(self):
+        
+        schema = super(UserResource,self).build_schema()
+        try:
+            if 'usergroups' in schema['fields']: # may be blank on initiation
+                schema['fields']['usergroups']['choices'] = \
+                    ['usergroup/%s' % x.name for x in UserGroup.objects.all()]
+            logger.info(str(('-------usergroups',schema['fields']['usergroups'] )))
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on get_schema', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e  
+        return schema
+
+    def get_custom_columns(self):
+
+        _up = self.bridge['reports_userprofile']
+        _p = self.bridge['reports_permission']
+        _ug = self.bridge['reports_usergroup']
+        _upp = self.bridge['reports_userprofile_permissions']
+        _ugu = self.bridge['reports_usergroup_users']
+        
+        ### TODO: work in progress - 20150617
+        # Create a recursive CTE to enumerate all groups/supergroups/subgroups
+        group_all_supergroups = \
+            UserGroupResource.recursive_supergroup_query(self.bridge)
+#             group_all_supergroups1 = group_all_supergroups.alias('gasg1')
+
+        group_all_permissions = \
+            UserGroupResource.recursive_permissions_query(self.bridge,group_all_supergroups)
+        
+        group_all_subgroups = \
+            UserGroupResource.recursive_subgroups_query(self.bridge,group_all_supergroups)
+            
+        group_all_users = \
+            UserGroupResource.recursive_group_all_users(self.bridge,group_all_subgroups)
+
+        user_all_group_permissions = select([
+            _ugu.c.userprofile_id,
+            func.array_agg(distinct(_p.c.id)).label('all_permissions')]).\
+            select_from(
+                _ugu.join(group_all_permissions,_ugu.c.usergroup_id
+                    ==group_all_permissions.c.usergroup_id)).\
+            where(_p.c.id==text('any(gap.permission_ids)')).\
+            group_by(_ugu.c.userprofile_id)
+        user_all_group_permissions = user_all_group_permissions.cte('uagp') 
+        
+        user_all_permissions = user_all_group_permissions.union(
+            select([_upp.c.userprofile_id, func.array_agg(_p.c.id)]).\
+            select_from(_p.join(_upp,_upp.c.permission_id==_p.c.id)).\
+            group_by(_upp.c.userprofile_id)).alias('uap')
+        
+        
+        #             user_all_permissions = select([
+        #                 user_all_group_permissions.c.userprofile_id,
+        #                 user_all_group_permissions.c.all_permissions]).\
+        #                 union(select([
+        #                     _upp.c.userprofile_id,
+        #                     text('array[reports_userprofile_permissions.permission_id]')]))
+        #             user_all_permissions = user_all_permissions.cte('uap')
+                         
+        _ugu1=_ugu.alias('ugu1')
+        _ugx = _ug.alias('ugx')
+        custom_columns = {
+            'resource_uri': func.concat('/reports/api/v1/user','/',text('reports_userprofile.username')),
+            'permissions': 
+                select([func.array_to_string(
+                        func.array_agg(text('inner_perms.permission')),
+                        LIST_DELIMITER_SQL_ARRAY)]).\
+                select_from(
+                    select([func.concat_ws(
+                            '/','permission',_p.c.scope,_p.c.key,_p.c.type).label('permission')
+                            ]).\
+                    select_from(_p.join(_upp,_p.c.id==_upp.c.permission_id)).\
+                    where(text('reports_userprofile.id')==_upp.c.userprofile_id).\
+                    order_by('permission').alias('inner_perms')),
+            'usergroups': 
+                select([func.array_to_string(
+                        func.array_agg(text('inner_groups.name')), 
+                        LIST_DELIMITER_SQL_ARRAY)]).\
+                select_from(
+                    select([func.concat_ws(
+                        '/','usergroup',_ugx.c.name).label('name')]).\
+                    select_from(_ugx.join(_ugu1,_ugx.c.id==_ugu1.c.usergroup_id)).\
+                    where(_ugu1.c.userprofile_id==text('reports_userprofile.id')).\
+                    order_by('name').alias('inner_groups')),
+            'all_permissions':
+                select([func.array_to_string(func.array_agg(
+                    text('innerp.permission')),LIST_DELIMITER_SQL_ARRAY)]).\
+                select_from(
+                    select([func.concat_ws(
+                            '/','permission',_p.c.scope,_p.c.key,_p.c.type).label('permission')
+                        ]).\
+                    select_from(user_all_permissions).\
+                    where(and_(
+                        user_all_permissions.c.userprofile_id==text('reports_userprofile.id'),
+                        _p.c.id==text('any(uap.all_permissions)'))
+                        ).\
+                    order_by('permission').alias('innerp')),
+            }
+
+        return custom_columns
+
     def get_detail(self, request, **kwargs):
         logger.info(str(('get_detail')))
 
@@ -2549,6 +2649,15 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
 
         return self.build_list_response(request,param_hash=param_hash, **kwargs)
 
+    def build_sqlalchemy_columns(self, fields, custom_columns=None ):
+        
+        if not custom_columns:
+            custom_columns = {}
+        custom_columns.update(self.get_custom_columns())
+        base_query_tables = ['auth_user','reports_userprofile'] 
+
+        return super(UserResource,self).build_sqlalchemy_columns(
+            fields,base_query_tables=base_query_tables,custom_columns=custom_columns)
         
     def build_list_response(self,request, param_hash={}, **kwargs):
         ''' 
@@ -2596,99 +2705,13 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             
  
             # specific setup
-            _au = self.bridge['auth_user']
-            _up = self.bridge['reports_userprofile']
-            _p = self.bridge['reports_permission']
-            _ug = self.bridge['reports_usergroup']
-            _upp = self.bridge['reports_userprofile_permissions']
-            _ugu = self.bridge['reports_usergroup_users']
-            base_query_tables = ['auth_user','reports_userprofile'] 
-            
-            ### TODO: work in progress - 20150617
-            # Create a recursive CTE to enumerate all groups/supergroups/subgroups
-            group_all_supergroups = \
-                UserGroupResource.recursive_supergroup_query(self.bridge)
-#             group_all_supergroups1 = group_all_supergroups.alias('gasg1')
 
-            group_all_permissions = \
-                UserGroupResource.recursive_permissions_query(self.bridge,group_all_supergroups)
-            
-            group_all_subgroups = \
-                UserGroupResource.recursive_subgroups_query(self.bridge,group_all_supergroups)
-                
-            group_all_users = \
-                UserGroupResource.recursive_group_all_users(self.bridge,group_all_subgroups)
-
-            user_all_group_permissions = select([
-                _ugu.c.userprofile_id,
-                func.array_agg(distinct(_p.c.id)).label('all_permissions')]).\
-                select_from(
-                    _ugu.join(group_all_permissions,_ugu.c.usergroup_id
-                        ==group_all_permissions.c.usergroup_id)).\
-                where(_p.c.id==text('any(gap.permission_ids)')).\
-                group_by(_ugu.c.userprofile_id)
-            user_all_group_permissions = user_all_group_permissions.cte('uagp') 
-            
-            user_all_permissions = user_all_group_permissions.union(
-                select([_upp.c.userprofile_id, func.array_agg(_p.c.id)]).\
-                select_from(_p.join(_upp,_upp.c.permission_id==_p.c.id)).\
-                group_by(_upp.c.userprofile_id)).alias('uap')
-            
-            
-            #             user_all_permissions = select([
-            #                 user_all_group_permissions.c.userprofile_id,
-            #                 user_all_group_permissions.c.all_permissions]).\
-            #                 union(select([
-            #                     _upp.c.userprofile_id,
-            #                     text('array[reports_userprofile_permissions.permission_id]')]))
-            #             user_all_permissions = user_all_permissions.cte('uap')
-                             
-            _ugu1=_ugu.alias('ugu1')
-            _ugx = _ug.alias('ugx')
-            custom_columns = {
-                'resource_uri': func.concat('/reports/api/v1/user','/',text('reports_userprofile.username')),
-                'permissions': 
-                    select([func.array_to_string(
-                            func.array_agg(text('inner_perms.permission')),
-                            LIST_DELIMITER_SQL_ARRAY)]).\
-                    select_from(
-                        select([func.concat_ws(
-                                '/','permission',_p.c.scope,_p.c.key,_p.c.type).label('permission')
-                                ]).\
-                        select_from(_p.join(_upp,_p.c.id==_upp.c.permission_id)).\
-                        where(text('reports_userprofile.id')==_upp.c.userprofile_id).\
-                        order_by('permission').alias('inner_perms')),
-                'usergroups': 
-                    select([func.array_to_string(
-                            func.array_agg(text('inner_groups.name')), 
-                            LIST_DELIMITER_SQL_ARRAY)]).\
-                    select_from(
-                        select([func.concat_ws(
-                            '/','usergroup',_ugx.c.name).label('name')]).\
-                        select_from(_ugx.join(_ugu1,_ugx.c.id==_ugu1.c.usergroup_id)).\
-                        where(_ugu1.c.userprofile_id==text('reports_userprofile.id')).\
-                        order_by('name').alias('inner_groups')),
-                'all_permissions':
-                    select([func.array_to_string(func.array_agg(
-                        text('innerp.permission')),LIST_DELIMITER_SQL_ARRAY)]).\
-                    select_from(
-                        select([func.concat_ws(
-                                '/','permission',_p.c.scope,_p.c.key,_p.c.type).label('permission')
-                            ]).\
-                        select_from(user_all_permissions).\
-                        where(and_(
-                            user_all_permissions.c.userprofile_id==text('reports_userprofile.id'),
-                            _p.c.id==text('any(uap.all_permissions)'))
-                            ).\
-                        order_by('permission').alias('innerp')),
-                }
-
-            columns = self.build_sqlalchemy_columns(
-                field_hash.values(), base_query_tables=base_query_tables,
-                custom_columns=custom_columns )
+            columns = self.build_sqlalchemy_columns(field_hash.values() )
 
             # build the query statement
-            
+            _au = self.bridge['auth_user']
+            _up = self.bridge['reports_userprofile']
+
             j = _up
             j = j.join(_au,_up.c.user_id==_au.c.id, isouter=True)
             stmt = select(columns.values()).select_from(j)
@@ -2779,10 +2802,26 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             django_user.is_staff = False
         
         django_user.save()
+        
+        # update the SS user
+        
+#         if bundle.obj.screensaveruser_set.all().exists():
+#             ss_user = bundle.obj.screensaveruser_set.all()[0]
+#         else:
+#             ss_user = ScreensaverUser.objects.create()
+        
+        
         return bundle
         
     def obj_create(self, bundle, **kwargs):
         bundle = super(UserResource, self).obj_create(bundle, **kwargs);
+        
+        # create the auth user
+        
+        
+        # create the SS user
+        
+        
         return bundle
 
     def hydrate(self, bundle):

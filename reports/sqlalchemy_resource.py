@@ -50,7 +50,6 @@ from db.models import Screen
 logger = logging.getLogger(__name__)
 
 
-# FIXME: Test
 class ChunkIterWrapper(object):
     ''' 
     Iterate in "chunks" of chunk_size chars.
@@ -111,35 +110,6 @@ class ChunkIterWrapper(object):
     def __iter__(self):
         return self
 
-class ChunkIterWrapper1(object):
-    ''' 
-    Iterate in "chunks" of min_iteration size (final size is still dependent on
-    length of original iteration chunk size.
-    FIXME: break streamed output into exact size (buffer remainder for next iteration)
-    FIXME: 'min_iteration' replaced with bytes
-    '''
-    def __init__(self, iter_stream, min_iteration = 1000):
-        self.iter_stream = iter_stream
-        self.min_iteration = min_iteration
-    
-    def next(self):
-        logger.info(str(('chunking')))
-        bytes = cStringIO.StringIO()
-        try:
-            for i in range(self.min_iteration):
-                bytes.write(self.iter_stream.next())
-        except StopIteration:
-            raise StopIteration
-        finally:
-            if bytes.getvalue():
-                logger.info(str(('chunk size', len(bytes.getvalue()), 'chars')))
-                return bytes.getvalue()
-            else:
-                logger.info(str(('stop iteration', bytes.getvalue())))
-                raise StopIteration
-
-    def __iter__(self):
-        return self
 
 class SqlAlchemyResource(Resource):
     '''
@@ -147,20 +117,20 @@ class SqlAlchemyResource(Resource):
     - get_list
     - get_detail
     Note: write operations not implemented
-    
-    FIXME: serialization of list fields: they are sent as concatenated strings with commas
-    FIXME: Reagent/SMR specific
     '''
     
 #     class Meta:
 #         queryset = Reagent.objects.all()
 #         serializer = LimsSerializer() # still have a serializer for error response
 
+    # get a handle to the SqlAlchemy "bridge" for its table registry and 
+    # connection handle
+    bridge = Bridge()
     
     def __init__(self, *args, **kwargs):
         # get a handle to the SqlAlchemy "bridge" for its table registry and 
         # connection handle
-        self.bridge = Bridge()
+        self.bridge = SqlAlchemyResource.bridge
         
         super(SqlAlchemyResource, self).__init__(*args, **kwargs)
 
@@ -484,7 +454,6 @@ class SqlAlchemyResource(Resource):
         logger.info(str(('filter_expression', filter_expression, filter_fields)))
         
         return (filter_expression,filter_fields)
-        
     
     @staticmethod
     def build_sqlalchemy_filters_from_hash(schema, param_hash):
@@ -495,7 +464,6 @@ class SqlAlchemyResource(Resource):
         DEBUG_FILTERS = False or logger.isEnabledFor(logging.DEBUG)
         logger.info(str(('build_sqlalchemy_filters_from_hash', param_hash)))
         lookup_sep = django.db.models.constants.LOOKUP_SEP
-
 
         if param_hash is None:
             return (None,None)
@@ -510,7 +478,9 @@ class SqlAlchemyResource(Resource):
                     continue;
                 filter_bits = filter_expr.split(lookup_sep)
                 if len(filter_bits) != 2:
-                    logger.warn(str(('filter expression must be of the form "field_name__expression"',
+                    logger.warn(str((
+                        'filter expression must be of the form '
+                        '"field_name__expression"',
                         filter_expr, filter_bits)))
                 field_name = filter_bits[0]
                 
@@ -570,21 +540,20 @@ class SqlAlchemyResource(Resource):
                     expression = column(field_name) >= value
                 elif filter_type == 'is_blank':
                     col = column(field_name)
-                    if field['ui_type'] == 'string':
+                    if field['data_type'] == 'string':
                         col = func.trim(col)
                     if value and str(value).lower() == 'true':
                         expression = col == None 
-                        if field['ui_type'] == 'string':
+                        if field['data_type'] == 'string':
                             expression = col == ''
                     else:
                         expression = col != None
-                        if ( field['ui_type'] == 'string' 
-                             or field['ui_type'] == 'list'
-                             or field['ui_type'] == 'Checkboxes' ):
+                        if ( field['data_type'] == 'string' 
+                             or field['data_type'] == 'list' ):
                             expression = col != ''
                 elif filter_type == 'is_null':
                     col = column(field_name)
-                    if field['ui_type'] == 'string':
+                    if field['data_type'] == 'string':
                         col = func.trim(col)
                     if value and str(value).lower() == 'true':
                         expression = col == None 
@@ -706,7 +675,7 @@ class SqlAlchemyResource(Resource):
         cache.clear()
 
         
-    def _cached_resultproxy(self, stmt, count_stmt, limit, offset):
+    def _cached_resultproxy(self, stmt, count_stmt, param_hash, limit, offset):
         ''' 
         ad-hoc cache for some resultsets:
         - Always returns the cache object with a resultset, either from the cache,
@@ -727,12 +696,16 @@ class SqlAlchemyResource(Resource):
             # use a hexdigest because statements can contain problematic chars 
             # for the memcache
             m = hashlib.md5()
-            compiled_stmt = str(stmt.compile())
-            logger.info(str(('compiled_stmt for hash key', compiled_stmt)))
+            compiled_stmt = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+            logger.debug(str(('compiled_stmt',compiled_stmt)))
+            if 'limit' in compiled_stmt.lower():
+                # remove limit and offset; will calculate
+                compiled_stmt = compiled_stmt[:compiled_stmt.lower().rfind('limit')]
+            logger.debug(str(('compiled_stmt for hash key', compiled_stmt)))
             key_digest = '%s_%s_%s' %(compiled_stmt, str(limit), str(offset))
             m.update(key_digest)
             key = m.hexdigest()
-            logger.info(str(('hash key:', key, limit, offset)))
+            logger.debug(str(('hash key:', key_digest, key, limit, offset)))
             cache_hit = cache.get(key)
             if cache_hit:
                 if ('stmt' not in cache_hit or
@@ -825,7 +798,7 @@ class SqlAlchemyResource(Resource):
         logger.info(str(('offset', offset, 'limit', limit)))
         conn = self.bridge.get_engine().connect()
         
-        logger.info(str(('stmt', str(stmt.compile()), 'param_hash', param_hash)))
+        logger.info(str(('stmt', str(stmt.compile(compile_kwargs={"literal_binds": True})), 'param_hash', param_hash)))
         if DEBUG_STREAMING:
             logger.info(str(('count stmt', str(count_stmt))))
         
@@ -834,7 +807,7 @@ class SqlAlchemyResource(Resource):
         if desired_format == 'application/json':
             
             if not is_for_detail and use_caching and limit > 0:
-                cache_hit = self._cached_resultproxy(stmt, count_stmt, limit, offset)
+                cache_hit = self._cached_resultproxy(stmt, count_stmt, param_hash, limit, offset)
                 if cache_hit:
                     result = cache_hit['cached_result']
                     count = cache_hit['count']
@@ -968,7 +941,7 @@ class SqlAlchemyResource(Resource):
                                     value = row[key]
                                 if value and ( field.get('json_field_type',None) == 'fields.ListField' 
                                      or field.get('linked_field_type',None) == 'fields.ListField'
-                                     or field.get('ui_type', None) == 'list' ):
+                                     or field.get('data_type', None) == 'list' ):
                                     # FIXME: need to do an escaped split
                                     if DEBUG_STREAMING: logger.info(str(('split', key, value)))
                                     if hasattr(value, 'split'):
@@ -982,7 +955,7 @@ class SqlAlchemyResource(Resource):
                                     if DEBUG_STREAMING: 
                                         logger.info(str(('field', key, value_template)))
                                     newval = interpolate_value_template(value_template, row)
-                                    if field['ui_type'] == 'image':
+                                    if field['display_type'] == 'image':
                                         # hack to speed things up:
                                         if ( key == 'structure_image' and
                                                 row.has_key('library_well_type') and
@@ -1090,7 +1063,7 @@ class SqlAlchemyResource(Resource):
                             
                             if value and ( field.get('json_field_type',None) == 'fields.ListField' 
                                  or field.get('linked_field_type',None) == 'fields.ListField'
-                                 or field.get('ui_type', None) == 'list' ):
+                                 or field.get('data_type', None) == 'list' ):
                                 value = value.split(LIST_DELIMITER_SQL_ARRAY)
                             worksheet.write(filerow, col, 
                                 csv_convert(value, delimiter=LIST_DELIMITER_XLS, 
@@ -1100,7 +1073,7 @@ class SqlAlchemyResource(Resource):
                                 value_template = field['value_template']
                                 if DEBUG_STREAMING: logger.info(str(('field', key, value_template)))
                                 newval = interpolate_value_template(value_template, row)
-                                if field['ui_type'] == 'image':
+                                if field['display_type'] == 'image':
                                     max_rows_per_file = MAX_IMAGE_ROWS_PER_XLS_FILE
                                     # hack to speed things up:
                                     if ( key == 'structure_image' and
@@ -1227,7 +1200,7 @@ class SqlAlchemyResource(Resource):
                                     value = interpolate_value_template(value_template, row)
                                 if value and ( field.get('json_field_type',None) == 'fields.ListField' 
                                      or field.get('linked_field_type',None) == 'fields.ListField'
-                                     or field.get('ui_type', None) == 'list' ):
+                                     or field.get('data_type', None) == 'list' ):
                                     value = value.split(LIST_DELIMITER_SQL_ARRAY)
 
                                 if value:
@@ -1329,7 +1302,7 @@ class SqlAlchemyResource(Resource):
                                 value = row[key]
                             if value and ( field.get('json_field_type',None) == 'fields.ListField' 
                                  or field.get('linked_field_type',None) == 'fields.ListField'
-                                 or field.get('ui_type', None) == 'list' ):
+                                 or field.get('data_type', None) == 'list' ):
                                 # FIXME: must quote special strings?
 #                                 value = '[' + ",".join(value.split(LIST_DELIMITER_SQL_ARRAY)) + ']'
                                 value = value.split(LIST_DELIMITER_SQL_ARRAY)
@@ -1342,7 +1315,7 @@ class SqlAlchemyResource(Resource):
                             if field.get('value_template', None):
                                 value_template = field['value_template']
                                 newval = interpolate_value_template(value_template, row)
-                                if field['ui_type'] == 'image': 
+                                if field['display_type'] == 'image': 
                                     if ( key == 'structure_image' and
                                             row.has_key('library_well_type') and
                                             row['library_well_type'] == 'empty' ):

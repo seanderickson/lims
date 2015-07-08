@@ -30,32 +30,34 @@ $ ./manage.py test --settings=lims.test_settings
 
 """
 
-import os
-import logging
+import cStringIO
 import json
+import logging
+import os
 
-from django.test import TestCase
 from django.contrib.auth.models import User
-from tastypie.test import ResourceTestCase, TestApiClient
-# from reports.models import Vocabularies
+from django.core.exceptions import ObjectDoesNotExist
+from django.db.utils import ProgrammingError
+from django.http.response import StreamingHttpResponse
+from django.test import TestCase
+from django.test.simple import DjangoTestSuiteRunner
+from django.test.testcases import SimpleTestCase
+from django.utils.encoding import force_text
+from tastypie import fields
 from tastypie.fields import BooleanField
+from tastypie.test import ResourceTestCase, TestApiClient
+from tastypie.utils.dict import dict_strip_unicode_keys
 
-from reports.serializers import CsvBooleanField,CSVSerializer, SDFSerializer,\
+from reports import dump_obj, HEADER_APILOG_COMMENT
+from reports.models import API_ACTION_CREATE
+from reports.dump_obj import dumpObj
+from reports.serializers import CsvBooleanField, CSVSerializer, SDFSerializer, \
     LimsSerializer, XLSSerializer
 from reports.utils.sdf2py import MOLDATAKEY
-from tastypie.utils.dict import dict_strip_unicode_keys
-from django.test.testcases import SimpleTestCase
-from django.test.simple import DjangoTestSuiteRunner
-from reports import dump_obj
-from reports.dump_obj import dumpObj
-from tastypie import fields
-
 import reports.utils.serialize
-from django.utils.encoding import force_text
-from django.core.exceptions import ObjectDoesNotExist
-import cStringIO
-from django.http.response import StreamingHttpResponse
-    
+
+
+# from reports.models import Vocabularies
 logger = logging.getLogger(__name__)
 
 BASE_URI = '/reports/api/v1'
@@ -198,8 +200,6 @@ def assert_obj1_to_obj2(
     
     keys_to_search = set(obj1.keys()) - set(keys) - set(excludes)
 
-    csvBooleanField = CsvBooleanField()
-    
     for key in keys_to_search:
         result, msgs =  equivocal(obj1[key], obj2[key])
         if not result:
@@ -209,9 +209,24 @@ def assert_obj1_to_obj2(
     return True, ('obj1:', obj1, 'obj2:', obj2)
 
 
-def find_obj_in_list(obj, item_list, **kwargs):
+def find_obj_in_list(obj, item_list, id_keys_to_check=[], **kwargs):
+    '''
+    @param id_keys_to_check is specified, then "find" the first obj in the list
+        based only on these id keys (a secondary check can be done for complete 
+        equality
+    '''
     list_msgs = []
     for item in item_list:
+        if id_keys_to_check:
+            found = item
+            for key in id_keys_to_check:
+                if key not in obj:
+                    raise ProgrammingError(str(('id key is not in obj', key, obj)))
+                if key in item and obj[key] != item[key]:
+                    found = None
+                    break
+            if found:
+                return True, (item)    
         result, msgs = assert_obj1_to_obj2(obj, item, **kwargs)
         if result:
             return True, (item)
@@ -1140,13 +1155,17 @@ class IResourceTestCase(SimpleTestCase):
     def get_content(self, resp):
         
         if isinstance(resp, StreamingHttpResponse):
-            if not hasattr(resp,'cached_content'):
                 buffer = cStringIO.StringIO()
                 for line in resp.streaming_content:
                     buffer.write(line)
-                resp.cached_content = buffer.getvalue()
-#                 logger.info((('streamed content:', resp.cached_content)))
-            return resp.cached_content
+                return buffer.getvalue()
+#             if not hasattr(resp,'cached_content'):
+#                 buffer = cStringIO.StringIO()
+#                 for line in resp.streaming_content:
+#                     buffer.write(line)
+#                 resp.cached_content = buffer.getvalue()
+# #                 logger.info((('streamed content:', resp.cached_content)))
+#             return resp.cached_content
         else:
             return resp.content
     
@@ -1258,14 +1277,7 @@ class MetaHashResourceBootstrap(IResourceTestCase):
         
         
         self._bootstrap_init_files()
-        
-#         # TODO: clear the following up: use either testApiClient or api_client...
-#         
-#         # todo: doesn't work for post, see TestApiClient.post() method,
-#         # it is incorrectly "serializing" the data before posting 
-#         self.api_client = TestApiClient(serializer=self.csv_serializer) 
-#         self.api_client = TestApiClient(serializer=self.csv_serializer) 
-    
+            
     def get_resource_from_server(self, resource_name):
         '''
         Utility to get a resource description from the server
@@ -1291,7 +1303,7 @@ class MetaHashResourceBootstrap(IResourceTestCase):
         '''
         data_for_get.setdefault('limit', 999 )
         data_for_get.setdefault('includes', '*' )
-        data_for_get.setdefault('HTTP_APILOG_COMMENT', 'patch_test: %s' % filename )
+        data_for_get.setdefault( HEADER_APILOG_COMMENT, 'patch_test: %s' % filename )
         resource_uri = BASE_URI + '/' + resource_name
         
         logger.debug(str(('===resource_uri', resource_uri)))
@@ -1308,27 +1320,32 @@ class MetaHashResourceBootstrap(IResourceTestCase):
             resp = self.api_client.patch(
                 resource_uri, format='csv', data=input_data, 
                 authentication=self.get_credentials(), **data_for_get )
-            logger.debug(str(('Response: ' , resp.status_code, resp)))
-            #            self.assertHttpAccepted(resp)
-            self.assertTrue(resp.status_code in [202, 204], str((self.deserialize(resp))))
+            self.assertTrue(resp.status_code in [202, 204], 
+                str((resp.status_code, self.deserialize(resp))))
             
             logger.debug(str(('check patched data for',resource_name,
                              'execute get on:',resource_uri)))
-            resp = self.api_client.get(
+            resp1 = self.api_client.get(
                 resource_uri, format='json', authentication=self.get_credentials(), 
                 data=data_for_get)
             logger.debug(str(('--------resp to get:', resp.status_code)))
-            self.assertTrue(resp.status_code in [200], str((resp.status_code, self.serialize(resp))))
-#             self.assertTrue(resp.status_code in [200], str((resp.status_code, dumpObj(resp))))
-            new_obj = self.deserialize(resp)
+            new_obj = self.deserialize(resp1)
+            self.assertTrue(resp1.status_code in [200], 
+                str((resp1.status_code, new_obj)))
             
             for inputobj in input_data['objects']:
+                # use id_keys_to_check to perform a search only on those keys
                 result, outputobj = find_obj_in_list(
-                    inputobj,new_obj['objects'], excludes=keys_not_to_check )
+                    inputobj,new_obj['objects'], id_keys_to_check=id_keys_to_check, 
+                    excludes=keys_not_to_check )
                 self.assertTrue(
                     result, 
                     str(('not found', outputobj,'=== objects returned ===', 
                          new_obj['objects'] )) ) 
+                # once found, perform equality based on all keys (in obj1)
+                result, msg = assert_obj1_to_obj2(inputobj, outputobj)
+                self.assertTrue(result,
+                    str(('not equal', inputobj, outputobj)))
                 self.assertTrue(
                     resource_name in outputobj['resource_uri'], 
                     str(('wrong resource_uri returned:', filename, outputobj['resource_uri'],
@@ -1355,7 +1372,7 @@ class MetaHashResourceBootstrap(IResourceTestCase):
         '''
         data_for_get.setdefault('limit', 999 )
         data_for_get.setdefault('includes', '*' )
-        data_for_get.setdefault('HTTP_APILOG_COMMENT', 'put_test: %s' % filename )
+        data_for_get.setdefault( HEADER_APILOG_COMMENT, 'put_test: %s' % filename )
         resource_uri = BASE_URI + '/' + resource_name
 
         with open(filename) as bootstrap_file:
@@ -1368,7 +1385,6 @@ class MetaHashResourceBootstrap(IResourceTestCase):
                 resource_uri, format='csv', data=input_data, 
                 authentication=self.get_credentials(), **data_for_get )
             logger.debug(str(('Response: ' , resp.status_code)))
-#            self.assertHttpAccepted(resp)
             self.assertTrue(resp.status_code in [200, 202, 204], 
                             str((resp.status_code, self.serialize(resp) )) )
     
@@ -1382,9 +1398,9 @@ class MetaHashResourceBootstrap(IResourceTestCase):
             new_obj = self.deserialize(resp)
             # do a length check, since put will delete existing resources
             self.assertEqual(len(new_obj['objects']), len(input_data['objects']), 
-                             'input length != output length: ' + str((new_obj)))
-            # logger.info(str((len(new_obj['objects']), len(input_data['objects']), 
-            #                 'input length != output length: ' + str((new_obj)))))
+                str(('input length != output length: ',
+                    len(new_obj['objects']), len(input_data['objects']),
+                    input_data,'\n\n', new_obj)))
             
             for inputobj in input_data['objects']:
                 result, outputobj = find_obj_in_list(
@@ -1645,10 +1661,7 @@ class UserResource(MetaHashResourceBootstrap):
     def setUp(self):
         logger.debug('============== User setup ============')
         super(UserResource, self).setUp()
-#         super(UserResource, self)._setUp()
-#         # load the bootstrap files, which will load the metahash fields, 
-#         # and the resource definitions
-#         super(UserResource, self)._bootstrap_init_files()
+
         logger.debug('============== User setup: begin ============')
         
         # Create the User resource field entries
@@ -1657,6 +1670,7 @@ class UserResource(MetaHashResourceBootstrap):
         self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.user'})
         
         self.resource_uri = BASE_URI + '/user'
+        
         logger.debug('============== User setup: done ============')
     
     def test0_create_user(self):
@@ -1665,6 +1679,7 @@ class UserResource(MetaHashResourceBootstrap):
         # the simplest of tests, create some simple users
         self.bootstrap_items = { 'objects': [   
             {
+                'username': 'st1',
                 'ecommons_id': 'st1',
                 'first_name': 'Sally',
                 'last_name': 'Tester', 
@@ -1686,7 +1701,8 @@ class UserResource(MetaHashResourceBootstrap):
         try:       
             resp = self.api_client.put(self.resource_uri, 
                 format='json', data=self.bootstrap_items, authentication=self.get_credentials())
-            self.assertTrue(resp.status_code in [200,201], str((resp.status_code, self.serialize(resp))))
+            self.assertTrue(resp.status_code in [200,201,202], 
+                str((resp.status_code, self.serialize(resp))))
             #                 self.assertHttpCreated(resp)
         except Exception, e:
             logger.error(str(('on creating', self.bootstrap_items, '==ex==', e)))
@@ -1718,23 +1734,72 @@ class UserResource(MetaHashResourceBootstrap):
 
         logger.debug(str(('==== test_create_user done =====')))
 
-    def test1_create_user_with_permissions(self):
-        logger.debug(str(('==== test1_user_test_data =====')))
+    def test1_create_user_with_permissions(self, trial_count=1):
+        logger.debug(str(('==== test1_create_user_with_permissions =====')))
         
         filename = os.path.join(self.directory,'test_data/users1.csv')
+        data_for_get = { HEADER_APILOG_COMMENT: 'patch_test %d: %s' % (trial_count,filename) }
         # NOTE: verify the username manually, because the username will
-        # be set to the ecommons id if not set
-        self._put_test('user', filename, keys_not_to_check=['username'])
+        # be set to the resource_uri id if not set
+        input_data,output_data = self._put_test(
+            'user', filename, keys_not_to_check=['username'],
+            data_for_get=data_for_get)
         
-        logger.debug(str(('==== test1_user_test_data done =====')))
+        # test the logs
+        resource_uri = BASE_URI + '/apilog' #?ref_resource_name=record'
+        logger.debug(str(('get', resource_uri)))
+        resp = self.api_client.get(
+            resource_uri, format='json', 
+            authentication=self.get_credentials(), 
+            data={ 'limit': 999, 'ref_resource_name': 'user',
+                'comment__eq': data_for_get[HEADER_APILOG_COMMENT] })
+        self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+        new_obj = self.deserialize(resp)
+        objects = new_obj['objects']
+        logger.debug(str(('===apilogs:', json.dumps(new_obj))))
+        # look for 6 "CREATE" logs
+        self.assertEqual( len(objects), 6, 
+            str((len(objects), 'wrong # of api logs', objects)))
+        for obj in objects:
+            self.assertTrue(obj['api_action'] == API_ACTION_CREATE, 
+                str(('action should be create', obj)))
+            self.assertTrue( obj['comment'] == data_for_get[HEADER_APILOG_COMMENT], 
+                str(('comment not set', data_for_get[HEADER_APILOG_COMMENT],obj)))
+        
+        logger.debug(str(('==== test1_create_user_with_permissions =====')))
     
-    def test2_patch_user_permissions(self):
+    def test2_patch_user_permissions(self, trial_count=2):
         logger.debug(str(('==== test2_patch_user_permissions =====')))
-        self.test1_create_user_with_permissions()
+        self.test1_create_user_with_permissions(trial_count=trial_count)
         
         logger.debug(str(('==== test2_patch_user_permissions start =====')))
         filename = os.path.join(self.directory,'test_data/users2_patch.csv')
-        self._patch_test('user', filename)
+        data_for_get = { HEADER_APILOG_COMMENT: 'patch_test: %s' % filename }
+
+        input_data,output_data = self._patch_test(
+            'user', filename, data_for_get=data_for_get)
+        
+#         # test the logs
+#         resource_uri = BASE_URI + '/apilog' #?ref_resource_name=record'
+#         logger.debug(str(('get', resource_uri)))
+#         resp = self.api_client.get(
+#             resource_uri, format='json', 
+#             authentication=self.get_credentials(), 
+#             data={ 'limit': 999, 'ref_resource_name': 'user',
+#                 'uri__in': ','.join([x['resource_uri'][x['resource_uri'].find('user'):] for x in input_data]),
+#                 'api_action__eq': 'PATCH' })
+#         self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+#         new_obj = self.deserialize(resp)
+#         objects = new_obj['objects']
+#         logger.debug(str(('===apilogs:', json.dumps(new_obj))))
+#         # look for 3 logs: 3 for patch list
+#         self.assertEqual( len(objects), 3, 
+#             str((len(objects), 'wrong # of api logs', objects)))
+#         for obj in objects:
+#             self.assertTrue('permissions' in json.dumps(obj['diff_keys']), 
+#                 str(('no "permissions" key in the diff keys', obj)))
+#             self.assertTrue( obj['comment'] == data_for_get[HEADER_APILOG_COMMENT], 
+#                 str(('comment not set', data_for_get[HEADER_APILOG_COMMENT],obj)))
         
         logger.debug(str(('==== test2_patch_user_permissions done =====')))
         
@@ -1747,7 +1812,7 @@ class UserResource(MetaHashResourceBootstrap):
         '''
         
         logger.debug(str(('==== test3_user_read_permissions =====')))
-        self.test2_patch_user_permissions()
+        self.test2_patch_user_permissions(trial_count=3)
                 
         # assign password to the test user
         username = 'sde4'
@@ -1767,7 +1832,7 @@ class UserResource(MetaHashResourceBootstrap):
         # Now add the needed permission
         
         user_patch = {
-            'resource': 'user/' + username,
+            'resource_uri': 'user/' + username,
             'permissions': ['permission/resource/metahash/read'] };
 
         uri = self.resource_uri + '/' + username
@@ -1803,7 +1868,7 @@ class UserResource(MetaHashResourceBootstrap):
         '''
         logger.debug(str(('==== test4_user_write_permissions =====')))
 
-        self.test2_patch_user_permissions()
+        self.test2_patch_user_permissions(trial_count=4)
                 
         # assign password to the test user
         username = 'sde4'
@@ -1828,7 +1893,7 @@ class UserResource(MetaHashResourceBootstrap):
         # Now add the needed permission
         
         user_patch = {
-            'resource': 'user/' + username,
+            'resource_uri': 'user/' + username,
             'permissions': ['permission/resource/usergroup/write'] };
 
         logger.debug(str(('now add the permission needed to this user:', user_patch)))
@@ -1880,7 +1945,7 @@ class UserGroupResource(UserResource):
     def test2_create_usergroup_with_permissions(self):
         logger.debug(str(('==== test2_usergroup =====')))
         #create users
-        self.test1_create_user_with_permissions()
+        self.test1_create_user_with_permissions(trial_count=2)
         
 #         
 #         data_for_get = {}

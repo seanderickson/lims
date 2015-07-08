@@ -80,11 +80,13 @@ class Migration(SchemaMigration):
             ('screen', 'screen_id'),
             ('library', 'library_id'),
             ('gene', 'gene_id'),
+            ('screensaver_user', 'screensaver_user_id'),
             )
         for (table, key_field) in table_autofields:
             logger.info(str(('_update_table_autofield', table, key_field)))
             self._update_table_autofield(table, key_field)
                 
+        
         ### MISC changes - todo, organize
 
                 
@@ -104,34 +106,36 @@ class Migration(SchemaMigration):
         db.alter_column(u'library', 'version', 
             self.gf('django.db.models.fields.IntegerField')(null=True))
         
+        db.alter_column(u'screensaver_user', 'version', 
+            self.gf('django.db.models.fields.IntegerField')(null=True))
 
         ### Change Well fixed precision columns to float
 
-        db.execute(
-            ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
-                  table='well', column='molar_concentration'))
-        db.execute(
-            ( "ALTER TABLE {table} ADD COLUMN {column} double precision").format(
-                  table='well', column='molar_concentration'))
-        db.execute(
-            ( "update {table} set {column} = tmp_{column}").format(
-                  table='well', column='molar_concentration'))
-        db.execute(
-            ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
-                  table='well', column='molar_concentration'))
-        
-        db.execute(
-            ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
-                  table='well', column='mg_ml_concentration'))
-        db.execute(
-            ( "ALTER TABLE {table} ADD COLUMN {column} double precision").format(
-                  table='well', column='mg_ml_concentration'))
-        db.execute(
-            ( "update {table} set {column} = tmp_{column}").format(
-                  table='well', column='mg_ml_concentration'))
-        db.execute(
-            ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
-                  table='well', column='mg_ml_concentration'))
+#         db.execute(
+#             ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
+#                   table='well', column='molar_concentration'))
+#         db.execute(
+#             ( "ALTER TABLE {table} ADD COLUMN {column} double precision").format(
+#                   table='well', column='molar_concentration'))
+#         db.execute(
+#             ( "update {table} set {column} = tmp_{column}").format(
+#                   table='well', column='molar_concentration'))
+#         db.execute(
+#             ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
+#                   table='well', column='molar_concentration'))
+#         
+#         db.execute(
+#             ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
+#                   table='well', column='mg_ml_concentration'))
+#         db.execute(
+#             ( "ALTER TABLE {table} ADD COLUMN {column} double precision").format(
+#                   table='well', column='mg_ml_concentration'))
+#         db.execute(
+#             ( "update {table} set {column} = tmp_{column}").format(
+#                   table='well', column='mg_ml_concentration'))
+#         db.execute(
+#             ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
+#                   table='well', column='mg_ml_concentration'))
         
         ### Add new barcode field to well
         # Changing field 'Well.barcode'
@@ -145,33 +149,33 @@ class Migration(SchemaMigration):
 #             self.gf('django.db.models.fields.related.ForeignKey')
 #             (to=orm['reports.UserProfile'], null=True))
         
-        ### Change SMR fixed precision columns to float
-        
-        db.execute(
-            ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
-                  table='small_molecule_reagent', column='molecular_weight'))
-        db.execute(
-            ( "ALTER TABLE {table} ADD COLUMN {column} double precision").format(
-                  table='small_molecule_reagent', column='molecular_weight'))
-        db.execute(
-            ( "update {table} set {column} = tmp_{column}").format(
-                  table='small_molecule_reagent', column='molecular_weight'))
-        db.execute(
-            ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
-                  table='small_molecule_reagent', column='molecular_weight'))
-        
-        db.execute(
-            ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
-                  table='small_molecule_reagent', column='molecular_mass'))
-        db.execute(
-            ( "ALTER TABLE {table} ADD COLUMN {column} double precision").format(
-                  table='small_molecule_reagent', column='molecular_mass'))
-        db.execute(
-            ( "update {table} set {column} = tmp_{column}").format(
-                  table='small_molecule_reagent', column='molecular_mass'))
-        db.execute(
-            ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
-                  table='small_molecule_reagent', column='molecular_mass'))
+#         ### Change SMR fixed precision columns to float
+#         
+#         db.execute(
+#             ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
+#                   table='small_molecule_reagent', column='molecular_weight'))
+#         db.execute(
+#             ( "ALTER TABLE {table} ADD COLUMN {column} double precision").format(
+#                   table='small_molecule_reagent', column='molecular_weight'))
+#         db.execute(
+#             ( "update {table} set {column} = tmp_{column}").format(
+#                   table='small_molecule_reagent', column='molecular_weight'))
+#         db.execute(
+#             ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
+#                   table='small_molecule_reagent', column='molecular_weight'))
+#         
+#         db.execute(
+#             ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
+#                   table='small_molecule_reagent', column='molecular_mass'))
+#         db.execute(
+#             ( "ALTER TABLE {table} ADD COLUMN {column} double precision").format(
+#                   table='small_molecule_reagent', column='molecular_mass'))
+#         db.execute(
+#             ( "update {table} set {column} = tmp_{column}").format(
+#                   table='small_molecule_reagent', column='molecular_mass'))
+#         db.execute(
+#             ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
+#                   table='small_molecule_reagent', column='molecular_mass'))
         
         ### FIXUP Reagent related tables so that they now point to reagent, not smr:
         # TODO: consider using raw SQL
@@ -223,6 +227,18 @@ class Migration(SchemaMigration):
                       self.gf('django.db.models.fields.related.OneToOneField')
                       (to=orm['reports.UserProfile'], unique=True, null=True),
                       keep_default=False)
+
+        # Adding field 'ScreensaverUser.username' - mirrors reports.userprofile.username
+        db.add_column(u'screensaver_user', 'username',
+                      self.gf('django.db.models.fields.TextField')
+                      (unique=True, null=True),
+                      keep_default=False)
+
+        # Changing field 'ScreensaverUser.login_id'
+        db.alter_column(u'screensaver_user', 'login_id', self.gf('django.db.models.fields.TextField')(unique=True, null=True))
+
+        # Changing field 'ScreensaverUser.digested_password'
+        db.alter_column(u'screensaver_user', 'digested_password', self.gf('django.db.models.fields.TextField')(null=True))
 
         # Changing field 'ScreeningRoomUser.screensaver_user'
         db.alter_column(u'screening_room_user', 'screensaver_user_id', 
@@ -287,18 +303,18 @@ class Migration(SchemaMigration):
                       self.gf('django.db.models.fields.IntegerField')(null=True, blank=True),
                       keep_default=False)
         
-        kwargs = {
-            'table': 'plate',
-            'column': 'well_volume'
-            }
-        db.execute("ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}".\
-                format(**kwargs))
-        db.execute("ALTER TABLE {table} ADD COLUMN {column} double precision".\
-                format(**kwargs))
-        db.execute("update {table} set {column} = tmp_{column}".\
-                format(**kwargs))
-        db.execute("ALTER TABLE {table} DROP COLUMN tmp_{column} ".\
-                format(**kwargs))
+#         kwargs = {
+#             'table': 'plate',
+#             'column': 'well_volume'
+#             }
+#         db.execute("ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}".\
+#                 format(**kwargs))
+#         db.execute("ALTER TABLE {table} ADD COLUMN {column} double precision".\
+#                 format(**kwargs))
+#         db.execute("update {table} set {column} = tmp_{column}".\
+#                 format(**kwargs))
+#         db.execute("ALTER TABLE {table} DROP COLUMN tmp_{column} ".\
+#                 format(**kwargs))
 
         # cherry pick assay plate status: replaces cherrypickliquidtransfer activity
         # note: needs "parent" activity on cherry pick to batch activities together
@@ -425,7 +441,6 @@ class Migration(SchemaMigration):
         raise RuntimeError("Cannot reverse the Screensaver initial migrations: "
             "re-import the database to restore")
 
-    
     models = {
         u'auth.group': {
             'Meta': {'object_name': 'Group'},
@@ -716,6 +731,17 @@ class Migration(SchemaMigration):
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'update_activity_id': ('django.db.models.fields.IntegerField', [], {'unique': 'True'})
         },
+        u'db.copywell': {
+            'Meta': {'object_name': 'CopyWell', 'db_table': "u'copy_well'"},
+            'adjustments': ('django.db.models.fields.IntegerField', [], {}),
+            'copy': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Copy']"}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'initial_volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
+            'plate': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Plate']"}),
+            'plate_number': ('django.db.models.fields.IntegerField', [], {}),
+            'volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
+            'well': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']"})
+        },
         u'db.datacolumn': {
             'Meta': {'object_name': 'DataColumn', 'db_table': "u'data_column'"},
             'assay_phenotype': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -881,6 +907,7 @@ class Migration(SchemaMigration):
         },
         u'db.plate': {
             'Meta': {'object_name': 'Plate', 'db_table': "u'plate'"},
+            'avg_remaining_volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
             'copy': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Copy']"}),
             'created_by': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreensaverUser']", 'null': 'True', 'blank': 'True'}),
             'date_created': ('django.db.models.fields.DateTimeField', [], {}),
@@ -889,8 +916,10 @@ class Migration(SchemaMigration):
             'facility_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'max_mg_ml_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '5', 'decimal_places': '3', 'blank': 'True'}),
             'max_molar_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '13', 'decimal_places': '12', 'blank': 'True'}),
+            'max_remaining_volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
             'min_mg_ml_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '5', 'decimal_places': '3', 'blank': 'True'}),
             'min_molar_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '13', 'decimal_places': '12', 'blank': 'True'}),
+            'min_remaining_volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
             'plate_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
             'plate_location': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.PlateLocation']", 'null': 'True', 'blank': 'True'}),
             'plate_number': ('django.db.models.fields.IntegerField', [], {}),
@@ -899,7 +928,9 @@ class Migration(SchemaMigration):
             'primary_well_mg_ml_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '5', 'decimal_places': '3', 'blank': 'True'}),
             'primary_well_molar_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '13', 'decimal_places': '12', 'blank': 'True'}),
             'quadrant': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
+            'remaining_volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
             'retired_activity_id': ('django.db.models.fields.IntegerField', [], {'unique': 'True', 'null': 'True', 'blank': 'True'}),
+            'screening_count': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'status': ('django.db.models.fields.TextField', [], {}),
             'stock_plate_number': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'version': ('django.db.models.fields.IntegerField', [], {}),
@@ -937,7 +968,7 @@ class Migration(SchemaMigration):
             'Meta': {'object_name': 'Reagent', 'db_table': "u'reagent'"},
             'library_contents_version': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.LibraryContentsVersion']", 'null': 'True'}),
             'reagent_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UWPRH2ZD'", 'unique': 'True', 'max_length': '8'}),
+            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UWPRH324'", 'unique': 'True', 'max_length': '8'}),
             'vendor_batch_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_identifier': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_name': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -977,7 +1008,7 @@ class Migration(SchemaMigration):
             'abase_study_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'amount_to_be_charged_for_screen': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '9', 'decimal_places': '2', 'blank': 'True'}),
             'assay_plates_screened_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
-            'assay_type': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
+            'assay_type': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
             'billing_comments': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'billing_info_return_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'comments': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -1127,10 +1158,10 @@ class Migration(SchemaMigration):
             'Meta': {'object_name': 'ScreensaverUser', 'db_table': "u'screensaver_user'"},
             'comments': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'created_by': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreensaverUser']", 'null': 'True', 'blank': 'True'}),
-            'date_created': ('django.db.models.fields.DateTimeField', [], {}),
+            'date_created': ('django.db.models.fields.DateTimeField', [], {'default': 'datetime.datetime.now'}),
             'date_loaded': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
             'date_publicly_available': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
-            'digested_password': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
+            'digested_password': ('django.db.models.fields.TextField', [], {'null': 'True'}),
             'ecommons_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'email': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'first_name': ('django.db.models.fields.TextField', [], {}),
@@ -1138,11 +1169,12 @@ class Migration(SchemaMigration):
             'harvard_id_expiration_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'harvard_id_requested_expiration_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'last_name': ('django.db.models.fields.TextField', [], {}),
-            'login_id': ('django.db.models.fields.TextField', [], {'unique': 'True', 'blank': 'True'}),
+            'login_id': ('django.db.models.fields.TextField', [], {'unique': 'True', 'null': 'True'}),
             'mailing_address': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'phone': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'screensaver_user_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
-            'user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['auth.User']", 'null': 'True'}),
+            'screensaver_user_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.UserProfile']", 'null': 'True', 'on_delete': 'models.SET_NULL'}),
+            'username': ('django.db.models.fields.TextField', [], {'unique': 'True', 'null': 'True'}),
             'version': ('django.db.models.fields.IntegerField', [], {'default': '1', 'blank': 'True'})
         },
         u'db.screensaveruserrole': {
@@ -1188,12 +1220,6 @@ class Migration(SchemaMigration):
             'silencing_reagent_type': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_gene': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "u'vendor_reagent'", 'unique': 'True', 'null': 'True', 'to': u"orm['db.Gene']"})
         },
-        u'db.silencingreagentduplexwells': {
-            'Meta': {'object_name': 'SilencingReagentDuplexWells', 'db_table': "u'silencing_reagent_duplex_wells'"},
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'silencing_reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SilencingReagent']"}),
-            'well': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']"})
-        },
         u'db.smallmoleculechembankid': {
             'Meta': {'object_name': 'SmallMoleculeChembankId', 'db_table': "u'small_molecule_chembank_id'"},
             'chembank_id': ('django.db.models.fields.IntegerField', [], {}),
@@ -1228,8 +1254,8 @@ class Migration(SchemaMigration):
             'inchi': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'is_restricted_structure': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
             'molecular_formula': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'molecular_mass': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
-            'molecular_weight': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
+            'molecular_mass': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '15', 'decimal_places': '9', 'blank': 'True'}),
+            'molecular_weight': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '15', 'decimal_places': '9', 'blank': 'True'}),
             'reagent': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.Reagent']", 'unique': 'True', 'primary_key': 'True'}),
             'smiles': ('django.db.models.fields.TextField', [], {'blank': 'True'})
         },
@@ -1252,6 +1278,7 @@ class Migration(SchemaMigration):
         },
         u'db.well': {
             'Meta': {'object_name': 'Well', 'db_table': "u'well'"},
+            'barcode': ('django.db.models.fields.TextField', [], {'unique': 'True', 'null': 'True'}),
             'deprecation_admin_activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AdministrativeActivity']", 'null': 'True', 'blank': 'True'}),
             'facility_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'is_deprecated': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
@@ -1279,100 +1306,12 @@ class Migration(SchemaMigration):
             'Meta': {'object_name': 'WellVolumeCorrectionActivity', 'db_table': "u'well_volume_correction_activity'"},
             'activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AdministrativeActivity']", 'primary_key': 'True'})
         },
-        u'reports.apilog': {
-            'Meta': {'unique_together': "(('ref_resource_name', 'key', 'date_time'),)", 'object_name': 'ApiLog'},
-            'added_keys': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            'api_action': ('django.db.models.fields.CharField', [], {'max_length': '10'}),
-            'comment': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            'date_time': ('django.db.models.fields.DateTimeField', [], {}),
-            'diff_keys': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            'diffs': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'json_field': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            'key': ('django.db.models.fields.CharField', [], {'max_length': '128'}),
-            'parent_log': ('django.db.models.fields.related.ForeignKey', [], {'related_name': "'child_logs'", 'null': 'True', 'to': u"orm['reports.ApiLog']"}),
-            'ref_resource_name': ('django.db.models.fields.CharField', [], {'max_length': '128'}),
-            'removed_keys': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            'uri': ('django.db.models.fields.TextField', [], {}),
-            'user_id': ('django.db.models.fields.IntegerField', [], {}),
-            'username': ('django.db.models.fields.CharField', [], {'max_length': '128'})
-        },
-        u'reports.job': {
-            'Meta': {'object_name': 'Job'},
-            'comment': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'date_time_fullfilled': ('django.db.models.fields.DateTimeField', [], {'null': 'True'}),
-            'date_time_processing': ('django.db.models.fields.DateTimeField', [], {'null': 'True'}),
-            'date_time_requested': ('django.db.models.fields.DateTimeField', [], {'default': 'datetime.datetime.now'}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'input_filename': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'path_info': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'remote_addr': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'request_method': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'response_code': ('django.db.models.fields.IntegerField', [], {}),
-            'response_content': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'response_filename': ('django.db.models.fields.TextField', [], {'null': 'True'})
-        },
-        u'reports.listlog': {
-            'Meta': {'unique_together': "(('apilog', 'ref_resource_name', 'key', 'uri'),)", 'object_name': 'ListLog'},
-            'apilog': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.ApiLog']"}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'key': ('django.db.models.fields.CharField', [], {'max_length': '128'}),
-            'ref_resource_name': ('django.db.models.fields.CharField', [], {'max_length': '35'}),
-            'uri': ('django.db.models.fields.TextField', [], {})
-        },
-        u'reports.metahash': {
-            'Meta': {'unique_together': "(('scope', 'key'),)", 'object_name': 'MetaHash'},
-            'alias': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'json_field': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'json_field_type': ('django.db.models.fields.CharField', [], {'max_length': '128', 'null': 'True', 'blank': 'True'}),
-            'key': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
-            'linked_field_type': ('django.db.models.fields.CharField', [], {'max_length': '128', 'null': 'True', 'blank': 'True'}),
-            'ordinal': ('django.db.models.fields.IntegerField', [], {}),
-            'scope': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'})
-        },
         u'reports.permission': {
             'Meta': {'unique_together': "(('scope', 'key', 'type'),)", 'object_name': 'Permission'},
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'key': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
-            'scope': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
-            'type': ('django.db.models.fields.CharField', [], {'max_length': '15'})
-        },
-        u'reports.record': {
-            'Meta': {'object_name': 'Record'},
-            'base_value1': ('django.db.models.fields.TextField', [], {}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'scope': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'})
-        },
-        u'reports.recordmultivalue': {
-            'Meta': {'unique_together': "(('field_meta', 'parent', 'ordinal'),)", 'object_name': 'RecordMultiValue'},
-            'field_meta': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.MetaHash']"}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'ordinal': ('django.db.models.fields.IntegerField', [], {}),
-            'parent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.Record']"}),
-            'value': ('django.db.models.fields.TextField', [], {})
-        },
-        u'reports.recordvalue': {
-            'Meta': {'object_name': 'RecordValue'},
-            'field_meta': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.MetaHash']"}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'parent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.Record']"}),
-            'value': ('django.db.models.fields.TextField', [], {'null': 'True'})
-        },
-        u'reports.recordvaluecomplex': {
-            'Meta': {'object_name': 'RecordValueComplex'},
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'parent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.Record']", 'unique': 'True'}),
-            'value1': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'value2': ('django.db.models.fields.TextField', [], {'null': 'True'})
-        },
-        u'reports.usergroup': {
-            'Meta': {'object_name': 'UserGroup'},
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'name': ('django.db.models.fields.TextField', [], {'unique': 'True'}),
-            'permissions': ('django.db.models.fields.related.ManyToManyField', [], {'to': u"orm['reports.Permission']", 'symmetrical': 'False'}),
-            'super_groups': ('django.db.models.fields.related.ManyToManyField', [], {'related_name': "'sub_groups'", 'symmetrical': 'False', 'to': u"orm['reports.UserGroup']"}),
-            'users': ('django.db.models.fields.related.ManyToManyField', [], {'to': u"orm['reports.UserProfile']", 'symmetrical': 'False'})
+            'key': ('django.db.models.fields.CharField', [], {'max_length': '64', 'blank': 'True'}),
+            'scope': ('django.db.models.fields.CharField', [], {'max_length': '64', 'blank': 'True'}),
+            'type': ('django.db.models.fields.CharField', [], {'max_length': '35'})
         },
         u'reports.userprofile': {
             'Meta': {'object_name': 'UserProfile'},
@@ -1390,20 +1329,9 @@ class Migration(SchemaMigration):
             'mailing_address': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
             'permissions': ('django.db.models.fields.related.ManyToManyField', [], {'to': u"orm['reports.Permission']", 'symmetrical': 'False'}),
             'phone': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            'user': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['auth.User']", 'unique': 'True', 'null': 'True'}),
+            'user': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['auth.User']", 'unique': 'True', 'null': 'True', 'on_delete': 'models.SET_NULL'}),
             'username': ('django.db.models.fields.TextField', [], {'unique': 'True'})
-        },
-        u'reports.vocabularies': {
-            'Meta': {'unique_together': "(('scope', 'key'),)", 'object_name': 'Vocabularies'},
-            'alias': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'json_field': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'key': ('django.db.models.fields.CharField', [], {'max_length': '128', 'blank': 'True'}),
-            'ordinal': ('django.db.models.fields.IntegerField', [], {}),
-            'scope': ('django.db.models.fields.CharField', [], {'max_length': '128', 'blank': 'True'}),
-            'title': ('django.db.models.fields.CharField', [], {'max_length': '512', 'blank': 'True'})
         }
-        
     }
 
     complete_apps = ['db','reports']

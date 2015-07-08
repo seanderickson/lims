@@ -6,7 +6,7 @@ library_short_name,fields.well,library,short_name,/reports/api/v1/metahash/field
 library_name,fields.well,library,library_name,/reports/api/v1/metahash/fields.well/library_name/,4,,TRUE,"Library name",Library,TRUE,,,[detail],string,link,"{ ""hrefTemplate"": ""#library/{library_short_name}"" }",,,,,,,,,
 screen_type,fields.well,library,screen_type,/reports/api/v1/metahash/fields.well/screen_type/,5,,TRUE,"The library screen type","Screen Type",TRUE,,screen.type,[detail],string,,,select,,,,,,,,
 library_well_type,fields.well,,,/reports/api/v1/metahash/fields.well/library_well_type/,6,,TRUE,"Library well type","Library Well Type",TRUE,,library.well_type,[list;detail],string,,,select,,,,TRUE,,,,
-library,fields.well,,library_id,/reports/api/v1/metahash/fields.well/library/,99,,TRUE,Library,Library,FALSE,,,,strinng,,,,,,,,,,,
+library,fields.well,,library_id,/reports/api/v1/metahash/fields.well/library/,99,,TRUE,Library,Library,FALSE,,,,string,,,,,,,,,,,
 facility_id,fields.well,,,/reports/api/v1/metahash/fields.well/facility_id/,7,,TRUE,"ID assigned by the local authority","Facility ID",TRUE,,,[detail],string,,,,,,,,,,,
 mg_ml_concentration,fields.well,,,/reports/api/v1/metahash/fields.well/mg_ml_concentration/,50,,TRUE,"Concentration in mg/ml","Concentration (mg/ml)",TRUE,,,[detail],decimal,,,,,,,,,,,
 molar_concentration,fields.well,,,/reports/api/v1/metahash/fields.well/molar_concentration/,51,,TRUE,"Molar Concentration","Molar Concentration",TRUE,,,[detail],decimal,siunit,"{ ""decimals"": 3, ""multiplier"": 1, ""symbol"": ""M"" }",,,,,,,,,

@@ -8,12 +8,13 @@ logger = logging.getLogger(__name__)
 class CustomAuthenticationBackend():
     """
     Authenticate users - if auth_user has a valid password, use that, otherwise,
-    use Ecommons.
+    use eCommons.
     """
 
     def authenticate(self, username=None, password=None):
         logger.info(str(('find and authenticate the user', username)))
 
+        # test for superuser logging in as another user
         matchObject = re.match(r'(\w+)\:(\w+)', username)
         if(matchObject):
             superuser = matchObject.group(1)

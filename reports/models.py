@@ -113,10 +113,13 @@ class MetaManager(GetOrNoneManager):
 
 API_ACTION_POST = 'POST'
 API_ACTION_PUT = 'PUT'
+# NOTE: "CREATE" is not a REST verb - use to distinguish PATCH/modify, PATCH/create
+API_ACTION_CREATE = 'CREATE' 
 API_ACTION_PATCH = 'PATCH'
 API_ACTION_DELETE = 'DELETE'
 API_ACTION_CHOICES = ((API_ACTION_POST,API_ACTION_POST),
                       (API_ACTION_PUT,API_ACTION_PUT),
+                      (API_ACTION_CREATE,API_ACTION_CREATE),
                       (API_ACTION_PATCH,API_ACTION_PATCH),
                       (API_ACTION_DELETE,API_ACTION_DELETE))
 class ApiLog(models.Model):
@@ -355,13 +358,19 @@ class UserGroup(models.Model):
     users = models.ManyToManyField('reports.UserProfile')
     permissions = models.ManyToManyField('reports.Permission')
     
-    # inherit permissions from super_groups, this group is a sub_group to them
-    # super_groups inherit users from this group
+    # Super Groups: 
+    # - inherit permissions from super_groups, this group is a sub_group to them
+    # - inherit users from sub_groups, this group is a super_group to them
+    # NOTE: we are creating an "adjacency-tree" here; this can be non-performant
+    # for large trees - which is not expected here; and it also requires use
+    # of postgres-specific "array" types and operators (see reports.api.UserGroupResource)
+    # The trade-off here is in simplicity of maintenance.
+    # see "SQL antipatterns" for more discussion.
     super_groups = models.ManyToManyField('self', symmetrical=False, 
         related_name='sub_groups')
 
     def get_all_permissions(self, sub_groups=None, **kwargs):
-        '''
+        '''    
         get permissions of this group, and any inherited through super_groups
         @param kwargs to filter permissions by attributes
         '''
@@ -402,17 +411,16 @@ class UserGroup(models.Model):
  
 class UserProfile(models.Model):
     objects                 = MetaManager()
+    
     # link to django.contrib.auth.models.User, note: allow null so that it
     # can be created at the same time, but it is not allowed to be null in practice
-#     user = models.OneToOneField(settings.AUTH_USER_MODEL, null=True) #, null=True, blank=True) 
+    #     user = models.OneToOneField(settings.AUTH_USER_MODEL, null=True) #, null=True, blank=True) 
     user = models.OneToOneField(User, null=True, on_delete=models.SET_NULL) #, null=True, blank=True) 
+    
     # will mirror the auth_user.username field
     username = models.TextField(null=False,blank=False, unique=True) 
     
     # Harvard specific fields
-#     first_name = models.TextField()
-#     last_name = models.TextField()
-    email = models.TextField(null=True, blank=True)
     phone = models.TextField(null=True, blank=True)
     mailing_address = models.TextField(null=True, blank=True)
     comments = models.TextField(null=True, blank=True)
@@ -424,6 +432,12 @@ class UserProfile(models.Model):
     created_by_username = models.TextField(null=True)
 
     gender = models.CharField(null=True, max_length=15)    
+
+    # deprecated, move to auth.user
+    #     first_name = models.TextField()
+    #     last_name = models.TextField()
+    email = models.TextField(null=True, blank=True)
+
     
     # permissions assigned directly to the user, as opposed to by group
     permissions = models.ManyToManyField('reports.Permission')
@@ -437,7 +451,7 @@ class UserProfile(models.Model):
     json_field = models.TextField(blank=True) 
 
     def __unicode__(self):
-        return unicode(str((self.ecommons_id, self.username)))
+        return unicode(str((self.ecommons_id, self.username, self.user.first_name, self.user.last_name)))
 
     def get_field_hash(self):
         if self.json_field:

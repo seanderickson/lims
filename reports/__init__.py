@@ -11,5 +11,8 @@ HTTP_PARAM_USE_VOCAB = 'use_vocabularies'
 HTTP_PARAM_USE_TITLES = 'use_titles'
 HTTP_PARAM_RAW_LISTS = 'raw_lists'
 
+# Header custom comment field
+HEADER_APILOG_COMMENT = 'HTTP_X_APILOG_COMMENT'
+
 LIST_BRACKETS = '[]' # default char to surround nested list in xls, csv
 

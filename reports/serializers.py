@@ -9,6 +9,7 @@ import re
 
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.backends.util import CursorDebugWrapper
+from django.http.response import StreamingHttpResponse
 from django.utils.encoding import smart_str
 from psycopg2.psycopg1 import cursor
 import six
@@ -20,16 +21,13 @@ import xlrd
 from xlsxwriter.workbook import Workbook
 import xlwt
 
+from reports import LIST_DELIMITER_CSV, LIST_DELIMITER_XLS
 import reports.utils.sdf2py as s2p
 from reports.utils.serialize import from_csv_iterate
-from reports import LIST_DELIMITER_CSV, LIST_DELIMITER_XLS
 import reports.utils.serialize
 
 
 logger = logging.getLogger(__name__)
-
-# LIST_DELIMITER_CSV = ';'
-# LIST_DELIMITER_XLS = ';' 
 
 class CsvBooleanField(fields.ApiField):
     """
@@ -788,9 +786,18 @@ class LimsSerializer(PrettyJSONSerializer, BackboneSerializer,CSVSerializer,
     ''' 
     Combine all of the Serializers used by the API
     '''
-    
+    @staticmethod
+    def get_content(resp):
+        
+        if isinstance(resp, StreamingHttpResponse):
+            if not hasattr(resp,'cached_content'):
+                buffer = cStringIO.StringIO()
+                for line in resp.streaming_content:
+                    buffer.write(line)
+                resp.cached_content = buffer.getvalue()
+#                 logger.info((('streamed content:', resp.cached_content)))
+            return resp.cached_content
+        else:
+            return resp.content
 
-# class SmallMoleculeSerializer(LimsSerializer, SDFSerializer):
-#     ''' Combine all of the Serializers used by the API
-#     '''
 

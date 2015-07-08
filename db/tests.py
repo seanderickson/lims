@@ -28,7 +28,6 @@ logger = logging.getLogger(__name__)
 
 
 BASE_URI = '/db/api/v1'
-# import reports.BASE_URI as BASE_REPORTS_URI
 BASE_REPORTS_URI = '/reports/api/v1'
 import db; 
 try:
@@ -38,119 +37,6 @@ except:
 BASE_URI_DB = '/db/api/v1'
 
 
-# FIXME: reinstate this - following the version in reports
-# class TestApiInit(MetaHashResourceBootstrap,ResourceTestCase):
-#     
-#     def setUp(self):
-#         super(TestApiInit, self).setUp()
-# #         super(TestApiInit, self)._setUp()
-# #         super(TestApiInit, self).test_0bootstrap_metahash()
-#         # NOTE: run reports tests to set up the metahash resource
-#         
-#         self.db_resource_uri = BASE_URI + '/metahash'
-#         self.db_directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
-# 
-#         
-#     def test_2api_init(self):
-#         
-#         logger.debug('***================ super: db test_2api_init =============== ')
-# 
-#         super(TestApiInit, self).test_2api_init()
-#         
-#         logger.debug('***================ local: db test_2api_init =============== ')
-#         
-#         
-#         serializer=CSVSerializer() 
-#         # todo: doesn't work for post, see TestApiClient.post() method, it is 
-#         # incorrectly "serializing" the data before posting
-#         testApiClient = TestApiClient(serializer=serializer) 
-#         
-#         filename = os.path.join(self.db_directory,'api_init_actions.csv')
-#         with open(filename) as input_file:
-#             api_init_actions = serializer.from_csv(input_file.read(), root=None)
-#             
-#             bootstrap_files = [
-#                 'metahash_resource_data.csv',
-#                 'vocabularies_data.csv']
-#             for action in api_init_actions:
-#                 
-#                 logger.debug('\n++++=========== processing action', json.dumps(action))
-#                 command = action['command'].lower() 
-#                 resource = action['resource'].lower()
-#                 resource_uri = BASE_REPORTS_URI + '/' + resource
-#                 
-#                 if command == 'delete':
-#                     resp = testApiClient.delete(
-#                         resource_uri, authentication=self.get_credentials())
-#                     self.assertHttpAccepted(resp)
-#                 
-#                 else:
-#                     filename = os.path.join(self.db_directory,action['file'])
-#                     search_excludes = []
-#                     # exclude 'resource_uri' from equivalency check during 
-#                     # bootstrap, because resource table needs to be loaded for
-#                     # the uri generation
-#                     if action['file'] in bootstrap_files:
-#                         search_excludes = ['resource_uri'] 
-#                     logger.debug(str(('+++++++++++processing file', filename)))
-#                     with open(filename) as data_file:
-#                         input_data = serializer.from_csv(data_file.read())
-#                         
-#                         if command == 'put':
-#                             resp = testApiClient.put(
-#                                 resource_uri, format='csv', data=input_data, 
-#                                 authentication=self.get_credentials() )
-#                             logger.debug(str(('action: ', json.dumps(action), 
-#                                               'response: ' , resp.status_code)))
-#                             self.assertTrue(
-#                                 resp.status_code in [200], str((resp.status_code, resp)))
-#                             
-#                             # now see if we can get these objects back
-#                             resp = testApiClient.get(
-#                                 resource_uri, format='json', 
-#                                 authentication=self.get_credentials(), data={ 'limit': 999 })
-#                             self.assertTrue(
-#                                 resp.status_code in [200], str((resp.status_code, resp)))
-#                             #   self.assertValidJSONResponse(resp)
-#                             new_obj = self.deserialize(resp)
-#                             result, msgs = find_all_obj_in_list(
-#                                 input_data['objects'], new_obj['objects'], 
-#                                 excludes=search_excludes)
-#                             self.assertTrue(
-#                                 result, str((command, 'input file', filename, 
-#                                              msgs, new_obj['objects'])) )
-#                         
-#                         elif command == 'patch':
-#                             resp = testApiClient.patch(
-#                                 resource_uri, format='csv', data=input_data, 
-#                                 authentication=self.get_credentials() )
-# #                             self.assertHttpAccepted(resp)
-#                             self.assertTrue(resp.status_code in [202, 204], str((
-#                                 'response not accepted, resource_uri:', resource_uri, 
-#                                 'response', resp)))
-#                             resp = testApiClient.get(
-#                                 resource_uri, format='json', 
-#                                 authentication=self.get_credentials(), data={ 'limit': 999 } )
-#                             self.assertTrue(
-#                                 resp.status_code in [200], str((resp.status_code, resp)))
-#                             #                             self.assertValidJSONResponse(resp)
-#                             new_obj = self.deserialize(resp)
-#                             with open(filename) as f2:
-#                                 input_data2 = serializer.from_csv(f2.read())
-#                                 result, msgs = find_all_obj_in_list(
-#                                     input_data2['objects'], new_obj['objects'], 
-#                                     excludes=search_excludes)
-#                                 self.assertTrue(
-#                                     result, str(( command, 'input file', filename, msgs )) )
-#                         
-#                         elif command == 'post':
-#                             self.fail((
-#                                 'resource entry: ' + json.dumps(action) + '; '
-#                                 'cannot POST multiple objects to tastypie; '
-#                                 'therefore the "post" command is invalid with '
-#                                 'the initialization scripts'))
-#                         else:
-#                             self.fail('unknown command: ' + command + ', ' + json.dumps(action))
 
 class DBMetaHashResourceBootstrap(MetaHashResourceBootstrap):
     
@@ -181,26 +67,13 @@ class DBMetaHashResourceBootstrap(MetaHashResourceBootstrap):
         filename = os.path.join(directory, 'metahash_resource_data.csv')
         (input, output) = self._patch_test('resource', filename, id_keys_to_check=['key'])
         filename = os.path.join(directory, 'vocabularies_data.csv')
-        self._patch_test('vocabularies', filename, id_keys_to_check=['key'])
+        self._patch_test('vocabularies', filename, id_keys_to_check=['key','scope'])
 
         
         logger.debug('------------- Done: DBMetaHashResourceBootstrap _bootstrap_init_files -----------------')        
-        
-          
+                  
 
 class LibraryResource(DBMetaHashResourceBootstrap):
-
-#     def deserialize(self, resp):
-#         """
-#         Override to allow for use of the StreamingHttpResponse or the HttpResponse
-#         """
-#         if isinstance(resp, StreamingHttpResponse):
-#             buffer = cStringIO.StringIO()
-#             for line in resp.streaming_content:
-#                 buffer.write(line)
-#             return self.serializer.deserialize(buffer.getvalue(), format=resp['Content-Type'])
-#         else:
-#             return self.serializer.deserialize(resp.content, format=resp['Content-Type'])
 
     def setUp(self):
         logger.debug('============== LibraryResource setup ============')
@@ -234,12 +107,6 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         
         logger.debug('============== LibraryResource setup: done ============')
 
-#     def tearDown(self):
-#         logger.info(str(('tearDown')))
-
-
-#     from django.db import transaction
-#     @transaction.atomic()
     def test1_create_library(self):
         
         logger.debug(str(('==== test1_create_library =====')))
@@ -254,7 +121,6 @@ class LibraryResource(DBMetaHashResourceBootstrap):
             resource_uri, format='json', data=library_item, 
             authentication=self.get_credentials())
         self.assertTrue(resp.status_code in [201], str((resp.status_code, resp)))
-
 
         # create a second library
         library_item = LibraryFactory.attributes()
@@ -294,8 +160,6 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
         self.assertTrue(resp['Content-Type'].startswith('application/json'))
         new_obj = self.deserialize(resp)
-#         logger.info(str(('deserialized', new_obj)))
-#         self.assertValidJSONResponse(resp)
         expected_count = 384*3
         self.assertEqual(len(new_obj['objects']), expected_count, 
             str(('wrong number of wells',len(new_obj['objects']), expected_count)))
@@ -315,7 +179,6 @@ class LibraryResource(DBMetaHashResourceBootstrap):
                 result, well = find_obj_in_list(well_search, new_obj['objects'])
                 self.assertTrue(result, well)
                 
-
         logger.debug(str(('==== done: test1_create_library =====')))
 
     def test4_create_library_invalids(self):
@@ -394,7 +257,6 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         self.assertTrue('library_type' in obj['library'], 
             str(('content should have an entry for the faulty "name"', obj)))
 
-                
         # TODO: test regex and number: min/max, vocabularies
         logger.debug(str(('==== done: test4_create_library_invalids =====')))
         
@@ -421,7 +283,6 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         data_for_get.setdefault('limit', 0)
         data_for_get.setdefault('includes', ['*'])
         data_for_get.setdefault('HTTP_ACCEPT', 'chemical/x-mdl-sdfile' )
-#         data_for_get.setdefault('HTTP_ACCEPT', 'application/json' )
 
         with open(filename) as input_file:
             
@@ -505,7 +366,6 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         data_for_get.setdefault('limit', 0)
         data_for_get.setdefault('includes', ['*'])
         data_for_get.setdefault('HTTP_ACCEPT', 'chemical/x-mdl-sdfile' )
-#         data_for_get.setdefault('HTTP_ACCEPT', 'application/json' )
 
         with open(filename) as input_file:
             
@@ -689,7 +549,6 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         data_for_get={}
         data_for_get.setdefault('limit', 0)
         data_for_get.setdefault('includes', ['*'])
-#         data_for_get.setdefault('HTTP_ACCEPT', 'application/xls' )
         data_for_get.setdefault('HTTP_ACCEPT', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' )
         xls_serializer = XLSSerializer()
         with open(filename) as input_file:
@@ -698,9 +557,7 @@ class LibraryResource(DBMetaHashResourceBootstrap):
             ### will convert it to the target format.
             input_data = self.serializer.from_xlsx(input_file.read())
             input_data = input_data['objects']
-            #logger.info(str(('===== input data', input_data)))
         
-#             expected_count = 5
             self.assertEqual(len(input_data), expected_in, 
                 str(('initial serialization of ',filename,'found',
                     len(input_data), 'expected',expected_in)))
@@ -726,7 +583,6 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
         new_obj = self.deserialize(resp)
         returned_data = new_obj['objects']
-#         expected_count = (end_plate-start_plate+1)*384
         self.assertEqual(len(returned_data), expected_count, 
             str(('returned_data of ',filename,'found',
                 len(returned_data), 'expected',expected_count )))
@@ -749,8 +605,6 @@ class LibraryResource(DBMetaHashResourceBootstrap):
             
             expected_data = { key: inputobj[key] for key in fields.keys() 
                 if key in inputobj }
-#             logger.debug(str(('input_obj', inputobj)))
-#             logger.debug(str(('expected_data', expected_data)))
             result, msgs = assert_obj1_to_obj2(expected_data, outputobj)
             logger.debug(str((result, msgs)))
             self.assertTrue(result, str((msgs, expected_data, outputobj)))
@@ -766,23 +620,17 @@ class ScreenResource(DBMetaHashResourceBootstrap):
     def setUp(self):
         logger.debug('============== ScreenResource setup ============')
         super(ScreenResource, self).setUp()
-#         super(ScreenResource, self)._setUp()
-        # load the bootstrap files, which will load the metahash fields, 
-        # and the resource definitions
-#         super(ScreenResource, self)._bootstrap_init_files()
         logger.debug('============== ScreenResource setup: begin ============')
         self.db_resource_uri = BASE_URI + '/metahash'
         self.db_directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
         
-#         testApiClient = TestApiClient(serializer=self.csv_serializer) 
         testApiClient = TestApiClient(serializer=reports.serializers.LimsSerializer) 
 
         filename = os.path.join(self.db_directory,'metahash_fields_screen.csv')
         self._patch_test(
             'metahash', filename, data_for_get={ 'scope':'fields.screen'})
 
-        logger.debug('============== ScreenResource setup: done ============')
-        
+        logger.debug('============== ScreenResource setup: done ============')        
 
     def test1_create_screen(self):
         logger.debug(str(('==== test1_create_screen =====')))
@@ -823,7 +671,7 @@ class ScreenResource(DBMetaHashResourceBootstrap):
         self.assertTrue('facility_id' in obj, 'the facility_id was not created')
         logger.debug(str(('item found', obj)))
 
-    # DISABLE this test - does not use Factory
+    # FIXME: DISABLE this test - does not use Factory
     def _test0_create_screen(self):
         logger.debug(str(('==== test_create_screen =====')))
         
@@ -857,9 +705,6 @@ class ScreenResource(DBMetaHashResourceBootstrap):
             self.assertTrue(resp.status_code in [201], 
                 str((resp.status_code, self.deserialize(resp))))
             logger.info(str(('resp to create', self.deserialize(resp))))
-#             from django import db
-#             db.close_connection()            
-#             self.assertHttpCreated(resp)
             
         data_for_get={ 'limit': 0, 'includes': ['*'] }        
 
@@ -897,3 +742,85 @@ class MutualScreensTest(DBMetaHashResourceBootstrap,ResourceTestCase):
         # set data sharing levels
         # find assay wells that overlap
         
+class ScreensaverUserResource(DBMetaHashResourceBootstrap):
+        
+    def setUp(self):
+        logger.debug('============== ScreensaverUserResource setup ============')
+        super(ScreensaverUserResource, self).setUp()
+        logger.debug('============== ScreensaverUserResource setup: begin ============')
+        self.db_resource_uri = BASE_URI + '/screensaveruser'
+        self.db_directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
+        self.reports_directory = os.path.join(APP_ROOT_DIR, 'reports/static/api_init')
+        
+        testApiClient = TestApiClient(serializer=reports.serializers.LimsSerializer) 
+
+        filename = os.path.join(self.reports_directory,'metahash_fields_user.csv')
+        self._patch_test(
+            'metahash', filename, data_for_get={ 'scope':'fields.user' })
+        filename = os.path.join(self.db_directory,'metahash_fields_screensaveruser.csv')
+        self._patch_test(
+            'metahash', filename, data_for_get={ 'scope':'fields.screensaveruser'},
+            id_keys_to_check=['key','scope'])
+
+        logger.debug('============== ScreensaverUserResource setup: done ============')        
+
+    def test0_create_user(self):
+        logger.debug(str(('==== test_create_user =====')))
+        
+        # the simplest of tests, create some simple users
+        self.bootstrap_items = { 'objects': [   
+            {
+                'username': 'st1',
+                'ecommons_id': 'st1',
+                'first_name': 'Sally',
+                'last_name': 'Tester', 
+                'email': 'sally.tester@limstest.com',  
+                'harvard_id': '123456',
+                'harvard_id_expiration_date': '2015-05-01'  
+            },
+            {
+                'username': 'jt1',
+                'first_name': 'Joe',
+                'last_name': 'Tester',    
+                'email': 'joe.tester@limstest.com',    
+                'harvard_id': 'A4321',
+                'harvard_id_expiration_date': '2015-05-02'  
+            },
+            {
+                'username': 'bt1',
+                'first_name': 'Bad',
+                'last_name': 'TestsALot',    
+                'email': 'bad.tester@slimstest.com',    
+                'harvard_id': '332122',
+                'harvard_id_expiration_date': '2018-05-01'  
+            },
+        ]}
+        resource_uri = BASE_URI_DB + '/screensaveruser'
+
+        try:       
+            resp = self.api_client.put(resource_uri, 
+                format='json', data=self.bootstrap_items, authentication=self.get_credentials())
+            self.assertTrue(resp.status_code in [200,201,202], 
+                str((resp.status_code, self.serialize(resp))))
+            #                 self.assertHttpCreated(resp)
+        except Exception, e:
+            logger.error(str(('on creating', self.bootstrap_items, '==ex==', e)))
+            raise
+
+        logger.debug('created items, now get them')
+        resp = self.api_client.get(resource_uri, format='json', 
+            authentication=self.get_credentials(), data={ 'limit': 999 })
+        logger.debug(str(('--------resp to get:', resp.status_code)))
+        new_obj = self.deserialize(resp)
+        self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+        self.assertEqual(len(new_obj['objects']), 3, str((new_obj)))
+        
+        for i,item in enumerate(self.bootstrap_items['objects']):
+            result, obj = find_obj_in_list(item, new_obj['objects'])
+            self.assertTrue(
+                result, str(('bootstrap item not found', item, new_obj['objects'])))
+            logger.debug(str(('item found', obj)))
+
+        logger.debug(str(('==== test_create_user done =====')))
+
+

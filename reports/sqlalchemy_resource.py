@@ -45,9 +45,12 @@ from reports.serializers import csv_convert
 from reports.utils.sqlalchemy_bridge import Bridge
 from wsgiref.util import FileWrapper
 from db.models import Screen
+from datetime import date
 
 
 logger = logging.getLogger(__name__)
+
+import datetime
 
 
 class ChunkIterWrapper(object):
@@ -186,6 +189,8 @@ class SqlAlchemyResource(Resource):
             val = _dict.get(key,[])
             if isinstance(val, basestring):
                 _dict[key] = [val]
+        
+        _dict['desired_format'] = self.get_format(request)
         
         return _dict    
        
@@ -444,12 +449,10 @@ class SqlAlchemyResource(Resource):
                 search_expressions = or_(*search_expressions)
             else:
                 search_expressions = search_expressions[0]
-            logger.info(str(('testing...', search_expressions)))
             if filter_expression is not None:
                 filter_expression = and_(search_expressions,filter_expression)
             else: 
                 filter_expression = search_expressions
-            logger.info(str(('testing2...', filter_expression)))
                 
         logger.info(str(('filter_expression', filter_expression, filter_fields)))
         
@@ -498,6 +501,12 @@ class SqlAlchemyResource(Resource):
                 
                 value = SqlAlchemyResource.filter_value_to_python(
                     value, param_hash, filter_expr, filter_type)
+                
+#                 if field['data_type'] in ['date','datetime']:
+#                     import dateutil.parser
+#                     value = dateutil.parser.parse(value)
+#                     logger.info(str(('datetime query value', value)))
+                
                 _values.append(value)
                 # TODO: all of the Django query terms:
                 # QUERY_TERMS = set([
@@ -773,8 +782,6 @@ class SqlAlchemyResource(Resource):
         DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
         logger.info(str(('stream_response_from_statement',param_hash)))
 
-#         self.bridge.get_engine().connect().invalidate()
-#         self.bridge = Bridge()
         
         limit = param_hash.get('limit', 0)        
         try:
@@ -798,17 +805,20 @@ class SqlAlchemyResource(Resource):
         logger.info(str(('offset', offset, 'limit', limit)))
         conn = self.bridge.get_engine().connect()
         
-        logger.info(str(('stmt', str(stmt.compile(compile_kwargs={"literal_binds": True})), 'param_hash', param_hash)))
+        logger.info(str(('stmt', 
+            str(stmt.compile(compile_kwargs={"literal_binds": True})), 
+            'param_hash', param_hash)))
         if DEBUG_STREAMING:
             logger.info(str(('count stmt', str(count_stmt))))
         
-        desired_format = self.get_format(request)
+        desired_format = param_hash.get('desired_format',self.get_format(request))
         result = None
         if desired_format == 'application/json':
-            
+            logger.info(str(('streaming json')))
             if not is_for_detail and use_caching and limit > 0:
                 cache_hit = self._cached_resultproxy(stmt, count_stmt, param_hash, limit, offset)
                 if cache_hit:
+                    logger.info('cache hit')
                     result = cache_hit['cached_result']
                     count = cache_hit['count']
                 else:
@@ -888,7 +898,7 @@ class SqlAlchemyResource(Resource):
         if request.GET.get(HTTP_PARAM_RAW_LISTS, False):
             list_brackets = None
 
-        desired_format = self.get_format(request)
+        desired_format = param_hash.get('desired_format',self.get_format(request))
         content_type=build_content_type(desired_format)
         logger.info(str(('desired_format', desired_format, 
             'content_type', content_type)))

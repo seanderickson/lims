@@ -22,7 +22,7 @@ from django.conf import settings
 from django.conf.urls import url
 from django.contrib.auth.models import User
 from django.core.cache import cache
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import connection
 from django.db import transaction
@@ -45,10 +45,11 @@ from sqlalchemy.sql.expression import nullsfirst, nullslast
 from tastypie import fields
 from tastypie.authentication import BasicAuthentication, SessionAuthentication, \
     MultiAuthentication
+from tastypie import http
 from tastypie.authorization import Authorization
 from tastypie.constants import ALL_WITH_RELATIONS
 from tastypie.exceptions import BadRequest, ImmediateHttpResponse, \
-    UnsupportedFormat
+    UnsupportedFormat, NotFound
 from tastypie.resources import Resource
 from tastypie.utils import timezone
 from tastypie.utils.urls import trailing_slash
@@ -65,15 +66,18 @@ from db.models import ScreensaverUser, Screen, LabHead, LabAffiliation, \
 from db.support import lims_utils
 from db.support.data_converter import default_converter
 from reports import LIST_DELIMITER_SQL_ARRAY,  \
-    HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB
+    HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT
 from reports.api import ManagedModelResource, ManagedResource, ApiLogResource, \
     UserGroupAuthorization, ManagedLinkedResource, log_obj_update, \
     UnlimitedDownloadResource, IccblBaseResource, VocabulariesResource, \
-    MetaHashResource, UserResource
-from reports.models import MetaHash, Vocabularies, ApiLog
+    MetaHashResource, UserResource,compare_dicts,parse_val,ManagedSqlAlchemyResourceMixin
+from reports.models import MetaHash, Vocabularies, ApiLog, UserProfile
 from reports.serializers import CursorSerializer, LimsSerializer, XLSSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.utils.sqlalchemy_bridge import Bridge
+from tastypie.bundle import Bundle
+from tastypie.utils.dict import dict_strip_unicode_keys
+from tastypie.http import HttpNotFound
 
 
 logger = logging.getLogger(__name__)
@@ -94,266 +98,6 @@ logger = logging.getLogger(__name__)
 def _get_raw_time_string():
   return timezone.now().strftime("%Y%m%d%H%M%S")
     
-class ScreensaverUserResourceOld(SqlAlchemyResource, ManagedModelResource):    
-
-    class Meta:
-        queryset = ScreensaverUser.objects.all()
-        authentication = MultiAuthentication(BasicAuthentication(), 
-                                             SessionAuthentication())
-        authorization= UserGroupAuthorization()
-        ordering = []
-        filtering = {}
-        serializer = LimsSerializer()
-        excludes = ['digested_password']
-        resource_name = 'screensaveruser'
-        max_limit = 10000
-
-    def __init__(self, **kwargs):
-#        self.
-        super(ScreensaverUserResource,self).__init__(**kwargs)
-
-    def prepend_urls(self):
-        return [
-            # override the parent "base_urls" so that we don't need to worry about schema again
-            url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('get_schema'), name="api_get_schema"),
-
-            url((r"^(?P<resource_name>%s)/"
-                 r"(?P<screensaver_user_id>([\w\d_]+))%s$") 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-        ]    
-
-    def get_detail(self, request, **kwargs):
-        logger.info(str(('get_detail')))
-
-        facility_id = kwargs.get('screensaver_user_id', None)
-        if not facility_id:
-            logger.info(str(('no screensaver_user_id provided')))
-            raise NotImplementedError('must provide a screensaver_user_id parameter')
-        
-        kwargs['is_for_detail']=True
-        return self.get_list(request, **kwargs)
-        
-    
-    def get_list(self,request,**kwargs):
-
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
-
-        return self.build_list_response(request,param_hash=param_hash, **kwargs)
-
-        
-    def build_list_response(self,request, param_hash={}, **kwargs):
-        ''' 
-        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns django.http.response.StreamingHttpResponse 
-        '''
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
-
-        is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
-        filename = re.sub(r'[\W]+','_',filename)
-        logger.info(str(('get_list', filename, kwargs)))
-        
-        screensaver_user_id = param_hash.pop('screensaver_user_id', None)
-        if screensaver_user_id:
-            param_hash['screensaver_user_id__eq'] = screensaver_user_id
-
-        try:
-            
-            # general setup
-             
-            schema = super(ScreensaverUserResource,self).build_schema()
-          
-            manual_field_includes = set(param_hash.get('includes', []))
-            
-            if DEBUG_GET_LIST: 
-                logger.info(str(('manual_field_includes', manual_field_includes)))
-  
-            (filter_expression, filter_fields) = \
-                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
-                  
-            visibilities = set()                
-            if is_for_detail:
-                visibilities.update(['detail','summary'])
-            field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, visibilities=visibilities)
-              
-            order_params = param_hash.get('order_by',[])
-            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
-             
-            rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
- 
-            # specific setup
-            _s = self.bridge['screen']
-            _cl = self.bridge['collaborator_link']
-            _su = self.bridge['screensaver_user']
-            _admin = self.bridge['administrator_user']
-            _sru = self.bridge['screening_room_user']
-            _lh = self.bridge['lab_head']
-            _la = self.bridge['lab_affiliation']
-            _sru_fr = self.bridge['screening_room_user_facility_usage_role']
-            
-            _lhsu = _su.alias('lhsu')
-            
-            base_query_tables = ['screensaver_user'] 
-            custom_columns = {
-                'facility_usage_roles': literal_column(
-                     '( )'),
-                'name': literal_column(
-                    "last_name || ', ' || first_name"),
-                # TODO: redo classification
-                'classification': literal_column(
-                    "( select coalesce( user_classification, 'admin') "
-                    ' from  screensaver_user s1'
-                    ' left join screening_room_user using(screensaver_user_id) '
-                    ' where s1.screensaver_user_id = screensaver_user.screensaver_user_id)'),
-                'screens_lead':
-                    select([func.array_agg(_s.c.facility_id,LIST_DELIMITER_SQL_ARRAY)]).\
-                        select_from(_s).\
-                        where(_s.c.lead_screener_id==_su.c.screensaver_user_id),
-                'screens_lab_head':
-                    select([func.array_to_string(
-                            func.array_agg(_s.c.facility_id),LIST_DELIMITER_SQL_ARRAY)]).\
-                        select_from(_s).\
-                        where(_s.c.lab_head_id==_su.c.screensaver_user_id),
-                'screens_lead':
-                    select([func.array_to_string(
-                            func.array_agg(_s.c.facility_id),LIST_DELIMITER_SQL_ARRAY)]).\
-                        select_from(_s).\
-                        where(_s.c.lead_screener_id==_su.c.screensaver_user_id),
-                'screens_collaborator':
-                    select([func.array_to_string(
-                            func.array_agg(_s.c.facility_id),LIST_DELIMITER_SQL_ARRAY)]).\
-                        select_from(_s.join(_cl,_s.c.screen_id==_cl.c.screen_id)).\
-                        where(_cl.c.collaborator_id==_su.c.screensaver_user_id),
-                'lab_name':
-                    select([func.concat(_lhsu.c.last_name,', ',_lhsu.c.first_name,' - ',_la.c.affiliation_name)]).\
-                    select_from(
-                        _la.join(_lh,_la.c.lab_affiliation_id==_lh.c.lab_affiliation_id).\
-                        join(_lhsu, _lh.c.screensaver_user_id==_lhsu.c.screensaver_user_id).\
-                        join(_sru,_lh.c.screensaver_user_id==_sru.c.lab_head_id )).\
-                    where(_sru.c.screensaver_user_id==_su.c.screensaver_user_id),
-                'facility_usage_roles': 
-                    select([func.array_to_string(
-                            func.array_agg(_sru_fr.c.facility_usage_role),LIST_DELIMITER_SQL_ARRAY)]).\
-                        select_from(_sru_fr).\
-                        where(_sru_fr.c.screening_room_user_id==_su.c.screensaver_user_id),
-                'data_access_roles': 
-                    select([func.array_to_string(
-                            func.array_agg(_sru_fr.c.facility_usage_role),LIST_DELIMITER_SQL_ARRAY)]).\
-                        select_from(_sru_fr).\
-                        where(_sru_fr.c.screening_room_user_id==_su.c.screensaver_user_id),
-
-                
-                }
-
-            columns = self.build_sqlalchemy_columns(
-                field_hash.values(), base_query_tables=base_query_tables,
-                custom_columns=custom_columns )
-
-            # build the query statement
-            
-            
-            j = _su
-            stmt = select(columns.values()).select_from(j)
-
-            # general setup
-             
-            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
-            
-            title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
-                title_function = lambda key: field_hash[key]['title']
-            
-            return self.stream_response_from_statement(
-                request, stmt, count_stmt, filename, 
-                field_hash=field_hash, 
-                param_hash=param_hash,
-                is_for_detail=is_for_detail,
-                rowproxy_generator=rowproxy_generator,
-                title_function=title_function  )
-             
-        except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on get_list', 
-                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
-            raise e  
-
-    
-class ScreensaverUserResource1(ManagedModelResource):
-#    screens = fields.ToManyField('db.api.ScreenResource', 'screens', 
-# related_name='lab_head_id', blank=True, null=True)
-
-    version = fields.IntegerField(attribute='version', null=True)
-    administratoruser = fields.ToOneField(
-        'db.api.ScreensaverUserResource', 
-        attribute='administratoruser', null=True, blank=True)
-    screeningroomuser = fields.ToOneField(
-        'db.api.ScreensaverUserResource', 
-        'screeningroomuser', null=True, blank=True)
-    permissions = fields.ToManyField(
-        'reports.api.PermissionResource', 'permissions', null=True)
-    
-    class Meta:
-        queryset = ScreensaverUser.objects.all()
-        authentication = MultiAuthentication(BasicAuthentication(), 
-                                             SessionAuthentication())
-        authorization= UserGroupAuthorization()
-        ordering = []
-        filtering = {}
-        serializer = LimsSerializer()
-        excludes = ['digested_password']
-        detail_uri_name = 'screensaver_user_id'
-        resource_name = 'screensaveruser'
-        max_limit = 10000
-        
-    def __init__(self, **kwargs):
-        super(ScreensaverUserResource,self).__init__( **kwargs)
-  
-    def dehydrate(self, bundle):
-        bundle = super(ScreensaverUserResource, self).dehydrate(bundle);
-        bundle.data['screens'] = [ x.facility_id 
-            for x in Screen.objects.filter(
-                lab_head_id=bundle.obj.screensaver_user_id)]
-        return bundle        
-      
-    def apply_sorting(self, obj_list, options):
-        options = options.copy()
-        options['non_null_fields'] = ['screensaver_user_id']
-        obj_list = super(ScreensaverUserResource, self).apply_sorting(
-            obj_list, options)
-        return obj_list
-    
-    def apply_filters(self, request, applicable_filters):
-        logger.info(str(('apply_filters', applicable_filters)))
-        
-        return super(ScreensaverUserResource, self).apply_filters(request, 
-            applicable_filters)
-
-    def build_filters(self, filters=None):
-        logger.info(str(('build_filters', filters)))
-        
-        return super(ScreensaverUserResource, self).build_filters(filters)
-              
-    def build_schema(self):
-        schema = super(ScreensaverUserResource,self).build_schema()
-        schema['idAttribute'] = ['screensaver_user_id']
-        return schema
-    
-    def prepend_urls(self):
-        return [
-            url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>[\d]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-        ]    
 
 class ScreeningRoomUserResource(ManagedModelResource):
     screensaver_user = fields.ToOneField(
@@ -532,7 +276,7 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
         
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
         filename = re.sub(r'[\W]+','_',filename)
 
         
@@ -1073,7 +817,7 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
         filename = re.sub(r'[\W]+','_',filename)
         logger.info(str(('get_list', filename, kwargs)))
         
@@ -1463,6 +1207,7 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
 
 class ScreenResultResource(SqlAlchemyResource,ManagedResource):
 
+    username = fields.CharField('user__username', null=False, readonly=True)
     class Meta:
         queryset = ScreenResult.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(), 
@@ -1668,7 +1413,7 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
             logger.info(str(('kwargs',kwargs,'param_hash',param_hash)))
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
         filename = re.sub(r'[\W]+','_',filename)
         logger.info(str(('get_list', filename, kwargs)))
         
@@ -2362,7 +2107,7 @@ class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
         filename = re.sub(r'[\W]+','_',filename)
         logger.info(str(('get_list', filename, kwargs)))
         
@@ -2571,7 +2316,7 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
         filename = re.sub(r'[\W]+','_',filename)
         logger.info(str(('get_list', filename, kwargs)))
         
@@ -2740,7 +2485,7 @@ class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
         filename = re.sub(r'[\W]+','_',filename)
         logger.info(str(('get_list', filename, kwargs)))
         
@@ -2977,7 +2722,7 @@ class CherryPickPlateResource(SqlAlchemyResource,ManagedModelResource):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
         filename = re.sub(r'[\W]+','_',filename)
         logger.info(str(('get_list', filename, kwargs)))
         
@@ -3223,7 +2968,7 @@ class LibraryCopyResource(SqlAlchemyResource, ManagedModelResource):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
         filename = re.sub(r'[\W]+','_',filename)
         
         library_short_name = param_hash.pop('library_short_name',
@@ -3541,7 +3286,7 @@ class LibraryCopyResource(SqlAlchemyResource, ManagedModelResource):
 
      
      
-class ScreensaverUserResource(SqlAlchemyResource, ManagedModelResource):    
+class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResource):    
 
     class Meta:
         queryset = ScreensaverUser.objects.all()
@@ -3554,6 +3299,7 @@ class ScreensaverUserResource(SqlAlchemyResource, ManagedModelResource):
         excludes = ['digested_password']
         resource_name = 'screensaveruser'
         max_limit = 10000
+        always_return_data = True
 
     def __init__(self, **kwargs):
 #        self.
@@ -3579,10 +3325,8 @@ class ScreensaverUserResource(SqlAlchemyResource, ManagedModelResource):
     def build_schema(self):
         
         schema = super(ScreensaverUserResource,self).build_schema()
-        logger.info(str(('--------------at schema1', schema['fields']['usergroups'])))
         
         sub_schema = self.get_user_resource().build_schema();
-        logger.info(str(('--------------at screensaver_user', sub_schema['fields']['usergroups'])))
         fields = {}
         fields.update(sub_schema['fields'])
         for key,val in schema['fields'].items():
@@ -3591,11 +3335,7 @@ class ScreensaverUserResource(SqlAlchemyResource, ManagedModelResource):
             else:
                 fields[key] = val
         
-        logger.info(str(('--------------at schema2', fields['usergroups'])))
-#         fields.update(schema['fields'])
-        logger.info(str(('--------------at schema3', fields['usergroups'])))
         schema['fields'] = fields;
-        logger.info(str(('--------------at screensaver_user', schema['fields']['usergroups'])))
         
         return schema
 
@@ -3603,67 +3343,34 @@ class ScreensaverUserResource(SqlAlchemyResource, ManagedModelResource):
         if not self.user_resource:
             self.user_resource = UserResource()
         return self.user_resource
-    
-    def patch_detail(self, request, **kwargs):
-        logger.info(str(('patch_detail:', kwargs)))
-        return self.put_patch_detail(request, **kwargs)
 
-    def put_detail(self, request, **kwargs):
-        logger.info(str(('put_detail:', kwargs)))
-        return self.put_patch_detail(request, **kwargs)
-    
-    def put_patch_detail(self,request,**kwargs):
+    # override
+    def detail_uri_kwargs(self, bundle_or_obj): 
+        kwargs = {}
+        obj = bundle_or_obj
+        if isinstance(bundle_or_obj, Bundle):
+            obj = bundle_or_obj.obj
         
-        deserialized = self.deserialize(
-            request, 
-            format=request.META.get('CONTENT_TYPE', 'application/json'),
-            data=request.body)
-        
-        screensaver_user_id = kwargs.get('screensaver_user_id', None)
-        username = kwargs.get('username', None)
-        if not (screensaver_user_id or username):
-            logger.info(str(('no screensaver_user_id or username provided',kwargs)))
-            raise NotImplementedError('must provide a screensaver_user_id or username parameter')
-        
-        try:
-            if screensaver_user_id:
-                obj = ScreensaverUser.objects.get(screensaver_user_id=screensaver_user_id)
-            if username:
-                obj = ScreensaverUser.objects.get(user__username=username)
-        except ObjectDoesNotExist,e:
-            logger.info(str(('create user: ', kwargs)))
+        if isinstance(bundle_or_obj, dict):
+            kwargs['username'] = bundle_or_obj.get('username',None)
+        else:
+            kwargs['username'] = obj.user.username
+        return kwargs
             
-        return self.update(obj, deserialized, **kwargs)
-            
-    def patch_list(self, request, **kwargs):
-        logger.info(str(('patch_list:', kwargs)))
-        return self.put_patch_detail(request, **kwargs)
 
-    def put_list(self,request, **kwargs):
-        logger.info(str(('put_list:', kwargs)))
-        deserialized = self.deserialize(
-            request, 
-            format=request.META.get('CONTENT_TYPE', 'application/json'))
-        if not self._meta.collection_name in deserialized:
-            raise BadRequest(str(("Invalid data sent. missing: " , self._meta.collection_name)))
+    def full_dehydrate(self, bundle, for_list=False):
+        """
+        Given a bundle with an object instance, extract the information from it
+        to populate the resource.
+        """
+        response = self.get_detail(
+            bundle.request,
+            desired_format='application/json',
+            screensaver_user_id=bundle.obj.screensaver_user_id)
+        bundle.data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        return bundle
         
-        logger.info(str(('put/patch:', deserialized)))
-        
-        return self.create_or_update(deserialized[self._meta.collection_name])
-        
-    def update(self,data,**kwargs):
-        try:
-            logger.info(str(('create_or_update', data, kwargs)))
-            
-            
-        except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on put_list', 
-                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
-            raise e  
-    
     def get_detail(self, request, **kwargs):
         logger.info(str(('get_detail')))
 
@@ -3692,7 +3399,7 @@ class ScreensaverUserResource(SqlAlchemyResource, ManagedModelResource):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
         filename = re.sub(r'[\W]+','_',filename)
         logger.info(str(('get_list', filename, kwargs)))
         
@@ -3754,10 +3461,6 @@ class ScreensaverUserResource(SqlAlchemyResource, ManagedModelResource):
                     ' from  screensaver_user s1'
                     ' left join screening_room_user using(screensaver_user_id) '
                     ' where s1.screensaver_user_id = screensaver_user.screensaver_user_id)'),
-                'screens_lead':
-                    select([func.array_agg(_s.c.facility_id,LIST_DELIMITER_SQL_ARRAY)]).\
-                        select_from(_s).\
-                        where(_s.c.lead_screener_id==_su.c.screensaver_user_id),
                 'screens_lab_head':
                     select([func.array_to_string(
                             func.array_agg(_s.c.facility_id),LIST_DELIMITER_SQL_ARRAY)]).\
@@ -3841,6 +3544,496 @@ class ScreensaverUserResource(SqlAlchemyResource, ManagedModelResource):
                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e  
 
+    # reworked 20150706   
+    def put_list(self,request, **kwargs):
+
+        deserialized = self._meta.serializer.deserialize(
+            request.body, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'))
+        if not self._meta.collection_name in deserialized:
+            raise BadRequest("Invalid data sent, must be nested in '%s'" 
+                % self._meta.collection_name)
+        deserialized = deserialized[self._meta.collection_name]
+        
+        with transaction.atomic():
+            
+            # TODO: review REST actions:
+            # PUT deletes the endpoint
+            
+            ScreensaverUser.objects.all().delete()
+            
+            for _dict in deserialized:
+                self.put_obj(_dict)
+
+        # get new state, for logging
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            **kwargs)
+        new_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        new_data = new_data[self._meta.collection_name]
+        
+        logger.info(str(('new data', new_data)))
+        self.log_patches(request, [],new_data,**kwargs)
+
+    
+        if not self._meta.always_return_data:
+            return http.HttpAccepted()
+        else:
+            response = self.get_list(request, **kwargs)             
+            response.status_code = 202
+            return response
+        
+    def patch_list(self, request, **kwargs):
+
+        deserialized = self._meta.serializer.deserialize(
+            request.body, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'))
+        if not self._meta.collection_name in deserialized:
+            raise BadRequest("Invalid data sent, must be nested in '%s'" 
+                % self._meta.collection_name)
+        deserialized = deserialized[self._meta.collection_name]
+
+        # cache state, for logging
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            **kwargs)
+        original_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        original_data = original_data[self._meta.collection_name]
+        logger.info(str(('original data', original_data)))
+
+        with transaction.atomic():
+            
+            for _dict in deserialized:
+                self.patch_obj(_dict)
+                
+        # get new state, for logging
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            **kwargs)
+        new_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        new_data = new_data[self._meta.collection_name]
+        
+        logger.info(str(('new data', new_data)))
+        self.log_patches(request, original_data,new_data,**kwargs)
+        
+        if not self._meta.always_return_data:
+            return http.HttpAccepted()
+        else:
+            response = self.get_list(request, **kwargs)             
+            response.status_code = 202
+            return response
+                
+    def patch_detail(self, request, **kwargs):
+
+        deserialized = self._meta.serializer.deserialize(
+            request.body, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'))
+        
+        # cache state, for logging
+        username = self.find_username(deserialized, **kwargs)
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            **kwargs)
+        original_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        original_data = original_data[self._meta.collection_name]
+        logger.info(str(('original data', original_data)))
+
+        with transaction.atomic():
+            logger.info(str(('patch_detail:', kwargs)))
+            
+            self.patch_obj(deserialized, **kwargs)
+
+        # get new state, for logging
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            **kwargs)
+        new_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        new_data = new_data[self._meta.collection_name]
+        
+        logger.info(str(('new data', new_data)))
+        self.log_patches(request, original_data,new_data,**kwargs)
+
+        
+        if not self._meta.always_return_data:
+            return http.HttpAccepted()
+        else:
+            response = self.get_detail(request, **kwargs) 
+            response.status_code = 202
+            return response
+
+    def put_detail(self, request, **kwargs):
+                
+        deserialized = self._meta.serializer.deserialize(
+            request.body, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'))
+        
+        with transaction.atomic():
+            logger.info(str(('put_detail:', kwargs)))
+            
+            self.put_obj(deserialized, **kwargs)
+        
+        # FIXME: logging
+        
+        if not self._meta.always_return_data:
+            return http.HttpAccepted()
+        else:
+            response = self.get_detail(request, **kwargs) 
+            response.status_code = 202
+            return response
+        
+    @transaction.atomic()    
+    def put_obj(self,deserialized, **kwargs):
+        self.clear_cache()
+        
+        try:
+            self.delete_obj(deserialized, **kwargs)
+        except ObjectDoesNotExist,e:
+            pass 
+        
+        return self.patch_obj(deserialized, **kwargs)
+    
+    def delete_detail(self,deserialized, **kwargs):
+        deserialized = self._meta.serializer.deserialize(
+            request.body, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'))
+        try:
+            self.delete_obj(deserialized, **kwargs)
+            # FIXME: logging
+            return HttpResponse(status=202)
+        except ObjectDoesNotExist,e:
+            return HttpResponse(status=404)
+    
+    @transaction.atomic()    
+    def delete_obj(self, deserialized, **kwargs):
+        self.clear_cache()
+        username = self.get_user_resource().find_username(deserialized,**kwargs)
+        ScreensaverUser.objects.get(username=username).delete()
+    
+    @transaction.atomic()    
+    def patch_obj(self,deserialized, **kwargs):
+        self.clear_cache()
+
+        username = self.get_user_resource().find_username(deserialized,**kwargs)
+        
+        schema = self.build_schema()
+        fields = schema['fields']
+
+        fields = { name:val for name,val in fields.items() 
+            if val['table'] and val['table']=='screensaver_user'}
+        
+        try:
+            # create/get userprofile
+
+#             initializer_dict = {}
+#             for key in auth_user_fields.keys():
+#                 if deserialized.get(key,None):
+#                     initializer_dict[key] = parse_val(
+#                         deserialized.get(key,None), key, auth_user_fields[key]['data_type']) 
+            try:
+                user = UserProfile.objects.get(username=username)
+            except ObjectDoesNotExist, e:
+                logger.info('User %s does not exist, creating' % username)
+                user = self.get_user_resource().patch_obj(deserialized,**kwargs)
+
+            # create the screensaver_user
+            
+            initializer_dict = {}
+            for key in fields.keys():
+                if deserialized.get(key,None):
+                    initializer_dict[key] = parse_val(
+                        deserialized.get(key,None), key,fields[key]['data_type']) 
+
+            screensaver_user = None
+            try:
+                screensaver_user = ScreensaverUser.objects.get(username=username)
+            except ObjectDoesNotExist, e:
+                logger.info('Screensaver User %s does not exist, creating' % username)
+                screensaver_user = ScreensaverUser.objects.create(username=username)
+                screensaver_user.save()
+            
+            logger.info(str(('initializer dict', initializer_dict)))
+            for key,val in initializer_dict.items():
+                logger.info(str(('set',key,val,hasattr(screensaver_user, key))))
+                
+                if hasattr(screensaver_user,key):
+                    setattr(screensaver_user,key,val)
+            
+            # also set
+            screensaver_user.username = user.username
+            screensaver_user.email = user.email
+            screensaver_user.user = user
+            screensaver_user.save()
+            return screensaver_user
+            
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on put detail', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e  
+
+
+#     def put_detail(self, request, **kwargs):
+#         logger.info(str(('put_detail:', kwargs)))
+#         
+#         # first create the reports user
+#         try:
+# #             deserialized = self.deserialize(
+# #                 request, request.body, 
+# #                 format=request.META.get('CONTENT_TYPE', 'application/json'))
+#             deserialized = self._meta.serializer.deserialize(
+#                 request.body, 
+#                 format=request.META.get('CONTENT_TYPE', 'application/json'))
+#             
+#             # 1. find out if the data exist - as an object
+#             schema = self.build_schema()
+#             id_attribute = schema['resource_definition']['id_attribute']
+#             lookup_kwargs = {}
+#             for key in id_attribute:
+#                 if key in deserialized:
+#                     look_kwargs[key] = deserialized[key]
+#             if len(lookup_kwargs)==len(id_attribute):
+#                 
+#                 try:
+#                     obj = ScreensaverUser.objects.get(**lookup_kwargs)
+#                 except ObjectDoesNotExist, e:
+#                     logger.info(str(('err', e)))
+#                 
+#                 pass
+#             
+#         except Exception, e:
+#             exc_type, exc_obj, exc_tb = sys.exc_info()
+#             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+#             msg = str(e)
+#             logger.warn(str(('on put detail', 
+#                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+#             raise e  
+#             
+#             
+# 
+#     def put_detail2(self, request, **kwargs):
+#         logger.info(str(('put_detail:', kwargs)))
+#         
+#         # first create the reports user
+#         try:
+#             deserialized = self.deserialize(
+#                 request, request.body, 
+#                 format=request.META.get('CONTENT_TYPE', 'application/json'))
+#             bundle = self.get_user_resource().build_bundle(
+#                 data=dict_strip_unicode_keys(deserialized), request=request)
+#     
+#             try:
+#                 logger.info(str(('bundle data', bundle.data)))
+#                 updated_bundle = self.get_user_resource().obj_update(
+#                     bundle=bundle, 
+#                     **(self.get_user_resource().remove_api_resource_names(kwargs)))
+#                     
+#             except (NotFound, HttpNotFound),e:
+#                 logger.info(str(('no userprofile found, creating...', e)))
+#                 
+#                 updated_bundle = self.get_user_resource().obj_create(
+#                     bundle=bundle, 
+#                     **(self.get_user_resource().remove_api_resource_names(kwargs)))
+#             except MultipleObjectsReturned, e:
+#                 logger.error("cant' create user profile: %s %s", e, kwargs )
+#                 raise e
+#             
+#             ssbundle = self.build_bundle(
+#                 data=dict_strip_unicode_keys(deserialized), request=request)
+#             try:
+#                 ss_updated_bundle = self.obj_update(
+#                     bundle=ssbundle, **self.remove_api_resource_names(kwargs))
+#             
+#             except (NotFound, HttpNotFound, MultipleObjectsReturned),e:
+#                 logger.info(str(('err', e)))
+#                 ss_updated_bundle = self.obj_create(
+#                     bundle=ssbundle, **self.remove_api_resource_names(kwargs))
+#     
+#             ss_updated_bundle.obj.user = updated_bundle.obj
+#             ss_updated_bundle.obj.save();
+#             
+#             logger.info(str(('ss user created', ss_updated_bundle.obj )))
+#             ss_updated_bundle = self.full_dehydrate(ss_updated_bundle)
+#             log = ApiLog()
+#             log.username = bundle.request.user.username 
+#             log.user_id = bundle.request.user.id 
+#             log.date_time = timezone.now()
+#             log.ref_resource_name = self._meta.resource_name
+#             log.api_action = str((bundle.request.method)).upper()
+#             log.uri = self.get_resource_uri(bundle)
+#             log.key = '/'.join([str(x) for x in self.detail_uri_kwargs(bundle).values()])
+#             
+#             log.diff_dict_to_api_log(ss_updated_bundle.data)
+#     
+#             # user can specify any valid, escaped json for this field
+#             if 'apilog_json_field' in bundle.data:
+#                 log.json_field = bundle.data['apilog_json_field']
+#             
+#             if HEADER_APILOG_COMMENT in bundle.request.META:
+#                 log.comment = bundle.request.META[HEADER_APILOG_COMMENT]
+#                 logger.info(str(('log comment', log.comment)))
+#     
+#             if 'parent_log' in kwargs:
+#                 log.parent_log = kwargs.get('parent_log', None)
+#             
+#             log.save()
+#             logger.info(str(('log saved', log)))
+#             if not self._meta.always_return_data:
+#                 return http.HttpAccepted()
+#             else:
+#                 return self.get_detail(request, **kwargs)
+#                 # TODO: like this:
+#                 # return HttpResponse(request, content=ss_updated_bundle.data)
+#         except Exception, e:
+#             exc_type, exc_obj, exc_tb = sys.exc_info()
+#             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+#             msg = str(e)
+#             logger.warn(str(('on put detail', 
+#                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+#             raise e  
+#     
+#     def patch_detail(self, request, **kwargs):
+#         logger.info(str(('patch_detail:', kwargs)))
+# 
+#         try:
+#             lookup_kwargs = {}
+#             screensaver_user_id = kwargs.get('screensaver_user_id', None)
+#             ## TODO: drop support for ssuid, or lookup the reports.user from the ss user id
+#             
+#             username = kwargs.get('username', None)
+#             if username:
+#                 lookup_kwargs['username'] = username
+#                 
+#             if not (screensaver_user_id or username):
+#                 logger.info('no screensaver_user_id or username provided',kwargs)
+#                 raise NotImplementedError(
+#                     'must provide a screensaver_user_id or username parameter')
+#             
+#             basic_bundle = self.build_bundle(request=request)
+#     
+#             logger.info(str(('find:', lookup_kwargs)))
+#             try:
+#                 obj = self.get_user_resource().cached_obj_get(
+#                     bundle=basic_bundle, **lookup_kwargs)
+#             except ObjectDoesNotExist:
+#                 return http.HttpNotFound()
+#             except MultipleObjectsReturned:
+#                 return http.HttpMultipleChoices(
+#                     "More than one resource is found at this URI.")
+# 
+#             if not obj.screensaveruser_set.all().exists():
+#                 logger.info(str(('ss user obj not found', obj)))
+#                 return http.HttpNotFound()
+#             else:
+#                 ss_user = obj.screensaveruser_set.all()[0]
+#             
+#             # store the original bundle for logging
+#             original_bundle = self.build_bundle(obj=ss_user, request=request)
+#             original_bundle = self.full_dehydrate(original_bundle)
+#     
+#             bundle = self.build_bundle(obj=obj, request=request)
+#             logger.info(str(('dehydrate the existing obj', bundle.obj)))
+#             bundle = self.get_user_resource().full_dehydrate(bundle)
+#     
+# #             deserialized = self.deserialize(
+# #                 request, request.body, 
+# #                 format=request.META.get('CONTENT_TYPE', 'application/json'))
+#             deserialized = self._meta.serializer.deserialize(
+#                 request.body, 
+#                 format=request.META.get('CONTENT_TYPE', 'application/json'))
+#     
+#             logger.info(str(('Now update the user', deserialized, bundle, lookup_kwargs)))
+#             with transaction.atomic():
+#                 self.get_user_resource().update_in_place(request, bundle, deserialized)
+#                 logger.info(str(('updated', bundle)))
+#                 
+#                 ssbundle = super(ScreensaverUserResource,self).build_bundle(obj=ss_user, request=request)
+#                 ssbundle = self.full_dehydrate(ssbundle)
+#                 
+#                 ssbundle.data.update(**dict_strip_unicode_keys(deserialized))
+#     
+#                 sskwargs = {
+#                     self._meta.detail_uri_name: self.get_bundle_detail_data(ssbundle),
+#                     'request': request,
+#                 }
+#                 ssbundle = self.obj_update(ssbundle,**sskwargs)
+#                 logger.info(str(('updated', ssbundle)))
+#             
+#             ######### logging
+#             # final bundle, for logging
+#             ssbundle = self.full_dehydrate(ssbundle)
+#             difflog = compare_dicts(original_bundle.data, ssbundle.data)
+#     
+#             log = ApiLog()
+#             log.username = bundle.request.user.username 
+#             log.user_id = bundle.request.user.id 
+#             log.date_time = timezone.now()
+#             log.ref_resource_name = self._meta.resource_name
+#             log.api_action = str((bundle.request.method)).upper()
+#             log.uri = self.get_resource_uri(bundle)
+#             log.key = '/'.join([str(x) for x in self.detail_uri_kwargs(bundle).values()])
+#             
+#             log.diff_dict_to_api_log(difflog)
+#     
+#             # user can specify any valid, escaped json for this field
+#             if 'apilog_json_field' in bundle.data:
+#                 log.json_field = bundle.data['apilog_json_field']
+#             
+#             if HEADER_APILOG_COMMENT in bundle.request.META:
+#                 log.comment = bundle.request.META[HEADER_APILOG_COMMENT]
+#                 logger.info(str(('log comment', log.comment)))
+#     
+#             if 'parent_log' in kwargs:
+#                 log.parent_log = kwargs.get('parent_log', None)
+#             
+#             log.save()
+#             
+#             if not self._meta.always_return_data:
+#                 return http.HttpAccepted()
+#             else:
+#                 return self.get_detail(request, **kwargs)
+#         
+#         except Exception, e:
+#             exc_type, exc_obj, exc_tb = sys.exc_info()
+#             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+#             msg = str(e)
+#             logger.warn(str(('on patch detail', 
+#                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+#             raise e  
+#  
+#     def obj_update(self, bundle, skip_errors=False, **kwargs):
+#         # bypass the LoggingMixin by going straight to its parent
+#         bundle = super(IccblBaseResource, self).obj_update(bundle, **kwargs);
+#         return bundle
+#     def patch_list(self, request, **kwargs):
+#         logger.info(str(('patch_list:', kwargs)))
+#         return self.put_patch_detail(request, **kwargs)
+# 
+#     def put_list(self,request, **kwargs):
+#         logger.info(str(('put_list:', kwargs)))
+# #         deserialized = self.deserialize(
+# #             request, 
+# #             format=request.META.get('CONTENT_TYPE', 'application/json'))
+#         deserialized = self._meta.serializer.deserialize(
+#             request.body, 
+#             format=request.META.get('CONTENT_TYPE', 'application/json'))
+#         if not self._meta.collection_name in deserialized:
+#             raise BadRequest(str(("Invalid data sent. missing: " , self._meta.collection_name)))
+#         
+#         logger.info(str(('put/patch:', deserialized)))
+#         
+#         return self.create_or_update(deserialized[self._meta.collection_name])
        
         
 class ReagentResource(SqlAlchemyResource, ManagedModelResource):
@@ -3902,7 +4095,7 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
         
         is_for_detail = kwargs.pop('is_for_detail', False)
         logger.info(str(('kwargs', kwargs)))
-        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
         filename = re.sub(r'[\W]+','_',filename)
 
         # TODO: eliminate dependency on library (for schema determination)
@@ -4522,8 +4715,11 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
         if 'library_short_name' not in kwargs:
             raise BadRequest('library_short_name is required')
         
-        deserialized = self.deserialize(
-            request, 
+#         deserialized = self.deserialize(
+#             request, 
+#             format=request.META.get('CONTENT_TYPE', 'application/json'))
+        deserialized = self._meta.serializer.deserialize(
+            request.body, 
             format=request.META.get('CONTENT_TYPE', 'application/json'))
         if not self._meta.collection_name in deserialized:
             raise BadRequest(str(("Invalid data sent. missing: " , self._meta.collection_name)))
@@ -4727,7 +4923,7 @@ class ActivityResource(SqlAlchemyResource,ManagedModelResource):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
         filename = re.sub(r'[\W]+','_',filename)
         logger.info(str(('get_list', filename, kwargs)))
         
@@ -4888,7 +5084,7 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
 
         is_for_detail = kwargs.pop('is_for_detail', False)
 
-        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
         filename = re.sub(r'[\W]+','_',filename)
         #         default_response_options = {
         #             'is_for_detail': False,

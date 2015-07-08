@@ -12,7 +12,8 @@ import traceback
 
 from django.conf import settings
 from django.conf.urls import url
-from django.contrib.auth.models import User
+from django.contrib.auth.models import UserManager
+from django.contrib.auth.models import User as DjangoUser
 from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
@@ -41,7 +42,7 @@ from tastypie.bundle import Bundle
 from tastypie.constants import ALL, ALL_WITH_RELATIONS
 from tastypie.exceptions import NotFound, ImmediateHttpResponse, Unauthorized, \
     BadRequest
-from tastypie.http import HttpForbidden
+from tastypie.http import HttpForbidden, HttpNotFound
 from tastypie.resources import Resource, ModelResource
 from tastypie.resources import convert_post_to_put
 import tastypie.resources
@@ -52,19 +53,58 @@ from tastypie.utils.urls import trailing_slash
 from tastypie.validation import Validation
 
 from reports import LIST_DELIMITER_SQL_ARRAY,  \
-    HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB
+    HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB,HEADER_APILOG_COMMENT
 from reports.dump_obj import dumpObj
 from reports.models import MetaHash, Vocabularies, ApiLog, ListLog, Permission, \
                            UserGroup, UserProfile, Record
+from reports.models import API_ACTION_CREATE
 from reports.serializers import LimsSerializer, CsvBooleanField, CSVSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.utils.profile_decorator import profile
 from db.models import ScreensaverUser
+import dateutil
+from django.conf.global_settings import AUTH_USER_MODEL
 
 
 # NOTE: tastypie.fields is required for dynamic field instances using eval
 # import lims.settings 
 logger = logging.getLogger(__name__)
+
+def parse_val(value, key, data_type):
+    """
+    All values are read as strings from the input files, so this function 
+    converts them as directed.
+    """
+    try:
+        if ( value is None 
+            or value == '' 
+            or value == 'None' 
+            or value == u'None' 
+            or value == u'n/a'):  
+            return None
+        if data_type == 'string':
+            return value
+        elif data_type == 'integer':
+            # todo: this is a kludge, since we want an integer from values like "5.0"
+            return int(float(value))
+        elif data_type == 'date':
+            return dateutil.parser.parse(value)
+        elif data_type == 'datetime':
+            return dateutil.parser.parse(value)
+        elif data_type == 'boolean':
+            if(value.lower() == 'true' or value.lower() == 't'): return True
+            return False
+        elif data_type in ['float','decimal']:
+            return float(value)
+        elif data_type == 'list':
+            if isinstance(value, six.string_types):
+               return (value) # convert string to list
+            return value # otherwise, better be a string
+        else:
+            raise Exception('unknown data type: %s: "%s"' % (key,data_type))
+    except Exception, e:
+        logger.error(str(('value', value)))
+        raise            
 
     
 class UserGroupAuthorization(Authorization):
@@ -243,6 +283,9 @@ class IccblBaseResource(Resource):
                 except ValueError:
                     logger.error(str(('Invalid Accept header')))
                     raise ImmediateHttpResponse('Invalid Accept header')
+            if request.META.get('CONTENT_TYPE', '*/*') != '*/*':
+                format = request.META.get('CONTENT_TYPE', '*/*')
+        logger.info(str(('got format', format)))
         return format
   
 
@@ -426,10 +469,9 @@ def log_obj_create(obj_create_func):
         log.uri = self.get_resource_uri(bundle)
         log.key = '/'.join([str(x) for x in self.detail_uri_kwargs(bundle).values()])
 
-        # TODO: how do we feel about passing form data in the headers?
-        # TODO: abstract the form field name
-        if 'HTTP_APILOG_COMMENT' in bundle.request.META:
-            log.comment = bundle.request.META['HTTP_APILOG_COMMENT']
+        # Form data passed in the header
+        if HEADER_APILOG_COMMENT in bundle.request.META:
+            log.comment = bundle.request.META[HEADER_APILOG_COMMENT]
             
         if 'parent_log' in kwargs:
             log.parent_log = kwargs.get('parent_log', None)
@@ -570,8 +612,8 @@ def log_obj_update(obj_update_func):
             log.json_field = bundle.data['apilog_json_field']
         
         # TODO: abstract the form field name
-        if 'HTTP_APILOG_COMMENT' in bundle.request.META:
-            log.comment = bundle.request.META['HTTP_APILOG_COMMENT']
+        if HEADER_APILOG_COMMENT in bundle.request.META:
+            log.comment = bundle.request.META[HEADER_APILOG_COMMENT]
             logger.info(str(('log comment', log.comment)))
 
         if 'parent_log' in kwargs:
@@ -610,8 +652,8 @@ def log_obj_delete(obj_delete_func):
 
         # TODO: how do we feel about passing form data in the headers?
         # TODO: abstract the form field name
-        if 'HTTP_APILOG_COMMENT' in bundle.request.META:
-            log.comment = bundle.request.META['HTTP_APILOG_COMMENT']
+        if HEADER_APILOG_COMMENT in bundle.request.META:
+            log.comment = bundle.request.META[HEADER_APILOG_COMMENT]
 
         if 'parent_log' in kwargs:
             log.parent_log = kwargs.get('parent_log', None)
@@ -636,8 +678,8 @@ def log_patch_list(patch_list_func):
         listlog.uri = self.get_resource_uri()
         # TODO: how do we feel about passing form data in the headers?
         # TODO: abstract the form field name
-        if 'HTTP_APILOG_COMMENT' in request.META:
-            listlog.comment = request.META['HTTP_APILOG_COMMENT']
+        if HEADER_APILOG_COMMENT in request.META:
+            listlog.comment = request.META[HEADER_APILOG_COMMENT]
          
         listlog.save();
         listlog.key = listlog.id
@@ -675,8 +717,8 @@ class LoggingMixin(IccblBaseResource):
 
         # TODO: how do we feel about passing form data in the headers?
         # TODO: abstract the form field name
-        if 'HTTP_APILOG_COMMENT' in request.META:
-            log.comment = request.META['HTTP_APILOG_COMMENT']
+        if HEADER_APILOG_COMMENT in request.META:
+            log.comment = request.META[HEADER_APILOG_COMMENT]
     
         if kwargs:
             for key, value in kwargs.items():
@@ -735,8 +777,8 @@ class LoggingMixin(IccblBaseResource):
 #         listlog.uri = self.get_resource_uri()
 #         # TODO: how do we feel about passing form data in the headers?
 #         # TODO: abstract the form field name
-#         if 'HTTP_APILOG_COMMENT' in request.META:
-#             listlog.comment = request.META['HTTP_APILOG_COMMENT']
+#         if HEADER_APILOG_COMMENT in request.META:
+#             listlog.comment = request.META[HEADER_APILOG_COMMENT]
 #             
 #         response =  Resource.patch_list(self, request, **kwargs) 
 #          
@@ -1349,24 +1391,24 @@ class ManagedResource(LoggingMixin):
             return False
         return True
         
-    def deserialize(self, *args, **kwargs):
-        '''
-        Because field alias mapping is specific to each resource, override the 
-        deserialize method here to patch in an iterator that will use the alias
-        map to convert posted fields to mapped fields.
-         
-        ## TODO: implement tests for this
-        '''
-        deserialized = super(ManagedResource, self).deserialize(*args, **kwargs)
-        
-        if self._meta.collection_name in deserialized: 
-            # this is a list of data
-            deserialized[self._meta.collection_name] = \
-                self.create_aliasmapping_iterator(deserialized[self._meta.collection_name])
-        else:   
-            # this is a single item of data
-            deserialized = self.alias_item(deserialized)
-        return deserialized
+#     def deserialize(self, *args, **kwargs):
+#         '''
+#         Because field alias mapping is specific to each resource, override the 
+#         deserialize method here to patch in an iterator that will use the alias
+#         map to convert posted fields to mapped fields.
+#          
+#         ## TODO: implement tests for this
+#         '''
+#         deserialized = super(ManagedResource, self).deserialize(*args, **kwargs)
+#         
+#         if self._meta.collection_name in deserialized: 
+#             # this is a list of data
+#             deserialized[self._meta.collection_name] = \
+#                 self.create_aliasmapping_iterator(deserialized[self._meta.collection_name])
+#         else:   
+#             # this is a single item of data
+#             deserialized = self.alias_item(deserialized)
+#         return deserialized
         
     def dehydrate(self, bundle):
         ''' 
@@ -1457,15 +1499,32 @@ class ManagedResource(LoggingMixin):
             bundle = super(ManagedResource, self).obj_get(bundle, **kwargs);
             return bundle
         except Exception, e:
-            extype, ex, tb = sys.exc_info()
-            logger.warn(str((
-                'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
-                tb.tb_lineno, extype, ex)))
-            msg = str((e));
-            if hasattr(e, 'response'): 
-                msg = str(e.response)
-            logger.warn(str(('==ex on get',bundle.request.path,e, msg, kwargs)))
-            raise e
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on obj_get', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno, kwargs)))
+            raise e  
+
+    def find_key_from_resource_uri(self,resource_uri):
+        schema = self.build_schema()
+        id_attribute = resource = schema['resource_definition']['id_attribute']
+        resource_name = self._meta.resource_name
+        
+        index = resource_uri.rfind(resource_name)
+        if index > -1:
+            index = index + len(resource_name)
+            keystring = resource_uri[index:]
+        else:
+            keystring = resource_uri
+        keys = keystring.strip('/').split('/')
+        logger.info(str(('keys', keys, 'id_attribute', id_attribute)))
+        if len(keys) < len(id_attribute):
+            raise NotImplementedError(str((
+                'resource uri does not contain all id attributes',
+                resource_uri,'id_attributes',id_attribute)))
+        else:
+            return dict(zip(id_attribute,keys))
 
     def _get_attribute(self, obj, attribute):
         '''
@@ -1478,7 +1537,8 @@ class ManagedResource(LoggingMixin):
         for part in parts:
             if hasattr(current_obj,part):
                 current_obj = getattr(current_obj, part)
-        
+        if current_obj == obj:
+            return None
         return current_obj 
     
     def _get_hashvalue(self, dictionary, attribute):
@@ -2294,6 +2354,12 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
                     ).label('child_logs')
             }
             
+            if 'date_time' in filter_fields:
+                # ISO 8601 only supports millisecond precision, 
+                # but postgres supports microsecond
+                custom_columns['date_time'] = \
+                    literal_column("date_trunc('millisecond',reports_apilog.date_time)")
+            
             columns = self.build_sqlalchemy_columns(
                 field_hash.values(), base_query_tables=base_query_tables,
                 custom_columns=custom_columns )
@@ -2315,6 +2381,8 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
             # general setup
              
             (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+            
+#             logger.info(str(('stmt', stmt.compile())))
             
             if not order_clauses:
                 stmt = stmt.order_by('ref_resource_name','key', 'date_time')
@@ -2434,6 +2502,62 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
     This class exists to make sure that the cache clearing is called on the 
     SqlAlchemyResource
     '''
+    # FIXME: put this here temporarily until class hierarchy is refactored
+    def log_patches(self,request, original_data, new_data, **kwargs):
+        '''
+        log differences between dicts having the same identity in the arrays:
+        @param original_data - data from before the API action
+        @param new_data - data from after the API action
+        - dicts have the same identity if the id_attribute keys have the same
+        value.
+        '''
+        schema = self.build_schema()
+        id_attribute = resource = schema['resource_definition']['id_attribute']
+        
+        for new_dict in new_data:
+            log = ApiLog()
+            log.username = request.user.username 
+            log.user_id = request.user.id 
+            log.date_time = timezone.now()
+            log.ref_resource_name = self._meta.resource_name
+            log.key = '/'.join([str(new_dict[x]) for x in id_attribute])
+            log.uri = '/'.join([self._meta.resource_name,log.key])
+        
+            # user can specify any valid, escaped json for this field
+            # if 'apilog_json_field' in bundle.data:
+            #     log.json_field = bundle.data['apilog_json_field']
+            
+            # TODO: abstract the form field name
+            if HEADER_APILOG_COMMENT in request.META:
+                log.comment = request.META[HEADER_APILOG_COMMENT]
+                logger.info(str(('log comment', log.comment)))
+    
+            if 'parent_log' in kwargs:
+                log.parent_log = kwargs.get('parent_log', None)
+            
+            prev_dict = None
+            for c_dict in original_data:
+                prev_dict = c_dict
+                for key in id_attribute:
+                    if new_dict[key] != c_dict[key]:
+                        prev_dict = None
+                        break
+                if prev_dict:
+                    break # found
+            if prev_dict:
+                difflog = compare_dicts(prev_dict,new_dict)
+                if 'diff_keys' in difflog:
+                    # log = ApiLog.objects.create()
+                    log.api_action = str((request.method)).upper()
+                    log.diff_dict_to_api_log(difflog)
+                    log.save()
+                    if(logger.isEnabledFor(logging.DEBUG)):
+                        logger.debug(str(('update, api log', log)) )
+            else: # creating
+                log.api_action = API_ACTION_CREATE
+                log.added_keys = json.dumps(new_dict.keys())
+                log.diffs = json.dumps(new_dict)
+                log.save()
 
     def patch_list(self, request, **kwargs):
         SqlAlchemyResource.clear_cache(self)
@@ -2481,6 +2605,9 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
 
     def __init__(self, **kwargs):
         super(UserResource,self).__init__(**kwargs)
+        
+        self.permission_resource = None
+        self.usergroup_resource = None
 
     class Meta:
         queryset = UserProfile.objects.all().order_by('username') 
@@ -2498,6 +2625,16 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         always_return_data = True # this makes Backbone happy
         resource_name = 'user'
 
+    def get_permission_resource(self):
+        if not self.permission_resource:
+            self.permission_resource = PermissionResource()
+        return self.permission_resource
+    
+    def get_usergroup_resource(self):
+        if not self.usergroup_resource:
+            self.usergroup_resource = UserGroupResource()
+        return self.usergroup_resource
+    
     def prepend_urls(self):
         return [
             # override the parent "base_urls" so that we don't need to worry about schema again
@@ -2531,7 +2668,6 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             if 'usergroups' in schema['fields']: # may be blank on initiation
                 schema['fields']['usergroups']['choices'] = \
                     ['usergroup/%s' % x.name for x in UserGroup.objects.all()]
-            logger.info(str(('-------usergroups',schema['fields']['usergroups'] )))
         except Exception, e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
@@ -2635,7 +2771,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
 
         username = kwargs.get('username', None)
         if not username:
-            logger.info(str(('no username provided')))
+            logger.info(str(('no username provided', kwargs)))
             raise NotImplementedError('must provide a username parameter')
         
         kwargs['is_for_detail']=True
@@ -2667,7 +2803,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
         filename = re.sub(r'[\W]+','_',filename)
         logger.info(str(('get_list', filename, kwargs)))
         
@@ -2741,6 +2877,19 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             raise e  
 
 
+#     def full_dehydrate(self, bundle, for_list=False):
+#         """
+#         Given a bundle with an object instance, extract the information from it
+#         to populate the resource.
+#         """
+#         response = self.get_detail(
+#             bundle.request,
+#             desired_format='application/json',
+#             username=bundle.obj.username)
+#         bundle.data = self._meta.serializer.deserialize(
+#             LimsSerializer.get_content(response), format='application/json')
+#         return bundle
+
     def get_resource_uri(self, bundle_or_obj=None, url_name='api_dispatch_list'):
         ''' 
         Override - Either have to generate localized resource uri, or, 
@@ -2750,485 +2899,438 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         '''
         return self.get_local_resource_uri(
             bundle_or_obj=bundle_or_obj, url_name=url_name)
+        
+    def find_username(self,deserialized, **kwargs):
+        username = kwargs.get('username', None)
+        if not username and 'username' in deserialized:
+                username = deserialized['username']
+        if not username and 'resource_uri' in deserialized:
+            keys = self.find_key_from_resource_uri(deserialized['resource_uri'])
+            username = keys.get('username', None)
+        if not username:
+            logger.info('no username provided',kwargs, deserialized)
+            raise NotImplementedError(str((
+                'must provide a username parameter',
+                kwargs, deserialized)) )
+        return username
 
-#     def dehydrate_permissions(self, bundle):
-#         uri_list = []
-#         P = PermissionResource()
-#         # todo https://docs.djangoproject.com/en/dev/topics/db/queries/#lookups-that-span-relationships        
-#          
-#         #         userprofile = bundle.obj.userprofile_set.all()[0]
-#         for p in bundle.obj.permissions.all():
-#             uri_list.append(P.get_local_resource_uri(p))
-#         return uri_list;
-#     
-#     def dehydrate_all_permissions(self, bundle):
-#         uri_list = set()
-#         uri_list.update(self.dehydrate_permissions(bundle))
-#         P = PermissionResource()
-#         for permission in [ permission
-#             for usergroup in bundle.obj.usergroup_set.all()
-#             for permission in usergroup.get_all_permissions()]:
-#             uri_list.add(P.get_local_resource_uri(permission))
-#         
-#         return list(uri_list)
-#        
-#     def dehydrate_usergroups(self, bundle):
-#         uri_list = []
-#         UR = UserGroupResource()
-#         for g in bundle.obj.usergroup_set.all():
-#             uri_list.append(UR.get_local_resource_uri(g))
-#         return uri_list;
+    # reworked 20150706   
+    def put_list(self,request, **kwargs):
+
+        deserialized = self._meta.serializer.deserialize(
+            request.body, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'))
+        if not self._meta.collection_name in deserialized:
+            raise BadRequest("Invalid data sent, must be nested in '%s'" 
+                % self._meta.collection_name)
+        deserialized = deserialized[self._meta.collection_name]
+        
+        with transaction.atomic():
+            
+            # TODO: review REST actions:
+            # PUT deletes the endpoint
+            
+            UserProfile.objects.all().delete()
+            
+            for _dict in deserialized:
+                self.put_obj(_dict)
+
+        # get new state, for logging
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            **kwargs)
+        new_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        new_data = new_data[self._meta.collection_name]
+        
+        logger.info(str(('new data', new_data)))
+        self.log_patches(request, [],new_data,**kwargs)
+
+    
+        if not self._meta.always_return_data:
+            return http.HttpAccepted()
+        else:
+            response = self.get_list(request, **kwargs)             
+            response.status_code = 202
+            return response
+        
     def patch_list(self, request, **kwargs):
-        return super(UserResource,self).patch_list(request,**kwargs)
-    
-    def obj_delete(self, bundle, **kwargs):
-        bundle = super(UserResource, self).obj_delete(bundle, **kwargs);
-        return bundle
-    
-    def obj_update(self, bundle, skip_errors=False, **kwargs):
-        bundle = super(UserResource, self).obj_update(bundle, **kwargs);
-        
-        # Update the auth.user 
-        django_user = bundle.obj.user
-        
-        # TODO validate these fields
-        django_user.first_name = bundle.data.get('first_name')
-        django_user.last_name = bundle.data.get('last_name')
-        django_user.email = bundle.data.get('email')
-        # Note cannot update username
-        
-        # FIXME: 20150616 - corrects for users w/o is staff set
-        if not django_user.is_staff:
-            django_user.is_staff = False
-        
-        django_user.save()
-        
-        # update the SS user
-        
-#         if bundle.obj.screensaveruser_set.all().exists():
-#             ss_user = bundle.obj.screensaveruser_set.all()[0]
-#         else:
-#             ss_user = ScreensaverUser.objects.create()
-        
-        
-        return bundle
-        
-    def obj_create(self, bundle, **kwargs):
-        bundle = super(UserResource, self).obj_create(bundle, **kwargs);
-        
-        # create the auth user
-        
-        
-        # create the SS user
-        
-        
-        return bundle
 
-    def hydrate(self, bundle):
-        ''' 
-        Called by full_hydrate 
-        sequence is obj_create->full_hydrate(hydrate, then full)->save
+        deserialized = self._meta.serializer.deserialize(
+            request.body, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'))
+        if not self._meta.collection_name in deserialized:
+            raise BadRequest("Invalid data sent, must be nested in '%s'" 
+                % self._meta.collection_name)
+        deserialized = deserialized[self._meta.collection_name]
+
+        # cache state, for logging
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            **kwargs)
+        original_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        original_data = original_data[self._meta.collection_name]
+        logger.info(str(('original data', original_data)))
+
+        with transaction.atomic():
+            
+            for _dict in deserialized:
+                self.patch_obj(_dict)
+                
+        # get new state, for logging
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            **kwargs)
+        new_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        new_data = new_data[self._meta.collection_name]
         
-        Our custom implementation will create an auth_user for the input; so 
-        there will be a reports_userprofile.user -> auth_user.
-        '''
-        bundle = super(UserResource, self).hydrate(bundle);
+        logger.info(str(('new data', new_data)))
+        self.log_patches(request, original_data,new_data,**kwargs)
         
-        # fixup the username; stock hydrate will set either, but if it's not 
-        # specified, then we will use the ecommons        
-        ecommons = bundle.data.get('ecommons_id')
-        username = bundle.data.get('username')
-        email=bundle.data.get('email')
-        first_name=bundle.data.get('first_name')
-        last_name=bundle.data.get('last_name')
-        is_staff = self.is_staff.convert(bundle.data.get('is_staff'))
-        
-        if not username:
-            username = ecommons;
-        bundle.obj.username = username
-        
-        django_user = None
-        from django.contrib.auth.models import User as DjangoUser
-        if bundle.obj and bundle.obj.user:
-            django_user = bundle.obj.user
+        if not self._meta.always_return_data:
+            return http.HttpAccepted()
         else:
+            response = self.get_list(request, **kwargs)             
+            response.status_code = 202
+            return response
+                
+    def patch_detail(self, request, **kwargs):
+
+        deserialized = self._meta.serializer.deserialize(
+            request.body, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'))
+        
+        # cache state, for logging
+        username = self.find_username(deserialized, **kwargs)
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            **kwargs)
+        original_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        original_data = original_data[self._meta.collection_name]
+        logger.info(str(('original data', original_data)))
+
+        with transaction.atomic():
+            logger.info(str(('patch_detail:', kwargs)))
+            
+            self.patch_obj(deserialized, **kwargs)
+
+        # get new state, for logging
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            **kwargs)
+        new_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        new_data = new_data[self._meta.collection_name]
+        
+        logger.info(str(('new data', new_data)))
+        self.log_patches(request, original_data,new_data,**kwargs)
+
+        
+        if not self._meta.always_return_data:
+            return http.HttpAccepted()
+        else:
+            response = self.get_detail(request, **kwargs) 
+            response.status_code = 202
+            return response
+
+    def put_detail(self, request, **kwargs):
+                
+        deserialized = self._meta.serializer.deserialize(
+            request.body, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'))
+        
+        with transaction.atomic():
+            logger.info(str(('put_detail:', kwargs)))
+            
+            self.put_obj(deserialized, **kwargs)
+        
+        if not self._meta.always_return_data:
+            return http.HttpAccepted()
+        else:
+            response = self.get_detail(request, **kwargs) 
+            response.status_code = 202
+            return response
+        
+    @transaction.atomic()    
+    def put_obj(self,deserialized, **kwargs):
+        self.clear_cache()
+        
+        try:
+            self.delete_obj(deserialized, **kwargs)
+        except ObjectDoesNotExist,e:
+            pass 
+        
+        return self.patch_obj(deserialized, **kwargs)
+    
+    def delete_detail(self,deserialized, **kwargs):
+        deserialized = self._meta.serializer.deserialize(
+            request.body, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'))
+        try:
+            self.delete_obj(deserialized, **kwargs)
+            return HttpResponse(status=202)
+        except ObjectDoesNotExist,e:
+            return HttpResponse(status=404)
+    
+    @transaction.atomic()    
+    def delete_obj(self, deserialized, **kwargs):
+        self.clear_cache()
+        username = self.find_username(deserialized,**kwargs)
+        UserProfile.objects.get(username=username).delete()
+    
+    @transaction.atomic()    
+    def patch_obj(self,deserialized, **kwargs):
+        self.clear_cache()
+
+        username = self.find_username(deserialized,**kwargs)
+        
+        schema = self.build_schema()
+        fields = schema['fields']
+
+        auth_user_fields = { name:val for name,val in fields.items() 
+            if val['table'] and val['table']=='auth_user'}
+        userprofile_fields = { name:val for name,val in fields.items() 
+            if val['table'] and val['table']=='reports_userprofile'}
+        
+        try:
+            # create the auth_user
+
+            initializer_dict = {}
+            for key in auth_user_fields.keys():
+                if deserialized.get(key,None):
+                    initializer_dict[key] = parse_val(
+                        deserialized.get(key,None), key, auth_user_fields[key]['data_type']) 
             try:
-                django_user = DjangoUser.objects.get(username=username)
+                user = DjangoUser.objects.get_by_natural_key(username)
             except ObjectDoesNotExist, e:
-                logger.info(str(('Auth.user does not exist, creating', username)))
-                # ok, will create
-                pass;
+                logger.info('User %s does not exist, creating' % username)
+                user = DjangoUser.objects.create_user(
+                    username) # , **initializer_dict)
+            for key,val in initializer_dict.items():
+                if hasattr(user,key):
+                    setattr(user,key,val)
+            user.save()
 
-        if django_user:            
-            django_user.first_name = first_name
-            django_user.last_name = last_name
-            django_user.email = email
-            django_user.save();
-        else:
-            django_user = DjangoUser.objects.create_user(
-                username, 
-                email=email, 
-                first_name=first_name, 
-                last_name=last_name)
-            django_user.save()
-            # NOTE: we'll use user.is_password_usable() to verify if the 
-            # user has a staff/manual django password account
-            #             logger.debug(str(('save django user', django_user)))
-            # Note: don't save yet, since the userprofile should be saved first
-            # django_user.save()
-            # this has to be done to set the FK on obj; since we're the only
-            # side maintaining this rel' with auth_user
-
-        django_user.is_staff = is_staff
-        bundle.obj.user=django_user 
-        return bundle
-    
-    def is_valid(self, bundle):
-        """
-        Should return a dictionary of error messages. If the dictionary has
-        zero items, the data is considered valid. If there are errors, keys
-        in the dictionary should be field names and the values should be a list
-        of errors, even if there is only one.
-        """
-        
-        # cribbed from tastypie.validation.py:
-        # - mesh data and obj values, then validate
-        data = {}
-        if bundle.obj.pk:
-            data = model_to_dict(bundle.obj)
-        if data is None:
-            data = {}
-        data.update(bundle.data)
-        
-        # do validations
-        errors = defaultdict(list)
-        
-        # TODO: rework this to be driven by the metahash
-        
-        if not data.get('first_name'):
-            errors['first_name'] = ['first_name must be specified']
-        
-        if not data.get('last_name'):
-            errors['last_name'] = ['last_name must be specified']
-        
-        if not data.get('email'):
-            errors['email'] = ['email must be specified']
-        
-        ecommons = data.get('ecommons_id')
-        username = data.get('username')
-        
-        if ecommons and username and (ecommons != username) :
-            errors['specify either username or ecommons, not both']
-        elif ecommons:
-            bundle.obj.username = ecommons;
+            # create the reports userprofile
             
-        if errors:
-            bundle.errors[self._meta.resource_name] = errors
-            logger.warn(str(('bundle errors', bundle.errors, len(bundle.errors.keys()))))
-            return False
-        return True
+            initializer_dict = {}
+            for key in userprofile_fields.keys():
+                if deserialized.get(key,None):
+                    initializer_dict[key] = parse_val(
+                        deserialized.get(key,None), key,userprofile_fields[key]['data_type']) 
 
-
-class UserResourceOld(ManagedModelResource):
-
-    username = fields.CharField('user__username', null=False, readonly=True)
-    first_name = fields.CharField('user__first_name', null=False, readonly=True)
-    last_name = fields.CharField('user__last_name', null=False, readonly=True)
-    email = fields.CharField('user__email', null=False, readonly=True)
-    is_staff = CsvBooleanField('user__is_staff', null=True, readonly=True)
-    is_superuser = CsvBooleanField('user__is_superuser', null=True, readonly=True)
-
-    usergroups = fields.ToManyField(
-        'reports.api.UserGroupResource', 'usergroup_set', related_name='users', 
-        blank=True, null=True)
-    permissions = fields.ToManyField(
-        'reports.api.PermissionResource', 'permissions', null=True) #, related_name='users', blank=True, null=True)
-    
-    all_permissions = fields.ListField(attribute='all_permissions', blank=True, null=True, readonly=True)
-
-    is_for_group = fields.BooleanField(attribute='is_for_group', blank=True, null=True)
-
-    def __init__(self, **kwargs):
-        super(UserResource,self).__init__(**kwargs)
-
-    class Meta:
-        queryset = UserProfile.objects.all().order_by('username') 
-        authentication = MultiAuthentication(
-            BasicAuthentication(), SessionAuthentication())
-        
-        # FIXME: should override UserGroupAuthorization, and should allow user to view
-        # (1) record by default: their own.
-        authorization = SuperUserAuthorization()
-#         authorization= UserGroupAuthorization() #SuperUserAuthorization()        
-        ordering = []
-        filtering = {'scope':ALL, 'key': ALL, 'alias':ALL}
-        serializer = LimsSerializer()
-        excludes = [] #['json_field']
-        always_return_data = True # this makes Backbone happy
-        resource_name = 'user'
-
-    def prepend_urls(self):
-        return [
-            # override the parent "base_urls" so that we don't need to worry about schema again
-            url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('get_schema'), name="api_get_schema"),            
-            
-            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))/groups%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_user_groupview'), name="api_dispatch_user_groupview"),
-            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))/permissions%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_user_permissionview'), name="api_dispatch_user_permissionview"),
-            ]    
-
-    def dispatch_user_groupview(self, request, **kwargs):
-        # signal to include extra column
-        return UserGroupResource().dispatch('list', request, **kwargs)    
-    
-    def dispatch_user_permissionview(self, request, **kwargs):
-        # signal to include extra column
-        return PermissionResource().dispatch('list', request, **kwargs)    
-        
-    def get_object_list(self, request, groupname=None):
-        ''' 
-        Called immediately before filtering, actually grabs the (ModelResource) 
-        query - 
-        
-        Override this and apply_filters, so that we can control the 
-        extra column "is_for_group".  This extra column is present when 
-        navigating to users from a usergroup; see prepend_urls.
-        '''
-        query = super(UserResource, self).get_object_list(request);
-        
-        logger.debug(str(('get_obj_list', groupname)))
-        if groupname:
-            query = query.extra(select = {
-                'is_for_group': ( 
-                    '(select count(*)>0 '
-                    ' from reports_usergroup ug '
-                    ' join reports_usergroup_users ruu on(ug.id=ruu.usergroup_id) '
-                    ' where ruu.userprofile_id=reports_userprofile.id '
-                    ' and ug.name like %s )' ),
-              },
-              select_params = [groupname] )
-            query = query.order_by('-is_for_group','user__last_name', 'user__first_name')
-        return query
-
-    def apply_filters_xx(self, request, applicable_filters, **kwargs):
-
-        query = self.get_object_list(request, **kwargs)
-        logger.info(str(('applicable_filters', applicable_filters)))
-        filters = applicable_filters.get('filter')
-        if filters:
-            
-            # Grab the groups/users filter out of the dict
-            groups_filter_val = None
-            for f in filters.keys():
-                if 'usergroup' in f:
-                    groups_filter_val = filters.pop(f)
-
-            query = query.filter(**filters)
-            
-            # then add the groups filter back in
-            if groups_filter_val:
-                ids = [x.id for x in UserProfile.objects.filter(
-                        usergroup__name__iexact=groups_filter_val)]
-                query = query.filter(id__in=ids)
-            
-        e = applicable_filters.get('exclude')
-        if e:
-            groups_filter_val = None
-            for x in e.keys():
-                if 'usergroup' in x:
-                    groups_filter_val = e.pop(x)
-            for exclusion_filter, value in e.items():
-                query = query.exclude(**{exclusion_filter: value})
-
-            # then add the user/groups filter back in
-            if groups_filter_val:
-                ids = [x.id for x in UserProfile.objects.filter(
-                        usergroup__name__iexact=groups_filter_val)]
-                query = query.exclude(id__in=ids)
-
-        return query                 
-
-    def apply_sortingxx(self, obj_list, options):
-        '''
-        Override to exclude certain fields from the PostgresSortingResource
-        ''' 
-        options = options.copy()
-        options['non_null_fields'] = ['groups','is_for_group','user__first_name', 'user__last_name'] 
-        obj_list = super(UserResource, self).apply_sorting(obj_list, options)
-        return obj_list
-
-    def get_resource_uri(self, bundle_or_obj=None, url_name='api_dispatch_list'):
-        ''' 
-        Override - Either have to generate localized resource uri, or, 
-        in client, equate localized uri with non-localized uri's (* see user.js,
-        where _.without() is used).
-        This modification represents the first choice
-        '''
-        return self.get_local_resource_uri(
-            bundle_or_obj=bundle_or_obj, url_name=url_name)
-
-    def dehydrate_permissions(self, bundle):
-        uri_list = []
-        P = PermissionResource()
-        # todo https://docs.djangoproject.com/en/dev/topics/db/queries/#lookups-that-span-relationships        
-         
-        #         userprofile = bundle.obj.userprofile_set.all()[0]
-        for p in bundle.obj.permissions.all():
-            uri_list.append(P.get_local_resource_uri(p))
-        return uri_list;
-    
-    def dehydrate_all_permissions(self, bundle):
-        uri_list = set()
-        uri_list.update(self.dehydrate_permissions(bundle))
-        P = PermissionResource()
-        for permission in [ permission
-            for usergroup in bundle.obj.usergroup_set.all()
-            for permission in usergroup.get_all_permissions()]:
-            uri_list.add(P.get_local_resource_uri(permission))
-        
-        return list(uri_list)
-       
-    def dehydrate_usergroups(self, bundle):
-        uri_list = []
-        UR = UserGroupResource()
-        for g in bundle.obj.usergroup_set.all():
-            uri_list.append(UR.get_local_resource_uri(g))
-        return uri_list;
-
-
-        
-    def obj_update(self, bundle, skip_errors=False, **kwargs):
-        bundle = super(UserResource, self).obj_update(bundle, **kwargs);
-        
-        # Update the auth.user 
-        django_user = bundle.obj.user
-        
-        # TODO validate these fields
-        django_user.first_name = bundle.data.get('first_name')
-        django_user.last_name = bundle.data.get('last_name')
-        django_user.email = bundle.data.get('email')
-        # Note cannot update username
-        
-        # FIXME: 20150616 - corrects for users w/o is staff set
-        if not django_user.is_staff:
-            django_user.is_staff = False
-        
-        django_user.save()
-        
-    def obj_create(self, bundle, **kwargs):
-        bundle = super(UserResource, self).obj_create(bundle, **kwargs);
-        return bundle
-
-    def hydrate(self, bundle):
-        ''' 
-        Called by full_hydrate 
-        sequence is obj_create->full_hydrate(hydrate, then full)->save
-        
-        Our custom implementation will create an auth_user for the input; so 
-        there will be a reports_userprofile.user -> auth_user.
-        '''
-        bundle = super(UserResource, self).hydrate(bundle);
-        
-        # fixup the username; stock hydrate will set either, but if it's not 
-        # specified, then we will use the ecommons        
-        ecommons = bundle.data.get('ecommons_id')
-        username = bundle.data.get('username')
-        email=bundle.data.get('email')
-        first_name=bundle.data.get('first_name')
-        last_name=bundle.data.get('last_name')
-        is_staff = self.is_staff.convert(bundle.data.get('is_staff'))
-        
-        if not username:
-            username = ecommons;
-        bundle.obj.username = username
-        
-        django_user = None
-        from django.contrib.auth.models import User as DjangoUser
-        if bundle.obj and bundle.obj.user:
-            django_user = bundle.obj.user
-        else:
+            userprofile = None
             try:
-                django_user = DjangoUser.objects.get(username=username)
+                userprofile = UserProfile.objects.get(username=username)
             except ObjectDoesNotExist, e:
-                logger.info(str(('Auth.user does not exist, creating', username)))
-                # ok, will create
-                pass;
-
-        if django_user:            
-            django_user.first_name = first_name
-            django_user.last_name = last_name
-            django_user.email = email
-            django_user.save();
-        else:
-            django_user = DjangoUser.objects.create_user(
-                username, 
-                email=email, 
-                first_name=first_name, 
-                last_name=last_name)
-            # NOTE: we'll use user.is_password_usable() to verify if the 
-            # user has a staff/manual django password account
-            #             logger.debug(str(('save django user', django_user)))
-            # Note: don't save yet, since the userprofile should be saved first
-            # django_user.save()
-            # this has to be done to set the FK on obj; since we're the only
-            # side maintaining this rel' with auth_user
-
-        django_user.is_staff = is_staff
-        bundle.obj.user=django_user 
-        return bundle
-    
-    def is_valid(self, bundle):
-        """
-        Should return a dictionary of error messages. If the dictionary has
-        zero items, the data is considered valid. If there are errors, keys
-        in the dictionary should be field names and the values should be a list
-        of errors, even if there is only one.
-        """
-        
-        # cribbed from tastypie.validation.py:
-        # - mesh data and obj values, then validate
-        data = {}
-        if bundle.obj.pk:
-            data = model_to_dict(bundle.obj)
-        if data is None:
-            data = {}
-        data.update(bundle.data)
-        
-        # do validations
-        errors = defaultdict(list)
-        
-        # TODO: rework this to be driven by the metahash
-        
-        if not data.get('first_name'):
-            errors['first_name'] = ['first_name must be specified']
-        
-        if not data.get('last_name'):
-            errors['last_name'] = ['last_name must be specified']
-        
-        if not data.get('email'):
-            errors['email'] = ['email must be specified']
-        
-        ecommons = data.get('ecommons_id')
-        username = data.get('username')
-        
-        if ecommons and username and (ecommons != username) :
-            errors['specify either username or ecommons, not both']
-        elif ecommons:
-            bundle.obj.username = ecommons;
+                logger.info('Reports User %s does not exist, creating' % username)
+                userprofile = UserProfile.objects.create(username=username)
+                userprofile.save()
             
-        if errors:
-            bundle.errors[self._meta.resource_name] = errors
-            logger.warn(str(('bundle errors', bundle.errors, len(bundle.errors.keys()))))
-            return False
-        return True
+            logger.info(str(('initializer dict', initializer_dict)))
+            for key,val in initializer_dict.items():
+                logger.info(str(('set',key,val,hasattr(userprofile, key))))
+                
+                if key == 'permissions':
+                    for p in val:
+                        permission_key = ( 
+                            self.get_permission_resource().find_key_from_resource_uri(p))
+                        try:
+                            permission = Permission.objects.get(**permission_key)
+                            userprofile.permissions.add(permission)
+                        except ObjectDoesNotExist, e:
+                            logger.info(str(('no such permission', p, permission_key, initializer_dict)))
+                            # if permission does not exist, create it
+                            permission = Permission.objects.create(**permission_key)
+                            permission.save()
+                            userprofile.permissions.add(permission)
+                            userprofile.save()
+                            logger.info(str(('user perms', [str(x) for x in userprofile.permissions.all() ] )) )
+                elif key == 'usergroups':
+                    for g in val:
+                        usergroup_key = self.get_usergroup_resource().find_key_from_resource_uri(g)
+                        try:
+                            usergroup = UserGroup.objects.get(**usergroup_key)
+                            userprofile.usergroups.add(usergroup)
+                        except ObjectDoesNotExist, e:
+                            logger.info(str(('no such usergroup', g, usergroup_key, initializer_dict)))
+                            raise e
+                elif hasattr(userprofile,key):
+                    setattr(userprofile,key,val)
+            
+            # also set
+            userprofile.email = user.email
+            userprofile.user = user
+            userprofile.save()
+            return userprofile
+            
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on put detail', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e  
+            
+#     def obj_delete(self, bundle, **kwargs):
+#         bundle = super(UserResource, self).obj_delete(bundle, **kwargs);
+#         return bundle
+#     
+#     def obj_update(self, bundle, skip_errors=False, **kwargs):
+#         try:
+#             # bypass the LoggingMixin by going straight to its parent
+#             bundle = super(IccblBaseResource, self).obj_update(bundle, **kwargs);
+#             
+#             # Update the auth.user 
+#             django_user = bundle.obj.user
+#             
+#             # TODO validate these fields
+#             django_user.first_name = bundle.data.get('first_name')
+#             django_user.last_name = bundle.data.get('last_name')
+#             django_user.email = bundle.data.get('email')
+#             # Note cannot update username
+#             
+#             # FIXME: 20150616 - corrects for users w/o is staff set
+#             if not django_user.is_staff:
+#                 django_user.is_staff = False
+#             
+#             django_user.save()
+#             
+#             return bundle
+#         except Exception, e:
+#             exc_type, exc_obj, exc_tb = sys.exc_info()
+#             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+#             msg = str(e)
+#             logger.warn(str(('on obj_update', 
+#                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno, kwargs)))
+#             raise e  
+#         
+#     def obj_create(self, bundle, **kwargs):
+#         bundle = super(UserResource, self).obj_create(bundle, **kwargs)
+#         
+#         return bundle
+# 
+#     def hydrate(self, bundle):
+#         ''' 
+#         Called by full_hydrate 
+#         sequence is obj_create->full_hydrate(hydrate, then full)->save
+#         
+#         Our custom implementation will create an auth_user for the input; so 
+#         there will be a reports_userprofile.user -> auth_user.
+#         '''
+#         try:
+#             bundle = super(UserResource, self).hydrate(bundle);
+#             
+#             # fixup the username; stock hydrate will set either, but if it's not 
+#             # specified, then we will use the ecommons        
+#             ecommons = bundle.data.get('ecommons_id')
+#             username = bundle.data.get('username')
+#             email=bundle.data.get('email')
+#             first_name=bundle.data.get('first_name')
+#             last_name=bundle.data.get('last_name')
+#             is_staff = self.is_staff.convert(bundle.data.get('is_staff'))
+#             
+#             if not username:
+#                 username = ecommons;
+#             bundle.obj.username = username
+#             bundle.obj.ecommons_id = ecommons
+#             
+#             django_user = None
+#             if bundle.obj and bundle.obj.user:
+#                 django_user = bundle.obj.user
+#             else:
+#                 try:
+#                     django_user = DjangoUser.objects.get(username=username)
+#                 except ObjectDoesNotExist, e:
+#                     logger.info(str(('Auth.user does not exist, creating', username)))
+#                     # ok, will create
+#                     pass;
+#     
+#             if django_user:            
+#                 django_user.first_name = first_name
+#                 django_user.last_name = last_name
+#                 django_user.email = email
+#                 django_user.save();
+#             else:
+#                 django_user = DjangoUser.objects.create_user(
+#                     username, 
+#                     email=email, 
+#                     first_name=first_name, 
+#                     last_name=last_name)
+#                 django_user.save()
+#                 # NOTE: we'll use user.is_password_usable() to verify if the 
+#                 # user has a staff/manual django password account
+#                 #             logger.debug(str(('save django user', django_user)))
+#                 # Note: don't save yet, since the userprofile should be saved first
+#                 # django_user.save()
+#                 # this has to be done to set the FK on obj; since we're the only
+#                 # side maintaining this rel' with auth_user
+#     
+#             django_user.is_staff = is_staff
+#             bundle.obj.user=django_user 
+#             return bundle
+#         except Exception, e:
+#             exc_type, exc_obj, exc_tb = sys.exc_info()
+#             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+#             msg = str(e)
+#             logger.warn(str(('on hydrate', 
+#                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+#             raise e  
+#     
+#     def is_valid(self, bundle):
+#         """
+#         Should return a dictionary of error messages. If the dictionary has
+#         zero items, the data is considered valid. If there are errors, keys
+#         in the dictionary should be field names and the values should be a list
+#         of errors, even if there is only one.
+#         """
+#         
+#         # cribbed from tastypie.validation.py:
+#         # - mesh data and obj values, then validate
+#         data = {}
+#         if bundle.obj.pk:
+#             data = model_to_dict(bundle.obj)
+#         if data is None:
+#             data = {}
+#         data.update(bundle.data)
+#         
+#         # do validations
+#         errors = defaultdict(list)
+#         
+#         # TODO: rework this to be driven by the metahash
+#         
+#         if not data.get('first_name'):
+#             errors['first_name'] = ['first_name must be specified']
+#         
+#         if not data.get('last_name'):
+#             errors['last_name'] = ['last_name must be specified']
+#         
+#         if not data.get('email'):
+#             errors['email'] = ['email must be specified']
+#         
+# #         ecommons = data.get('ecommons_id')
+# #         username = data.get('username')
+# #         
+# #         if ecommons and username and (ecommons != username) :
+# #             errors['specify either username or ecommons, not both']
+# #         elif ecommons:
+# #             bundle.obj.username = ecommons;
+#             
+#         if errors:
+#             bundle.errors[self._meta.resource_name] = errors
+#             logger.warn(str(('bundle errors', bundle.errors, len(bundle.errors.keys()))))
+#             return False
+#         return True
+
+
 
        
 class UserGroupResource(ManagedSqlAlchemyResourceMixin):
@@ -3470,7 +3572,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join(kwargs.values())
+        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
         filename = re.sub(r'[\W]+','_',filename)
         logger.info(str(('get_list', filename, kwargs)))
         
@@ -3683,184 +3785,188 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
         return self.get_local_resource_uri(
             bundle_or_obj=bundle_or_obj, url_name=url_name)
 
-    def hydrate(self, bundle):
-        bundle = super(UserGroupResource, self).hydrate(bundle);
-        return bundle;
-    
-    def hydrate_super_groupsx(self,bundle):
-        val = bundle.data.get_default('super_groups',None)
-        if val:
-            for name in val:
-                try:
-                    sg = UserGroup.objects.get(name=name)
-                    bundle.obj.super_groups.add(sg)
-                except Exception, e:
-                    raise Exception(str(('no such supergroup')), e)
-    
-    def build_schema(self):
-        schema = super(UserGroupResource,self).build_schema()
-        return schema
-    
-    def dehydrate_permission_list(self, bundle):
-        permissions = [ [x.scope, x.key, x.type] 
-                            for x in bundle.obj.permissions.all()]
-        return permissions
-        
-    def dehydrate_user_list(self,bundle):
-        users = []
-        for user in bundle.obj.users.all():
-             users.append(
-                 '[ %s - %s %s ]' 
-                 % (user.username, user.first_name, user.last_name))
-        return users
-    
-    #     def dehydrate_users(self, bundle):
-    #         uri_list = []
-    #         U = UserResource()
-    #         for user in bundle.obj.users.all():
-    #              uri_list.append(U.get_local_resource_uri(
-    #                  { 'screensaver_user_id':user.screensaver_user_id }))
-    #         return uri_list;
-        
-    def dehydrate_permissions(self, bundle):
-        uri_list = []
-        P = PermissionResource()
-        for p in bundle.obj.permissions.all():
-            uri_list.append(P.get_local_resource_uri(p))
-        return uri_list;
-    
-    def dehydrate_super_groups(self, bundle):
-        '''
-        shallow report of groups contained directly in this group
-        '''
-        uri_list = []
-        for g in bundle.obj.super_groups.all():
-            uri_list.append(self.get_local_resource_uri(g))
-        
-        return uri_list
-        
-    def dehydrate_sub_groups(self, bundle):
-        '''
-        shallow report of groups contained directly in this group
-        '''
-        uri_list = []
-        for g in bundle.obj.sub_groups.all():
-            uri_list.append(self.get_local_resource_uri(g))
-        
-        return uri_list
-        
-    def dehydrate_all_permissions(self, bundle):
-        P = PermissionResource()
-        return [P.get_local_resource_uri(permission) for permission in 
-                    bundle.obj.get_all_permissions()]
-    
-    def dehydrate_all_users(self, bundle):
-        U = UserResource()
-        return [U.get_local_resource_uri(user) for user in 
-                    bundle.obj.get_all_users()]
-
-    
-    def dehydrate(self,bundle):
-        bundle.data['id'] = bundle.obj.id
+    def full_dehydrate(self, bundle, for_list=False):
+        """
+        Given a bundle with an object instance, extract the information from it
+        to populate the resource.
+        """
+        response = self.get_detail(
+            bundle.request,
+            desired_format='application/json',
+            name=bundle.obj.name)
+        bundle.data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
         return bundle
 
-    # ModelResource override
-    # get_list->obj_get_list->build_filters->apply_filters->get_obj_list
-    def get_object_list(self, request, **kwargs): #is_for_user=None):
-        ''' 
-        Called immediately before filtering, this method actually grabs the 
-        (ModelResource) base query - 
-        
-        Because we are using the ExtensibleModelResourceMixin here, we are also
-        getting the kwargs from the Request.GET.  We use extra kwargs,
-        ("username") in this case, to signal that we want to include the extra 
-        column, "is_for_user".  
-        
-        Note: This special case is served from the url:
-        /user/<username>/groups.
-        All of this is a convenience feature for the client code; having
-        "is_for_user" allows for easy filtering on the client.
-        '''
-        logger.debug(str(('get_obj_list', kwargs)))
-        query = super(UserGroupResource, self).get_object_list(request);
-        
-        if 'username' in kwargs:
-            is_for_user = kwargs.pop('username')
-            query = query.extra(select = {
-                'is_for_user': ( 
-                    '(select count(*)>0 '
-                    ' from reports_userprofile up '
-                    ' join reports_usergroup_users ruu on(up.id=ruu.userprofile_id) '
-                    ' where ruu.usergroup_id=reports_usergroup.id '
-                    ' and up.username = %s )' ),
-              },
-              select_params = [is_for_user] )
-            query = query.order_by('-is_for_user', 'name')        
-        if 'groupname' in kwargs:
-            is_for_group = kwargs.pop('groupname')
-            query = query.extra(select = {
-                'is_for_group': ( 
-                    '(select count(*)>0 '
-                    ' from reports_usergroup ug '
-                    ' join reports_usergroup_super_groups ugsg on(ug.id=ugsg.from_usergroup_id) '
-                    ' where ugsg.to_usergroup_id=reports_usergroup.id '
-                    ' and ug.name = %s )' ),
-              },
-              select_params = [is_for_group] )
-            query = query.exclude(name=is_for_group)
-            query = query.order_by('-is_for_group', 'name')
-        return query
-    
-    def apply_filters(self, request, applicable_filters, **kwargs):
-        '''
-        ModelResource override - 
-        because the FilterModelResource mixin is being used here, the 
-        applicable_filters includes an extra level: {filter,excludes}
-        '''
-        logger.info(str(('apply_filters', applicable_filters, kwargs)))
-        query = self.get_object_list(request, **kwargs)
-        
-        filters = applicable_filters.get('filter')
-        if filters:
-
-            # Grab the users filter out of the dict
-            users_filter_val = None
-            for x in filters.keys():
-                if 'users' in x:
-                    users_filter_val = filters.pop(x)
-
-            query = query.filter(**filters)
-            
-            if users_filter_val:
-                ids = [x.id for x in UserGroup.objects.filter(
-                        users__username__iexact=users_filter_val)]
-                query = query.filter(id__in=ids)          
-            
-        e = applicable_filters.get('exclude')
-        if e:
-            users_filter_val = None
-            for x in e.keys():
-                if 'users' in x:
-                    users_filter_val = e.pop(x)
-            
-            for exclusion_filter, value in e.items():
-                query = query.exclude(**{exclusion_filter: value})
-
-            if users_filter_val:
-                ids = [x.id for x in UserGroup.objects.filter(
-                        users__username__iexact=users_filter_val)]
-                query = query.exclude(id__in=ids)          
-
-        return query
-
-    def apply_sorting(self, obj_list, options):
-        options = options.copy()
-        
-        # Override to exclude these fields in the PostgresSortingResource 
-        options['non_null_fields'] = ['is_for_user', 'is_for_group'] 
-
-        obj_list = super(UserGroupResource, self).apply_sorting(obj_list, options)
-        return obj_list
+#     def hydrate(self, bundle):
+#         bundle = super(UserGroupResource, self).hydrate(bundle);
+#         return bundle;
+#     
+#     
+#     def build_schema(self):
+#         schema = super(UserGroupResource,self).build_schema()
+#         return schema
+#    
+#     def dehydrate_permission_list(self, bundle):
+#         permissions = [ [x.scope, x.key, x.type] 
+#                             for x in bundle.obj.permissions.all()]
+#         return permissions
+#         
+#     def dehydrate_user_list(self,bundle):
+#         users = []
+#         for user in bundle.obj.users.all():
+#              users.append(
+#                  '[ %s - %s %s ]' 
+#                  % (user.username, user.first_name, user.last_name))
+#         return users
+#     
+#     #     def dehydrate_users(self, bundle):
+#     #         uri_list = []
+#     #         U = UserResource()
+#     #         for user in bundle.obj.users.all():
+#     #              uri_list.append(U.get_local_resource_uri(
+#     #                  { 'screensaver_user_id':user.screensaver_user_id }))
+#     #         return uri_list;
+#         
+#     def dehydrate_permissions(self, bundle):
+#         uri_list = []
+#         P = PermissionResource()
+#         for p in bundle.obj.permissions.all():
+#             uri_list.append(P.get_local_resource_uri(p))
+#         return uri_list;
+#     
+#     def dehydrate_super_groups(self, bundle):
+#         '''
+#         shallow report of groups contained directly in this group
+#         '''
+#         uri_list = []
+#         for g in bundle.obj.super_groups.all():
+#             uri_list.append(self.get_local_resource_uri(g))
+#         
+#         return uri_list
+#         
+#     def dehydrate_sub_groups(self, bundle):
+#         '''
+#         shallow report of groups contained directly in this group
+#         '''
+#         uri_list = []
+#         for g in bundle.obj.sub_groups.all():
+#             uri_list.append(self.get_local_resource_uri(g))
+#         
+#         return uri_list
+#         
+#     def dehydrate_all_permissions(self, bundle):
+#         P = PermissionResource()
+#         return [P.get_local_resource_uri(permission) for permission in 
+#                     bundle.obj.get_all_permissions()]
+#     
+#     def dehydrate_all_users(self, bundle):
+#         U = UserResource()
+#         return [U.get_local_resource_uri(user) for user in 
+#                     bundle.obj.get_all_users()]
+# 
+#     
+#     def dehydrate(self,bundle):
+#         bundle.data['id'] = bundle.obj.id
+#         return bundle
+# 
+#     # ModelResource override
+#     # get_list->obj_get_list->build_filters->apply_filters->get_obj_list
+#     def get_object_list(self, request, **kwargs): #is_for_user=None):
+#         ''' 
+#         Called immediately before filtering, this method actually grabs the 
+#         (ModelResource) base query - 
+#         
+#         Because we are using the ExtensibleModelResourceMixin here, we are also
+#         getting the kwargs from the Request.GET.  We use extra kwargs,
+#         ("username") in this case, to signal that we want to include the extra 
+#         column, "is_for_user".  
+#         
+#         Note: This special case is served from the url:
+#         /user/<username>/groups.
+#         All of this is a convenience feature for the client code; having
+#         "is_for_user" allows for easy filtering on the client.
+#         '''
+#         logger.debug(str(('get_obj_list', kwargs)))
+#         query = super(UserGroupResource, self).get_object_list(request);
+#         
+#         if 'username' in kwargs:
+#             is_for_user = kwargs.pop('username')
+#             query = query.extra(select = {
+#                 'is_for_user': ( 
+#                     '(select count(*)>0 '
+#                     ' from reports_userprofile up '
+#                     ' join reports_usergroup_users ruu on(up.id=ruu.userprofile_id) '
+#                     ' where ruu.usergroup_id=reports_usergroup.id '
+#                     ' and up.username = %s )' ),
+#               },
+#               select_params = [is_for_user] )
+#             query = query.order_by('-is_for_user', 'name')        
+#         if 'groupname' in kwargs:
+#             is_for_group = kwargs.pop('groupname')
+#             query = query.extra(select = {
+#                 'is_for_group': ( 
+#                     '(select count(*)>0 '
+#                     ' from reports_usergroup ug '
+#                     ' join reports_usergroup_super_groups ugsg on(ug.id=ugsg.from_usergroup_id) '
+#                     ' where ugsg.to_usergroup_id=reports_usergroup.id '
+#                     ' and ug.name = %s )' ),
+#               },
+#               select_params = [is_for_group] )
+#             query = query.exclude(name=is_for_group)
+#             query = query.order_by('-is_for_group', 'name')
+#         return query
+#     
+#     def apply_filters(self, request, applicable_filters, **kwargs):
+#         '''
+#         ModelResource override - 
+#         because the FilterModelResource mixin is being used here, the 
+#         applicable_filters includes an extra level: {filter,excludes}
+#         '''
+#         logger.info(str(('apply_filters', applicable_filters, kwargs)))
+#         query = self.get_object_list(request, **kwargs)
+#         
+#         filters = applicable_filters.get('filter')
+#         if filters:
+# 
+#             # Grab the users filter out of the dict
+#             users_filter_val = None
+#             for x in filters.keys():
+#                 if 'users' in x:
+#                     users_filter_val = filters.pop(x)
+# 
+#             query = query.filter(**filters)
+#             
+#             if users_filter_val:
+#                 ids = [x.id for x in UserGroup.objects.filter(
+#                         users__username__iexact=users_filter_val)]
+#                 query = query.filter(id__in=ids)          
+#             
+#         e = applicable_filters.get('exclude')
+#         if e:
+#             users_filter_val = None
+#             for x in e.keys():
+#                 if 'users' in x:
+#                     users_filter_val = e.pop(x)
+#             
+#             for exclusion_filter, value in e.items():
+#                 query = query.exclude(**{exclusion_filter: value})
+# 
+#             if users_filter_val:
+#                 ids = [x.id for x in UserGroup.objects.filter(
+#                         users__username__iexact=users_filter_val)]
+#                 query = query.exclude(id__in=ids)          
+# 
+#         return query
+# 
+#     def apply_sorting(self, obj_list, options):
+#         options = options.copy()
+#         
+#         # Override to exclude these fields in the PostgresSortingResource 
+#         options['non_null_fields'] = ['is_for_user', 'is_for_group'] 
+# 
+#         obj_list = super(UserGroupResource, self).apply_sorting(obj_list, options)
+#         return obj_list
 
     
 

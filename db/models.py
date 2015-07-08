@@ -22,6 +22,7 @@ from django.utils import timezone
 from reports.utils.gray_codes import create_substance_id
 import datetime
 import logging
+from django.db.models.fields import FloatField
 logger = logging.getLogger(__name__)
 
 
@@ -594,30 +595,41 @@ class ScreenerCherryPick(models.Model):
 
 
 class ScreensaverUser(models.Model):
-#    objects = PostgresManager()
 
-    screensaver_user_id = models.IntegerField(primary_key=True)
+    # screensaver_user_id = models.IntegerField(primary_key=True)
+    screensaver_user_id = models.AutoField(primary_key=True)
+    
     version = models.IntegerField(blank=True, default=1) # TODO: legacy hibernate version attribute should go away
-    date_created = models.DateTimeField()
+    date_created = models.DateTimeField(default=timezone.now)
+    
+    harvard_id = models.TextField(blank=True)
+    harvard_id_expiration_date = models.DateField(null=True, blank=True)
+    harvard_id_requested_expiration_date = models.DateField(null=True, blank=True)
+
+    ## deprecated - moved to reports.UserProfile and auth.User
     first_name = models.TextField()
     last_name = models.TextField()
     email = models.TextField(blank=True)
     phone = models.TextField(blank=True)
     mailing_address = models.TextField(blank=True)
-    comments = models.TextField(blank=True)
-    login_id = models.TextField(unique=True, blank=True)
-    digested_password = models.TextField(blank=True)
     ecommons_id = models.TextField(blank=True)
-    harvard_id = models.TextField(blank=True)
-    harvard_id_expiration_date = models.DateField(null=True, blank=True)
-    harvard_id_requested_expiration_date = models.DateField(null=True, blank=True)
     created_by = models.ForeignKey('self', null=True, blank=True)
     date_loaded = models.DateTimeField(null=True, blank=True)
     date_publicly_available = models.DateTimeField(null=True, blank=True)
 
+    # legacy fields, superceded by reports.userprofile/auth_user
+    login_id = models.TextField(unique=True, null=True)
+    digested_password = models.TextField(null=True)
+
+    # legacy: convert to apilog
+    comments = models.TextField(blank=True)
+
     # TODO: it would be nice to move user out of db
     user = models.ForeignKey('reports.UserProfile', null=True,on_delete=models.SET_NULL)
-
+    # mirror the userprofile, auth_user username
+    # FIXME: user migration should convert this field to null=False
+    username = models.TextField(null=True, unique=True)
+    
     class Meta:
         db_table = 'screensaver_user'
         
@@ -744,11 +756,11 @@ class Well(models.Model):
 #     reagent = models.ForeignKey('Reagent', null=True, related_name='wells')
 #     reagent = models.ForeignKey('Reagent', to_field='substance_id')
     
-#     molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
-#     mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
-    molar_concentration = models.FloatField(null=True, blank=True)
-#     micro_molar_concentration = models.FloatField(null=True, blank=True)
-    mg_ml_concentration = models.FloatField(null=True, blank=True)
+    molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
+    mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
+#     molar_concentration = models.FloatField(null=True, blank=True)
+####     micro_molar_concentration = models.FloatField(null=True, blank=True)
+#     mg_ml_concentration = models.FloatField(null=True, blank=True)
     
     barcode = models.TextField(null=True, unique=True)
     
@@ -905,10 +917,10 @@ class SmallMoleculeReagent(models.Model):
     reagent = models.OneToOneField(Reagent, primary_key=True)
     inchi = models.TextField(blank=True)
     molecular_formula = models.TextField(blank=True)
-#     molecular_mass = models.DecimalField(null=True, max_digits=15, decimal_places=9, blank=True)
-#     molecular_weight = models.DecimalField(null=True, max_digits=15, decimal_places=9, blank=True)
-    molecular_mass = models.FloatField(null=True, blank=True)
-    molecular_weight = models.FloatField(null=True, blank=True)
+    molecular_mass = models.DecimalField(null=True, max_digits=15, decimal_places=9, blank=True)
+    molecular_weight = models.DecimalField(null=True, max_digits=15, decimal_places=9, blank=True)
+#     molecular_mass = models.FloatField(null=True, blank=True)
+#     molecular_weight = models.FloatField(null=True, blank=True)
     smiles = models.TextField(blank=True)
 #     salt_form_id = models.IntegerField(null=True, blank=True)
     is_restricted_structure = models.BooleanField(default=False)
@@ -1068,8 +1080,8 @@ class Plate(models.Model):
     plate_type = models.TextField(blank=True)
     plate_number = models.IntegerField()
     
-#     well_volume = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
-    well_volume = models.FloatField(null=True, blank=True)
+    well_volume = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
+#     well_volume = models.FloatField(null=True, blank=True)
 
     # TODO: decide how to handle library screening plates:
     # - use only remaining volume, set all volumes the same, or 

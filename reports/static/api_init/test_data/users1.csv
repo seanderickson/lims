@@ -1,7 +1,7 @@
 resource_uri,ecommons_id,username,first_name,last_name,email,permissions
-/reports/api/v1/user/yal1/,yal1,,Sally,Smith,sally.smith@tester.com,[permission/resource/user/read;permission/resource/user/write]
-/reports/api/v1/user/sde4/,sde4,,Sean,Erickson,sean_erickson@work.email.com,[permission/resource/usergroup/read;permission/resource/library/read]
-/reports/api/v1/user/bra2,bra2,,Bessy,Baker,bessy.baker@genesplice.com,
+/reports/api/v1/user/yal1/,yal1,yal1,Sally,Smith,sally.smith@tester.com,[permission/resource/user/read;permission/resource/user/write]
+/reports/api/v1/user/sde4/,sde4,sde4,Sean,Erickson,sean_erickson@work.email.com,[permission/resource/usergroup/read;permission/resource/user/read]
+/reports/api/v1/user/bra2,bra2,bra2,Bessy,Baker,bessy.baker@genesplice.com,
 /reports/api/v1/user/tester4,,tester4,Ace,Ventura,ace.ventura@ventures.com,
-/reports/api/v1/user/sde,,sde,Sean,Erickson,stothee@yomail.com,[permission/resource/metahash/read;permission/resource/metahash/write;permission/resource/resource/read;permission/resource/metahash/write]
+/reports/api/v1/user/sde,,sde,Sean,Erickson,stothee@yomail.com,[permission/resource/metahash/read;permission/resource/metahash/write;permission/resource/resource/read;permission/resource/library/write]
 /reports/api/v1/user/sde1,,sde1,Sean,Erickson,sean.erickson.user@email.com,

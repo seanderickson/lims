@@ -148,17 +148,13 @@ def equivocal(val1, val2):
                     return False, ('val1', val1, 'val2', val2 )
     return True, ('val1', val1, 'val2', val2 )
     
-#NOTE only works for String comparisons
-def assert_obj1_to_obj2(
-        obj1, obj2, 
-        keys=[],
-#         keys=['key', 'scope', 'ordinal', 'username', 'name'], 
-        excludes=['resource_uri']):
+def assert_obj1_to_obj2( obj1, obj2, keys=[], excludes=['resource_uri']):
     '''
-    For testing equality from the CSV input to the JSON response of what is 
-    created in the DB
-    obj1 input
-    obj2 output 
+    For testing equality of the (CSV) input to the response of what is 
+    created and deserialized from the DB
+    - NOTE only works for String comparisons
+    @param obj1 input
+    @param obj2 output 
     '''
     original_keys = set(obj1.keys())
     original_keys = original_keys.difference(excludes)
@@ -199,7 +195,7 @@ def assert_obj1_to_obj2(
                         'imprecise uri matching, equivocating:', val1, val2)))
     
     keys_to_search = set(obj1.keys()) - set(keys) - set(excludes)
-
+    # logger.debug(str(('keys to search', keys_to_search,excludes)))
     for key in keys_to_search:
         result, msgs =  equivocal(obj1[key], obj2[key])
         if not result:
@@ -1343,9 +1339,10 @@ class MetaHashResourceBootstrap(IResourceTestCase):
                     str(('not found', outputobj,'=== objects returned ===', 
                          new_obj['objects'] )) ) 
                 # once found, perform equality based on all keys (in obj1)
-                result, msg = assert_obj1_to_obj2(inputobj, outputobj)
+                result, msg = assert_obj1_to_obj2(inputobj, outputobj,
+                    excludes=keys_not_to_check)
                 self.assertTrue(result,
-                    str(('not equal', inputobj, outputobj)))
+                    str(('not equal', msg, inputobj, outputobj)))
                 self.assertTrue(
                     resource_name in outputobj['resource_uri'], 
                     str(('wrong resource_uri returned:', filename, outputobj['resource_uri'],
@@ -1404,22 +1401,31 @@ class MetaHashResourceBootstrap(IResourceTestCase):
             
             for inputobj in input_data['objects']:
                 result, outputobj = find_obj_in_list(
-                    inputobj,new_obj['objects'], excludes=keys_not_to_check)
+                    inputobj,new_obj['objects'],
+                    id_keys_to_check=id_keys_to_check,
+                    excludes=keys_not_to_check)
                 self.assertTrue(result, str(('not found', outputobj, 
                                              new_obj['objects'] )) )
-                logger.info(str(('outputobj[resource_uri]', outputobj['resource_uri'])))
+                
+                # once found, perform equality based on all keys (in obj1)
+                result, msg = assert_obj1_to_obj2(inputobj, outputobj,
+                    excludes=keys_not_to_check)
+                self.assertTrue(result,
+                    str(('not equal', msg, inputobj, outputobj)))
+
+                logger.debug(str(('outputobj[resource_uri]', outputobj['resource_uri'])))
                 self.assertTrue(resource_name in outputobj['resource_uri'], 
                     str(('wrong resource_uri returned:', filename, outputobj['resource_uri'],
                          'should contain', resource_name)))
-#                 for id_key in id_keys_to_check:
-#                     self.assertTrue(inputobj[id_key] in outputobj['resource_uri'], 
-#                         str(('wrong resource_uri returned:', outputobj,
-#                              'should contain id key', id_key, 'val', inputobj[id_key])))
                 for id_key in id_keys_to_check:
-                    self.assertTrue(id_key in outputobj and 
-                        inputobj[id_key] == outputobj[id_key], 
-                        str(('wrong id_key returned:', filename, outputobj[id_key],
-                             'should equal id key', id_key, 'val', inputobj[id_key])))
+                    self.assertTrue(inputobj[id_key] in outputobj['resource_uri'], 
+                        str(('wrong resource_uri returned:', outputobj,
+                             'should contain id key', id_key, 'val', inputobj[id_key])))
+#                 for id_key in id_keys_to_check:
+#                     self.assertTrue(id_key in outputobj and 
+#                         inputobj[id_key] == outputobj[id_key], 
+#                         str(('wrong id_key returned:', filename, outputobj[id_key],
+#                              'should equal id key', id_key, 'val', inputobj[id_key])))
                 
             #TODO: GET the apilogs expected and test them
             
@@ -1468,7 +1474,7 @@ class MetaHashResourceBootstrap(IResourceTestCase):
         filename = os.path.join(self.directory, 'metahash_resource_data.csv')
         (input, output) = self._put_test('resource', filename, id_keys_to_check=['key'])
         filename = os.path.join(self.directory, 'vocabularies_data.csv')
-        self._put_test('vocabularies', filename, id_keys_to_check=['key'])
+        self._put_test('vocabularies', filename, id_keys_to_check=['key','scope'])
 
   
         logger.debug('------------- done _bootstrap_init_files -----------------')
@@ -1655,13 +1661,13 @@ class TestApiInit(ResourceTestCase):
                                 'the initialization scripts'))
                         else:
                             self.fail('unknown command: ' + command + ', ' + json.dumps(action))
-                    
-class UserResource(MetaHashResourceBootstrap):
+        
+class UserUsergroupSharedTest(object):
     
     def setUp(self):
-        logger.debug('============== User setup ============')
-        super(UserResource, self).setUp()
-
+        logger.info(str(( '============== UserGroup setup ============')))
+#         super(UserGroupResource, self).setUp()
+        
         logger.debug('============== User setup: begin ============')
         
         # Create the User resource field entries
@@ -1669,9 +1675,84 @@ class UserResource(MetaHashResourceBootstrap):
         filename = os.path.join(self.directory,'metahash_fields_user.csv')
         self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.user'})
         
-        self.resource_uri = BASE_URI + '/user'
+        logger.debug(str(( '============== UserGroup setup: begin ============')))
+        meta_resource_uri = BASE_URI + '/metahash'
         
-        logger.debug('============== User setup: done ============')
+        # Create the User resource field entries
+        # todo: doesn't work for post, see TestApiClient.post() method, 
+        # it is incorrectly "serializing" the data before posting
+        testApiClient = TestApiClient(serializer=self.csv_serializer) 
+        
+        filename = os.path.join(self.directory,'metahash_fields_usergroup.csv')
+        self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.usergroup'})
+        
+        filename = os.path.join(self.directory,'metahash_fields_permission.csv')
+        self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.permission'})
+
+#         self.resource_uri = BASE_URI + '/usergroup'
+        logger.debug(str(( '============== UserGroup setup done ============')))
+        
+        
+    def test1_create_user_with_permissions(self, test_log=False):
+        logger.info(str(('==== test1_create_user_with_permissions =====', test_log)))
+        
+        filename = os.path.join(self.directory,'test_data/users1.csv')
+        from datetime import datetime
+        data_for_get = { HEADER_APILOG_COMMENT: 
+            'patch_test: file: %s, %s' % (filename, datetime.now().isoformat() ) }
+        # NOTE: verify the username manually, because the username will
+        # be set to the resource_uri id if not set
+        input_data,output_data = self._put_test(
+            'user', filename, keys_not_to_check=['username'],
+            data_for_get=data_for_get)
+        
+        # test the logs
+        # FIXME: create separate tests for the apilogs (cannot ensure state, 
+        # as there are multiple callers here )
+        if test_log:
+            resource_uri = BASE_URI + '/apilog' #?ref_resource_name=record'
+            logger.info(str(('get', resource_uri, data_for_get)))
+            resp = self.api_client.get(
+                resource_uri, format='json', 
+                authentication=self.get_credentials(), 
+                data={ 'limit': 999, 'ref_resource_name': 'user',
+                    'comment__eq': data_for_get[HEADER_APILOG_COMMENT]}) #,
+#                     'api_action__in': 'CREATE' })
+            self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+            new_obj = self.deserialize(resp)
+            objects = new_obj['objects']
+            logger.debug(str(('===apilogs:', json.dumps(new_obj))))
+            # look for 6 "CREATE" logs
+            self.assertEqual( len(objects), 6, 
+                str((6,len(objects), 'wrong # of api logs', objects)))
+            for obj in objects:
+                self.assertTrue(obj['api_action'] == API_ACTION_CREATE, 
+                    str(('action should be create', obj)))
+                self.assertTrue( obj['comment'] == data_for_get[HEADER_APILOG_COMMENT], 
+                    str(('comment not set', data_for_get[HEADER_APILOG_COMMENT],obj)))
+        
+        logger.debug(str(('==== test1_create_user_with_permissions =====')))
+                    
+class UserResource(MetaHashResourceBootstrap, UserUsergroupSharedTest):
+
+    def setUp(self):
+        super(UserResource, self).setUp()
+        UserUsergroupSharedTest.setUp(self)
+    
+#     def setUp(self):
+#         logger.debug('============== User setup ============')
+#         super(UserResource, self).setUp()
+# 
+#         logger.debug('============== User setup: begin ============')
+#         
+#         # Create the User resource field entries
+#         testApiClient = TestApiClient(serializer=self.csv_serializer) 
+#         filename = os.path.join(self.directory,'metahash_fields_user.csv')
+#         self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.user'})
+#         
+#         self.resource_uri = BASE_URI + '/user'
+#         
+#         logger.debug('============== User setup: done ============')
     
     def test0_create_user(self):
         logger.debug(str(('==== test_create_user =====')))
@@ -1699,7 +1780,8 @@ class UserResource(MetaHashResourceBootstrap):
             },
         ]}
         try:       
-            resp = self.api_client.put(self.resource_uri, 
+            uri = BASE_URI + '/user'
+            resp = self.api_client.put(uri, 
                 format='json', data=self.bootstrap_items, authentication=self.get_credentials())
             self.assertTrue(resp.status_code in [200,201,202], 
                 str((resp.status_code, self.serialize(resp))))
@@ -1719,7 +1801,7 @@ class UserResource(MetaHashResourceBootstrap):
 #                 raise
             
         logger.debug('created items, now get them')
-        resp = self.api_client.get(self.resource_uri, format='json', 
+        resp = self.api_client.get(uri, format='json', 
             authentication=self.get_credentials(), data={ 'limit': 999 })
         logger.debug(str(('--------resp to get:', resp.status_code)))
         new_obj = self.deserialize(resp)
@@ -1734,43 +1816,14 @@ class UserResource(MetaHashResourceBootstrap):
 
         logger.debug(str(('==== test_create_user done =====')))
 
-    def test1_create_user_with_permissions(self, trial_count=1):
-        logger.debug(str(('==== test1_create_user_with_permissions =====')))
-        
-        filename = os.path.join(self.directory,'test_data/users1.csv')
-        data_for_get = { HEADER_APILOG_COMMENT: 'patch_test %d: %s' % (trial_count,filename) }
-        # NOTE: verify the username manually, because the username will
-        # be set to the resource_uri id if not set
-        input_data,output_data = self._put_test(
-            'user', filename, keys_not_to_check=['username'],
-            data_for_get=data_for_get)
-        
-        # test the logs
-        resource_uri = BASE_URI + '/apilog' #?ref_resource_name=record'
-        logger.debug(str(('get', resource_uri)))
-        resp = self.api_client.get(
-            resource_uri, format='json', 
-            authentication=self.get_credentials(), 
-            data={ 'limit': 999, 'ref_resource_name': 'user',
-                'comment__eq': data_for_get[HEADER_APILOG_COMMENT] })
-        self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
-        new_obj = self.deserialize(resp)
-        objects = new_obj['objects']
-        logger.debug(str(('===apilogs:', json.dumps(new_obj))))
-        # look for 6 "CREATE" logs
-        self.assertEqual( len(objects), 6, 
-            str((len(objects), 'wrong # of api logs', objects)))
-        for obj in objects:
-            self.assertTrue(obj['api_action'] == API_ACTION_CREATE, 
-                str(('action should be create', obj)))
-            self.assertTrue( obj['comment'] == data_for_get[HEADER_APILOG_COMMENT], 
-                str(('comment not set', data_for_get[HEADER_APILOG_COMMENT],obj)))
-        
-        logger.debug(str(('==== test1_create_user_with_permissions =====')))
     
-    def test2_patch_user_permissions(self, trial_count=2):
-        logger.debug(str(('==== test2_patch_user_permissions =====')))
-        self.test1_create_user_with_permissions(trial_count=trial_count)
+    def test2_patch_user_permissions(self,test_log=False):
+        '''
+        @param test_log set to false so that only the first time tests the logs
+        '''
+        
+        logger.info(str(('==== test2_patch_user_permissions =====', test_log)))
+        self.test1_create_user_with_permissions(test_log=test_log)
         
         logger.debug(str(('==== test2_patch_user_permissions start =====')))
         filename = os.path.join(self.directory,'test_data/users2_patch.csv')
@@ -1812,7 +1865,7 @@ class UserResource(MetaHashResourceBootstrap):
         '''
         
         logger.debug(str(('==== test3_user_read_permissions =====')))
-        self.test2_patch_user_permissions(trial_count=3)
+        self.test2_patch_user_permissions(test_log=False)
                 
         # assign password to the test user
         username = 'sde4'
@@ -1835,7 +1888,7 @@ class UserResource(MetaHashResourceBootstrap):
             'resource_uri': 'user/' + username,
             'permissions': ['permission/resource/metahash/read'] };
 
-        uri = self.resource_uri + '/' + username
+        uri = BASE_URI + '/user/' + username
         logger.debug(str(('=====now add the permission needed to this user:', user_patch, uri)))
         resp = self.api_client.patch( uri, 
                     format='json', data=user_patch, 
@@ -1868,7 +1921,7 @@ class UserResource(MetaHashResourceBootstrap):
         '''
         logger.debug(str(('==== test4_user_write_permissions =====')))
 
-        self.test2_patch_user_permissions(trial_count=4)
+        self.test2_patch_user_permissions(test_log=False)
                 
         # assign password to the test user
         username = 'sde4'
@@ -1897,7 +1950,7 @@ class UserResource(MetaHashResourceBootstrap):
             'permissions': ['permission/resource/usergroup/write'] };
 
         logger.debug(str(('now add the permission needed to this user:', user_patch)))
-        uri = self.resource_uri + '/' + username
+        uri = BASE_URI + '/user/' + username
         resp = self.api_client.patch( uri, 
                     format='json', data=user_patch, 
                     authentication=self.get_credentials())
@@ -1919,51 +1972,25 @@ class UserResource(MetaHashResourceBootstrap):
 
         logger.debug(str(('==== test4_user_write_permissions done =====')))
         
-class UserGroupResource(UserResource):
-    
-    def setUp(self):
-        logger.debug(str(( '============== UserGroup setup ============')))
-        super(UserGroupResource, self).setUp()
-        
-        logger.debug(str(( '============== UserGroup setup: begin ============')))
-        meta_resource_uri = BASE_URI + '/metahash'
-        
-        # Create the User resource field entries
-        # todo: doesn't work for post, see TestApiClient.post() method, 
-        # it is incorrectly "serializing" the data before posting
-        testApiClient = TestApiClient(serializer=self.csv_serializer) 
-        
-        filename = os.path.join(self.directory,'metahash_fields_usergroup.csv')
-        self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.usergroup'})
-        
-        filename = os.path.join(self.directory,'metahash_fields_permission.csv')
-        self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.permission'})
+class UserGroupResource(MetaHashResourceBootstrap, UserUsergroupSharedTest):
 
-#         self.resource_uri = BASE_URI + '/usergroup'
-        logger.debug(str(( '============== UserGroup setup done ============')))
+    def setUp(self):
+        super(UserGroupResource, self).setUp()
+        UserUsergroupSharedTest.setUp(self)
 
     def test2_create_usergroup_with_permissions(self):
         logger.debug(str(('==== test2_usergroup =====')))
         #create users
-        self.test1_create_user_with_permissions(trial_count=2)
+        self.test1_create_user_with_permissions(test_log=False)
         
-#         
-#         data_for_get = {}
-#         data_for_get.setdefault('limit', 999 )
-#         resp = self.api_client.get(
-#                 '/reports/api/v1/user', format='json', 
-#                 authentication=self.get_credentials(), data=data_for_get)
-#         logger.debug(str(('--------resp to get:', resp.status_code)))
-#         self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
-#         new_obj = self.deserialize(resp)
-
         logger.debug(str(('----- test2_usergroup =====')))
 
         filename = os.path.join(self.directory,'test_data/usergroups1.csv')
         # note: excluding sub_groups here because the one sub_group is set when 
         # "testGroupX" sets super_groups=['testGroup3']; and thereby testGroup3 
         # gets sub_groups=['testGroupX']; even though that's not in the input file.
-        self._put_test('usergroup', filename, keys_not_to_check=['sub_groups'])
+        self._put_test('usergroup', filename, id_keys_to_check=['name'],
+            keys_not_to_check=['sub_groups'])
 
         logger.debug(str(('==== test2_usergroup done =====')))
 
@@ -1973,19 +2000,11 @@ class UserGroupResource(UserResource):
         
         logger.debug(str(('==== test3_patch_users_groups start =====')))
         filename = os.path.join(self.directory,'test_data/users3_groups_patch.csv')
-        self._patch_test('user', filename) #, keys_not_to_check=['groups'])
+        # don't check permissions, because the patch file is setting groups with permissions too
+        self._patch_test('user', filename, id_keys_to_check=['username'],
+            keys_not_to_check=['permissions']) 
       
         logger.debug(str(('==== test3_patch_users_groups done =====')))
-
-#     def test3a_patch_usersgroups_groups(self):
-#         logger.debug(str(('==== test3a_patch_usersgroups_groups =====')))
-#         self.test2_create_usergroup_with_permissions()
-#         
-#         logger.debug(str(('==== test3a_patch_usersgroups_groups start =====')))
-#         filename = os.path.join(self.directory,'test_data/users3_groups_patch.csv')
-#         self._patch_test('user', filename, keys_not_to_check=['groups'])
-#       
-#         logger.debug(str(('==== test3a_patch_usersgroups_groups done =====')))
 
 
     def test4_user_group_permissions(self):
@@ -2033,11 +2052,19 @@ class UserGroupResource(UserResource):
         self.assertTrue(resp.status_code in [202, 204], 
                         str((resp.status_code, self.serialize(resp))))  
         
-        #         # is it set?
-        #         resp = self.api_client.get(
-        #                 uri, format='json', authentication=self.get_credentials())
-        #         logger.info(str(('is it set? response: ' , self.deserialize(resp) )))
-
+        # check the user settings/groups
+        uri = BASE_URI + '/user/' + username
+        resp = self.api_client.get(uri,format='json', data={'includes': '*'}
+            , authentication=self.get_credentials() )
+        logger.debug(str(('--------resp to get:', resp.status_code)))
+        new_obj = self.deserialize(resp)
+        self.assertTrue(resp.status_code in [200], 
+            str((resp.status_code, new_obj)))
+        logger.info(str(('user', new_obj)))
+        self.assertTrue(new_obj['usergroups'] == ['usergroup/testGroup3'],
+            str(('wrong usergroups', new_obj)))
+        
+        
         # now try again as the updated user:
         resp = self.api_client.get(
             resource_uri, format='json', data={}, 

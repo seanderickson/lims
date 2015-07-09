@@ -56,7 +56,7 @@ from reports import LIST_DELIMITER_SQL_ARRAY,  \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB,HEADER_APILOG_COMMENT
 from reports.dump_obj import dumpObj
 from reports.models import MetaHash, Vocabularies, ApiLog, ListLog, Permission, \
-                           UserGroup, UserProfile, Record
+                           UserGroup, UserProfile, Record, API_ACTION_DELETE
 from reports.models import API_ACTION_CREATE
 from reports.serializers import LimsSerializer, CsvBooleanField, CSVSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource
@@ -122,6 +122,8 @@ class UserGroupAuthorization(Authorization):
         if user.is_superuser:
             return True
         
+        # FIXME: 20150708 - rewrite this using the "get_detail" method for the user, and 
+        # interrogating the groups therein (post refactor of TP methods)
         userprofile = user.userprofile
         
         permissions = [x for x in 
@@ -198,7 +200,18 @@ class UserGroupAuthorization(Authorization):
 
 
 class SuperUserAuthorization(ReadOnlyAuthorization):
-    
+
+    def _is_resource_authorized(self, resource_name, user, permission_type):
+        if user.is_superuser:
+            return True
+        # Note: the TP framework raises the "Unauthorized" error: it then 
+        # translates this into the (incorrect) HttpUnauthorized (401) response
+        # Instead, raise an immediate exception with the correct 403 error code
+        # https://tools.ietf.org/html/rfc7231#section-6.5.3
+        
+        raise ImmediateHttpResponse(response=HttpForbidden(
+            str(('user',user ,'permission not found', permission_str))))
+        
     def delete_list(self, object_list, bundle):
         if bundle.request.user.is_superuser:
             return object_list
@@ -1183,7 +1196,7 @@ class ManagedResource(LoggingMixin):
         '''
         Override
         '''
-        DEBUG_BUILD_SCHEMA = logger.isEnabledFor(logging.DEBUG)
+        DEBUG_BUILD_SCHEMA = False #logger.isEnabledFor(logging.DEBUG)
         # FIXME: consider using the cache decorator or a custom memoize decorator?
         schema = cache.get(self._meta.resource_name + ":schema")
         if schema:
@@ -1741,6 +1754,7 @@ class ManagedResource(LoggingMixin):
         return response
  
  
+# FIXME: unused with refactor to remove Tastypie
 class ExtensibleModelResourceMixin(ModelResource):
     '''
     Tastypie ModelResource mixin that passes the full request/url parsing kwargs
@@ -2511,9 +2525,17 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
         - dicts have the same identity if the id_attribute keys have the same
         value.
         '''
+        # TODO: abstract the form field name
+        log_comment = None
+        if HEADER_APILOG_COMMENT in request.META:
+            log_comment = request.META[HEADER_APILOG_COMMENT]
+            logger.debug(str(('log comment', log_comment)))
+        
+        logger.info(str(('log patches original:', original_data,'=== new data ===',new_data,kwargs)))
         schema = self.build_schema()
         id_attribute = resource = schema['resource_definition']['id_attribute']
-        
+
+        deleted_items = list(original_data)        
         for new_dict in new_data:
             log = ApiLog()
             log.username = request.user.username 
@@ -2527,10 +2549,7 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
             # if 'apilog_json_field' in bundle.data:
             #     log.json_field = bundle.data['apilog_json_field']
             
-            # TODO: abstract the form field name
-            if HEADER_APILOG_COMMENT in request.META:
-                log.comment = request.META[HEADER_APILOG_COMMENT]
-                logger.info(str(('log comment', log.comment)))
+            log.comment = log_comment
     
             if 'parent_log' in kwargs:
                 log.parent_log = kwargs.get('parent_log', None)
@@ -2545,6 +2564,9 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
                 if prev_dict:
                     break # found
             if prev_dict:
+                # if found, then it is modified, not deleted
+                deleted_items.remove(prev_dict)
+                
                 difflog = compare_dicts(prev_dict,new_dict)
                 if 'diff_keys' in difflog:
                     # log = ApiLog.objects.create()
@@ -2553,12 +2575,43 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
                     log.save()
                     if(logger.isEnabledFor(logging.DEBUG)):
                         logger.debug(str(('update, api log', log)) )
+                else:
+                    if(logger.isEnabledFor(logging.DEBUG)):
+                        logger.debug(str(('no diffs found', prev_dict,new_dict,difflog)) )
             else: # creating
                 log.api_action = API_ACTION_CREATE
                 log.added_keys = json.dumps(new_dict.keys())
                 log.diffs = json.dumps(new_dict)
                 log.save()
+                if(logger.isEnabledFor(logging.DEBUG)):
+                    logger.debug(str(('create, api log', log)) )
+                
+        for deleted_dict in deleted_items:
+            log = ApiLog()
+            log.comment = log_comment
+            log.username = request.user.username 
+            log.user_id = request.user.id 
+            log.date_time = timezone.now()
+            log.ref_resource_name = self._meta.resource_name
+            log.key = '/'.join([str(deleted_dict[x]) for x in id_attribute])
+            log.uri = '/'.join([self._meta.resource_name,log.key])
+        
+            # user can specify any valid, escaped json for this field
+            # if 'apilog_json_field' in bundle.data:
+            #     log.json_field = bundle.data['apilog_json_field']
+            
+            log.comment = log_comment
+    
+            if 'parent_log' in kwargs:
+                log.parent_log = kwargs.get('parent_log', None)
 
+            log.api_action = API_ACTION_DELETE
+            log.diff_keys = json.dumps(deleted_dict.keys())
+            log.diffs = json.dumps(deleted_dict)
+            log.save()
+#             if(logger.isEnabledFor(logging.DEBUG)):
+            logger.info(str(('delete, api log', log)) )
+            
     def patch_list(self, request, **kwargs):
         SqlAlchemyResource.clear_cache(self)
         return super(ManagedSqlAlchemyResourceMixin,self).patch_list(request,**kwargs)
@@ -2586,6 +2639,7 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
 
 class UserResource(ManagedSqlAlchemyResourceMixin):
 
+    # FIXME: tp fields are deprecated - remove
     username = fields.CharField('user__username', null=False, readonly=True)
     first_name = fields.CharField('user__first_name', null=False, readonly=True)
     last_name = fields.CharField('user__last_name', null=False, readonly=True)
@@ -2890,6 +2944,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
 #             LimsSerializer.get_content(response), format='application/json')
 #         return bundle
 
+    # FIXME: deprecated
     def get_resource_uri(self, bundle_or_obj=None, url_name='api_dispatch_list'):
         ''' 
         Override - Either have to generate localized resource uri, or, 
@@ -2916,6 +2971,9 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
 
     # reworked 20150706   
     def put_list(self,request, **kwargs):
+        # TODO: refactor
+        self._meta.authorization._is_resource_authorized(
+            self._meta.resource_name, request.user, 'write')
 
         deserialized = self._meta.serializer.deserialize(
             request.body, 
@@ -2925,6 +2983,16 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
                 % self._meta.collection_name)
         deserialized = deserialized[self._meta.collection_name]
         
+        # cache state, for logging
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            **kwargs)
+        original_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        original_data = original_data[self._meta.collection_name]
+        logger.info(str(('original data', original_data)))
+
         with transaction.atomic():
             
             # TODO: review REST actions:
@@ -2945,7 +3013,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         new_data = new_data[self._meta.collection_name]
         
         logger.info(str(('new data', new_data)))
-        self.log_patches(request, [],new_data,**kwargs)
+        self.log_patches(request, original_data,new_data,**kwargs)
 
     
         if not self._meta.always_return_data:
@@ -2956,6 +3024,9 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             return response
         
     def patch_list(self, request, **kwargs):
+        # TODO: refactor
+        self._meta.authorization._is_resource_authorized(
+            self._meta.resource_name, request.user, 'write')
 
         deserialized = self._meta.serializer.deserialize(
             request.body, 
@@ -3000,6 +3071,9 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             return response
                 
     def patch_detail(self, request, **kwargs):
+        # TODO: refactor
+        self._meta.authorization._is_resource_authorized(
+            self._meta.resource_name, request.user, 'write')
 
         deserialized = self._meta.serializer.deserialize(
             request.body, 
@@ -3042,6 +3116,9 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             return response
 
     def put_detail(self, request, **kwargs):
+        # TODO: refactor
+        self._meta.authorization._is_resource_authorized(
+            self._meta.resource_name, request.user, 'write')
                 
         deserialized = self._meta.serializer.deserialize(
             request.body, 
@@ -3071,6 +3148,10 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         return self.patch_obj(deserialized, **kwargs)
     
     def delete_detail(self,deserialized, **kwargs):
+        # TODO: refactor
+        self._meta.authorization._is_resource_authorized(
+            self._meta.resource_name, request.user, 'write')
+
         deserialized = self._meta.serializer.deserialize(
             request.body, 
             format=request.META.get('CONTENT_TYPE', 'application/json'))
@@ -3107,7 +3188,8 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             for key in auth_user_fields.keys():
                 if deserialized.get(key,None):
                     initializer_dict[key] = parse_val(
-                        deserialized.get(key,None), key, auth_user_fields[key]['data_type']) 
+                        deserialized.get(key,None), key, 
+                        auth_user_fields[key]['data_type']) 
             try:
                 user = DjangoUser.objects.get_by_natural_key(username)
             except ObjectDoesNotExist, e:
@@ -3125,7 +3207,8 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             for key in userprofile_fields.keys():
                 if deserialized.get(key,None):
                     initializer_dict[key] = parse_val(
-                        deserialized.get(key,None), key,userprofile_fields[key]['data_type']) 
+                        deserialized.get(key,None), key,
+                        userprofile_fields[key]['data_type']) 
 
             userprofile = None
             try:
@@ -3140,28 +3223,35 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
                 logger.info(str(('set',key,val,hasattr(userprofile, key))))
                 
                 if key == 'permissions':
+                    userprofile.permissions.clear()
+                    pr = self.get_permission_resource()
                     for p in val:
                         permission_key = ( 
-                            self.get_permission_resource().find_key_from_resource_uri(p))
+                            pr.find_key_from_resource_uri(p))
                         try:
                             permission = Permission.objects.get(**permission_key)
                             userprofile.permissions.add(permission)
                         except ObjectDoesNotExist, e:
-                            logger.info(str(('no such permission', p, permission_key, initializer_dict)))
+                            logger.warn(str(('no such permission', p, 
+                                permission_key, initializer_dict)))
                             # if permission does not exist, create it
+                            # TODO: should be created through the permission resource
                             permission = Permission.objects.create(**permission_key)
                             permission.save()
                             userprofile.permissions.add(permission)
                             userprofile.save()
-                            logger.info(str(('user perms', [str(x) for x in userprofile.permissions.all() ] )) )
                 elif key == 'usergroups':
+                    userprofile.usergroup_set.clear()
+                    ugr = self.get_usergroup_resource()
                     for g in val:
-                        usergroup_key = self.get_usergroup_resource().find_key_from_resource_uri(g)
+                        usergroup_key = ugr.find_key_from_resource_uri(g)
                         try:
                             usergroup = UserGroup.objects.get(**usergroup_key)
-                            userprofile.usergroups.add(usergroup)
+                            usergroup.users.add(userprofile)
+                            usergroup.save()
                         except ObjectDoesNotExist, e:
-                            logger.info(str(('no such usergroup', g, usergroup_key, initializer_dict)))
+                            logger.info(str(('no such usergroup', g, 
+                                usergroup_key, initializer_dict)))
                             raise e
                 elif hasattr(userprofile,key):
                     setattr(userprofile,key,val)
@@ -3336,24 +3426,24 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
 class UserGroupResource(ManagedSqlAlchemyResourceMixin):
     
     # relational fields must be defined   
-    permissions = fields.ToManyField(
-        'reports.api.PermissionResource', 'permissions',related_name='groups', 
-        null=True) #, related_name='users', blank=True, null=True)
-    users = fields.ToManyField('reports.api.UserResource', 'users', 
-        related_name='usergroups', blank=True, null=True)
-    
-    super_groups = fields.ToManyField('reports.api.UserGroupResource', 
-        'super_groups', blank=True, null=True)
-    sub_groups = fields.ToManyField('reports.api.UserGroupResource', 
-        'sub_groups', blank=True, null=True)
-
-    all_permissions = fields.ListField(attribute='all_permissions', 
-        blank=True, null=True, readonly=True)
-    all_users = fields.ListField(attribute='all_users', 
-        blank=True, null=True, readonly=True)
-    
-    is_for_user = fields.BooleanField(attribute='is_for_user', blank=True, null=True)
-    is_for_group = fields.BooleanField(attribute='is_for_group', blank=True, null=True)
+    #     permissions = fields.ToManyField(
+    #         'reports.api.PermissionResource', 'permissions',related_name='groups', 
+    #         null=True) #, related_name='users', blank=True, null=True)
+    #     users = fields.ToManyField('reports.api.UserResource', 'users', 
+    #         related_name='usergroups', blank=True, null=True)
+    #     
+    #     super_groups = fields.ToManyField('reports.api.UserGroupResource', 
+    #         'super_groups', blank=True, null=True)
+    #     sub_groups = fields.ToManyField('reports.api.UserGroupResource', 
+    #         'sub_groups', blank=True, null=True)
+    # 
+    #     all_permissions = fields.ListField(attribute='all_permissions', 
+    #         blank=True, null=True, readonly=True)
+    #     all_users = fields.ListField(attribute='all_users', 
+    #         blank=True, null=True, readonly=True)
+    #     
+    #     is_for_user = fields.BooleanField(attribute='is_for_user', blank=True, null=True)
+    #     is_for_group = fields.BooleanField(attribute='is_for_group', blank=True, null=True)
 
     class Meta:
         queryset = UserGroup.objects.all();        
@@ -3371,6 +3461,19 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
     
     def __init__(self, **kwargs):
         super(UserGroupResource,self).__init__(**kwargs)
+    
+        self.permission_resource = None
+        self.user_resource = None
+
+    def get_permission_resource(self):
+        if not self.permission_resource:
+            self.permission_resource = PermissionResource()
+        return self.permission_resource
+    
+    def get_user_resource(self):
+        if not self.user_resource:
+            self.user_resource = UserResource()
+        return self.user_resource
 
     def prepend_urls(self):
         return [
@@ -3397,6 +3500,322 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
                 self.wrap_view('dispatch_group_supergroupview'), 
                 name="api_dispatch_group_supergroupview"),
             ]
+
+    def find_name(self,deserialized, **kwargs):
+        name = kwargs.get('name', None)
+        if not name:
+            name = deserialized.get('name', None)
+        if not name and 'resource_uri' in deserialized:
+            keys = self.find_key_from_resource_uri(deserialized['resource_uri'])
+            name = keys.get('name', None)
+        if not name:
+            raise NotImplementedError(str((
+                'must provide a group "name" parameter',
+                kwargs, deserialized)) )
+        return name
+    
+    # reworked 20150706   
+    def put_list(self,request, **kwargs):
+
+        # TODO: refactor
+        self._meta.authorization._is_resource_authorized(
+            self._meta.resource_name, request.user, 'write')
+
+        deserialized = self._meta.serializer.deserialize(
+            request.body, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'))
+        if not self._meta.collection_name in deserialized:
+            raise BadRequest("Invalid data sent, must be nested in '%s'" 
+                % self._meta.collection_name)
+        deserialized = deserialized[self._meta.collection_name]
+        
+        # cache state, for logging
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            **kwargs)
+        original_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        original_data = original_data[self._meta.collection_name]
+        logger.info(str(('original data', original_data)))
+
+        with transaction.atomic():
+            
+            # TODO: review REST actions:
+            # PUT deletes the endpoint
+            
+            UserGroup.objects.all().delete()
+            
+            for _dict in deserialized:
+                self.put_obj(_dict)
+
+        # get new state, for logging
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            **kwargs)
+        new_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        new_data = new_data[self._meta.collection_name]
+        
+        logger.info(str(('new data', new_data)))
+        self.log_patches(request, original_data,new_data,**kwargs)
+
+    
+        if not self._meta.always_return_data:
+            return http.HttpAccepted()
+        else:
+            response = self.get_list(request, **kwargs)             
+            response.status_code = 202
+            return response
+        
+    def patch_list(self, request, **kwargs):
+
+        # TODO: refactor
+        self._meta.authorization._is_resource_authorized(
+            self._meta.resource_name, request.user, 'write')
+
+        deserialized = self._meta.serializer.deserialize(
+            request.body, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'))
+        if not self._meta.collection_name in deserialized:
+            raise BadRequest("Invalid data sent, must be nested in '%s'" 
+                % self._meta.collection_name)
+        deserialized = deserialized[self._meta.collection_name]
+
+        # cache state, for logging
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            **kwargs)
+        original_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        original_data = original_data[self._meta.collection_name]
+        logger.info(str(('original data', original_data)))
+
+        with transaction.atomic():
+            
+            for _dict in deserialized:
+                self.patch_obj(_dict)
+                
+        # get new state, for logging
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            **kwargs)
+        new_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        new_data = new_data[self._meta.collection_name]
+        
+        logger.info(str(('new data', new_data)))
+        self.log_patches(request, original_data,new_data,**kwargs)
+        
+        if not self._meta.always_return_data:
+            return http.HttpAccepted()
+        else:
+            response = self.get_list(request, **kwargs)             
+            response.status_code = 202
+            return response
+                
+    def patch_detail(self, request, **kwargs):
+        
+        # TODO: refactor
+        self._meta.authorization._is_resource_authorized(
+            self._meta.resource_name, request.user, 'write')
+        
+        deserialized = self._meta.serializer.deserialize(
+            request.body, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'))
+        
+        # cache state, for logging
+        username = self.find_username(deserialized, **kwargs)
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            **kwargs)
+        original_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        original_data = original_data[self._meta.collection_name]
+        logger.info(str(('original data', original_data)))
+
+        with transaction.atomic():
+            logger.info(str(('patch_detail:', kwargs)))
+            
+            self.patch_obj(deserialized, **kwargs)
+
+        # get new state, for logging
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            **kwargs)
+        new_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        new_data = new_data[self._meta.collection_name]
+        
+        logger.info(str(('new data', new_data)))
+        self.log_patches(request, original_data,new_data,**kwargs)
+
+        
+        if not self._meta.always_return_data:
+            return http.HttpAccepted()
+        else:
+            response = self.get_detail(request, **kwargs) 
+            response.status_code = 202
+            return response
+
+    def put_detail(self, request, **kwargs):
+        # TODO: refactor
+        self._meta.authorization._is_resource_authorized(
+            self._meta.resource_name, request.user, 'write')
+                
+        deserialized = self._meta.serializer.deserialize(
+            request.body, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'))
+        
+        with transaction.atomic():
+            logger.info(str(('put_detail:', kwargs)))
+            
+            self.put_obj(deserialized, **kwargs)
+        
+        if not self._meta.always_return_data:
+            return http.HttpAccepted()
+        else:
+            response = self.get_detail(request, **kwargs) 
+            response.status_code = 202
+            return response
+        
+    @transaction.atomic()    
+    def put_obj(self,deserialized, **kwargs):
+        self.clear_cache()
+        
+        try:
+            self.delete_obj(deserialized, **kwargs)
+        except ObjectDoesNotExist,e:
+            pass 
+        
+        return self.patch_obj(deserialized, **kwargs)
+    
+    def delete_detail(self,deserialized, **kwargs):
+        # TODO: refactor
+        self._meta.authorization._is_resource_authorized(
+            self._meta.resource_name, request.user, 'write')
+
+        deserialized = self._meta.serializer.deserialize(
+            request.body, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'))
+        try:
+            self.delete_obj(deserialized, **kwargs)
+            return HttpResponse(status=202)
+        except ObjectDoesNotExist,e:
+            return HttpResponse(status=404)
+    
+    @transaction.atomic()    
+    def delete_obj(self, deserialized, **kwargs):
+        self.clear_cache()
+        name = self.find_name(deserialized,**kwargs)
+        UserGroup.objects.get(name=name).delete()
+    
+    @transaction.atomic()    
+    def patch_obj(self,deserialized, **kwargs):
+        self.clear_cache()
+
+        name = self.find_name(deserialized,**kwargs)
+        
+        schema = self.build_schema()
+        fields = schema['fields']
+
+        group_fields = { name:val for name,val in fields.items() 
+            if val['table'] and val['table']=='reports_usergroup'}
+        logger.debug(str(('usergroup patch_obj', fields, deserialized)))
+        try:
+            # create the group
+
+            initializer_dict = {}
+            for key in fields.keys():
+                if deserialized.get(key,None):
+                    initializer_dict[key] = parse_val(
+                        deserialized.get(key,None), key, 
+                        fields[key]['data_type']) 
+
+            usergroup = None
+            try:
+                usergroup = UserGroup.objects.get(name=name)
+            except ObjectDoesNotExist, e:
+                logger.info('Reports UserGroup %s does not exist, creating' % name)
+                usergroup = UserGroup.objects.create(name=name)
+                usergroup.save()
+            
+            logger.info(str(('initializer dict', initializer_dict)))
+            for key,val in initializer_dict.items():
+                logger.info(str(('set',key,val,usergroup, hasattr(usergroup, key))))
+                
+                if key == 'permissions':
+                    usergroup.permissions.clear()
+                    pr = self.get_permission_resource()
+                    for p in val:
+                        permission_key = ( 
+                            pr.find_key_from_resource_uri(p))
+                        try:
+                            permission = Permission.objects.get(**permission_key)
+                            usergroup.permissions.add(permission)
+                        except ObjectDoesNotExist, e:
+                            logger.warn(str(('no such permission', p, 
+                                permission_key, initializer_dict)))
+                            # if permission does not exist, create it
+                            # TODO: should be created through the permission resource
+                            permission = Permission.objects.create(**permission_key)
+                            permission.save()
+                            usergroup.permissions.add(permission)
+                            usergroup.save()
+                elif key == 'users':
+                    usergroup.users.clear()
+                    ur = self.get_user_resource()
+                    for u in val:
+                        user_key = ur.find_key_from_resource_uri(u)
+                        try:
+                            user = UserProfile.objects.get(**user_key)
+                            usergroup.users.add(user)
+                        except ObjectDoesNotExist, e:
+                            logger.info(str(('no such user', u, 
+                                user_key, initializer_dict)))
+                            raise e
+                elif key == 'super_groups':
+                    usergroup.super_groups.clear()
+                    for ug in val:
+                        ug_key = self.find_key_from_resource_uri(ug)
+                        try:
+                            supergroup = UserGroup.objects.get(**ug_key)
+                            usergroup.super_groups.add(supergroup)
+                        except ObjectDoesNotExist, e:
+                            logger.warn(str(('no such usergroup',ug_key,initializer_dict)))
+                            raise e
+                elif key == 'sub_groups':
+                    usergroup.sub_groups.clear()
+                    for ug in val:
+                        ug_key = self.find_key_from_resource_uri(ug)
+                        try:
+                            subgroup = UserGroup.objects.get(**ug_key)
+                            subgroup.super_groups.add(usergroup)
+                            subgroup.save()
+                        except ObjectDoesNotExist, e:
+                            logger.warn(str(('no such usergroup',ug_key,initializer_dict)))
+                            raise e
+                elif key in group_fields and hasattr(usergroup,key):
+                    setattr(usergroup,key,val)
+                else:
+                    logger.warn(str(('unknown attribute', key, val, usergroup,initializer_dict)))
+            # also set
+            usergroup.save()
+            return usergroup
+            
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on put detail', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e  
+
         
     @staticmethod    
     def recursive_supergroup_query(bridge):
@@ -3785,18 +4204,18 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
         return self.get_local_resource_uri(
             bundle_or_obj=bundle_or_obj, url_name=url_name)
 
-    def full_dehydrate(self, bundle, for_list=False):
-        """
-        Given a bundle with an object instance, extract the information from it
-        to populate the resource.
-        """
-        response = self.get_detail(
-            bundle.request,
-            desired_format='application/json',
-            name=bundle.obj.name)
-        bundle.data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        return bundle
+#     def full_dehydrate(self, bundle, for_list=False):
+#         """
+#         Given a bundle with an object instance, extract the information from it
+#         to populate the resource.
+#         """
+#         response = self.get_detail(
+#             bundle.request,
+#             desired_format='application/json',
+#             name=bundle.obj.name)
+#         bundle.data = self._meta.serializer.deserialize(
+#             LimsSerializer.get_content(response), format='application/json')
+#         return bundle
 
 #     def hydrate(self, bundle):
 #         bundle = super(UserGroupResource, self).hydrate(bundle);

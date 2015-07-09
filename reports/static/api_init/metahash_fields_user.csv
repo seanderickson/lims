@@ -11,3 +11,4 @@ is_superuser,fields.user,/reports/api/v1/metahash/fields.user/is_superuser/,auth
 all_permissions,fields.user,/reports/api/v1/metahash/fields.user/all_permissions/,,,14,,list,,,,TRUE,"combined user/group permissions","All Permissions",TRUE,,,[detail],,
 gender,fields.user,/reports/api/v1/metahash/fields.user/gender/,,,15,,string,,,,TRUE,"The gender of the user",Gender,TRUE,,,[detail],,
 phone,fields.user,/reports/api/v1/metahash/fields.user/phone/,,,16,,string,,,,TRUE,"The phone number for this user",Phone,TRUE,,,[detail],,
+is_active,fields.user,/reports/api/v1/metahash/fields.user/is_active/,auth_user,,17,,boolean,,,,TRUE,"True if the user is currently active","Is Active",TRUE,,,[detail],,

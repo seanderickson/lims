@@ -58,11 +58,11 @@ class MetaManager(GetOrNoneManager):
             metahash = self.get_and_parse_int(
                 scope=scope, field_definition_scope=field_definition_scope)
             cache.set('metahash:'+scope, metahash);
+            logger.debug(str((
+                'get_and_parse done, for ', scope, 'hash found', metahash.keys())))
         else:
             logger.debug(str((
                 'retrieve the cached field definitions for ',scope)))
-        logger.debug(str((
-            'get_and_parse done, for ', scope, 'hash found', metahash)))
         return metahash
 
 
@@ -410,7 +410,7 @@ class UserGroup(models.Model):
 
  
 class UserProfile(models.Model):
-    objects                 = MetaManager()
+    objects = MetaManager()
     
     # link to django.contrib.auth.models.User, note: allow null so that it
     # can be created at the same time, but it is not allowed to be null in practice

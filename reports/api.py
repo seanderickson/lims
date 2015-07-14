@@ -2236,7 +2236,7 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
         if 'id_attribute' in schema:
             filename = '_'.join(
                 self._meta.resource_name,
-                kwarg[key] for key in schema['id_attribute'] if key in kwargs)
+                [ kwarg[key] for key in schema['id_attribute'] if key in kwargs] )
         if not filename:
             filename = '_'.join(
                 self._meta.resource_name,

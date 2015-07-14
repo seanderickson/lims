@@ -39,7 +39,7 @@ module.exports = function (grunt) {
   gruntConfig.bowercopy = {
     options: {
         srcPrefix: 'bower_components',
-        clean: true
+        clean: false
     },
     scripts: {
         options: {
@@ -62,7 +62,9 @@ module.exports = function (grunt) {
           'backbone.layoutmanager.js' : 'layoutmanager/backbone.layoutmanager.js',
           'lunr.js' : 'lunr.js/lunr.js',
           'text.js' : 'requirejs-text/text.js', 
-          'bootstrap.js' : 'bootstrap/dist/js/bootstrap.js'
+          'bootstrap.js' : 'bootstrap/dist/js/bootstrap.js',
+          'multiselect.js' : 'multiselect/js/jquery.multi-select.js',
+          'jquery.quicksearch.js': 'quicksearch/dist/jquery.quicksearch.js'
         }
     }, 
     css: {
@@ -73,7 +75,13 @@ module.exports = function (grunt) {
         'bootstrap.css': 'bootstrap/dist/css/bootstrap.css',
         'backgrid.css': 'backgrid/lib/backgrid.css',
         'backgrid-paginator.css': 'backgrid-paginator/backgrid-paginator.css',
-        'backgrid-filter.css': 'backgrid-filter/backgrid-filter.css'
+        'backgrid-filter.css': 'backgrid-filter/backgrid-filter.css',
+        'multi-select.css': 'multiselect/css/multi-select.css'
+      }
+    },
+    images: {
+      files: {
+        'css/img/switch.png' : 'multiselect/img/switch.png'
       }
     },
     fonts: {

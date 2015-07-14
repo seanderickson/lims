@@ -21,7 +21,9 @@ require.config({
     text: 'libs/text',
     router: 'router',
     app_state: 'models/app_state',
-    iccbl_backgrid: 'iccbl-backgrid'
+    iccbl_backgrid: 'iccbl-backgrid',
+    multiselect: 'libs/multiselect',
+    quicksearch: 'libs/jquery.quicksearch'
   },
   shim: {
     underscore: {

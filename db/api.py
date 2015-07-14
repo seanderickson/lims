@@ -70,7 +70,8 @@ from reports import LIST_DELIMITER_SQL_ARRAY,  \
 from reports.api import ManagedModelResource, ManagedResource, ApiLogResource, \
     UserGroupAuthorization, ManagedLinkedResource, log_obj_update, \
     UnlimitedDownloadResource, IccblBaseResource, VocabulariesResource, \
-    MetaHashResource, UserResource,compare_dicts,parse_val,ManagedSqlAlchemyResourceMixin
+    MetaHashResource, UserResource,compare_dicts,parse_val,ManagedSqlAlchemyResourceMixin,\
+    UserGroupResource
 from reports.models import MetaHash, Vocabularies, ApiLog, UserProfile
 from reports.serializers import CursorSerializer, LimsSerializer, XLSSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource
@@ -81,19 +82,6 @@ from tastypie.http import HttpNotFound
 
 
 logger = logging.getLogger(__name__)
-
-# CSV_DELIMITER = ','
-# LIST_DELIMITER_SQL_ARRAY = ';'
-# LIST_DELIMITER_URL_PARAM = ','
-# MAX_ROWS_PER_XLS_FILE = 100000
-# MAX_IMAGE_ROWS_PER_XLS_FILE = 2000
-# 
-# HTTP_PARAM_USE_VOCAB = 'use_vocabularies'
-# HTTP_PARAM_USE_TITLES = 'use_titles'
-# HTTP_PARAM_RAW_LISTS = 'raw_lists'
-# 
-# LIST_BRACKETS = '[]' # default char to surround nested list in xls, csv
-
     
 def _get_raw_time_string():
   return timezone.now().strftime("%Y%m%d%H%M%S")
@@ -214,16 +202,6 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('search'), name="api_search"),
 
-#             url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w\d_.\-\+: ]+)"
-#                 r"/(?P<plate_number>[\d]+)%s$" 
-#                     % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-
-#             url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w\d_.\-\+: ]+)"
-#                 r"/(?P<copy_name>[\w\d_.\-\+: ]+)%s$"
-#                     % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-
             url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w\d_.\-\+: ]+)"
                 r"/(?P<copy_name>[\w\d_.\-\+: ]+)"
                 r"/(?P<plate_number>[\d]+)%s$" 
@@ -236,7 +214,6 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
-
 
     def get_detail(self, request, **kwargs):
         logger.info(str(('get_detail')))
@@ -258,7 +235,6 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
         kwargs['is_for_detail']=True
         return self.get_list(request, **kwargs)
 
-
     def get_list(self, request, param_hash={}, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
@@ -268,18 +244,15 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
         param_hash.update(kwargs)
 
         return self.build_list_response(request,param_hash=param_hash, **kwargs)
-
         
     def build_list_response(self,request, param_hash={}, **kwargs):
-        
-        
+            
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
         
         is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
         filename = re.sub(r'[\W]+','_',filename)
 
-        
         library_short_name = param_hash.pop('library_short_name', 
             param_hash.get('library_short_name__eq',None))
         if not library_short_name:
@@ -432,9 +405,6 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
             logger.warn(str(('on get_list', 
                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e   
-
-
-    
     
     def build_schema(self):
         schema = cache.get(self._meta.resource_name + ":schema")
@@ -472,25 +442,6 @@ class NaturalProductReagentResource(ManagedLinkedResource):
         
     def __init__(self, **kwargs):
         super(NaturalProductReagentResource,self).__init__(**kwargs)
-
- 
-# class GeneResource(ManagedLinkedResource):
-# 
-#     class Meta:
-#         queryset = Gene.objects.all() 
-#         authentication = MultiAuthentication(
-#             BasicAuthentication(), SessionAuthentication())
-#         authorization= UserGroupAuthorization()
-# 
-#         ordering = []
-#         filtering = {}
-#         serializer = LimsSerializer()
-#         excludes = [] #['json_field']
-#         always_return_data = True # this makes Backbone happy
-#         resource_name='gene' 
-# 
-#     def __init__(self, **kwargs):
-#         super(SmallMoleculeReagentResource,self).__init__(**kwargs)
 
 
 class SilencingReagentResource(ManagedLinkedResource):
@@ -1382,7 +1333,7 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
 
     def _build_result_value_column(self,field_information):
         '''
-        each result value will be added to the query as a subquery select:
+        Each result value will be added to the query as a subquery select:
         (SELECT <value_field> 
          FROM result_value
          WHERE result_value.data_column_id=<id> 
@@ -1392,7 +1343,7 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
         field_name = field_information['key']
         data_column_type = field_information.get('data_type') 
         column_to_select = None
-        if(data_column_type == 'numeric'): #TODO: use controlled vocabulary
+        if(data_column_type in ['numeric','decimal','integer']): #TODO: use controlled vocabulary
             column_to_select = 'numeric_value'
         else:
             column_to_select = 'value'
@@ -1446,33 +1397,38 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
         
         logger.info(str(('offset', offset, 'limit', limit )))
             
-        show_mutual_possitives = param_hash.get('show_mutual_positives', False)
+        show_mutual_positives = param_hash.get('show_mutual_positives', False)
         
         manual_field_includes = set(param_hash.get('includes', []))
                         
-
         try:
             screenresult = ScreenResult.objects.get(screen__facility_id=screen_facility_id)              
             logger.info(str(('screen_facility_id', screen_facility_id)))
             # general setup
              
-            schema = self.build_schema(screenresult=screenresult,show_mutual_possitives=show_mutual_possitives)
+            schema = self.build_schema(
+                screenresult=screenresult,
+                show_mutual_positives=show_mutual_positives)
+            logger.info(str(('fields',schema['fields'].keys())))
             if DEBUG_GET_LIST: 
                 logger.info(str(('manual_field_includes', manual_field_includes)))
   
             (filter_expression, filter_fields) = \
-                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+                SqlAlchemyResource.build_sqlalchemy_filters(
+                    schema, param_hash=param_hash)
                                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
                 is_for_detail=is_for_detail)
               
             order_params = param_hash.get('order_by',[])
-            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
+            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+                order_params, field_hash)
              
             rowproxy_generator = None
             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+                rowproxy_generator = \
+                    IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
             
@@ -1495,27 +1451,27 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
             # any result_value lookups that are used in sort or where:
             # TODO: if doing mutual positives query, then need to grab those datacolumns.
             base_fields = [ fi for fi in field_hash.values() 
-                if ( not fi.get('data_type',None) # don't include datacolumns, unless:
+                if ( not fi.get('is_datacolumn',None) # don't include datacolumns, unless:
                      or fi['key'] in order_params
                      or '-%s'%fi['key'] in order_params
                      or fi['key'] in filter_fields )]
             
-            # TODO: using "data_type" presence as a marker for the result_value columns
-            for fi in [fi for fi in base_fields if fi.get('data_type',None)]:
+            for fi in [fi for fi in base_fields if fi.get('is_datacolumn',None)]:
                 rv_select = self._build_result_value_column(fi)
                 base_custom_columns[fi['key']] = rv_select
             
             base_query_tables = ['assay_well']
+            
+            logger.info(str(('=== build sqlalchemy columns', base_fields, base_custom_columns)))
             base_columns = self.build_sqlalchemy_columns(
                 base_fields, base_query_tables=base_query_tables,
                 custom_columns=base_custom_columns ) 
-
+            logger.info(str(('base columns', base_columns)))
             # remove is_positive if not needed, to help the query planner
-            if 'is_positive' not in filter_fields:
+            if 'is_positive' not in filter_fields and 'is_positive' in base_columns:
                 del base_columns['is_positive']
             
-            base_stmt = select(base_columns.values()
-                ).select_from(base_clause)
+            base_stmt = select(base_columns.values()).select_from(base_clause)
             base_stmt = base_stmt.where(
                 _aw.c.screen_result_id == screenresult.screen_result_id )
             # always add well_id order
@@ -1577,7 +1533,6 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
                 logger.info(str(('ex on get/create wellquery for screenresult', e)))
                 raise e
             
-            
             #############            
             # now construct the "real" query - real columns, using the query_index table
             
@@ -1588,7 +1543,7 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
             custom_columns = { 'well_id': literal_column(
                 'well_query_index.well_id').label('well_id')}
             
-            for fi in [fi for fi in field_hash.values() if fi.get('data_type',None)]:
+            for fi in [fi for fi in field_hash.values() if fi.get('is_datacolumn',None)]:
                 custom_columns[fi['key']] = self._build_result_value_column(fi)
             
             columns = self.build_sqlalchemy_columns(
@@ -1617,7 +1572,7 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
             
             stmt = select(columns.values()).select_from(j)
             stmt = stmt.where(_aw.c.screen_result_id == screenresult.screen_result_id )
-            logger.info(str(('excute stmt', str(stmt.compile() ))))
+            logger.info(str(('excute stmt', str(stmt.compile(compile_kwargs={"literal_binds": True}) ))))
             result = conn.execute(stmt)
             logger.info('excuted stmt')
             
@@ -1628,11 +1583,12 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
             if index_was_created:
                 self.clear_cache(by_size=True)
             
+            if rowproxy_generator:
+                result = rowproxy_generator(result)
             return self.stream_response_from_cursor(
                 request, result, filename, 
                 field_hash=field_hash, param_hash=param_hash,
                 is_for_detail=is_for_detail,
-                rowproxy_generator=rowproxy_generator,
                 title_function=title_function,
                 meta=meta  )
     
@@ -1645,7 +1601,6 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
             raise e  
 
     def get_mutual_positives_columns(self, screen_result_id):
-        
         
         # TODO: cache this / clear cache when any screen_results referenced by 
         # a datacolumn are re-loaded
@@ -1770,7 +1725,7 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
             },
     }
             
-    def build_schema(self, screenresult=None,show_mutual_possitives=False):
+    def build_schema(self, screenresult=None,show_mutual_positives=False):
         logger.debug(str(('==========build schema for screen result', screenresult)))
         try:
             data = super(ScreenResultResource,self).build_schema()
@@ -1786,12 +1741,14 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
                     'visibility': ['list','detail'],
                     'data_type': 'string',
                     'filtering': True,
+                    'is_datacolumn': True,
                     'scope': 'datacolumn.screenresult-%s' % screenresult.screen.facility_id
                     }
-                for i,dc in enumerate(
-                        DataColumn.objects.filter(screen_result=screenresult).order_by('ordinal')):
-                    (columnName,_dict) = self.create_datacolumn(
-                        dc, field_defaults=field_defaults)
+                for i,dc in enumerate(DataColumn.objects.filter(
+                    screen_result=screenresult).order_by('ordinal')):
+                    
+                    (columnName,_dict) = self.create_datacolumn(dc, 
+                        field_defaults=field_defaults)
                     _dict['ordinal'] = max_ordinal + dc.ordinal + 1
                     data['fields'][columnName] = _dict
                     
@@ -1816,11 +1773,11 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
                     
                     field_defaults['scope'] = 'mutual_positive.%s' \
                         % dc.screen_result.screen.facility_id
-                    (columnName,_dict) = self.create_datacolumn(
-                        dc, field_defaults=field_defaults)
+                    (columnName,_dict) = self.create_datacolumn(dc, 
+                        field_defaults=field_defaults)
                     _dict['ordinal'] = _ordinal
                     data['fields'][columnName] = _dict
-                    if show_mutual_possitives:
+                    if show_mutual_positives:
                         _visibility = set(_dict['visibility'])
                         _visibility.update(['list','detail'])
                         _dict['visibility'] = list(_visibility)
@@ -2023,8 +1980,6 @@ class ScreenSummaryResource(ManagedModelResource):
         except ScreenResult.DoesNotExist, e:
             logger.info(unicode(('no screenresult for ', bundle.obj)))
         return bundle
-
-
 
 # Deprecate - use apilog viewer
 class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
@@ -2237,7 +2192,6 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
         # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
         always_return_data = True 
 
-        
     def __init__(self, **kwargs):
         super(CopyWellResource,self).__init__(**kwargs)
 
@@ -2273,7 +2227,6 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
         ]
 
-
     def get_detail(self, request, **kwargs):
         # TODO: this is a strategy for refactoring get_detail to use get_list:
         # follow this with wells/
@@ -2299,7 +2252,6 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
         
         return self.get_list(request, **kwargs)
         
-    
     def get_list(self,request,**kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -2307,7 +2259,6 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
 
         return self.build_list_response(request,param_hash=param_hash, **kwargs)
 
-        
     def build_list_response(self,request, param_hash={}, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
@@ -2419,6 +2370,7 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e  
   
+
 class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):        
     class Meta:
         queryset = CherryPickRequest.objects.all().order_by('well_id')
@@ -2434,7 +2386,6 @@ class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):
         # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
         always_return_data = True 
 
-        
     def __init__(self, **kwargs):
         super(CherryPickRequestResource,self).__init__(**kwargs)
 
@@ -2468,7 +2419,6 @@ class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):
         
         return self.get_list(request, **kwargs)
         
-    
     def get_list(self,request,**kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -2476,7 +2426,6 @@ class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):
 
         return self.build_list_response(request,param_hash=param_hash, **kwargs)
 
-        
     def build_list_response(self,request, param_hash={}, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
@@ -2520,7 +2469,6 @@ class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):
             # specific setup 
             base_query_tables = ['cherry_pick_request']
             
-        
             custom_columns = {
                 'screen_facility_id': literal_column(
                     '( select facility_id '
@@ -2659,7 +2607,6 @@ class CherryPickPlateResource(SqlAlchemyResource,ManagedModelResource):
         # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
         always_return_data = True 
 
-        
     def __init__(self, **kwargs):
         super(CherryPickPlateResource,self).__init__(**kwargs)
 
@@ -2705,7 +2652,6 @@ class CherryPickPlateResource(SqlAlchemyResource,ManagedModelResource):
         
         return self.get_list(request, **kwargs)
         
-    
     def get_list(self,request,**kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -2713,7 +2659,6 @@ class CherryPickPlateResource(SqlAlchemyResource,ManagedModelResource):
 
         return self.build_list_response(request,param_hash=param_hash, **kwargs)
 
-        
     def build_list_response(self,request, param_hash={}, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
@@ -2980,7 +2925,6 @@ class LibraryCopyResource(SqlAlchemyResource, ManagedModelResource):
         else:
             param_hash['library_short_name__eq'] = library_short_name
         
-        
         name = param_hash.pop('name', param_hash.get('name',None))
         if name:
             param_hash['name__eq'] = name
@@ -3000,7 +2944,8 @@ class LibraryCopyResource(SqlAlchemyResource, ManagedModelResource):
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
 
             if filter_expression is None:
-                msgs = { 'Library copies resource': 'can only service requests with filter expressions' }
+                msgs = { 'Library copies resource': 
+                    'can only service requests with filter expressions' }
                 logger.info(str((msgs)))
                 raise ImmediateHttpResponse(response=self.error_response(request,msgs))
                                   
@@ -3009,11 +2954,13 @@ class LibraryCopyResource(SqlAlchemyResource, ManagedModelResource):
                 is_for_detail=is_for_detail)
               
             order_params = param_hash.get('order_by',[])
-            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
+            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+                order_params, field_hash)
              
             rowproxy_generator = None
             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+                rowproxy_generator = \
+                    IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
 
@@ -3174,69 +3121,6 @@ class LibraryCopyResource(SqlAlchemyResource, ManagedModelResource):
                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e   
 
-    
-#     def get_object_list(self, request, library_short_name=None):
-#         ''' 
-#         Called immediately before filtering, actually grabs the (ModelResource) 
-#         query - 
-#         
-#         Override this and apply_filters, so that we can control the extra 
-#         column "is_for_group":
-#         This extra column is present when navigating to permissions from a 
-#         usergroup; see prepend_urls.
-#         '''
-#         query = super(LibraryCopyResource, self).get_object_list(request);
-#         logger.info(str(('get_obj_list', len(query))))
-#         if library_short_name:
-#             query = query.filter(library__short_name=library_short_name)
-#         return query
-#     
-#         
-#                     
-#     def apply_sorting(self, obj_list, options):
-#         options = options.copy()
-#         logger.info(str(('options', options)))
-#         
-#         extra_order_by = []
-#         order_by = options.getlist('order_by',None)
-#         if order_by:
-#             logger.info(str(('order_by',order_by)))
-#             for field in order_by:
-#                 temp = field
-#                 dir=''
-#                 if field.startswith('-'):
-#                     dir = '-'
-#                     field = field[1:]
-#                 if field == 'created_by':
-#                     order_by.remove(temp)
-#                     extra_order_by.append(dir+'created_by__last_name')
-#                     extra_order_by.append(dir+'created_by__first_name')
-#             if len(order_by) > 0:
-#                 options.setlist('order_by', order_by)
-#             else:
-#                 del options['order_by'] 
-# 
-#         obj_list = super(LibraryCopyResource, self).apply_sorting(obj_list, options)
-#         
-#         if len(extra_order_by)>0:
-#             logger.info(str(('extra_order_by', extra_order_by)))
-#             obj_list = obj_list.order_by(*extra_order_by)
-#         return obj_list
-# 
-#     def dehydrate(self, bundle):
-#         if bundle.obj.created_by:
-#             user = bundle.obj.created_by
-#             bundle.data['created_by'] =  user.first_name + ' ' + user.last_name
-#         return bundle
-#     
-#     def build_schema(self):
-#         # FIXME: these options should be defined automatically from a vocabulary in build_schema
-#         schema = super(LibraryCopyResource,self).build_schema()
-# #         temp = [ x.usage_type for x in self.Meta.queryset.distinct('usage_type')]
-# #         schema['extraSelectorOptions'] = { 
-# #             'label': 'Type', 'searchColumn': 'usage_type', 'options': temp }
-#         return schema
-    
     def obj_create(self, bundle, **kwargs):
         bundle.data['date_created'] = timezone.now()
         
@@ -3244,7 +3128,6 @@ class LibraryCopyResource(SqlAlchemyResource, ManagedModelResource):
         logger.info(str(('===creating library copy', bundle.data)))
 
         return super(LibraryCopyResource, self).obj_create(bundle, **kwargs)
-
 
     def is_valid(self, bundle):
         """
@@ -3283,7 +3166,6 @@ class LibraryCopyResource(SqlAlchemyResource, ManagedModelResource):
                 'bundle errors', bundle.errors, len(bundle.errors.keys()))))
             return False
         return True
-
      
      
 class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResource):    
@@ -3302,26 +3184,27 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
         always_return_data = True
 
     def __init__(self, **kwargs):
-#        self.
         self.user_resource = None
         super(ScreensaverUserResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
         return [
-            # override the parent "base_urls" so that we don't need to worry about schema again
+            # override the parent "base_urls" so that we don't need to worry 
+            # about schema again
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
-
-            url((r"^(?P<resource_name>%s)/"
-                 r"(?P<screensaver_user_id>([\d]+))%s$") 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))/groups%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_user_groupview'), name="api_dispatch_user_groupview"),
         ]    
 
+    def dispatch_user_groupview(self, request, **kwargs):
+        return UserGroupResource().dispatch('list', request, **kwargs)    
+    
     def build_schema(self):
         
         schema = super(ScreensaverUserResource,self).build_schema()
@@ -3343,33 +3226,6 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
         if not self.user_resource:
             self.user_resource = UserResource()
         return self.user_resource
-
-    # override
-    def detail_uri_kwargs(self, bundle_or_obj): 
-        kwargs = {}
-        obj = bundle_or_obj
-        if isinstance(bundle_or_obj, Bundle):
-            obj = bundle_or_obj.obj
-        
-        if isinstance(bundle_or_obj, dict):
-            kwargs['username'] = bundle_or_obj.get('username',None)
-        else:
-            kwargs['username'] = obj.user.username
-        return kwargs
-            
-
-    def full_dehydrate(self, bundle, for_list=False):
-        """
-        Given a bundle with an object instance, extract the information from it
-        to populate the resource.
-        """
-        response = self.get_detail(
-            bundle.request,
-            desired_format='application/json',
-            screensaver_user_id=bundle.obj.screensaver_user_id)
-        bundle.data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        return bundle
         
     def get_detail(self, request, **kwargs):
         logger.info(str(('get_detail')))
@@ -3383,7 +3239,6 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
         kwargs['is_for_detail']=True
         return self.get_list(request, **kwargs)
        
-    
     def get_list(self,request,**kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -3477,7 +3332,8 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
                         select_from(_s.join(_cl,_s.c.screen_id==_cl.c.screen_id)).\
                         where(_cl.c.collaborator_id==_su.c.screensaver_user_id),
                 'lab_name':
-                    select([func.concat(_lhsu.c.last_name,', ',_lhsu.c.first_name,' - ',_la.c.affiliation_name)]).\
+                    select([func.concat(_lhsu.c.last_name,', ',
+                        _lhsu.c.first_name,' - ',_la.c.affiliation_name)]).\
                     select_from(
                         _la.join(_lh,_la.c.lab_affiliation_id==_lh.c.lab_affiliation_id).\
                         join(_lhsu, _lh.c.screensaver_user_id==_lhsu.c.screensaver_user_id).\
@@ -3485,12 +3341,14 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
                     where(_sru.c.screensaver_user_id==_su.c.screensaver_user_id),
                 'facility_usage_roles': 
                     select([func.array_to_string(
-                            func.array_agg(_sru_fr.c.facility_usage_role),LIST_DELIMITER_SQL_ARRAY)]).\
+                            func.array_agg(_sru_fr.c.facility_usage_role),
+                                LIST_DELIMITER_SQL_ARRAY)]).\
                         select_from(_sru_fr).\
                         where(_sru_fr.c.screening_room_user_id==_su.c.screensaver_user_id),
                 'data_access_roles': 
                     select([func.array_to_string(
-                            func.array_agg(_su_r.c.screensaver_user_role),LIST_DELIMITER_SQL_ARRAY)]).\
+                            func.array_agg(_su_r.c.screensaver_user_role),
+                                LIST_DELIMITER_SQL_ARRAY)]).\
                         select_from(_su_r).\
                         where(_su_r.c.screensaver_user_id==_su.c.screensaver_user_id),
                 }
@@ -3544,6 +3402,7 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e  
 
+
     # reworked 20150706   
     def put_list(self,request, **kwargs):
 
@@ -3554,6 +3413,8 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
             raise BadRequest("Invalid data sent, must be nested in '%s'" 
                 % self._meta.collection_name)
         deserialized = deserialized[self._meta.collection_name]
+
+        logger.info(str(('put list', deserialized,kwargs)))
         
         with transaction.atomic():
             
@@ -3569,6 +3430,7 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
         response = self.get_list(
             request,
             desired_format='application/json',
+            includes='*',
             **kwargs)
         new_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
@@ -3595,10 +3457,13 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
                 % self._meta.collection_name)
         deserialized = deserialized[self._meta.collection_name]
 
+        logger.info(str(('patch list', deserialized,kwargs)))
+
         # cache state, for logging
         response = self.get_list(
             request,
             desired_format='application/json',
+            includes='*',
             **kwargs)
         original_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
@@ -3614,6 +3479,7 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
         response = self.get_list(
             request,
             desired_format='application/json',
+            includes='*',
             **kwargs)
         new_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
@@ -3634,12 +3500,14 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
         deserialized = self._meta.serializer.deserialize(
             request.body, 
             format=request.META.get('CONTENT_TYPE', 'application/json'))
-        
+        logger.info(str(('patch detail', deserialized,kwargs)))
+
         # cache state, for logging
-        username = self.find_username(deserialized, **kwargs)
+        username = self.get_user_resource().find_username(deserialized, **kwargs)
         response = self.get_list(
             request,
             desired_format='application/json',
+            includes='*',
             **kwargs)
         original_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
@@ -3647,7 +3515,6 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
         logger.info(str(('original data', original_data)))
 
         with transaction.atomic():
-            logger.info(str(('patch_detail:', kwargs)))
             
             self.patch_obj(deserialized, **kwargs)
 
@@ -3655,6 +3522,7 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
         response = self.get_list(
             request,
             desired_format='application/json',
+            includes='*',
             **kwargs)
         new_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
@@ -3676,6 +3544,8 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
         deserialized = self._meta.serializer.deserialize(
             request.body, 
             format=request.META.get('CONTENT_TYPE', 'application/json'))
+
+        logger.info(str(('put detail', deserialized,kwargs)))
         
         with transaction.atomic():
             logger.info(str(('put_detail:', kwargs)))
@@ -3734,16 +3604,7 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
         try:
             # create/get userprofile
 
-#             initializer_dict = {}
-#             for key in auth_user_fields.keys():
-#                 if deserialized.get(key,None):
-#                     initializer_dict[key] = parse_val(
-#                         deserialized.get(key,None), key, auth_user_fields[key]['data_type']) 
-            try:
-                user = UserProfile.objects.get(username=username)
-            except ObjectDoesNotExist, e:
-                logger.info('User %s does not exist, creating' % username)
-                user = self.get_user_resource().patch_obj(deserialized,**kwargs)
+            user = self.get_user_resource().patch_obj(deserialized,**kwargs)
 
             # create the screensaver_user
             
@@ -3755,9 +3616,11 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
 
             screensaver_user = None
             try:
-                screensaver_user = ScreensaverUser.objects.get(username=username)
+                # FIXME: add username field to the screensaver_user table
+                screensaver_user = ScreensaverUser.objects.get(user__username=username)
             except ObjectDoesNotExist, e:
                 logger.info('Screensaver User %s does not exist, creating' % username)
+                # FIXME: add username field to the screensaver_user table
                 screensaver_user = ScreensaverUser.objects.create(username=username)
                 screensaver_user.save()
             
@@ -3783,258 +3646,6 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e  
 
-
-#     def put_detail(self, request, **kwargs):
-#         logger.info(str(('put_detail:', kwargs)))
-#         
-#         # first create the reports user
-#         try:
-# #             deserialized = self.deserialize(
-# #                 request, request.body, 
-# #                 format=request.META.get('CONTENT_TYPE', 'application/json'))
-#             deserialized = self._meta.serializer.deserialize(
-#                 request.body, 
-#                 format=request.META.get('CONTENT_TYPE', 'application/json'))
-#             
-#             # 1. find out if the data exist - as an object
-#             schema = self.build_schema()
-#             id_attribute = schema['resource_definition']['id_attribute']
-#             lookup_kwargs = {}
-#             for key in id_attribute:
-#                 if key in deserialized:
-#                     look_kwargs[key] = deserialized[key]
-#             if len(lookup_kwargs)==len(id_attribute):
-#                 
-#                 try:
-#                     obj = ScreensaverUser.objects.get(**lookup_kwargs)
-#                 except ObjectDoesNotExist, e:
-#                     logger.info(str(('err', e)))
-#                 
-#                 pass
-#             
-#         except Exception, e:
-#             exc_type, exc_obj, exc_tb = sys.exc_info()
-#             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-#             msg = str(e)
-#             logger.warn(str(('on put detail', 
-#                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
-#             raise e  
-#             
-#             
-# 
-#     def put_detail2(self, request, **kwargs):
-#         logger.info(str(('put_detail:', kwargs)))
-#         
-#         # first create the reports user
-#         try:
-#             deserialized = self.deserialize(
-#                 request, request.body, 
-#                 format=request.META.get('CONTENT_TYPE', 'application/json'))
-#             bundle = self.get_user_resource().build_bundle(
-#                 data=dict_strip_unicode_keys(deserialized), request=request)
-#     
-#             try:
-#                 logger.info(str(('bundle data', bundle.data)))
-#                 updated_bundle = self.get_user_resource().obj_update(
-#                     bundle=bundle, 
-#                     **(self.get_user_resource().remove_api_resource_names(kwargs)))
-#                     
-#             except (NotFound, HttpNotFound),e:
-#                 logger.info(str(('no userprofile found, creating...', e)))
-#                 
-#                 updated_bundle = self.get_user_resource().obj_create(
-#                     bundle=bundle, 
-#                     **(self.get_user_resource().remove_api_resource_names(kwargs)))
-#             except MultipleObjectsReturned, e:
-#                 logger.error("cant' create user profile: %s %s", e, kwargs )
-#                 raise e
-#             
-#             ssbundle = self.build_bundle(
-#                 data=dict_strip_unicode_keys(deserialized), request=request)
-#             try:
-#                 ss_updated_bundle = self.obj_update(
-#                     bundle=ssbundle, **self.remove_api_resource_names(kwargs))
-#             
-#             except (NotFound, HttpNotFound, MultipleObjectsReturned),e:
-#                 logger.info(str(('err', e)))
-#                 ss_updated_bundle = self.obj_create(
-#                     bundle=ssbundle, **self.remove_api_resource_names(kwargs))
-#     
-#             ss_updated_bundle.obj.user = updated_bundle.obj
-#             ss_updated_bundle.obj.save();
-#             
-#             logger.info(str(('ss user created', ss_updated_bundle.obj )))
-#             ss_updated_bundle = self.full_dehydrate(ss_updated_bundle)
-#             log = ApiLog()
-#             log.username = bundle.request.user.username 
-#             log.user_id = bundle.request.user.id 
-#             log.date_time = timezone.now()
-#             log.ref_resource_name = self._meta.resource_name
-#             log.api_action = str((bundle.request.method)).upper()
-#             log.uri = self.get_resource_uri(bundle)
-#             log.key = '/'.join([str(x) for x in self.detail_uri_kwargs(bundle).values()])
-#             
-#             log.diff_dict_to_api_log(ss_updated_bundle.data)
-#     
-#             # user can specify any valid, escaped json for this field
-#             if 'apilog_json_field' in bundle.data:
-#                 log.json_field = bundle.data['apilog_json_field']
-#             
-#             if HEADER_APILOG_COMMENT in bundle.request.META:
-#                 log.comment = bundle.request.META[HEADER_APILOG_COMMENT]
-#                 logger.info(str(('log comment', log.comment)))
-#     
-#             if 'parent_log' in kwargs:
-#                 log.parent_log = kwargs.get('parent_log', None)
-#             
-#             log.save()
-#             logger.info(str(('log saved', log)))
-#             if not self._meta.always_return_data:
-#                 return http.HttpAccepted()
-#             else:
-#                 return self.get_detail(request, **kwargs)
-#                 # TODO: like this:
-#                 # return HttpResponse(request, content=ss_updated_bundle.data)
-#         except Exception, e:
-#             exc_type, exc_obj, exc_tb = sys.exc_info()
-#             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-#             msg = str(e)
-#             logger.warn(str(('on put detail', 
-#                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
-#             raise e  
-#     
-#     def patch_detail(self, request, **kwargs):
-#         logger.info(str(('patch_detail:', kwargs)))
-# 
-#         try:
-#             lookup_kwargs = {}
-#             screensaver_user_id = kwargs.get('screensaver_user_id', None)
-#             ## TODO: drop support for ssuid, or lookup the reports.user from the ss user id
-#             
-#             username = kwargs.get('username', None)
-#             if username:
-#                 lookup_kwargs['username'] = username
-#                 
-#             if not (screensaver_user_id or username):
-#                 logger.info('no screensaver_user_id or username provided',kwargs)
-#                 raise NotImplementedError(
-#                     'must provide a screensaver_user_id or username parameter')
-#             
-#             basic_bundle = self.build_bundle(request=request)
-#     
-#             logger.info(str(('find:', lookup_kwargs)))
-#             try:
-#                 obj = self.get_user_resource().cached_obj_get(
-#                     bundle=basic_bundle, **lookup_kwargs)
-#             except ObjectDoesNotExist:
-#                 return http.HttpNotFound()
-#             except MultipleObjectsReturned:
-#                 return http.HttpMultipleChoices(
-#                     "More than one resource is found at this URI.")
-# 
-#             if not obj.screensaveruser_set.all().exists():
-#                 logger.info(str(('ss user obj not found', obj)))
-#                 return http.HttpNotFound()
-#             else:
-#                 ss_user = obj.screensaveruser_set.all()[0]
-#             
-#             # store the original bundle for logging
-#             original_bundle = self.build_bundle(obj=ss_user, request=request)
-#             original_bundle = self.full_dehydrate(original_bundle)
-#     
-#             bundle = self.build_bundle(obj=obj, request=request)
-#             logger.info(str(('dehydrate the existing obj', bundle.obj)))
-#             bundle = self.get_user_resource().full_dehydrate(bundle)
-#     
-# #             deserialized = self.deserialize(
-# #                 request, request.body, 
-# #                 format=request.META.get('CONTENT_TYPE', 'application/json'))
-#             deserialized = self._meta.serializer.deserialize(
-#                 request.body, 
-#                 format=request.META.get('CONTENT_TYPE', 'application/json'))
-#     
-#             logger.info(str(('Now update the user', deserialized, bundle, lookup_kwargs)))
-#             with transaction.atomic():
-#                 self.get_user_resource().update_in_place(request, bundle, deserialized)
-#                 logger.info(str(('updated', bundle)))
-#                 
-#                 ssbundle = super(ScreensaverUserResource,self).build_bundle(obj=ss_user, request=request)
-#                 ssbundle = self.full_dehydrate(ssbundle)
-#                 
-#                 ssbundle.data.update(**dict_strip_unicode_keys(deserialized))
-#     
-#                 sskwargs = {
-#                     self._meta.detail_uri_name: self.get_bundle_detail_data(ssbundle),
-#                     'request': request,
-#                 }
-#                 ssbundle = self.obj_update(ssbundle,**sskwargs)
-#                 logger.info(str(('updated', ssbundle)))
-#             
-#             ######### logging
-#             # final bundle, for logging
-#             ssbundle = self.full_dehydrate(ssbundle)
-#             difflog = compare_dicts(original_bundle.data, ssbundle.data)
-#     
-#             log = ApiLog()
-#             log.username = bundle.request.user.username 
-#             log.user_id = bundle.request.user.id 
-#             log.date_time = timezone.now()
-#             log.ref_resource_name = self._meta.resource_name
-#             log.api_action = str((bundle.request.method)).upper()
-#             log.uri = self.get_resource_uri(bundle)
-#             log.key = '/'.join([str(x) for x in self.detail_uri_kwargs(bundle).values()])
-#             
-#             log.diff_dict_to_api_log(difflog)
-#     
-#             # user can specify any valid, escaped json for this field
-#             if 'apilog_json_field' in bundle.data:
-#                 log.json_field = bundle.data['apilog_json_field']
-#             
-#             if HEADER_APILOG_COMMENT in bundle.request.META:
-#                 log.comment = bundle.request.META[HEADER_APILOG_COMMENT]
-#                 logger.info(str(('log comment', log.comment)))
-#     
-#             if 'parent_log' in kwargs:
-#                 log.parent_log = kwargs.get('parent_log', None)
-#             
-#             log.save()
-#             
-#             if not self._meta.always_return_data:
-#                 return http.HttpAccepted()
-#             else:
-#                 return self.get_detail(request, **kwargs)
-#         
-#         except Exception, e:
-#             exc_type, exc_obj, exc_tb = sys.exc_info()
-#             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-#             msg = str(e)
-#             logger.warn(str(('on patch detail', 
-#                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
-#             raise e  
-#  
-#     def obj_update(self, bundle, skip_errors=False, **kwargs):
-#         # bypass the LoggingMixin by going straight to its parent
-#         bundle = super(IccblBaseResource, self).obj_update(bundle, **kwargs);
-#         return bundle
-#     def patch_list(self, request, **kwargs):
-#         logger.info(str(('patch_list:', kwargs)))
-#         return self.put_patch_detail(request, **kwargs)
-# 
-#     def put_list(self,request, **kwargs):
-#         logger.info(str(('put_list:', kwargs)))
-# #         deserialized = self.deserialize(
-# #             request, 
-# #             format=request.META.get('CONTENT_TYPE', 'application/json'))
-#         deserialized = self._meta.serializer.deserialize(
-#             request.body, 
-#             format=request.META.get('CONTENT_TYPE', 'application/json'))
-#         if not self._meta.collection_name in deserialized:
-#             raise BadRequest(str(("Invalid data sent. missing: " , self._meta.collection_name)))
-#         
-#         logger.info(str(('put/patch:', deserialized)))
-#         
-#         return self.create_or_update(deserialized[self._meta.collection_name])
-       
         
 class ReagentResource(SqlAlchemyResource, ManagedModelResource):
     
@@ -4087,7 +3698,6 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
         param_hash.update(kwargs)
 
         return self.build_list_response(request,param_hash=param_hash, **kwargs)
-
         
     def build_list_response(self,request, param_hash={}, **kwargs):
         
@@ -4115,15 +3725,14 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
             if not library:
                 library = Well.objects.get(well_id=well_id).library
 
-#         plate_number = param_hash.pop('plate_number', 
-#             param_hash.get('plate_number__eq', None))
-#         if plate_number:
-#             param_hash['plate_number__eq'] = int(plate_number)
-
+        #         plate_number = param_hash.pop('plate_number', 
+        #             param_hash.get('plate_number__eq', None))
+        #         if plate_number:
+        #             param_hash['plate_number__eq'] = int(plate_number)
 
         substance_id = param_hash.pop('substance_id', None)
         if substance_id:
-            param_hash['substance_id__eq'] = well_id
+            param_hash['substance_id__eq'] = substance_id
             if not library:
                 library = Reagent.objects.get(substance_id=substance_id).well.library
 
@@ -4260,7 +3869,6 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
                 field_hash=field_hash, param_hash=param_hash, is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
                 title_function=title_function  )
-            
                         
         except Exception, e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -4270,136 +3878,6 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e  
         
-                
-#     def get_list1(self, request, **kwargs):
-#     
-#         if 'library_short_name' in kwargs:
-#             library = Library.objects.get(short_name=kwargs['library_short_name'])
-#         else:
-#             raise NotImplementedError('must provide a library_short_name parameter')
-#         filename = '%s_%s' % (self._meta.resource_name, library.short_name )
-#         desired_format = self.get_format(request)
-#         logger.info(str(('get_list', filename, desired_format, 'kwargs', kwargs)))
-#         
-#         # Build the query columns using directions from our schema
-#         # Specify the tables in the base query (*will not need to re-join them)
-#         base_query_tables = ['well', 'reagent', 'library']
-#         schema = self.build_schema(library=library)
-# 
-#         (filter_expression, filter_fields) = \
-#             self.build_sqlalchemy_filters(schema, request, **kwargs)
-# 
-#         # get manual field includes from kwargs
-#         includes = request.GET.getlist('includes', None)
-#         logger.info(str(('includes', includes)))
-#         if includes:
-#             manual_field_includes = set(includes)
-#         else:    
-#             manual_field_includes = set()
-#         logger.info(str(('manual_field_includes', manual_field_includes)))
-#         include_all = '*' in manual_field_includes
-#         
-# #         manual_field_includes.add('structure_image')
-#         if desired_format == 'chemical/x-mdl-sdfile':
-#             manual_field_includes.add('molfile')
-# 
-#         temp = { key:field for key,field in schema['fields'].items() 
-#             if ((field.get('visibility', None) and 'list' in field['visibility']) 
-#                 or field['key'] in filter_fields 
-#                 or field['key'] in manual_field_includes
-#                 or include_all )}
-#         
-#         # manual excludes
-#         temp = { key:field for key,field in temp.items() 
-#             if '-%s' % key not in manual_field_includes }
-# 
-#         # dependency fields
-#         dependency_fields = set()
-#         for field in schema['fields'].values():
-#             dependency_fields.update(field.get('dependencies',[]))
-#         logger.info(str(('dependency_fields', dependency_fields)))
-#         if dependency_fields:
-#             temp.update({ key:field 
-#                 for key,field in schema['fields'].items() if key in dependency_fields })
-#         
-#         field_hash = OrderedDict(sorted(temp.iteritems(), 
-#             key=lambda x: x[1].get('ordinal',999))) 
-#         
-#         logger.info(str(('final field list', field_hash.keys())))
-#         
-#         sub_resource = self.get_reagent_resource(library_screen_type=library.screen_type)
-#         if hasattr(sub_resource, 'build_sqlalchemy_columns'):
-#             sub_columns = sub_resource.build_sqlalchemy_columns(
-#                 field_hash.values(), self.bridge)
-#             logger.info(str(('sub_columns', sub_columns.keys())))
-#             columns = self.build_sqlalchemy_columns(
-#                 field_hash.values(), base_query_tables=base_query_tables,
-#                 custom_columns=sub_columns)
-#         else:
-#             columns = self.build_sqlalchemy_columns(
-#                 field_hash.values(), base_query_tables=base_query_tables)
-#         
-#         # Start building a query; use the sqlalchemy.sql.schema.Table API:
-#         logger.info(str(('final columns', columns.keys())))
-#         
-#         _well = self.bridge['well']
-#         _reagent = self.bridge['reagent']
-#         _library = self.bridge['library']
-#         j = _well.join(_reagent, _well.c.well_id==_reagent.c.well_id, isouter=True)
-#         j = j.join(_library, _well.c.library_id == _library.c.library_id )
-#         stmt = select(columns.values()).\
-#             select_from(j).\
-#             where(_well.c.library_id == library.library_id) 
-# 
-#         # perform ordering and filters     
-#         
-#         
-#         # Fixme: why not:             
-#         # (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
-# 
-#         order_clauses = self.build_sqlalchemy_ordering(request)
-#         logger.info(str(('order_clauses', [str(c) for c in order_clauses])))
-#         if order_clauses:
-#             _alias = Alias(stmt)
-#             stmt = select([text('*')]).select_from(_alias)
-#             stmt = stmt.order_by(*order_clauses)
-#         
-#         logger.info(str(('filter_expression', str(filter_expression))))
-#         if filter_expression is not None:
-#             if not order_clauses:
-#                 _alias = Alias(stmt)
-#                 stmt = select([text('*')]).select_from(_alias)
-#             stmt = stmt.where(filter_expression)
-#  
-#         if not order_clauses:
-#             stmt = stmt.order_by("plate_number","well_name")
-# 
-#         # need the count
-#         # TODO: select (and join) only the columns that are being shown
-#         if filter_fields is not None:
-#             count_fields = [field for field in schema['fields'].values() 
-#                 if field['key'] in filter_fields ]
-#             # logger.info(str(('filter_fields', filter_fields, 'count_fields', count_fields)))
-#             count_columns = self.build_sqlalchemy_columns(count_fields, base_query_tables)
-#             logger.info(str(('count_columns', count_columns.keys())))
-#             if count_columns:
-#                 count_stmt = select(count_columns.values()).\
-#                     select_from(j).\
-#                     where(_well.c.library_id == library.library_id) 
-#                 _alias = Alias(count_stmt)
-#                 count_stmt = select([text('*')]).select_from(_alias)
-#                 count_stmt = count_stmt.where(filter_expression)
-#                 logger.info(str(('count_stmt',str(count_stmt))))
-#             else:
-#                 logger.error('no count columns')
-#         else:
-#             count_stmt = select(columns).\
-#                 select_from(j).\
-#                 where(_well.c.library_id == library.library_id) 
-#         count_stmt = select([func.count()]).select_from(count_stmt.alias())
-#         
-#         return self.stream_response_from_statement(
-#             request, stmt, count_stmt, filename, field_hash=field_hash  )
  
     def get_sr_resource(self):
         if not self.sr_resource:
@@ -4454,11 +3932,9 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
     
         if library_short_name:
             query = query.filter(well__library=library)
-#             logger.debug(str(('get reagent/well list', library_short_name, len(query))))
         return query
 
     def full_dehydrate(self, bundle, for_list=False):
-#         bundle = super(ReagentResource, self).full_dehydrate(bundle)
         
         well_bundle = self.build_bundle(bundle.obj.well, request=bundle.request)
         well_bundle = self.get_well_resource().full_dehydrate(well_bundle)
@@ -4523,6 +3999,7 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
         schema['fields'].update(well_schema['fields'])
 
         return schema
+
 
 class WellResource(SqlAlchemyResource, ManagedModelResource):
 
@@ -4852,6 +4329,7 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
         
         return well_bundle
 
+
 # TODO: Eventually, replace much of this with the ApiLog resource; 
 # after determining best way to handle m2m reln's
 class ActivityResource(SqlAlchemyResource,ManagedModelResource):
@@ -5049,7 +4527,6 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
             self.reagent_resource = ReagentResource()
         return self.reagent_resource
 
-
     def get_detail(self, request, **kwargs):
         # TODO: this is a strategy for refactoring get_detail to use get_list:
         # follow this with wells/
@@ -5072,7 +4549,6 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         param_hash.update(kwargs)
 
         return self.build_list_response(request,param_hash=param_hash, **kwargs)
-
         
     def build_list_response(self,request, param_hash={}, **kwargs):
         ''' 
@@ -5250,18 +4726,6 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
                 self.wrap_view('dispatch_library_copyplateview'), 
                 name="api_dispatch_library_copyplateview"),
             
-# TODO: migrate to "library/<name>/copy/<name>/plate/<name>            
-#             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
-#                  r"/librarycopies%s$" ) % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('dispatch_librarycopiesview'), 
-#                 name="api_dispatch_librarycopiesview"),
-            
-# TODO: migrate to "library/<name>/copy/<name>/plate/<name>            
-#             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
-#                  r"/librarycopyplates%s$" ) % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('dispatch_librarycopyplatesview'), 
-#                 name="api_dispatch_librarycopyplatesview"),
-            
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
                  r"/well%s$" ) % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_library_wellview'), 
@@ -5271,11 +4735,6 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
                  r"/reagent%s$" ) % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_library_reagentview'), 
                 name="api_dispatch_library_reagentview"),
-            
-#             url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
-#                  r"/reagent2%s$" ) % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('dispatch_library_reagentview2'), 
-#                 name="api_dispatch_library_reagentview2"),
             
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
                  r"/reagent/schema%s$") 
@@ -5341,35 +4800,6 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         kwargs['library_short_name'] = kwargs.pop('short_name')
         return LibraryContentsVersionResource().dispatch('list', request, **kwargs)    
         
-    #     def dehydrate(self, bundle):
-    #         # get the api comments
-    #         
-    #         
-    #         # FIXME: just poc: gets_all_ apilog comments, at this time
-    #         # TODO: how to limit the number of comments?
-    #         # FIXME: how to bypass hydrating comments when in the LoggingMixin on update?
-    #         comments = self.get_apilog_resource().obj_get_list(
-    #             bundle, ref_resource_name='library', key=bundle.obj.short_name)
-    #         comment_list = []
-    #         if len(comments) > 0:
-    #             for comment in comments[:10]:
-    #                 # manually build the comment bundle, 
-    #                 # because the apilog.dehydrate_child_logs is non-performant
-    #                 
-    #                 comment_bundle = {
-    #                     'username': comment.username,
-    #                     'date_time': comment.date_time,
-    #                     'comment': comment.comment,
-    #                     'ref_resource_name': comment.ref_resource_name,
-    #                     'key': comment.key,
-    #                     }
-    # #                 comment_bundle = self.get_apilog_resource().build_bundle(obj=comment)
-    # #                 comment_bundle = self.get_apilog_resource().full_dehydrate(comment_bundle);
-    # #                 comment_list.append(comment_bundle.data);
-    #                 comment_list.append(comment_bundle)
-    #         bundle.data['comments'] = comment_list;
-    #         return bundle
-    
     def build_schema(self, librarytype=None):
         schema = cache.get(self._meta.resource_name + ":schema")
         if not schema:
@@ -5467,12 +4897,6 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
             raise ImmediateHttpResponse(response=self.error_response(
                 bundle.request, { 'errMsg': errMsg }))
 
-#     def obj_update(self, bundle, **kwargs):
-#         bundle = super(LibraryResource, self).object_update(bundle, **kwargs)
-#         # clear the cached schema because plate range have updated
-#         cache.delete(self._meta.resource_name + ':schema')
-# 
-#         return bundle;
 
 class LibraryContentsVersionResource(ManagedModelResource):
 
@@ -5558,17 +4982,6 @@ class LibraryContentsVersionResource(ManagedModelResource):
         bundle.data['version'] = 1
         super(LibraryContentsVersionResource, self).obj_create(bundle, **kwargs)
     
-#     def hydrate(self,bundle):        
-#         library = Library.objects.get(short_name=bundle.data['library_short_name'])
-#         
-#         from django.db.models import Max
-#         result = LibraryContentsVersion.objects.all()\
-#             .filter(library=library).aggregate(Max('version_number'))
-#         version_number = result['version_number__max'] or 0
-#         bundle.obj.library = library;
-#         bundle.obj.version_number = version_number + 1
-#         
-#         return bundle
 
 # class BasicAuthenticationAjaxBrowsers(BasicAuthentication):
 #     '''
@@ -5595,6 +5008,4 @@ class LibraryContentsVersionResource(ManagedModelResource):
 #                 request.user = u
 #                 return True
 #         return super(BasicAuthenticationAjaxBrowsers, self).is_authenticated(request, **kwargs)
-
-
 

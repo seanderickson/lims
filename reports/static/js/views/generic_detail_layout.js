@@ -63,17 +63,27 @@ define([
     
     showEdit: function() {
       var self = this;
-      var view = this.subviews['edit'];
-      if (!view) {
-        view = new EditView({ model: this.model, uriStack: ['edit'] });
-        Backbone.Layout.setupView(view);
-        this.subviews['edit'] = view;
+      var showEditFunction = function(){
+        var view = self.subviews['edit'];
+        if (!view) {
+          view = new EditView({ model: self.model, uriStack: ['edit'] });
+          Backbone.Layout.setupView(view);
+          self.subviews['edit'] = view;
+        }
+        self
+        .listenTo(view,'remove',function(){
+          self.showDetail();
+        });
+        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        self.setView("#detail_content", view ).render();
+      };
+
+      if(this.args.onEditCallBack){
+        this.args.onEditCallBack(showEditFunction);
+      }else{
+        showEditFunction();
       }
-      this.listenTo(view,'remove',function(){
-        this.showDetail();
-      });
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      this.setView("#detail_content", view ).render();
+      
     },    
     
     showAdd: function() {

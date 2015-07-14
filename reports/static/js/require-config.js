@@ -19,9 +19,11 @@ require.config({
     bootstrap: 'libs/bootstrap',
     lunr: 'libs/lunr',
     text: 'libs/text',
-    router: 'router',
+    iccbl_backgrid: 'iccbl-backgrid',
     app_state: 'models/app_state',
-    iccbl_backgrid: 'iccbl-backgrid'
+    router: 'router',
+    multiselect: 'libs/multiselect',
+    quicksearch: 'libs/jquery.quicksearch'
   },
   
   shim: {
@@ -64,7 +66,11 @@ require.config({
 
     iccbl_backgrid: {
         exports: 'Iccbl'
+    },
+    app_state: {
+      deps: ['iccbl_backgrid']
     }
+    
   }
   // see https://github.com/amdjs/amdjs-api/wiki/Common-Config
 });

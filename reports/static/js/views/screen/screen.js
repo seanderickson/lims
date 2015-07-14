@@ -61,7 +61,7 @@ define([
     events: {
       // TODO: how to make this specific to this view? 
       // (it is also catching clicks on the table paginator)
-        'click li': 'click_tab',
+        'click ul.nav-tabs >li': 'click_tab',
     },
     
     /**

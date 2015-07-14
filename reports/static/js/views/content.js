@@ -11,21 +11,22 @@ define([
   'views/library/library',
   'views/screen/screen',
   'views/user/user2',
+  'views/user/screensaveruser',
   'views/usergroup/usergroup2',
   'text!templates/content.html',
   'text!templates/welcome.html',
   'text!templates/about.html'
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
-         EditView, LibraryView, ScreenView, UserAdminView, UserGroupAdminView, layout, welcomeLayout, 
+         EditView, LibraryView, ScreenView, UserAdminView, UserView, UserGroupAdminView, layout, welcomeLayout, 
          aboutLayout) {
-  
   
   var VIEWS = {
     'ListView': ListView, 
     'DetailView': DetailLayout, 
     'LibraryView': LibraryView,
     'ScreenView': ScreenView,
+    'UserView': UserView,
     'UserAdminView': UserAdminView,
     'UserGroupAdminView': UserGroupAdminView
   };
@@ -121,7 +122,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     
     }, // end showDetail
     
-    
     showList: function(resource, uriStack, schemaResult) {
       
       var self = this;
@@ -129,7 +129,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       self.removeView('#content');
       self.cleanup();
       self.off();
-      //
       
       var uriStack = _.clone(uriStack);
       var viewClass = ListView;
@@ -146,7 +145,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         }
       }
       if(uriStack.length > 1 && uriStack[0] == 'children'){
-//      var subresource = appModel.getResource(uriStack[1]);
         var substack = _.rest(uriStack,1);
         var _key = Iccbl.popKeyFromStack(resource, substack, []);
         this.$('#content_title').html('Child logs for: ' + _key);

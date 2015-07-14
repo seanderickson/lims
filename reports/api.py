@@ -10,10 +10,12 @@ import re
 import sys
 import traceback
 
+import dateutil
 from django.conf import settings
+from django.conf.global_settings import AUTH_USER_MODEL
 from django.conf.urls import url
-from django.contrib.auth.models import UserManager
 from django.contrib.auth.models import User as DjangoUser
+from django.contrib.auth.models import UserManager
 from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
@@ -27,7 +29,6 @@ from django.utils import timezone, importlib
 from django.utils.encoding import smart_text
 import six
 from sqlalchemy import select, asc, text
-# from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.sql import and_, or_, not_          , operators
 from sqlalchemy.sql import asc, desc, alias, Alias
 from sqlalchemy.sql import func
@@ -52,22 +53,18 @@ from tastypie.utils.timezone import make_naive
 from tastypie.utils.urls import trailing_slash
 from tastypie.validation import Validation
 
-from reports import LIST_DELIMITER_SQL_ARRAY,  \
-    HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB,HEADER_APILOG_COMMENT
+from db.models import ScreensaverUser
+from reports import LIST_DELIMITER_SQL_ARRAY, \
+    HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT
 from reports.dump_obj import dumpObj
+from reports.models import API_ACTION_CREATE
 from reports.models import MetaHash, Vocabularies, ApiLog, ListLog, Permission, \
                            UserGroup, UserProfile, Record, API_ACTION_DELETE
-from reports.models import API_ACTION_CREATE
 from reports.serializers import LimsSerializer, CsvBooleanField, CSVSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.utils.profile_decorator import profile
-from db.models import ScreensaverUser
-import dateutil
-from django.conf.global_settings import AUTH_USER_MODEL
 
 
-# NOTE: tastypie.fields is required for dynamic field instances using eval
-# import lims.settings 
 logger = logging.getLogger(__name__)
 
 def parse_val(value, key, data_type):
@@ -92,6 +89,9 @@ def parse_val(value, key, data_type):
         elif data_type == 'datetime':
             return dateutil.parser.parse(value)
         elif data_type == 'boolean':
+            if value is True or value is False:
+                 return value
+            value = str(value)
             if(value.lower() == 'true' or value.lower() == 't'): return True
             return False
         elif data_type in ['float','decimal']:
@@ -296,11 +296,10 @@ class IccblBaseResource(Resource):
                 except ValueError:
                     logger.error(str(('Invalid Accept header')))
                     raise ImmediateHttpResponse('Invalid Accept header')
-            if request.META.get('CONTENT_TYPE', '*/*') != '*/*':
+            elif request.META.get('CONTENT_TYPE', '*/*') != '*/*':
                 format = request.META.get('CONTENT_TYPE', '*/*')
         logger.info(str(('got format', format)))
         return format
-  
 
     def dispatch(self, request_type, request, **kwargs):
         """
@@ -353,7 +352,6 @@ class IccblBaseResource(Resource):
             logger.info(str(('no downloadID', request.GET )))
 
         return response
-
        
     @staticmethod    
     def create_vocabulary_rowproxy_generator(field_hash):
@@ -367,7 +365,7 @@ class IccblBaseResource(Resource):
         vocabularies = {}
         for key, field in field_hash.iteritems():
             if field.get('vocabulary_scope_ref', None):
-                scope = field.get('vocabulary_scope_ref', {});
+                scope = field.get('vocabulary_scope_ref')
                 vocabularies[key] = VocabulariesResource.get_vocabularies_by_scope(scope)
         def vocabulary_rowproxy_generator(cursor):
             class Row:
@@ -882,8 +880,6 @@ class UnlimitedDownloadResource(IccblBaseResource):
                     logger.error(str(('return response')))
                 else:
                     raise Exception(str(('unknown format', desired_format)))
-                
-                
     #             serialized = self.serialize(request, data, desired_format)
     
                 return response
@@ -967,7 +963,6 @@ def download_tmp_file(path, filename):
         raise e
 
 
-
 # NOTE if using this class, must implement the "not implemented error" methods
 # on Resource (these are implemented with ModelResource):
 # detail_uri_kwargs
@@ -1001,7 +996,7 @@ class ManagedResource(LoggingMixin):
             scope=self.scope, 
             field_definition_scope=field_definition_scope)
         for key,fieldhash in metahash.items():
-#             if 'filtering' in fieldhash and fieldhash['filtering']:
+            #             if 'filtering' in fieldhash and fieldhash['filtering']:
             self.Meta.filtering[key] = ALL_WITH_RELATIONS
         
         for key,fieldhash in metahash.items():
@@ -1050,7 +1045,6 @@ class ManagedResource(LoggingMixin):
 
         self.field_alias_map = {}
         
-        
     # local method    
     # TODO: allow turn on/off of the reset methods for faster loading.
     def reset_filtering_and_ordering(self):
@@ -1087,15 +1081,14 @@ class ManagedResource(LoggingMixin):
             # TODO: -could- get the schema from the supertype resource
             supertype = resource_definition.get('supertype', '')
             if supertype:
-                logger.info(str(('========= supertype fields', self._meta.resource_name)))
                 supertype_fields = deepcopy(
                     MetaHash.objects.get_and_parse(
                         scope='fields.' + supertype, field_definition_scope='fields.metahash'))
-                logger.info(str(('======= supertype fields', supertype, supertype_fields.keys())))
                 supertype_fields.update(_fields)
                 _fields = supertype_fields
         except Exception, e:
-            logger.info(str(('in create_fields: resource information not available',self._meta.resource_name, e)))
+            logger.info(str(('in create_fields: resource information not available',
+                self._meta.resource_name, e)))
 
         ## build field alias table
         self.field_alias_map = {}
@@ -1163,11 +1156,6 @@ class ManagedResource(LoggingMixin):
         else:
             return data 
 
-#     def _get_resource_resource(self):
-#         if not self.resource_resource:
-#             self.resource_resource = ResourceResource()
-#         return self.resource_resource
-
     def _get_resource_def(self, resource_name=None):
         # TODO: delegate this to the ResourceResource
         #         res = self._get_resource_resource()
@@ -1188,9 +1176,7 @@ class ManagedResource(LoggingMixin):
         _temp.add('json')
         _temp.add('csv')
         _def['content_types'] = list(_temp)
-#         logger.info(str(('content_types', _temp)))
         return _def
-    
  
     def build_schema(self):
         '''
@@ -1200,7 +1186,6 @@ class ManagedResource(LoggingMixin):
         # FIXME: consider using the cache decorator or a custom memoize decorator?
         schema = cache.get(self._meta.resource_name + ":schema")
         if schema:
-#             if logger.isEnabledFor(logging.DEBUG):
             logger.debug(str(('====cached schema:', self._meta.resource_name)))
             return schema
         
@@ -1259,7 +1244,6 @@ class ManagedResource(LoggingMixin):
             
             # TODO: -could- get the schema from the supertype resource
             supertype = schema['resource_definition'].get('supertype', '')
-#             logger.info(str(('supertype',supertype)))
             if supertype:
                 # TODO: better encapsulation for supertype field definitions
                 supertype_resource = self._get_resource_def(resource_name=supertype);
@@ -1289,9 +1273,9 @@ class ManagedResource(LoggingMixin):
                 if field.get('value_template', None):
                     dep_fields.update(
                         re.findall(r'{([a-zA-Z0-9_-]+)}', field['value_template']))
-                if field.get('backgrid_cell_options', None):
+                if field.get('display_options', None):
                     dep_fields.update(
-                        re.findall(r'{([a-zA-Z0-9_-]+)}', field['backgrid_cell_options']))
+                        re.findall(r'{([a-zA-Z0-9_-]+)}', field['display_options']))
                 if DEBUG_BUILD_SCHEMA: 
                     logger.info(str(('field', key, 'dependencies', dep_fields)))
                 field['dependencies'] = dep_fields
@@ -1308,7 +1292,6 @@ class ManagedResource(LoggingMixin):
                     #                 raise e
             logger.info(str(('build_schema: resource information not available',
                 self._meta.resource_name, e)))
-
         
         if DEBUG_BUILD_SCHEMA: 
             logger.info('------build_schema,done: ' + self.scope ) 
@@ -1350,7 +1333,6 @@ class ManagedResource(LoggingMixin):
         
         # do validations
         errors = defaultdict(list)
-        
         
         for name, field in fields.items():
             keyerrors = []
@@ -1394,7 +1376,6 @@ class ManagedResource(LoggingMixin):
             if keyerrors:
                 errors[name] = keyerrors
                 
-        
         if errors:
             bundle.errors[self._meta.resource_name] = errors
             logger.warn(str((
@@ -1522,7 +1503,7 @@ class ManagedResource(LoggingMixin):
     def find_key_from_resource_uri(self,resource_uri):
         schema = self.build_schema()
         id_attribute = resource = schema['resource_definition']['id_attribute']
-        resource_name = self._meta.resource_name
+        resource_name = self._meta.resource_name + '/'
         
         index = resource_uri.rfind(resource_name)
         if index > -1:
@@ -1690,10 +1671,6 @@ class ManagedResource(LoggingMixin):
             bundle_or_obj=bundle_or_obj, url_name=url_name)
         return uri
 
-#     def base_urls(self):
-#         ''' Override base urls to make sure that schema is always matched
-#         '''
-        
     # implementation hook - URLS to match _before_ the default URLS
     # used here to allow the natural keys [scope, key] to be used
     def prepend_urls(self):
@@ -1734,23 +1711,6 @@ class ManagedResource(LoggingMixin):
                     response['Content-Disposition'] = \
                         'attachment; filename=%s.%s' % (self._meta.resource_name, format)
                 
-
-        
-# FIXME: Setting a filename to the response:
-# - only set this header on the Response if it has been set in the Request;
-# otherwise, browser may save response as a file rather than loading it with JS
-#         filename = self._meta.resource_name
-#         if hasattr(response, '_headers'):
-#             if 'content-type' in response._headers:
-#                 content_type = response._headers['content-type'][1]
-#                 if 'text/csv' in content_type:
-#                     filename += '.csv'
-#                 elif 'application/json' in content_type:
-#                     filename += '.json'
-#         else:
-#             logger.warn(str(('no "_header" found in response',
-#                              'could not determine extension', response)))
-#         response['Content-Disposition'] = 'attachment; filename=%s' % filename
         return response
  
  
@@ -1888,9 +1848,11 @@ class FilterModelResourceMixin(ExtensibleModelResourceMixin):
 
         return query 
     
+
 class ManagedModelResource(FilterModelResourceMixin, 
                            ManagedResource, PostgresSortingResource):
     pass
+
 
 class MetaHashResource(ManagedModelResource):
     '''
@@ -1971,6 +1933,7 @@ class MetaHashResource(ManagedModelResource):
         '''    
         return data['scope'] + '/' + data['key']
 
+
 class VocabulariesResource(ManagedModelResource):
     '''
     This resource extends the ManagedModelResource using a new table 
@@ -2007,7 +1970,6 @@ class VocabulariesResource(ManagedModelResource):
         bundle.data['2'] = bundle.data['key']
         return bundle
     
-    
     @staticmethod
     def get_vocabularies_by_scope(scope):
         ''' Utility method
@@ -2026,7 +1988,6 @@ class VocabulariesResource(ManagedModelResource):
                 queryset = res.obj_get_list(request_bundle)
         
                 for obj in queryset:
-#                     logger.info(str(('v:', obj)))
                     request_bundle.obj = obj
                     request_bundle.data = {}
                     vocabulary_instance = res.full_dehydrate(request_bundle).data
@@ -2110,10 +2071,6 @@ class ResourceResource(ManagedModelResource):
         if ManagedResource.resource_registry.get('fields.'+bundle.obj.key, None):
             resource = ManagedResource.resource_registry['fields.'+bundle.obj.key]
             schema = resource.build_schema();
-#             if 'resource_definition' in schema:
-#                 bundle.data.update(schema['resource_definition'])
-#             else:
-#                 logger.info('resource_definition is not available')
             bundle.data['schema'] = schema;
             
             # TODO: duplicate of logic in _get_resource_def
@@ -2133,32 +2090,6 @@ class ResourceResource(ManagedModelResource):
         
         return bundle
         
-            
-#     def dehydrate(self, bundle):
-#         bundle = super(ResourceResource,self).dehydrate(bundle)
-#         # Get the schema
-#         # FIXME: why is the resource registry keyed off of "field."+key ?
-#         resource = ManagedResource.resource_registry['fields.'+bundle.obj.key]
-#         if resource:
-#             ## FIXED: use the schema version of the "resource definition";
-#             ## This is because there are modifications ("table" and "content_types")
-#             ## applied to the resource_definition in build_schema
-#             _temp_schema = deepcopy(resource.build_schema());
-#             if 'resource_definition' in _temp_schema:
-#                 bundle.data = deepcopy(_temp_schema['resource_definition'])
-#             else:
-#                 # if the resource is not yet defined, then need to manually get the def
-#                 resource_def = MetaHash.objects.get(
-#                     scope='resource', key=self._meta.resource_name)
-#                 bundle.data = resource_def.model_to_dict(scope='fields.resource')
-#             bundle.data['schema'] = _temp_schema
-# 
-#         else:
-#             logger.error('no API resource found in the registry for ' + 
-#                          bundle.data['key'] + 
-#                          '.  Cannot build the schema for this resource.' )
-#         return bundle
-
     def obj_create(self, bundle, **kwargs):
         '''
         Override - because the metahash resource is both a resource and the 
@@ -2185,6 +2116,7 @@ class ResourceResource(ManagedModelResource):
         bundle = super(ResourceResource, self).obj_update(bundle, **kwargs);
         self.reset_field_defs(getattr(bundle.obj,'scope'))
         return bundle
+
 
 class ApiLogAuthorization(UserGroupAuthorization):
     '''
@@ -2247,8 +2179,6 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
                 self.wrap_view('dispatch_detail2'), name="api_dispatch_detail"),
         ]    
 
-
-
     def get_detail(self, request, **kwargs):
         # TODO: this is a strategy for refactoring get_detail to use get_list:
         # follow this with wells/
@@ -2273,7 +2203,6 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
         kwargs['is_for_detail']=True
         
         return self.get_list(request, **kwargs)
-        
     
     def get_list(self,request,**kwargs):
 
@@ -2289,10 +2218,10 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
         
         return self.build_list_response(request,param_hash=param_hash, **kwargs)
 
-        
     def build_list_response(self,request, param_hash={}, **kwargs):
         ''' 
-        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
+        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy 
+        implementation
         @returns django.http.response.StreamingHttpResponse 
         '''
         DEBUG_GET_LIST = True or logger.isEnabledFor(logging.DEBUG)
@@ -2305,9 +2234,13 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
         schema = super(ApiLogResource,self).build_schema()
         filename = None
         if 'id_attribute' in schema:
-            filename = self._meta.resource_name + '_' + '_'.join(kwarg[key] for key in schema['id_attribute'] if key in kwargs)
+            filename = '_'.join(
+                self._meta.resource_name,
+                kwarg[key] for key in schema['id_attribute'] if key in kwargs)
         if not filename:
-            filename = self._meta.resource_name + '_' + '_'.join([str(v) for v in kwargs.values()])
+            filename = '_'.join(
+                self._meta.resource_name,
+                [str(v) for v in kwargs.values()])
         filename = re.sub(r'[\W]+','_',filename)
         logger.info(str(('get_list', filename, kwargs)))
         
@@ -2331,11 +2264,12 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
             if DEBUG_GET_LIST: 
                 logger.info(str(('manual_field_includes', manual_field_includes)))
   
-            (filter_expression, filter_fields) = \
-                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+            (filter_expression, filter_fields) = SqlAlchemyResource.\
+                build_sqlalchemy_filters(schema, param_hash=param_hash)
 
             if filter_expression is None and 'parent_log_id' not in kwargs:
-                msgs = { 'ApiLogResource': 'can only service requests with filter expressions' }
+                msgs = { 'ApiLogResource': 
+                    'can only service requests with filter expressions' }
                 logger.info(str((msgs)))
                 raise ImmediateHttpResponse(response=self.error_response(request,msgs))
                                   
@@ -2344,11 +2278,13 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
                 is_for_detail=is_for_detail)
               
             order_params = param_hash.get('order_by',[])
-            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
+            order_clauses = SqlAlchemyResource.\
+                build_sqlalchemy_ordering(order_params, field_hash)
              
             rowproxy_generator = None
             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+                rowproxy_generator = IccblBaseResource.\
+                    create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
             base_query_tables = ['reports_apilog']
@@ -2420,7 +2356,6 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
             logger.warn(str(('on get_list', 
                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e  
-        
     
     def build_schema(self):
         schema = super(ApiLogResource,self).build_schema()
@@ -2447,26 +2382,8 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
         
         if bundle.obj.child_logs.exists():
             return len(bundle.obj.child_logs.all())
-#             uris = list()
-#             for child_log in bundle.obj.child_logs.all():
-#                 uris.append(self.get_resource_uri(child_log)) 
-#             return uris
         return None
-    
-#     def dehydrate_diff_keys(self, bundle):
-#         diff_keys = bundle.obj.diff_keys
-#         logger.info(str(('=== diff_keys: ', diff_keys)))
-#         if diff_keys:
-#             changed = json.loads(diff_keys)
-#             logger.info(str(('=== diff_keys2: ', changed)))
-#             return changed     
-#     
-#     def dehydrate_diffs(self, bundle):
-#         if bundle.obj.diffs:
-#             diffs = json.loads(bundle.obj.diffs)
-#             logger.info(str(('=== diffs2: ', diffs)))
-#             return diffs 
-    
+        
     def dehydrate_parent_log_uri(self, bundle):
         parent_log = bundle.obj.parent_log
         if parent_log:
@@ -2474,21 +2391,6 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
             return '/'.join(id_kwarg_ordered.values())
         return None
     
-#     def dehydrate_added_keys(self, bundle):
-#         
-#         if ( not getattr(bundle.obj, 'added_keys', None) and
-#              bundle.obj.listlog_set.exists()):
-#             keys = list()
-#             for x in bundle.obj.listlog_set.all():
-#                 if x.key and x.ref_resource_name:
-#                     keys.append("%s/%s" % (x.ref_resource_name,x.key) )
-#                 elif x.uri:
-#                     keys.append(x.uri)
-#             return keys
-#         else:
-#             return bundle.obj.added_keys
-
-
     def dispatch_detail1(self, request, **kwargs):
         return ApiLogResource().dispatch('detail', request, **kwargs)    
 
@@ -2506,10 +2408,12 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
         key = kwargs.pop('key')
         date_time = kwargs.pop('date_time')
         logger.info(str(('childview2', ref_resource_name, key, date_time)))
-        parent_log = ApiLog.objects.get(ref_resource_name=ref_resource_name, key=key, date_time=date_time)
+        parent_log = ApiLog.objects.get(ref_resource_name=ref_resource_name, 
+            key=key, date_time=date_time)
         logger.info(str(('parent_log', parent_log)))
         kwargs['parent_log_id'] = parent_log.id
         return ApiLogResource().dispatch('list', request, **kwargs)    
+
 
 class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
     '''
@@ -2531,7 +2435,8 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
             log_comment = request.META[HEADER_APILOG_COMMENT]
             logger.debug(str(('log comment', log_comment)))
         
-        logger.info(str(('log patches original:', original_data,'=== new data ===',new_data,kwargs)))
+        logger.info(str(('log patches original:', original_data,
+            '=== new data ===',new_data,kwargs)))
         schema = self.build_schema()
         id_attribute = resource = schema['resource_definition']['id_attribute']
 
@@ -2639,24 +2544,6 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
 
 class UserResource(ManagedSqlAlchemyResourceMixin):
 
-    # FIXME: tp fields are deprecated - remove
-    username = fields.CharField('user__username', null=False, readonly=True)
-    first_name = fields.CharField('user__first_name', null=False, readonly=True)
-    last_name = fields.CharField('user__last_name', null=False, readonly=True)
-    email = fields.CharField('user__email', null=False, readonly=True)
-    is_staff = CsvBooleanField('user__is_staff', null=True, readonly=True)
-    is_superuser = CsvBooleanField('user__is_superuser', null=True, readonly=True)
-
-    usergroups = fields.ToManyField(
-        'reports.api.UserGroupResource', 'usergroup_set', related_name='users', 
-        blank=True, null=True)
-    permissions = fields.ToManyField(
-        'reports.api.PermissionResource', 'permissions', null=True) #, related_name='users', blank=True, null=True)
-    
-    all_permissions = fields.ListField(attribute='all_permissions', blank=True, null=True, readonly=True)
-
-    is_for_group = fields.BooleanField(attribute='is_for_group', blank=True, null=True)
-
     def __init__(self, **kwargs):
         super(UserResource,self).__init__(**kwargs)
         
@@ -2721,7 +2608,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         try:
             if 'usergroups' in schema['fields']: # may be blank on initiation
                 schema['fields']['usergroups']['choices'] = \
-                    ['usergroup/%s' % x.name for x in UserGroup.objects.all()]
+                    [x.name for x in UserGroup.objects.all()]
         except Exception, e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
@@ -2788,7 +2675,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
                         LIST_DELIMITER_SQL_ARRAY)]).\
                 select_from(
                     select([func.concat_ws(
-                            '/','permission',_p.c.scope,_p.c.key,_p.c.type).label('permission')
+                            '/',_p.c.scope,_p.c.key,_p.c.type).label('permission')
                             ]).\
                     select_from(_p.join(_upp,_p.c.id==_upp.c.permission_id)).\
                     where(text('reports_userprofile.id')==_upp.c.userprofile_id).\
@@ -2798,8 +2685,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
                         func.array_agg(text('inner_groups.name')), 
                         LIST_DELIMITER_SQL_ARRAY)]).\
                 select_from(
-                    select([func.concat_ws(
-                        '/','usergroup',_ugx.c.name).label('name')]).\
+                    select([_ugx.c.name]).\
                     select_from(_ugx.join(_ugu1,_ugx.c.id==_ugu1.c.usergroup_id)).\
                     where(_ugu1.c.userprofile_id==text('reports_userprofile.id')).\
                     order_by('name').alias('inner_groups')),
@@ -2808,7 +2694,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
                     text('innerp.permission')),LIST_DELIMITER_SQL_ARRAY)]).\
                 select_from(
                     select([func.concat_ws(
-                            '/','permission',_p.c.scope,_p.c.key,_p.c.type).label('permission')
+                            '/',_p.c.scope,_p.c.key,_p.c.type).label('permission')
                         ]).\
                     select_from(user_all_permissions).\
                     where(and_(
@@ -2865,6 +2751,10 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         if username:
             param_hash['username__eq'] = username
 
+        groupname = param_hash.pop('groupname', None)
+        if groupname:
+            param_hash['usergroups__eq'] = groupname
+
         try:
             
             # general setup
@@ -2887,12 +2777,14 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
                 is_for_detail=is_for_detail, visibilities=visibilities)
               
             order_params = param_hash.get('order_by',[])
-            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
+            order_params.append('username')
+            order_clauses = \
+                SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
              
             rowproxy_generator = None
             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
-            
+                rowproxy_generator = \
+                    IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup
 
@@ -2929,20 +2821,6 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             logger.warn(str(('on get_list', 
                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e  
-
-
-#     def full_dehydrate(self, bundle, for_list=False):
-#         """
-#         Given a bundle with an object instance, extract the information from it
-#         to populate the resource.
-#         """
-#         response = self.get_detail(
-#             bundle.request,
-#             desired_format='application/json',
-#             username=bundle.obj.username)
-#         bundle.data = self._meta.serializer.deserialize(
-#             LimsSerializer.get_content(response), format='application/json')
-#         return bundle
 
     # FIXME: deprecated
     def get_resource_uri(self, bundle_or_obj=None, url_name='api_dispatch_list'):
@@ -2987,6 +2865,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         response = self.get_list(
             request,
             desired_format='application/json',
+            includes='*',
             **kwargs)
         original_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
@@ -3007,6 +2886,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         response = self.get_list(
             request,
             desired_format='application/json',
+            includes='*',
             **kwargs)
         new_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
@@ -3040,6 +2920,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         response = self.get_list(
             request,
             desired_format='application/json',
+            includes='*',
             **kwargs)
         original_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
@@ -3055,6 +2936,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         response = self.get_list(
             request,
             desired_format='application/json',
+            includes='*',
             **kwargs)
         new_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
@@ -3080,10 +2962,11 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             format=request.META.get('CONTENT_TYPE', 'application/json'))
         
         # cache state, for logging
-        username = self.find_username(deserialized, **kwargs)
+#         username = self.find_username(deserialized, **kwargs)
         response = self.get_list(
             request,
             desired_format='application/json',
+            includes='*',
             **kwargs)
         original_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
@@ -3099,6 +2982,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         response = self.get_list(
             request,
             desired_format='application/json',
+            includes='*',
             **kwargs)
         new_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
@@ -3169,6 +3053,9 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
     
     @transaction.atomic()    
     def patch_obj(self,deserialized, **kwargs):
+
+        logger.info(str(('patch obj', deserialized,kwargs)))
+        
         self.clear_cache()
 
         username = self.find_username(deserialized,**kwargs)
@@ -3241,6 +3128,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
                             userprofile.permissions.add(permission)
                             userprofile.save()
                 elif key == 'usergroups':
+                    logger.info(str(('process groups', val)))
                     userprofile.usergroup_set.clear()
                     ugr = self.get_usergroup_resource()
                     for g in val:
@@ -3249,6 +3137,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
                             usergroup = UserGroup.objects.get(**usergroup_key)
                             usergroup.users.add(userprofile)
                             usergroup.save()
+                            logger.info(str(('added user to usergroup', userprofile, usergroup)))
                         except ObjectDoesNotExist, e:
                             logger.info(str(('no such usergroup', g, 
                                 usergroup_key, initializer_dict)))
@@ -3270,110 +3159,6 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e  
             
-#     def obj_delete(self, bundle, **kwargs):
-#         bundle = super(UserResource, self).obj_delete(bundle, **kwargs);
-#         return bundle
-#     
-#     def obj_update(self, bundle, skip_errors=False, **kwargs):
-#         try:
-#             # bypass the LoggingMixin by going straight to its parent
-#             bundle = super(IccblBaseResource, self).obj_update(bundle, **kwargs);
-#             
-#             # Update the auth.user 
-#             django_user = bundle.obj.user
-#             
-#             # TODO validate these fields
-#             django_user.first_name = bundle.data.get('first_name')
-#             django_user.last_name = bundle.data.get('last_name')
-#             django_user.email = bundle.data.get('email')
-#             # Note cannot update username
-#             
-#             # FIXME: 20150616 - corrects for users w/o is staff set
-#             if not django_user.is_staff:
-#                 django_user.is_staff = False
-#             
-#             django_user.save()
-#             
-#             return bundle
-#         except Exception, e:
-#             exc_type, exc_obj, exc_tb = sys.exc_info()
-#             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-#             msg = str(e)
-#             logger.warn(str(('on obj_update', 
-#                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno, kwargs)))
-#             raise e  
-#         
-#     def obj_create(self, bundle, **kwargs):
-#         bundle = super(UserResource, self).obj_create(bundle, **kwargs)
-#         
-#         return bundle
-# 
-#     def hydrate(self, bundle):
-#         ''' 
-#         Called by full_hydrate 
-#         sequence is obj_create->full_hydrate(hydrate, then full)->save
-#         
-#         Our custom implementation will create an auth_user for the input; so 
-#         there will be a reports_userprofile.user -> auth_user.
-#         '''
-#         try:
-#             bundle = super(UserResource, self).hydrate(bundle);
-#             
-#             # fixup the username; stock hydrate will set either, but if it's not 
-#             # specified, then we will use the ecommons        
-#             ecommons = bundle.data.get('ecommons_id')
-#             username = bundle.data.get('username')
-#             email=bundle.data.get('email')
-#             first_name=bundle.data.get('first_name')
-#             last_name=bundle.data.get('last_name')
-#             is_staff = self.is_staff.convert(bundle.data.get('is_staff'))
-#             
-#             if not username:
-#                 username = ecommons;
-#             bundle.obj.username = username
-#             bundle.obj.ecommons_id = ecommons
-#             
-#             django_user = None
-#             if bundle.obj and bundle.obj.user:
-#                 django_user = bundle.obj.user
-#             else:
-#                 try:
-#                     django_user = DjangoUser.objects.get(username=username)
-#                 except ObjectDoesNotExist, e:
-#                     logger.info(str(('Auth.user does not exist, creating', username)))
-#                     # ok, will create
-#                     pass;
-#     
-#             if django_user:            
-#                 django_user.first_name = first_name
-#                 django_user.last_name = last_name
-#                 django_user.email = email
-#                 django_user.save();
-#             else:
-#                 django_user = DjangoUser.objects.create_user(
-#                     username, 
-#                     email=email, 
-#                     first_name=first_name, 
-#                     last_name=last_name)
-#                 django_user.save()
-#                 # NOTE: we'll use user.is_password_usable() to verify if the 
-#                 # user has a staff/manual django password account
-#                 #             logger.debug(str(('save django user', django_user)))
-#                 # Note: don't save yet, since the userprofile should be saved first
-#                 # django_user.save()
-#                 # this has to be done to set the FK on obj; since we're the only
-#                 # side maintaining this rel' with auth_user
-#     
-#             django_user.is_staff = is_staff
-#             bundle.obj.user=django_user 
-#             return bundle
-#         except Exception, e:
-#             exc_type, exc_obj, exc_tb = sys.exc_info()
-#             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-#             msg = str(e)
-#             logger.warn(str(('on hydrate', 
-#                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
-#             raise e  
 #     
 #     def is_valid(self, bundle):
 #         """
@@ -3420,31 +3205,9 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
 #             return False
 #         return True
 
-
-
        
 class UserGroupResource(ManagedSqlAlchemyResourceMixin):
     
-    # relational fields must be defined   
-    #     permissions = fields.ToManyField(
-    #         'reports.api.PermissionResource', 'permissions',related_name='groups', 
-    #         null=True) #, related_name='users', blank=True, null=True)
-    #     users = fields.ToManyField('reports.api.UserResource', 'users', 
-    #         related_name='usergroups', blank=True, null=True)
-    #     
-    #     super_groups = fields.ToManyField('reports.api.UserGroupResource', 
-    #         'super_groups', blank=True, null=True)
-    #     sub_groups = fields.ToManyField('reports.api.UserGroupResource', 
-    #         'sub_groups', blank=True, null=True)
-    # 
-    #     all_permissions = fields.ListField(attribute='all_permissions', 
-    #         blank=True, null=True, readonly=True)
-    #     all_users = fields.ListField(attribute='all_users', 
-    #         blank=True, null=True, readonly=True)
-    #     
-    #     is_for_user = fields.BooleanField(attribute='is_for_user', blank=True, null=True)
-    #     is_for_group = fields.BooleanField(attribute='is_for_group', blank=True, null=True)
-
     class Meta:
         queryset = UserGroup.objects.all();        
         
@@ -3474,32 +3237,6 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
         if not self.user_resource:
             self.user_resource = UserResource()
         return self.user_resource
-
-    def prepend_urls(self):
-        return [
-            # override the parent "base_urls" so that we don't need to worry about schema again
-            url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('get_schema'), name="api_get_schema"),            
-            
-            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<name>[^/]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<name>[^/]+)/users%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_group_userview'), name="api_dispatch_group_userview"),
-            url(r"^(?P<resource_name>%s)/(?P<name>[^/]+)/permissions%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_group_permissionview'), 
-                name="api_dispatch_group_permissionview"),
-            url(r"^(?P<resource_name>%s)/(?P<name>[^/]+)/supergroups%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_group_supergroupview'), 
-                name="api_dispatch_group_supergroupview"),
-            ]
 
     def find_name(self,deserialized, **kwargs):
         name = kwargs.get('name', None)
@@ -3533,6 +3270,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
         response = self.get_list(
             request,
             desired_format='application/json',
+            includes='*',
             **kwargs)
         original_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
@@ -3553,6 +3291,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
         response = self.get_list(
             request,
             desired_format='application/json',
+            includes='*',
             **kwargs)
         new_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
@@ -3587,6 +3326,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
         response = self.get_list(
             request,
             desired_format='application/json',
+            includes='*',
             **kwargs)
         original_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
@@ -3602,6 +3342,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
         response = self.get_list(
             request,
             desired_format='application/json',
+            includes='*',
             **kwargs)
         new_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
@@ -3628,10 +3369,11 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
             format=request.META.get('CONTENT_TYPE', 'application/json'))
         
         # cache state, for logging
-        username = self.find_username(deserialized, **kwargs)
+#         name = self.find_name(deserialized, **kwargs)
         response = self.get_list(
             request,
             desired_format='application/json',
+            includes='*',
             **kwargs)
         original_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
@@ -3647,6 +3389,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
         response = self.get_list(
             request,
             desired_format='application/json',
+            includes='*',
             **kwargs)
         new_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
@@ -3998,7 +3741,17 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
         name = param_hash.pop('name', None)
         if name:
             param_hash['name__eq'] = name
-
+        username = param_hash.pop('username', None)
+        if username:
+            param_hash['all_users__eq'] = username
+        
+        sub_group_name = param_hash.pop('sub_groupname',None)
+        if sub_group_name:
+            param_hash['all_sub_groups__eq']=sub_group_name
+        
+        super_groupname = param_hash.pop('super_groupname', None)
+        if super_groupname:
+            param_hash['all_super_groups__eq']=super_groupname    
         try:
             
             # general setup
@@ -4049,8 +3802,10 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
                 
             group_all_users = \
                 UserGroupResource.recursive_group_all_users(self.bridge,group_all_subgroups)
+                
             _ug1 = _ug.alias('ug1')
             _ug2 = _ug.alias('ug2')
+            _ug3 = _ug.alias('ug3')
             custom_columns = {
                 'resource_uri': func.concat('/reports/api/v1/usergroup','/',text('reports_usergroup.name')),
                 'permissions': 
@@ -4059,7 +3814,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
                             LIST_DELIMITER_SQL_ARRAY)]).\
                     select_from(
                         select([func.concat_ws(
-                            '/','permission',_p.c.scope,_p.c.key,_p.c.type).\
+                            '/',_p.c.scope,_p.c.key,_p.c.type).\
                             label('permission')]).\
                         select_from(_p.join(_ugp,_p.c.id==_ugp.c.permission_id)).\
                         #FIXME: using "text" override to reference the outer reports_usergroup
@@ -4073,9 +3828,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
                             func.array_agg(text('inner1.username')),
                             LIST_DELIMITER_SQL_ARRAY)]).\
                     select_from(
-                        select([func.concat_ws(
-                            '/','user',_up.c.username).\
-                            label('username')]).\
+                        select([_up.c.username]).\
                         select_from(_up.join(_ugu,_up.c.id==_ugu.c.userprofile_id)).\
                         #FIXME: using "text" override to reference the outer reports_usergroup
                         # can be fixed by making an alias on the outer reports_usergroup
@@ -4088,13 +3841,24 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
                             func.array_agg(text('inner1.name')),
                             LIST_DELIMITER_SQL_ARRAY)]).\
                     select_from(
-                        select([func.concat_ws(
-                            '/','usergroup',_ug2.c.name).\
-                            label('name')]).\
+                        select([_ug2.c.name.label('name')]).\
                         select_from(_ug2.join(_ugsg,_ug2.c.id==_ugsg.c.from_usergroup_id)).\
                         #FIXME: using "text" override to reference the outer reports_usergroup
                         # can be fixed by making an alias on the outer reports_usergroup
                         where(_ugsg.c.to_usergroup_id==text('reports_usergroup.id')).\
+                        order_by('name').\
+                        alias('inner1')
+                    ),
+                'super_groups': 
+                    select([func.array_to_string(
+                            func.array_agg(text('inner1.name')),
+                            LIST_DELIMITER_SQL_ARRAY)]).\
+                    select_from(
+                        select([_ug3.c.name.label('name')]).\
+                        select_from(_ug3.join(_ugsg,_ug3.c.id==_ugsg.c.to_usergroup_id)).\
+                        #FIXME: using "text" override to reference the outer reports_usergroup
+                        # can be fixed by making an alias on the outer reports_usergroup
+                        where(_ugsg.c.from_usergroup_id==text('reports_usergroup.id')).\
                         order_by('name').\
                         alias('inner1')
                     ),
@@ -4104,7 +3868,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
                         LIST_DELIMITER_SQL_ARRAY)]).\
                     select_from(
                         select([func.concat_ws(
-                            '/','permission',_p.c.scope,_p.c.key,_p.c.type).\
+                            '/',_p.c.scope,_p.c.key,_p.c.type).\
                             label('permission'),
                             group_all_permissions.c.usergroup_id ]).\
                         select_from(group_all_permissions).\
@@ -4113,14 +3877,12 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
                             text('reports_usergroup.id')).\
                         order_by('permission').\
                         alias('allperm')),
-                'super_groups': 
+                'all_super_groups': 
                     select([func.array_to_string(
                         func.array_agg(text('supergroup.name')),
                         LIST_DELIMITER_SQL_ARRAY)]).\
                     select_from(
-                        select([func.concat_ws(
-                            '/','usergroup',
-                            _ug1.c.name).label('name')]).\
+                        select([_ug1.c.name]).\
                         select_from(group_all_supergroups).\
                         where(and_(_ug1.c.id==text('any(group_sg_rpt.sg_ids)'),
                             group_all_supergroups.c.id==text('reports_usergroup.id'))).\
@@ -4130,9 +3892,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
                         func.array_agg(text('subgroup.name')),
                         LIST_DELIMITER_SQL_ARRAY)]).\
                     select_from(
-                        select([func.concat(
-                                'usergroup','/',group_all_supergroups.c.name
-                                ).label('name')]).\
+                        select([group_all_supergroups.c.name]).\
                         select_from(group_all_supergroups).\
                         where(text('reports_usergroup.id=any(group_sg_rpt.sg_ids)')).\
                         order_by(group_all_supergroups.c.name).alias('subgroup')
@@ -4142,9 +3902,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
                         func.array_agg(text('inneruser.username')),
                             LIST_DELIMITER_SQL_ARRAY)]).\
                     select_from( 
-                        select([func.concat_ws(
-                            '/','user',_up.c.username).\
-                            label('username')]).\
+                        select([_up.c.username]).\
                         select_from(group_all_users).\
                         where(_up.c.id==text('any(gau.userprofile_ids)')).\
                         where(group_all_users.c.id==text('reports_usergroup.id')).\
@@ -4184,6 +3942,36 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
                 self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e  
         
+    def prepend_urls(self):
+        return [
+            # override the parent "base_urls" so that we don't need to worry about schema again
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),            
+            
+            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<name>[^/]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<name>[^/]+)/users%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_group_userview'), name="api_dispatch_group_userview"),
+            url(r"^(?P<resource_name>%s)/(?P<name>[^/]+)/permissions%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_group_permissionview'), 
+                name="api_dispatch_group_permissionview"),
+            url(r"^(?P<resource_name>%s)/(?P<name>[^/]+)/supergroups%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_group_supergroupview'), 
+                name="api_dispatch_group_supergroupview"),
+            url(r"^(?P<resource_name>%s)/(?P<name>[^/]+)/subgroups%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_group_subgroupview'), 
+                name="api_dispatch_group_subgroupview"),
+            ]
+
     def dispatch_group_userview(self, request, **kwargs):
         # signal to include extra column
         kwargs['groupname'] = kwargs.pop('name')  
@@ -4196,199 +3984,20 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
    
     def dispatch_group_supergroupview(self, request, **kwargs):
         # signal to include extra column
-        kwargs['groupname'] = kwargs.pop('name')  
-        return UserGroupResource().dispatch('list', request, **kwargs)    
+        kwargs['sub_groupname'] = kwargs.pop('name')  
+        return self.dispatch('list', request, **kwargs)       
+
+    def dispatch_group_subgroupview(self, request, **kwargs):
+        # signal to include extra column
+        kwargs['super_groupname'] = kwargs.pop('name')  
+        return self.dispatch('list', request, **kwargs)    
 
     def get_resource_uri(self, bundle_or_obj=None, url_name='api_dispatch_list'):
         '''Override to shorten the URI'''
         return self.get_local_resource_uri(
             bundle_or_obj=bundle_or_obj, url_name=url_name)
 
-#     def full_dehydrate(self, bundle, for_list=False):
-#         """
-#         Given a bundle with an object instance, extract the information from it
-#         to populate the resource.
-#         """
-#         response = self.get_detail(
-#             bundle.request,
-#             desired_format='application/json',
-#             name=bundle.obj.name)
-#         bundle.data = self._meta.serializer.deserialize(
-#             LimsSerializer.get_content(response), format='application/json')
-#         return bundle
-
-#     def hydrate(self, bundle):
-#         bundle = super(UserGroupResource, self).hydrate(bundle);
-#         return bundle;
-#     
-#     
-#     def build_schema(self):
-#         schema = super(UserGroupResource,self).build_schema()
-#         return schema
-#    
-#     def dehydrate_permission_list(self, bundle):
-#         permissions = [ [x.scope, x.key, x.type] 
-#                             for x in bundle.obj.permissions.all()]
-#         return permissions
-#         
-#     def dehydrate_user_list(self,bundle):
-#         users = []
-#         for user in bundle.obj.users.all():
-#              users.append(
-#                  '[ %s - %s %s ]' 
-#                  % (user.username, user.first_name, user.last_name))
-#         return users
-#     
-#     #     def dehydrate_users(self, bundle):
-#     #         uri_list = []
-#     #         U = UserResource()
-#     #         for user in bundle.obj.users.all():
-#     #              uri_list.append(U.get_local_resource_uri(
-#     #                  { 'screensaver_user_id':user.screensaver_user_id }))
-#     #         return uri_list;
-#         
-#     def dehydrate_permissions(self, bundle):
-#         uri_list = []
-#         P = PermissionResource()
-#         for p in bundle.obj.permissions.all():
-#             uri_list.append(P.get_local_resource_uri(p))
-#         return uri_list;
-#     
-#     def dehydrate_super_groups(self, bundle):
-#         '''
-#         shallow report of groups contained directly in this group
-#         '''
-#         uri_list = []
-#         for g in bundle.obj.super_groups.all():
-#             uri_list.append(self.get_local_resource_uri(g))
-#         
-#         return uri_list
-#         
-#     def dehydrate_sub_groups(self, bundle):
-#         '''
-#         shallow report of groups contained directly in this group
-#         '''
-#         uri_list = []
-#         for g in bundle.obj.sub_groups.all():
-#             uri_list.append(self.get_local_resource_uri(g))
-#         
-#         return uri_list
-#         
-#     def dehydrate_all_permissions(self, bundle):
-#         P = PermissionResource()
-#         return [P.get_local_resource_uri(permission) for permission in 
-#                     bundle.obj.get_all_permissions()]
-#     
-#     def dehydrate_all_users(self, bundle):
-#         U = UserResource()
-#         return [U.get_local_resource_uri(user) for user in 
-#                     bundle.obj.get_all_users()]
-# 
-#     
-#     def dehydrate(self,bundle):
-#         bundle.data['id'] = bundle.obj.id
-#         return bundle
-# 
-#     # ModelResource override
-#     # get_list->obj_get_list->build_filters->apply_filters->get_obj_list
-#     def get_object_list(self, request, **kwargs): #is_for_user=None):
-#         ''' 
-#         Called immediately before filtering, this method actually grabs the 
-#         (ModelResource) base query - 
-#         
-#         Because we are using the ExtensibleModelResourceMixin here, we are also
-#         getting the kwargs from the Request.GET.  We use extra kwargs,
-#         ("username") in this case, to signal that we want to include the extra 
-#         column, "is_for_user".  
-#         
-#         Note: This special case is served from the url:
-#         /user/<username>/groups.
-#         All of this is a convenience feature for the client code; having
-#         "is_for_user" allows for easy filtering on the client.
-#         '''
-#         logger.debug(str(('get_obj_list', kwargs)))
-#         query = super(UserGroupResource, self).get_object_list(request);
-#         
-#         if 'username' in kwargs:
-#             is_for_user = kwargs.pop('username')
-#             query = query.extra(select = {
-#                 'is_for_user': ( 
-#                     '(select count(*)>0 '
-#                     ' from reports_userprofile up '
-#                     ' join reports_usergroup_users ruu on(up.id=ruu.userprofile_id) '
-#                     ' where ruu.usergroup_id=reports_usergroup.id '
-#                     ' and up.username = %s )' ),
-#               },
-#               select_params = [is_for_user] )
-#             query = query.order_by('-is_for_user', 'name')        
-#         if 'groupname' in kwargs:
-#             is_for_group = kwargs.pop('groupname')
-#             query = query.extra(select = {
-#                 'is_for_group': ( 
-#                     '(select count(*)>0 '
-#                     ' from reports_usergroup ug '
-#                     ' join reports_usergroup_super_groups ugsg on(ug.id=ugsg.from_usergroup_id) '
-#                     ' where ugsg.to_usergroup_id=reports_usergroup.id '
-#                     ' and ug.name = %s )' ),
-#               },
-#               select_params = [is_for_group] )
-#             query = query.exclude(name=is_for_group)
-#             query = query.order_by('-is_for_group', 'name')
-#         return query
-#     
-#     def apply_filters(self, request, applicable_filters, **kwargs):
-#         '''
-#         ModelResource override - 
-#         because the FilterModelResource mixin is being used here, the 
-#         applicable_filters includes an extra level: {filter,excludes}
-#         '''
-#         logger.info(str(('apply_filters', applicable_filters, kwargs)))
-#         query = self.get_object_list(request, **kwargs)
-#         
-#         filters = applicable_filters.get('filter')
-#         if filters:
-# 
-#             # Grab the users filter out of the dict
-#             users_filter_val = None
-#             for x in filters.keys():
-#                 if 'users' in x:
-#                     users_filter_val = filters.pop(x)
-# 
-#             query = query.filter(**filters)
-#             
-#             if users_filter_val:
-#                 ids = [x.id for x in UserGroup.objects.filter(
-#                         users__username__iexact=users_filter_val)]
-#                 query = query.filter(id__in=ids)          
-#             
-#         e = applicable_filters.get('exclude')
-#         if e:
-#             users_filter_val = None
-#             for x in e.keys():
-#                 if 'users' in x:
-#                     users_filter_val = e.pop(x)
-#             
-#             for exclusion_filter, value in e.items():
-#                 query = query.exclude(**{exclusion_filter: value})
-# 
-#             if users_filter_val:
-#                 ids = [x.id for x in UserGroup.objects.filter(
-#                         users__username__iexact=users_filter_val)]
-#                 query = query.exclude(id__in=ids)          
-# 
-#         return query
-# 
-#     def apply_sorting(self, obj_list, options):
-#         options = options.copy()
-#         
-#         # Override to exclude these fields in the PostgresSortingResource 
-#         options['non_null_fields'] = ['is_for_user', 'is_for_group'] 
-# 
-#         obj_list = super(UserGroupResource, self).apply_sorting(obj_list, options)
-#         return obj_list
-
     
-
 class PermissionResource(ManagedModelResource):
     
     usergroups = fields.ToManyField(

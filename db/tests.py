@@ -757,6 +757,13 @@ class ScreensaverUserResource(DBMetaHashResourceBootstrap):
         filename = os.path.join(self.reports_directory,'metahash_fields_user.csv')
         self._patch_test(
             'metahash', filename, data_for_get={ 'scope':'fields.user' })
+        
+        filename = os.path.join(self.directory,'metahash_fields_usergroup.csv')
+        self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.usergroup'})
+        
+        filename = os.path.join(self.directory,'metahash_fields_permission.csv')
+        self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.permission'})
+
         filename = os.path.join(self.db_directory,'metahash_fields_screensaveruser.csv')
         self._patch_test(
             'metahash', filename, data_for_get={ 'scope':'fields.screensaveruser'},
@@ -823,4 +830,77 @@ class ScreensaverUserResource(DBMetaHashResourceBootstrap):
 
         logger.debug(str(('==== test_create_user done =====')))
 
+    def test2_patch_usergroups(self):
+        
+        group_patch = { 'objects': [
+            { 
+                'name': 'usergroup1'
+            },
+            { 
+                'name': 'usergroup2'
+            },
+            { 
+                'name': 'usergroup3'
+            }
+        ]};
+        
+        try:       
+            resource_uri = BASE_REPORTS_URI + '/usergroup/'
+            resp = self.api_client.put(resource_uri, 
+                format='json', data=group_patch, authentication=self.get_credentials())
+            self.assertTrue(resp.status_code in [200,201,202], 
+                str((resp.status_code, self.serialize(resp))))
 
+            resp = self.api_client.get(resource_uri, format='json', 
+                authentication=self.get_credentials(), data={ 'limit': 999 })
+            logger.debug(str(('--------resp to get:', resp.status_code)))
+            new_obj = self.deserialize(resp)
+            self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+            self.assertEqual(len(new_obj['objects']), len(group_patch['objects']), str((new_obj)))
+            
+            for i,item in enumerate(group_patch['objects']):
+                result, obj = find_obj_in_list(item, new_obj['objects'])
+                self.assertTrue(
+                    result, str(('bootstrap item not found', item, new_obj['objects'])))
+                logger.info(str(('item found', obj)))        
+        except Exception, e:
+            logger.error(str(('on group_patch', group_patch, '==ex==', e)))
+            raise
+
+        userpatch = { 'objects': [   
+            {
+                'username': 'st1',
+                'usergroups': ['usergroup1']
+            },
+            {
+                'username': 'jt1',
+                'usergroups': ['usergroup2']
+            },
+            {
+                'username': 'bt1',
+                'usergroups': ['usergroup3']
+            },
+        ]};
+        try:       
+            resource_uri = BASE_URI_DB + '/screensaveruser'
+            resp = self.api_client.put(resource_uri, 
+                format='json', data=userpatch, authentication=self.get_credentials())
+            self.assertTrue(resp.status_code in [200,201,202], 
+                str((resp.status_code, self.serialize(resp))))
+
+            resp = self.api_client.get(resource_uri, format='json', 
+                authentication=self.get_credentials(), data={ 'limit': 999 })
+            logger.debug(str(('--------resp to get:', resp.status_code)))
+            new_obj = self.deserialize(resp)
+            self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+            self.assertEqual(len(new_obj['objects']), 3, str((new_obj)))
+            
+            for i,item in enumerate(userpatch['objects']):
+                result, obj = find_obj_in_list(item, new_obj['objects'])
+                self.assertTrue(
+                    result, str(('bootstrap item not found', item, new_obj['objects'])))
+                logger.debug(str(('item found', obj)))        
+        
+        except Exception, e:
+            logger.error(str(('on userpatch ', userpatch, '==ex==', e)))
+            raise

@@ -60,6 +60,8 @@ requireOptions = Iccbl.requireOptions = function(options,requireOptionKeys){
 /**
  * Replace all {tokens} in the string with model attributes. - fallback to
  * "token" if model attribute is not set.
+ * @param - defaul_val - value to use if the matched token is not found in the model
+ * - this can be used to replace any token with a given default value
  */
 var replaceTokens = Iccbl.replaceTokens = function(model,stringWithTokens, default_val) {
   var interpolatedString = stringWithTokens.replace(/{([^}]+)}/g, 
@@ -3699,11 +3701,11 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
     // NOTE: do not like passing the field information argument on the column,
     // but can not see a way around this in the backgrid implementation
     var fi = this.fieldinformation = _.clone(this.column.get('fieldinformation'));
-    var cell_options = fi['backgrid_cell_options'];
+    var cell_options = fi['display_options'];
     try{
       cell_options = JSON.parse(cell_options);
     }catch(e){
-      throw new Error('SciUnitHeaderCell: Could not parse backgrid_cell_options for header: ' 
+      throw new Error('SciUnitHeaderCell: Could not parse display_options for header: ' 
           + name + ',' + cell_options);
     }
     if(!cell_options.symbol)

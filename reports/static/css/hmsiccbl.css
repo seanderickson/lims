@@ -208,3 +208,10 @@ td.text-wrap-cell {
 	   with a scrollbar on the bottom */
 /*   overflow-x: auto;  */
 }
+.ms-container ul{
+  display: block;
+}
+
+.ms-container li{
+  display: block;
+}

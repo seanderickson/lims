@@ -4,14 +4,16 @@ define([
     'backbone',
 //    'backbone_stickit',
     'backbone_forms',
+    'multiselect',
+    'quicksearch',
     'iccbl_backgrid',
     'models/app_state',
     'text!templates/generic-edit.html',
     'text!templates/modal_ok_cancel.html',
 
-], function( $, _, Backbone, backbone_forms, Iccbl, appModel,
+], function( $, _, Backbone, backbone_forms, multiselect, quicksearch, Iccbl, appModel,
             editTemplate, modalOkCancel ) {
-	
+
   // like 'Select' editor, but will always return a boolean (true or false)
   Backbone.Form.editors.BooleanSelect = Backbone.Form.editors.Select.extend({
     
@@ -125,18 +127,17 @@ define([
 
   });
   
+  
+  Backbone.Form.editors.MultiSelect2 = Backbone.Form.editors.Select.extend({
+    render: function() {
+      this.$el.attr('multiple', 'multiple');
+      this.setOptions(this.schema.options);
+ 
+      return this;
+    }
+  });
+  
   var EditView = Backbone.Form.extend({
-
-    
-    /**
-     * Child view bubble up URI stack change event
-     */
-    reportUriStack: function(reportedUriStack) {
-      var consumedStack = this.consumedStack || [];
-      var actualStack = consumedStack.concat(reportedUriStack);
-      this.trigger('uriStack:change', actualStack );
-    },
-    
     
     initialize: function(args) {
       console.log('---- initialize EditView');
@@ -144,17 +145,6 @@ define([
       this.consumedStack = []; 
       
       Backbone.Form.prototype.initialize.apply(this,args);
-      
-      this.listenTo(this, 'screen_type:change', function(target){
-        console.log('chg evt:' + target);
-      });
-      this.on('change', function(t){
-        console.log('all:', t);
-      });
-      
-      this.model.on('change', function(t){
-        console.log('model change', t);
-      });
     },
 
     events: {
@@ -166,15 +156,27 @@ define([
     // control the layout with the "controls, control-group" classes
     altFieldTemplate:  _.template('\
       <div class="form-group" > \
-            <label class="control-label col-sm-2" for="<%= editorId %>"><%= title %></label>\
-            <div class="col-sm-10" >\
-              <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />\
-              <div data-error class="text-danger" ></div>\
-              <div><%= help %></div>\
-            </div> \
-          </div>\
-        '),
+          <label class="control-label col-sm-2" for="<%= editorId %>"><%= title %></label>\
+          <div class="col-sm-10" >\
+            <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />\
+            <div data-error class="text-danger" ></div>\
+            <div><%= help %></div>\
+          </div> \
+        </div>\
+      '),
     
+    // define a multiselect2 template with the "multiselect2" class so it can be found later
+    altMultiselect2FieldTemplate:  _.template('\
+      <div class="form-group" > \
+          <label class="control-label col-sm-2" for="<%= editorId %>"><%= title %></label>\
+          <div class="col-sm-10" >\
+            <div data-editor  class="multiselect2" style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />\
+            <div data-error class="text-danger" ></div>\
+            <div><%= help %></div>\
+          </div> \
+        </div>\
+      '),
+      
     // using custom templates to hold the editors,
     // control the layout with the "controls, control-group" classes
     altRadioFieldTemplate: _.template('\
@@ -187,8 +189,9 @@ define([
           </div></fieldset>\
         </div>\
       '),
-      
+
     schema: function() {
+
       var self = this;
       var schema = this.model.resource.schema;
       var keys = Iccbl.sortOnOrdinal(
@@ -218,10 +221,19 @@ define([
         
         var validators = [];
         var fieldSchema = editSchema[key] = {};
+                
+        fieldSchema['template'] = self.altFieldTemplate;
         
-        var temp = option.data_type || 'Text';
-        temp = temp.toLowerCase();
-        fieldSchema['type'] = temp.charAt(0).toUpperCase() + temp.slice(1);
+        var data_type = option.data_type || 'Text';
+        data_type = data_type.toLowerCase();
+        fieldSchema['type'] = data_type.charAt(0).toUpperCase() + data_type.slice(1);
+        
+        if(!_.contains(editKeys, key)){
+          console.log('create disabled entry', key, option['visibility'])
+          fieldSchema['disabled'] = true;
+          return;
+        }
+        
         if(_.has(typeMap, option.data_type)){
           fieldSchema['type'] = typeMap[option.data_type];
         }
@@ -231,21 +243,27 @@ define([
         if(option.edit_type == 'multiselect'){
           fieldSchema['type'] = 'Checkboxes';
         } 
+        if(option.edit_type == 'multiselect2'){
+          fieldSchema['type'] = 'MultiSelect2';
+          fieldSchema['template'] = self.altMultiselect2FieldTemplate;
+        } 
         
         if(option.edit_type == 'select' 
-            || option.edit_type == 'multiselect'){
+          || option.edit_type == 'multiselect'
+          || option.edit_type == 'multiselect2'){
           fieldSchema['options'] = option.choices || [];
           if(_.isEmpty(option.choices)){
             appModel.error('no choices defined for: ' + key);
           }
         }
+        if(option.edit_type == 'select'){
+          fieldSchema['options'].unshift({ val: '', label: '' });
+        }
         
         if(option.edit_type == 'radio'){
-          editSchema[key]['template'] = self.altRadioFieldTemplate;
-        }else{
-          editSchema[key]['template'] = self.altFieldTemplate;
+          fieldSchema['template'] = self.altRadioFieldTemplate;
         }
-
+        
         // validation stuff
         if(fieldSchema['type']  == 'Number')
         {
@@ -332,7 +350,7 @@ define([
           // - we may want to revisit this for a more robust solution
           editSchema[key]['editorAttrs'] = { autofocus: 'autofocus'}
         }
-        console.log('editSchema', key, editSchema[key]);
+        console.log('editSchema', key, editSchema[key], option);
       });      
       
       // Note: Enforced comment
@@ -341,7 +359,7 @@ define([
           validators: ['required'], 
           template: self.altFieldTemplate
       };
-      
+           
       return editSchema;
     },
   
@@ -377,15 +395,58 @@ define([
     renderTemplate: function() {
       return Backbone.Form.prototype.render.apply(this);
     },
+
+    /**
+     * Override after render to patch in the multi select
+     */
+    afterRender: function(){
+      // update the multiselect2 with the multiselect enhancements
+      console.log('.multiselects',this.$el.find('multiselect2').find('select'));
+      //      this.$el.find('.multiselect2').find('select').multiSelect();
+      //      this.$el.find('.multiselect2').find('select').multiSelect({ 
+      //        selectableOptgroup: true });
+
+      
+      // multiselect with search
+      this.$el.find('.multiselect2').find('select').multiSelect({
+          selectableOptgroup: true,
+          selectableHeader: "<input type='text' class='search-input' autocomplete='off'>",
+          selectionHeader: "<input type='text' class='search-input' autocomplete='off'>",
+          afterInit: function(ms){
+            var that = this,
+                $selectableSearch = that.$selectableUl.prev(),
+                $selectionSearch = that.$selectionUl.prev(),
+                selectableSearchString = '#'+that.$container.attr('id')+' .ms-elem-selectable:not(.ms-selected)',
+                selectionSearchString = '#'+that.$container.attr('id')+' .ms-elem-selection.ms-selected';
+
+            that.qs1 = $selectableSearch.quicksearch(selectableSearchString)
+            .on('keydown', function(e){
+              if (e.which === 40){
+                that.$selectableUl.focus();
+                return false;
+              }
+            });
+
+            that.qs2 = $selectionSearch.quicksearch(selectionSearchString)
+            .on('keydown', function(e){
+              if (e.which == 40){
+                that.$selectionUl.focus();
+                return false;
+              }
+            });
+          },
+          afterSelect: function(){
+            this.qs1.cache();
+            this.qs2.cache();
+          },
+          afterDeselect: function(){
+            this.qs1.cache();
+            this.qs2.cache();
+          }
+        });    
     
-//    afterRender: function(){
-//      console.log('afterRender called');
-//      
-//      $( "#c32_screen_type-1" ).change(function(e){
-//        console.log('on change called: ' + e);
-//      });
-//
-//    },
+    
+    },
 
     template: _.template(editTemplate),
     
@@ -432,6 +493,8 @@ define([
         this.model.id = key;
       }
       
+      var headers = {};
+      headers[appModel.HEADER_APILOG_COMMENT] = self.model.get('comment');
       this.model.save(null, {
         url: url, // set the url property explicitly
         patch: _patch,
@@ -442,9 +505,8 @@ define([
         //        dataType: 'text', 
         // The other solution: use "always_return_data" in the tastypie
         // resource definitions - which we are doing.
-        headers: {
-          'APILOG_COMMENT': self.model.get('comment')
-        }
+        headers: headers,
+        wait: true // wait for the server before setting the new attributes on the model
       })
       .success(function(model, resp){
         // note, not a real backbone model, just JSON
@@ -458,12 +520,26 @@ define([
         // TODO: done replaces success as of jq 1.8
         console.log('model saved');
       })
-      .error(appModel.jqXHRFail)
+      .error(function(model,response,options){
+        // TODO: investigate: wait:true does not work if the model was already updated
+        self.model.set(self.model.previousAttributes());
+        appModel.jqXHRFail(model,response,options);
+      })
       .always(function() {
         // always replaces complete as of jquery 1.8
         self.trigger('remove');
       });
+    },
+    
+    /**
+     * Child view bubble up URI stack change event
+     */
+    reportUriStack: function(reportedUriStack) {
+      var consumedStack = this.consumedStack || [];
+      var actualStack = consumedStack.concat(reportedUriStack);
+      this.trigger('uriStack:change', actualStack );
     }
+    
 
 	});
 

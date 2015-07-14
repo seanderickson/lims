@@ -1202,11 +1202,10 @@ class Migration(DataMigration):
             'copy': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Copy']"}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'initial_volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
-#             'library': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Library']"}),
             'plate': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Plate']"}),
             'plate_number': ('django.db.models.fields.IntegerField', [], {}),
             'volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
-            'well': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']"}),
+            'well': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']"})
         },
         u'db.datacolumn': {
             'Meta': {'object_name': 'DataColumn', 'db_table': "u'data_column'"},
@@ -1400,7 +1399,7 @@ class Migration(DataMigration):
             'status': ('django.db.models.fields.TextField', [], {}),
             'stock_plate_number': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'version': ('django.db.models.fields.IntegerField', [], {}),
-            'well_volume': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'})
+            'well_volume': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '10', 'decimal_places': '9', 'blank': 'True'})
         },
         u'db.platelocation': {
             'Meta': {'object_name': 'PlateLocation', 'db_table': "u'plate_location'"},
@@ -1434,7 +1433,7 @@ class Migration(DataMigration):
             'Meta': {'object_name': 'Reagent', 'db_table': "u'reagent'"},
             'library_contents_version': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.LibraryContentsVersion']", 'null': 'True'}),
             'reagent_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UWPRH2ZJ'", 'unique': 'True', 'max_length': '8'}),
+            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UWPRH324'", 'unique': 'True', 'max_length': '8'}),
             'vendor_batch_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_identifier': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_name': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -1474,7 +1473,7 @@ class Migration(DataMigration):
             'abase_study_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'amount_to_be_charged_for_screen': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '9', 'decimal_places': '2', 'blank': 'True'}),
             'assay_plates_screened_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
-            'assay_type': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
+            'assay_type': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
             'billing_comments': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'billing_info_return_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'comments': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -1624,10 +1623,10 @@ class Migration(DataMigration):
             'Meta': {'object_name': 'ScreensaverUser', 'db_table': "u'screensaver_user'"},
             'comments': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'created_by': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreensaverUser']", 'null': 'True', 'blank': 'True'}),
-            'date_created': ('django.db.models.fields.DateTimeField', [], {}),
+            'date_created': ('django.db.models.fields.DateTimeField', [], {'default': 'datetime.datetime.now'}),
             'date_loaded': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
             'date_publicly_available': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
-            'digested_password': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
+            'digested_password': ('django.db.models.fields.TextField', [], {'null': 'True'}),
             'ecommons_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'email': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'first_name': ('django.db.models.fields.TextField', [], {}),
@@ -1635,11 +1634,12 @@ class Migration(DataMigration):
             'harvard_id_expiration_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'harvard_id_requested_expiration_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'last_name': ('django.db.models.fields.TextField', [], {}),
-            'login_id': ('django.db.models.fields.TextField', [], {'unique': 'True', 'blank': 'True'}),
+            'login_id': ('django.db.models.fields.TextField', [], {'unique': 'True', 'null': 'True'}),
             'mailing_address': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'phone': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'screensaver_user_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
-            'user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['auth.User']", 'null': 'True'}),
+            'screensaver_user_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.UserProfile']", 'null': 'True', 'on_delete': 'models.SET_NULL'}),
+            'username': ('django.db.models.fields.TextField', [], {'unique': 'True', 'null': 'True'}),
             'version': ('django.db.models.fields.IntegerField', [], {'default': '1', 'blank': 'True'})
         },
         u'db.screensaveruserrole': {
@@ -1685,12 +1685,6 @@ class Migration(DataMigration):
             'silencing_reagent_type': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_gene': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "u'vendor_reagent'", 'unique': 'True', 'null': 'True', 'to': u"orm['db.Gene']"})
         },
-        u'db.silencingreagentduplexwells': {
-            'Meta': {'unique_together': "((u'silencing_reagent', u'well'),)", 'object_name': 'SilencingReagentDuplexWells', 'db_table': "u'silencing_reagent_duplex_wells'"},
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'silencing_reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.SilencingReagent']"}),
-            'well': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Well']"})
-        },
         u'db.smallmoleculechembankid': {
             'Meta': {'object_name': 'SmallMoleculeChembankId', 'db_table': "u'small_molecule_chembank_id'"},
             'chembank_id': ('django.db.models.fields.IntegerField', [], {}),
@@ -1725,8 +1719,8 @@ class Migration(DataMigration):
             'inchi': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'is_restricted_structure': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
             'molecular_formula': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'molecular_mass': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
-            'molecular_weight': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
+            'molecular_mass': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '15', 'decimal_places': '9', 'blank': 'True'}),
+            'molecular_weight': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '15', 'decimal_places': '9', 'blank': 'True'}),
             'reagent': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['db.Reagent']", 'unique': 'True', 'primary_key': 'True'}),
             'smiles': ('django.db.models.fields.TextField', [], {'blank': 'True'})
         },
@@ -1749,14 +1743,15 @@ class Migration(DataMigration):
         },
         u'db.well': {
             'Meta': {'object_name': 'Well', 'db_table': "u'well'"},
+            'barcode': ('django.db.models.fields.TextField', [], {'unique': 'True', 'null': 'True'}),
             'deprecation_admin_activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AdministrativeActivity']", 'null': 'True', 'blank': 'True'}),
             'facility_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'is_deprecated': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
             'latest_released_reagent': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "u'reagent_well'", 'null': 'True', 'to': u"orm['db.Reagent']"}),
             'library': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Library']"}),
             'library_well_type': ('django.db.models.fields.TextField', [], {}),
-            'mg_ml_concentration': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
-            'molar_concentration': ('django.db.models.fields.FloatField', [], {'null': 'True', 'blank': 'True'}),
+            'mg_ml_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '5', 'decimal_places': '3', 'blank': 'True'}),
+            'molar_concentration': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '13', 'decimal_places': '12', 'blank': 'True'}),
             'plate_number': ('django.db.models.fields.IntegerField', [], {}),
             'version': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'well_id': ('django.db.models.fields.TextField', [], {'primary_key': 'True'}),
@@ -1776,129 +1771,32 @@ class Migration(DataMigration):
             'Meta': {'object_name': 'WellVolumeCorrectionActivity', 'db_table': "u'well_volume_correction_activity'"},
             'activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AdministrativeActivity']", 'primary_key': 'True'})
         },
-        u'reports.apilog': {
-            'Meta': {'unique_together': "(('ref_resource_name', 'key', 'date_time'),)", 'object_name': 'ApiLog'},
-            'added_keys': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            'api_action': ('django.db.models.fields.CharField', [], {'max_length': '10'}),
-            'comment': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            'date_time': ('django.db.models.fields.DateTimeField', [], {}),
-            'diff_keys': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            'diffs': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'json_field': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            'key': ('django.db.models.fields.CharField', [], {'max_length': '128'}),
-            'parent_log': ('django.db.models.fields.related.ForeignKey', [], {'related_name': "'child_logs'", 'null': 'True', 'to': u"orm['reports.ApiLog']"}),
-            'ref_resource_name': ('django.db.models.fields.CharField', [], {'max_length': '128'}),
-            'removed_keys': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            'uri': ('django.db.models.fields.TextField', [], {}),
-            'user_id': ('django.db.models.fields.IntegerField', [], {}),
-            'username': ('django.db.models.fields.CharField', [], {'max_length': '128'})
-        },
-        u'reports.job': {
-            'Meta': {'object_name': 'Job'},
-            'comment': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'date_time_fullfilled': ('django.db.models.fields.DateTimeField', [], {'null': 'True'}),
-            'date_time_processing': ('django.db.models.fields.DateTimeField', [], {'null': 'True'}),
-            'date_time_requested': ('django.db.models.fields.DateTimeField', [], {'default': 'datetime.datetime.now'}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'input_filename': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'path_info': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'remote_addr': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'request_method': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'response_code': ('django.db.models.fields.IntegerField', [], {}),
-            'response_content': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'response_filename': ('django.db.models.fields.TextField', [], {'null': 'True'})
-        },
-        u'reports.listlog': {
-            'Meta': {'unique_together': "(('apilog', 'ref_resource_name', 'key', 'uri'),)", 'object_name': 'ListLog'},
-            'apilog': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.ApiLog']"}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'key': ('django.db.models.fields.CharField', [], {'max_length': '128'}),
-            'ref_resource_name': ('django.db.models.fields.CharField', [], {'max_length': '35'}),
-            'uri': ('django.db.models.fields.TextField', [], {})
-        },
-        u'reports.metahash': {
-            'Meta': {'unique_together': "(('scope', 'key'),)", 'object_name': 'MetaHash'},
-            'alias': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'json_field': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'json_field_type': ('django.db.models.fields.CharField', [], {'max_length': '128', 'null': 'True', 'blank': 'True'}),
-            'key': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
-            'linked_field_type': ('django.db.models.fields.CharField', [], {'max_length': '128', 'null': 'True', 'blank': 'True'}),
-            'ordinal': ('django.db.models.fields.IntegerField', [], {}),
-            'scope': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'})
-        },
         u'reports.permission': {
             'Meta': {'unique_together': "(('scope', 'key', 'type'),)", 'object_name': 'Permission'},
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'key': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
-            'scope': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
-            'type': ('django.db.models.fields.CharField', [], {'max_length': '15'})
-        },
-        u'reports.record': {
-            'Meta': {'object_name': 'Record'},
-            'base_value1': ('django.db.models.fields.TextField', [], {}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'scope': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'})
-        },
-        u'reports.recordmultivalue': {
-            'Meta': {'unique_together': "(('field_meta', 'parent', 'ordinal'),)", 'object_name': 'RecordMultiValue'},
-            'field_meta': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.MetaHash']"}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'ordinal': ('django.db.models.fields.IntegerField', [], {}),
-            'parent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.Record']"}),
-            'value': ('django.db.models.fields.TextField', [], {})
-        },
-        u'reports.recordvalue': {
-            'Meta': {'object_name': 'RecordValue'},
-            'field_meta': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.MetaHash']"}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'parent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.Record']"}),
-            'value': ('django.db.models.fields.TextField', [], {'null': 'True'})
-        },
-        u'reports.recordvaluecomplex': {
-            'Meta': {'object_name': 'RecordValueComplex'},
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'parent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.Record']", 'unique': 'True'}),
-            'value1': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'value2': ('django.db.models.fields.TextField', [], {'null': 'True'})
-        },
-        u'reports.usergroup': {
-            'Meta': {'object_name': 'UserGroup'},
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'name': ('django.db.models.fields.TextField', [], {'unique': 'True'}),
-            'permissions': ('django.db.models.fields.related.ManyToManyField', [], {'to': u"orm['reports.Permission']", 'symmetrical': 'False'}),
-            'super_groups': ('django.db.models.fields.related.ManyToManyField', [], {'related_name': "'sub_groups'", 'symmetrical': 'False', 'to': u"orm['reports.UserGroup']"}),
-            'users': ('django.db.models.fields.related.ManyToManyField', [], {'to': u"orm['reports.UserProfile']", 'symmetrical': 'False'})
+            'key': ('django.db.models.fields.CharField', [], {'max_length': '64', 'blank': 'True'}),
+            'scope': ('django.db.models.fields.CharField', [], {'max_length': '64', 'blank': 'True'}),
+            'type': ('django.db.models.fields.CharField', [], {'max_length': '35'})
         },
         u'reports.userprofile': {
             'Meta': {'object_name': 'UserProfile'},
-            'comments': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'ecommons_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
+            'comments': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
+            'created_by_username': ('django.db.models.fields.TextField', [], {'null': 'True'}),
+            'ecommons_id': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
+            'email': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
             'gender': ('django.db.models.fields.CharField', [], {'max_length': '15', 'null': 'True'}),
-            'harvard_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
+            'harvard_id': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
             'harvard_id_expiration_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'harvard_id_requested_expiration_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'json_field': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'json_field_type': ('django.db.models.fields.CharField', [], {'max_length': '128', 'null': 'True', 'blank': 'True'}),
-            'mailing_address': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
+            'mailing_address': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
             'permissions': ('django.db.models.fields.related.ManyToManyField', [], {'to': u"orm['reports.Permission']", 'symmetrical': 'False'}),
-            'phone': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'user': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['auth.User']", 'unique': 'True'}),
-            'username': ('django.db.models.fields.TextField', [], {})
-        },
-        u'reports.vocabularies': {
-            'Meta': {'unique_together': "(('scope', 'key'),)", 'object_name': 'Vocabularies'},
-            'alias': ('django.db.models.fields.CharField', [], {'max_length': '35', 'blank': 'True'}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'json_field': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'key': ('django.db.models.fields.CharField', [], {'max_length': '128', 'blank': 'True'}),
-            'ordinal': ('django.db.models.fields.IntegerField', [], {}),
-            'scope': ('django.db.models.fields.CharField', [], {'max_length': '128', 'blank': 'True'}),
-            'title': ('django.db.models.fields.CharField', [], {'max_length': '512', 'blank': 'True'})
+            'phone': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
+            'user': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['auth.User']", 'unique': 'True', 'null': 'True', 'on_delete': 'models.SET_NULL'}),
+            'username': ('django.db.models.fields.TextField', [], {'unique': 'True'})
         }
-        
     }
 
     complete_apps = ['reports','db']

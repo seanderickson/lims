@@ -1,7 +1,9 @@
-# Tastypie Resource extensions that use SqlAlchemy to generate get_list, get_detail data
+
 import cStringIO
 from collections import defaultdict, OrderedDict
 import csv
+from datetime import date
+import datetime
 import hashlib
 import io
 import json
@@ -13,12 +15,13 @@ import shutil
 import sys
 import time
 import urllib
+from wsgiref.util import FileWrapper
 
 from PIL import Image
 from django.conf import settings
+from django.core.cache import cache
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.urlresolvers import resolve
-from django.core.cache import cache
 import django.db.models.constants
 import django.db.models.sql.constants
 from django.http.response import HttpResponseBase
@@ -38,19 +41,15 @@ from tastypie.http import HttpNotFound
 from tastypie.resources import Resource
 from tastypie.utils.mime import build_content_type
 
+from db.models import Screen
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     LIST_BRACKETS, MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE, \
     LIST_DELIMITER_XLS, LIST_DELIMITER_CSV, HTTP_PARAM_RAW_LISTS
 from reports.serializers import csv_convert
 from reports.utils.sqlalchemy_bridge import Bridge
-from wsgiref.util import FileWrapper
-from db.models import Screen
-from datetime import date
 
 
 logger = logging.getLogger(__name__)
-
-import datetime
 
 
 class ChunkIterWrapper(object):
@@ -206,7 +205,8 @@ class SqlAlchemyResource(Resource):
         TODO: this method can be static
         TODO: this method is not SqlAlchemy specific
         '''
-        logger.info(str(('get_visible_fields: field_hash initial: ', schema_fields.keys() )))
+        logger.info(str(('get_visible_fields: field_hash initial: ', 
+            schema_fields.keys() )))
         try:
             if visibilities:
                 visibilities = set(visibilities)
@@ -252,7 +252,8 @@ class SqlAlchemyResource(Resource):
                 msg, exc_type, fname, exc_tb.tb_lineno)))
             raise e 
 
-    def build_sqlalchemy_columns(self, fields, base_query_tables=[], custom_columns={}):
+    def build_sqlalchemy_columns(self, fields, base_query_tables=[], 
+            custom_columns={}):
         '''
         returns an array of sqlalchemy.sql.schema.Column objects, associated 
         with the sqlalchemy.sql.schema.Table definitions, which are bound to 
@@ -265,9 +266,10 @@ class SqlAlchemyResource(Resource):
         @param base_query_tables - if specified, the fields for these tables 
         will be available as part of the base query, so the column definitions
         become simpler, and do not need to be joined in. 
-        @param manual_includes - columns to include even if the field visibility is not set
+        @param manual_includes - columns to include even if the field 
+        visibility is not set
         '''
-        DEBUG_BUILD_COLUMNS = False or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_BUILD_COLUMNS = True or logger.isEnabledFor(logging.DEBUG)
         
         try:
             columns = OrderedDict()
@@ -356,7 +358,9 @@ class SqlAlchemyResource(Resource):
                         stmt2 = stmt2.select_from(join_stmt).label(key)
                         columns[key] = stmt2
                 else:
-                    logger.warn(str(('field is not in the base tables or in a linked field, and is not custom', key)))
+                    logger.warn(str((
+                        'field is not in the base tables or in a linked field, '
+                        'and is not custom', key)))
             if DEBUG_BUILD_COLUMNS: logger.info(str(('columns', columns.keys())))
             return columns
         except Exception, e:
@@ -388,7 +392,8 @@ class SqlAlchemyResource(Resource):
             if field_name in visible_fields:
                 order_clauses.append(order_clause)
             else:
-                logger.warn(str(('order_by field not in visible fields, skipping: ', order_by )))
+                logger.warn(str(('order_by field not in visible fields, skipping: ', 
+                    order_by )))
         logger.debug(str(('order_clauses', order_clauses)))     
         return order_clauses
     
@@ -440,8 +445,8 @@ class SqlAlchemyResource(Resource):
             filter_fields = set(filter_fields)
             for search_hash in search_data:
                 logger.info(str(('search_hash', search_hash)))
-                (search_expression, search_fields) = \
-                    SqlAlchemyResource.build_sqlalchemy_filters_from_hash(schema,search_hash)
+                (search_expression, search_fields) = SqlAlchemyResource.\
+                    build_sqlalchemy_filters_from_hash(schema,search_hash)
                 search_expressions.append(search_expression)
                 filter_fields.update(search_fields)
 
@@ -502,43 +507,44 @@ class SqlAlchemyResource(Resource):
                 value = SqlAlchemyResource.filter_value_to_python(
                     value, param_hash, filter_expr, filter_type)
                 
-#                 if field['data_type'] in ['date','datetime']:
-#                     import dateutil.parser
-#                     value = dateutil.parser.parse(value)
-#                     logger.info(str(('datetime query value', value)))
-                
                 _values.append(value)
                 # TODO: all of the Django query terms:
                 # QUERY_TERMS = set([
-                #     'exact', 'iexact', 'contains', 'icontains', 'gt', 'gte', 'lt', 'lte', 'in',
-                #     'startswith', 'istartswith', 'endswith', 'iendswith', 'range', 'year',
-                #     'month', 'day', 'week_day', 'hour', 'minute', 'second', 'isnull', 'search',
+                #     'exact', 'iexact', 'contains', 'icontains', 'gt', 'gte', 
+                # 'lt', 'lte', 'in',
+                #     'startswith', 'istartswith', 'endswith', 'iendswith', 
+                # 'range', 'year',
+                #     'month', 'day', 'week_day', 'hour', 'minute', 'second', 
+                # 'isnull', 'search',
                 #     'regex', 'iregex',
                 # ])
                 
                 if DEBUG_FILTERS:
                     logger.info(str(('find filter', field_name, filter_type, value)))
                 
-    #             if not value:
-    #                 continue
-    #             
                 expression = None
                 if filter_type in ['exact','eq']:
                     expression = column(field_name)==value
+                    if field['data_type'] == 'list':
+                        expression = text(
+                            "'%s'=any(string_to_array(%s,'%s'))"
+                            % (value,field_name,LIST_DELIMITER_SQL_ARRAY))
                 elif filter_type == 'about':
                     decimals = 0
                     if '.' in value:
                         decimals = len(value.split('.')[1])
                     expression = func.round(
-                        sqlalchemy.sql.expression.cast(
-                            column(field_name),sqlalchemy.types.Numeric),decimals) == value
+                        sqlalchemy.sql.expression.cast(column(field_name),
+                            sqlalchemy.types.Numeric),decimals) == value
                     if DEBUG_FILTERS:
-                        logger.info(str(('create "about" expression for term:',filter_expr,
+                        logger.info(str(('create "about" expression for term:',
+                            filter_expr,
                             value,'decimals',decimals)))
                 elif filter_type == 'contains':
                     expression = column(field_name).contains(value)
                 elif filter_type == 'icontains':
-                    expression = column(field_name).ilike('%{value}%'.format(value=value))
+                    expression = column(field_name).ilike('%{value}%'.format(
+                        value=value))
                 elif filter_type == 'lt':
                     expression = column(field_name) < value
                 elif filter_type == 'lte':
@@ -574,20 +580,24 @@ class SqlAlchemyResource(Resource):
                     expression = column(field_name) != value
                 elif filter_type == 'range':
                     if len(value) != 2:
-                        logger.error(str(('value for range expression must be list of length 2', 
+                        logger.error(str((
+                            'value for range expression must be list of length 2', 
                             field_name, filter_expr, value)))
                         continue
                     else:
-                        expression = column(field_name).between(value[0],value[1],symmetric=True)
+                        expression = column(field_name).between(
+                            value[0],value[1],symmetric=True)
                 else:
-                    logger.error(str(('--- unknown filter type: ', field_name, filter_type,
+                    logger.error(str(('--- unknown filter type: ', 
+                        field_name, filter_type,
                         'filter_expr',filter_expr )))
                     continue
     
                 if inverted:
                     expression = not_(expression)
                 
-                logger.info(str(('filter_expr',filter_expr,'expression',str(expression) )))
+                logger.info(str(('filter_expr',filter_expr,
+                    'expression',str(expression) )))
                 expressions.append(expression)
                 filtered_fields.append(field_name)
                 
@@ -643,7 +653,8 @@ class SqlAlchemyResource(Resource):
                 raise ImmediateHttpResponse(
                     response=self.error_response(request, 
                         { 'search_data for id missing: ' + search_ID: 
-                            self._meta.resource_name + '.search requires a "search_data" param'}))
+                            self._meta.resource_name + 
+                                '.search requires a "search_data" param'}))
          
         search_data = json.loads(search_data)   
         param_hash['search_data'] = search_data
@@ -663,27 +674,24 @@ class SqlAlchemyResource(Resource):
         
         return response
 
-
-
     def get_list(self, request, **kwargs):
         '''
-        Override the Tastypie/Django ORM get_list method - list/reporting operations will be 
-        handled using SqlAlchemy
+        Override the Tastypie/Django ORM get_list method - list/reporting 
+        operations will be handled using SqlAlchemy
         '''
-        raise NotImplemented(str(('get_list must be implemented for the SqlAlchemyResource', 
+        raise NotImplemented(str((
+            'get_list must be implemented for the SqlAlchemyResource', 
             self._meta.resource_name)) )
-
         
     def build_list_response(self,request, param_hash={}, **kwargs):
-
-        raise NotImplemented(str(('get_list_response must be implemented for the SqlAlchemyResource', 
+        raise NotImplemented(str((
+            'get_list_response must be implemented for the SqlAlchemyResource', 
             self._meta.resource_name)) )
     
     def clear_cache(self):
         logger.warn(str(('clearing the cache',self._meta.resource_name)))
         cache.clear()
 
-        
     def _cached_resultproxy(self, stmt, count_stmt, param_hash, limit, offset):
         ''' 
         ad-hoc cache for some resultsets:
@@ -788,7 +796,8 @@ class SqlAlchemyResource(Resource):
             limit = int(limit)
         except ValueError:
             raise BadRequest(
-                "Invalid limit '%s' provided. Please provide a positive integer." % limit)
+                "Invalid limit '%s' provided. Please provide a positive integer." 
+                % limit)
         if limit > 0:    
             stmt = stmt.limit(limit)
 
@@ -797,7 +806,8 @@ class SqlAlchemyResource(Resource):
             offset = int(offset)
         except ValueError:
             raise BadRequest(
-                "Invalid offset '%s' provided. Please provide a positive integer." % offset)
+                "Invalid offset '%s' provided. Please provide a positive integer." 
+                % offset)
         if offset < 0:    
             offset = -offset
         stmt = stmt.offset(offset)
@@ -816,7 +826,8 @@ class SqlAlchemyResource(Resource):
         if desired_format == 'application/json':
             logger.info(str(('streaming json')))
             if not is_for_detail and use_caching and limit > 0:
-                cache_hit = self._cached_resultproxy(stmt, count_stmt, param_hash, limit, offset)
+                cache_hit = self._cached_resultproxy(
+                    stmt, count_stmt, param_hash, limit, offset)
                 if cache_hit:
                     logger.info('cache hit')
                     result = cache_hit['cached_result']
@@ -873,99 +884,222 @@ class SqlAlchemyResource(Resource):
                 result = rowproxy_generator(result)
                 # FIXME: test this for generators other than json generator        
         
-        
         return self.stream_response_from_cursor(request, result, output_filename, 
             field_hash=field_hash, 
             param_hash=param_hash, 
-            rowproxy_generator=rowproxy_generator, 
             is_for_detail=is_for_detail, 
             downloadID=downloadID, 
             title_function=title_function, 
             meta=meta)
         
-        
     def stream_response_from_cursor(self,request,result,output_filename,
             field_hash={}, param_hash={}, 
-            rowproxy_generator=None, is_for_detail=False,
+            is_for_detail=False,
             downloadID=None, title_function=None, meta=None):
           
         
         DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
-        logger.info(str(('meta', meta, 'session', request.session, request.session.session_key)))
+        logger.info(str(('meta', meta, 'session', request.session, 
+            request.session.session_key)))
 
-        
-        list_brackets = LIST_BRACKETS
-        if request.GET.get(HTTP_PARAM_RAW_LISTS, False):
-            list_brackets = None
-
-        desired_format = param_hash.get('desired_format',self.get_format(request))
-        content_type=build_content_type(desired_format)
-        logger.info(str(('desired_format', desired_format, 
-            'content_type', content_type)))
-        
-        def interpolate_value_template(value_template, row):
-            ''' 
-            Utility class for transforming cell values:
-            a "value_template" is of the form:
-            "text... {field_name} ..text"
-            wherein the {field_name} is replaced with the field-value
-            '''                
-            def get_value_from_template(matchobj):
-                val = matchobj.group()
-                val = re.sub(r'[{}]+', '', val)
-                if DEBUG_STREAMING:
-                    logger.info(str(('val from value template',val, row.has_key(val), row[val])))
-                if row.has_key(val):
-                    return str(row[val])
-                else:
-                    logger.error(str(('field needed for value template is not available', val, row)))
-                    return ''
-            return re.sub(r'{([^}]+)}', get_value_from_template, value_template)
-        
-        response = None
-        
-        if desired_format == 'application/json':
-            
+        try:
                     
-            def json_generator(cursor):
-                if DEBUG_STREAMING: logger.info(str(('meta', meta )))
-                # NOTE, using "ensure_ascii" = True to force encoding of all 
-                # chars to be encoded using ascii or escaped unicode; 
-                # because some chars in db might be non-UTF8
-                # and downstream programs have trouble with mixed encoding (cStringIO)
-                if not is_for_detail:
-                    yield ( '{ "meta": %s, "objects": [' 
-                        % json.dumps(meta, ensure_ascii=True, encoding="utf-8"))
-                i=0
-                for row in cursor:
-                    if DEBUG_STREAMING: logger.info(str(('row', row, row.keys())))
-                    if field_hash:
-                        _dict = OrderedDict()
-                        for key, field in field_hash.iteritems():
-                            if DEBUG_STREAMING: 
-                                logger.info(str(('key', key,  str(row), row.has_key(key))))
-                            value = None
-                            try:
+            list_brackets = LIST_BRACKETS
+            if request.GET.get(HTTP_PARAM_RAW_LISTS, False):
+                list_brackets = None
+    
+            desired_format = param_hash.get(
+                'desired_format',self.get_format(request))
+            content_type=build_content_type(desired_format)
+            logger.info(str(('desired_format', desired_format, 
+                'content_type', content_type)))
+            
+            def interpolate_value_template(value_template, row):
+                ''' 
+                Utility class for transforming cell values:
+                a "value_template" is of the form:
+                "text... {field_name} ..text"
+                wherein the {field_name} is replaced with the field-value
+                '''                
+                def get_value_from_template(matchobj):
+                    val = matchobj.group()
+                    val = re.sub(r'[{}]+', '', val)
+                    if DEBUG_STREAMING:
+                        logger.info(str(('val from value template',val, 
+                            row.has_key(val), row[val])))
+                    if row.has_key(val):
+                        return str(row[val])
+                    else:
+                        logger.error(str((
+                            'field needed for value template is not available', 
+                            val, row)))
+                        return ''
+                return re.sub(r'{([^}]+)}', get_value_from_template, value_template)
+            
+            response = None
+            
+            if desired_format == 'application/json':
+                
+                        
+                def json_generator(cursor):
+                    if DEBUG_STREAMING: logger.info(str(('meta', meta )))
+                    # NOTE, using "ensure_ascii" = True to force encoding of all 
+                    # chars to be encoded using ascii or escaped unicode; 
+                    # because some chars in db might be non-UTF8
+                    # and downstream programs have trouble with mixed encoding (cStringIO)
+                    if not is_for_detail:
+                        yield ( '{ "meta": %s, "objects": [' 
+                            % json.dumps(meta, ensure_ascii=True, encoding="utf-8"))
+                    i=0
+                    for row in cursor:
+                        if DEBUG_STREAMING: logger.info(str(('row', row, row.keys())))
+                        if field_hash:
+                            _dict = OrderedDict()
+                            for key, field in field_hash.iteritems():
+                                if DEBUG_STREAMING: 
+                                    logger.info(str(('key', key,  str(row), 
+                                        row.has_key(key))))
+                                value = None
+                                try:
+                                    if row.has_key(key):
+                                        # logger.info(str(('val:',str(row[key]))))
+                                        value = row[key]
+                                    if value and ( field.get('json_field_type',None) == 'fields.ListField' 
+                                         or field.get('linked_field_type',None) == 'fields.ListField'
+                                         or field.get('data_type', None) == 'list' ):
+                                        # FIXME: need to do an escaped split
+                                        if DEBUG_STREAMING: logger.info(str(('split', key, value)))
+                                        if hasattr(value, 'split'):
+                                            value = value.split(LIST_DELIMITER_SQL_ARRAY)
+        
+                                    if DEBUG_STREAMING: logger.info(str(('key val', key, value, field)))
+                                    _dict[key] = value
+                                    
+                                    if field.get('value_template', None):
+                                        value_template = field['value_template']
+                                        if DEBUG_STREAMING: 
+                                            logger.info(str(('field', key, value_template)))
+                                        newval = interpolate_value_template(value_template, row)
+                                        if field['display_type'] == 'image':
+                                            # hack to speed things up:
+                                            if ( key == 'structure_image' and
+                                                    row.has_key('library_well_type') and
+                                                    row['library_well_type'] == 'empty' ):
+                                                continue
+                                            # see if the specified url is available
+                                            try:
+                                                view, args, kwargs = resolve(newval)
+                                                kwargs['request'] = request
+                                                view(*args, **kwargs)
+                                                _dict[key] = newval
+                                            except Exception, e:
+                                                logger.info(str(('no image at', newval,e)))
+                                        else:
+                                            _dict[key]=newval
+    
+                                except Exception, e:
+                                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+                                    msg = str(e)
+                                    logger.warn(str(('on get_vocabularies_by_scope', 
+                                        msg, exc_type, fname, exc_tb.tb_lineno)))
+                                    raise e                      
+                        else:
+                            if DEBUG_STREAMING: logger.info(str(('raw', row)))
+                            _dict = dict((x,y) for x, y in row.items())
+    
+                        i += 1
+                        try:
+                            if DEBUG_STREAMING: logger.info(str(('_dict',i, _dict)))
+                            if i == 1:
+                                # NOTE, using "ensure_ascii" = True to force encoding of all 
+                                # chars to the ascii charset; otherwise, cStringIO has problems
+                                yield json.dumps(_dict, cls=DjangoJSONEncoder,
+                                    sort_keys=True, ensure_ascii=True, indent=2, encoding="utf-8")
+                            else:
+                                # NOTE, using "ensure_ascii" = True to force encoding of all 
+                                # chars to the ascii charset; otherwise, cStringIO has problems
+                                # so "tm" becomes \u2122
+                                # Upon fp.write  the unicode is converted to the default charset?
+                                # also, CStringIO doesn't support UTF-8 mixed with ascii, for instance
+                                yield ', ' + json.dumps(_dict, cls=DjangoJSONEncoder,
+                                    sort_keys=True, ensure_ascii=True, indent=2, encoding="utf-8")
+                        except Exception, e:
+                            print 'Exception'
+                            logger.info(str(('exception')))
+                            logger.error(str(('ex', _dict, e)))
+                    logger.info('streaming finished')
+                    
+                    if not is_for_detail:
+                        yield ' ] }'
+                
+                if DEBUG_STREAMING: logger.info(str(('ready to stream 1...')))
+                response = StreamingHttpResponse(ChunkIterWrapper(json_generator(result)))
+                response['Content-Type'] = content_type
+            
+            
+            elif( desired_format == 'application/xls' or
+                desired_format == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): 
+                # NOTE: will respond with xlsx for both desired formats
+                
+                # FIXME: how to abstract images?
+                
+                structure_image_dir = os.path.abspath(settings.WELL_STRUCTURE_IMAGE_DIR)
+                # create a temp dir
+                # FIXME: temp directory as a setting
+                temp_dir = os.path.join('/tmp', str(time.clock()).replace('.', '_'))
+                os.mkdir(temp_dir)
+                try:
+                    from xlsxwriter.workbook import Workbook
+                    irow=0
+                    # Create an new Excel file and add a worksheet.
+                    filename = '%s.xlsx' % (output_filename)
+                    temp_file = os.path.join(temp_dir, filename)
+                    if DEBUG_STREAMING: logger.info(str(('temp file', temp_file)))
+                    workbook = Workbook(temp_file)
+                    worksheet = workbook.add_worksheet()
+                    
+                    # FIXME: only need max rows if the file will be too big (structure images)
+                    # or too long (>65535, for some versions of xls; for that case
+                    # should implement a mult-sheet solution.
+                    max_rows_per_file = MAX_ROWS_PER_XLS_FILE
+                    file_names_to_zip = [temp_file]
+                    filerow = 0
+                                
+                    for row in result:
+                        if filerow == 0:
+                            if field_hash:
+                                for col, (key, field) in enumerate(field_hash.items()):
+                                    if title_function:
+                                        key = title_function(key) 
+                                    worksheet.write(filerow,col,key)
+                                    ## TODO: option to write titles
+                                    # worksheet.write(filerow,col,field['title'])
+                            else:
+                                for col,name in enumerate(row.keys()):
+                                    worksheet.write(filerow,col,name)
+                            filerow += 1
+                        
+                        if field_hash:
+                            for col, (key, field) in enumerate(field_hash.iteritems()):
+                                value = None
                                 if row.has_key(key):
-                                    # logger.info(str(('val:',str(row[key]))))
                                     value = row[key]
+                                
                                 if value and ( field.get('json_field_type',None) == 'fields.ListField' 
                                      or field.get('linked_field_type',None) == 'fields.ListField'
                                      or field.get('data_type', None) == 'list' ):
-                                    # FIXME: need to do an escaped split
-                                    if DEBUG_STREAMING: logger.info(str(('split', key, value)))
-                                    if hasattr(value, 'split'):
-                                        value = value.split(LIST_DELIMITER_SQL_ARRAY)
+                                    value = value.split(LIST_DELIMITER_SQL_ARRAY)
+                                worksheet.write(filerow, col, 
+                                    csv_convert(value, delimiter=LIST_DELIMITER_XLS, 
+                                        list_brackets=list_brackets))
     
-                                if DEBUG_STREAMING: logger.info(str(('key val', key, value, field)))
-                                _dict[key] = value
-                                
                                 if field.get('value_template', None):
                                     value_template = field['value_template']
-                                    if DEBUG_STREAMING: 
-                                        logger.info(str(('field', key, value_template)))
+                                    if DEBUG_STREAMING: logger.info(str(('field', key, value_template)))
                                     newval = interpolate_value_template(value_template, row)
                                     if field['display_type'] == 'image':
+                                        max_rows_per_file = MAX_IMAGE_ROWS_PER_XLS_FILE
                                         # hack to speed things up:
                                         if ( key == 'structure_image' and
                                                 row.has_key('library_well_type') and
@@ -975,394 +1109,280 @@ class SqlAlchemyResource(Resource):
                                         try:
                                             view, args, kwargs = resolve(newval)
                                             kwargs['request'] = request
-                                            view(*args, **kwargs)
-                                            _dict[key] = newval
+                                            response = view(*args, **kwargs)
+                                            image = Image.open(io.BytesIO(response.content))
+                                            height = image.size[1]
+                                            width = image.size[0]
+                                            worksheet.set_row(filerow, height)
+                                            scaling = 0.130 # trial and error width in default excel font
+                                            worksheet.set_column(col,col, width*scaling)
+                                            worksheet.insert_image(
+                                                filerow, col, newval, 
+                                                {'image_data': io.BytesIO(response.content)})
                                         except Exception, e:
                                             logger.info(str(('no image at', newval,e)))
                                     else:
-                                        _dict[key]=newval
-
-                            except Exception, e:
-                                exc_type, exc_obj, exc_tb = sys.exc_info()
-                                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-                                msg = str(e)
-                                logger.warn(str(('on get_vocabularies_by_scope', 
-                                    msg, exc_type, fname, exc_tb.tb_lineno)))
-                                raise e                      
-                    else:
-                        if DEBUG_STREAMING: logger.info(str(('raw', row)))
-                        _dict = dict((x,y) for x, y in row.items())
-
-                    i += 1
-                    try:
-                        if DEBUG_STREAMING: logger.info(str(('_dict',i, _dict)))
-                        if i == 1:
-                            # NOTE, using "ensure_ascii" = True to force encoding of all 
-                            # chars to the ascii charset; otherwise, cStringIO has problems
-                            yield json.dumps(_dict, cls=DjangoJSONEncoder,
-                                sort_keys=True, ensure_ascii=True, indent=2, encoding="utf-8")
+                                        worksheet.write(filerow, col, newval)
+    
                         else:
-                            # NOTE, using "ensure_ascii" = True to force encoding of all 
-                            # chars to the ascii charset; otherwise, cStringIO has problems
-                            # so "tm" becomes \u2122
-                            # Upon fp.write  the unicode is converted to the default charset?
-                            # also, CStringIO doesn't support UTF-8 mixed with ascii, for instance
-                            yield ', ' + json.dumps(_dict, cls=DjangoJSONEncoder,
-                                sort_keys=True, ensure_ascii=True, indent=2, encoding="utf-8")
-                    except Exception, e:
-                        print 'Exception'
-                        logger.info(str(('exception')))
-                        logger.error(str(('ex', _dict, e)))
-                logger.info('streaming finished')
-                
-                if not is_for_detail:
-                    yield ' ] }'
-            
-            if DEBUG_STREAMING: logger.info(str(('ready to stream 1...')))
-            response = StreamingHttpResponse(ChunkIterWrapper(json_generator(result)))
-            response['Content-Type'] = content_type
-        
-        
-        elif( desired_format == 'application/xls' or
-            desired_format == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): 
-            # NOTE: will respond with xlsx for both desired formats
-            
-            # FIXME: how to abstract images?
-            
-            structure_image_dir = os.path.abspath(settings.WELL_STRUCTURE_IMAGE_DIR)
-            # create a temp dir
-            # FIXME: temp directory as a setting
-            temp_dir = os.path.join('/tmp', str(time.clock()).replace('.', '_'))
-            os.mkdir(temp_dir)
-            try:
-                from xlsxwriter.workbook import Workbook
-                irow=0
-                # Create an new Excel file and add a worksheet.
-                filename = '%s.xlsx' % (output_filename)
-                temp_file = os.path.join(temp_dir, filename)
-                if DEBUG_STREAMING: logger.info(str(('temp file', temp_file)))
-                workbook = Workbook(temp_file)
-                worksheet = workbook.add_worksheet()
-                
-                # FIXME: only need max rows if the file will be too big (structure images)
-                # or too long (>65535, for some versions of xls; for that case
-                # should implement a mult-sheet solution.
-                max_rows_per_file = MAX_ROWS_PER_XLS_FILE
-                file_names_to_zip = [temp_file]
-                filerow = 0
                             
-                for row in result:
-                    if filerow == 0:
-                        if field_hash:
-                            for col, (key, field) in enumerate(field_hash.items()):
-                                if title_function:
-                                    key = title_function(key) 
-                                worksheet.write(filerow,col,key)
-                                ## TODO: option to write titles
-                                # worksheet.write(filerow,col,field['title'])
-                        else:
-                            for col,name in enumerate(row.keys()):
-                                worksheet.write(filerow,col,name)
-                        filerow += 1
-                    
-                    if field_hash:
-                        for col, (key, field) in enumerate(field_hash.iteritems()):
-                            value = None
-                            if row.has_key(key):
-                                value = row[key]
+                            for col,val in enumerate(row.values()):
+                                worksheet.write(filerow, col, val)
+    
+                        irow +=1
+                        filerow +=1
+                        
+                        if irow % max_rows_per_file == 0:
+                            workbook.close()
+                            logger.info(str(('wrote file', temp_file)))
+    
+                            # Create an new Excel file and add a worksheet.
+                            filename = '%s_%s.xlsx' % (output_filename, irow)
+                            temp_file = os.path.join(temp_dir, filename)
+                            logger.info(str(('temp file', temp_file)))
+                            workbook = Workbook(temp_file)
+                            worksheet = workbook.add_worksheet()
                             
-                            if value and ( field.get('json_field_type',None) == 'fields.ListField' 
-                                 or field.get('linked_field_type',None) == 'fields.ListField'
-                                 or field.get('data_type', None) == 'list' ):
-                                value = value.split(LIST_DELIMITER_SQL_ARRAY)
-                            worksheet.write(filerow, col, 
-                                csv_convert(value, delimiter=LIST_DELIMITER_XLS, 
-                                    list_brackets=list_brackets))
-
-                            if field.get('value_template', None):
-                                value_template = field['value_template']
-                                if DEBUG_STREAMING: logger.info(str(('field', key, value_template)))
-                                newval = interpolate_value_template(value_template, row)
-                                if field['display_type'] == 'image':
-                                    max_rows_per_file = MAX_IMAGE_ROWS_PER_XLS_FILE
-                                    # hack to speed things up:
-                                    if ( key == 'structure_image' and
-                                            row.has_key('library_well_type') and
-                                            row['library_well_type'] == 'empty' ):
-                                        continue
-                                    # see if the specified url is available
-                                    try:
-                                        view, args, kwargs = resolve(newval)
-                                        kwargs['request'] = request
-                                        response = view(*args, **kwargs)
-                                        image = Image.open(io.BytesIO(response.content))
-                                        height = image.size[1]
-                                        width = image.size[0]
-                                        worksheet.set_row(filerow, height)
-                                        scaling = 0.130 # trial and error width in default excel font
-                                        worksheet.set_column(col,col, width*scaling)
-                                        worksheet.insert_image(
-                                            filerow, col, newval, 
-                                            {'image_data': io.BytesIO(response.content)})
-                                    except Exception, e:
-                                        logger.info(str(('no image at', newval,e)))
-                                else:
-                                    worksheet.write(filerow, col, newval)
-
-                    else:
+                            file_names_to_zip.append(temp_file)
+                            filerow = 0
                         
-                        for col,val in enumerate(row.values()):
-                            worksheet.write(filerow, col, val)
-
-                    irow +=1
-                    filerow +=1
-                    
-                    if irow % max_rows_per_file == 0:
-                        workbook.close()
-                        logger.info(str(('wrote file', temp_file)))
-
-                        # Create an new Excel file and add a worksheet.
-                        filename = '%s_%s.xlsx' % (output_filename, irow)
-                        temp_file = os.path.join(temp_dir, filename)
-                        logger.info(str(('temp file', temp_file)))
-                        workbook = Workbook(temp_file)
-                        worksheet = workbook.add_worksheet()
-                        
-                        file_names_to_zip.append(temp_file)
-                        filerow = 0
-                    
-                workbook.close()
-                logger.info(str(('wrote file', temp_file)))
-
-                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; charset=utf-8'
-                if len(file_names_to_zip) >1:
-                    # create a temp zip file
-                    content_type='application/zip; charset=utf-8'
-                    temp_file = os.path.join('/tmp',str(time.clock()))
-                    logger.info(str(('temp ZIP file', temp_file)))
-
-                    with ZipFile(temp_file, 'w') as zip_file:
-                        for _file in file_names_to_zip:
-                            zip_file.write(_file, os.path.basename(_file))
+                    workbook.close()
                     logger.info(str(('wrote file', temp_file)))
-                    filename = '%s.zip' % output_filename
-
-                _file = file(temp_file)
-                logger.info(str(('download tmp file',temp_file,_file)))
-                wrapper = FileWrapper(_file)
-                response = StreamingHttpResponse(
-                    wrapper, content_type=content_type) 
-                response['Content-Disposition'] = \
-                    'attachment; filename=%s' % filename
-                response['Content-Length'] = os.path.getsize(temp_file)
-            except Exception, e:
-                exc_type, exc_obj, exc_tb = sys.exc_info()
-                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-                msg = str(e)
-                logger.warn(str(('on xlsx & zip file process', 
-                    self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
-                raise e   
-            finally:
-                try:
-                    logger.info(str(('rmdir', temp_dir)))
-                    shutil.rmtree(temp_dir)
-                    if os.path.exists(temp_file):
-                        logger.info(str(('remove', temp_file)))
-                        os.remove(temp_file)     
-                    logger.info(str(('removed', temp_dir)))
+    
+                    content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; charset=utf-8'
+                    if len(file_names_to_zip) >1:
+                        # create a temp zip file
+                        content_type='application/zip; charset=utf-8'
+                        temp_file = os.path.join('/tmp',str(time.clock()))
+                        logger.info(str(('temp ZIP file', temp_file)))
+    
+                        with ZipFile(temp_file, 'w') as zip_file:
+                            for _file in file_names_to_zip:
+                                zip_file.write(_file, os.path.basename(_file))
+                        logger.info(str(('wrote file', temp_file)))
+                        filename = '%s.zip' % output_filename
+    
+                    _file = file(temp_file)
+                    logger.info(str(('download tmp file',temp_file,_file)))
+                    wrapper = FileWrapper(_file)
+                    response = StreamingHttpResponse(
+                        wrapper, content_type=content_type) 
+                    response['Content-Disposition'] = \
+                        'attachment; filename=%s' % filename
+                    response['Content-Length'] = os.path.getsize(temp_file)
                 except Exception, e:
                     exc_type, exc_obj, exc_tb = sys.exc_info()
                     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
                     msg = str(e)
-                    logger.warn(str(('on xlsx & zip file process', self._meta.resource_name, 
+                    logger.warn(str(('on xlsx & zip file process', 
+                        self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+                    raise e   
+                finally:
+                    try:
+                        logger.info(str(('rmdir', temp_dir)))
+                        shutil.rmtree(temp_dir)
+                        if os.path.exists(temp_file):
+                            logger.info(str(('remove', temp_file)))
+                            os.remove(temp_file)     
+                        logger.info(str(('removed', temp_dir)))
+                    except Exception, e:
+                        exc_type, exc_obj, exc_tb = sys.exc_info()
+                        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+                        msg = str(e)
+                        logger.warn(str(('on xlsx & zip file process', self._meta.resource_name, 
+                            msg, exc_type, fname, exc_tb.tb_lineno)))
+                        raise ImmediateHttpResponse(str(('ex during rmdir', e)))
+            elif desired_format == 'chemical/x-mdl-sdfile':
+                import reports.utils.sdf2py
+                MOLDATAKEY = reports.utils.sdf2py.MOLDATAKEY
+                try:
+                    def sdf_generator(cursor):
+                        i = 0
+                        for row in cursor:
+                            i += 1
+    
+                            if row.has_key(MOLDATAKEY) and row[MOLDATAKEY]:
+                                yield str(row[MOLDATAKEY])
+                                yield '\n' 
+    
+                            if field_hash:
+                                for col, (key, field) in enumerate(field_hash.iteritems()):
+                                    if key == MOLDATAKEY: 
+                                        continue
+                                    yield '> <%s>\n' % key
+                                    # according to 
+                                    # http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip
+                                    # "only one blank line should terminate a data item"
+                                    value = None
+                                    
+                                    if row.has_key(key):
+                                        value = row[key]
+                                    
+                                    if field.get('value_template', None):
+                                        value_template = field['value_template']
+                                        if DEBUG_STREAMING:     
+                                            logger.info(str(('field', key, value_template)))
+                                        value = interpolate_value_template(value_template, row)
+                                    if value and ( field.get('json_field_type',None) == 'fields.ListField' 
+                                         or field.get('linked_field_type',None) == 'fields.ListField'
+                                         or field.get('data_type', None) == 'list' ):
+                                        value = value.split(LIST_DELIMITER_SQL_ARRAY)
+    
+                                    if value:
+                                        # find lists, but not strings (or dicts)
+                                        # Note: a dict here will be non-standard; probably an error 
+                                        # report, so just stringify dicts as is.
+                                        if not hasattr(value, "strip") and isinstance(value, (list,tuple)): 
+                                            for x in value:
+                                                # DB should be UTF-8, so this should not be necessary,
+                                                # however, it appears we have legacy non-utf data in 
+                                                # some tables (i.e. small_molecule_compound_name 193090
+                                                yield unicode.encode(x,'utf-8')
+                                                yield '\n'
+                                        else:
+                                            yield str(value)
+                                            yield '\n'
+                
+                                    yield '\n'
+                                yield '$$$$\n'
+                                        
+                            else:
+                            
+                                for k,v in row.items():
+                                    if k == MOLDATAKEY: 
+                                        continue
+                                    yield '> <%s>\n' % k
+                                    # according to 
+                                    # http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip
+                                    # "only one blank line should terminate a data item"
+                                    if v:
+                                        # find lists, but not strings (or dicts)
+                                        # Note: a dict here will be non-standard; probably an error 
+                                        # report, so just stringify dicts as is.
+                                        if not hasattr(v, "strip") and isinstance(v, (list,tuple)): 
+                                            for x in v:
+                                                # DB should be UTF-8, so this should not be necessary,
+                                                # however, it appears we have legacy non-utf data in 
+                                                # some tables (i.e. small_molecule_compound_name 193090
+                                                yield unicode.encode(x,'utf-8')
+                                                yield '\n'
+                                        else:
+                                            yield str(v)
+                                            yield '\n'
+                    
+                                    yield '\n'
+                                yield '$$$$\n'
+            
+                        logger.info(str(('wrote i', i)))    
+    
+        
+                    response = StreamingHttpResponse(
+                        ChunkIterWrapper(sdf_generator(result)),
+                        content_type=content_type)
+                    response['Content-Disposition'] = \
+                        'attachment; filename=%s.sdf' % output_filename
+                except Exception, e:
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+                    msg = str(e)
+                    logger.warn(str(('sdf export process', self._meta.resource_name, 
                         msg, exc_type, fname, exc_tb.tb_lineno)))
-                    raise ImmediateHttpResponse(str(('ex during rmdir', e)))
-        elif desired_format == 'chemical/x-mdl-sdfile':
-            import reports.utils.sdf2py
-            MOLDATAKEY = reports.utils.sdf2py.MOLDATAKEY
-            try:
-                def sdf_generator(cursor):
-                    i = 0
+                    raise ImmediateHttpResponse(str(('ex during sdf export', e)))
+                    
+            
+            elif desired_format == 'text/csv':
+                class Echo(object):
+                    """An object that implements just the write method of the file-like
+                    interface.
+                    """
+                    def write(self, value):
+                        return value
+    
+                pseudo_buffer = Echo()
+                csvwriter = csv.writer(
+                    pseudo_buffer, delimiter=LIST_DELIMITER_CSV, quotechar='"', 
+                    quoting=csv.QUOTE_ALL, lineterminator="\n")
+                def csv_generator(cursor):
+                    i=0
                     for row in cursor:
                         i += 1
-
-                        if row.has_key(MOLDATAKEY) and row[MOLDATAKEY]:
-                            yield str(row[MOLDATAKEY])
-                            yield '\n' 
-
+                        if i == 1:
+                            if field_hash:
+                                titles = field_hash.keys()
+                                logger.info(str(('keys', titles, title_function)))
+                                if title_function:
+                                    titles = [title_function(key) for key in titles]
+                                logger.info(str(('titles', titles)))
+                                yield csvwriter.writerow(titles)
+                                # TODO: option to write titles:
+                                # yield csvwriter.writerow([field['title'] for field in field_hash.values()])
+                            else:
+                                yield csvwriter.writerow(row.keys())
+    
                         if field_hash:
+                            values = []
                             for col, (key, field) in enumerate(field_hash.iteritems()):
-                                if key == MOLDATAKEY: 
-                                    continue
-                                yield '> <%s>\n' % key
-                                # according to 
-                                # http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip
-                                # "only one blank line should terminate a data item"
-                                value = None
-                                
+                                value = ''
                                 if row.has_key(key):
                                     value = row[key]
-                                
-                                if field.get('value_template', None):
-                                    value_template = field['value_template']
-                                    if DEBUG_STREAMING:     
-                                        logger.info(str(('field', key, value_template)))
-                                    value = interpolate_value_template(value_template, row)
                                 if value and ( field.get('json_field_type',None) == 'fields.ListField' 
                                      or field.get('linked_field_type',None) == 'fields.ListField'
                                      or field.get('data_type', None) == 'list' ):
+                                    # FIXME: must quote special strings?
+    #                                 value = '[' + ",".join(value.split(LIST_DELIMITER_SQL_ARRAY)) + ']'
                                     value = value.split(LIST_DELIMITER_SQL_ARRAY)
-
-                                if value:
-                                    # find lists, but not strings (or dicts)
-                                    # Note: a dict here will be non-standard; probably an error 
-                                    # report, so just stringify dicts as is.
-                                    if not hasattr(value, "strip") and isinstance(value, (list,tuple)): 
-                                        for x in value:
-                                            # DB should be UTF-8, so this should not be necessary,
-                                            # however, it appears we have legacy non-utf data in 
-                                            # some tables (i.e. small_molecule_compound_name 193090
-                                            yield unicode.encode(x,'utf-8')
-                                            yield '\n'
-                                    else:
-                                        yield str(value)
-                                        yield '\n'
-            
-                                yield '\n'
-                            yield '$$$$\n'
-                                    
-                        else:
-                        
-                            for k,v in row.items():
-                                if k == MOLDATAKEY: 
-                                    continue
-                                yield '> <%s>\n' % k
-                                # according to 
-                                # http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip
-                                # "only one blank line should terminate a data item"
-                                if v:
-                                    # find lists, but not strings (or dicts)
-                                    # Note: a dict here will be non-standard; probably an error 
-                                    # report, so just stringify dicts as is.
-                                    if not hasattr(v, "strip") and isinstance(v, (list,tuple)): 
-                                        for x in v:
-                                            # DB should be UTF-8, so this should not be necessary,
-                                            # however, it appears we have legacy non-utf data in 
-                                            # some tables (i.e. small_molecule_compound_name 193090
-                                            yield unicode.encode(x,'utf-8')
-                                            yield '\n'
-                                    else:
-                                        yield str(v)
-                                        yield '\n'
-                
-                                yield '\n'
-                            yield '$$$$\n'
-        
-                    logger.info(str(('wrote i', i)))    
-
-    
-                response = StreamingHttpResponse(
-                    ChunkIterWrapper(sdf_generator(result)),
-                    content_type=content_type)
-                response['Content-Disposition'] = \
-                    'attachment; filename=%s.sdf' % output_filename
-            except Exception, e:
-                exc_type, exc_obj, exc_tb = sys.exc_info()
-                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-                msg = str(e)
-                logger.warn(str(('sdf export process', self._meta.resource_name, 
-                    msg, exc_type, fname, exc_tb.tb_lineno)))
-                raise ImmediateHttpResponse(str(('ex during sdf export', e)))
-                
-        
-        elif desired_format == 'text/csv':
-            class Echo(object):
-                """An object that implements just the write method of the file-like
-                interface.
-                """
-                def write(self, value):
-                    return value
-
-            pseudo_buffer = Echo()
-            csvwriter = csv.writer(
-                pseudo_buffer, delimiter=LIST_DELIMITER_CSV, quotechar='"', 
-                quoting=csv.QUOTE_ALL, lineterminator="\n")
-            def csv_generator(cursor):
-                i=0
-                for row in cursor:
-                    i += 1
-                    if i == 1:
-                        if field_hash:
-                            titles = field_hash.keys()
-                            logger.info(str(('keys', titles, title_function)))
-                            if title_function:
-                                titles = [title_function(key) for key in titles]
-                            logger.info(str(('titles', titles)))
-                            yield csvwriter.writerow(titles)
-                            # TODO: option to write titles:
-                            # yield csvwriter.writerow([field['title'] for field in field_hash.values()])
-                        else:
-                            yield csvwriter.writerow(row.keys())
-
-                    if field_hash:
-                        values = []
-                        for col, (key, field) in enumerate(field_hash.iteritems()):
-                            value = ''
-                            if row.has_key(key):
-                                value = row[key]
-                            if value and ( field.get('json_field_type',None) == 'fields.ListField' 
-                                 or field.get('linked_field_type',None) == 'fields.ListField'
-                                 or field.get('data_type', None) == 'list' ):
-                                # FIXME: must quote special strings?
-#                                 value = '[' + ",".join(value.split(LIST_DELIMITER_SQL_ARRAY)) + ']'
-                                value = value.split(LIST_DELIMITER_SQL_ARRAY)
-                            
-#                             if field.get('data_type', None):
-#                                 data_type = field['data_type']
-#                                 if data_type == "float":
-#                                     value = 
                                 
-                            if field.get('value_template', None):
-                                value_template = field['value_template']
-                                newval = interpolate_value_template(value_template, row)
-                                if field['display_type'] == 'image': 
-                                    if ( key == 'structure_image' and
-                                            row.has_key('library_well_type') and
-                                            row['library_well_type'] == 'empty' ):
-                                        # hack to speed things up:
-                                        continue
-                                    # see if the specified url is available
-                                    try:
-                                        view, args, kwargs = resolve(newval)
-                                        kwargs['request'] = request
-                                        response = view(*args, **kwargs)
+    #                             if field.get('data_type', None):
+    #                                 data_type = field['data_type']
+    #                                 if data_type == "float":
+    #                                     value = 
+                                    
+                                if field.get('value_template', None):
+                                    value_template = field['value_template']
+                                    newval = interpolate_value_template(value_template, row)
+                                    if field['display_type'] == 'image': 
+                                        if ( key == 'structure_image' and
+                                                row.has_key('library_well_type') and
+                                                row['library_well_type'] == 'empty' ):
+                                            # hack to speed things up:
+                                            continue
+                                        # see if the specified url is available
+                                        try:
+                                            view, args, kwargs = resolve(newval)
+                                            kwargs['request'] = request
+                                            response = view(*args, **kwargs)
+                                            value = newval
+                                        except Exception, e:
+                                            logger.info(str(('no image at', newval,e)))
+                                    else:
                                         value = newval
-                                    except Exception, e:
-                                        logger.info(str(('no image at', newval,e)))
-                                else:
-                                    value = newval
+    
+                                values.append(value)
+                            yield csvwriter.writerow([
+                                csv_convert(val, list_brackets=list_brackets) 
+                                    for val in values])
+                        
+                        else:
+                            yield csvwriter.writerow([
+                                csv_convert(val, list_brackets=list_brackets) 
+                                    for val in row.values()])
+    
+                response = StreamingHttpResponse(csv_generator(result),
+                    content_type=content_type)
+                name = self._meta.resource_name
+                response['Content-Disposition'] = \
+                    'attachment; filename=%s.csv' % output_filename
+            else:
+                msg = str(('unknown format', desired_format, output_filename))
+                logger.error(msg)
+                raise ImmediateHttpResponse(msg)
+    
+            return response
 
-                            values.append(value)
-                        yield csvwriter.writerow([
-                            csv_convert(val, list_brackets=list_brackets) 
-                                for val in values])
-                    
-                    else:
-                        yield csvwriter.writerow([
-                            csv_convert(val, list_brackets=list_brackets) 
-                                for val in row.values()])
-
-
-
-            response = StreamingHttpResponse(csv_generator(result),
-                content_type=content_type)
-            name = self._meta.resource_name
-            response['Content-Disposition'] = \
-                'attachment; filename=%s.csv' % output_filename
-        else:
-            msg = str(('unknown format', desired_format, output_filename))
-            logger.error(msg)
-            raise ImmediateHttpResponse(msg)
-
-        return response
-
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on stream response', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e  

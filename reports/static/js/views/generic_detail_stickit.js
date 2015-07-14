@@ -73,6 +73,18 @@ define([
           }
         }
         
+        if(data_type == 'list'){
+          var temp = bindings['#'+key].onGet;
+          bindings['#'+key].onGet = function(value){
+            var temp1 = temp(value);
+            if(_.isArray(temp1)){
+              return temp1.join(', ');
+            }
+            return temp1;
+          };
+        }
+
+        
         if(display_type == 'date'){
           bindings['#'+key].onGet = function(value){
             try{
@@ -153,11 +165,10 @@ define([
             
             if(rawValue && !_.isEmpty(rawValue) && rawValue != '-'){
               var i = 0;
-              var _html = '';
+              var _html = [];
               _.each(rawValue, function(val){
                 var interpolatedVal = Iccbl.replaceTokens(self.model,c_options.hrefTemplate,val);
-                if(i>0) _html += ',';
-                _html += ( '<a ' + 
+                _html.push( '<a ' + 
                     'id="link-' + key + '-'+ i + '" ' + 
                     'href="' + interpolatedVal + '" ' +
                     'target="' + c_options.target + '" ' +
@@ -165,7 +176,7 @@ define([
                     );
                 i++;
               });
-              return _html;
+              return _html.join(', ');
             }
             return '-';
           };
@@ -195,26 +206,29 @@ define([
         
         if(edit_type == 'select' || edit_type == 'multiselect' ){
           try{
-            var vocabulary = Iccbl.appModel.getVocabulary(fi.vocabulary_scope_ref);
-            if(vocabulary && !_.isUndefined(vocabulary)){
-              bindings['#'+key].onGet = function(value){
-                if(_.has(vocabulary, value)){
-                    return vocabulary[value].title;
-                }
-                console.log('no vocab: ' + key + ', ' + vocabulary );
-                return value;
-              };
-            }else{
-              console.log('Warning, no vocabulary found for: ' 
-                  + fi.key + ', ' + fi.vocabulary_scope_ref);
+            if(fi.vocabulary_scope_ref){
+              var vocabulary = Iccbl.appModel.getVocabulary(fi.vocabulary_scope_ref);
+              if(vocabulary && !_.isUndefined(vocabulary)){
+                bindings['#'+key].onGet = function(value){
+                  if(_.has(vocabulary, value)){
+                      return vocabulary[value].title;
+                  }
+                  console.log('no vocab: ' + key + ', ' + vocabulary );
+                  return value;
+                };
+              }else{
+                console.log('Warning, no vocabulary found for: ' 
+                    + fi.key + ', ' + fi.vocabulary_scope_ref);
+              }
             }
           }catch(e){
+            console.log('error getting vocab', e);
             appModel.error('Warning, no vocabulary found for: ' 
               + fi.key + ', ' + fi.vocabulary_scope_ref);
           }
 
         }
-
+        
         // Also build a binding hash for the titles
         schemaBindings['#title-'+key] = {
           observe: key,

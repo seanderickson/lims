@@ -66,10 +66,7 @@ define([
     },      
     
     events: {
-      // TODO: how to make this specific to this view? 
-      // (it is also catching clicks on the table paginator)
-      //          'click .tabbable li': 'click_tab', 
-        'click li': 'click_tab',
+        'click ul.nav-tabs >li': 'click_tab',
         'click button#upload': 'upload'        
     },
     
@@ -90,6 +87,8 @@ define([
       data.append('sdf', file);
       //      data.append('file', file, {'Content-type': 'chemical/x-mdl-sdfile'});
       //      data.append('Content-type','chemical/x-mdl-sdfile');
+      var headers = {};
+      headers[appModel.HEADER_APILOG_COMMENT] = self.model.get('comment');
       $.ajax({
         url: url,    
         data: data,
@@ -97,9 +96,7 @@ define([
         contentType: false,
         processData: false,
         type: 'PUT',
-        headers: {
-          'APILOG_COMMENT': 'TODO: comment for library content load'
-        },        
+        headers: headers, 
         success: function(data){
           // FIXME: should be showing a regular message
           appModel.error('success');

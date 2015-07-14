@@ -107,6 +107,66 @@ define([
       return obj;
     },
     
+    /**
+     * Generate a list of "options" suitable for use in a user multiselect.
+     * [ { val: username, label: name:username }, ... ]
+     */
+    getUserOptions: function(callBack){
+      this.getUsers(function(users){
+        var options = [];
+        users.each(function(user){
+          var username = user.get('username');
+          var name = user.get('name');
+          options.unshift({ val: username, label: name + ':' + username });
+        });
+        callBack(options);
+      });
+    },
+    
+    getUsers: function(callBack) {
+      var self = this;
+      users = this.get('users');
+      if(_.isEmpty(users)){
+        console.log('get all users from the server...');
+        var resourceUrl = self.dbApiUri + '/screensaveruser'
+        Iccbl.getCollectionOnClient(resourceUrl, function(collection){
+          self.set('users', collection);
+          callBack(collection);
+        });
+      }
+      else{
+        callBack(users);
+      }
+    },
+    
+    getUserGroupOptions: function(callBack){
+      this.getUserGroups(function(usergroups){
+        var options = [];
+        usergroups.each(function(usergroup){
+          var name = usergroup.get('name');
+          options.unshift({ val: name, label: name });
+        });
+        callBack(options);
+      });
+    },
+    
+    getUserGroups: function(callBack) {
+      var self = this;
+      usergroups = this.get('usergroups');
+      if(_.isEmpty(usergroups)){
+        console.log('get all UserGroups from the server...');
+        var resourceUrl = self.reportsApiUri + '/usergroup'
+        Iccbl.getCollectionOnClient(resourceUrl, function(collection){
+          self.set('usergroups', collection);
+          callBack(collection);
+        });
+      }
+      else{
+        callBack(usergroups);
+      }
+      
+    },
+    
     getVocabularies: function(callBack){
       console.log('getVocabularies from the server...');
       var self = this;
@@ -123,6 +183,45 @@ define([
         });
         callBack(vocabularies);
       });
+    },    
+    
+    /**
+     * Cache an "options" array for all permissions, for the editor UI
+     */
+    setPermissionsOptions: function(resources){
+      var self = this;
+      var permissionOptions = [];
+      var optionGroups = { resources: []};
+      _.each(_.keys(resources), function(rkey){
+        var resource = resources[rkey];
+        if(!_.has(resource,'schema')){
+          // skip these, only consider server side resources that have fields
+          return;
+        }
+        optionGroups['resources'].unshift({ 
+          val: ['resource',rkey,'read'].join('/'), 
+          label: ['resource',rkey,'read'].join(':'), 
+        });
+        optionGroups['resources'].unshift({ 
+          val: ['resource',rkey,'write'].join('/'), 
+          label: ['resource',rkey,'write'].join(':'), 
+        });
+        var fieldGroup = rkey;
+        var fields = resource['schema']['fields'];
+        if(!_.has(optionGroups,fieldGroup)){
+          optionGroups[fieldGroup] = [];
+        }
+        _.each(_.keys(fields),function(fkey){
+          optionGroups[fieldGroup].unshift({
+            val: ['fields.' + fieldGroup,fkey,'read'].join('/'),
+            label: [fieldGroup,fkey,'read'].join(':')
+          });
+        });
+      });
+      _.each(_.keys(optionGroups),function(key){
+        permissionOptions.unshift({ group: key, options: optionGroups[key] });
+      });
+      self.set('permissionOptions',permissionOptions);
     },
     
     getVocabulary: function(scope){
@@ -177,6 +276,10 @@ define([
                 {}, resources[ui_resource.api_resource], ui_resource);
           }
         });
+        
+        // set up permissions for all the resources
+        self.setPermissionsOptions(self.get('ui_resources'));
+        
         if(callBack) callBack();                
       });
       
@@ -458,7 +561,10 @@ define([
         if(msgs.length > 5){
           msgs = msgs.splice(4, msgs.length-5);
         }
-        this.set('messages', msgs);
+        // FIXME: consider a model attribute on app_state for messages, as this
+        // pattern is needed for additions to the array
+        this.set({'messages': msgs},{silent: true} );
+        this.trigger('change:messages');
       }else{
         this.set('messages', [msg]);
       }
@@ -783,8 +889,9 @@ define([
   appState.reportsApiUri = REPORTS_API_URI;
   appState.dbApiUri = DB_API_URI;
   appState.DEBUG = DEBUG;
-  appState.LIST_ARGS = ['page','rpp','includes','order','log', 'children','search'];      
+  appState.LIST_ARGS = ['rpp','page','includes','order','log', 'children','search'];      
   appState.SEARCH_DELIMITER = ';';
+  appState.HEADER_APILOG_COMMENT = 'X-APILOG-COMMENT';
 
   Iccbl.appModel = appState;
   

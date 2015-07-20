@@ -1038,10 +1038,10 @@ class ManagedResource(LoggingMixin):
         logger.info('clear cache')
         cache.delete(self._meta.resource_name + ':schema')
         
-        try:
-            super(ManagedResource,self).clear_cache()
-        except Exception,e:
-            logger.warn(str(('try to clear cache', e)))
+#         try:
+#             super(ManagedResource,self).clear_cache()
+#         except Exception,e:
+#             logger.warn(str(('try to clear cache', e)))
 
         self.field_alias_map = {}
         
@@ -1582,14 +1582,11 @@ class ManagedResource(LoggingMixin):
                 for x in id_attribute:
                     val = ''
                     if isinstance(bundle_or_obj, Bundle):
-    #                     val = getattr(bundle_or_obj.obj,x)
                         val = self._get_attribute(bundle_or_obj.obj, x)
                     else:
                         if hasattr(bundle_or_obj, x):
-    #                         val = getattr(bundle_or_obj,x)  
                             val = self._get_attribute(bundle_or_obj,x)  
                         elif isinstance(bundle_or_obj, dict):
-    #                         val = bundle_or_obj[x] # allows simple dicts
                             val = self._get_hashvalue(bundle_or_obj, x) # allows simple dicts
                         else:
                             raise Exception(str(('obj', type(obj), obj, 'does not contain', x)))
@@ -1713,6 +1710,18 @@ class ManagedResource(LoggingMixin):
                 
         return response
  
+    def _get_filename(self,schema, kwargs):
+        filekeys = [self._meta.resource_name]
+        if 'id_attribute' in schema:
+            filekeys.extend([ str(kwarg[key]) for 
+                key in schema['id_attribute'] if key in kwargs ])
+        else:
+            filekeys.extend([ str(v) for v in kwargs.values()])
+        filename = '_'.join(filekeys)
+        filename = re.sub(r'[\W]+','_',filename)
+        logger.info(str(('get_list', filename, kwargs)))
+        return filename
+
  
 # FIXME: unused with refactor to remove Tastypie
 class ExtensibleModelResourceMixin(ModelResource):
@@ -1932,7 +1941,31 @@ class MetaHashResource(ManagedModelResource):
         a /scope/key/ as key
         '''    
         return data['scope'] + '/' + data['key']
+    
+    def get_via_uri(self, uri, request=None):
+        """
+        Override TP so that the resource name is optional, and is searched for 
+        from the right.
+        """
+        found_at = uri.find(self._meta.resource_name + '/')
+        if found_at == -1:
+            chomped_uri = self._meta.resource_name + '/' + uri
+        else:
+            chomped_uri = uri[found_at:]
+        try:
+            for url_resolver in getattr(self, 'urls', []):
+                result = url_resolver.resolve(chomped_uri)
 
+                if result is not None:
+                    view, args, kwargs = result
+                    break
+            else:
+                raise Resolver404("URI not found in 'self.urls'.")
+        except Resolver404:
+            raise NotFound("The URL provided '%s' was not a link to a valid resource." % uri)
+
+        bundle = self.build_bundle(request=request)
+        return self.obj_get(bundle=bundle, **self.remove_api_resource_names(kwargs))
 
 class VocabulariesResource(ManagedModelResource):
     '''
@@ -2217,7 +2250,7 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
             kwargs['parent_log_id'] = parent_log_id
         
         return self.build_list_response(request,param_hash=param_hash, **kwargs)
-
+    
     def build_list_response(self,request, param_hash={}, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy 
@@ -2229,20 +2262,10 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
         if DEBUG_GET_LIST:
             logger.info(str(('param_hash', param_hash, 'kwargs', kwargs )))
         is_for_detail = kwargs.pop('is_for_detail', False)
-
              
         schema = super(ApiLogResource,self).build_schema()
-        filename = None
-        if 'id_attribute' in schema:
-            filename = '_'.join(
-                self._meta.resource_name,
-                [ kwarg[key] for key in schema['id_attribute'] if key in kwargs] )
-        if not filename:
-            filename = '_'.join(
-                self._meta.resource_name,
-                [str(v) for v in kwargs.values()])
-        filename = re.sub(r'[\W]+','_',filename)
-        logger.info(str(('get_list', filename, kwargs)))
+        
+        filename = self._get_filename(schema, kwargs)
         
         ref_resource_name = param_hash.pop('ref_resource_name', None)
         if ref_resource_name:

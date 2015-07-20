@@ -251,13 +251,14 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
         
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
-        filename = re.sub(r'[\W]+','_',filename)
+
+        schema = super(LibraryCopyPlateResource,self).build_schema()
+
+        filename = self._get_filename(schema, kwargs)
 
         library_short_name = param_hash.pop('library_short_name', 
             param_hash.get('library_short_name__eq',None))
         if not library_short_name:
-            filename = '%s' % (self._meta.resource_name )
             logger.info(str(('no library_short_name provided')))
         else:
             param_hash['library_short_name__eq'] = library_short_name
@@ -277,8 +278,6 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
         try:
             
             # general setup
-             
-            schema = super(LibraryCopyPlateResource,self).build_schema()
           
             manual_field_includes = set(param_hash.get('includes', []))
             if DEBUG_GET_LIST: 
@@ -770,9 +769,10 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
-        filename = re.sub(r'[\W]+','_',filename)
-        logger.info(str(('get_list', filename, kwargs)))
+             
+        schema = super(ScreenResource,self).build_schema()
+
+        filename = self._get_filename(schema, kwargs)
         
         facility_id = param_hash.pop('facility_id', None)
         if facility_id:
@@ -783,8 +783,6 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
         try:
             
             # general setup
-             
-            schema = super(ScreenResource,self).build_schema()
           
             manual_field_includes = set(param_hash.get('includes', []))
             
@@ -1366,10 +1364,7 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
             logger.info(str(('kwargs',kwargs,'param_hash',param_hash)))
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
-        filename = re.sub(r'[\W]+','_',filename)
-        logger.info(str(('get_list', filename, kwargs)))
-        
+
         screen_facility_id = param_hash.pop('screen_facility_id', None)
         if not screen_facility_id:
             logger.info(str(('no screen_facility_id provided')))
@@ -1411,6 +1406,9 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
             schema = self.build_schema(
                 screenresult=screenresult,
                 show_mutual_positives=show_mutual_positives)
+            
+            filename = self._get_filename(schema, kwargs)
+        
             logger.info(str(('fields',schema['fields'].keys())))
             if DEBUG_GET_LIST: 
                 logger.info(str(('manual_field_includes', manual_field_includes)))
@@ -2064,9 +2062,10 @@ class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
-        filename = re.sub(r'[\W]+','_',filename)
-        logger.info(str(('get_list', filename, kwargs)))
+
+        schema = super(CopyWellHistoryResource,self).build_schema()
+
+        filename = self._get_filename(schema, kwargs)
         
         well_id = param_hash.pop('well_id', None)
         if well_id:
@@ -2079,8 +2078,6 @@ class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
         try:
             
             # general setup
-             
-            schema = super(CopyWellHistoryResource,self).build_schema()
           
             manual_field_includes = set(param_hash.get('includes', []))
             if DEBUG_GET_LIST: 
@@ -2267,9 +2264,10 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
-        filename = re.sub(r'[\W]+','_',filename)
-        logger.info(str(('get_list', filename, kwargs)))
+
+        schema = super(CopyWellResource,self).build_schema()
+
+        filename = self._get_filename(schema, kwargs)
         
         well_id = param_hash.pop('well_id', None)
         if well_id:
@@ -2286,8 +2284,6 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
         try:
             
             # general setup
-             
-            schema = super(CopyWellResource,self).build_schema()
           
             manual_field_includes = set(param_hash.get('includes', []))
             if DEBUG_GET_LIST: 
@@ -2434,9 +2430,10 @@ class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
-        filename = re.sub(r'[\W]+','_',filename)
-        logger.info(str(('get_list', filename, kwargs)))
+
+        schema = super(CherryPickRequestResource,self).build_schema()
+
+        filename = self._get_filename(schema, kwargs)
         
         cherry_pick_request_id = param_hash.pop('cherry_pick_request_id', None)
         if cherry_pick_request_id:
@@ -2445,8 +2442,6 @@ class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):
         try:
             
             # general setup
-             
-            schema = super(CherryPickRequestResource,self).build_schema()
           
             manual_field_includes = set(param_hash.get('includes', []))
             if DEBUG_GET_LIST: 
@@ -2667,9 +2662,10 @@ class CherryPickPlateResource(SqlAlchemyResource,ManagedModelResource):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
-        filename = re.sub(r'[\W]+','_',filename)
-        logger.info(str(('get_list', filename, kwargs)))
+
+        schema = super(CherryPickPlateResource,self).build_schema()
+
+        filename = self._get_filename(schema, kwargs)
         
         cherry_pick_request_id = param_hash.pop('cherry_pick_request_id', None)
         if cherry_pick_request_id:
@@ -2686,8 +2682,6 @@ class CherryPickPlateResource(SqlAlchemyResource,ManagedModelResource):
         try:
             
             # general setup
-             
-            schema = super(CherryPickPlateResource,self).build_schema()
           
             manual_field_includes = set(param_hash.get('includes', []))
             if DEBUG_GET_LIST: 
@@ -2913,14 +2907,15 @@ class LibraryCopyResource(SqlAlchemyResource, ManagedModelResource):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
-        filename = re.sub(r'[\W]+','_',filename)
+             
+        schema = super(LibraryCopyResource,self).build_schema()
+
+        filename = self._get_filename(schema, kwargs)
         
         library_short_name = param_hash.pop('library_short_name',
             param_hash.get('library_short_name__eq',None))
         
         if not library_short_name:
-            filename = '%s' % (self._meta.resource_name )
             logger.info(str(('no library_short_name provided')))
         else:
             param_hash['library_short_name__eq'] = library_short_name
@@ -2933,8 +2928,6 @@ class LibraryCopyResource(SqlAlchemyResource, ManagedModelResource):
         try:
             
             # general setup
-             
-            schema = super(LibraryCopyResource,self).build_schema()
           
             manual_field_includes = set(param_hash.get('includes', []))
             if DEBUG_GET_LIST: 
@@ -3228,15 +3221,14 @@ class UserChecklistItemResource(ManagedSqlAlchemyResourceMixin, ManagedModelReso
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
-        filename = re.sub(r'[\W]+','_',filename)
-        logger.info(str(('get_list', filename, kwargs)))
+
+        schema = self.build_schema()
+
+        filename = self._get_filename(schema, kwargs)
         
         try:
             
             # general setup
-             
-            schema = self.build_schema()
           
             manual_field_includes = set(param_hash.get('includes', []))
             
@@ -3460,9 +3452,10 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
-        filename = re.sub(r'[\W]+','_',filename)
-        logger.info(str(('get_list', filename, kwargs)))
+
+        schema = self.build_schema()
+
+        filename = self._get_filename(schema, kwargs)
         
         screensaver_user_id = param_hash.pop('screensaver_user_id', None)
         if screensaver_user_id:
@@ -3475,8 +3468,6 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
         try:
             
             # general setup
-             
-            schema = self.build_schema()
           
             manual_field_includes = set(param_hash.get('includes', []))
             
@@ -3911,15 +3902,12 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
         
         is_for_detail = kwargs.pop('is_for_detail', False)
         logger.info(str(('kwargs', kwargs)))
-        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
-        filename = re.sub(r'[\W]+','_',filename)
 
         # TODO: eliminate dependency on library (for schema determination)
         library = None
         
         library_short_name = param_hash.pop('library_short_name', None)
         if not library_short_name:
-            filename = '%s' % (self._meta.resource_name )
             logger.info(str(('no library_short_name provided')))
         else:
             param_hash['library_short_name__eq'] = library_short_name
@@ -3942,17 +3930,16 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
             if not library:
                 library = Reagent.objects.get(substance_id=substance_id).well.library
 
-#         if not library:
-#             raise NotImplementedError('must provide a library_short_name parameter')
-            
+        schema = self.build_schema(library=library)
+          
+        filename = self._get_filename(schema, kwargs)
+
         logger.info(str(('get_list', filename, param_hash)))
 
         try:
             
             # general setup
              
-            schema = self.build_schema(library=library)
-          
             manual_field_includes = set(param_hash.get('includes', []))
             desired_format = self.get_format(request)
             if desired_format == 'chemical/x-mdl-sdfile':
@@ -4608,15 +4595,14 @@ class ActivityResource(SqlAlchemyResource,ManagedModelResource):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
-        filename = re.sub(r'[\W]+','_',filename)
-        logger.info(str(('get_list', filename, kwargs)))
+
+        schema = super(ActivityResource,self).build_schema()
+
+        filename = self._get_filename(schema, kwargs)
         
         try:
             
             # general setup
-             
-            schema = super(ActivityResource,self).build_schema()
           
             manual_field_includes = set(param_hash.get('includes', []))
             if DEBUG_GET_LIST: 
@@ -4766,23 +4752,13 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
+        
+        schema = super(LibraryResource,self).build_schema()
 
-        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
-        filename = re.sub(r'[\W]+','_',filename)
-        #         default_response_options = {
-        #             'is_for_detail': False,
-        #             'downloadID': None
-        #         }
-        #         options = {}
-        #         for key, val in default_response_options.items():
-        #             options[key] = kwargs.get(key, val )
-
-        logger.info(str(('get_list', filename, kwargs)))
+        filename = self._get_filename(schema, kwargs)
 
         try:
             # general setup
-            
-            schema = super(LibraryResource,self).build_schema()
             
             manual_field_includes = set(param_hash.get('includes', []))
             if DEBUG_GET_LIST: 

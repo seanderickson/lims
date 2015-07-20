@@ -2740,8 +2740,11 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
-        filename = re.sub(r'[\W]+','_',filename)
+
+        schema = super(UserResource,self).build_schema()
+        
+        filename = self._get_filename(schema, kwargs)
+        
         logger.info(str(('get_list', filename, kwargs)))
         
         username = param_hash.pop('username', None)
@@ -2756,8 +2759,6 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             
             # general setup
              
-            schema = super(UserResource,self).build_schema()
-          
             manual_field_includes = set(param_hash.get('includes', []))
             
             if DEBUG_GET_LIST: 
@@ -3731,8 +3732,11 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
-        filename = re.sub(r'[\W]+','_',filename)
+
+        schema = super(UserGroupResource,self).build_schema()
+
+        filename = self._get_filename(schema, kwargs)
+        
         logger.info(str(('get_list', filename, kwargs)))
         
         name = param_hash.pop('name', None)
@@ -3752,8 +3756,6 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
         try:
             
             # general setup
-             
-            schema = super(UserGroupResource,self).build_schema()
           
             manual_field_includes = set(param_hash.get('includes', []))
             

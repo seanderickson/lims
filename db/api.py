@@ -39,19 +39,22 @@ from sqlalchemy.sql import and_, or_, not_
 from sqlalchemy.sql import asc, desc, alias, Alias
 from sqlalchemy.sql import func
 from sqlalchemy.sql.elements import literal_column
-from sqlalchemy.sql.expression import column, join, insert, delete, distinct,\
+from sqlalchemy.sql.expression import column, join, insert, delete, distinct, \
     exists
 from sqlalchemy.sql.expression import nullsfirst, nullslast
 from tastypie import fields
+from tastypie import http
 from tastypie.authentication import BasicAuthentication, SessionAuthentication, \
     MultiAuthentication
-from tastypie import http
 from tastypie.authorization import Authorization
+from tastypie.bundle import Bundle
 from tastypie.constants import ALL_WITH_RELATIONS
 from tastypie.exceptions import BadRequest, ImmediateHttpResponse, \
     UnsupportedFormat, NotFound
+from tastypie.http import HttpNotFound
 from tastypie.resources import Resource
 from tastypie.utils import timezone
+from tastypie.utils.dict import dict_strip_unicode_keys
 from tastypie.utils.urls import trailing_slash
 from tastypie.validation import Validation
 
@@ -62,24 +65,22 @@ from db.models import ScreensaverUser, Screen, LabHead, LabAffiliation, \
     AdministrativeActivity, SmallMoleculeReagent, SilencingReagent, GeneSymbol, \
     NaturalProductReagent, Molfile, Gene, GeneGenbankAccessionNumber, \
     CherryPickRequest, CherryPickAssayPlate, CherryPickLiquidTransfer, \
-    CachedQuery
+    CachedQuery, ChecklistItemEvent, UserChecklistItem
 from db.support import lims_utils
 from db.support.data_converter import default_converter
-from reports import LIST_DELIMITER_SQL_ARRAY,  \
+from reports import LIST_DELIMITER_SQL_ARRAY, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT
 from reports.api import ManagedModelResource, ManagedResource, ApiLogResource, \
     UserGroupAuthorization, ManagedLinkedResource, log_obj_update, \
     UnlimitedDownloadResource, IccblBaseResource, VocabulariesResource, \
-    MetaHashResource, UserResource,compare_dicts,parse_val,ManagedSqlAlchemyResourceMixin,\
+    MetaHashResource, UserResource, compare_dicts, parse_val, ManagedSqlAlchemyResourceMixin, \
     UserGroupResource
 from reports.models import MetaHash, Vocabularies, ApiLog, UserProfile
 from reports.serializers import CursorSerializer, LimsSerializer, XLSSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.utils.sqlalchemy_bridge import Bridge
-from tastypie.bundle import Bundle
-from tastypie.utils.dict import dict_strip_unicode_keys
-from tastypie.http import HttpNotFound
 
+PLATE_NUMBER_SQL_FORMAT = 'FM9900000'
 
 logger = logging.getLogger(__name__)
     
@@ -307,8 +308,9 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
  
             custom_columns={
                 'screening_count': literal_column('p1.screening_count'),
-                'plate_number': literal_column(
-                    "to_char(plate.plate_number,'FM00000')").label('plate_number'), 
+                'plate_number': ( literal_column(
+                    "to_char(plate.plate_number,'%s')" % PLATE_NUMBER_SQL_FORMAT)
+                    .label('plate_number') ), 
                 'ap_count': literal_column('p1.ap_count'), 
                 'dl_count':literal_column('p1.dl_count'),
                 'first_date_data_loaded':literal_column('p1.first_date_data_loaded'), 
@@ -2235,9 +2237,7 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
         library_short_name = kwargs.get('library_short_name', None)
         if not library_short_name:
             logger.info(str(('no library_short_name provided')))
-            #             raise NotImplementedError('must provide a library_short_name parameter')
-
-        
+         
         copy_name = kwargs.get('copy_name', None)
         if not copy_name:
             logger.info(str(('no copy_name provided')))
@@ -3166,7 +3166,207 @@ class LibraryCopyResource(SqlAlchemyResource, ManagedModelResource):
                 'bundle errors', bundle.errors, len(bundle.errors.keys()))))
             return False
         return True
-     
+
+class UserChecklistItemResource(ManagedSqlAlchemyResourceMixin, ManagedModelResource):    
+
+    class Meta:
+        queryset = UserChecklistItem.objects.all()
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= UserGroupAuthorization()
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+        excludes = ['digested_password']
+        resource_name = 'userchecklistitem'
+        max_limit = 10000
+        always_return_data = True
+
+    def __init__(self, **kwargs):
+        self.user_resource = None
+        super(UserChecklistItemResource,self).__init__(**kwargs)
+
+    def prepend_urls(self):
+        return [
+            # override the parent "base_urls" so that we don't need to worry 
+            # about schema again
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+            url(r"^(?P<resource_name>%s)/(?P<checklist_item_event_id>([\d_]+))%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+        ]    
+
+    def get_detail(self, request, **kwargs):
+        logger.info(str(('get_detail')))
+
+#         screensaver_user_id = kwargs.get('screensaver_user_id', None)
+#         username = kwargs.get('username', None)
+#         if not (screensaver_user_id or username):
+#             logger.info(str(('no screensaver_user_id or username provided',kwargs)))
+#             raise NotImplementedError('must provide a screensaver_user_id or username parameter')
+        
+        kwargs['is_for_detail']=True
+        return self.get_list(request, **kwargs)
+       
+    def get_list(self,request,**kwargs):
+
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+
+        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+
+    def build_list_response(self,request, param_hash={}, **kwargs):
+        ''' 
+        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
+        @returns django.http.response.StreamingHttpResponse 
+        '''
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        is_for_detail = kwargs.pop('is_for_detail', False)
+        filename = self._meta.resource_name + '_' + '_'.join([str(x) for x in kwargs.values()])
+        filename = re.sub(r'[\W]+','_',filename)
+        logger.info(str(('get_list', filename, kwargs)))
+        
+        try:
+            
+            # general setup
+             
+            schema = self.build_schema()
+          
+            manual_field_includes = set(param_hash.get('includes', []))
+            
+            if DEBUG_GET_LIST: 
+                logger.info(str(('manual_field_includes', manual_field_includes)))
+  
+            (filter_expression, filter_fields) = \
+                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+                  
+            visibilities = set()                
+            if is_for_detail:
+                visibilities.update(['detail','summary'])
+            field_hash = self.get_visible_fields(
+                schema['fields'], filter_fields, manual_field_includes, 
+                is_for_detail=is_for_detail, visibilities=visibilities)
+              
+            order_params = param_hash.get('order_by',[])
+            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+                order_params, field_hash)
+             
+            rowproxy_generator = None
+            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
+                rowproxy_generator = IccblBaseResource.\
+                    create_vocabulary_rowproxy_generator(field_hash)
+ 
+            # specific setup
+            _su = self.bridge['screensaver_user']
+            _admin = _su.alias('admin')
+            _sru = self.bridge['screening_room_user']
+            _up = self.bridge['reports_userprofile']
+            _uci = self.bridge['user_checklist_item']
+            
+            _vocab = self.bridge['reports_vocabularies']
+            
+            # get the checklist items & groups
+            cig_table = ( 
+                select([
+                    _vocab.c.key.label('item_group'),
+                    func.concat_ws('.','checklistitemgroup',
+                        _vocab.c.key,'name').label('checklistitemgroup')])
+                .select_from(_vocab)
+                .where(_vocab.c.scope=='checklistitem.group') )
+            cig_table = Alias(cig_table)
+            ci_table = (
+                select([
+                    cig_table.c.item_group,
+                    _vocab.c.key.label('item_name')])
+                .select_from(
+                    _vocab.join(cig_table,
+                        _vocab.c.scope==cig_table.c.checklistitemgroup))
+                )
+            ci_table = ci_table.cte('ci')
+
+            # build the entered checklists
+            
+            j = _uci
+            j = j.join(_su, _uci.c.screensaver_user_id==_su.c.screensaver_user_id)
+            j = j.join(_admin, _uci.c.admin_user_id==_admin.c.screensaver_user_id)
+            entered_checklists = select([
+                _su.c.username,
+                func.concat_ws(', ', _su.c.last_name, _su.c.first_name ).label('user_fullname'),
+                _uci.c.item_group,
+                _uci.c.item_name,
+                _uci.c.status,
+                _uci.c.status_date,
+                _admin.c.username.label('admin_username')
+                ]).select_from(j)
+            username = param_hash.pop('username', None)
+            if username:
+                entered_checklists = entered_checklists.where(
+                    _su.c.username==username)
+            entered_checklists = entered_checklists.cte('entered_checklists')
+            
+            # This entire query doesn't fit the pattern, so have to construct it manually
+            # bleah
+            custom_columns = {
+                'username': func.coalesce(entered_checklists.c.username,username),
+                'user_fullname': entered_checklists.c.user_fullname,
+                'admin_username': entered_checklists.c.admin_username,
+                'item_group': ci_table.c.item_group,
+                'item_name' : ci_table.c.item_name,
+                'status': func.coalesce(entered_checklists.c.status,'not_completed'),
+                'status_date': entered_checklists.c.status_date
+                }
+
+            base_query_tables = ['user_checklist_item','screensaver_user'] 
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                custom_columns=custom_columns )
+
+            isouter=False
+            if username:
+                # if username, then this is a user specific view:
+                # - outer join in the two so that a full list is generated
+                isouter=True
+                
+            j = ci_table
+            j = j.join(entered_checklists,
+                ci_table.c.item_name==entered_checklists.c.item_name,isouter=isouter)
+            
+            stmt = select(columns.values()).select_from(j)
+            if username:
+                # if username, then this is a user specific view:
+                stmt = stmt.order_by(ci_table.c.item_group,ci_table.c.item_name)
+            else:
+                stmt = stmt.order_by(entered_checklists.c.username)
+            # general setup
+             
+            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+            
+            title_function = None
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                title_function = lambda key: field_hash[key]['title']
+            
+            return self.stream_response_from_statement(
+                request, stmt, count_stmt, filename, 
+                field_hash=field_hash, 
+                param_hash=param_hash,
+                is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function  )
+             
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on get_list', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e  
+
      
 class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResource):    
 
@@ -3200,10 +3400,16 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
             url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))/groups%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_user_groupview'), name="api_dispatch_user_groupview"),
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))/checklistitems%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_user_checklistitemview'), name="api_dispatch_user_checklistitemview"),
         ]    
 
     def dispatch_user_groupview(self, request, **kwargs):
         return UserGroupResource().dispatch('list', request, **kwargs)    
+    
+    def dispatch_user_checklistitemview(self, request, **kwargs):
+        return UserChecklistItemResource().dispatch('list', request, **kwargs)    
     
     def build_schema(self):
         
@@ -3801,8 +4007,9 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
             columns = []
             sub_columns = self.get_sr_resource().build_sqlalchemy_columns(
                 field_hash.values(), self.bridge)
-            sub_columns['plate_number'] = literal_column(
-                    "to_char(well.plate_number,'FM00000')").label('plate_number')
+            sub_columns['plate_number'] = ( literal_column(
+                "to_char(well.plate_number,'%s')" % PLATE_NUMBER_SQL_FORMAT)
+                .label('plate_number') )
             
             if DEBUG_GET_LIST: 
                 logger.info(str(('sub_columns', sub_columns.keys())))

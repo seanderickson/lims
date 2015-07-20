@@ -268,6 +268,29 @@ class ChecklistItemEvent(models.Model):
     class Meta:
         db_table = 'checklist_item_event'
 
+## NEW #####
+
+class UserChecklistItem(models.Model):
+    screensaver_user = models.ForeignKey('ScreensaverUser', null=False)
+    admin_user = models.ForeignKey('ScreensaverUser', null=False, 
+        related_name='userchecklistitems_created')
+    item_group = models.TextField()
+    item_name = models.TextField()
+    status = models.TextField()
+    status_date = models.DateField()
+    class Meta:
+        db_table = 'user_checklist_item'
+
+    def __repr__(self):
+        return '%s:%s:%s:%s' % ( self.screensaver_user.username, 
+            self.item_group,self.item_name,self.status) 
+    def __unicode__(self):
+        return self.__repr__()
+    def __str__(self):
+        return self.__repr__()
+############
+
+
 class CherryPickRequest(models.Model):
     cherry_pick_request_id = models.IntegerField(primary_key=True)
     # TODO: give cpr a natural key: [screen id/CPR ordinal]

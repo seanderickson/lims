@@ -2,5 +2,5 @@ key,alias,scope,resource_uri,ordinal,comment,filtering,description,title,orderin
 vendor_name,vendor,fields.reagent,/reports/api/v1/metahash/fields.reagent/vendor_name/,10,,TRUE,"The vendor of the reagent of this well.","Reagent Vendor",TRUE,,,[list;detail],,string,,,
 vendor_identifier,vendor_reagent_id,fields.reagent,/reports/api/v1/metahash/fields.reagent/vendor_identifier/,11,,TRUE,"The vendor-assigned identifier for the reagent in this well.","Vendor Reagent ID",TRUE,,,[list;detail],,string,,,
 vendor_batch_id,,fields.reagent,/reports/api/v1/metahash/fields.reagent/vendor_batch_id/,12,,TRUE,"The vendor-assigned batch identifier for the reagent in this well.","Vendor Batch ID",TRUE,,,[detail],,string,,,
-substance_id,,fields.reagent,/reports/api/v1/metahash/fields.reagent/substance_id/,99,,TRUE,"Unique Facility substance ID","Substance ID",TRUE,,,[detail],,string,link,"{ ""hrefTemplate"": ""#reagent/{substance_id}""  }",
-well_id,,fields.reagent,/reports/api/v1/metahash/fields.reagent/well_id/,19,,TRUE,"Well ID","Well ID",TRUE,,,[list;detail],,string,link,"{ ""hrefTemplate"": ""#reagent/{well_id}"" }",
+substance_id,,fields.reagent,/reports/api/v1/metahash/fields.reagent/substance_id/,99,,TRUE,"Unique Facility substance ID","Substance ID",TRUE,,,[detail],,string,link,"{ 'hrefTemplate': '#reagent/{substance_id}'  }",
+well_id,,fields.reagent,/reports/api/v1/metahash/fields.reagent/well_id/,19,,TRUE,"Well ID","Well ID",TRUE,,,[list;detail],,string,link,"{ 'hrefTemplate': '#reagent/{well_id}' }",

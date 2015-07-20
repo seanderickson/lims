@@ -20,3 +20,4 @@ patch,metahash,metahash_fields_naturalproductreagent.csv
 patch,metahash,metahash_fields_copywell.csv
 patch,metahash,metahash_fields_cherrypickrequest.csv
 patch,metahash,metahash_fields_cherrypickassayplate.csv
+patch,metahash,metahash_fields_userchecklistitem.csv

@@ -22,18 +22,12 @@ class Migration(DataMigration):
         ("reports", "0001_initial"),
     )
 
-
-#     def default_converter(self, original_text):
-#         temp = re.sub(r'[\W]+', ' ', original_text)
-#         return '_'.join(temp.lower().split())
-    
     # migrate the screen_status_item table to the "status" field of the screen
     # object and create the needed ApiLog entries to record the history
+    # NOTE: manual migration 0002 must be run first:
+    # - adds an "id" field to screen_status_item
+    # - copies the latest status to the screen.status field    
     def forwards(self, orm):
-        "Write your forwards methods here."
-        # Note: Don't use "from appname.models import ModelName". 
-        # Use orm.ModelName to refer to models in this application,
-        # and orm['appname.ModelName'] for models in other applications.
         
         # first, clean up the vocabulary used in the status_item table
         
@@ -51,6 +45,10 @@ class Migration(DataMigration):
         j=0
     	for screen in orm.Screen.objects.all():
             i=0
+            if screen.status:
+                screen.status = default_converter(screen.status)
+                screen.save()
+            # no scan the screen_status_items to recreate logs
             prev_item = None
             for status in orm.ScreenStatusItem.objects.filter(screen=screen):
                 log = ApiLog()
@@ -73,7 +71,7 @@ class Migration(DataMigration):
                 log.diffs = json.dumps(diffs)
                 logger.debug(str(( 'create log: ' , j, log)))
                 log.save()
-                
+                 
                 prev_item = status
                 i = i + 1
                 j = j + 1

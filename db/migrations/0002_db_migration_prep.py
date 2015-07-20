@@ -351,6 +351,20 @@ class Migration(SchemaMigration):
         ))
         db.send_create_signal(u'db', ['CachedQuery'])
 
+        # Adding model 'UserChecklistItem'
+        db.create_table(u'user_checklist_item', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('screensaver_user', self.gf('django.db.models.fields.related.ForeignKey')
+                (to=orm['db.ScreensaverUser'])),
+            ('admin_user', self.gf('django.db.models.fields.related.ForeignKey')
+                (related_name=u'userchecklistitems_created', to=orm['db.ScreensaverUser'])),
+            ('item_group', self.gf('django.db.models.fields.TextField')()),
+            ('item_name', self.gf('django.db.models.fields.TextField')()),
+            ('status', self.gf('django.db.models.fields.TextField')()),
+            ('status_date', self.gf('django.db.models.fields.DateField')()),
+        ))
+        db.send_create_signal(u'db', ['UserChecklistItem'])
+
     
     def _update_table_autofield(self, table, column):
         
@@ -968,7 +982,7 @@ class Migration(SchemaMigration):
             'Meta': {'object_name': 'Reagent', 'db_table': "u'reagent'"},
             'library_contents_version': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.LibraryContentsVersion']", 'null': 'True'}),
             'reagent_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UWPRH324'", 'unique': 'True', 'max_length': '8'}),
+            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UWPRH326'", 'unique': 'True', 'max_length': '8'}),
             'vendor_batch_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_identifier': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_name': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -1275,6 +1289,16 @@ class Migration(SchemaMigration):
             'transfection_agent_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
             'value': ('django.db.models.fields.TextField', [], {'unique': 'True'}),
             'version': ('django.db.models.fields.IntegerField', [], {})
+        },
+        u'db.userchecklistitem': {
+            'Meta': {'object_name': 'UserChecklistItem', 'db_table': "u'user_checklist_item'"},
+            'admin_user': ('django.db.models.fields.related.ForeignKey', [], {'related_name': "u'userchecklistitems_created'", 'to': u"orm['db.ScreensaverUser']"}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'item_group': ('django.db.models.fields.TextField', [], {}),
+            'item_name': ('django.db.models.fields.TextField', [], {}),
+            'screensaver_user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreensaverUser']"}),
+            'status': ('django.db.models.fields.TextField', [], {}),
+            'status_date': ('django.db.models.fields.DateField', [], {})
         },
         u'db.well': {
             'Meta': {'object_name': 'Well', 'db_table': "u'well'"},

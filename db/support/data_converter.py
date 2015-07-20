@@ -32,7 +32,7 @@ import re
 #     return new_data
 
 DEFAULT_CONVERTER=re.compile(r'[\W]+')
-def default_converter(original_text):
+def default_converter(original_text, sep='_'):
         temp = DEFAULT_CONVERTER.sub(' ', original_text)
-        return '_'.join(temp.lower().split())      
+        return sep.join(temp.lower().split())      
   

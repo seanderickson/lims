@@ -1,21 +1,24 @@
 # -*- coding: utf-8 -*-
-from south.utils import datetime_utils as datetime
-from south.db import db
-from south.v2 import DataMigration
-from django.utils import timezone, tzinfo
-from django.db import models
-from reports.models import ApiLog
-import json
-from django.utils.timezone import make_aware
-import datetime
-import logging
 from collections import OrderedDict
-from db.models import CherryPickScreening, CherryPickLiquidTransfer,\
-    LibraryScreening
-from reports.models import ApiLog
-import sys
+import datetime
+import json
+import logging
 import os
 import re
+import sys
+
+from django.db import models
+from django.utils import timezone, tzinfo
+from django.utils.timezone import make_aware
+from south.db import db
+from south.utils import datetime_utils as datetime
+from south.v2 import DataMigration
+
+from db.models import CherryPickScreening, CherryPickLiquidTransfer, \
+    LibraryScreening
+from reports.models import ApiLog
+
+
 logger = logging.getLogger(__name__)
 
 

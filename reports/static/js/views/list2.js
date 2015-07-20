@@ -117,10 +117,8 @@ define([
               });
               listInitial[key] = searchHash;
             } else if (key === 'order') {
-//              orderings = value.split(',');
               listInitial[key] = value.split(',');        
             } else if (key === 'includes') {
-//              includes = value.split(',');
               listInitial[key] = value.split(',');        
             }else {
               listInitial[key] = value;
@@ -128,53 +126,6 @@ define([
           }
         }
       }
-////      if(!_.isUndefined(resource.options)
-////          && ! _.isUndefined(resource.options.order)){
-////        if(!_.isEmpty(resource.options.order)){
-////          // TODO: too complicated: should deal with orderings as a hash, to simplify
-////          orderings = _.union(orderings,resource.options.order);
-////          var orderHash = {};
-////          _.each(orderings, function(item){
-////            var dir = item.substring(0,1);
-////            var fieldname = item;
-////            if(dir == '-'){
-////              fieldname = item.substring(1);
-////            }else{
-////              dir = '';
-////            }
-////            if(!_.has(orderHash,fieldname)){
-////              orderHash[fieldname] = dir;
-////            }else{
-////              orderings = _.without(orderings, item);
-////            }
-////          });
-////        }
-////      }
-//      
-//      if(!_.isEmpty(orderings)){
-//        listInitial['order'] = orderings;
-//      }else if(!_.isEmpty(resource.options.order)){
-//        listInitial['order'] = resource.options.order;
-//      }
-//      
-////      if(!_.isUndefined(resource.options)
-////          && ! _.isUndefined(resource.options.includes)){
-////        if(!_.isEmpty(resource.options.includes)){
-////          includes = _.union(includes, resource.options.includes);
-////        }
-////      }
-////      listInitial['includes'] = includes;
-//      if(!_.isEmpty(includes)){
-//        listInitial['includes'] = includes;
-//      }else if(!_.isEmpty(resource.options.includes)){
-//        listInitial['includes'] = resource.options.includes;
-//      }
-//
-//      searchHash = _.extend({}, preset_searches,searchHash);
-//      if(!_.isEmpty(searchHash)){
-//        listInitial['search'] = searchHash;
-//      }
-
       var listModel = this.listModel = new ListModel(listInitial);
 
       this.objects_to_destroy = _([]);
@@ -487,26 +438,28 @@ define([
           self.collection.setPageSize(rpp, { first: true });
       });
 
-      var paginator = self.paginator = new Backgrid.Extension.Paginator({
-    	  // If you anticipate a large number of pages, you can adjust
-    	  // the number of page handles to show. The sliding window
-    	  // will automatically show the next set of page handles when
-    	  // you click next at the end of a window.
-    	  // windowSize: 20, // Default is 10
-
-    	  // Used to multiple windowSize to yield a number of pages to slide,
-    	  // in the case the number is 5
-    	  //slideScale: 0.25, // Default is 0.5
-
-    	  // Whether sorting should go back to the first page
-    	  // from https://github.com/wyuenho/backgrid/issues/432
-    	  goBackFirstOnSort: false, // Default is true
-
-    	  collection: self.collection,
-    	  
-    	});            
-      this.objects_to_destroy.push(paginator);
-
+      if(self.collection instanceof Backbone.PageableCollection){
+        var paginator = self.paginator = new Backgrid.Extension.Paginator({
+      	  // If you anticipate a large number of pages, you can adjust
+      	  // the number of page handles to show. The sliding window
+      	  // will automatically show the next set of page handles when
+      	  // you click next at the end of a window.
+      	  // windowSize: 20, // Default is 10
+  
+      	  // Used to multiple windowSize to yield a number of pages to slide,
+      	  // in the case the number is 5
+      	  //slideScale: 0.25, // Default is 0.5
+  
+      	  // Whether sorting should go back to the first page
+      	  // from https://github.com/wyuenho/backgrid/issues/432
+      	  goBackFirstOnSort: false, // Default is true
+  
+      	  collection: self.collection,
+      	  
+      	});            
+        this.objects_to_destroy.push(paginator);
+      }
+      
       self.listenTo(self.listModel, 'change:search', function(){
         // TODO: this listener should be set in the collection initializer
         var searchHash = _.clone(self.listModel.get('search'));
@@ -661,9 +614,11 @@ define([
       // FIXME: move css classes out to templates
       finalGrid.$el.addClass("col-sm-12 table-striped table-condensed table-hover");
 
-      self.$("#paginator-div").append(self.paginator.render().$el);
-      self.$("#rppselector").html(
-      		self.rppSelectorInstance.render().$el);
+      if(self.collection instanceof Backbone.PageableCollection){
+        self.$("#paginator-div").append(self.paginator.render().$el);
+        self.$("#rppselector").html(
+            self.rppSelectorInstance.render().$el);
+      }
       if(!_.isUndefined(self.extraSelectorInstance)){
         self.$("#extraselector").html(
             self.extraSelectorInstance.render().$el);

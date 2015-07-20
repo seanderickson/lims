@@ -6,7 +6,7 @@ define([
     'layoutmanager',
     'models/app_state',
     'views/generic_detail_layout',
-    'views/list',
+    'views/list2',
     'views/user/user2',
     'text!templates/generic-tabbed.html',
 ], function($, _, Backbone, Iccbl, layoutmanager, 
@@ -15,10 +15,20 @@ define([
 
   var UserView = ReportsUserView.extend({
 
+    screensaver_tabbed_resources: {
+      userchecklistitem: {
+        description: "User Checklist Items",
+        title: "User Checklist Items",
+        invoke: "setUserChecklistItems"
+      }
+    },
+    
     initialize: function(args) {
       UserView.__super__.initialize.apply(this, arguments);      
       var self = this;
-
+      this.tabbed_resources = _.extend({},
+        this.tabbed_resources, this.screensaver_tabbed_resources);
+      
       _.each(_.keys(this.tabbed_resources), function(key){
         if(key !== 'detail' && !appModel.hasPermission(
             self.tabbed_resources[key].resource,'read')){
@@ -82,114 +92,144 @@ define([
 //      this.change_to_tab(viewId);
     },
     
-//    /**
-//     * Child view bubble up URI stack change event
-//     */
-//    reportUriStack: function(reportedUriStack) {
-//      var consumedStack = this.consumedStack || [];
-//      var actualStack = consumedStack.concat(reportedUriStack);
-//      this.trigger('uriStack:change', actualStack );
-//    },
     
     click_tab : function(event){
       UserView.__super__.click_tab.apply(this, arguments);      
-//      var self = this;
-//      event.preventDefault();
-//      // Block clicks from the wrong elements
-//      // TODO: how to make this specific to this view? (it is also catching
-//      //clicks on the table paginator)
-//      var key = event.currentTarget.id;
-//      if(_.isEmpty(key)) return;
-//      
-//      if(this.key && this.key === key){
-//        return;
-//      }
-//      
-//      appModel.requestPageChange({
-//        ok: function(){
-//          self.change_to_tab(key);
-//        }
-//      });
     },
 
     change_to_tab: function(key){
       UserView.__super__.change_to_tab.apply(this, arguments);      
-    
-//      if(_.has(this.tabbed_resources, key)){
-//        var delegateStack = _.clone(this.uriStack);
-//        if(!_.isUndefined(this.tabbed_resources[key].alias)){
-//          key = this.tabbed_resources[key].alias;
-//        }
-//        if(this.key && this.key === key){
-//          return;
-//        }else{
-//          this.key = key;
-//        }        
-//        
-//        this.$('li').removeClass('active'); // TODO: use bootstrap tabs
-//        this.$('#' + key).addClass('active');
-//        
-//        this.uriStack = [];
-//        var method = this[this.tabbed_resources[key]['invoke']];
-//        if (_.isFunction(method)) {
-//          method.apply(this,[delegateStack]);
-//        } else {
-//          throw "Tabbed resources refers to a non-function: " + this.tabbed_resources[key]['invoke']
-//        }
-//      }else{
-//        var msg = 'Unknown tab: ' + key;
-//        window.alert(msg);
-//        throw msg;
-//      }
     },
     
-//    setDetail: function(delegateStack){
-//      var key = 'detail';
-//      
-//      var view = this.tabViews[key];
-//      if ( !view ) {
-//        view = new DetailLayout({ model: this.model, uriStack: delegateStack});
-//        this.tabViews[key] = view;
-//      }
-//      // NOTE: have to re-listen after removing a view
-//      this.listenTo(view , 'uriStack:change', this.reportUriStack);
-//      // Note: since detail_layout reports the tab, the consumedStack is empty here
-//      this.consumedStack = []; 
-//      this.setView("#tab_container", view ).render();
-//      return view;
-//    },
+    setUserChecklistItems: function(delegateStack) {
+      var self = this;
+      var key = 'userchecklistitem';
+      var resource = appModel.getResource('userchecklistitem');
+      var url = [self.model.resource.apiUri, 
+                 self.model.key,
+                 'checklistitems'].join('/');
 
-//    setGroups: function(delegateStack){
-//      var self = this;
-//      var key = 'usergroup';
-//      var view = this.tabViews[key];
-//      if ( !view ) {      
-//        view = new GroupsView({ model: this.model, uriStack: delegateStack });
-//        self.tabViews[key] = view;
-//      }
-//      this.consumedStack = [key]; 
-//      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-//      self.setView("#tab_container", view ).render();
-//    },
-//
-//    setPermissions: function(delegateStack){
-//      var self = this;
-//      var key = 'permission';
-//      var view = this.tabViews[key];
-//      if ( !view ) {      
-//        view = new PermissionsView({ model: this.model, uriStack: delegateStack });
-//        self.tabViews[key] = view;
-//      }
-//      this.consumedStack = [key]; 
-//      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-//      self.setView("#tab_container", view ).render();
-//    },
-    
-//    onClose: function() {
-//      // TODO: is this necessary when using Backbone LayoutManager
-//      this.tabViews = {};
-//      this.remove();
-//    }
+      var show_save_button = $([
+          '<a class="btn btn-default btn-sm pull-down" ',
+            'role="button" id="save_button" href="#">',
+            'save</a>'
+          ].join(''));
+      var form_template = [
+         "<form  class='form-horizontal container' >",
+         "<div data-fields='comments'/>",
+         "</form>"];
+      var altFieldTemplate =  _.template('\
+        <div class="form-group" > \
+            <label class="control-label col-sm-2" for="<%= editorId %>"><%= title %></label>\
+            <div class="col-sm-10" >\
+              <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />\
+              <div data-error class="text-danger" ></div>\
+              <div><%= help %></div>\
+            </div> \
+          </div>\
+        ');
+      // Build the form model
+
+      var FormFields = Backbone.Model.extend({
+        schema: {
+          comments: {
+            title: 'Comments',
+            key: 'comments',
+            type: 'TextArea',
+            validators: ['required'], 
+            template: altFieldTemplate
+          }
+        }
+      });
+      var formFields = new FormFields();
+      var form = new Backbone.Form({
+        model: formFields,
+        template: _.template(form_template.join(''))
+      });
+      var _form_el = form.render().el;
+      
+      var receiverFunction = function(collection){
+        var Collection = Backbone.Collection.extend({
+          url: url,
+          toJSON: function(){
+            return {
+              objects: Collection.__super__.toJSON.apply(this) 
+            };
+          }
+          
+        });
+        var changedCollection = new Collection();
+        var MyModel = Backbone.Model.extend({
+          url: url,
+          initialize : function() {
+            this.on('change', function(model, options) {
+              // Prevent save on update
+              if (options.save === false)
+                  return;
+              model.url = url;
+              if(_.isEmpty(model.get('status_date'))){
+                model.set('status_date', (new Date()).toISOString());
+              }
+              if(_.isEmpty(model.get('admin_username'))){
+                model.set('admin_username', appModel.getCurrentUser().username);
+              }
+              changedCollection.add(model);
+            });
+          },
+        });
+        collection.model = MyModel;
+        show_save_button.click(function(e){
+          e.preventDefault();
+          console.log('changed collection', changedCollection,changedCollection.url);
+          
+          if(changedCollection.isEmpty()){
+            appModel.error('nothing changed');
+            return;
+          }
+          
+          appModel.showModal({
+            okText: 'ok',
+            ok: function(e){
+              e.preventDefault();
+              var errors = form.commit();
+              if(!_.isEmpty(errors)){
+                console.log('form errors, abort submit: ' + JSON.stringify(errors));
+                return false;
+              }else{
+                Backbone.sync("patch",changedCollection,
+                  {
+                    error: function(){
+                      appModel.jqXHRerror.apply(this,arguments);
+                      console.log('error, refetch', arguments);
+                      collection.fetch();
+                    },
+                  }
+                );
+              }
+            },
+            view: _form_el,
+            title: 'Save changes?'  
+          })
+        });
+        
+        view = new ListView({ options: {
+          uriStack: _.clone(delegateStack),
+          schemaResult: resource.schema,
+          resource: resource,
+          url: url,
+          collection: collection,
+          extraControls: [show_save_button]
+        }});
+        Backbone.Layout.setupView(view);
+        self.consumedStack = [key]; 
+        self.reportUriStack([]);
+        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        self.setView("#tab_container", view ).render();
+      };
+      
+      
+      Iccbl.getCollectionOnClient(url, receiverFunction);
+    },    
 
   });
 

@@ -65,6 +65,7 @@ define([
         var cell_options;
         if(!_.isEmpty(fi['display_options'])){
           cell_options = fi['display_options'];
+          cell_options = cell_options.replace(/'/g,'"');
           try{
             cell_options = JSON.parse(cell_options);
           }catch(e){
@@ -83,7 +84,6 @@ define([
             return temp1;
           };
         }
-
         
         if(display_type == 'date'){
           bindings['#'+key].onGet = function(value){
@@ -158,11 +158,7 @@ define([
             target: '_blank'
           }, cell_options );
           bindings['#'+key].updateMethod = 'html';
-          bindings['#'+key].onGet = function(rawValue){
-            if(Iccbl.appModel.DEBUG) 
-              console.log('urilist, raw value: ' + rawValue 
-                + ', hrefTemplate: ' + c_options.hrefTemplate);
-            
+          bindings['#'+key].onGet = function(rawValue){            
             if(rawValue && !_.isEmpty(rawValue) && rawValue != '-'){
               var i = 0;
               var _html = [];
@@ -200,6 +196,8 @@ define([
               delete nestedLists[key];
               self.model.unset(key); // to signal empty
             }
+        }else if(display_type == 'string' ){
+          // string uses default display type
         }else{
           console.log('field', key,'using default display for display_type:',display_type);
         }

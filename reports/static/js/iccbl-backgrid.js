@@ -1220,7 +1220,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     offset : function() {
         return (this.state.currentPage - 1) * this.state.pageSize;
     },
-    use_vocabularies: true, // this signals to the api to replace out
+    use_vocabularies: null, // this signals to the api to replace out
                             // vocabularies - FIXME: make this a setting?
     totalRecords : null, // unset for tastypie
     totalPages : null, // unset for tastypie
@@ -1452,6 +1452,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
 
 
 var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend({
+  
   filtericon_text : '<span class="pull-left glyphicon glyphicon-search" id="filter-icon" ></span>',
  
   initialize : function(options) {
@@ -1618,25 +1619,6 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
       self.sorter.append(sorterText);
     }
   },
-  // setCellDirection1: function (column, direction, i) {
-  // var self = this;
-  // if(! direction){
-  // // this.$el.removeClass("ascending").removeClass("descending");
-  // // this.$el.find("#sorter").empty();
-  // this.removeCellDirection();
-  // }else{
-  // this.$el.removeClass("ascending").removeClass("descending");
-  // if (column.cid == self.column.cid){
-  // this.$el.addClass(direction);
-  // var sorter = self.$el.find('#sorter');
-  // sorter.empty();
-  // if(!_.isUndefined(i) && _.isNumber(i)){
-  // sorter.append("<span class='badge pull-right'>" + i + "<b
-  // class='sort-caret'></b></span>");
-  // }
-  // }
-  // }
-  // },
 
   /**
    * Backgrid event handler for the PageableCollection 'sort' event.
@@ -1647,8 +1629,7 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
     if(self.sorter) self.sorter.empty();
   },
 
- 
-  /**
+   /**
    * Renders a header cell with a sorter and a label.
    */
   render : function() {
@@ -1675,197 +1656,8 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
    
   });
 
- 
-// /**
-// * Override so that we can keep a handle to the containing column name. TODO:
-// * can handle this with events instead (so that the filter notifies the
-// * containing headercell?) TODO: replace this with specific header cells -as
-// * implemented: Date,Integer,Text,Select...
-// */
-// var MyServerSideFilter =
-// Iccbl.MyServerSideFilter =
-// Backgrid.Extension.ServerSideFilter.extend({
-// columnName : null, // TODO: use "name"
-//    
-// // override
-// className: "form-search",
-//    
-// // override, provide our own class
-// template: _.template([
-// '<input type="search" ',
-// '<% if (placeholder) { %> placeholder="<%- placeholder %>" <% } %>',
-// 'name="<%- name %>" />',
-// '<a class="backgrid-filter clear" data-backgrid-action="clear"
-// href="#">&times;</a>'
-// ].join(''), null, {variable: null}),
-//
-// initialize : function(options) {
-// this.columnName = options.columnName;
-// Backgrid.Extension.ServerSideFilter.prototype.initialize.apply(
-// this, [options]);
-// },
-//    
-// /**
-// * Override
-// */
-// search: function(e) {
-// if (e) e.preventDefault();
-// var searchHash = {};
-// searchHash[this.name] = this.searchBox().val();
-// this.collection.addSearch(searchHash);
-//    	
-//    	
-// // reinstated - for usability 20141203: calling super, because it will
-// // force first page.
-// Backgrid.Extension.ServerSideFilter.prototype.search.apply(this,e);
-//      
-// if (e) e.preventDefault();
-//
-// // REMOVED 20150113
-// // var data = {};
-// // var query = this.searchBox().val();
-// // if (query) data[this.name] = query;
-// //
-// // var collection = this.collection;
-// // // We're overriding this behaviour:
-// // // // go back to the first page on search
-// // // if (Backbone.PageableCollection &&
-// // // collection instanceof Backbone.PageableCollection) {
-// // // collection.getFirstPage({data: data, reset: true, fetch: true});
-// // // }
-// // collection.fetch({data: data, reset: true});
-//      
-// this.showClearButtonMaybe();
-// },
-// showClearButtonMaybe: function () {
-// this.clearButton().show();
-// },
-//    
-// /**
-// * Override
-// */
-// clear: function(e){
-// if (e) e.preventDefault();
-// this.remove();
-// this.collection.clearSearch([this.name]);
-// console.log('ssf prototype clear')
-// Backgrid.Extension.ServerSideFilter.prototype.clear.apply(this,e);
-// },
-// });
 
-
-// /**
-// * Override of the Backgrid.HeaderCell to:
-// * - add "contains" search
-// * TODO: replace this with specific header cells -as implemented:
-// Date,Integer,Text,Select...
-// **/
-// var MyHeaderCell = Iccbl.MyHeaderCell = MultiSortHeaderCell.extend({
-//
-// _serverSideFilter : null,
-//
-// initialize : function(options) {
-// this.options = options;
-// MyHeaderCell.__super__.initialize.apply(this, arguments);
-//
-// this._serverSideFilter = new MyServerSideFilter({
-// collection : this.collection,
-// name : this.column.get("name") + "__contains",
-// placeholder : "Search " + this.column.get("label"),
-// columnName : this.column.get("name"),
-// });
-//
-// this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
-// this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
-// _.bindAll(this, 'clearSearch');
-// },
-//
-// clearSearch: function(){
-// if(this._serverSideFilter.searchBox().val()){
-// console.log('responding to clearSearch:' + this.column.get('name')
-// + ':' + this._serverSideFilter.searchBox().val());
-// this._serverSideFilter.clear();
-// }
-// },
-//    
-//
-// remove: function() {
-// console.log('headercell remove called');
-// this._serverSideFilter.remove();
-// this._serverSideFilter.unbind();
-// this._serverSideFilter.collection = null;
-// this.unbind();
-//
-// MyHeaderCell.__super__.remove.apply(this);
-// },
-//  
-// /**
-// * Function to listen for router generated custom search event
-// * "MyServerSideFilter:search"
-// * - add search term and show box
-// * - clear old search terms
-// **/
-// _search: function(searchHash, collection){
-// var self = this;
-// if (collection == this.collection){
-// var found = false;
-// _.each(_(searchHash).pairs(), function(pair){
-// var key = pair[0];
-// var val = pair[1];
-// if (self._serverSideFilter.name == key){
-// console.log('--found search: ' + key + '=' + val +
-// ', on: ' + self.column.get('name'));
-// found = true;
-// // create the DOM element
-// self.$el.append(self._serverSideFilter.render().el);
-// // set the search term
-// self._serverSideFilter.searchBox().val(val);
-// // the filter search method will call collection.fetch()
-// self._serverSideFilter.search();
-// }
-// });
-//
-// if (!found) {
-// if (!_.isEmpty(this.$el.find("input[type=text]").val())) {
-// this._serverSideFilter.remove();
-// this.collection.clearSearch([self._serverSideFilter.name]);
-// }
-// }
-// }
-// },
-//
-// /**
-// * Renders a header cell with a sorter and a label.
-// */
-// render : function() {
-// var self = this;
-// MyHeaderCell.__super__.render.apply(this, arguments);
-//
-// var column = this.column;
-//
-// this.$el.addClass(column.get("name"));
-// this.delegateEvents();
-//    
-// var _handle = this;
-//    
-// var searchableVal = column.get('searchable');
-// if(_.isBoolean(searchableVal) && searchableVal ){
-// var filterIcon = $(self.filtericon_text);
-// filterIcon.click(function(e) {
-// _handle.$el.append(_handle._serverSideFilter.render().el);
-// });
-// this.$el.append(filterIcon);
-// }
-//
-// this.$el.prop('title',
-// this.options['column']['attributes']["description"]);
-//    
-// return this;
-// }
-// });
-
-
-var BackboneFormFilter = Backbone.Form.extend({
+var BackgridFormFilter = Backbone.Form.extend({
   
   template: _.template([
     "<form class='form-horizontal container' >",
@@ -1883,19 +1675,20 @@ var BackboneFormFilter = Backbone.Form.extend({
     var options = this.options = options || {};
       
     if(!options.columnName){
-      throw "must define column name option for the BackboneFormFilter, options: " + options;
+      throw "must define column name option for the BackgridFormFilter, options: " + options;
     }else{
       this.columnName = options.columnName;
     }
-    BackboneFormFilter.__super__.initialize.apply(this, arguments);
+    BackgridFormFilter.__super__.initialize.apply(this, arguments);
   },
 
   /**
-   * - add a submit button - add a clear button
+   * - add a submit button 
+   * - add a clear button
    */
   render: function () {
     var self = this;
-    BackboneFormFilter.__super__.render.apply(this, arguments);
+    BackgridFormFilter.__super__.render.apply(this, arguments);
     this.$el.append([
       '<div id="form-last-row" class="iccbl-headerfield-form-last-row" >',
       '<div class="col-xs-6">',
@@ -1946,7 +1739,7 @@ var BackboneFormFilter = Backbone.Form.extend({
 });
 
 
-var CriteriumFormFilter = Iccbl.CriteriumFormFilter = BackboneFormFilter.extend({
+var CriteriumFormFilter = Iccbl.CriteriumFormFilter = BackgridFormFilter.extend({
   criterium: {'=':'eq'},
   errorClass: 'has-error',
   criteriaTemplate: 
@@ -2857,7 +2650,9 @@ var BooleanHeaderCell = MultiSortHeaderCell.extend({
 });
 
 var SelectorFormFilter = CriteriumFormFilter.extend({
-
+  /**
+   * extends from BackbonFormFilter
+   */
   criterium: {'': 'unset', 'blank':'is_null','not blank':'not_blank'},
   
   template: _.template([
@@ -3047,17 +2842,19 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
          '"choices" list: field key: ' + this.name ].join(''));
       this.fieldinformation.choices = [];
     }
-    vocabulary = {};
+    var choiceHash = {}
+    var vocabulary_scope_ref = this.fieldinformation.vocabulary_scope_ref;
     try{
-      vocabulary = Iccbl.appModel.getVocabulary(this.fieldinformation.vocabulary_scope_ref);
+      var vocabulary = Iccbl.appModel.getVocabulary(vocabulary_scope_ref);
+      //    _.each(this.fieldinformation.choices, function(choice){
+      //    choiceHash[choice] = _.has(vocabulary,choice)?vocabulary[choice].title:choice;
+      //  });
+        _.each(_.keys(vocabulary),function(choice){
+          choiceHash[choice] = vocabulary[choice].title;
+        });
     }catch(e){
       console.log('e'+JSON.stringify(e));
     }
-    var choiceHash = {}
-    _.each(this.fieldinformation.choices, function(choice){
-      choiceHash[choice] = _.has(vocabulary,choice)?vocabulary[choice].title:choice;
-    });
-    
     this._serverSideFilter = new SelectorFormFilter({
         choiceHash: choiceHash,
         columnName: this.column.get('name'),
@@ -3241,7 +3038,7 @@ var NumberFormFilter = CriteriumFormFilter.extend({
         if(!_.isEmpty(errs)) return errs;
       }
     });
-    options['model'] = new FormFields();
+    this.model = options['model'] = new FormFields();
     
     var fields = options.fields = options.fields || [];
     options.fields = fields.concat(
@@ -3500,6 +3297,9 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
 
 var SciUnitFormFilter = NumberFormFilter.extend({
   
+  /** @property */
+  symbol: "",
+  
   // provide a custom form template; use Bootstrap layout/styling
   template: _.template([
       '<form class="iccbl-headerfield-form" >',
@@ -3690,6 +3490,9 @@ var SciUnitFormFilter = NumberFormFilter.extend({
 
 
 var SciUnitHeaderCell = MultiSortHeaderCell.extend({
+
+  /** @property */
+  symbol: "",
   
   initialize: function(options){
 
@@ -3698,10 +3501,11 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
     this.options = options;
     var name = this.column.get('name');
     
-    // NOTE: do not like passing the field information argument on the column,
-    // but can not see a way around this in the backgrid implementation
+    // FIXME: cannot pass initialization params, so sending them on the column,
+    // Need to fix
     var fi = this.fieldinformation = _.clone(this.column.get('fieldinformation'));
     var cell_options = fi['display_options'];
+    cell_options = cell_options.replace(/'/g,'"');
     try{
       cell_options = JSON.parse(cell_options);
     }catch(e){
@@ -3815,11 +3619,224 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
     this.$el.prop('title', 
             this.options['column']['attributes']["description"]);
     
+    // TODO: customize the default units values
+    this._serverSideFilter.setValue('lower_sciunit',1);
+    this._serverSideFilter.setValue('upper_sciunit',1);
     return this;
   }
 
 });
 
+var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
+  /** 
+   * override Backgrid.SelectCell render to return the cell value if 
+   * optionValues is malformed
+   * or missing the value.
+   */
+  render: function () {
+    this.$el.empty();
+
+    var optionValues = _.result(this, "optionValues");
+    var model = this.model;
+    var rawData = this.formatter.fromRaw(model.get(this.column.get("name")), model);
+
+    var selectedText = [];
+
+    if (_.isArray(optionValues) &&  !_.isEmpty(optionValues)){
+      for (var k = 0; k < rawData.length; k++) {
+        var rawDatum = rawData[k];
+
+        for (var i = 0; i < optionValues.length; i++) {
+          var optionValue = optionValues[i];
+
+          if (_.isArray(optionValue)) {
+            var optionText  = optionValue[0];
+            var optionValue = optionValue[1];
+
+            if (optionValue == rawDatum){
+              selectedText.push(optionText);
+            }
+          }
+          else if (_.isObject(optionValue)) {
+            var optionGroupValues = optionValue.values;
+
+            for (var j = 0; j < optionGroupValues.length; j++) {
+              var optionGroupValue = optionGroupValues[j];
+              if (optionGroupValue[1] == rawDatum) {
+                selectedText.push(optionGroupValue[0]);
+              }
+            }
+          }
+          else {
+            throw new TypeError;
+            
+          }
+        }
+      }
+      
+    }
+    if(!_.isEmpty(rawData) && _.isEmpty(selectedText)){
+      selectedText = rawData;
+      Iccbl.appModel.error('column vocabulary is misconfigured: '+  this.column.get("name") );
+      console.log('== column vocabulary is misconfigured: '+  this.column.get("name") 
+        + ",  'optionValues' must be of type " 
+        + "{Array.<Array>|Array.<{name: string, values: Array.<Array>}>}", optionValues,rawData);
+    }
+    this.$el.append(selectedText.join(this.delimiter));
+
+    this.delegateEvents();
+
+    return this;
+  }
+
+});
+
+/**
+ * Override Backgrid DateTimeFormatter
+ * - recognize user input in the format MM/DD/YYYY
+ * - but also recognize ISO 8601 format, so values from the server are parsed
+ */
+function lpad(str, length, padstr) {
+  var paddingLen = length - (str + '').length;
+  paddingLen =  paddingLen < 0 ? 0 : paddingLen;
+  var padding = '';
+  for (var i = 0; i < paddingLen; i++) {
+    padding = padding + padstr;
+  }
+  return padding + str;
+}
+var DatetimeFormatter = Iccbl.DatetimeFormatter = function (options) {
+  _.extend(this, this.defaults, options || {});
+
+  if (!this.includeDate && !this.includeTime) {
+    throw new Error("Either includeDate or includeTime must be true");
+  }
+};
+DatetimeFormatter.prototype = new Backgrid.DatetimeFormatter();
+_.extend(DatetimeFormatter.prototype, {
+
+  ICCBL_DATE_RE:  /^(\d{2})\/(\d{2})\/([+\-]?\d{4})-$/,
+  
+  // ISO DATE/TIME regex, from Backgrid
+  DATE_RE: /^([+\-]?\d{4})-(\d{2})-(\d{2})$/,
+  TIME_RE: /^(\d{2}):(\d{2}):(\d{2})(\.(\d{3}))?$/,
+  ISO_SPLITTER_RE: /T|Z| +/,
+
+  /**
+   * Use Backgrid DatetimeFormatter convert, add in ICCBL_DATE_RE
+   */
+  _convert: function (data, validate) {
+    if ((data + '').trim() === '') return null;
+
+    var date, time = null;
+    if (_.isNumber(data)) {
+      var jsDate = new Date(data);
+      date = lpad(jsDate.getUTCFullYear(), 4, 0) + '-' + lpad(jsDate.getUTCMonth() + 1, 2, 0) + '-' + lpad(jsDate.getUTCDate(), 2, 0);
+      time = lpad(jsDate.getUTCHours(), 2, 0) + ':' + lpad(jsDate.getUTCMinutes(), 2, 0) + ':' + lpad(jsDate.getUTCSeconds(), 2, 0);
+    }
+    else {
+      data = data.trim();
+      var parts = data.split(this.ISO_SPLITTER_RE) || [];
+      date = this.DATE_RE.test(parts[0]) ? parts[0] : '';
+      
+      // Override part here
+      if(this.includeDate && _.isUndefined(date)){
+        date = this.ICCBL_DATE_RE.test(parts[0]) ? parts[0] : [];
+      }
+      // END
+      
+      time = date && parts[1] ? parts[1] : this.TIME_RE.test(parts[0]) ? parts[0] : '';
+    }
+    
+    var YYYYMMDD = this.DATE_RE.exec(date) || [];
+    var HHmmssSSS = this.TIME_RE.exec(time) || [];
+
+    if (validate) {
+      if (this.includeDate && _.isUndefined(YYYYMMDD[0])) return;
+      if (this.includeTime && _.isUndefined(HHmmssSSS[0])) return;
+      if (!this.includeDate && date) return;
+      if (!this.includeTime && time) return;
+    }
+
+    var jsDate = new Date(Date.UTC(YYYYMMDD[1] * 1 || 0,
+                                   YYYYMMDD[2] * 1 - 1 || 0,
+                                   YYYYMMDD[3] * 1 || 0,
+                                   HHmmssSSS[1] * 1 || null,
+                                   HHmmssSSS[2] * 1 || null,
+                                   HHmmssSSS[3] * 1 || null,
+                                   HHmmssSSS[5] * 1 || null));
+
+    var result = '';
+
+    if (this.includeDate) {
+      // Override:
+      // result = (
+      //    lpad(jsDate.getUTCFullYear(), 4, 0) 
+      //    + '-' + lpad(jsDate.getUTCMonth() + 1, 2, 0) 
+      //    + '-' + lpad(jsDate.getUTCDate(), 2, 0);
+      result = ( 
+          lpad(jsDate.getUTCMonth() + 1, 2, 0) 
+          + '/' + lpad(jsDate.getUTCDate(), 2, 0) 
+          + '/' + lpad(jsDate.getUTCFullYear(), 4, 0)
+          );
+    }
+
+    if (this.includeTime) {
+      result = ( result 
+          + (this.includeDate ? 'T' : '') 
+          + lpad(jsDate.getUTCHours(), 2, 0) 
+          + ':' + lpad(jsDate.getUTCMinutes(), 2, 0) 
+          + ':' + lpad(jsDate.getUTCSeconds(), 2, 0)
+          );
+
+      if (this.includeMilli) {
+        result = result + '.' + lpad(jsDate.getUTCMilliseconds(), 3, 0);
+      }
+    }
+
+    if (this.includeDate && this.includeTime) {
+      result += "Z";
+    }
+
+    return result;
+  },
+  
+});
+
+
+/**
+ * Override DateCell
+ * - set the format to MM/DD/YYYY
+ */
+var DateCell = Iccbl.DateCell = Backgrid.DateCell.extend({
+
+  /** @property {Backgrid.CellFormatter} [formatter=Backgrid.DatetimeFormatter] */
+  formatter: DatetimeFormatter,
+
+  /**
+  Initializes this cell and the datetime formatter.
+
+  @param {Object} options
+  @param {Backbone.Model} options.model
+  @param {Backgrid.Column} options.column
+  */
+  initialize: function (options) {
+    DateCell.__super__.initialize.apply(this, arguments);
+    var formatter = this.formatter;
+    //   formatter.includeDate = this.includeDate;
+    //   formatter.includeTime = this.includeTime;
+    //   formatter.includeMilli = this.includeMilli;
+
+    var placeholder = "MM/DD/YYYY";
+  
+    this.editor = this.editor.extend({
+      attributes: _.extend({}, this.editor.prototype.attributes, this.editor.attributes, {
+        placeholder: placeholder
+      })
+    });
+  }
+  
+});
 
 /**
  * Return an array for backgrid column descriptors.
@@ -3850,22 +3867,23 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   var cell_options;
   if(_.has(prop,'display_options') && ! _.isEmpty(prop.display_options)){
     cell_options = prop['display_options'];
+    cell_options = cell_options.replace(/'/g,'"');
     try{
       cell_options = JSON.parse(cell_options);
     }catch(e){
       console.log('warn: display_options is not JSON parseable, column: ' +
-          key + ', options: ' + cell_options);      
+          key + ', options: ' + cell_options,e);      
     }
   } 
   var edit_type = _.isEmpty(prop.edit_type)?display_type:prop.edit_type.toLowerCase();
 
   var backgridCellType = 'string';
   var typeMap = {
-    'date': Backgrid.DateCell,
+    'date': Iccbl.DateCell,
     'link': Iccbl.LinkCell,
     'siunit': Iccbl.SciUnitsCell,
     'float': 'Number',
-    'decimal': Iccbl.DecimalCell
+    'decimal': Iccbl.DecimalCell,
   }
   
   if(_.has(typeMap,display_type)){
@@ -3875,7 +3893,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
       backgridCellType = backgridCellType.extend(cell_options);
     }
   }else{
-    console.log('no special cell type for', data_type);
+    console.log('no special cell type for', display_type, 'data_type',data_type);
   }
   
   column = _.extend(column, {
@@ -3886,10 +3904,25 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     'order' : prop['ordinal'],
     'sortable': prop['ordering'],
     'searchable': prop['filtering'],
-    'editable' : false,
+    'editable' : _.contains(prop['visibility'],'list_edit'),
     'visible': visible,
     'fieldinformation': prop
   });
+  if(!_.isEmpty(prop.vocabulary_scope_ref)){
+    var optionValues = [];
+    var vocabulary_scope_ref = prop.vocabulary_scope_ref;
+    try{
+      var vocabulary = Iccbl.appModel.getVocabulary(vocabulary_scope_ref);
+        _.each(_.keys(vocabulary),function(choice){
+          optionValues.push([vocabulary[choice].title,choice]);
+        });
+    }catch(e){
+      console.log('e'+JSON.stringify(e));
+    }
+    column['cell'] = Iccbl.SelectCell.extend({
+      optionValues: optionValues
+    });
+  }
   if(orderStack && _.contains(orderStack, key)){
     column['direction'] = 'ascending';
   }
@@ -3932,6 +3965,10 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
       column['headerCell'] = SelectorHeaderCell;
     }
     
+    // FIXME: should be able to pass initialization options properly
+    //if(cell_options){
+    //  column['headerCell'] = column['headerCell'].extend(cell_options);
+    //}
     if(!_.has(column, 'headerCell')){
       console.log('no special header cell found for dt: ', data_type,'edit_type', edit_type);
     }

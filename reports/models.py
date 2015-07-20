@@ -126,15 +126,16 @@ class ApiLog(models.Model):
     
     objects = models.Manager()
     
+    # FIXME: change to foreign key
     user_id = models.IntegerField(null=False, blank=False)
     username = models.CharField(null=False, max_length=128)
 
     # name of the resource, i.e. "apilog" or "screen", "user", etc.
-    ref_resource_name = models.CharField(null=False, max_length=128)
+    ref_resource_name = models.CharField(null=False, max_length=128, db_index=True)
 
     # full public key of the resource instance being logged (may be composite, 
     # separted by '/')
-    key = models.CharField(null=False, max_length=128)
+    key = models.CharField(null=False, max_length=128, db_index=True)
     
 #     #TODO How to link to parent/children?
 #     ref_containing_resource = models.CharField(null=False, max_length=105)
@@ -335,7 +336,7 @@ class Vocabularies(models.Model):
         self.json_field = json.dumps(temp)
     
     def __unicode__(self):
-        return unicode(str((self.scope, self.key, self.id)))
+        return unicode(str((self.scope, self.key, self.ordinal)))
 
         
 class Permission(models.Model):

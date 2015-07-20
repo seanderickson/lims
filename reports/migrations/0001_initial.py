@@ -13,8 +13,8 @@ class Migration(SchemaMigration):
             (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
             ('user_id', self.gf('django.db.models.fields.IntegerField')()),
             ('username', self.gf('django.db.models.fields.CharField')(max_length=128)),
-            ('ref_resource_name', self.gf('django.db.models.fields.CharField')(max_length=128)),
-            ('key', self.gf('django.db.models.fields.CharField')(max_length=128)),
+            ('ref_resource_name', self.gf('django.db.models.fields.CharField')(max_length=128, db_index=True)),
+            ('key', self.gf('django.db.models.fields.CharField')(max_length=128, db_index=True)),
             ('uri', self.gf('django.db.models.fields.TextField')()),
             ('date_time', self.gf('django.db.models.fields.DateTimeField')()),
             ('api_action', self.gf('django.db.models.fields.CharField')(max_length=10)),
@@ -124,9 +124,8 @@ class Migration(SchemaMigration):
         # Adding model 'UserProfile'
         db.create_table(u'reports_userprofile', (
             (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('user', self.gf('django.db.models.fields.related.OneToOneField')(to=orm['auth.User'], unique=True)),
+            ('user', self.gf('django.db.models.fields.related.OneToOneField')(to=orm['auth.User'], unique=True, null=True, on_delete=models.SET_NULL)),
             ('username', self.gf('django.db.models.fields.TextField')(unique=True)),
-            ('email', self.gf('django.db.models.fields.TextField')(null=True, blank=True)),
             ('phone', self.gf('django.db.models.fields.TextField')(null=True, blank=True)),
             ('mailing_address', self.gf('django.db.models.fields.TextField')(null=True, blank=True)),
             ('comments', self.gf('django.db.models.fields.TextField')(null=True, blank=True)),
@@ -136,6 +135,7 @@ class Migration(SchemaMigration):
             ('harvard_id_requested_expiration_date', self.gf('django.db.models.fields.DateField')(null=True, blank=True)),
             ('created_by_username', self.gf('django.db.models.fields.TextField')(null=True)),
             ('gender', self.gf('django.db.models.fields.CharField')(max_length=15, null=True)),
+            ('email', self.gf('django.db.models.fields.TextField')(null=True, blank=True)),
             ('json_field_type', self.gf('django.db.models.fields.CharField')(max_length=128, null=True, blank=True)),
             ('json_field', self.gf('django.db.models.fields.TextField')(blank=True)),
         ))
@@ -322,9 +322,9 @@ class Migration(SchemaMigration):
             'diffs': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'json_field': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            'key': ('django.db.models.fields.CharField', [], {'max_length': '128'}),
+            'key': ('django.db.models.fields.CharField', [], {'max_length': '128', 'db_index': 'True'}),
             'parent_log': ('django.db.models.fields.related.ForeignKey', [], {'related_name': "'child_logs'", 'null': 'True', 'to': u"orm['reports.ApiLog']"}),
-            'ref_resource_name': ('django.db.models.fields.CharField', [], {'max_length': '128'}),
+            'ref_resource_name': ('django.db.models.fields.CharField', [], {'max_length': '128', 'db_index': 'True'}),
             'removed_keys': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
             'uri': ('django.db.models.fields.TextField', [], {}),
             'user_id': ('django.db.models.fields.IntegerField', [], {}),
@@ -423,7 +423,7 @@ class Migration(SchemaMigration):
             'mailing_address': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
             'permissions': ('django.db.models.fields.related.ManyToManyField', [], {'to': u"orm['reports.Permission']", 'symmetrical': 'False'}),
             'phone': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            'user': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['auth.User']", 'unique': 'True'}),
+            'user': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['auth.User']", 'unique': 'True', 'null': 'True', 'on_delete': 'models.SET_NULL'}),
             'username': ('django.db.models.fields.TextField', [], {'unique': 'True'})
         },
         u'reports.vocabularies': {

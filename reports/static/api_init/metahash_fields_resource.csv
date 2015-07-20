@@ -1,8 +1,8 @@
 ordinal,key,scope,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,data_type,display_type,display_options,edit_type,is_restricted
-0,key,fields.resource,,TRUE,"This is a composite key, along with scope",Key,TRUE,,,[list;detail;edit],string,link,"{ ""hrefTemplate"": ""#resource/{key}"" }",,
+0,key,fields.resource,,TRUE,"This is a composite key, along with scope",Key,TRUE,,,[list;detail;edit],string,link,"{ 'hrefTemplate': '#resource/{key}' }",,
 1,scope,fields.resource,,TRUE,"This is a composite key, along with key",Scope,TRUE,,,[],string,,,,
 2,ordinal,fields.resource,,TRUE,"The sort order counts from 0, if two are equal in a set, then secondary sort is by key (alpha)",Ordinal,TRUE,,,[list;detail;edit],string,,,,
-3,title,fields.resource,,,"The title of this field",Title,TRUE,fields.CharField,,[list;detail;edit],string,link,"{ ""hrefTemplate"": ""#resource/{key}"" }",,
+3,title,fields.resource,,,"The title of this field",Title,TRUE,fields.CharField,,[list;detail;edit],string,link,"{ 'hrefTemplate': '#resource/{key}' }",,
 4,description,fields.resource,,,"Description of the resource",Description,,fields.CharField,,[list;detail;edit],string,,,,
 5,comment,fields.resource,,,"Comment on the resource",Comment,,fields.CharField,,[list;detail;edit],integer,,,,
 7,visibility,fields.resource,,,"Where the resource is visible",Visibility,,fields.ListField,resource.visibility,[list;detail;edit],list,,,multiselect,

@@ -1,8 +1,8 @@
 key,scope,resource_uri,ordinal,comment,description,title
 list,field.visibility,/reports/api/v1/vocabularies/field.visibility/list/,1,,"Allow visibility in list views","Visible in list views"
-edit,field.visibility,/reports/api/v1/vocabularies/field.visibility/edit/,2,,"Allow visibility in the edit form","Visible in edit forms"
-detail,field.visibility,/reports/api/v1/vocabularies/field.visibility/detail/,3,,"Allow visibility in detail views","Visible in detail views"
-create,field.visibility,/reports/api/v1/vocabularies/field.visibility/create/,4,,"Allow visibility in the edit form when creating.","Visible when creating"
+detail,field.visibility,/reports/api/v1/vocabularies/field.visibility/detail/,2,,"Allow visibility in detail views","Visible in detail views"
+edit,field.visibility,/reports/api/v1/vocabularies/field.visibility/edit/,3,,"Allow visibility in the edit form","Visible in edit forms"
+list_edit,field.visibility,/reports/api/v1/vocabularies/field.visibility/list_edit/,4,,"Allow visibility in the lists in edit mode","Visible in edit list view"
 list,resource.visibility,/reports/api/v1/vocabularies/resource.visibility/list/,1,,"Allow visibility in list views","Visible in list views"
 detail,resource.visibility,/reports/api/v1/vocabularies/resource.visibility/detail/,3,,"Allow visibility in detail views","Visible in detail views"
 create,resource.visibility,/reports/api/v1/vocabularies/resource.visibility/create/,4,,"Allow visibility in the edit form when creating.","Visible when creating"
@@ -13,6 +13,7 @@ datetime,field.data_type,/reports/api/v1/vocabularies/field.data_type/datetime/,
 list,field.data_type,/reports/api/v1/vocabularies/field.data_type/list/,5,,"List of strings",List
 float,field.data_type,/reports/api/v1/vocabularies/field.data_type/float/,6,,"Float field type",Float
 decimal,field.data_type,/reports/api/v1/vocabularies/field.data_type/decimal/,7,,"Decimal - float value with precision specified",Decimal
+integer,field.data_type,/reports/api/v1/vocabularies/field.data_type/integer/,8,,Integer,Integer
 link,field.display_type,/reports/api/v1/vocabularies/field.display_type/link/,1,,"Hyperlink field - see display options",link
 siunit,field.display_type,/reports/api/v1/vocabularies/field.display_type/siunit/,2,,"A numeric value that is displayed with SI units and prefix","SI Unit"
 select,field.edit_type,/reports/api/v1/vocabularies/field.edit_type/select/,1,,"Select a single value from a controlled vocabulary",Select

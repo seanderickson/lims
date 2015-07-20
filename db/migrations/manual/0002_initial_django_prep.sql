@@ -233,6 +233,9 @@ alter table screen alter column date_created SET DATA TYPE timestamp with time z
 alter table screen alter column date_loaded SET DATA TYPE timestamp with time zone; 
 alter table screen alter column date_publicly_available SET DATA TYPE timestamp with time zone;
 
+alter table screensaver_user alter column date_created SET DATA TYPE timestamp with time zone;
+alter table screensaver_user alter column date_loaded SET DATA TYPE timestamp with time zone; 
+alter table screensaver_user alter column date_publicly_available SET DATA TYPE timestamp with time zone;
 /**
   *** Add id field to screensaver_user_role ***
   Purpose: add an id to capture the natural ordering of the screensaver_user_role table; 

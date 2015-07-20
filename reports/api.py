@@ -1625,32 +1625,31 @@ class ManagedResource(LoggingMixin):
         logger.info(str(('resource_definition: %s not available, use base class method' % resource_name)))
         return super(ManagedResource,self).detail_uri_kwargs(bundle_or_obj)
 
+    
     def get_via_uri(self, uri, request=None):
-        '''
-        Override the stock method to allow lookup of relative uri's:
-        - a 'relative uri' - or 'local uri' is one that doesn't include the 
-        api name ("v1" for instance), but rather, is truncated on the left, 
-        so that "api/vi/resource_name/key1" becomes "resource_name/key1".  
-        This is useful because input file records can have a shorter 
-        "resource_uri" field.
-        '''
-        if self._meta.resource_name not in uri:
-            raise Exception(str((
-                'invalid URI', uri, 
-                'must contain at least the resource name', 
-                self._meta.resource_name)))
-        
-        if request and request.path:
-            path = request.path
-            # remove the parts after the api_name ("v1") because that part is 
-            # the resource name, calling context may not be for this resource
-            path = path[: path.find(
-                self._meta.api_name)+len(self._meta.api_name)+1] 
-            local_uri = uri
-            if path not in local_uri:
-                uri = path + local_uri
-        
-        return super(ManagedResource, self).get_via_uri(uri, request);
+        """
+        Override TP so that the resource name is optional, and is searched for 
+        from the right.
+        """
+        found_at = uri.find(self._meta.resource_name + '/')
+        if found_at == -1:
+            chomped_uri = self._meta.resource_name + '/' + uri
+        else:
+            chomped_uri = uri[found_at:]
+        try:
+            for url_resolver in getattr(self, 'urls', []):
+                result = url_resolver.resolve(chomped_uri)
+
+                if result is not None:
+                    view, args, kwargs = result
+                    break
+            else:
+                raise Resolver404("URI not found in 'self.urls'.")
+        except Resolver404:
+            raise NotFound("The URL provided '%s' was not a link to a valid resource." % uri)
+
+        bundle = self.build_bundle(request=request)
+        return self.obj_get(bundle=bundle, **self.remove_api_resource_names(kwargs))
 
     def get_local_resource_uri(
             self, bundle_or_obj=None, url_name='api_dispatch_list'):
@@ -1922,7 +1921,6 @@ class MetaHashResource(ManagedModelResource):
             return True
         
         return super(MetaHashResource, self).is_valid(bundle, request=request)
-            
 
     def hydrate(self, bundle):
         bundle = super(MetaHashResource, self).hydrate(bundle);
@@ -1941,31 +1939,7 @@ class MetaHashResource(ManagedModelResource):
         a /scope/key/ as key
         '''    
         return data['scope'] + '/' + data['key']
-    
-    def get_via_uri(self, uri, request=None):
-        """
-        Override TP so that the resource name is optional, and is searched for 
-        from the right.
-        """
-        found_at = uri.find(self._meta.resource_name + '/')
-        if found_at == -1:
-            chomped_uri = self._meta.resource_name + '/' + uri
-        else:
-            chomped_uri = uri[found_at:]
-        try:
-            for url_resolver in getattr(self, 'urls', []):
-                result = url_resolver.resolve(chomped_uri)
 
-                if result is not None:
-                    view, args, kwargs = result
-                    break
-            else:
-                raise Resolver404("URI not found in 'self.urls'.")
-        except Resolver404:
-            raise NotFound("The URL provided '%s' was not a link to a valid resource." % uri)
-
-        bundle = self.build_bundle(request=request)
-        return self.obj_get(bundle=bundle, **self.remove_api_resource_names(kwargs))
 
 class VocabulariesResource(ManagedModelResource):
     '''

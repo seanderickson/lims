@@ -693,7 +693,7 @@ define([
       });
       
       if ( !fetched ) {
-        var fetchOptions = { reset: false, error: appModel.jqXHRerror };
+        var fetchOptions = { reset: false, error: appModel.backboneFetchError };
         self.collection.fetch(fetchOptions);
       }
       

@@ -17,10 +17,10 @@
       "expanded": false,
       "view": "",
       "submenus": {
-        "librarycopies": {
+        "librarycopy": {
           "view": "list"
         },
-        "librarycopyplates": {
+        "librarycopyplate": {
           "view": "list"
         },
         "copywell": {

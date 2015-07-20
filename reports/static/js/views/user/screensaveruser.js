@@ -199,7 +199,7 @@ define([
                 Backbone.sync("patch",changedCollection,
                   {
                     error: function(){
-                      appModel.jqXHRerror.apply(this,arguments);
+                      appModel.jqXHRError.apply(this,arguments);
                       console.log('error, refetch', arguments);
                       collection.fetch();
                     },

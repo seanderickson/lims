@@ -106,7 +106,7 @@ define([
           // TODO: done replaces success as of jq 1.8
           console.log('done');
         },
-        error: appModel.jqXHRFail
+        error: appModel.jqXHRError
       });
     },
 

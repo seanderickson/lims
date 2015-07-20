@@ -66,7 +66,7 @@ define([
     },
 
     initialize : function() {
-      _.bindAll(this,'jqXHRerror', 'jqXHRFail', 'error');
+      _.bindAll(this,'backboneFetchError', 'jqXHRError', 'error');
     },
         
     start: function(callBack) {
@@ -382,7 +382,7 @@ define([
               self.error('error displaying model: ' + model + ', '+ e);
             }
           },
-          error: this.jqXHRerror
+          error: this.backboneFetchError
 
       });
     },
@@ -523,41 +523,39 @@ define([
             
             callback(ui_resource)
           },
-          error: this.jqXHRerror
+          error: this.backboneFetchError
       });      
       
     },
     
     /**
-     * FIXME: a jquery ajax error function should handle the args:
-     * Type: Function( jqXHR jqXHR, String textStatus, String errorThrown )
+     * Backbone model fetch error handler
      */
-    jqXHRerror: function(jqXHR, textStatus, errorThrown ) {
-      this.jqXHRFail(jqXHR,textStatus,errorThrown);
-//      //console.log('error fetching the model: '+ model + ', response:
-//      // ' + JSON.stringify(response));
-//      var url = options.url || model.url || '';
-//      var msg = 'Error locating resource: ' + url;
-//      this.error(msg);
-//      
-//      var sep = '\n';
-//      if (!_.isUndefined(response.status))
-//          msg += sep + response.status;
-//      if (!_.isUndefined(response.statusText))
-//          msg += sep + response.statusText;
-//      if (!_.isEmpty(response.responseText))
-//          msg += sep + response.responseText;
-//      
-//      if(DEBUG) window.alert(msg);
-//      else console.log(msg);
-//      // TODO: use Bootstrap inscreen alert classed message div
+    backboneFetchError: function(modelOrCollection, response, options) {
+      //console.log('error fetching the modelOrCollection: '+ modelOrCollection + ', response:
+      // ' + JSON.stringify(response));
+      var url = options.url || modelOrCollection.url || '';
+      var msg = 'Error locating resource: ' + url;
+      this.error(msg);
+      
+      var sep = '\n';
+      if (!_.isUndefined(response.status))
+          msg += sep + response.status;
+      if (!_.isUndefined(response.statusText))
+          msg += sep + response.statusText;
+      if (!_.isEmpty(response.responseText))
+          msg += sep + response.responseText;
+      
+      if(DEBUG) window.alert(msg);
+      
+      console.log(msg);
     },
     
     /**
      * TODO: a jquery ajax error function should handle the args:
      * Type: Function( jqXHR jqXHR, String textStatus, String errorThrown )
      */
-    jqXHRFail: function(xhr, text, message){
+    jqXHRError: function(xhr, text, message){
       var self = this;
       
       var msg = message;

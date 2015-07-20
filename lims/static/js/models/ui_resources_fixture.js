@@ -180,11 +180,11 @@
         "rpp": 24,
         "order": []  }
     },
-    "librarycopyplates": {
+    "librarycopyplate": {
       "options": { 
         "order": []  }
     },
-    "librarycopies": {
+    "librarycopy": {
       "options": { 
         "order": []  }
     },

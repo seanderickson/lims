@@ -523,7 +523,7 @@ define([
       .error(function(model,response,options){
         // TODO: investigate: wait:true does not work if the model was already updated
         self.model.set(self.model.previousAttributes());
-        appModel.jqXHRFail(model,response,options);
+        appModel.backboneFetchError(model,response,options);
       })
       .always(function() {
         // always replaces complete as of jquery 1.8

@@ -167,6 +167,15 @@ define([
       
     },
     
+    /**
+     * Create a vocabulary hash, from the server:
+     * { 
+     *    v.scope: { 
+     *      v.key : { scope: , key: , title: , ordinal: }
+     *    },
+     *    v.scope1: {},
+     *    etc.,...
+     */
     getVocabularies: function(callBack){
       console.log('getVocabularies from the server...');
       var self = this;
@@ -223,13 +232,36 @@ define([
       });
       self.set('permissionOptions',permissionOptions);
     },
-    
+
+    /**
+     * return the set of vocabulary items for a scope:
+     *    v.scope: { 
+     *      v.key1 : { scope: , key: , title: , ordinal: },
+     *      v.key2 : {},
+     *      etc.,...
+     *    },
+     * @param scope - scope to search for
+     * - "scope" can also be a regex, and will be matched to all scopes using
+     * String.prototype.match(candidateScope,scope)
+     */
     getVocabulary: function(scope){
       if(!this.has('vocabularies')){
         throw "Vocabularies aren't initialized";
       }
       var vocabularies = this.get('vocabularies');
       if(!_.has(vocabularies, scope)) {
+        // test for regex match/matches
+          var matchedVocabularies = {};
+          _.each(_.keys(vocabularies), function(candidateScope){
+            if(candidateScope.match(scope)){
+              console.log('matching: ' + scope + ', to: ' + candidateScope );
+              _.extend(matchedVocabularies,vocabularies[candidateScope]);
+            }
+          });
+          if(!_.isEmpty(matchedVocabularies)){
+            console.log('matchedVocabularies', scope, matchedVocabularies );
+            return matchedVocabularies;
+          }
           throw "Unknown vocabulary: " + scope;
       }
       return vocabularies[scope];
@@ -496,26 +528,35 @@ define([
       
     },
     
-    jqXHRerror: function(model, response, options) {
-      //console.log('error fetching the model: '+ model + ', response:
-      // ' + JSON.stringify(response));
-      var url = options.url || model.url || '';
-      var msg = 'Error locating resource: ' + url;
-      this.error(msg);
-      
-      var sep = '\n';
-      if (!_.isUndefined(response.status))
-          msg += sep + response.status;
-      if (!_.isUndefined(response.statusText))
-          msg += sep + response.statusText;
-      if (!_.isEmpty(response.responseText))
-          msg += sep + response.responseText;
-      
-      if(DEBUG) window.alert(msg);
-      else console.log(msg);
-      // TODO: use Bootstrap inscreen alert classed message div
+    /**
+     * FIXME: a jquery ajax error function should handle the args:
+     * Type: Function( jqXHR jqXHR, String textStatus, String errorThrown )
+     */
+    jqXHRerror: function(jqXHR, textStatus, errorThrown ) {
+      this.jqXHRFail(jqXHR,textStatus,errorThrown);
+//      //console.log('error fetching the model: '+ model + ', response:
+//      // ' + JSON.stringify(response));
+//      var url = options.url || model.url || '';
+//      var msg = 'Error locating resource: ' + url;
+//      this.error(msg);
+//      
+//      var sep = '\n';
+//      if (!_.isUndefined(response.status))
+//          msg += sep + response.status;
+//      if (!_.isUndefined(response.statusText))
+//          msg += sep + response.statusText;
+//      if (!_.isEmpty(response.responseText))
+//          msg += sep + response.responseText;
+//      
+//      if(DEBUG) window.alert(msg);
+//      else console.log(msg);
+//      // TODO: use Bootstrap inscreen alert classed message div
     },
     
+    /**
+     * TODO: a jquery ajax error function should handle the args:
+     * Type: Function( jqXHR jqXHR, String textStatus, String errorThrown )
+     */
     jqXHRFail: function(xhr, text, message){
       var self = this;
       
@@ -845,6 +886,10 @@ define([
       var self = this;
       var callbackOk = (options && options.ok)? options.ok : function(){};
       var callbackCancel = (options && options.cancel)? options.cancel: function(){};
+      var okText = (options && options.okText)? options.okText : 'Continue';
+      var cancelText = (options && options.cancelText)? 
+        options.cancelText : 'Cancel and return to page';
+      
           
       var modalDialog = new Backbone.View({
           el: _.template(modalOkCancelTemplate, { 
@@ -861,7 +906,9 @@ define([
                   console.log('ok button click event, '); 
                   event.preventDefault();
                   self.clearPagePending();
-                  callbackOk(event);
+                  if(callbackOk(event)===false){
+                    return;
+                  }
                   $('#modal').modal('hide');
               }
           },
@@ -870,8 +917,8 @@ define([
       if(!_.isUndefined(options.view)){
         modalDialog.$el.find('.modal-body').append(options.view);
       }
-      modalDialog.$el.find('#modal-cancel').html('Cancel and return to page');
-      modalDialog.$el.find('#modal-ok').html('Continue');
+      modalDialog.$el.find('#modal-cancel').html(cancelText);
+      modalDialog.$el.find('#modal-ok').html(okText);
       $('#modal').empty();
       $('#modal').html(modalDialog.$el);
       $('#modal').modal({show:true, backdrop: 'static'});

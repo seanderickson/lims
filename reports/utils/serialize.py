@@ -30,7 +30,6 @@ def from_csv_iterate(iterable, list_delimiter=';', list_keys=None):
             item = dict(zip(keys,row))
             for key in item.keys():
                 val = item[key]
-#                 logger.info(str(('val', key, val)))
                 if val and len(val)> 1:
                     if val[0] == '\\' and val[1] == '[':
                         # this could denote an escaped bracket, i.e. for a regex
@@ -40,7 +39,6 @@ def from_csv_iterate(iterable, list_delimiter=';', list_keys=None):
                         # quoted string is a nested list
                         list_keys.append(key)
                         item[key] = [x.strip() for x in val.strip('"[]').split(list_delimiter)]
-#                         logger.info(str(('item[key]',item[key], type(item[key]))))
             data_result.append(item)
         i += 1
     logger.debug('read in data, count: ' + str(len(data_result)) )   

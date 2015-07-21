@@ -31,8 +31,7 @@ logger = logging.getLogger(__name__)
 
 class CsvBooleanField(fields.ApiField):
     """
-    Because csv is not json, have to do some fudging with booleans;
-    basically, for strings, case insensitive "true" is True, 
+    Interpret case insensitive "true" as True, 
     all other values are False.
     Non-strings are interpreted as usual, using bool(val).
     """
@@ -69,31 +68,10 @@ class BackboneSerializer(Serializer):
     
     def from_json(self, content):
         """
-        Given some JSON data, returns a Python dictionary of the decoded data.
-        Override to quote attributes - the client is failing to.
+        Override to quote attributes from the client.
         """
-        if(logger.isEnabledFor(logging.DEBUG)):
-            logger.debug(str(("loading content:", content)))
         content = content.replace(r'(\w+):', r'"\1" :')
-        if(logger.isEnabledFor(logging.DEBUG)):
-            logger.debug(str(("loading content:", content)))
         return json.loads(content)
-
-
-# NOTE: removed this class as this is the stock behavior in newer tastypie
-# class TimeZoneAwareDateSerializer(Serializer):
-#     """
-#     Tastypie converts all datetimes to timezone-naive (UTC); this serializer 
-#     uses the full ISO 8601 format if the value isn't already naive.
-#     Note: even when the date is stripped of timezone information (tz naive), 
-#     when it is formatted for ISO 8601, it becomes a UTC time: as in:
-#     2010-12-16T00:00:00
-#     """
-#     def format_datetime(self, data): 
-#         if is_naive(data) or self.datetime_formatting == 'rfc-2822':
-#             return super(TimeZoneAwareDateSerializer, self).format_datetime(data)
-#  
-#         return data.isoformat()
 
 
 class PrettyJSONSerializer(Serializer):
@@ -127,7 +105,6 @@ class SDFSerializer(Serializer):
         super(SDFSerializer,self).__init__(
             formats=formats, 
             content_types=content_types,**kwargs);
-
         
     def to_sdf(self, data, options=None):
         
@@ -137,7 +114,6 @@ class SDFSerializer(Serializer):
         data = self.to_simple(data, options)
         output = cStringIO.StringIO()
 
-        # TODO: smarter way to ignore 'objects'
         if 'objects' in data:
             data = data['objects']
         if len(data) == 0:
@@ -201,64 +177,6 @@ class SDFSerializer(Serializer):
         else:
             return objects
 
-# class SmilesPNGSerializer(Serializer):
-#     
-#     def __init__(self, content_types=None, formats=None, **kwargs):
-# 
-#         if not content_types:
-#             content_types = Serializer.content_types.copy();
-#         content_types['png'] = 'image/png'
-#         
-#         if not formats:
-#             _formats = Serializer.formats # or []
-#             _formats = copy.copy(_formats)
-#             formats = _formats
-#         formats.append('png')
-#             
-#         super(SmilesPNGSerializer,self).__init__(
-#             formats=formats, 
-#             content_types=content_types,**kwargs);
-# 
-#         
-#     def to_png(self, data, options=None):
-#         import rdkit.Chem
-#         import rdkit.Chem.AllChem
-#         import rdkit.Chem.Draw
-# #         import matplotlib
-# 
-# 
-#         m = rdkit.Chem.MolFromSmiles('Cc1ccccc1')
-#         rdkit.Chem.AllChem.Compute2DCoords(m)
-#         im = rdkit.Chem.Draw.MolToImage(m)
-#         return im
-# #         matplotlib.pyplot.imshow(im)
-#         
-# #         response = HttpResponse(mimetype="image/png")
-# #         img.save(response, "PNG")
-# #         return response
-
-# class MultiPartDeserializer(Serializer):
-#      
-#     def __init__(self, content_types=None, formats=None, **kwargs):
-#         
-#         if not content_types:
-#             content_types = Serializer.content_types.copy();
-#         content_types['multipart_form_data'] = 'multipart/form-data'
-#         
-#         if not formats:
-#             _formats = Serializer.formats # or []
-#             _formats = copy.copy(_formats)
-#             formats = _formats
-#         formats.append('multipart_form_data')
-#             
-#         super(MultiPartDeserializer,self).__init__(
-#             formats=formats, 
-#             content_types=content_types,**kwargs);
-# 
-#     def from_multipart_form_data(self, content, **kwargs):
-# 
-#         logger.info(str(('content', content)))
-
 def csv_convert(val, delimiter=LIST_DELIMITER_CSV, list_brackets='[]'):
     if isinstance(val, (list,tuple)):
         if list_brackets:
@@ -277,9 +195,6 @@ def csv_convert(val, delimiter=LIST_DELIMITER_CSV, list_brackets='[]'):
             return smart_str(val)
     else:
         return None
-
-
-    
 
 class XLSSerializer(Serializer):
     
@@ -780,7 +695,6 @@ class CursorSerializer(Serializer):
 
         logger.info('done, wrote: %d' % i)
 
-
 class LimsSerializer(PrettyJSONSerializer, BackboneSerializer,CSVSerializer, 
                         SDFSerializer, XLSSerializer):
     ''' 
@@ -795,9 +709,44 @@ class LimsSerializer(PrettyJSONSerializer, BackboneSerializer,CSVSerializer,
                 for line in resp.streaming_content:
                     buffer.write(line)
                 resp.cached_content = buffer.getvalue()
-#                 logger.info((('streamed content:', resp.cached_content)))
             return resp.cached_content
         else:
             return resp.content
+
+# class SmilesPNGSerializer(Serializer):
+#     
+#     def __init__(self, content_types=None, formats=None, **kwargs):
+# 
+#         if not content_types:
+#             content_types = Serializer.content_types.copy();
+#         content_types['png'] = 'image/png'
+#         
+#         if not formats:
+#             _formats = Serializer.formats # or []
+#             _formats = copy.copy(_formats)
+#             formats = _formats
+#         formats.append('png')
+#             
+#         super(SmilesPNGSerializer,self).__init__(
+#             formats=formats, 
+#             content_types=content_types,**kwargs);
+# 
+#         
+#     def to_png(self, data, options=None):
+#         import rdkit.Chem
+#         import rdkit.Chem.AllChem
+#         import rdkit.Chem.Draw
+# #         import matplotlib
+# 
+# 
+#         m = rdkit.Chem.MolFromSmiles('Cc1ccccc1')
+#         rdkit.Chem.AllChem.Compute2DCoords(m)
+#         im = rdkit.Chem.Draw.MolToImage(m)
+#         return im
+# #         matplotlib.pyplot.imshow(im)
+#         
+# #         response = HttpResponse(mimetype="image/png")
+# #         img.save(response, "PNG")
+# #         return response
 
 

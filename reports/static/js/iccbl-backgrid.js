@@ -3884,6 +3884,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     'siunit': Iccbl.SciUnitsCell,
     'float': 'Number',
     'decimal': Iccbl.DecimalCell,
+    'image': Iccbl.ImageCell
   }
   
   if(_.has(typeMap,display_type)){

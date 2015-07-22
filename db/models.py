@@ -90,8 +90,10 @@ class CopyUpdateActivity(models.Model):
 class LabActivity(models.Model):
     screen = models.ForeignKey('Screen')
     activity = models.ForeignKey(Activity, primary_key=True)
-    volume_transferred_per_well_from_library_plates = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
-    molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
+    volume_transferred_per_well_from_library_plates = models.DecimalField(
+        null=True, max_digits=10, decimal_places=9, blank=True)
+    molar_concentration = models.DecimalField(
+        null=True, max_digits=13, decimal_places=12, blank=True)
     class Meta:
         db_table = 'lab_activity'
 
@@ -1103,7 +1105,8 @@ class Plate(models.Model):
     plate_type = models.TextField(blank=True)
     plate_number = models.IntegerField()
     
-    well_volume = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
+    well_volume = models.DecimalField(
+        null=True, max_digits=10, decimal_places=9, blank=True)
 #     well_volume = models.FloatField(null=True, blank=True)
 
     # TODO: decide how to handle library screening plates:

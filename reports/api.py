@@ -61,7 +61,7 @@ from reports.models import API_ACTION_CREATE
 from reports.models import MetaHash, Vocabularies, ApiLog, ListLog, Permission, \
                            UserGroup, UserProfile, Record, API_ACTION_DELETE
 from reports.serializers import LimsSerializer, CsvBooleanField, CSVSerializer
-from reports.sqlalchemy_resource import SqlAlchemyResource
+from reports.sqlalchemy_resource import SqlAlchemyResource, un_cache
 from reports.utils.profile_decorator import profile
 
 
@@ -996,7 +996,6 @@ class ManagedResource(LoggingMixin):
             scope=self.scope, 
             field_definition_scope=field_definition_scope)
         for key,fieldhash in metahash.items():
-            #             if 'filtering' in fieldhash and fieldhash['filtering']:
             self.Meta.filtering[key] = ALL_WITH_RELATIONS
         
         for key,fieldhash in metahash.items():
@@ -1035,14 +1034,8 @@ class ManagedResource(LoggingMixin):
     def clear_cache(self):
         
         # provisional 20140825
-        logger.info('clear cache')
+        logger.debug('clear cache')
         cache.delete(self._meta.resource_name + ':schema')
-        
-#         try:
-#             super(ManagedResource,self).clear_cache()
-#         except Exception,e:
-#             logger.warn(str(('try to clear cache', e)))
-
         self.field_alias_map = {}
         
     # local method    
@@ -1182,14 +1175,15 @@ class ManagedResource(LoggingMixin):
         '''
         Override
         '''
-        DEBUG_BUILD_SCHEMA = False #logger.isEnabledFor(logging.DEBUG)
+        DEBUG_BUILD_SCHEMA = False or logger.isEnabledFor(logging.DEBUG)
         # FIXME: consider using the cache decorator or a custom memoize decorator?
         schema = cache.get(self._meta.resource_name + ":schema")
         if schema:
             logger.debug(str(('====cached schema:', self._meta.resource_name)))
             return schema
         
-        logger.info('------build_schema: ' + self.scope)
+        if DEBUG_BUILD_SCHEMA:
+            logger.info('------build_schema: ' + self.scope)
         schema = {}
         
         try:
@@ -1622,7 +1616,9 @@ class ManagedResource(LoggingMixin):
         # Fall back to base class implementation 
         # (using the declared primary key only, for ModelResource)
         # This is useful in order to bootstrap the ResourceResource
-        logger.info(str(('resource_definition: %s not available, use base class method' % resource_name)))
+        logger.debug(str((
+            'resource_definition: %s not available, use base class method' 
+            % resource_name)))
         return super(ManagedResource,self).detail_uri_kwargs(bundle_or_obj)
 
     
@@ -1865,16 +1861,17 @@ class ManagedModelResource(FilterModelResourceMixin,
 class MetaHashResource(ManagedModelResource):
     '''
     This table serves as a relatively low volume triple/quad store;
-    - values can be defined in configuration data for the text-based, software-implemented
+    Predefined fields:
+    - key field
+    - scope: secondary key, for quad store usage patterns
+    - ordinal: record ordering
+    - json_field: stores serialized json objects
+    - json_field_type: specifies a field type stored in the serialized json_field 
     json_value storage field:
       - these values are defined by "virtual" fields in the quad store, keyed by
         a "field.tablename" scope.
       - must define a json_field_type for any "virtual" field stored in the 
         json_value field.
-    - key field
-    - scope field; secondary key, for quad store usage patterns (table based)
-    
-    The fields of this class are determined by the ManagedResource mixin.
     '''
     
     class Meta:
@@ -1898,10 +1895,9 @@ class MetaHashResource(ManagedModelResource):
     
     def obj_create(self, bundle, **kwargs):
         '''
-        Override - because the metahash resource is both a resource and the 
-        definer of json fields, reset_field_defs after each create/update, 
-        in case, new json fields are defined,or in case ordering,filtering 
-        groups are updated
+        Reset the field_defs after each create/update:
+        - find new json as they are defined, 
+        - update ordering,filtering groups
         '''
         bundle = super(MetaHashResource, self).obj_create(bundle, **kwargs);
         if getattr(bundle.obj,'scope').find('fields') == 0: #'fields.metahash':
@@ -2375,26 +2371,6 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
             parts.extend(id_kwarg_ordered.values())
         return '/'.join(parts)
         
-    def dehydrate_child_logs(self, bundle):
-        
-        if bundle.obj.child_logs.exists():
-            return len(bundle.obj.child_logs.all())
-        return None
-        
-    def dehydrate_parent_log_uri(self, bundle):
-        parent_log = bundle.obj.parent_log
-        if parent_log:
-            id_kwarg_ordered = self.detail_uri_kwargs(parent_log)
-            return '/'.join(id_kwarg_ordered.values())
-        return None
-    
-    def dispatch_detail1(self, request, **kwargs):
-        return ApiLogResource().dispatch('detail', request, **kwargs)    
-
-    def dispatch_detail2(self, request, **kwargs):
-        return ApiLogResource().dispatch('detail', request, **kwargs)    
-
-
     def dispatch_apilog_childview(self, request, **kwargs):
         kwargs['parent_log_id'] = kwargs.pop('id')
         return ApiLogResource().dispatch('list', request, **kwargs)    
@@ -2414,8 +2390,6 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
 
 class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
     '''
-    This class exists to make sure that the cache clearing is called on the 
-    SqlAlchemyResource
     '''
     # FIXME: put this here temporarily until class hierarchy is refactored
     def log_patches(self,request, original_data, new_data, **kwargs):
@@ -2511,33 +2485,8 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
             log.diff_keys = json.dumps(deleted_dict.keys())
             log.diffs = json.dumps(deleted_dict)
             log.save()
-#             if(logger.isEnabledFor(logging.DEBUG)):
             logger.info(str(('delete, api log', log)) )
             
-    def patch_list(self, request, **kwargs):
-        SqlAlchemyResource.clear_cache(self)
-        return super(ManagedSqlAlchemyResourceMixin,self).patch_list(request,**kwargs)
-
-    def patch_detail(self, request, **kwargs):
-        SqlAlchemyResource.clear_cache(self)
-        return super(ManagedSqlAlchemyResourceMixin,self).patch_detail(request,**kwargs)
-
-    def post_list(self, request, **kwargs):
-        SqlAlchemyResource.clear_cache(self)
-        return super(ManagedSqlAlchemyResourceMixin,self).post_list(request,**kwargs)
-    
-    def obj_delete(self, bundle, **kwargs):
-        SqlAlchemyResource.clear_cache(self)
-        return super(ManagedSqlAlchemyResourceMixin, self).obj_delete(bundle, **kwargs);
-    
-    def obj_update(self, bundle, skip_errors=False, **kwargs):
-        SqlAlchemyResource.clear_cache(self)
-        return super(ManagedSqlAlchemyResourceMixin, self).obj_update(bundle, **kwargs);
-        
-    def obj_create(self, bundle, **kwargs):
-        SqlAlchemyResource.clear_cache(self)
-        return super(ManagedSqlAlchemyResourceMixin, self).obj_create(bundle, **kwargs);
-
 
 class UserResource(ManagedSqlAlchemyResourceMixin):
 
@@ -2846,6 +2795,8 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         return username
 
     # reworked 20150706   
+    @un_cache        
+    @transaction.atomic()
     def put_list(self,request, **kwargs):
         # TODO: refactor
         self._meta.authorization._is_resource_authorized(
@@ -2900,7 +2851,9 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             response = self.get_list(request, **kwargs)             
             response.status_code = 202
             return response
-        
+
+    @un_cache        
+    @transaction.atomic()
     def patch_list(self, request, **kwargs):
         # TODO: refactor
         self._meta.authorization._is_resource_authorized(
@@ -2949,7 +2902,9 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             response = self.get_list(request, **kwargs)             
             response.status_code = 202
             return response
-                
+
+    @un_cache        
+    @transaction.atomic()
     def patch_detail(self, request, **kwargs):
         # TODO: refactor
         self._meta.authorization._is_resource_authorized(
@@ -2958,7 +2913,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         deserialized = self._meta.serializer.deserialize(
             request.body, 
             format=request.META.get('CONTENT_TYPE', 'application/json'))
-        
+
         # cache state, for logging
 #         username = self.find_username(deserialized, **kwargs)
         response = self.get_list(
@@ -2997,6 +2952,8 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             response.status_code = 202
             return response
 
+    @un_cache        
+    @transaction.atomic()
     def put_detail(self, request, **kwargs):
         # TODO: refactor
         self._meta.authorization._is_resource_authorized(
@@ -3020,7 +2977,6 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         
     @transaction.atomic()    
     def put_obj(self,deserialized, **kwargs):
-        self.clear_cache()
         
         try:
             self.delete_obj(deserialized, **kwargs)
@@ -3045,7 +3001,6 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
     
     @transaction.atomic()    
     def delete_obj(self, deserialized, **kwargs):
-        self.clear_cache()
         username = self.find_username(deserialized,**kwargs)
         UserProfile.objects.get(username=username).delete()
     
@@ -3054,8 +3009,6 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
 
         logger.info(str(('patch obj', deserialized,kwargs)))
         
-        self.clear_cache()
-
         username = self.find_username(deserialized,**kwargs)
         
         schema = self.build_schema()
@@ -3085,7 +3038,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
                 if hasattr(user,key):
                     setattr(user,key,val)
             user.save()
-
+            logger.info(str(('== created/updated auth user', user, user.username)))
             # create the reports userprofile
             
             initializer_dict = {}
@@ -3103,6 +3056,8 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
                 userprofile = UserProfile.objects.create(username=username)
                 userprofile.save()
             
+            userprofile.user = user
+
             logger.info(str(('initializer dict', initializer_dict)))
             for key,val in initializer_dict.items():
                 logger.info(str(('set',key,val,hasattr(userprofile, key))))
@@ -3123,6 +3078,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
                             # TODO: should be created through the permission resource
                             permission = Permission.objects.create(**permission_key)
                             permission.save()
+                            logger.info(str(('created permission', permission)))
                             userprofile.permissions.add(permission)
                             userprofile.save()
                 elif key == 'usergroups':
@@ -3135,7 +3091,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
                             usergroup = UserGroup.objects.get(**usergroup_key)
                             usergroup.users.add(userprofile)
                             usergroup.save()
-                            logger.info(str(('added user to usergroup', userprofile, usergroup)))
+                            logger.info(str(('added user to usergroup', userprofile,userprofile.user, usergroup)))
                         except ObjectDoesNotExist, e:
                             logger.info(str(('no such usergroup', g, 
                                 usergroup_key, initializer_dict)))
@@ -3145,8 +3101,8 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             
             # also set
             userprofile.email = user.email
-            userprofile.user = user
             userprofile.save()
+            logger.info(str(('== created/updated userprofile', user, user.username)))
             return userprofile
             
         except Exception, e:
@@ -3250,6 +3206,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
         return name
     
     # reworked 20150706   
+    @un_cache        
     def put_list(self,request, **kwargs):
 
         # TODO: refactor
@@ -3306,6 +3263,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
             response.status_code = 202
             return response
         
+    @un_cache        
     def patch_list(self, request, **kwargs):
 
         # TODO: refactor
@@ -3355,7 +3313,8 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
             response = self.get_list(request, **kwargs)             
             response.status_code = 202
             return response
-                
+
+    @un_cache        
     def patch_detail(self, request, **kwargs):
         
         # TODO: refactor
@@ -3404,6 +3363,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
             response.status_code = 202
             return response
 
+    @un_cache        
     def put_detail(self, request, **kwargs):
         # TODO: refactor
         self._meta.authorization._is_resource_authorized(
@@ -3427,7 +3387,6 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
         
     @transaction.atomic()    
     def put_obj(self,deserialized, **kwargs):
-        self.clear_cache()
         
         try:
             self.delete_obj(deserialized, **kwargs)
@@ -3452,13 +3411,11 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
     
     @transaction.atomic()    
     def delete_obj(self, deserialized, **kwargs):
-        self.clear_cache()
         name = self.find_name(deserialized,**kwargs)
         UserGroup.objects.get(name=name).delete()
     
     @transaction.atomic()    
     def patch_obj(self,deserialized, **kwargs):
-        self.clear_cache()
 
         name = self.find_name(deserialized,**kwargs)
         
@@ -3498,7 +3455,6 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
                             pr.find_key_from_resource_uri(p))
                         try:
                             permission = Permission.objects.get(**permission_key)
-                            usergroup.permissions.add(permission)
                         except ObjectDoesNotExist, e:
                             logger.warn(str(('no such permission', p, 
                                 permission_key, initializer_dict)))
@@ -3506,8 +3462,9 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
                             # TODO: should be created through the permission resource
                             permission = Permission.objects.create(**permission_key)
                             permission.save()
-                            usergroup.permissions.add(permission)
-                            usergroup.save()
+                        usergroup.permissions.add(permission)
+                        usergroup.save()
+                        logger.info(str(('added permission to group', permission,usergroup)))
                 elif key == 'users':
                     usergroup.users.clear()
                     ur = self.get_user_resource()
@@ -3516,6 +3473,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
                         try:
                             user = UserProfile.objects.get(**user_key)
                             usergroup.users.add(user)
+                            logger.info(str(('added user to group', user, usergroup)))
                         except ObjectDoesNotExist, e:
                             logger.info(str(('no such user', u, 
                                 user_key, initializer_dict)))
@@ -3527,6 +3485,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
                         try:
                             supergroup = UserGroup.objects.get(**ug_key)
                             usergroup.super_groups.add(supergroup)
+                            logger.info(str(('added usergroup',supergroup,'to usergroup',usergroup)))
                         except ObjectDoesNotExist, e:
                             logger.warn(str(('no such usergroup',ug_key,initializer_dict)))
                             raise e
@@ -3538,6 +3497,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
                             subgroup = UserGroup.objects.get(**ug_key)
                             subgroup.super_groups.add(usergroup)
                             subgroup.save()
+                            logger.info(str(('added subgroup to group', subgroup, usergroup)))
                         except ObjectDoesNotExist, e:
                             logger.warn(str(('no such usergroup',ug_key,initializer_dict)))
                             raise e

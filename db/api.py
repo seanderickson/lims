@@ -77,7 +77,7 @@ from reports.api import ManagedModelResource, ManagedResource, ApiLogResource, \
     UserGroupResource
 from reports.models import MetaHash, Vocabularies, ApiLog, UserProfile
 from reports.serializers import CursorSerializer, LimsSerializer, XLSSerializer
-from reports.sqlalchemy_resource import SqlAlchemyResource
+from reports.sqlalchemy_resource import SqlAlchemyResource, un_cache
 from reports.utils.sqlalchemy_bridge import Bridge
 
 PLATE_NUMBER_SQL_FORMAT = 'FM9900000'
@@ -3601,6 +3601,8 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
 
 
     # reworked 20150706   
+    @un_cache        
+    @transaction.atomic()
     def put_list(self,request, **kwargs):
 
         deserialized = self._meta.serializer.deserialize(
@@ -3644,6 +3646,8 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
             response.status_code = 202
             return response
         
+    @un_cache        
+    @transaction.atomic()
     def patch_list(self, request, **kwargs):
 
         deserialized = self._meta.serializer.deserialize(
@@ -3692,6 +3696,8 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
             response.status_code = 202
             return response
                 
+    @un_cache        
+    @transaction.atomic()
     def patch_detail(self, request, **kwargs):
 
         deserialized = self._meta.serializer.deserialize(
@@ -3736,6 +3742,8 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
             response.status_code = 202
             return response
 
+    @un_cache        
+    @transaction.atomic()
     def put_detail(self, request, **kwargs):
                 
         deserialized = self._meta.serializer.deserialize(
@@ -3769,6 +3777,8 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
         
         return self.patch_obj(deserialized, **kwargs)
     
+    @un_cache        
+    @transaction.atomic()
     def delete_detail(self,deserialized, **kwargs):
         deserialized = self._meta.serializer.deserialize(
             request.body, 

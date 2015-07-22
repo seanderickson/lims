@@ -5,6 +5,7 @@ import logging
 import os.path
 import sys
 import urllib
+from functools import wraps
 
 from django.core.cache import cache
 import django.db.models.constants
@@ -34,6 +35,23 @@ from reports.utils.streaming_serializers import sdf_generator, json_generator, \
 
 logger = logging.getLogger(__name__)
 
+def un_cache(_func):
+    '''
+    Wrapper function to disable caching for 
+    SQLAlchemyResource.stream_response_from_statement
+    ''' 
+    @wraps(_func)
+    def _inner(self, *args, **kwargs):
+        logger.warn(str(('decorator un_cache', self, kwargs )))
+        SqlAlchemyResource.clear_cache(self)
+        SqlAlchemyResource.set_caching(self,False)
+        result = _func(self, *args, **kwargs)
+        SqlAlchemyResource.set_caching(self,True)
+        logger.warn(str(('decorator un_cache done', kwargs )))
+        return result
+
+    return _inner
+
 
 class SqlAlchemyResource(Resource):
     '''
@@ -56,7 +74,12 @@ class SqlAlchemyResource(Resource):
         # connection handle
         self.bridge = SqlAlchemyResource.bridge
         
+        self.use_cache = True
+        
         super(SqlAlchemyResource, self).__init__(*args, **kwargs)
+    
+    def set_caching(self,use_cache):
+        self.use_cache = use_cache
 
     @classmethod
     def wrap_statement(cls, stmt, order_clauses, filter_expression):
@@ -747,7 +770,7 @@ class SqlAlchemyResource(Resource):
         result = None
         if desired_format == 'application/json':
             logger.info(str(('streaming json')))
-            if not is_for_detail and use_caching and limit > 0:
+            if not is_for_detail and use_caching and self.use_cache and limit > 0:
                 cache_hit = self._cached_resultproxy(
                     stmt, count_stmt, param_hash, limit, offset)
                 if cache_hit:

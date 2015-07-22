@@ -64,8 +64,9 @@ def put(input_file, obj_url,headers, session=None, authentication=None):
                     obj_url, headers=headers, data=f.read(),verify=False)
             elif authentication:
                 r = requests.put(
-                    obj_url, auth=authentication, headers=headers, data=f.read(),verify=False)
-            if(r.status_code != 200):
+                    obj_url, auth=authentication, 
+                    headers=headers, data=f.read(),verify=False)
+            if not r.status_code in [200,201,202]:
                 raise ApiError(obj_url,'PUT',r)
             print ('PUT: ' , input_file, 'to ', obj_url,' ,response:', 
                    r.status_code, ', count: ',len(r.json()['objects']))
@@ -169,7 +170,8 @@ if __name__ == "__main__":
         args.username, password, base_url)
     # django session based auth requires a csrf token
     headers['X-CSRFToken'] = session.cookies['csrftoken']
-    
+    # always accept json for debugging the returned values
+    headers['Accept'] = 'application/json'
     
     with open(args.input_actions_file) as input_file:
         api_init_actions = reports.utils.serialize.from_csv(input_file)

@@ -452,7 +452,10 @@ class UserProfile(models.Model):
     json_field = models.TextField(blank=True) 
 
     def __unicode__(self):
-        return unicode(str((self.ecommons_id, self.username, self.user.first_name, self.user.last_name)))
+        return unicode(str((
+            self.ecommons_id, 
+            self.username, 
+            str(self.user))))
 
     def get_field_hash(self):
         if self.json_field:

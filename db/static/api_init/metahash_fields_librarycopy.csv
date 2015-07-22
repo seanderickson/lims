@@ -1,4 +1,4 @@
-key,scope,resource_uri,table,field,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,data_type,display_type,display_options,editor_type,is_restricted,nested_resource
+key,scope,resource_uri,table,field,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,data_type,display_type,display_options,edit_type,is_restricted,nested_resource
 library_short_name,fields.librarycopy,/reports/api/v1/metahash/fields.librarycopy/library_short_name/,library,short_name,0,,TRUE,"The library short name",Library,TRUE,,,[list;detail],string,link,"{ 'hrefTemplate': '#library/{library_short_name}' }",,,
 name,fields.librarycopy,/reports/api/v1/metahash/fields.librarycopy/name/,,,1,,TRUE,"Copy name",Copy,TRUE,,,[list;detail],string,link,"{ 'hrefTemplate': '#library/{library_short_name}/copy/{name}' }",,,
 usage_type,fields.librarycopy,/reports/api/v1/metahash/fields.librarycopy/usage_type/,,,2,,TRUE,"Copy usage type","Copy Usage Type",TRUE,,copy.usage_type,[list;detail],string,,,select,,

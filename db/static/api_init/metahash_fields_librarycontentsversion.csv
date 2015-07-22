@@ -1,4 +1,4 @@
-key,scope,resource_uri,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,data_type,display_type,display_options,editor_type,is_restricted,nested_resource
+key,scope,resource_uri,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,data_type,display_type,display_options,edit_type,is_restricted,nested_resource
 version_number,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/version_number/,1,,TRUE,"Version number","Version Number",TRUE,,,[list;detail],integer,link,,,,
 library_short_name,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/library_short_name/,2,,TRUE,"Library short name",Library,TRUE,,,[detail],string,,,,,
 loading_activity,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/loading_activity/,11,,FALSE,"Loading activity","Loading Activity",FALSE,,,[detail],string,,,,,activity

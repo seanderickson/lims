@@ -137,9 +137,11 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         resp = self.api_client.get(
             resource_uri, format='json', authentication=self.get_credentials(), 
             data=data_for_get)
-        logger.debug(str(('--------resp to get:', resp.status_code)))
+        logger.info(str(('--------resp to get:', resp.status_code)))
+        # self.assertValidJSONResponse(resp)
+        self.assertTrue(resp.status_code in [200], str((resp.status_code)))
         new_obj = self.deserialize(resp)
-        self.assertValidJSONResponse(resp)
+        logger.info(str(('resp', new_obj)))
         self.assertEqual(len(new_obj['objects']), 2, str((new_obj)))
         
         result, obj = find_obj_in_list(library_item, new_obj['objects'])
@@ -157,7 +159,7 @@ class LibraryResource(DBMetaHashResourceBootstrap):
             resource_uri, format='json', authentication=self.get_credentials(), 
             data=data_for_get)
         logger.debug(str(('--------resp to get:', resp.status_code, resp['Content-Type'], resp)))
-        self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
+        self.assertTrue(resp.status_code in [200], str((resp.status_code)))
         self.assertTrue(resp['Content-Type'].startswith('application/json'))
         new_obj = self.deserialize(resp)
         expected_count = 384*3
@@ -628,7 +630,8 @@ class ScreenResource(DBMetaHashResourceBootstrap):
 
         filename = os.path.join(self.db_directory,'metahash_fields_screen.csv')
         self._patch_test(
-            'metahash', filename, data_for_get={ 'scope':'fields.screen'})
+            'metahash', filename, id_keys_to_check=['scope','key'], 
+            data_for_get={ 'scope':'fields.screen'})
 
         logger.debug('============== ScreenResource setup: done ============')        
 
@@ -660,8 +663,9 @@ class ScreenResource(DBMetaHashResourceBootstrap):
             resource_uri, format='json', authentication=self.get_credentials(), 
             data=data_for_get)
         logger.debug(str(('--------resp to get:', resp.status_code)))
+        # self.assertValidJSONResponse(resp)
+        self.assertTrue(resp.status_code in [200], str((resp.status_code)))
         new_obj = self.deserialize(resp)
-        self.assertValidJSONResponse(resp)
         self.assertEqual(len(new_obj['objects']), 2, str((new_obj)))
         
         result, obj = find_obj_in_list(screen_item, new_obj['objects'])
@@ -713,8 +717,9 @@ class ScreenResource(DBMetaHashResourceBootstrap):
             resource_uri, format='json', authentication=self.get_credentials(), 
             data=data_for_get)
         logger.info(str(('--------resp to get:', resp.status_code)))
+        # self.assertValidJSONResponse(resp)
+        self.assertTrue(resp.status_code in [200], str((resp.status_code)))
         new_obj = self.deserialize(resp)
-        self.assertValidJSONResponse(resp)
         self.assertEqual(len(new_obj['objects']), 2, str((new_obj)))
         
         for i,item in enumerate(self.bootstrap_items):
@@ -888,8 +893,10 @@ class ScreensaverUserResource(DBMetaHashResourceBootstrap):
             self.assertTrue(resp.status_code in [200,201,202], 
                 str((resp.status_code, self.serialize(resp))))
 
+            data_for_get={ 'limit': 0 }        
+            data_for_get.setdefault('includes', ['*'])
             resp = self.api_client.get(resource_uri, format='json', 
-                authentication=self.get_credentials(), data={ 'limit': 999 })
+                authentication=self.get_credentials(), data=data_for_get )
             logger.debug(str(('--------resp to get:', resp.status_code)))
             new_obj = self.deserialize(resp)
             self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))

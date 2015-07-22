@@ -1,6 +1,6 @@
 name,users,permissions,super_groups,sub_groups
-testGroup1,[user/yal1;user/sde4],[permission/resource/metahash/read;permission/fields.user/username/read],,
-testGroup2,[user/sde4;user/bra2],[permission/resource/user/read;permission/resource/usergroup/read],,
-testGroup3,,[permission/resource/user/read;permission/resource/usergroup/read;permission/resource/vocabularies/read],,
-testGroup4,[user/tester4],,,
-testGroupX,,,[usergroup/testGroup3],
+testGroup1,[yal1;sde4],[resource/metahash/read;fields.user/username/read],,
+testGroup2,[sde4;bra2],[resource/user/read;resource/usergroup/read],,
+testGroup3,,[resource/user/read;resource/usergroup/read;resource/vocabularies/read],,
+testGroup4,[tester4],,,
+testGroupX,,,[testGroup3],

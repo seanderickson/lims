@@ -1,5 +1,5 @@
 username,usergroups,permissions
-yal1,[usergroup/testGroup1;usergroup/testGroup2],
-sde4,[usergroup/testGroup1],[permission/fields.user/username/write;permission/resource/user/write]
-bra2,[usergroup/testGroup4],
-tester4,[usergroup/testGroup3;usergroup/testGroup4],
+yal1,[testGroup1;testGroup2],
+sde4,[testGroup1],[fields.user/username/write;resource/user/write]
+bra2,[testGroup4],
+tester4,[testGroup3;testGroup4],

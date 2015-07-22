@@ -798,7 +798,7 @@ class XLSSerializerTest(SimpleTestCase):
                 },            
             ]
         # TODO: referencing a "db" subproject from the "reports" subproject
-        filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_rnai.xls'
+        filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_rnai.xlsx'
         with open(os.path.join(APP_ROOT_DIR, filename)) as fin:    
             _data = serializer.from_xls(fin.read(), root=None)
             logger.debug(str(('final_data', _data)))
@@ -1623,7 +1623,7 @@ class TestApiInit(ResourceTestCase):
                                 resource_uri, format='json', 
                                 authentication=self.get_credentials(), data={ 'limit': 999 })
                             self.assertTrue(
-                                resp.status_code in [200], str((resp.status_code, resp)))
+                                resp.status_code in [200], str((resp.status_code)))
                             #   self.assertValidJSONResponse(resp)
                             new_obj = self.deserialize(resp)
                             result, msgs = find_all_obj_in_list(
@@ -1642,7 +1642,7 @@ class TestApiInit(ResourceTestCase):
                                 resource_uri, format='json', 
                                 authentication=self.get_credentials(), data={ 'limit': 999 } )
                             self.assertTrue(
-                                resp.status_code in [200], str((resp.status_code, resp)))
+                                resp.status_code in [200], str((resp.status_code)))
                             #                             self.assertValidJSONResponse(resp)
                             new_obj = self.deserialize(resp)
                             with open(filename) as f2:
@@ -1700,10 +1700,8 @@ class UserUsergroupSharedTest(object):
         from datetime import datetime
         data_for_get = { HEADER_APILOG_COMMENT: 
             'patch_test: file: %s, %s' % (filename, datetime.now().isoformat() ) }
-        # NOTE: verify the username manually, because the username will
-        # be set to the resource_uri id if not set
         input_data,output_data = self._put_test(
-            'user', filename, keys_not_to_check=['username'],
+            'user', filename, id_keys_to_check=['username'],
             data_for_get=data_for_get)
         
         # test the logs
@@ -1886,7 +1884,7 @@ class UserResource(MetaHashResourceBootstrap, UserUsergroupSharedTest):
         
         user_patch = {
             'resource_uri': 'user/' + username,
-            'permissions': ['permission/resource/metahash/read'] };
+            'permissions': ['resource/metahash/read'] };
 
         uri = BASE_URI + '/user/' + username
         logger.debug(str(('=====now add the permission needed to this user:', user_patch, uri)))
@@ -1947,7 +1945,7 @@ class UserResource(MetaHashResourceBootstrap, UserUsergroupSharedTest):
         
         user_patch = {
             'resource_uri': 'user/' + username,
-            'permissions': ['permission/resource/usergroup/write'] };
+            'permissions': ['resource/usergroup/write'] };
 
         logger.debug(str(('now add the permission needed to this user:', user_patch)))
         uri = BASE_URI + '/user/' + username
@@ -2043,7 +2041,7 @@ class UserGroupResource(MetaHashResourceBootstrap, UserUsergroupSharedTest):
         # now patch this user's usergroups, removing the user from the group 'testgroup1'
         # which will remove the permissions as well 
         user_patch = {
-            'usergroups': ['usergroup/testGroup3'] };
+            'usergroups': ['testGroup3'] };
 
         logger.debug(str(('now reset this users groups and remove testGroup1:', user_patch)))
         uri = BASE_URI + '/user' + '/' + username
@@ -2061,7 +2059,7 @@ class UserGroupResource(MetaHashResourceBootstrap, UserUsergroupSharedTest):
         self.assertTrue(resp.status_code in [200], 
             str((resp.status_code, new_obj)))
         logger.info(str(('user', new_obj)))
-        self.assertTrue(new_obj['usergroups'] == ['usergroup/testGroup3'],
+        self.assertTrue(new_obj['usergroups'] == ['testGroup3'],
             str(('wrong usergroups', new_obj)))
         
         
@@ -2108,11 +2106,11 @@ class UserGroupResource(MetaHashResourceBootstrap, UserUsergroupSharedTest):
         usergroup_patch = { 'objects': [
             {
             'name': 'testGroup5',
-            'super_groups': ['usergroup/testGroup3'] },
+            'super_groups': ['testGroup3'] },
             {
             'name': 'testGroup6',
-            'users': ['user/sde4'],
-            'super_groups': ['usergroup/testGroup5'] },
+            'users': ['sde4'],
+            'super_groups': ['testGroup5'] },
         ]}
         
         logger.debug(str(('now set the new group:', usergroup_patch)))
@@ -2130,7 +2128,8 @@ class UserGroupResource(MetaHashResourceBootstrap, UserUsergroupSharedTest):
                 uri, format='json', authentication=self.get_credentials())
         new_obj = self.deserialize(resp)
         result, outputobj = find_all_obj_in_list(
-            usergroup_patch['objects'],new_obj['objects']) #, excludes=keys_not_to_check )
+            usergroup_patch['objects'],new_obj['objects'],
+            id_keys_to_check=['name']) #, excludes=keys_not_to_check )
         self.assertTrue(
             result, 
             str(('not found', outputobj,'=== objects returned ===', 
@@ -2177,11 +2176,11 @@ class UserGroupResource(MetaHashResourceBootstrap, UserUsergroupSharedTest):
             {
             'resource_uri': 'usergroup/testGroup5',
             'name': 'testGroup5',
-            'sub_groups': ['usergroup/testGroup2'] },
+            'sub_groups': ['testGroup2'] },
             {
             'resource_uri': 'usergroup/testGroup6',
             'name': 'testGroup6',
-            'sub_groups': ['usergroup/testGroup5'] },
+            'sub_groups': ['testGroup5'] },
         ]}
         
         logger.debug(str(('now set the new groups:', usergroup_patch)))
@@ -2205,8 +2204,8 @@ class UserGroupResource(MetaHashResourceBootstrap, UserUsergroupSharedTest):
         new_obj = self.deserialize(resp)
         
         self.assertTrue(new_obj['all_users'])
-        self.assertTrue('user/sde4' in new_obj['all_users'],
-            str(('could not find user', 'user/sde4', new_obj['all_users'])))
+        self.assertTrue('sde4' in new_obj['all_users'],
+            str(('could not find user', 'sde4', new_obj['all_users'])))
         
         # TODO: could also test that testGroup2 now has super_group=testGroup5
         

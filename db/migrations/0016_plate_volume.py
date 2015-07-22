@@ -49,7 +49,7 @@ class Migration(DataMigration):
                 i += 1
                 log.date_time += datetime.timedelta(0,i)
             self.times_seen.add(log.date_time)
-        log.date_time = make_aware(log.date_time, timezone.get_default_timezone())
+#         log.date_time = make_aware(log.date_time, timezone.get_default_timezone())
         
         
         log.username = activity.performed_by.ecommons_id
@@ -157,23 +157,22 @@ class Migration(DataMigration):
                     old_volume = 0
                 adjustment = lab_activity.volume_transferred_per_well_from_library_plates
                 if not adjustment:
-                     # not sure what these "library screenings" with no volume are still:
+                     # not sure what these "library screenings" with no volume are:
                      # -- some are external library plates, presumably
-                     # -- some have not AP's and are "z prime" logs?
+                     # -- some have no AP's and are "z prime" logs?
                      # -- some are legacy records from before ss 2.0
                     adjustment = 0
-                adjustment = round(float(adjustment),10)
-                new_volume = round(old_volume-adjustment,10)
+                new_volume = old_volume-adjustment
                 cp_log.diff_keys = json.dumps(['screening_count','remaining_volume'])
                 cp_log.diffs = json.dumps({
                     'screening_count': [screen_count, screen_count+1],
-                    'remaining_volume': [old_volume,new_volume]
+                    'remaining_volume': [str(old_volume),str(new_volume)]
                      })
                 screen_count +=1
                 copyplate_to_screening_count[cp_log.key] = screen_count
                 copyplate_to_volume[cp_log.key] = new_volume
                 cp_log.json_field = json.dumps({
-                    'volume_transferred_per_well_from_library_plates': adjustment
+                    'volume_transferred_per_well_from_library_plates': str(adjustment)
                     })
 #                 logger.info(str(('plate', cp_log.key, 'assay_plate', assay_plate)))
 #                 logger.info(str(('saving', cp_log)))
@@ -375,7 +374,7 @@ class Migration(DataMigration):
     
                     log.key = adj['copy_name'] + '/'+ adj['well_id']
                     log.uri = copywell_uri + '/' + log.key
-                    log.json_field = str(round(float(adj['volume_adjustment']),10))
+                    log.json_field = str(adj['volume_adjustment'])
 
 #                     
 #                     # FIXME: because this list may not contain all wva's for the well,
@@ -475,7 +474,7 @@ class Migration(DataMigration):
                         log.uri = '/'.join([base_uri, log.ref_resource_name, log.key])
                         
                         # temporarily store the adjustment in the json field
-                        log.json_field = str(round(wva.volume,10))
+                        log.json_field = str(wva.volume)
                         
                         log.save()
                         j += 1
@@ -503,7 +502,7 @@ class Migration(DataMigration):
                     log.uri = '/'.join([base_uri, log.ref_resource_name, log.key])
                     
                     # temporarily store the adjustment in the json field
-                    log.json_field = str(round(wva.volume,10))
+                    log.json_field = str(wva.volume)
                     log .save()
                     j += 1
                 logger.info(str(('processed', j)))
@@ -561,7 +560,7 @@ class Migration(DataMigration):
             log.uri = '/'.join([base_uri, log.ref_resource_name, log.key])
             
             # temporarily store the adjustment in the json field
-            log.json_field = str(round(wva.volume,10))
+            log.json_field = str(wva.volume,10)
             log .save()
             j += 1
         logger.info(str(('orphaned wvas processed', j)))
@@ -597,9 +596,10 @@ class Migration(DataMigration):
                 initial_plate_vol = copy_plate_initial_volumes[plate_key]
             
             if log.key != prev_wellcopy_key:
-                current_wellcopy_volume = round(float(initial_plate_vol),10)
+                current_wellcopy_volume = initial_plate_vol
                 prev_wellcopy_key = log.key
-            new_volume = round(current_wellcopy_volume+float(log.json_field),10)
+            # TODO: would be better to make a hash than to store in the json_field
+            new_volume = Decimal(log.json_field)
             log.diff_keys = diff_keys
             log.diffs = json.dumps({
                 'volume': [str(current_wellcopy_volume),

@@ -735,100 +735,107 @@ class SqlAlchemyResource(Resource):
         DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
         logger.info(str(('stream_response_from_statement',param_hash)))
 
-        
-        limit = param_hash.get('limit', 0)        
         try:
-            limit = int(limit)
-        except ValueError:
-            raise BadRequest(
-                "Invalid limit '%s' provided. Please provide a positive integer." 
-                % limit)
-        if limit > 0:    
-            stmt = stmt.limit(limit)
-
-        offset = param_hash.get('offset', 0 )
-        try:
-            offset = int(offset)
-        except ValueError:
-            raise BadRequest(
-                "Invalid offset '%s' provided. Please provide a positive integer." 
-                % offset)
-        if offset < 0:    
-            offset = -offset
-        stmt = stmt.offset(offset)
-
-        logger.info(str(('offset', offset, 'limit', limit)))
-        conn = self.bridge.get_engine().connect()
-        
-        logger.info(str(('stmt', 
-            str(stmt.compile(compile_kwargs={"literal_binds": True})), 
-            'param_hash', param_hash)))
-        if DEBUG_STREAMING:
-            logger.info(str(('count stmt', str(count_stmt))))
-        
-        desired_format = param_hash.get('desired_format',self.get_format(request))
-        result = None
-        if desired_format == 'application/json':
-            logger.info(str(('streaming json')))
-            if not is_for_detail and use_caching and self.use_cache and limit > 0:
-                cache_hit = self._cached_resultproxy(
-                    stmt, count_stmt, param_hash, limit, offset)
-                if cache_hit:
-                    logger.info('cache hit')
-                    result = cache_hit['cached_result']
-                    count = cache_hit['count']
+            limit = param_hash.get('limit', 0)        
+            try:
+                limit = int(limit)
+            except ValueError:
+                raise BadRequest(
+                    "Invalid limit '%s' provided. Please provide a positive integer." 
+                    % limit)
+            if limit > 0:    
+                stmt = stmt.limit(limit)
+    
+            offset = param_hash.get('offset', 0 )
+            try:
+                offset = int(offset)
+            except ValueError:
+                raise BadRequest(
+                    "Invalid offset '%s' provided. Please provide a positive integer." 
+                    % offset)
+            if offset < 0:    
+                offset = -offset
+            stmt = stmt.offset(offset)
+    
+            logger.info(str(('offset', offset, 'limit', limit)))
+            conn = self.bridge.get_engine().connect()
+            
+            logger.info(str(('stmt', 
+                str(stmt.compile(compile_kwargs={"literal_binds": True})), 
+                'param_hash', param_hash)))
+            if DEBUG_STREAMING:
+                logger.info(str(('count stmt', str(count_stmt))))
+            
+            desired_format = param_hash.get('desired_format',self.get_format(request))
+            result = None
+            if desired_format == 'application/json':
+                logger.info(str(('streaming json')))
+                if not is_for_detail and use_caching and self.use_cache and limit > 0:
+                    cache_hit = self._cached_resultproxy(
+                        stmt, count_stmt, param_hash, limit, offset)
+                    if cache_hit:
+                        logger.info('cache hit')
+                        result = cache_hit['cached_result']
+                        count = cache_hit['count']
+                    else:
+                        # cache routine should always return a cache object
+                        logger.error(str(('error, cache not set: execute stmt')))
+                        count = conn.execute(count_stmt).scalar()
+                        result = conn.execute(stmt)
+                    logger.info(str(('====count====', count)))
+                    
                 else:
-                    # cache routine should always return a cache object
-                    logger.error(str(('error, cache not set: execute stmt')))
+                    logger.info(str(('execute stmt')))
                     count = conn.execute(count_stmt).scalar()
+                    logger.info('excuted count stmt')
                     result = conn.execute(stmt)
-                logger.info(str(('====count====', count)))
-                
-            else:
-                logger.info(str(('execute stmt')))
-                count = conn.execute(count_stmt).scalar()
-                logger.info('excuted count stmt')
+                    logger.info('excuted stmt')
+    
+                if not meta:
+                    meta = {
+                        'limit': limit,
+                        'offset': offset,
+                        'total_count': count
+                        }
+                else:
+                    temp = {
+                        'limit': limit,
+                        'offset': offset,
+                        'total_count': count
+                        }
+                    temp.update(meta)    
+                    meta = temp
+                    
+                if rowproxy_generator:
+                    result = rowproxy_generator(result)
+    
+                # TODO: create a short-circuit if count==0
+                # if count == 0:
+                #    raise ImmediateHttpResponse(
+                #        response=self.error_response(
+                #            request, {'empty result': 'no records found'},
+                #            response_class=HttpNotFound))
+                if DEBUG_STREAMING:
+                    logger.info(str(('meta', meta)))
+    
+            else: # not json
+            
+                logger.info('excute stmt')
                 result = conn.execute(stmt)
                 logger.info('excuted stmt')
-
-            if not meta:
-                meta = {
-                    'limit': limit,
-                    'offset': offset,
-                    'total_count': count
-                    }
-            else:
-                temp = {
-                    'limit': limit,
-                    'offset': offset,
-                    'total_count': count
-                    }
-                temp.update(meta)    
-                meta = temp
                 
-            if rowproxy_generator:
-                result = rowproxy_generator(result)
-
-            # TODO: create a short-circuit if count==0
-            # if count == 0:
-            #    raise ImmediateHttpResponse(
-            #        response=self.error_response(
-            #            request, {'empty result': 'no records found'},
-            #            response_class=HttpNotFound))
-            if DEBUG_STREAMING:
-                logger.info(str(('meta', meta)))
-
-        else: # not json
-        
-            logger.info('excute stmt')
-            result = conn.execute(stmt)
-            logger.info('excuted stmt')
-            
-            logger.info(str(('rowproxy_generator', rowproxy_generator)))
-            if rowproxy_generator:
-                result = rowproxy_generator(result)
-                # FIXME: test this for generators other than json generator        
-        
+                logger.info(str(('rowproxy_generator', rowproxy_generator)))
+                if rowproxy_generator:
+                    result = rowproxy_generator(result)
+                    # FIXME: test this for generators other than json generator        
+    
+        except Exception, e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
+            msg = str(e)
+            logger.warn(str(('on stream response', 
+                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            raise e          
         return self.stream_response_from_cursor(request, result, output_filename, 
             field_hash=field_hash, 
             param_hash=param_hash, 

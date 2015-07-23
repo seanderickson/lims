@@ -3267,8 +3267,8 @@ class UserChecklistItemResource(ManagedSqlAlchemyResourceMixin, ManagedModelReso
             cig_table = ( 
                 select([
                     _vocab.c.key.label('item_group'),
-                    func.concat_ws('.','checklistitemgroup',
-                        _vocab.c.key,'name').label('checklistitemgroup')])
+                    func.concat('checklistitemgroup','.',
+                        _vocab.c.key,'.','name').label('checklistitemgroup')])
                 .select_from(_vocab)
                 .where(_vocab.c.scope=='checklistitem.group') )
             cig_table = Alias(cig_table)
@@ -3289,7 +3289,7 @@ class UserChecklistItemResource(ManagedSqlAlchemyResourceMixin, ManagedModelReso
             j = j.join(_admin, _uci.c.admin_user_id==_admin.c.screensaver_user_id)
             entered_checklists = select([
                 _su.c.username,
-                func.concat_ws(', ', _su.c.last_name, _su.c.first_name ).label('user_fullname'),
+                func.concat( _su.c.last_name,', ', _su.c.first_name ).label('user_fullname'),
                 _uci.c.item_group,
                 _uci.c.item_name,
                 _uci.c.status,

@@ -34,6 +34,8 @@ from django.http import Http404
 from django.http.response import StreamingHttpResponse, HttpResponse
 from sqlalchemy import select, asc, text
 import sqlalchemy
+from sqlalchemy.dialects.postgresql import array
+from sqlalchemy.dialects.postgresql import Any
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.sql import and_, or_, not_          
 from sqlalchemy.sql import asc, desc, alias, Alias
@@ -3267,8 +3269,8 @@ class UserChecklistItemResource(ManagedSqlAlchemyResourceMixin, ManagedModelReso
             cig_table = ( 
                 select([
                     _vocab.c.key.label('item_group'),
-                    func.concat('checklistitemgroup','.',
-                        _vocab.c.key,'.','name').label('checklistitemgroup')])
+                    func.array_to_string(array(['checklistitem',
+                        _vocab.c.key,'name']),'.').label('checklistitemgroup')])
                 .select_from(_vocab)
                 .where(_vocab.c.scope=='checklistitem.group') )
             cig_table = Alias(cig_table)
@@ -3289,7 +3291,8 @@ class UserChecklistItemResource(ManagedSqlAlchemyResourceMixin, ManagedModelReso
             j = j.join(_admin, _uci.c.admin_user_id==_admin.c.screensaver_user_id)
             entered_checklists = select([
                 _su.c.username,
-                func.concat( _su.c.last_name,', ', _su.c.first_name ).label('user_fullname'),
+                func.array_to_string(array([
+                    _su.c.last_name, _su.c.first_name]),', ').label('user_fullname'),
                 _uci.c.item_group,
                 _uci.c.item_name,
                 _uci.c.status,
@@ -3405,6 +3408,7 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
     
     def build_schema(self):
         
+        logger.info(str(('=== screensaver_user build_schema')))
         schema = super(ScreensaverUserResource,self).build_schema()
         
         sub_schema = self.get_user_resource().build_schema();
@@ -3417,6 +3421,7 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
                 fields[key] = val
         
         schema['fields'] = fields;
+        logger.info(str(('=== final screensaver_user fields', fields)))
         
         return schema
 
@@ -3529,8 +3534,9 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
                         select_from(_s.join(_cl,_s.c.screen_id==_cl.c.screen_id)).\
                         where(_cl.c.collaborator_id==_su.c.screensaver_user_id),
                 'lab_name':
-                    select([func.concat(_lhsu.c.last_name,', ',
-                        _lhsu.c.first_name,' - ',_la.c.affiliation_name)]).\
+                    select([func.array_to_string(array([
+                        _lhsu.c.last_name,', ',_lhsu.c.first_name,' - ',
+                        _la.c.affiliation_name]),'')]).\
                     select_from(
                         _la.join(_lh,_la.c.lab_affiliation_id==_lh.c.lab_affiliation_id).\
                         join(_lhsu, _lh.c.screensaver_user_id==_lhsu.c.screensaver_user_id).\

@@ -35,6 +35,10 @@ from sqlalchemy.sql import func
 from sqlalchemy.sql.elements import literal_column
 from sqlalchemy.sql.expression import column, join, distinct
 from sqlalchemy.sql.expression import nullsfirst, nullslast
+from sqlalchemy.dialects.postgresql import array
+from sqlalchemy.dialects.postgresql import Any
+from sqlalchemy.dialects.postgresql import ARRAY
+
 from tastypie import fields 
 from tastypie.authentication import BasicAuthentication, SessionAuthentication, \
     MultiAuthentication
@@ -2597,7 +2601,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             group_by(_ugu.c.userprofile_id)
         user_all_group_permissions = user_all_group_permissions.cte('uagp') 
         
-        user_all_permissions = user_all_group_permissions.union(
+        user_all_permissions = user_all_group_permissions.union_all(
             select([_upp.c.userprofile_id, func.array_agg(_p.c.id)]).\
             select_from(_p.join(_upp,_upp.c.permission_id==_p.c.id)).\
             group_by(_upp.c.userprofile_id)).alias('uap')
@@ -2614,15 +2618,16 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         _ugu1=_ugu.alias('ugu1')
         _ugx = _ug.alias('ugx')
         custom_columns = {
-            'resource_uri': func.concat('/reports/api/v1/user','/',text('reports_userprofile.username')),
+            'resource_uri': func.array_to_string(array([
+                '/reports/api/v1/user',text('reports_userprofile.username')]),'/'),
             'permissions': 
                 select([func.array_to_string(
                         func.array_agg(text('inner_perms.permission')),
                         LIST_DELIMITER_SQL_ARRAY)]).\
                 select_from(
-                    select([func.concat(
-                            _p.c.scope,'/',_p.c.key,'/',_p.c.type).label('permission')
-                            ]).\
+                    select([func.array_to_string(array([
+                            _p.c.scope,_p.c.key,_p.c.type]),'/').label('permission')
+                        ]).\
                     select_from(_p.join(_upp,_p.c.id==_upp.c.permission_id)).\
                     where(text('reports_userprofile.id')==_upp.c.userprofile_id).\
                     order_by('permission').alias('inner_perms')),
@@ -2639,8 +2644,8 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
                 select([func.array_to_string(func.array_agg(
                     text('innerp.permission')),LIST_DELIMITER_SQL_ARRAY)]).\
                 select_from(
-                    select([func.concat(
-                            _p.c.scope,'/',_p.c.key,'/',_p.c.type).label('permission')
+                    select([func.array_to_string(array([
+                            _p.c.scope,_p.c.key,_p.c.type]),'/').label('permission')
                         ]).\
                     select_from(user_all_permissions).\
                     where(and_(
@@ -3579,7 +3584,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
             
             gsg_alias = group_supergroups.alias('gsg')
             _ugsg_outer = _ugsg.alias('ugsg2')
-            group_all_supergroups = gsg_alias.union(
+            group_all_supergroups = gsg_alias.union_all(
                 select([
                     _ugsg_outer.c.from_usergroup_id,
                     func.array_append(gsg_alias.c.sg_ids,_ugsg_outer.c.to_usergroup_id),
@@ -3766,14 +3771,15 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
             _ug2 = _ug.alias('ug2')
             _ug3 = _ug.alias('ug3')
             custom_columns = {
-                'resource_uri': func.concat('/reports/api/v1/usergroup','/',text('reports_usergroup.name')),
+                'resource_uri': func.array_to_string(array([
+                    '/reports/api/v1/usergroup',text('reports_usergroup.name')]),'/'),
                 'permissions': 
                     select([func.array_to_string(
                             func.array_agg(text('innerperm.permission')),
                             LIST_DELIMITER_SQL_ARRAY)]).\
                     select_from(
-                        select([func.concat(
-                            _p.c.scope,'/',_p.c.key,'/',_p.c.type).\
+                        select([func.array_to_string(array([
+                            _p.c.scope,_p.c.key,_p.c.type]),'/').\
                             label('permission')]).\
                         select_from(_p.join(_ugp,_p.c.id==_ugp.c.permission_id)).\
                         #FIXME: using "text" override to reference the outer reports_usergroup
@@ -3826,8 +3832,8 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
                         func.array_agg(text('allperm.permission')),                            
                         LIST_DELIMITER_SQL_ARRAY)]).\
                     select_from(
-                        select([func.concat(
-                            _p.c.scope,'/',_p.c.key,'/',_p.c.type).\
+                        select([func.array_to_string(array([
+                            _p.c.scope,_p.c.key,_p.c.type]),'/').\
                             label('permission'),
                             group_all_permissions.c.usergroup_id ]).\
                         select_from(group_all_permissions).\

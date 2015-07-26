@@ -3,6 +3,8 @@ import json
 import logging
 import os
 
+from django.contrib.auth.models import User
+from django.core.exceptions import ObjectDoesNotExist
 from django.http.response import StreamingHttpResponse
 from django.test import TestCase
 from django.utils.timezone import now
@@ -16,9 +18,10 @@ from db.models import Reagent, Substance, Library
 import db.models
 from db.support import lims_utils
 from db.test.factories import LibraryFactory
+from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.dump_obj import dumpObj
-from reports.serializers import CSVSerializer, XLSSerializer
-from reports.tests import MetaHashResourceBootstrap
+from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer
+from reports.tests import IResourceTestCase
 from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, find_obj_in_list
 import reports.tests
 from test.factories import *
@@ -36,13 +39,12 @@ except:
     APP_ROOT_DIR = os.path.abspath(os.path.dirname(db.__path__))
 BASE_URI_DB = '/db/api/v1'
 
-
-
-class DBMetaHashResourceBootstrap(MetaHashResourceBootstrap):
+class DBResourceTestCase(IResourceTestCase):
+    """
+    """
+    def __init__(self,*args,**kwargs):
     
-    def setUp(self):
-        super(DBMetaHashResourceBootstrap, self).setUp()
-        self._bootstrap_init_files()
+        super(DBResourceTestCase, self).__init__(*args,**kwargs)
 
     def _bootstrap_init_files(self):
         '''
@@ -54,11 +56,8 @@ class DBMetaHashResourceBootstrap(MetaHashResourceBootstrap):
         - PUT vocabularies_data.csv
         - PUT metahash_resource_data.csv
         '''
-        logger.debug('------------- DBMetaHashResourceBootstrap _bootstrap_init_files -----------------')        
-        super(DBMetaHashResourceBootstrap, self)._bootstrap_init_files()
-
+        super(DBResourceTestCase, self)._bootstrap_init_files()
         
-        serializer=CSVSerializer() 
         resource_uri = BASE_URI + '/metahash'
         directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
 
@@ -71,14 +70,6 @@ class DBMetaHashResourceBootstrap(MetaHashResourceBootstrap):
 
         
         logger.debug('------------- Done: DBMetaHashResourceBootstrap _bootstrap_init_files -----------------')        
-                  
-
-class LibraryResource(DBMetaHashResourceBootstrap):
-
-    def setUp(self):
-        logger.debug('============== LibraryResource setup ============')
-        
-        super(LibraryResource, self).setUp()
         logger.debug('============== LibraryResource setup: begin ============')
         self.db_resource_uri = BASE_URI + '/metahash'
         self.db_directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
@@ -106,6 +97,73 @@ class LibraryResource(DBMetaHashResourceBootstrap):
             'metahash', filename, data_for_get={ 'scope':'fields.silencingreagent'})
         
         logger.debug('============== LibraryResource setup: done ============')
+        logger.debug('============== ScreenResource setup: begin ============')
+        self.db_resource_uri = BASE_URI + '/metahash'
+        self.db_directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
+        
+        testApiClient = TestApiClient(serializer=reports.serializers.LimsSerializer) 
+
+        filename = os.path.join(self.db_directory,'metahash_fields_screen.csv')
+        self._patch_test(
+            'metahash', filename, id_keys_to_check=['scope','key'], 
+            data_for_get={ 'scope':'fields.screen'})
+
+        logger.debug('============== ScreenResource setup: done ============')        
+        logger.debug('============== ScreensaverUserResource setup: begin ============')
+        self.db_resource_uri = BASE_URI + '/screensaveruser'
+        self.db_directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
+        self.reports_directory = os.path.join(APP_ROOT_DIR, 'reports/static/api_init')
+        
+        testApiClient = TestApiClient(serializer=reports.serializers.LimsSerializer) 
+
+        filename = os.path.join(self.reports_directory,'metahash_fields_user.csv')
+        self._patch_test(
+            'metahash', filename, data_for_get={ 'scope':'fields.user' })
+        
+        filename = os.path.join(self.directory,'metahash_fields_usergroup.csv')
+        self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.usergroup'})
+        
+        filename = os.path.join(self.directory,'metahash_fields_permission.csv')
+        self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.permission'})
+
+        filename = os.path.join(self.db_directory,'metahash_fields_screensaveruser.csv')
+        self._patch_test(
+            'metahash', filename, data_for_get={ 'scope':'fields.screensaveruser'},
+            id_keys_to_check=['key','scope'])
+
+        logger.debug('============== ScreensaverUserResource setup: done ============')        
+
+
+def setUpModule():
+
+    logger.info(str(('=== setup Module')))
+    
+    # FIXME: running the bootstrap method as a test suite setup:
+    # TODO: create a local TestRunner,TestSuite,
+    # so that this can be run before the suite
+    testContext = DBResourceTestCase(methodName='_bootstrap_init_files')
+    testContext.setUp()
+    testContext._bootstrap_init_files()
+
+    logger.info(str(('=== setup Module done')))
+
+def tearDownModule():
+
+    logger.info(str(('=== teardown Module')))
+    
+    # FIXME: how to close the sqlalchemy bridge connection on tearDown?
+    # - the right solution probably requires a custom TestRunner
+    # bridge.get_engine().connect().close()
+    # bridge.get_engine().dispose()
+    # bridge = None
+    logger.info(str(('=== teardown Module done')))
+
+class LibraryResource(DBResourceTestCase):
+
+    def setUp(self):
+        logger.debug('============== LibraryResource setup ============')
+        
+        super(LibraryResource, self).setUp()
 
     def test1_create_library(self):
         
@@ -114,7 +172,8 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         resource_uri = BASE_URI_DB + '/library'
         
         library_item = LibraryFactory.attributes()
-        library_item.update({ 'start_plate': '1534', 'end_plate': '1534', 'plate_size': '384' })
+        library_item.update({ 
+            'start_plate': '1534', 'end_plate': '1534', 'plate_size': '384' })
         
         logger.debug(str((library_item)))
         resp = self.api_client.post(
@@ -124,7 +183,8 @@ class LibraryResource(DBMetaHashResourceBootstrap):
 
         # create a second library
         library_item = LibraryFactory.attributes()
-        library_item.update({ 'start_plate': '1535', 'end_plate': '1537', 'plate_size': '384' })
+        library_item.update({ 
+            'start_plate': '1535', 'end_plate': '1537', 'plate_size': '384' })
          
         logger.debug(str(('item', library_item)))
         resp = self.api_client.post(
@@ -266,7 +326,8 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         logger.debug(str(('==== test6_load_small_molecule_file =====')))
         
         library_item = LibraryFactory.attributes()
-        library_item.update({ 'start_plate': '1536', 'end_plate': '1536', 'plate_size': '384' })
+        library_item.update({ 
+            'start_plate': '1536', 'end_plate': '1536', 'plate_size': '384' })
         resource_uri = BASE_URI_DB + '/library'
         logger.debug(str((library_item)))
         resp = self.api_client.post(
@@ -340,7 +401,9 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         substance_ids = set()
         for inputobj in input_data:
             # first just search for the well
-            search = { 'well_id': lims_utils.well_id(inputobj['plate_number'],inputobj['well_name']) }
+            search = { 'well_id': 
+                lims_utils.well_id(
+                    inputobj['plate_number'],inputobj['well_name']) }
             result, outputobj = find_obj_in_list(
                 search,returned_data) #, excludes=excludes )
             self.assertTrue(result, 
@@ -348,7 +411,8 @@ class LibraryResource(DBMetaHashResourceBootstrap):
                       returned_data )) ) 
             logger.debug(str(('found', search)))
             # second look at the found item
-            expected_data = { key: inputobj[key] for key in fields.keys() if key in inputobj }
+            expected_data = { 
+                key: inputobj[key] for key in fields.keys() if key in inputobj }
             result, msgs = assert_obj1_to_obj2(expected_data, outputobj)
             logger.debug(str((result, msgs)))
             self.assertTrue(result, str((msgs, 'input', expected_data, 'output', outputobj)))
@@ -412,7 +476,9 @@ class LibraryResource(DBMetaHashResourceBootstrap):
             well_ids_to_check = input_data
     
             for update_well in well_ids_to_check:
-                search = { 'well_name': update_well['well_name'], 'plate_number': update_well['plate_number']}
+                search = { 
+                    'well_name': update_well['well_name'], 
+                    'plate_number': update_well['plate_number']}
                 result, outputobj = find_obj_in_list(
                     search,returned_data) #, excludes=excludes )
                 self.assertTrue(result, 
@@ -429,7 +495,10 @@ class LibraryResource(DBMetaHashResourceBootstrap):
             resp = self.api_client.get(
                 resource_uri, format='json', 
                 authentication=self.get_credentials(), 
-                data={ 'limit': 0, 'ref_resource_name': 'library', 'key': library_item['short_name'] })
+                data={ 
+                    'limit': 0, 
+                    'ref_resource_name': 'library', 
+                    'key': library_item['short_name'] })
             self.assertTrue(resp.status_code in [200], str((resp.status_code, resp)))
             new_obj = self.deserialize(resp)
             logger.debug(str(('===library apilogs:', json.dumps(new_obj))))
@@ -438,9 +507,8 @@ class LibraryResource(DBMetaHashResourceBootstrap):
             self.assertEqual( len(new_obj['objects']), expected_count , 
                 str((len(new_obj['objects']), expected_count, new_obj)))
 
-            
             # 2. check the apilogs
-            resource_uri = BASE_REPORTS_URI + '/apilog' #?ref_resource_name=record'
+            resource_uri = BASE_REPORTS_URI + '/apilog' 
             resp = self.api_client.get(
                 resource_uri, format='json', 
                 authentication=self.get_credentials(), 
@@ -535,8 +603,8 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         
         self._load_xls_reagent_file(filename,library_item, 352, 384 )
 
-
     def _load_xls_reagent_file(self, filename,library_item, expected_in, expected_count):
+
         logger.debug(str(('==== test_load_xls_reagent_file =====')))
         
         start_plate = library_item['start_plate']
@@ -551,10 +619,11 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         data_for_get={}
         data_for_get.setdefault('limit', 0)
         data_for_get.setdefault('includes', ['*'])
-        data_for_get.setdefault('HTTP_ACCEPT', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' )
+        data_for_get.setdefault('HTTP_ACCEPT', 
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' )
         xls_serializer = XLSSerializer()
+        
         with open(filename) as input_file:
-            
             ### NOTE: submit the data as an object, because the test framework
             ### will convert it to the target format.
             input_data = self.serializer.from_xlsx(input_file.read())
@@ -576,7 +645,8 @@ class LibraryResource(DBMetaHashResourceBootstrap):
             'execute get on:',resource_uri)))
 
         resource_name = 'reagent'
-        reagent_resource_uri = '/'.join([BASE_URI_DB,'library', library_item['short_name'],resource_name])
+        reagent_resource_uri = '/'.join([
+            BASE_URI_DB,'library', library_item['short_name'],resource_name])
         resp = self.api_client.get(
             reagent_resource_uri, format='xlsx', authentication=self.get_credentials(), 
             data=data_for_get)
@@ -597,7 +667,9 @@ class LibraryResource(DBMetaHashResourceBootstrap):
         substance_ids = set()
         for inputobj in input_data:
             # first just search for the well
-            search = { 'well_id': lims_utils.well_id(inputobj['plate_number'],inputobj['well_name']) }
+            search = { 
+                'well_id': lims_utils.well_id(
+                    inputobj['plate_number'],inputobj['well_name']) }
             result, outputobj = find_obj_in_list(search,returned_data)
             self.assertTrue(result, 
                 str(('not found', search,outputobj,'=== objects returned ===', 
@@ -617,23 +689,11 @@ class LibraryResource(DBMetaHashResourceBootstrap):
             substance_ids.add(substance_id)
                     
 
-class ScreenResource(DBMetaHashResourceBootstrap):
+class ScreenResource(DBResourceTestCase):
         
     def setUp(self):
         logger.debug('============== ScreenResource setup ============')
         super(ScreenResource, self).setUp()
-        logger.debug('============== ScreenResource setup: begin ============')
-        self.db_resource_uri = BASE_URI + '/metahash'
-        self.db_directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
-        
-        testApiClient = TestApiClient(serializer=reports.serializers.LimsSerializer) 
-
-        filename = os.path.join(self.db_directory,'metahash_fields_screen.csv')
-        self._patch_test(
-            'metahash', filename, id_keys_to_check=['scope','key'], 
-            data_for_get={ 'scope':'fields.screen'})
-
-        logger.debug('============== ScreenResource setup: done ============')        
 
     def test1_create_screen(self):
         logger.debug(str(('==== test1_create_screen =====')))
@@ -717,7 +777,6 @@ class ScreenResource(DBMetaHashResourceBootstrap):
             resource_uri, format='json', authentication=self.get_credentials(), 
             data=data_for_get)
         logger.info(str(('--------resp to get:', resp.status_code)))
-        # self.assertValidJSONResponse(resp)
         self.assertTrue(resp.status_code in [200], str((resp.status_code)))
         new_obj = self.deserialize(resp)
         self.assertEqual(len(new_obj['objects']), 2, str((new_obj)))
@@ -738,7 +797,7 @@ class ScreenResource(DBMetaHashResourceBootstrap):
         logger.debug(str(('==== test_create_screen done =====')))
         
 
-class MutualScreensTest(DBMetaHashResourceBootstrap,ResourceTestCase):
+class MutualScreensTest(DBResourceTestCase,ResourceTestCase):
     
     def test_mutual_positives_to_screen(self):
         pass
@@ -747,34 +806,11 @@ class MutualScreensTest(DBMetaHashResourceBootstrap,ResourceTestCase):
         # set data sharing levels
         # find assay wells that overlap
         
-class ScreensaverUserResource(DBMetaHashResourceBootstrap):
+class ScreensaverUserResource(DBResourceTestCase):
         
     def setUp(self):
         logger.debug('============== ScreensaverUserResource setup ============')
         super(ScreensaverUserResource, self).setUp()
-        logger.debug('============== ScreensaverUserResource setup: begin ============')
-        self.db_resource_uri = BASE_URI + '/screensaveruser'
-        self.db_directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
-        self.reports_directory = os.path.join(APP_ROOT_DIR, 'reports/static/api_init')
-        
-        testApiClient = TestApiClient(serializer=reports.serializers.LimsSerializer) 
-
-        filename = os.path.join(self.reports_directory,'metahash_fields_user.csv')
-        self._patch_test(
-            'metahash', filename, data_for_get={ 'scope':'fields.user' })
-        
-        filename = os.path.join(self.directory,'metahash_fields_usergroup.csv')
-        self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.usergroup'})
-        
-        filename = os.path.join(self.directory,'metahash_fields_permission.csv')
-        self._patch_test('metahash', filename, data_for_get={ 'scope':'fields.permission'})
-
-        filename = os.path.join(self.db_directory,'metahash_fields_screensaveruser.csv')
-        self._patch_test(
-            'metahash', filename, data_for_get={ 'scope':'fields.screensaveruser'},
-            id_keys_to_check=['key','scope'])
-
-        logger.debug('============== ScreensaverUserResource setup: done ============')        
 
     def test0_create_user(self):
         logger.debug(str(('==== test_create_user =====')))
@@ -811,10 +847,10 @@ class ScreensaverUserResource(DBMetaHashResourceBootstrap):
 
         try:       
             resp = self.api_client.put(resource_uri, 
-                format='json', data=self.bootstrap_items, authentication=self.get_credentials())
+                format='json', data=self.bootstrap_items, 
+                authentication=self.get_credentials())
             self.assertTrue(resp.status_code in [200,201,202], 
                 str((resp.status_code, self.serialize(resp))))
-            #                 self.assertHttpCreated(resp)
         except Exception, e:
             logger.error(str(('on creating', self.bootstrap_items, '==ex==', e)))
             raise

@@ -283,6 +283,7 @@ function migratedb {
       $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
       echo "migration $migration complete: $(ts)" >> "$LOGFILE"
     fi
+    
   fi
     
   echo "migrations completed: $(ts) " >> "$LOGFILE"
@@ -477,7 +478,7 @@ main "$@"
 
 #   premigratedb  
 
-#   bootstrap
+#  bootstrap
   
   # the later migrations require the bootstrapped data
 #   migratedb

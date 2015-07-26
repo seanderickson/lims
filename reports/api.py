@@ -2081,7 +2081,7 @@ class ResourceResource(ManagedModelResource):
             bundle.data['schema'] = schema;
             
             # TODO: duplicate of logic in _get_resource_def
-            _temp = set(bundle.data['content_types'] or [])
+            _temp = set(bundle.data.get('content_types',[]))
             _temp.add('json')
             _temp.add('csv')
             bundle.data['content_types'] = list(_temp)

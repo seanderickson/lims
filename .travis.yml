@@ -2,7 +2,7 @@ language: python
 python:
   - "2.7"
 addons:
-  postgresql: "9.1"
+  postgresql: "8.4"
 virtualenv:
   system_site_packages: true
 before_install:
@@ -10,7 +10,7 @@ install:
   - pip install  --allow-external --allow-unverified -r requirements.txt
   - cd reports/static && npm install
 before_script:
-  - psql -c 'create database travis_ci_test;' -U postgres
+  - psql -c 'create database travis_ci_test;' -U postgres 
 script: 
   - grunt bowercopy && grunt test
   - cd ../../ && python manage.py test --settings=lims.travis-settings --verbosity=2

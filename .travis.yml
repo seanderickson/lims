@@ -13,6 +13,6 @@ before_script:
   - psql -c 'create database travis_ci_test;' -U postgres 
 script: 
   - grunt bowercopy && grunt test
-  - cd ../../ && python manage.py migrate auth
-  - cd ../../ && python manage.py test --settings=lims.travis-settings --verbosity=2
+  - cd ../../ && python manage.py migrate auth --settings=lims.travis-settings 
+  - python manage.py test --settings=lims.travis-settings --verbosity=2
 

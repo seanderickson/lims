@@ -3408,7 +3408,7 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
     
     def build_schema(self):
         
-        logger.info(str(('=== screensaver_user build_schema')))
+        logger.debug('=== screensaver_user build_schema')
         schema = super(ScreensaverUserResource,self).build_schema()
         
         sub_schema = self.get_user_resource().build_schema();
@@ -3421,7 +3421,7 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
                 fields[key] = val
         
         schema['fields'] = fields;
-        logger.info(str(('=== final screensaver_user fields', fields)))
+        logger.debug(str(('=== final screensaver_user fields', fields)))
         
         return schema
 

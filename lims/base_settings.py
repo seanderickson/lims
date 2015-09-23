@@ -153,6 +153,9 @@ SOUTH_TESTS_MIGRATE = False
 # Default if "next" is not given as a request param
 LOGIN_REDIRECT_URL='/lims'
 
+# directory for temp files created on download
+TEMP_FILE_DIR='/tmp'
+
 # base path for profiling
 PROFILE_LOG_BASE='/tmp'
 

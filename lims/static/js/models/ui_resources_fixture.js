@@ -30,7 +30,7 @@
         "api_resource": "screensaveruser",
         "url_root": "/db/api/v1",
         "description": "View user information",
-        "options": { "order": ["last_name","first_name"] }
+        "options": { }
     },
 
     "screeners": {
@@ -43,8 +43,7 @@
         "url_root": "/db/api/v1",
         "description": "View user information",
         "options": { 
-          "search": {"screeningroomuser__isnull": "False"}, 
-          "order": ["last_name","first_name"] }
+          "search": {"screeningroomuser__isnull": "False"} }
     },
 
     "staff": {
@@ -57,8 +56,7 @@
         "url_root": "/db/api/v1",
         "description": "View user information",
         "options": { 
-          "search": {"administratoruser__isnull": "False"},
-          "order": ["last_name","first_name"] }
+          "search": {"administratoruser__isnull": "False"} }
     },
     "screen": {
         "header_message": "All screens (Small Molecule and RNAi)",
@@ -70,8 +68,8 @@
         "url_root": "/db/api/v1",
         "description": "View screen information",
         "options": { 
-          "search": { "project_phase__ne": "annotation" }, 
-          "order": [ "facility_id"] }
+          "search": { "project_phase__ne": "annotation" }
+        }
     },
     "small_molecule_screens": {
         "header_message": "Small Molecule Screens",
@@ -85,8 +83,8 @@
         "options": { 
           "search": { "screen_type__in": "small_molecule",
                       "project_phase__ne": "annotation"
-                    },
-          "order": ["facility_id"] }
+                    }
+        }
     },
     "rnai_screens": {
         "header_message": "All screens (Small Molecule and RNAi)",
@@ -99,8 +97,8 @@
         "description": "View rnai screen information",
         "options": { 
           "search": { "screen_type__in": "rnai",
-                      "project_phase__ne": "annotation" },
-          "order": ["facility_id"] }
+                      "project_phase__ne": "annotation" }
+        }
     },
     "library": {
         "header_message": "All libraries (Small Molecule and RNAi)",
@@ -191,5 +189,11 @@
     "activities": {
       "options": { 
         "order": []  }
+    },
+    "userchecklistitem": {
+      "options": {
+        "rpp": 200,
+        "search": {"item_group__ne": "legacy"}
+      }
     }
 }

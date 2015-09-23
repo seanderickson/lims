@@ -1,6 +1,4 @@
 require.config({
-  // TODO: how to use the newest version of underscore.js? current version is 1.8.x
-  // but we are using 1.5.2
   
   // Note: baseUrl is the current working directory.
   
@@ -8,10 +6,11 @@ require.config({
     jquery: 'libs/jquery',
     underscore: 'libs/underscore',
     backbone: 'libs/backbone',
-    'backbone.paginator': 'libs/backbone.paginator',
+    'backbone.paginator' : 'libs/backbone.paginator',
     backgrid: 'libs/backgrid',
     backgrid_filter: 'libs/backgrid-filter',
     backgrid_paginator: 'libs/backgrid-paginator',
+    backgrid_select_all: 'libs/backgrid-select-all',
     backbone_stickit: 'libs/backbone.stickit',
     backbone_modelbinder: 'libs/Backbone.ModelBinder',
     backbone_forms: 'libs/backbone-forms', // TODO: evaluating vs. backbone.stickit
@@ -19,13 +18,13 @@ require.config({
     bootstrap: 'libs/bootstrap',
     lunr: 'libs/lunr',
     text: 'libs/text',
-    iccbl_backgrid: 'iccbl-backgrid',
-    app_state: 'models/app_state',
     router: 'router',
+    app_state: 'models/app_state',
+    iccbl_backgrid: 'iccbl-backgrid',
     multiselect: 'libs/multiselect',
-    quicksearch: 'libs/jquery.quicksearch'
+    quicksearch: 'libs/jquery.quicksearch',
+    'bootstrap-datepicker': 'libs/bootstrap-datepicker'
   },
-  
   shim: {
     underscore: {
       exports: "_"
@@ -34,7 +33,7 @@ require.config({
       deps: ['underscore', 'jquery'],
       exports: 'Backbone'
     },
-    'backbone.paginator': {
+    'backbone.paginator' : {
       deps: ['backbone', 'underscore', 'jquery'],
       exports: 'BackbonePageableCollection'
       // Note, object naming rules won't allow the dot separator, 
@@ -56,7 +55,10 @@ require.config({
       },
     bootstrap: {
         deps: ['jquery'],
-        // exports: '$.fn.modal'
+    },
+    'bootstrap-datepicker': {
+      deps: ['jquery','bootstrap'],
+      exports: 'bootstrap-datepicker'
     },
     backbone_stickit: { deps: ["backbone"] },
     
@@ -70,7 +72,5 @@ require.config({
     app_state: {
       deps: ['iccbl_backgrid']
     }
-    
   }
-  // see https://github.com/amdjs/amdjs-api/wiki/Common-Config
 });

@@ -268,7 +268,7 @@ define([
         if(fieldSchema['type']  == 'Number')
         {
           // TODO: check for the "min" "max","range" validation properties and implement
-          if( !_.isUndefined(option.min)){
+          if( option.min && !_.isUndefined(option.min)){
             var validator = function checkMin(value, formValues) {
               var err = {
                   type: 'Min',

@@ -37,6 +37,9 @@
         },
         "activity":{
           "view": "list"
+        },
+        "attachedfile":{
+          "view": "list"
         }
       }
     },

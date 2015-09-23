@@ -64,8 +64,9 @@ module.exports = function (grunt) {
           'text.js' : 'requirejs-text/text.js', 
           'bootstrap.js' : 'bootstrap/dist/js/bootstrap.js',
           'multiselect.js' : 'multiselect/js/jquery.multi-select.js',
-          'jquery.quicksearch.js': 'quicksearch/dist/jquery.quicksearch.js'
-        }
+          'jquery.quicksearch.js': 'quicksearch/dist/jquery.quicksearch.js',
+          'bootstrap-datepicker': 'bootstrap-datepicker/dist/js/bootstrap-datepicker.js'
+        } 
     }, 
     css: {
       options: {

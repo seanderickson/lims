@@ -6,7 +6,6 @@ require.config({
     jquery: 'libs/jquery',
     underscore: 'libs/underscore',
     backbone: 'libs/backbone',
-//    backbone_pageable: 'libs/backbone.paginator',
     'backbone.paginator' : 'libs/backbone.paginator',
     backgrid: 'libs/backgrid',
     backgrid_filter: 'libs/backgrid-filter',
@@ -23,7 +22,8 @@ require.config({
     app_state: 'models/app_state',
     iccbl_backgrid: 'iccbl-backgrid',
     multiselect: 'libs/multiselect',
-    quicksearch: 'libs/jquery.quicksearch'
+    quicksearch: 'libs/jquery.quicksearch',
+    'bootstrap-datepicker': 'libs/bootstrap-datepicker'
   },
   shim: {
     underscore: {
@@ -49,17 +49,16 @@ require.config({
       deps: ['backgrid', 'backbone', 'underscore', 'jquery'],
       exports: 'BackgridFilter'
     },
-//    backgrid_paginator: {
-//      deps: ['backgrid', 'backbone', 'underscore', 'jquery', 'backbone.paginator'],
-//      exports: 'BackgridPaginator'
-//    },
     backgrid_select_all: {
         deps: ['backgrid', 'backbone', 'underscore', 'jquery'],
       exports: 'BackgridSelectAll'
       },
     bootstrap: {
         deps: ['jquery'],
-        // exports: '$.fn.modal'
+    },
+    'bootstrap-datepicker': {
+      deps: ['jquery','bootstrap'],
+      exports: 'bootstrap-datepicker'
     },
     backbone_stickit: { deps: ["backbone"] },
     
@@ -69,7 +68,9 @@ require.config({
 
     iccbl_backgrid: {
         exports: 'Iccbl'
+    },
+    app_state: {
+      deps: ['iccbl_backgrid']
     }
   }
-  // see https://github.com/amdjs/amdjs-api/wiki/Common-Config
 });

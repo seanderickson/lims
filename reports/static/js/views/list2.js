@@ -51,8 +51,6 @@ define([
       
       var urlSuffix = self.urlSuffix = "";
       var listInitial = {};
-//      var orderings = [];
-//      var includes = [];
 
       // first set presets
       
@@ -378,37 +376,64 @@ define([
             }
           });
 
-      // TODO: not used
+      
       self.listenTo(self.collection, "MyCollection:delete", function (model) {
-          var modalDialog = new Backbone.View({
-              el: _.template(modalTemplate, { 
-                  body: "Please confirm deletion of record: '" + model.get('toString') + 
-                        "'", title: "Please confirm deletion" } ),
-              events: {
-                  'click #modal-cancel':function(event) {
-                      console.log('cancel button click event, '); 
-                      event.preventDefault();
-                      // TODO: read-up on modal!  this is not ideal with the 
-                      // reference to template elements!
-                      $('#modal').modal('hide'); 
+        var form_template = [
+           "<div class='form-horizontal container' id='delete_form' >",
+           "<form data-fieldsets class='form-horizontal container' >",
+           "</form>",
+           "</div>"].join('');      
+        var formSchema = {};
+        formSchema['comments'] = {
+          title: 'Comments',
+          key: 'comments',
+          validators: ['required'],
+          type: 'TextArea'
+        };
+        var FormFields = Backbone.Model.extend({
+          schema: formSchema,
+        });
+        var formFields = new FormFields();
+        var form = new Backbone.Form({
+          model: formFields,
+          template: _.template(form_template)
+        });
+        var _form_el = form.render().el;
+        var title = Iccbl.getTitleFromTitleAttribute(model,self._options.schemaResult);
+        var dialog = appModel.showModal({
+            okText: 'confirm',
+            ok: function(e){
+              var errors = form.commit({ validate: true }); // runs schema and model validation
+              console.log('errors', errors);
+              if(!_.isEmpty(errors) ){
+                console.log('form errors, abort submit: ',errors);
+                return false;
+              }else{
+                var values = form.getValue();
+                console.log('form values', values);
+                var comments = values['comments'];
+                var headers = {};
+                headers[appModel.HEADER_APILOG_COMMENT] = comments;
+              
+                e.preventDefault();
+                model.collection = self.collection;
+                // Backbone will only send DELETE if the model has an id
+                model.set('id', Iccbl.getIdFromIdAttribute(model,self._options.schemaResult));
+                model.destroy({
+                  wait: true,
+                  headers: headers,
+                  success: function(model,response){
+                    console.log('model removed successfully', model, response);
                   },
-                  'click #modal-ok':function(event) {
-                      console.log('ok button click event, '); // + JSON.stringify(fieldDefinitions));
-                      event.preventDefault();
-                      model.destroy();
-                      $('#modal').modal('hide');
-                  }
-              },
-          });
-          modalDialog.render();
-          $('#modal').empty();
-          $('#modal').html(modalDialog.$el);
-          $('#modal').modal();
-          console.log("removing model: " + JSON.stringify(model));
-          console.log('----delete resource_uri: ' + model.get('resource_uri') );
-          //model.destroy();
+                  error: appModel.backboneFetchError
+                });
+              }
+            },
+            view: _form_el,
+            title: 'Confirm deletion of "' + title + '"'  
+        });
       });
-
+      
       // Rows-per-page selector
       var rppModel = self.rppModel = new Backbone.Model({ 
           selection: String(self.listModel.get('rpp')) 
@@ -433,7 +458,6 @@ define([
           self.listModel.set('page',1);
           self.collection.state.currentPage = 1; // set this because of how checkstate is triggered
           console.log('===--- rppModel change: ' + rpp );
-//        // replace false (default) to create browser history
           appModel.set('routing_options', {replace: false});  
           self.collection.setPageSize(rpp, { first: true });
       });
@@ -531,10 +555,6 @@ define([
               }
             }
             self.listModel.set('search', searchHash);
-
-            
-//            self.collection.setSearch(searchHash);
-//            self.collection.fetch();
         });
       }
       var grid = this.grid = new Backgrid.Grid({
@@ -544,19 +564,6 @@ define([
       });
       this.objects_to_destroy.push(grid);
 
-      // encapsulate the footer in a view, help grab button click
-      var footer = self.footer = new Backbone.View({
-          el: $("<form><button type='button' id='addRecord'>Add</button></form>"),
-          events: {
-              'click button':function(event) {
-                  console.log('button click event, '); 
-                  event.preventDefault();
-                  appModel.router.navigate(self._options.resource.api_resource + "/+add", {trigger:true});
-                  return;
-              },
-          },
-      });
-      this.objects_to_destroy.push(footer);
       console.log('list view initialized');
     },
 
@@ -591,7 +598,6 @@ define([
       this.collection = null;
       this.extraSelectorInstance = null;
       this.rppSelectorInstance = null;
-      this.footer = null;
       this.listModel = null;
       this._options = null;
       this.off();
@@ -650,10 +656,6 @@ define([
       });
       self.$('#list-header').append(clearSortsButton);
                                
-      if(appModel.hasPermission(self._options.resource.key, 'write')){
-        self.$("#table-footer-div").append(self.footer.$el);
-      }
-      
       if(_.has(self._options,'extraControls')){
         _.each(self._options.extraControls, function(control){
           self.$('#extra_controls').append(control);

@@ -87,13 +87,15 @@ define([
         
         if(display_type == 'date'){
           bindings['#'+key].onGet = function(value){
+            console.log('date value', value);
+            if(!value || _.isUndefined(value)) return '-';
             try{
               var date = new Date(value);
-              var month = (date.getUTCMonth()+1);
+              var month = (date.getMonth()+1);
               if(month < 10) month = '0' + month;
-              var day = date.getUTCDate();
+              var day = date.getDate();
               if(day < 10) day = '0' + day;
-              return date.getUTCFullYear() 
+              return date.getFullYear() 
                 + '-' + month
                 + '-' + day;
             }catch(e){

@@ -109,7 +109,8 @@ requirejs(['require-config'],
       console.log('add to loadCount: ' + loadCount );
     }).bind("ajaxComplete", function(){
       loadCount--;
-      if (loadCount == 0 ){
+      if (loadCount <= 0 ){
+        loadCount = 0;
         console.log('loadCount: ' + loadCount );
         $('#loading').fadeOut({duration:100});
       }else{
@@ -118,7 +119,8 @@ requirejs(['require-config'],
       }
     }).bind("ajaxStop"), function(){
       loadCount--;
-      if (loadCount == 0 ){
+      if (loadCount <= 0 ){
+        loadCount = 0;
         console.log('loadCount: ' + loadCount );
         $('#loading').fadeOut({duration:100});
       }else{

@@ -449,6 +449,20 @@ var formatResponseError = Iccbl.formatResponseError = function(response){
     return msg;
 }
 
+var CollectionOnClient = Iccbl.CollectionOnClient = Backbone.Collection.extend({
+  /**
+   * Override collection parse method: Parse server response data.
+   */
+  parse : function(response) {
+    console.log('Collection on client, parse called');
+    // hack the response for tastypie:
+    return response.objects;
+  },
+  setSearch: function(){
+    //nop, for now
+  }
+});
+
 var getCollectionOnClient = Iccbl.getCollectionOnClient = function(url, callback){
   var CollectionClass = Iccbl.CollectionOnClient.extend({
     url: url 
@@ -473,6 +487,7 @@ var getCollectionOnClient = Iccbl.getCollectionOnClient = function(url, callback
         window.alert(msg);
         // TODO: 1. use Bootstrap inscreen alert classed message div
         // TODO: 2. jquery seems to swallow json parsing exceptions, fyi
+        $(document).trigger('ajaxComplete');
         throw msg;
     },
     always: function(){
@@ -1046,19 +1061,20 @@ var DeleteCell = Iccbl.DeleteCell = Backgrid.Cell.extend({
   },
 
   initialize: function(options){
-  Backgrid.Cell.prototype.initialize.apply(this, arguments);
+    Backgrid.Cell.prototype.initialize.apply(this, arguments);
   },
 
   render: function () {
-  this.$el.empty();
-
-  this.$el.append("&nbsp;");
-  this.$el.append($("<a id='delete' >", {
-  tabIndex : -1,
-  href : '',
-  }).text(this.options.column.attributes['text']));
-  this.delegateEvents();
-  return this;
+    this.$el.empty();
+  
+    this.$el.append("&nbsp;");
+    this.$el.append(
+      $("<a id='delete' >", {
+        tabIndex : -1,
+        href : '',
+      }).text(this.column.attributes['text']));
+    this.delegateEvents();
+    return this;
   },
 
   delete: function(e) {
@@ -1066,18 +1082,6 @@ var DeleteCell = Iccbl.DeleteCell = Backgrid.Cell.extend({
       this.model.collection.trigger("MyCollection:delete", this.model);
   }
 });
-
-var CollectionOnClient = Iccbl.CollectionOnClient = Backbone.Collection.extend({
-  /**
-   * Override collection parse method: Parse server response data.
-   */
-  parse : function(response) {
-    console.log('Collection on client, parse called');
-    // hack the response for tastypie:
-    return response.objects;
-  },
-});
-
 
 var CollectionInColumns = Iccbl.CollectionInColumns = Backbone.Collection.extend({
   /**
@@ -3682,7 +3686,21 @@ var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
         + ",  'optionValues' must be of type " 
         + "{Array.<Array>|Array.<{name: string, values: Array.<Array>}>}", optionValues,rawData);
     }
-    this.$el.append(selectedText.join(this.delimiter));
+    var finalText = selectedText.join(this.delimiter);
+    
+    if(!_.isUndefined(this.hrefTemplate)){
+      // hack - if hrefTemplate is defined, treat this like a link cell - 20150828
+      var target = this.target || "_self";
+      var interpolatedVal = Iccbl.replaceTokens(this.model, this.hrefTemplate);
+      this.$el.append($('<a>', {
+        tabIndex : -1,
+        href : interpolatedVal,
+        target : this.target
+      }).text(finalText));
+      
+    }else{
+      this.$el.append(finalText);
+    }
 
     this.delegateEvents();
 
@@ -3731,8 +3749,11 @@ _.extend(DatetimeFormatter.prototype, {
     var date, time = null;
     if (_.isNumber(data)) {
       var jsDate = new Date(data);
-      date = lpad(jsDate.getUTCFullYear(), 4, 0) + '-' + lpad(jsDate.getUTCMonth() + 1, 2, 0) + '-' + lpad(jsDate.getUTCDate(), 2, 0);
-      time = lpad(jsDate.getUTCHours(), 2, 0) + ':' + lpad(jsDate.getUTCMinutes(), 2, 0) + ':' + lpad(jsDate.getUTCSeconds(), 2, 0);
+      // modified 20150831 - use local date/time
+      //      date = lpad(jsDate.getUTCFullYear(), 4, 0) + '-' + lpad(jsDate.getUTCMonth() + 1, 2, 0) + '-' + lpad(jsDate.getUTCDate(), 2, 0);
+      //      time = lpad(jsDate.getUTCHours(), 2, 0) + ':' + lpad(jsDate.getUTCMinutes(), 2, 0) + ':' + lpad(jsDate.getUTCSeconds(), 2, 0);
+      date = lpad(jsDate.getFullYear(), 4, 0) + '-' + lpad(jsDate.getMonth() + 1, 2, 0) + '-' + lpad(jsDate.getDate(), 2, 0);
+      time = lpad(jsDate.getHours(), 2, 0) + ':' + lpad(jsDate.getMinutes(), 2, 0) + ':' + lpad(jsDate.getUTCSeconds(), 2, 0);
     }
     else {
       data = data.trim();
@@ -3864,7 +3885,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   var data_type = _.isEmpty(prop.data_type)?'string':prop.data_type.toLowerCase();
   var display_type = _.isEmpty(prop.display_type)?data_type:prop.display_type.toLowerCase();
   console.log(key, 'data_type', data_type, 'display_type', display_type, prop);
-  var cell_options;
+  var cell_options = {};
   if(_.has(prop,'display_options') && ! _.isEmpty(prop.display_options)){
     cell_options = prop['display_options'];
     cell_options = cell_options.replace(/'/g,'"');
@@ -3920,9 +3941,10 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     }catch(e){
       console.log('e'+JSON.stringify(e));
     }
-    column['cell'] = Iccbl.SelectCell.extend({
+    cell_options = _.extend(cell_options,{
       optionValues: optionValues
-    });
+    } );
+    column['cell'] = Iccbl.SelectCell.extend(cell_options);
   }
   if(orderStack && _.contains(orderStack, key)){
     column['direction'] = 'ascending';
@@ -3992,6 +4014,7 @@ var createBackgridColModel = Iccbl.createBackgridColModel =
     var key = pair[0];
     var prop = pair[1];
     var column = createBackgridColumn(key, prop, orderStack);
+    column.key = key;
     var visible = _.has(prop, 'visibility') && 
       _.contains(prop['visibility'], 'list');
     if (visible || _.contains(manualIncludes, key) ) {

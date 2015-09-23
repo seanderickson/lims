@@ -589,6 +589,7 @@ define([
         }              
         
       }
+      $(document).trigger('ajaxComplete');
       self.error(msg);
     },
     
@@ -793,6 +794,9 @@ define([
             url += '&raw_lists=true';
           }
           
+          // When downloading via AJAX, the "Content-Disposition: attachment" 
+          // does not trigger a "load" (completed) event; this workaraound
+          // will set a cookie "downloadID" from the server when the download happens.
           // How to trigger a download and notify JavaScript when finished:
           // send a downloadID to the server and wait for a response cookie to appear.
           // The code here was helpful:
@@ -874,6 +878,14 @@ define([
     },
     
     /**
+     * show a modal pop up with only an "ok" button, no "cancel" button.
+     */
+    showModalMessage: function(options){
+      var modalDialog = this.showModal(options);
+      modalDialog.$el.find('#modal-cancel').hide();
+    },
+    
+    /**
      * options.ok = ok function
      * options.cancel = cancel function
      * options.body
@@ -920,8 +932,8 @@ define([
       $('#modal').empty();
       $('#modal').html(modalDialog.$el);
       $('#modal').modal({show:true, backdrop: 'static'});
+      return modalDialog;
     }   
-  
   });
 
   var appState = new AppState();

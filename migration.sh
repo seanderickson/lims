@@ -117,7 +117,8 @@ function restoredb {
   else
     # test if the db exists
     psql -h $DBHOST -U $DBUSER -lqt | cut -d \| -f 1 | grep -w $DB
-    if [[ $? ]]; then
+#    if [[ $? ]]; then
+    if [[ "$?" -eq 0 ]]; then
       dropdb -U $DBUSER $DB -h $DBHOST >>"$LOGFILE" 2>&1 || error "dropdb failed: $?"
     fi
   fi
@@ -283,6 +284,32 @@ function migratedb {
       $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
       echo "migration $migration complete: $(ts)" >> "$LOGFILE"
     fi
+    migration='0017'
+    if [[ ! $completed_migrations =~ $migration ]]; then
+      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+    fi
+    migration='0018'
+    if [[ ! $completed_migrations =~ $migration ]]; then
+      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+    fi
+    migration='0019'
+    if [[ ! $completed_migrations =~ $migration ]]; then
+      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+    fi
+    migration='0020'
+    if [[ ! $completed_migrations =~ $migration ]]; then
+      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+      psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
+          -f ./db/migrations/manual/0020_change_attachedfile_to_bytea.sql >>"$LOGFILE" 2>&1 || error "manual script 0016 failed: $?"
+      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+    fi
     
   fi
     
@@ -336,6 +363,11 @@ function bootstrap {
     kill $server_pid
     error "bootstrap production data failed: $?"
   fi
+
+  # add user "sde" to the screensaver_users table 20150831
+  curl -v  --dump-header - -H "Content-Type: text/csv" --user sde \
+    -X PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screensaveruser/ \
+    --data-binary @${BOOTSTRAP_PRODUCTION_DIR}/screensaver_users-db-prod.csv
 
   final_server_pid=$(ps aux |grep runserver| grep ${BOOTSTRAP_PORT} | awk '{print $2}')
   echo "kill $final_server_pid"

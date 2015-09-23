@@ -1,299 +1,75 @@
 # -*- coding: utf-8 -*-
-from django.conf import settings
-from django.contrib.auth.models import User, UserManager
-from django.db import models
-from django.utils import timezone
-from django.utils.timezone import utc, make_aware
-from south.db import db
 from south.utils import datetime_utils as datetime
+from south.db import db
 from south.v2 import DataMigration
-
-from reports.models import UserProfile, UserGroup, Permission, ApiLog
-from db.support.data_converter import default_converter
-
+from django.db import models
+import os
+import csv
+import lims
 import logging
+from db.support.data_converter import default_converter
+from reports.models import Vocabularies
 
 logger = logging.getLogger(__name__)
 
 
 class Migration(DataMigration):
-    # FIXME: 20150722 - NOT FINISHED ROLES
 
     def forwards(self, orm):
-        self.create_screensaver_users(orm)
-        self.create_roles(orm)
-        
-    def create_screensaver_users(self, orm):
-        '''
-        Create entries in auth_user, reports.UserProfile for each valid entry 
-        in the screensaver_user table.
-        - 'valid' entries have [ecommons_id or login_id] and email addresses.
-        - Duplicated ecommons/and/or/login ID's are invalid; the second
-        (duplicate) entry will be ignored.
-        '''
-        
-        i=0
-        skip_count = 0
-        
-        AuthUserClass = orm['auth.User']
-        UserProfileClass = orm['reports.UserProfile']
 
-        auth_user_username_limit = 30
-        
-        # delete this inconsistent user:
-        #  866 |      14 | 2007-05-24 00:00:00-04 | Ernebjerg  | Morten    | morten_ernebjerg@hms.harvard.edu | 617-432-6392 |                 | using wellmate                           |          |                   | me44        | 70572885   |                            |                                      |               |             |                         |        |         | me44
-        ssuid = 866
-        try:
-            obj = orm.ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-            obj.delete()
-        except Exception,e:
-            logger.error(str(('cannot find/delete screensaver_user_id', ssuid, e)))
-        # remove the second jgq10 erroneous account
-        ssuid = 3166
-        try:
-            su = orm.ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-            username = '%s_%s' % (su.first_name, su.last_name)
-            username = default_converter(username)[:auth_user_username_limit]
-            su.username = username
-            su.save()
-        except Exception,e:
-            logger.error(str(('cannot find/delete screensaver_user_id', ssuid, e)))
+        # Adding field 'AttachedFile.type'
+        db.add_column(u'attached_file', 'type',
+                      self.gf('django.db.models.fields.TextField')(null=True),
+                      keep_default=False)
 
-        ssuid = 830
-        # for ruchir shahs old acct
-        try:
-            su = orm.ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-            username = '%s_%s' % (su.first_name, su.last_name)
-            username = default_converter(username)[:auth_user_username_limit]
-            su.username = username
-            su.save()
-        except Exception,e:
-            logger.error(str(('cannot find/delete screensaver_user_id', ssuid, e)))
-        ssuid = 3945
-        # for min-joon han dupl
-        try:
-            su = orm.ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-            username = '%s_%s' % (su.first_name, su.last_name)
-            username = default_converter(username)[:auth_user_username_limit]
-            su.username = username
-            su.save()
-        except Exception,e:
-            logger.error(str(('cannot find/delete screensaver_user_id', ssuid, e)))
-        ssuid = 129
-        # for maria chmura
-        try:
-            su = orm.ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-            username = '%s_%s' % (su.first_name, su.last_name)
-            username = default_converter(username)[:auth_user_username_limit]
-            su.username = username
-            su.save()
-        except Exception,e:
-            logger.error(str(('cannot find/delete screensaver_user_id', ssuid, e)))
-        
-        # sean johnston second account
-        ssuid = 3758 
-        try:
-            su = orm.ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-            username = '%s_%s_2' % (su.first_name, su.last_name)
-            username = default_converter(username)[:auth_user_username_limit]
-            su.username = username
-            su.save()
-        except Exception,e:
-            logger.error(str(('cannot find screensaver_user_id', ssuid, e)))
-        
-        # to be deleted, duplicate account for Zecai      | Liang     | zl59 
-        ssuid = 4505
-        try:
-            su = orm.ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-            username = '%s_%s_to_be_deleted' % (su.first_name, su.last_name)
-            username = default_converter(username)[:auth_user_username_limit]
-            su.username = username
-            su.save()
-        except Exception,e:
-            logger.error(str(('cannot find screensaver_user_id', ssuid, e)))
-        
-        for su in orm.ScreensaverUser.objects.all():
-            logger.info(str(("processing ecommons:", su.ecommons_id, 'login_id', 
-                su.login_id, su.email, su.first_name, su.last_name)) )
-            newAuthUser = None
-            newUserProfile = None
-            if not su.username:
-                username = None
-                if su.ecommons_id: 
-                    username = default_converter(str(su.ecommons_id)) # convert in case it has an error
-                elif su.login_id:
-                    username = default_converter(str(su.login_id))
-                elif su.first_name is not None and su.last_name is not None:
-                    username = '%s_%s' % (su.first_name, su.last_name)
-                    username = default_converter(username)[:auth_user_username_limit]
-                elif su.email:
-                    username = default_converter(su.email)[:auth_user_username_limit]
-                else:
-                    msg = (str((
-                         'Cannot create a login account, does not have id information', 
-                        su.screensaver_user_id, ',e', su.ecommons_id, ',l', 
-                        su.login_id, ',', su.email, su.first_name, su.last_name)) )
-                    raise Exception(msg)
-            
-                su.username = username
+        vocab_file = os.path.join(
+            lims.settings.PROJECT_ROOT, '..',
+            'db','static','api_init','vocabularies_attachedfiletype_data.csv')
+        logger.info('write vocabularies to %s' % vocab_file)
+        resource_uri = '/reports/api/v1/vocabularies/%s/%s/'
+        with open(vocab_file,'w') as _file:
+            vocab_writer = csv.writer(_file)
+            header = ['resource_uri','key','scope','ordinal','title'] 
+            vocab_writer.writerow(header)
 
-            username = su.username
-            # find or create the auth_user
-            try:
-                newAuthUser = AuthUserClass.objects.get(username=username)
-                logger.info(str(('found auth_user', username)))
-            except Exception, e:
-                pass;
+            ci_group_map = {}
+            scope = 'attachedfiletype.%s'
+            for i,obj in enumerate(orm.AttachedFileType.objects.all().order_by('value')):
+                key = default_converter(obj.value)
+                v = Vocabularies.objects.create(
+                    scope=scope % obj.for_entity_type,
+                    key=key,
+                    title=obj.value,
+                    ordinal=i
+                    )
+                v.save()
+                vocab_writer.writerow([
+                    resource_uri % (v.scope,v.key),
+                    v.key,v.scope,v.ordinal,v.title])
+                logger.info(str(('created', v)))
                 
-            if not newAuthUser:
-                try:
-                    newAuthUser = AuthUserClass(
-                        username = username, 
-                        email = su.email if su.email else 'none', 
-                        first_name = su.first_name, 
-                        last_name = su.last_name,
-                        date_joined = datetime.datetime.utcnow().replace(tzinfo=utc),
-                        is_active=False,
-                        is_staff=False)
-    
-                    newAuthUser.save()
-                    logger.info(str(('created user from ecommons', 
-                        newAuthUser.email, newAuthUser.username, type(newAuthUser) )))
-                except Exception, e:
-                    logger.error(str(('cannot create user ',username,e)))
-                    raise
-#                     continue;
-            # find or create the userprofile
-            try:
-                newUserProfile = UserProfileClass.objects.get(username=username)
-                logger.info(str(('found userprofile', username)))
-            except Exception, e:
-                logger.info(str(('no userprofile', username)))
-#                 created_by_username = None
-#                 if su.created_by:
-#                     newUserProfile
-#                     if su.created_by.ecommons_id:
-#                         created_by_username = su.created_by.ecommons_id
-#                         if not created_by_username:
-#                             created_by_username = su.created_by.login_id
-#                             if not created_by_username:
-#                                 created_by_username = su.created_by_id
-                if su.created_by: 
-                    created_by_username = su.created_by.username
-                else:
-                    created_by_username = 'sde_EDIT'
-                    
-                newUserProfile = UserProfileClass()
-                
-                newUserProfile.username = username 
-                newUserProfile.email = su.email
-                newUserProfile.phone = su.phone
-                newUserProfile.mailing_address = su.mailing_address
-                newUserProfile.comments = su.comments
-                newUserProfile.ecommons_id = su.ecommons_id
-                newUserProfile.harvard_id = su.harvard_id
-                newUserProfile.harvard_id_expiration_date = \
-                    su.harvard_id_expiration_date
-                newUserProfile.harvard_id_requested_expiration_date = \
-                    su.harvard_id_requested_expiration_date
-                newUserProfile.created_by_username = created_by_username            
+                orm.AttachedFile.objects.filter(attached_file_type=obj).update(type=key)
 
-                newUserProfile.user = newAuthUser
-                newUserProfile.save()
-                    
-#                 if orm.ScreensaverUser.objects.all().filter(
-#                         user=newUserProfile).exists():
-#                     msg = ('==== error: duplicate user found: ',
-#                         username, su,
-#                         orm.ScreensaverUser.objects.all().filter(user=newUserProfile))
-#                     print msg
-#                     logger.error(str((msg, 'skipping')))
-#                     continue
-#                 
-            su.user = newUserProfile
-            su.save()
-            logger.info(str(('saved', str(newUserProfile),'%s'%su)))
-            i += 1
-            
-        logger.info(str(( 'Converted ', i , ' users, skipped: ', skip_count)))
-        
-    # FIXME: 20150722 - NOT FINISHED ROLES
-    def create_roles(self, orm):
-        '''
-        Create the needed Usergroups and Permissions to implement the legacy
-        ScreensaverUserRoles
-        '''
-        
-        AuthUserClass = orm['auth.User']
-        UserProfileClass = orm['reports.UserProfile']
-        UserGroupClass = orm['reports.UserGroup']
-        
-        role_group_map = {}
-        
-        role_group_map['screensaverUser'] = \
-            UserGroupClass.objects.get_or_create(name='screensaverUser')[0]
-        role_group_map['smDsl1MutualScreens'] = \
-            UserGroupClass.objects.get_or_create(name='smallMoleculeLevel1')[0]
-        role_group_map['smDsl2MutualPositives'] = \
-            UserGroupClass.objects.get_or_create(name='smallMoleculeLevel2')[0]
-        role_group_map['smDsl3SharedScreens'] = \
-            UserGroupClass.objects.get_or_create(name='smallMoleculeLevel3')[0]
-        role_group_map['rnaiDsl1MutualScreens'] = \
-            UserGroupClass.objects.get_or_create(name='rnaiDsl1MutualScreens')[0]
-        role_group_map['rnaiDsl2MutualPositives'] = \
-            UserGroupClass.objects.get_or_create(name='rnaiDsl2MutualPositives')[0]
-        role_group_map['rnaiDsl3SharedScreens'] = \
-            UserGroupClass.objects.get_or_create(name='rnaiDsl3SharedScreens')[0]
-#      screensaver_user_role     
-# -------------------------------
-#  billingAdmin
-#  cherryPickRequestsAdmin
-#  developer
-#  labHeadsAdmin
-#  librariesAdmin
-#  libraryCopiesAdmin
-#  marcusAdmin
-#  readEverythingAdmin
-#  rnaiDsl1MutualScreens
-#  rnaiDsl2MutualPositives
-#  rnaiDsl3SharedScreens
-#  screenDataSharingLevelsAdmin
-#  screenDslExpirationNotify
-#  screenResultsAdmin
-#  screensAdmin
-#  screensaverUser
-#  serviceActivityAdmin
-#  smDsl1MutualScreens
-#  smDsl2MutualPositives
-#  smDsl3SharedScreens
-#  userAgreementExpirationNotify
-#  userChecklistItemsAdmin
-#  userRolesAdmin
-#  usersAdmin
-
-        i = j = 0
-        roles_assigned = 0
-        for up in UserProfileClass.objects.all():
-            
-            if up.screensaveruser_set.exists():
-                su = up.screensaveruser_set.all()[0]
+        # Changing field 'AttachedFile.type' to non-null
+        db.alter_column(u'attached_file', 'type', 
+            self.gf('django.db.models.fields.TextField')(default=''))
+        # Deleting field 'AttachedFile.version'
+        db.delete_column(u'attached_file', 'version')
+        # Deleting field 'AttachedFile.attached_file_type'
+        db.delete_column(u'attached_file', 'attached_file_type_id')
                 
-                for role in su.screensaveruserrole_set.all():
-                     logger.debug(str(( 'user', up.username , 'found role', role.screensaver_user_role)))
-                     if j==0: i += 1
-                     j += 1
-                     if role.screensaver_user_role in role_group_map:
-                         ug = role_group_map[role.screensaver_user_role]
-                         ug.users.add(up)
-                         ug.save()
-                     else:
-                        logger.error(str(('unknown group',role.screensaver_user_role)) )
-                roles_assigned += j
-                j = 0
-        logger.info(str(('created',roles_assigned,'roles for',i,'users')))
-        
+        # Deleting model 'AttachedFileType'
+        db.delete_table(u'attached_file_type')
+
+        # FIXME: clean up pg_largeobjects
+        db.delete_column(u'attached_file', 'file_contents')
+
+        logger.info('done')
+
+
     def backwards(self, orm):
-        "Write your backwards methods here."
+        # User chose to not deal with backwards NULL issues for 'AttachedFile.version'
+        raise RuntimeError("Cannot reverse this migration.")
 
     models = {
         u'auth.group': {
@@ -410,19 +186,20 @@ class Migration(DataMigration):
         },
         u'db.attachedfile': {
             'Meta': {'object_name': 'AttachedFile', 'db_table': "u'attached_file'"},
-            'attached_file_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
+            'attached_file_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'attached_file_type': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AttachedFileType']"}),
             'created_by': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreensaverUser']", 'null': 'True', 'blank': 'True'}),
             'date_created': ('django.db.models.fields.DateTimeField', [], {}),
             'date_loaded': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
             'date_publicly_available': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
-            'file_contents': ('django.db.models.fields.TextField', [], {}),
+#             'file_contents': ('django.db.models.fields.TextField', [], {}),
+            'contents': ('django.db.models.fields.BinaryField', [], {'null': 'False'}),
             'file_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'filename': ('django.db.models.fields.TextField', [], {}),
             'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Reagent']", 'null': 'True', 'blank': 'True'}),
             'screen': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Screen']", 'null': 'True', 'blank': 'True'}),
             'screensaver_user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreeningRoomUser']", 'null': 'True', 'blank': 'True'}),
-            'version': ('django.db.models.fields.IntegerField', [], {})
+            'type': ('django.db.models.fields.TextField', [], {})
         },
         u'db.attachedfiletype': {
             'Meta': {'object_name': 'AttachedFileType', 'db_table': "u'attached_file_type'"},
@@ -822,7 +599,7 @@ class Migration(DataMigration):
             'Meta': {'object_name': 'Reagent', 'db_table': "u'reagent'"},
             'library_contents_version': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.LibraryContentsVersion']", 'null': 'True'}),
             'reagent_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UWPRH326'", 'unique': 'True', 'max_length': '8'}),
+            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UWPRH2ZE'", 'unique': 'True', 'max_length': '8'}),
             'vendor_batch_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_identifier': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_name': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -1131,7 +908,7 @@ class Migration(DataMigration):
             'version': ('django.db.models.fields.IntegerField', [], {})
         },
         u'db.userchecklistitem': {
-            'Meta': {'object_name': 'UserChecklistItem', 'db_table': "u'user_checklist_item'"},
+            'Meta': {'unique_together': "((u'screensaver_user', u'item_group', u'item_name'),)", 'object_name': 'UserChecklistItem', 'db_table': "u'user_checklist_item'"},
             'admin_user': ('django.db.models.fields.related.ForeignKey', [], {'related_name': "u'userchecklistitems_created'", 'to': u"orm['db.ScreensaverUser']"}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'item_group': ('django.db.models.fields.TextField', [], {}),
@@ -1170,58 +947,6 @@ class Migration(DataMigration):
             'Meta': {'object_name': 'WellVolumeCorrectionActivity', 'db_table': "u'well_volume_correction_activity'"},
             'activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AdministrativeActivity']", 'primary_key': 'True'})
         },
-        u'reports.apilog': {
-            'Meta': {'unique_together': "(('ref_resource_name', 'key', 'date_time'),)", 'object_name': 'ApiLog'},
-            'added_keys': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            'api_action': ('django.db.models.fields.CharField', [], {'max_length': '10'}),
-            'comment': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            'date_time': ('django.db.models.fields.DateTimeField', [], {}),
-            'diff_keys': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            'diffs': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'json_field': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            'key': ('django.db.models.fields.CharField', [], {'max_length': '128'}),
-            'parent_log': ('django.db.models.fields.related.ForeignKey', [], {'related_name': "'child_logs'", 'null': 'True', 'to': u"orm['reports.ApiLog']"}),
-            'ref_resource_name': ('django.db.models.fields.CharField', [], {'max_length': '128'}),
-            'removed_keys': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            'uri': ('django.db.models.fields.TextField', [], {}),
-            'user_id': ('django.db.models.fields.IntegerField', [], {}),
-            'username': ('django.db.models.fields.CharField', [], {'max_length': '128'})
-        },
-        u'reports.job': {
-            'Meta': {'object_name': 'Job'},
-            'comment': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'date_time_fullfilled': ('django.db.models.fields.DateTimeField', [], {'null': 'True'}),
-            'date_time_processing': ('django.db.models.fields.DateTimeField', [], {'null': 'True'}),
-            'date_time_requested': ('django.db.models.fields.DateTimeField', [], {'default': 'datetime.datetime.now'}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'input_filename': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'path_info': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'remote_addr': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'request_method': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'response_code': ('django.db.models.fields.IntegerField', [], {}),
-            'response_content': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'response_filename': ('django.db.models.fields.TextField', [], {'null': 'True'})
-        },
-        u'reports.listlog': {
-            'Meta': {'unique_together': "(('apilog', 'ref_resource_name', 'key', 'uri'),)", 'object_name': 'ListLog'},
-            'apilog': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.ApiLog']"}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'key': ('django.db.models.fields.CharField', [], {'max_length': '128'}),
-            'ref_resource_name': ('django.db.models.fields.CharField', [], {'max_length': '64'}),
-            'uri': ('django.db.models.fields.TextField', [], {})
-        },
-        u'reports.metahash': {
-            'Meta': {'unique_together': "(('scope', 'key'),)", 'object_name': 'MetaHash'},
-            'alias': ('django.db.models.fields.CharField', [], {'max_length': '64', 'blank': 'True'}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'json_field': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'json_field_type': ('django.db.models.fields.CharField', [], {'max_length': '128', 'null': 'True', 'blank': 'True'}),
-            'key': ('django.db.models.fields.CharField', [], {'max_length': '64', 'blank': 'True'}),
-            'linked_field_type': ('django.db.models.fields.CharField', [], {'max_length': '128', 'null': 'True', 'blank': 'True'}),
-            'ordinal': ('django.db.models.fields.IntegerField', [], {}),
-            'scope': ('django.db.models.fields.CharField', [], {'max_length': '64', 'blank': 'True'})
-        },
         u'reports.permission': {
             'Meta': {'unique_together': "(('scope', 'key', 'type'),)", 'object_name': 'Permission'},
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
@@ -1229,74 +954,26 @@ class Migration(DataMigration):
             'scope': ('django.db.models.fields.CharField', [], {'max_length': '64', 'blank': 'True'}),
             'type': ('django.db.models.fields.CharField', [], {'max_length': '35'})
         },
-        u'reports.record': {
-            'Meta': {'object_name': 'Record'},
-            'base_value1': ('django.db.models.fields.TextField', [], {}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'scope': ('django.db.models.fields.CharField', [], {'max_length': '64', 'blank': 'True'})
-        },
-        u'reports.recordmultivalue': {
-            'Meta': {'unique_together': "(('field_meta', 'parent', 'ordinal'),)", 'object_name': 'RecordMultiValue'},
-            'field_meta': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.MetaHash']"}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'ordinal': ('django.db.models.fields.IntegerField', [], {}),
-            'parent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.Record']"}),
-            'value': ('django.db.models.fields.TextField', [], {})
-        },
-        u'reports.recordvalue': {
-            'Meta': {'object_name': 'RecordValue'},
-            'field_meta': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.MetaHash']"}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'parent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.Record']"}),
-            'value': ('django.db.models.fields.TextField', [], {'null': 'True'})
-        },
-        u'reports.recordvaluecomplex': {
-            'Meta': {'object_name': 'RecordValueComplex'},
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'parent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['reports.Record']", 'unique': 'True'}),
-            'value1': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'value2': ('django.db.models.fields.TextField', [], {'null': 'True'})
-        },
-        u'reports.usergroup': {
-            'Meta': {'object_name': 'UserGroup'},
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'name': ('django.db.models.fields.TextField', [], {'unique': 'True'}),
-            'permissions': ('django.db.models.fields.related.ManyToManyField', [], {'to': u"orm['reports.Permission']", 'symmetrical': 'False'}),
-            'super_groups': ('django.db.models.fields.related.ManyToManyField', [], {'related_name': "'sub_groups'", 'symmetrical': 'False', 'to': u"orm['reports.UserGroup']"}),
-            'users': ('django.db.models.fields.related.ManyToManyField', [], {'to': u"orm['reports.UserProfile']", 'symmetrical': 'False'})
-        },
         u'reports.userprofile': {
             'Meta': {'object_name': 'UserProfile'},
-            'comments': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
+            'comments': ('django.db.models.fields.TextField', [], {'null': 'True'}),
             'created_by_username': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'ecommons_id': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            'email': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
+            'ecommons_id': ('django.db.models.fields.TextField', [], {'null': 'True'}),
+            'email': ('django.db.models.fields.TextField', [], {'null': 'True'}),
             'gender': ('django.db.models.fields.CharField', [], {'max_length': '15', 'null': 'True'}),
-            'harvard_id': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            'harvard_id_expiration_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
-            'harvard_id_requested_expiration_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
+            'harvard_id': ('django.db.models.fields.TextField', [], {'null': 'True'}),
+            'harvard_id_expiration_date': ('django.db.models.fields.DateField', [], {'null': 'True'}),
+            'harvard_id_requested_expiration_date': ('django.db.models.fields.DateField', [], {'null': 'True'}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'json_field': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'json_field_type': ('django.db.models.fields.CharField', [], {'max_length': '128', 'null': 'True', 'blank': 'True'}),
-            'mailing_address': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
+            'json_field': ('django.db.models.fields.TextField', [], {'null': 'True'}),
+            'json_field_type': ('django.db.models.fields.CharField', [], {'max_length': '128', 'null': 'True'}),
+            'mailing_address': ('django.db.models.fields.TextField', [], {'null': 'True'}),
             'permissions': ('django.db.models.fields.related.ManyToManyField', [], {'to': u"orm['reports.Permission']", 'symmetrical': 'False'}),
-            'phone': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
-            'user': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['auth.User']", 'unique': 'True'}),
+            'phone': ('django.db.models.fields.TextField', [], {'null': 'True'}),
+            'user': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['auth.User']", 'unique': 'True', 'null': 'True', 'on_delete': 'models.SET_NULL'}),
             'username': ('django.db.models.fields.TextField', [], {'unique': 'True'})
-        },
-        u'reports.vocabularies': {
-            'Meta': {'unique_together': "(('scope', 'key'),)", 'object_name': 'Vocabularies'},
-            'alias': ('django.db.models.fields.CharField', [], {'max_length': '64', 'blank': 'True'}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'json_field': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
-            'key': ('django.db.models.fields.CharField', [], {'max_length': '128', 'blank': 'True'}),
-            'ordinal': ('django.db.models.fields.IntegerField', [], {}),
-            'scope': ('django.db.models.fields.CharField', [], {'max_length': '128', 'blank': 'True'}),
-            'title': ('django.db.models.fields.CharField', [], {'max_length': '512', 'blank': 'True'})
         }
     }
 
-    complete_apps = ['reports','db']
-    
-    
-    
+    complete_apps = ['db']
+    symmetrical = True

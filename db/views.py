@@ -2,12 +2,14 @@ import logging
 import os.path
 import sys
 from django.shortcuts import render
-from db.models import ScreensaverUser, Reagent
+from db.models import ScreensaverUser, Reagent, AttachedFile
 from django.http import HttpResponse
 import json
 from django.utils.encoding import smart_str
 from django.conf import settings
 from django.http.response import Http404
+from reports.api import UserGroupAuthorization
+from wsgiref.util import FileWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -79,8 +81,50 @@ def smiles_image(request, well_id):
     im.save(response, "PNG")
     return response
     
-
-
+def attached_file(request, attached_file_id):
+    af = None
+    try:
+        af = AttachedFile.objects.get(attached_file_id=attached_file_id)
+    except Exception,e:
+        msg = str(('could not find attached file object for id', attached_file_id, e))
+        logger.warn(msg)
+        raise Http404(msg)
+    return _download_file(request,af)
+        
+def _download_file(request, attached_file):   
+    """                                                                         
+    Send a file through Django without loading the whole file into              
+    memory at once. The FileWrapper will turn the file object into an           
+    iterator for chunks of 8KB.                                                 
+    """
+    logger.info('download attached file: %s' % attached_file)
+    try:     
+        if(not request.user.is_authenticated()):
+            logger.warn(str(('access to restricted file for user is denied',
+                             request.user,attached_file)))
+            return HttpResponse('Log in required.', status=401)
+        
+        # check user permissions
+        userprofile = request.user.userprofile
+        if attached_file.screensaver_user.screensaver_user.user != userprofile:
+            authorization = UserGroupAuthorization()
+            if not authorization._is_resource_authorized('attachedfiles',request.user,'read'):
+                logger.warn(str(('UserGroupAuthorization needed',
+                                 request.user,'attachedfiles')))
+                return HttpResponse('Log in required for attachedfiles.', status=401)
+        else:
+            logger.info('User allowed attached file access to own files %s' % request.user)
+        
+        # use the same type for all files
+        response = HttpResponse(
+            str(attached_file.contents), content_type='application/octet-stream') 
+        response['Content-Disposition'] = \
+            'attachment; filename=%s' % unicode(attached_file.filename)
+        response['Content-Length'] = len(attached_file.contents)
+        return response
+    except Exception,e:
+        logger.exception('on accessing attached file %s' % attached_file)
+        
 
 def screeners(request):
     search = request.GET.get('search', '')

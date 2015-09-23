@@ -1,6 +1,6 @@
 key,scope,resource_uri,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,data_type,display_type,display_options,edit_type,is_restricted,display_format,value_template
-username,fields.apilog,/reports/api/v1/metahash/fields.apilog/username/,4,,TRUE,"The username of the user committing this change",Username,TRUE,,,[list;detail],,string,link,"{ 'hrefTemplate': '#user/{username}' }",,,,
-user_id,fields.apilog,/reports/api/v1/metahash/fields.apilog/user_id/,5,,TRUE,"The user ID of the user committing this change","User ID",TRUE,,,[detail],,string,,,,,,
+username,fields.apilog,/reports/api/v1/metahash/fields.apilog/username/,4,,TRUE,"The username of the user committing this change","Admin Username",TRUE,,,[list;detail],,string,link,"{ 'hrefTemplate': '#user/{username}' }",,,,
+user_id,fields.apilog,/reports/api/v1/metahash/fields.apilog/user_id/,5,,TRUE,"The user ID of the user committing this change","Admin User ID",TRUE,,,[detail],,string,,,,,,
 uri,fields.apilog,/reports/api/v1/metahash/fields.apilog/uri/,3,,TRUE,"The permanent URI for the resource being changed",URI,TRUE,,,[list;detail],,string,,,,,,
 key,fields.apilog,/reports/api/v1/metahash/fields.apilog/key/,1,,TRUE,"The permanent key for the URI of the instance of the resource",Key,TRUE,,,[list;detail],,string,link,"{ 'hrefTemplate': '#{ref_resource_name}/{key}' }",,,,
 ref_resource_name,fields.apilog,/reports/api/v1/metahash/fields.apilog/ref_resource_name/,2,,TRUE,"The resource name of the resource being changed","Resource Name",TRUE,,,[list;detail],,string,,,,,,

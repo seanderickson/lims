@@ -81,6 +81,7 @@ class Migration(SchemaMigration):
             ('library', 'library_id'),
             ('gene', 'gene_id'),
             ('screensaver_user', 'screensaver_user_id'),
+            ('attached_file', 'attached_file_id'),
             )
         for (table, key_field) in table_autofields:
             logger.info(str(('_update_table_autofield', table, key_field)))
@@ -570,7 +571,7 @@ class Migration(SchemaMigration):
         },
         u'db.attachedfile': {
             'Meta': {'object_name': 'AttachedFile', 'db_table': "u'attached_file'"},
-            'attached_file_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
+            'attached_file_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'attached_file_type': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AttachedFileType']"}),
             'created_by': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreensaverUser']", 'null': 'True', 'blank': 'True'}),
             'date_created': ('django.db.models.fields.DateTimeField', [], {}),

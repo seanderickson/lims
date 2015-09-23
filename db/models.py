@@ -1,15 +1,3 @@
-# This is an auto-generated Django model module.
-# You'll have to do the following manually to clean this up:
-#     * Rearrange models' order
-#     * Make sure each model has one field with primary_key=True
-# Feel free to rename the models, but don't rename db_table values or field names.
-#
-# Also note: You'll have to insert the output of 'django-admin.py sqlcustom [appname]'
-# into your database.
-
-
-
-
 
 from __future__ import unicode_literals
 from django.conf import settings
@@ -41,8 +29,6 @@ class AbaseTestset(models.Model):
     testset_date = models.DateField()
     class Meta:
         db_table = 'abase_testset'
-
-
 
 class Activity(models.Model):
     activity_id = models.IntegerField(primary_key=True)
@@ -216,14 +202,16 @@ class AssayWell(models.Model):
         db_table = 'assay_well'
 
 class AttachedFile(models.Model):
-    attached_file_id = models.IntegerField(primary_key=True)
-    date_created = models.DateTimeField()
-    file_contents = models.TextField() # This field type is a guess.
+    attached_file_id = models.AutoField(primary_key=True) 
+    date_created = models.DateTimeField(default=timezone.now)
+#     file_contents = models.BinaryField(null=True) # TODO REMOVE
+    contents = models.BinaryField()
     filename = models.TextField()
-    version = models.IntegerField()
+#     version = models.IntegerField()
     screen = models.ForeignKey('Screen', null=True, blank=True)
     screensaver_user = models.ForeignKey('ScreeningRoomUser', null=True, blank=True)
-    attached_file_type = models.ForeignKey('AttachedFileType')
+#     attached_file_type = models.ForeignKey('AttachedFileType')
+    type = models.TextField()
     created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
     reagent = models.ForeignKey('Reagent', null=True, blank=True)
     file_date = models.DateField(null=True, blank=True)
@@ -231,13 +219,21 @@ class AttachedFile(models.Model):
     date_publicly_available = models.DateTimeField(null=True, blank=True)
     class Meta:
         db_table = 'attached_file'
+    
+    def __repr__(self):
+        return '%s:%s:%s:%s' % ( self.attached_file_id, self.filename, 
+            self.type, self.date_created) 
+    def __unicode__(self):
+        return self.__repr__()
+    def __str__(self):
+        return self.__repr__()
 
-class AttachedFileType(models.Model):
-    for_entity_type = models.CharField(max_length=31)
-    attached_file_type_id = models.IntegerField(primary_key=True)
-    value = models.TextField()
-    class Meta:
-        db_table = 'attached_file_type'
+# class AttachedFileType(models.Model):
+#     for_entity_type = models.CharField(max_length=31)
+#     attached_file_type_id = models.IntegerField(primary_key=True)
+#     value = models.TextField()
+#     class Meta:
+#         db_table = 'attached_file_type'
 
 class CellLine(models.Model):
     cell_line_id = models.IntegerField(primary_key=True)
@@ -282,7 +278,8 @@ class UserChecklistItem(models.Model):
     status_date = models.DateField()
     class Meta:
         db_table = 'user_checklist_item'
-
+        unique_together=(('screensaver_user','item_group','item_name'))
+        
     def __repr__(self):
         return '%s:%s:%s:%s' % ( self.screensaver_user.username, 
             self.item_group,self.item_name,self.status) 
@@ -677,6 +674,13 @@ class ScreeningRoomUser(models.Model):
     last_notified_rnaiua_checklist_item_event = models.ForeignKey(ChecklistItemEvent, null=True, blank=True, related_name='rnai_ua_user')
     class Meta:
         db_table = 'screening_room_user'
+
+    def __repr__(self):
+        return '%s:%s' % ( self.screensaver_user, self.user_classification ) 
+    def __unicode__(self):
+        return self.__repr__()
+    def __str__(self):
+        return self.__repr__()
 
 class AdministratorUser(models.Model):
     screensaver_user = models.OneToOneField('ScreensaverUser', primary_key=True)

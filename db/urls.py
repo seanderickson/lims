@@ -9,7 +9,8 @@ from db.api import ScreensaverUserResource, ScreenResource, \
     WellResource, ActivityResource, LibraryContentsVersionResource, ReagentResource, \
     SmallMoleculeReagentResource, SilencingReagentResource, NaturalProductReagentResource, \
     CopyWellResource, UserChecklistItemResource, \
-    CopyWellHistoryResource, CherryPickRequestResource,CherryPickPlateResource
+    CopyWellHistoryResource, CherryPickRequestResource,CherryPickPlateResource, \
+    AttachedFileResource
 
 v1_api = Api(api_name='v1')
 v1_api.register(ScreensaverUserResource())
@@ -32,7 +33,7 @@ v1_api.register(CopyWellHistoryResource())
 v1_api.register(CherryPickRequestResource())
 v1_api.register(CherryPickPlateResource())
 v1_api.register(UserChecklistItemResource())
-
+v1_api.register(AttachedFileResource())
 v1_api.register(SmallMoleculeReagentResource())
 v1_api.register(SilencingReagentResource())
 v1_api.register(NaturalProductReagentResource())
@@ -44,5 +45,7 @@ urlpatterns = patterns('',
     url(r'^$', views.main, name="home"),
     url(r'^smiles_image/(?P<well_id>\S+)$','db.views.smiles_image', name="smiles_image" ),
     url(r'^well_image/(?P<well_id>\S+)$','db.views.well_image', name="well_image" ),
+    url(r'^attachedfile/content/(?P<attached_file_id>\d+)$',
+        'db.views.attached_file', name="attached_file" ),
     (r'^api/', include(v1_api.urls)),
 )

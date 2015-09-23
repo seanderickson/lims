@@ -26,9 +26,10 @@ from xlsxwriter.workbook import Workbook
 
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     LIST_BRACKETS, MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE, \
-    LIST_DELIMITER_XLS, LIST_DELIMITER_CSV, HTTP_PARAM_RAW_LISTS
+    LIST_DELIMITER_XLS, CSV_DELIMITER, HTTP_PARAM_RAW_LISTS
 from reports.serializers import csv_convert
 import reports.utils.sdf2py
+from tempfile import SpooledTemporaryFile
 
 
 logger = logging.getLogger(__name__)
@@ -80,29 +81,23 @@ class ChunkIterWrapper(object):
             else:
                 raise StopIteration
         except Exception, e:
-            logger.error(str(('streaming exeption',str(e))))
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on ChunkIterWrapper next', 
-                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            logger.exception('streaming exception')
             raise e   
         finally:
             if bytes.getvalue():
                 logger.info(str(('chunk size', len(bytes.getvalue()), 'chars')))
                 return bytes.getvalue()
             else:
-                logger.info(str(('stop iteration', self.fragment, bytes.getvalue())))
+                logger.info(str(('normal stop iteration', self.fragment, bytes.getvalue())))
                 raise StopIteration
 
     def __iter__(self):
         return self
 
 
-
 def interpolate_value_template(value_template, row):
     ''' 
-    Utility class for transforming cell values:
+    Utility function for transforming cell values:
     a "value_template" is of the form:
     "text... {field_name} ..text"
     wherein the {field_name} is replaced with the field-value
@@ -212,12 +207,7 @@ def json_generator(cursor,meta,request, is_for_detail=False,field_hash=None):
             yield ' ] }'
 
     except Exception, e:
-        logger.error(str(('===json streaming error', str(e))))
-        exc_type, exc_obj, exc_tb = sys.exc_info()
-        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-        msg = str(e)
-        logger.warn(str(('on json_streaming', 
-            msg, exc_type, fname, exc_tb.tb_lineno)))
+        logger.exception('json streaming')
         raise e                      
 
 
@@ -233,10 +223,9 @@ def csv_generator(cursor,request,
     
     pseudo_buffer = Echo()
     csvwriter = csv.writer(
-        pseudo_buffer, delimiter=LIST_DELIMITER_CSV, quotechar='"', 
+        pseudo_buffer, delimiter=CSV_DELIMITER, quotechar='"', 
         quoting=csv.QUOTE_ALL, lineterminator="\n")
     try:
-#     def csv_generator(cursor):
         i=0
         for row in cursor:
             i += 1
@@ -263,12 +252,7 @@ def csv_generator(cursor,request,
                         # FIXME: must quote special strings?
 #                                 value = '[' + ",".join(value.split(LIST_DELIMITER_SQL_ARRAY)) + ']'
                         value = value.split(LIST_DELIMITER_SQL_ARRAY)
-                    
-#                             if field.get('data_type', None):
-#                                 data_type = field['data_type']
-#                                 if data_type == "float":
-#                                     value = 
-                        
+                                            
                     if field.get('value_template', None):
                         value_template = field['value_template']
                         newval = interpolate_value_template(value_template, row)
@@ -299,14 +283,8 @@ def csv_generator(cursor,request,
                     csv_convert(val, list_brackets=list_brackets) 
                         for val in row.values()])
 
-
     except Exception, e:
-        logger.error(str(('===csv streaming error', str(e))))
-        exc_type, exc_obj, exc_tb = sys.exc_info()
-        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-        msg = str(e)
-        logger.warn(str(('on csv_streaming', 
-            msg, exc_type, fname, exc_tb.tb_lineno)))
+        logger.exception('csv streaming error')
         raise e                      
 
 
@@ -404,14 +382,8 @@ def sdf_generator(cursor, field_hash=None):
     
         logger.info(str(('wrote i', i)))    
     except Exception, e:
-        logger.error(str(('===streaming error', str(e))) )
-        exc_type, exc_obj, exc_tb = sys.exc_info()
-        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-        msg = str(e)
-        logger.error(str(('sdf export process', 
-            msg, exc_type, fname, exc_tb.tb_lineno)))
-        raise ImmediateHttpResponse(str(('ex during sdf export', e)))     
-
+        logger.exception('streaming error')
+        raise ImmediateHttpResponse('ex during sdf export: %r' % e)     
 
 
 def get_xls_response(cursor, output_filename,request,field_hash=None,
@@ -422,8 +394,10 @@ def get_xls_response(cursor, output_filename,request,field_hash=None,
     
     structure_image_dir = os.path.abspath(settings.WELL_STRUCTURE_IMAGE_DIR)
     # create a temp dir
-    # FIXME: temp directory as a setting
-    temp_dir = os.path.join('/tmp', str(time.clock()).replace('.', '_'))
+    # FIXME: replace with tempfile.SpooledTemporaryFile
+    # with TemporaryFile() as f:
+    temp_dir = os.path.join(
+        settings.TEMP_FILE_DIR, str(time.clock()).replace('.', '_'))
     os.mkdir(temp_dir)
     try:
         irow=0
@@ -448,8 +422,6 @@ def get_xls_response(cursor, output_filename,request,field_hash=None,
                         if title_function:
                             key = title_function(key) 
                         worksheet.write(filerow,col,key)
-                        ## TODO: option to write titles
-                        # worksheet.write(filerow,col,field['title'])
                 else:
                     for col,name in enumerate(row.keys()):
                         worksheet.write(filerow,col,name)
@@ -498,9 +470,7 @@ def get_xls_response(cursor, output_filename,request,field_hash=None,
                                 logger.info(str(('no image at', newval,e)))
                         else:
                             worksheet.write(filerow, col, newval)
- 
             else:
-                         
                 for col,val in enumerate(row.values()):
                     worksheet.write(filerow, col, val)
  
@@ -549,12 +519,7 @@ def get_xls_response(cursor, output_filename,request,field_hash=None,
             'attachment; filename=%s' % filename
         return response
     except Exception, e:
-        logger.error(str(('== xls streaming error', str(e))))
-        exc_type, exc_obj, exc_tb = sys.exc_info()
-        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-        msg = str(e)
-        logger.warn(str(('on xlsx & zip file process', 
-            output_filename, msg, exc_type, fname, exc_tb.tb_lineno)))
+        logger.exception('xls streaming error')
         raise e   
     finally:
         try:
@@ -565,10 +530,6 @@ def get_xls_response(cursor, output_filename,request,field_hash=None,
                 os.remove(temp_file)     
             logger.info(str(('removed', temp_dir)))
         except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on xlsx & zip file process', output_filename ,
-                msg, exc_type, fname, exc_tb.tb_lineno)))
+            logger.exception('on xlsx & zip file process file: %s' % output_filename)
             raise ImmediateHttpResponse(str(('ex during rmdir', e)))
     

@@ -17,7 +17,7 @@ from db.test.factories import LibraryFactory, ScreenFactory
 from reports.dump_obj import dumpObj
 from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource
-from reports.tests import IResourceTestCase
+from reports.tests import IResourceTestCase, equivocal
 from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, find_obj_in_list
 import reports.tests
 import reports.utils.log_utils
@@ -748,12 +748,12 @@ class ScreensaverUserResource(DBResourceTestCase):
                 'harvard_id_expiration_date': '2015-05-02'  
             },
             {
-                'username': 'bt1',
-                'first_name': 'Bad',
-                'last_name': 'TestsALot',    
-                'email': 'bad.tester@slimstest.com',    
+                'username': 'adminuser',
+                'first_name': 'Joe',
+                'last_name': 'Admin',    
+                'email': 'joe.admin@limstest.com',    
                 'harvard_id': '332122',
-                'harvard_id_expiration_date': '2018-05-01'  
+                'harvard_id_expiration_date': '2018-05-01',
             },
         ]}
         resource_uri = BASE_URI_DB + '/screensaveruser'
@@ -769,8 +769,12 @@ class ScreensaverUserResource(DBResourceTestCase):
             raise
 
         logger.debug('created items, now get them')
+        data_for_get={ 
+            'limit': 0,
+            'includes': '*'
+             }
         resp = self.api_client.get(resource_uri, format='json', 
-            authentication=self.get_credentials(), data={ 'limit': 999 })
+            authentication=self.get_credentials(), data=data_for_get)
         new_obj = self.deserialize(resp)
         self.assertTrue(resp.status_code in [200], (resp.status_code, resp))
         self.assertEqual(len(new_obj['objects']), 3, (new_obj))
@@ -781,9 +785,29 @@ class ScreensaverUserResource(DBResourceTestCase):
                 result, _('bootstrap item not found', item, new_obj['objects']))
             logger.debug(_('item found', obj))
 
+        # create an admin
+        
+        patch_obj = { 'objects': [
+            {
+                'username': 'adminuser',
+                'is_superuser': True
+            }]
+        }
+        resource_uri = BASE_REPORTS_URI + '/user'
+
+        try:       
+            resp = self.api_client.patch(resource_uri, 
+                format='json', data=patch_obj, 
+                authentication=self.get_credentials())
+            self.assertTrue(resp.status_code in [200,201,202], 
+                _(resp.status_code, self.serialize(resp)))
+        except Exception, e:
+            logger.exception('on patching adminuser %s' % patch_obj)
+            raise
+
         logger.debug(_('==== test_create_user done ====='))
 
-    def test2_patch_usergroups(self):
+    def test1_patch_usergroups(self):
         
         group_patch = { 'objects': [
             { 
@@ -857,3 +881,52 @@ class ScreensaverUserResource(DBResourceTestCase):
         except Exception, e:
             logger.exception(_('on userpatch ', userpatch), e)
             raise
+
+    def test2_user_checklist_items(self):
+        self.test0_create_user();
+        
+        test_username = 'st1'
+        checklist_item_patch = {
+            'objects': [
+                { 
+                    'admin_username': 'adminuser', 
+                    'item_group': "mailing_lists_wikis",
+                    'item_name': "added_to_iccb_l_nsrb_email_list",
+                    'status': "activated",
+                    'status_date': "2015-09-02",
+                    'username': test_username
+                }
+            ]}
+        
+        try:       
+            resource_uri = BASE_URI_DB + '/userchecklistitem/%s' % test_username
+            resp = self.api_client.patch(resource_uri, 
+                format='json', 
+                data=checklist_item_patch, authentication=self.get_credentials())
+            self.assertTrue(resp.status_code in [200,201,202], 
+                _(resp.status_code, self.serialize(resp)))
+
+            data_for_get={ 'limit': 0 }        
+            data_for_get.setdefault('includes', ['*'])
+            resp = self.api_client.get(
+                resource_uri + '/mailing_lists_wikis/added_to_iccb_l_nsrb_email_list',
+                format='json', 
+                authentication=self.get_credentials(), data=data_for_get )
+            new_obj = self.deserialize(resp)
+            self.assertTrue(resp.status_code in [200], (resp.status_code, resp))
+            logger.info(str(('new_obj', new_obj)))
+            result,msgs = assert_obj1_to_obj2(
+                checklist_item_patch['objects'][0], new_obj)
+            self.assertTrue(result,msgs)
+#             result,obj = equivocal(new_obj, checklist_item_patch['objects'][0])
+#             self.assertTrue(result,obj)
+        
+        except Exception, e:
+            logger.exception('on userchecklist')
+            raise e
+                    
+    def test3_attached_files(self):
+        # TODO
+        pass
+    
+    

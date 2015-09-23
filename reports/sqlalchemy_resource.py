@@ -137,7 +137,6 @@ class SqlAlchemyResource(Resource):
         _dict['desired_format'] = self.get_format(request)
         
         return _dict    
-       
     
     def get_visible_fields(self, schema_fields, filter_fields, manual_field_includes,
                            is_for_detail=False, visibilities=[]):
@@ -159,6 +158,10 @@ class SqlAlchemyResource(Resource):
                 visibilities = set(['list'])
             if is_for_detail:
                 visibilities.add('detail')
+                # also return the edit fields, let the UI filter them
+                # expedient, so the model does not have to be reloaded to edit
+                # TODO: review; security issue
+                visibilities.add('edit')
             temp = { key:field for key,field in schema_fields.items() 
                 if ((field.get('visibility', None) 
                         and visibilities & set(field['visibility'])) 
@@ -190,11 +193,7 @@ class SqlAlchemyResource(Resource):
             return field_hash
 
         except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on get_visible_fields', 
-                msg, exc_type, fname, exc_tb.tb_lineno)))
+            logger.exception('on get_visible_fields')
             raise e 
 
     def build_sqlalchemy_columns(self, fields, base_query_tables=[], 
@@ -214,7 +213,7 @@ class SqlAlchemyResource(Resource):
         @param manual_includes - columns to include even if the field 
         visibility is not set
         '''
-        DEBUG_BUILD_COLUMNS = True or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_BUILD_COLUMNS = False or logger.isEnabledFor(logging.DEBUG)
         
         try:
             columns = OrderedDict()
@@ -223,8 +222,8 @@ class SqlAlchemyResource(Resource):
                 if DEBUG_BUILD_COLUMNS:
                     logger.info(str(('field:', key)))
                 if key in custom_columns:
-#                     if DEBUG_BUILD_COLUMNS: 
-                    logger.info(str(('custom field', key,custom_columns[key])))
+                    if DEBUG_BUILD_COLUMNS: 
+                        logger.info(str(('custom field', key,custom_columns[key])))
                     columns[key] = custom_columns[key].label(key)
                     continue
                 
@@ -309,11 +308,7 @@ class SqlAlchemyResource(Resource):
             if DEBUG_BUILD_COLUMNS: logger.info(str(('columns', columns.keys())))
             return columns
         except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on build sqlalchemy columns', 
-                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            logger.exception('on build sqlalchemy columns')
             raise e   
 
     @staticmethod
@@ -415,7 +410,7 @@ class SqlAlchemyResource(Resource):
         - field_name__filter_expression
         '''
         DEBUG_FILTERS = False or logger.isEnabledFor(logging.DEBUG)
-        logger.info(str(('build_sqlalchemy_filters_from_hash', param_hash)))
+        logger.info('build_sqlalchemy_filters_from_hash %r' % param_hash)
         lookup_sep = django.db.models.constants.LOOKUP_SEP
 
         if param_hash is None:
@@ -557,11 +552,7 @@ class SqlAlchemyResource(Resource):
             else:
                 return (None, filtered_fields)
         except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on build_sqlalchemy_filters_from_hash', 
-                msg, exc_type, fname, exc_tb.tb_lineno)))
+            logger.exception('on build_sqlalchemy_filters_from_hash')
             raise e   
         
 
@@ -634,7 +625,7 @@ class SqlAlchemyResource(Resource):
             self._meta.resource_name)) )
     
     def clear_cache(self):
-        logger.warn(str(('clearing the cache',self._meta.resource_name)))
+        logger.debug('clearing the cache: resource: %s' % self._meta.resource_name)
         cache.clear()
 
     def _cached_resultproxy(self, stmt, count_stmt, param_hash, limit, offset):
@@ -721,11 +712,7 @@ class SqlAlchemyResource(Resource):
             return cache_hit
  
         except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on conn execute', 
-                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            logger.exception('on conn execute')
             raise e   
 
     def stream_response_from_statement(self, request, stmt, count_stmt, 
@@ -830,11 +817,7 @@ class SqlAlchemyResource(Resource):
                     # FIXME: test this for generators other than json generator        
     
         except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on stream response', 
-                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            logger.exception('on stream response')
             raise e          
         return self.stream_response_from_cursor(request, result, output_filename, 
             field_hash=field_hash, 
@@ -909,9 +892,5 @@ class SqlAlchemyResource(Resource):
             return response
 
         except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on stream response', 
-                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            logger.exception('on stream response')
             raise e  

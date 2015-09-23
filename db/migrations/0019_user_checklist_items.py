@@ -20,6 +20,8 @@ from sqlalchemy.sql.elements import literal_column
 from sqlalchemy.sql.operators import asc_op
 import sys
 import os
+import csv
+from lims import settings
 
 logger = logging.getLogger(__name__)
 
@@ -30,78 +32,99 @@ class Migration(DataMigration):
         # Steps: convert checklist_item / checklist_item_event into 
         # user_checklist_item
         
-        # create vocabularies: automate this:
         # create a separate vocab file: checklist_item_vocab, add to api_init.csv
-        ci_group_map = {}
-        scope = 'checklistitem.group'
-        default_order = ['mailing', 'forms', 'non-harvard', 'imaging','legacy']
-        for obj in orm.ChecklistItem.objects.all().distinct('checklist_item_group'):
-            key = default_converter(obj.checklist_item_group)
-            ordinal = 0
-            for i,x in enumerate(default_order):
-                if x in obj.checklist_item_group.lower():
-                    ordinal=i 
-                    break
-                
-            v = Vocabularies.objects.create(
-                scope=scope,
-                key=key,
-                title=obj.checklist_item_group,
-                ordinal=ordinal
-                )
-            v.save()
-            ci_group_map[obj.checklist_item_group] = key 
-            logger.info(str(('created', v)))
+        # output vocabs into a vocabulary patch file
+        vocab_file = os.path.join(
+            settings.PROJECT_ROOT, '..',
+            'db','static','api_init','vocabularies_checklists_data.csv')
+        logger.info('write vocabularies to %s' % vocab_file)
+        resource_uri = '/reports/api/v1/vocabularies/%s/%s/'
+        with open(vocab_file,'w') as _file:
+            vocab_writer = csv.writer(_file)
+            header = ['resource_uri','key','scope','ordinal','title'] 
+            vocab_writer.writerow(header)
 
-        scope = 'checklistitem.%s.name'
-        ci_name_map = {}
-        for obj in orm.ChecklistItem.objects.all().distinct('item_name'):
-            key = default_converter(obj.item_name)
-            _scope = scope % default_converter(obj.checklist_item_group)
-            v = Vocabularies.objects.create(
-                scope=_scope,
-                key=key,
-                title=obj.item_name,
-                ordinal=obj.order_statistic )
-            v.save()
-            ci_name_map[obj.item_name] = key
-            logger.info(str(('created', v)))
+            ci_group_map = {}
+            scope = 'checklistitem.group'
+            default_order = ['mailing', 'forms', 'non-harvard', 'imaging','legacy']
+            for obj in orm.ChecklistItem.objects.all().distinct('checklist_item_group'):
+                key = default_converter(obj.checklist_item_group)
+                ordinal = 0
+                for i,x in enumerate(default_order):
+                    if x in obj.checklist_item_group.lower():
+                        ordinal=i 
+                        break
+                    
+                v = Vocabularies.objects.create(
+                    scope=scope,
+                    key=key,
+                    title=obj.checklist_item_group,
+                    ordinal=ordinal
+                    )
+                v.save()
+                vocab_writer.writerow([
+                    resource_uri % (v.scope,v.key),
+                    v.key,v.scope,v.ordinal,v.title])
+                ci_group_map[obj.checklist_item_group] = key 
+                logger.info(str(('created', v)))
+    
+            scope = 'checklistitem.%s.name'
+            ci_name_map = {}
+            for obj in orm.ChecklistItem.objects.all().distinct('item_name'):
+                key = default_converter(obj.item_name)
+                _scope = scope % default_converter(obj.checklist_item_group)
+                v = Vocabularies.objects.create(
+                    scope=_scope,
+                    key=key,
+                    title=obj.item_name,
+                    ordinal=obj.order_statistic )
+                v.save()
+                vocab_writer.writerow([
+                    resource_uri % (v.scope,v.key),
+                    v.key,v.scope,v.ordinal,v.title])
+                ci_name_map[obj.item_name] = key
+                logger.info(str(('created', v)))
+                
+            scope = 'checklistitem.status'
+            status_values = [
+                {
+                    'key': 'not_completed',
+                    'title': 'Not Completed',
+                    'ordinal': 0
+                },
+                {
+                    'key': 'activated',
+                    'title': 'Activated',
+                    'ordinal': 1
+                },
+                {
+                    'key': 'deactivated',
+                    'title': 'Deactivated',
+                    'ordinal': 2
+                },
+                {
+                    'key': 'na',
+                    'title': 'N/A',
+                    'ordinal': 3
+                },
+                {
+                    'key': 'completed',
+                    'title': 'Completed',
+                    'ordinal': 4
+                },
+            ]
             
-        scope = 'checklistitem.status'
-        status_values = [
-            {
-                'key': 'not_completed',
-                'title': 'Not Completed',
-                'ordinal': 0
-            },
-            {
-                'key': 'activated',
-                'title': 'Activated',
-                'ordinal': 1
-            },
-            {
-                'key': 'deactivated',
-                'title': 'Deactivated',
-                'ordinal': 2
-            },
-            {
-                'key': 'na',
-                'title': 'N/A',
-                'ordinal': 3
-            },
-            {
-                'key': 'completed',
-                'title': 'Completed',
-                'ordinal': 4
-            },
-        ]
-        
-        for _dict in status_values:
-            _dict['scope']=scope
-            v = Vocabularies(**_dict)
-            v.save()
-            logger.info(str(('created', v)))
-            
+            for _dict in status_values:
+                _dict['scope']=scope
+                v = Vocabularies(**_dict)
+                v.save()
+                vocab_writer.writerow([
+                    resource_uri % (v.scope,v.key),
+                    v.key,v.scope,v.ordinal,v.title])
+                logger.info(str(('created', v)))
+    
+        logger.info('vocabulary creation done')
+
         # create entries in the user_checklist_item table
         sql_keys = [
             'suid','cigroup','ciname',
@@ -132,33 +155,16 @@ join screensaver_user admin on cie.created_by_id=admin.screensaver_user_id
 left join reports_userprofile up on up.id=admin.user_id
 order by screening_room_user_id, checklist_item_group, item_name, cie.date_performed asc;
 '''
-        # Make an effort to find the previous activity log
-        # ** only if deactivated **
+
         bridge = Bridge()
         conn = bridge.get_engine().connect()
-         
-        suua = bridge['screensaver_user_update_activity']
-        _activity = bridge['activity']
-        _admin = bridge['screensaver_user']
-        
-        j = suua.join(_activity, suua.c.update_activity_id==_activity.c.activity_id) 
-        j = j.join(_admin,_activity.c.performed_by_id==_admin.c.screensaver_user_id)
-        activity_query = ( 
-            select([
-                suua.c.update_activity_id, 
-                suua.c.screensaver_user_id,
-                _activity.c.performed_by_id, 
-                _admin.c.username,
-                _activity.c.date_created,
-                _activity.c.comments])
-            .select_from(j).cte('aquery') )
-        #####
-        
+
         log_ref_resource_name = 'userchecklistitem'
         
         _dict = None
         log = None
         
+        uci_hash = {}
         unique_log_keys = set()
         try:
                     
@@ -166,42 +172,76 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
             i = 0
             for row in _list:
                 _dict = dict(zip(sql_keys,row))
-                logger.debug(str(('create user checklist item', _dict, 
-                    _dict['date_performed'].isoformat())))
                 
-                uci = orm.UserChecklistItem.objects.create(
-                    screensaver_user_id = int(_dict['suid']),
-                    admin_user_id = int(_dict['admin_suid']),
-                    item_group = ci_group_map[_dict['cigroup']],
-                    item_name = ci_name_map[_dict['ciname']],
-                    status = _dict['status'],
-                    status_date = _dict['date_performed'])
-                uci.save()
-                i += 1
-                
-                # Make an effort to find the previous activity log
-                # ** only if deactivated **
-                previous_log = None
-                if  _dict['status'] in ['deactivated','activated']:
-                    stmt = ( 
-                        select([text('*')])
-                            .select_from(activity_query)
-                            .where(literal_column('aquery.screensaver_user_id')==int(_dict['suid']))
-                            .where(literal_column('aquery.date_created')<_dict['date_performed'])
-                            .where(literal_column('aquery.comments').ilike('%{value}%'.format(value=_dict['ciname'])))
-                            .order_by(desc(literal_column('aquery.date_created')))
-                        )
+                key = '/'.join([str(_dict['suid']),_dict['cigroup'],_dict['ciname']])
+                previous_dict = uci_hash.get(key)
+                logger.info('prev_dict: %s:%s' % (key,previous_dict))
+                if previous_dict:
+                    uci = previous_dict['obj']
+                    uci.admin_user_id = int(_dict['admin_suid'])
+                    uci.status = _dict['status']
+                    uci.status_date = _dict['date_performed']
+                    uci.save()
+                    logger.info('updated: %r' % uci)
                     
-                    #             logger.info(str(('stmt',str(stmt.compile(compile_kwargs={"literal_binds": True}) ))))
-                    resultset = conn.execute(stmt)
-                    for x in resultset:
-                        if _dict['ciname'] in x.comments:
-                            if ( _dict['status'] == 'activated'
-                                and 'deactivated' in x.comments ):
-                                previous_log = x
-                            elif ( _dict['status'] == 'deactivated'
-                                and 'activated' in x.comments ):
-                                previous_log = x
+                    
+                    
+                    
+                    
+#                 # Make an effort to find the previous activity log
+#                 # ** only if deactivated **
+#                 previous_log = None
+#                 if  _dict['status'] in ['deactivated','activated']:
+#                     stmt = ( 
+#                         select([text('*')])
+#                             .select_from(activity_query)
+#                             .where(literal_column('aquery.screensaver_user_id')==int(_dict['suid']))
+#                             .where(literal_column('aquery.date_created')<_dict['date_performed'])
+#                             .where(literal_column('aquery.comments').ilike('%{value}%'.format(value=_dict['ciname'])))
+#                             .order_by(desc(literal_column('aquery.date_created')))
+#                         )
+#                     
+#                     #             logger.info(str(('stmt',str(stmt.compile(compile_kwargs={"literal_binds": True}) ))))
+#                     resultset = conn.execute(stmt)
+#                     for x in resultset:
+#                         if _dict['ciname'] in x.comments:
+#                             if ( _dict['status'] == 'activated'
+#                                 and 'deactivated' in x.comments ):
+#                                 previous_log = x
+#                             elif ( _dict['status'] == 'deactivated'
+#                                 and 'activated' in x.comments ):
+#                                 previous_log = x
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+                else:
+                    uci_hash[key] = _dict
+                    logger.debug(str(('create user checklist item', _dict, 
+                        _dict['date_performed'].isoformat())))
+                    uci = orm.UserChecklistItem.objects.create(
+                        screensaver_user_id = int(_dict['suid']),
+                        admin_user_id = int(_dict['admin_suid']),
+                        item_group = ci_group_map[_dict['cigroup']],
+                        item_name = ci_name_map[_dict['ciname']],
+                        status = _dict['status'],
+                        status_date = _dict['date_performed'])
+                    uci.save()
+                    _dict['obj'] = uci
+                    
+                    logger.info('created: %r, %s' % (uci, _dict))
+                    i += 1
 
                 date_time = pytz.utc.localize(_dict['date_created'])                
                 if date_time.date() != _dict['date_performed']:
@@ -229,27 +269,27 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
                     full_key = '/'.join([log.ref_resource_name,log.key,str(log.date_time)])
                     
                 unique_log_keys.add(full_key)
-                diff_keys = ['status']
-                diffs = {}
-                if previous_log:
-                    logger.info(str(('found previous log', previous_log, previous_log.comments)))
+                if previous_dict:
+                    diff_keys = ['status']
+                    diffs = {}
+                    logger.info(str(('found previous_dict', previous_dict)))
                     diff_keys.append('admin_username')
-                    diffs['admin_username'] = [previous_log.username, _dict['admin_username']]
+                    diffs['admin_username'] = [previous_dict['admin_username'], _dict['admin_username']]
                     
                     diff_keys.append('status_date')
                     diffs['status_date'] = [
-                        previous_log.date_created.isoformat(), 
+                        previous_dict['date_performed'].isoformat(), 
                         _dict['date_performed'].isoformat()]
                     
-                diffs['status'] = ['',_dict['status']]
-                if _dict['status'] == 'activated':
-                    if previous_log:
-                        diffs['status'] = ['deactivated','activated']
-                if _dict['status'] == 'deactivated':
-                    diffs['status'] = ['activated','deactivated']
+                    diffs['status'] = [previous_dict['status'],_dict['status']]
+#                 if _dict['status'] == 'activated':
+#                     if previous_log:
+#                         diffs['status'] = ['deactivated','activated']
+#                 if _dict['status'] == 'deactivated':
+#                     diffs['status'] = ['activated','deactivated']
                 
-                log.diff_keys = json.dumps(diff_keys)
-                log.diffs = json.dumps(diffs)
+                    log.diff_keys = json.dumps(diff_keys)
+                    log.diffs = json.dumps(diffs)
      
                 logger.debug(str(('create log', log)))
                 
@@ -258,11 +298,7 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
                 if i%100 == 0:
                     logger.info(str(('created', i, 'logs')))
         except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on migrate',_dict, 
-                msg, exc_type, fname, exc_tb.tb_lineno)))
+            logger.error('migration exc', exc_info=sys.exc_info())
             raise e  
 
         print 'created %d user_checklist_items' % i

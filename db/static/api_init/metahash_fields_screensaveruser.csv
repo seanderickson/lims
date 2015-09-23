@@ -1,7 +1,9 @@
 key,scope,resource_uri,table,field,ordinal,comment,data_type,display_type,display_options,edit_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias
 screensaver_user_id,fields.screensaveruser,/reports/api/v1/metahash/fields.screensaveruser/screensaver_user_id/,,,0,"Arbitrarily assigned internal user ID for the User",integer,link,"{ 'hrefTemplate': '#screensaveruser/{username}' }",,TRUE,"The internal user ID","Screensaver User ID",TRUE,,,[detail],
 username,fields.screensaveruser,/reports/api/v1/metahash/fields.screensaveruser/username/,reports_userprofile,,0,,string,link,"{ 'hrefTemplate': '#screensaveruser/{username}' }",,TRUE,Username,Username,TRUE,,,[list;detail],
-name,fields.screensaveruser,/reports/api/v1/metahash/fields.screensaveruser/name/,custom,,1,,string,,,,TRUE,"The full name of the user (last, first)",Name,TRUE,,,[list],
+name,fields.screensaveruser,/reports/api/v1/metahash/fields.screensaveruser/name/,custom,,1,,string,,,,TRUE,"The full name of the user (last, first)",Name,TRUE,,,[list;detail],
+first_name,fields.screensaveruser,/reports/api/v1/metahash/fields.screensaveruser/first_name/,auth_user,,1,,string,,,,TRUE,"First Name","First Name",TRUE,,,[edit],
+last_name,fields.screensaveruser,/reports/api/v1/metahash/fields.screensaveruser/last_name/,auth_user,,2,,string,,,,TRUE,"Last Name","Last Name",TRUE,,,[edit],
 lab_name,fields.screensaveruser,/reports/api/v1/metahash/fields.screensaveruser/lab_name/,,,2,,string,,,,TRUE,"The name of the user's current lab","Lab Name",TRUE,,,[detail],
 mailing_address,fields.screensaveruser,/reports/api/v1/metahash/fields.screensaveruser/mailing_address/,reports_userprofile,,4,,string,,,,TRUE,"The mailing address of the user","Mailing Address",TRUE,,,[list;detail],
 comments,fields.screensaveruser,/reports/api/v1/metahash/fields.screensaveruser/comments/,,,5,,string,,,,TRUE,"Comments about this user",Comments,TRUE,,,[detail],

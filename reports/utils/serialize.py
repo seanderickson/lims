@@ -6,6 +6,8 @@ logger = logging.getLogger(__name__)
 
 def from_csv(csvfile, list_delimiter=';', list_keys=None):
     '''
+    Returns an in memory matrix (array of arrays) for the input file
+    
     @param list_keys overrides nested list eval for column keys; no brackets '[]' are 
         needed to denote these columns as list columns - however, to comply with 
         the csv standard, they still have to be quoted (if list_delimiter=csv_delimiter)
@@ -18,6 +20,12 @@ def from_csv(csvfile, list_delimiter=';', list_keys=None):
     return from_csv_iterate(reader, list_delimiter=list_delimiter, list_keys=list_keys)
     
 def from_csv_iterate(iterable, list_delimiter=';', list_keys=None):
+    '''
+    Returns an in memory array of dicts for the iterable, representing a 
+    csv-like input matrix.
+    - the first row is interpreted as the dict keys, unless a list_keys param is 
+    specified 
+    '''
     list_keys = list_keys or []
     data_result = []
     i = 0

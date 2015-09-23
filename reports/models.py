@@ -162,7 +162,7 @@ class ApiLog(models.Model):
     
     # This is the "meta" field, it contains "virtual" json fields, defined in 
     # the metahash
-    json_field = models.TextField(blank=True, null=True)
+    json_field = models.TextField(null=True)
     
     class Meta:
         unique_together = (('ref_resource_name', 'key', 'date_time'))    
@@ -225,11 +225,10 @@ class MetaHash(models.Model):
 
     # required if the record represents a JSON field; choices are from the TastyPie 
     # field types
-    json_field_type = models.CharField(
-        max_length=128, blank=True, null=True); 
+    json_field_type = models.CharField(max_length=128, null=True); 
     
     # This is the "meta" field, it contains "virtual" json fields
-    json_field = models.TextField(blank=True) 
+    json_field = models.TextField(null=True) 
 
     # required if the record represents a linked  field; choices are from the TastyPie 
     # field types
@@ -310,7 +309,7 @@ class Vocabularies(models.Model):
     # migrate them out to real fields for rel db use cases)
     # NOTE: "json_type" for all virtual JSON fields in the entire database are
     # defined in the MetaHash
-    json_field                   = models.TextField(blank=True)
+    json_field                   = models.TextField(null=True)
        
     class Meta:
         unique_together = (('scope', 'key'))    
@@ -422,13 +421,13 @@ class UserProfile(models.Model):
     username = models.TextField(null=False,blank=False, unique=True) 
     
     # Harvard specific fields
-    phone = models.TextField(null=True, blank=True)
-    mailing_address = models.TextField(null=True, blank=True)
-    comments = models.TextField(null=True, blank=True)
-    ecommons_id = models.TextField(null=True, blank=True)
-    harvard_id = models.TextField(null=True, blank=True)
-    harvard_id_expiration_date = models.DateField(null=True, blank=True)
-    harvard_id_requested_expiration_date = models.DateField(null=True, blank=True)
+    phone = models.TextField(null=True)
+    mailing_address = models.TextField(null=True)
+    comments = models.TextField(null=True)
+    ecommons_id = models.TextField(null=True)
+    harvard_id = models.TextField(null=True)
+    harvard_id_expiration_date = models.DateField(null=True)
+    harvard_id_requested_expiration_date = models.DateField(null=True)
     
     created_by_username = models.TextField(null=True)
 
@@ -437,7 +436,7 @@ class UserProfile(models.Model):
     # deprecated, move to auth.user
     #     first_name = models.TextField()
     #     last_name = models.TextField()
-    email = models.TextField(null=True, blank=True)
+    email = models.TextField(null=True)
 
     
     # permissions assigned directly to the user, as opposed to by group
@@ -446,10 +445,10 @@ class UserProfile(models.Model):
     # required if the field is a JSON field; choices are from the TastyPie 
     # field types
     json_field_type = models.CharField(
-        max_length=128, blank=True, null=True); 
+        max_length=128, null=True); 
     
     # This is the "meta" field, it contains "virtual" json fields
-    json_field = models.TextField(blank=True) 
+    json_field = models.TextField(null=True) 
 
     def __unicode__(self):
         return unicode(str((

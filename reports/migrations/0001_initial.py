@@ -52,7 +52,7 @@ class Migration(SchemaMigration):
             ('alias', self.gf('django.db.models.fields.CharField')(max_length=64, blank=True)),
             ('ordinal', self.gf('django.db.models.fields.IntegerField')()),
             ('json_field_type', self.gf('django.db.models.fields.CharField')(max_length=128, null=True, blank=True)),
-            ('json_field', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('json_field', self.gf('django.db.models.fields.TextField')(null=True)),
             ('linked_field_type', self.gf('django.db.models.fields.CharField')(max_length=128, null=True, blank=True)),
         ))
         db.send_create_signal(u'reports', ['MetaHash'])
@@ -68,7 +68,7 @@ class Migration(SchemaMigration):
             ('alias', self.gf('django.db.models.fields.CharField')(max_length=64, blank=True)),
             ('ordinal', self.gf('django.db.models.fields.IntegerField')()),
             ('title', self.gf('django.db.models.fields.CharField')(max_length=512, blank=True)),
-            ('json_field', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('json_field', self.gf('django.db.models.fields.TextField')(null=True)),
         ))
         db.send_create_signal(u'reports', ['Vocabularies'])
 
@@ -136,8 +136,8 @@ class Migration(SchemaMigration):
             ('created_by_username', self.gf('django.db.models.fields.TextField')(null=True)),
             ('gender', self.gf('django.db.models.fields.CharField')(max_length=15, null=True)),
             ('email', self.gf('django.db.models.fields.TextField')(null=True, blank=True)),
-            ('json_field_type', self.gf('django.db.models.fields.CharField')(max_length=128, null=True, blank=True)),
-            ('json_field', self.gf('django.db.models.fields.TextField')(blank=True)),
+            ('json_field_type', self.gf('django.db.models.fields.CharField')(max_length=128, null=True)),
+            ('json_field', self.gf('django.db.models.fields.TextField')(null=True)),
         ))
         db.send_create_signal(u'reports', ['UserProfile'])
 
@@ -357,7 +357,7 @@ class Migration(SchemaMigration):
             'Meta': {'unique_together': "(('scope', 'key'),)", 'object_name': 'MetaHash'},
             'alias': ('django.db.models.fields.CharField', [], {'max_length': '64', 'blank': 'True'}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'json_field': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
+            'json_field': ('django.db.models.fields.TextField', [], {'null': 'True'}),
             'json_field_type': ('django.db.models.fields.CharField', [], {'max_length': '128', 'null': 'True', 'blank': 'True'}),
             'key': ('django.db.models.fields.CharField', [], {'max_length': '64', 'blank': 'True'}),
             'linked_field_type': ('django.db.models.fields.CharField', [], {'max_length': '128', 'null': 'True', 'blank': 'True'}),
@@ -418,7 +418,7 @@ class Migration(SchemaMigration):
             'harvard_id_expiration_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'harvard_id_requested_expiration_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'json_field': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
+            'json_field': ('django.db.models.fields.TextField', [], {'null': 'True'}),
             'json_field_type': ('django.db.models.fields.CharField', [], {'max_length': '128', 'null': 'True', 'blank': 'True'}),
             'mailing_address': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
             'permissions': ('django.db.models.fields.related.ManyToManyField', [], {'to': u"orm['reports.Permission']", 'symmetrical': 'False'}),
@@ -430,7 +430,7 @@ class Migration(SchemaMigration):
             'Meta': {'unique_together': "(('scope', 'key'),)", 'object_name': 'Vocabularies'},
             'alias': ('django.db.models.fields.CharField', [], {'max_length': '64', 'blank': 'True'}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'json_field': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
+            'json_field': ('django.db.models.fields.TextField', [], {'null': 'True'}),
             'key': ('django.db.models.fields.CharField', [], {'max_length': '128', 'blank': 'True'}),
             'ordinal': ('django.db.models.fields.IntegerField', [], {}),
             'scope': ('django.db.models.fields.CharField', [], {'max_length': '128', 'blank': 'True'}),

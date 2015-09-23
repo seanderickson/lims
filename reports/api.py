@@ -47,7 +47,7 @@ from tastypie.bundle import Bundle
 from tastypie.constants import ALL, ALL_WITH_RELATIONS
 from tastypie.exceptions import NotFound, ImmediateHttpResponse, Unauthorized, \
     BadRequest
-from tastypie.http import HttpForbidden, HttpNotFound
+from tastypie.http import HttpForbidden, HttpNotFound, HttpNotImplemented
 from tastypie.resources import Resource, ModelResource
 from tastypie.resources import convert_post_to_put
 import tastypie.resources
@@ -57,8 +57,8 @@ from tastypie.utils.timezone import make_naive
 from tastypie.utils.urls import trailing_slash
 from tastypie.validation import Validation
 
-from db.models import ScreensaverUser
-from reports import LIST_DELIMITER_SQL_ARRAY, \
+# from db.models import ScreensaverUser
+from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT
 from reports.dump_obj import dumpObj
 from reports.models import API_ACTION_CREATE
@@ -114,16 +114,19 @@ def parse_val(value, key, data_type):
 class UserGroupAuthorization(Authorization):
     
     def _is_resource_authorized(self, resource_name, user, permission_type):
-        logger.debug(str(("_is_resource_authorized", resource_name, user, permission_type)))
+        logger.debug("_is_resource_authorized: %s, user: %s, type: %s"
+            % (resource_name, user, permission_type))
         scope = 'resource'
         prefix = 'permission'
         uri_separator = '/'
         permission_str =  uri_separator.join([prefix,scope,resource_name,permission_type])       
 
-        logger.debug(str(( 'authorization query:', permission_str, 
-            'user', user, user.is_superuser)))
+        logger.debug('authorization query: %s, user %s, %s' 
+            % (permission_str, user, user.is_superuser))
         
         if user.is_superuser:
+            logger.debug('%s:%s access allowed for super user: %s' 
+                % (resource_name,permission_type,user))
             return True
         
         # FIXME: 20150708 - rewrite this using the "get_detail" method for the user, and 
@@ -135,13 +138,14 @@ class UserGroupAuthorization(Authorization):
                 scope=scope, key=resource_name, type=permission_type)]
         
         if permissions:
-            if(logger.isEnabledFor(logging.DEBUG)):
-                logger.debug(str(('user',user ,'auth query', permission_str, 
-                    'found matching user permissions', permissions)))
+            logger.debug('user %s, auth query: %s, found matching user permissions %s'
+                % (user,permission_str,permissions))
+            logger.info('%s:%s user explicit permission for: %s' 
+                % (resource_name,permission_type,user))
             return True
         
-        logger.debug(str(('user',user ,'auth query', permission_str, 
-            'not found in user permissions', permissions)))
+        logger.debug('user %s, auth query: %s, not found in user permissions %s'
+            % (user,permission_str,permissions))
         
         permissions_group = [ permission 
                 for group in userprofile.usergroup_set.all() 
@@ -149,8 +153,10 @@ class UserGroupAuthorization(Authorization):
                     scope=scope, key=resource_name, type=permission_type)]
         if permissions_group:
             if(logger.isEnabledFor(logging.DEBUG)):
-                logger.debug(str(('user',user ,'auth query', permission_str,
+                logger.info(str(('user',user ,'auth query', permission_str,
                     'found matching usergroup permissions', permissions_group)))
+            logger.info('%s:%s usergroup permission for: %s' 
+                % (resource_name,permission_type,user))
             return True
         
         logger.info(str(('user',user ,'auth query', permission_str,
@@ -201,6 +207,32 @@ class UserGroupAuthorization(Authorization):
         if self._is_resource_authorized(
             self.resource_meta.resource_name, bundle.request.user, 'write'):
             return True
+
+def write_authorization(_func):
+    '''
+    Wrapper function to verify write authorization
+    ''' 
+    @wraps(_func)
+    def _inner(self, *args, **kwargs):
+        request = args[0]
+        self._meta.authorization._is_resource_authorized(
+            self._meta.resource_name,request.user,'write')
+        return _func(self, *args, **kwargs)
+
+    return _inner
+
+def read_authorization(_func):
+    '''
+    Wrapper function to verify read authorization
+    ''' 
+    @wraps(_func)
+    def _inner(self, *args, **kwargs):
+        request = args[0]
+        self._meta.authorization._is_resource_authorized(
+            self._meta.resource_name,request.user,'read')
+        return _func(self, *args, **kwargs)
+
+    return _inner
 
 
 class SuperUserAuthorization(ReadOnlyAuthorization):
@@ -327,7 +359,7 @@ class IccblBaseResource(Resource):
         method = getattr(self, "%s_%s" % (request_method, request_type), None)
 
         if method is None:
-            raise ImmediateHttpResponse(response=http.HttpNotImplemented())
+            raise ImmediateHttpResponse(response=HttpNotImplemented())
 
         self.is_authenticated(request)
         self.throttle_check(request)
@@ -353,7 +385,7 @@ class IccblBaseResource(Resource):
             logger.info(str(('set cookie','downloadID', downloadID )))
             response.set_cookie('downloadID', downloadID)
         else:
-            logger.info(str(('no downloadID', request.GET )))
+            logger.debug('no downloadID: %s' % request.GET )
 
         return response
        
@@ -427,7 +459,6 @@ class PostgresSortingResource(ModelResource):
         non_null_fields = options.get('non_null_fields', [])
         new_ordering = []
 
-        logger.info(str(('==== non null fields', non_null_fields))) 
         for field in obj_list.query.order_by:
             original_field = field
             is_null_dir = '-'  # default nulls first for ascending
@@ -629,7 +660,7 @@ def log_obj_update(obj_update_func):
         # TODO: abstract the form field name
         if HEADER_APILOG_COMMENT in bundle.request.META:
             log.comment = bundle.request.META[HEADER_APILOG_COMMENT]
-            logger.info(str(('log comment', log.comment)))
+            logger.debug('log comment: %s' % log.comment)
 
         if 'parent_log' in kwargs:
             log.parent_log = kwargs.get('parent_log', None)
@@ -683,7 +714,7 @@ def log_patch_list(patch_list_func):
       
     @transaction.atomic()
     def _inner(self, request, **kwargs):
-        logger.info(str(('create an apilog for the patch list', self._meta.resource_name)))
+        logger.debug('create an apilog for the patch list: resource: %s' % self._meta.resource_name)
         listlog = ApiLog()
         listlog.username = request.user.username 
         listlog.user_id = request.user.id 
@@ -893,11 +924,7 @@ class UnlimitedDownloadResource(IccblBaseResource):
                 return super(UnlimitedDownloadResource, self).get_list(request, **kwargs)
 
         except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on get_list()', self._meta.resource_name, 
-                msg, exc_type, fname, exc_tb.tb_lineno)))
+            logger.exception('on get list')
             raise e
 
 
@@ -1029,9 +1056,8 @@ class ManagedResource(LoggingMixin):
 
         resource.clear_cache();
                 
-        logger.info(str((
-            '----------reset_field_defs, resource_name' , 
-            resource._meta.resource_name, 'scope', scope, 'resource', resource )))
+        logger.debug('----------reset_field_defs, resource_name %s, scope: %s'
+            % (resource._meta.resource_name, scope))
         resource.create_fields();
         resource.reset_filtering_and_ordering();
     
@@ -1220,13 +1246,7 @@ class ManagedResource(LoggingMixin):
                     'visibility':[] }
             
         except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            if isinstance(e, ImmediateHttpResponse):
-                msg = str(e.response)
-            logger.warn(str(('on build_schema()', self._meta.resource_name, 
-                msg, exc_type, fname, exc_tb.tb_lineno)))
+            logger.exception('on build schema')
             raise e
             
         try:
@@ -1280,14 +1300,7 @@ class ManagedResource(LoggingMixin):
                 
         except Exception, e:
             if DEBUG_BUILD_SCHEMA:
-                exc_type, exc_obj, exc_tb = sys.exc_info()
-                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-                msg = str(e)
-                if isinstance(e, ImmediateHttpResponse):
-                    msg = str(e.response)
-                logger.warn(str(('on build_schema()', self._meta.resource_name, 
-                    msg, exc_type, fname, exc_tb.tb_lineno)))
-                    #                 raise e
+                logger.exception('on build schema')
             logger.info(str(('build_schema: resource information not available',
                 self._meta.resource_name, e)))
         
@@ -1466,19 +1479,7 @@ class ManagedResource(LoggingMixin):
                         val = [smart_text(x,'utf-8',errors='ignore') for x in val]
                     json_obj.update({ key:val })
                 except Exception, e:
-                    logger.error('ex', e)
-                    extype, ex, tb = sys.exc_info()
-                    formatted = traceback.format_exception_only(extype, ex)[-1]
-                    msg = str((
-                        'failed to convert', key, 'with value', val, 'message', 
-                        formatted)).replace("'","")
-                    if key in self.fields:
-                        msg += str(('with tastypie field type', 
-                                    type(self.fields[key]) ))
-                    e =  RuntimeError, msg
-                    logger.warn(str((
-                        'throw', e, tb.tb_frame.f_code.co_filename, 
-                        'error line', tb.tb_lineno)))
+                    logger.exception('on hydrate json field')
                     raise e
         bundle.data['json_field'] = json.dumps(json_obj);
         logger.debug(str(('--- hydrated:', bundle.data['json_field'])))
@@ -1491,11 +1492,10 @@ class ManagedResource(LoggingMixin):
             bundle = super(ManagedResource, self).obj_get(bundle, **kwargs);
             return bundle
         except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on obj_get', 
-                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno, kwargs)))
+            if getattr(self, 'suppress_errors_on_bootstrap', False):
+                logger.debug('on obj_get', exc_info=1)
+            else:
+                logger.exception('on obj_get')
             raise e  
 
     def find_key_from_resource_uri(self,resource_uri):
@@ -1598,11 +1598,6 @@ class ManagedResource(LoggingMixin):
                 return kwargs
             
         except Exception, e:
-            #             extype, ex, tb = sys.exc_info()
-            #             logger.warn(str((
-            #                 'throw', e, tb.tb_frame.f_code.co_filename, 'error line', 
-            #                 tb.tb_lineno, extype, ex)))
-            #             logger.warn(str(('==cannot grab id_attribute', bundle_or_obj, id_attribute, e)))
             logger.warn(str(('cannot grab id_attribute for', resource_name,
                 id_attribute,  e)))
             if logger.isEnabledFor(logging.INFO):
@@ -1897,6 +1892,18 @@ class MetaHashResource(ManagedModelResource):
     def __init__(self, **kwargs):
         super(MetaHashResource,self).__init__(**kwargs)
     
+    def put_list(self, request, **kwargs):
+        self.suppress_errors_on_bootstrap = True
+        result = super(MetaHashResource, self).put_list(request, **kwargs)
+        self.suppress_errors_on_bootstrap = False
+        return result
+    
+    def patch_list(self, request, **kwargs):
+        self.suppress_errors_on_bootstrap = True
+        result = super(MetaHashResource, self).patch_list(request, **kwargs)
+        self.suppress_errors_on_bootstrap = False
+        return result
+    
     def obj_create(self, bundle, **kwargs):
         '''
         Reset the field_defs after each create/update:
@@ -2011,17 +2018,24 @@ class VocabulariesResource(ManagedModelResource):
                 logger.warn(str(('---unknown vocabulary scope:', scope)))
                 return {}
         except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on get_vocabularies_by_scope', 
-                msg, exc_type, fname, exc_tb.tb_lineno)))
+            logger.exception('on get_vocabularies_by_scope')
             raise e  
     
     def clear_cache(self):
         super(VocabulariesResource,self).clear_cache()
         cache.delete('vocabularies');
 
+    def put_list(self, request, **kwargs):
+        self.suppress_errors_on_bootstrap = True
+        result = super(VocabulariesResource, self).put_list(request, **kwargs)
+        self.suppress_errors_on_bootstrap = False
+        return result
+    
+    def patch_list(self, request, **kwargs):
+        self.suppress_errors_on_bootstrap = True
+        result = super(VocabulariesResource, self).patch_list(request, **kwargs)
+        self.suppress_errors_on_bootstrap = False
+        return result
 
 class ResourceResource(ManagedModelResource):
     '''
@@ -2096,6 +2110,18 @@ class ResourceResource(ManagedModelResource):
         bundle.data['1'] = bundle.data['key']
         
         return bundle
+
+    def put_list(self, request, **kwargs):
+        self.suppress_errors_on_bootstrap = True
+        result = super(ResourceResource, self).put_list(request, **kwargs)
+        self.suppress_errors_on_bootstrap = False
+        return result
+    
+    def patch_list(self, request, **kwargs):
+        self.suppress_errors_on_bootstrap = True
+        result = super(ResourceResource, self).patch_list(request, **kwargs)
+        self.suppress_errors_on_bootstrap = False
+        return result
         
     def obj_create(self, bundle, **kwargs):
         '''
@@ -2110,13 +2136,7 @@ class ResourceResource(ManagedModelResource):
                 self.reset_field_defs(getattr(bundle.obj,'scope'))
             return bundle
         except Exception, e:
-            extype, ex, tb = sys.exc_info()
-            msg = str(e)
-            if isinstance(e, ImmediateHttpResponse):
-                msg = str(e.response)
-            logger.warn(str((
-                'throw', e, msg, tb.tb_frame.f_code.co_filename, 'error line', 
-                tb.tb_lineno, extype, ex)))
+            logger.exception('on obj create')
             raise e
         
     def obj_update(self, bundle, **kwargs):
@@ -2170,7 +2190,7 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
         return [
             url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail1'), name="api_dispatch_detail"),
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)/children%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_apilog_childview'), name="api_dispatch_apilog_childview"),
@@ -2183,15 +2203,20 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
                  r"/(?P<key>[\w\d_.\-\+: \/]+)"
                  r"/(?P<date_time>[\w\d_.\-\+:]+)%s$")
                     % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail2'), name="api_dispatch_detail"),
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
 
     def get_detail(self, request, **kwargs):
         # TODO: this is a strategy for refactoring get_detail to use get_list:
         # follow this with wells/
         logger.info(str(('get_detail', kwargs)))
-
+        kwargs['is_for_detail']=True
         
+
+        id = kwargs.get('id', None)
+        if id:
+            return self.get_list(request, **kwargs)
+            
         ref_resource_name = kwargs.get('ref_resource_name', None)
         if not ref_resource_name:
             logger.info(str(('no ref_resource_name provided')))
@@ -2206,8 +2231,6 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
         if not date_time:
             logger.info(str(('no date_time provided')))
             raise NotImplementedError('must provide a date_time parameter')
-        
-        kwargs['is_for_detail']=True
         
         return self.get_list(request, **kwargs)
     
@@ -2240,6 +2263,10 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
         schema = super(ApiLogResource,self).build_schema()
         
         filename = self._get_filename(schema, kwargs)
+
+        id = param_hash.pop('id', None)
+        if id:
+            param_hash['id__eq'] = id
         
         ref_resource_name = param_hash.pop('ref_resource_name', None)
         if ref_resource_name:
@@ -2347,11 +2374,7 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
                 title_function=title_function  )
              
         except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on get_list', 
-                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            logger.exception('on get_list')
             raise e  
     
     def build_schema(self):
@@ -2405,13 +2428,14 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
         value.
         '''
         # TODO: abstract the form field name
+        logger.info('log patches: %s' %kwargs)
         log_comment = None
         if HEADER_APILOG_COMMENT in request.META:
             log_comment = request.META[HEADER_APILOG_COMMENT]
             logger.debug(str(('log comment', log_comment)))
         
-        logger.info(str(('log patches original:', original_data,
-            '=== new data ===',new_data,kwargs)))
+        logger.debug('log patches original: %s, =====new data===== %s'
+            % (original_data,new_data))
         schema = self.build_schema()
         id_attribute = resource = schema['resource_definition']['id_attribute']
 
@@ -2443,8 +2467,10 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
                         break
                 if prev_dict:
                     break # found
+            logger.info('prev_dict to remove: %s' % prev_dict)
             if prev_dict:
                 # if found, then it is modified, not deleted
+                logger.info(str(('remove from deleted dict', prev_dict, deleted_items)))
                 deleted_items.remove(prev_dict)
                 
                 difflog = compare_dicts(prev_dict,new_dict)
@@ -2453,11 +2479,10 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
                     log.api_action = str((request.method)).upper()
                     log.diff_dict_to_api_log(difflog)
                     log.save()
-                    if(logger.isEnabledFor(logging.DEBUG)):
-                        logger.debug(str(('update, api log', log)) )
+                    logger.info(str(('update, api log', log)) )
                 else:
-                    if(logger.isEnabledFor(logging.DEBUG)):
-                        logger.debug(str(('no diffs found', prev_dict,new_dict,difflog)) )
+                    # don't save the log
+                    logger.info(str(('no diffs found', prev_dict,new_dict,difflog)) )
             else: # creating
                 log.api_action = API_ACTION_CREATE
                 log.added_keys = json.dumps(new_dict.keys())
@@ -2491,6 +2516,190 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
             log.save()
             logger.info(str(('delete, api log', log)) )
             
+
+class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
+    '''
+    Provides framework for "Patch" and "Put" methods
+    - patch_list, put_list, put_detail; with logging
+    - patch_detail must be implemented
+    - patch/put methods call "patch_obj"
+    - "patch_obj" must be implemented
+    - "put" methods call "delete_obj" 
+    - "delete_obj" must be implemented
+    '''
+    
+    @un_cache        
+    def patch_list(self, request, **kwargs):
+
+        logger.info(str(('patch list', kwargs)))
+
+        deserialized = self._meta.serializer.deserialize(
+            request.body, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'))
+        if not self._meta.collection_name in deserialized:
+            raise BadRequest("Invalid data sent, must be nested in '%s'" 
+                % self._meta.collection_name)
+        deserialized = deserialized[self._meta.collection_name]
+
+        schema = self.build_schema()
+        
+        # Look for id's kwargs, to limit the potential candidates for logging
+        id_attribute = resource = schema['resource_definition']['id_attribute']
+        for id_field in id_attribute:
+            kwargs['%s__in'%id_field] = ( 
+                LIST_DELIMITER_URL_PARAM.join([x.get(id_field) for x in deserialized]) )
+
+        logger.debug('patch list: %s, %s' %(deserialized,kwargs))
+
+        # cache state, for logging
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            includes='*',
+            **kwargs)
+        original_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        original_data = original_data[self._meta.collection_name]
+        logger.debug('original data: %s'% original_data)
+
+        with transaction.atomic():
+            
+            for _dict in deserialized:
+                self.patch_obj(_dict)
+                
+        # get new state, for logging
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            includes='*',
+            **kwargs)
+        new_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        new_data = new_data[self._meta.collection_name]
+        
+        logger.debug('new data: %s'% new_data)
+        self.log_patches(request, original_data,new_data,**kwargs)
+        
+        if not self._meta.always_return_data:
+            return http.HttpAccepted()
+        else:
+            response = self.get_list(request, **kwargs)             
+            response.status_code = 202
+            return response
+ 
+    @un_cache        
+    def put_list(self,request, **kwargs):
+
+        deserialized = self._meta.serializer.deserialize(
+            request.body, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'))
+        if not self._meta.collection_name in deserialized:
+            raise BadRequest("Invalid data sent, must be nested in '%s'" 
+                % self._meta.collection_name)
+        deserialized = deserialized[self._meta.collection_name]
+
+        logger.info(str(('put list', deserialized,kwargs)))
+        
+        with transaction.atomic():
+            
+            # TODO: review REST actions:
+            # PUT deletes the endpoint
+            
+            self._meta.queryset.delete()
+            
+            for _dict in deserialized:
+                self.put_obj(_dict)
+
+        # get new state, for logging
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            includes='*',
+            **kwargs)
+        new_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        new_data = new_data[self._meta.collection_name]
+        
+        logger.info(str(('new data', new_data)))
+        self.log_patches(request, [],new_data,**kwargs)
+
+    
+        if not self._meta.always_return_data:
+            return http.HttpAccepted()
+        else:
+            response = self.get_list(request, **kwargs)             
+            response.status_code = 202
+            return response 
+
+    @un_cache        
+    @transaction.atomic()
+    def put_detail(self, request, **kwargs):
+                
+        deserialized = self._meta.serializer.deserialize(
+            request.body, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'))
+
+        logger.info(str(('put detail', deserialized,kwargs)))
+
+        schema = self.build_schema()
+        id_attribute = resource = schema['resource_definition']['id_attribute']
+        for id_field in id_attribute:
+            kwargs['%s'%id_field] = ( 
+                LIST_DELIMITER_URL_PARAM.join([x.get(id_field) for x in deserialized]) )
+        # cache state, for logging
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            includes='*',
+            **kwargs)
+        original_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        original_data = original_data[self._meta.collection_name]
+        logger.debug('original data: %s'% original_data)
+        
+        with transaction.atomic():
+            logger.info(str(('put_detail:', kwargs)))
+            self.put_obj(deserialized, **kwargs)
+
+        # get new state, for logging
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            includes='*',
+            **kwargs)
+        new_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        new_data = new_data[self._meta.collection_name]
+        
+        logger.info(str(('new data', new_data)))
+        self.log_patches(request, [],new_data,**kwargs)
+
+
+        
+        if not self._meta.always_return_data:
+            return http.HttpAccepted()
+        else:
+            response = self.get_detail(request, **kwargs) 
+            response.status_code = 202
+            return response
+        
+    @un_cache        
+    @transaction.atomic()    
+    def put_obj(self,deserialized, **kwargs):
+        try:
+            self.delete_obj(deserialized, **kwargs)
+        except ObjectDoesNotExist,e:
+            pass 
+        
+        return self.patch_obj(deserialized, **kwargs)            
+
+    def delete_obj(self, deserialized, **kwargs):
+        raise NotImplemented('delete obj must be implemented')
+    
+    def patch_obj(self,deserialized, **kwargs):
+        raise NotImplemented('patch obj must be implemented')
+
+
 
 class UserResource(ManagedSqlAlchemyResourceMixin):
 
@@ -2560,11 +2769,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
                 schema['fields']['usergroups']['choices'] = \
                     [x.name for x in UserGroup.objects.all()]
         except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on get_schema', 
-                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            logger.exception('on get_schema')
             raise e  
         return schema
 
@@ -2767,11 +2972,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
                 title_function=title_function  )
              
         except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on get_list', 
-                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            logger.exception('on get_list')
             raise e  
 
     # FIXME: deprecated
@@ -2824,7 +3025,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         original_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
         original_data = original_data[self._meta.collection_name]
-        logger.info(str(('original data', original_data)))
+        logger.debug('original data==: %s' % original_data)
 
         with transaction.atomic():
             
@@ -2846,7 +3047,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             LimsSerializer.get_content(response), format='application/json')
         new_data = new_data[self._meta.collection_name]
         
-        logger.info(str(('new data', new_data)))
+        logger.debug('new data==: %s' % new_data)
         self.log_patches(request, original_data,new_data,**kwargs)
 
     
@@ -2858,7 +3059,6 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             return response
 
     @un_cache        
-    @transaction.atomic()
     def patch_list(self, request, **kwargs):
         # TODO: refactor
         self._meta.authorization._is_resource_authorized(
@@ -2881,7 +3081,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         original_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
         original_data = original_data[self._meta.collection_name]
-        logger.info(str(('original data', original_data)))
+        logger.debug('original data==: %s' % original_data)
 
         with transaction.atomic():
             
@@ -2898,7 +3098,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             LimsSerializer.get_content(response), format='application/json')
         new_data = new_data[self._meta.collection_name]
         
-        logger.info(str(('new data', new_data)))
+        logger.debug('new data==: %s' % new_data)
         self.log_patches(request, original_data,new_data,**kwargs)
         
         if not self._meta.always_return_data:
@@ -2911,6 +3111,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
     @un_cache        
     @transaction.atomic()
     def patch_detail(self, request, **kwargs):
+        logger.info(str(('patch detail', kwargs)))
         # TODO: refactor
         self._meta.authorization._is_resource_authorized(
             self._meta.resource_name, request.user, 'write')
@@ -2929,7 +3130,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         original_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
         original_data = original_data[self._meta.collection_name]
-        logger.info(str(('original data', original_data)))
+        logger.debug('original data==: %s' % original_data)
 
         with transaction.atomic():
             logger.info(str(('patch_detail:', kwargs)))
@@ -2946,7 +3147,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             LimsSerializer.get_content(response), format='application/json')
         new_data = new_data[self._meta.collection_name]
         
-        logger.info(str(('new data', new_data)))
+        logger.debug('new data==: %s' % new_data)
         self.log_patches(request, original_data,new_data,**kwargs)
 
         
@@ -3111,11 +3312,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             return userprofile
             
         except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on put detail', 
-                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            logger.exception('on put_detail')
             raise e  
             
 #     
@@ -3321,6 +3518,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
 
     @un_cache        
     def patch_detail(self, request, **kwargs):
+        logger.info(str(('patch detail', kwargs)))
         
         # TODO: refactor
         self._meta.authorization._is_resource_authorized(
@@ -3515,11 +3713,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
             return usergroup
             
         except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on put detail', 
-                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            logger.exception('on put_detail')
             raise e  
 
         
@@ -3615,11 +3809,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
                 order_by(_ug2.c.name)
             return group_supergroup_rpt.cte('group_sg_rpt')
         except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on recursive query construction', 
-                msg, exc_type, fname, exc_tb.tb_lineno)))
+            logger.exception('on recursive_supergroup_query construction')
             raise e  
 
     @staticmethod
@@ -3900,11 +4090,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
                 title_function=title_function  )
              
         except Exception, e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]      
-            msg = str(e)
-            logger.warn(str(('on get_list', 
-                self._meta.resource_name, msg, exc_type, fname, exc_tb.tb_lineno)))
+            logger.exception('on get_list')
             raise e  
         
     def prepend_urls(self):
@@ -4322,19 +4508,7 @@ class ManagedLinkedResource(ManagedModelResource):
                 val = [smart_text(x,'utf-8',errors='ignore') for x in val]
             return val
         except Exception, e:
-            logger.error('ex', e)
-            extype, ex, tb = sys.exc_info()
-            formatted = traceback.format_exception_only(extype, ex)[-1]
-            msg = str((
-                'failed to convert', key, 'with value', val, 'message', 
-                formatted)).replace("'","")
-            if key in self.fields:
-                msg += str(('with tastypie field type', 
-                            type(field) ))
-            e =  RuntimeError, msg
-            logger.warn(str((
-                'throw', e, tb.tb_frame.f_code.co_filename, 
-                'error line', tb.tb_lineno)))
+            logger.exception('failed to convert %s with value "%s"' % (key,val))
             raise e
 
     def _set_value_field(self, linkedObj, parent, item, val):
@@ -4564,13 +4738,7 @@ class ManagedLinkedResource(ManagedModelResource):
                 logger.error(str(('keys not available', keys_not_available)))
             return bundle
         except Exception, e:
-            extype, ex, tb = sys.exc_info()
-            msg = str(e)
-            if isinstance(e, ImmediateHttpResponse):
-                msg = str(e.response)
-            logger.warn(str((
-                'throw', e, msg, tb.tb_frame.f_code.co_filename, 'error line', 
-                tb.tb_lineno, extype, ex)))
+            logger.exception('on dehydrate')
             raise e
         return bundle
             
@@ -4605,13 +4773,8 @@ class ManagedLinkedResource(ManagedModelResource):
                         bundle.data[key] = list(values)
             return bundle
         except Exception, e:
-            extype, ex, tb = sys.exc_info()
-            msg = str(e)
-            if isinstance(e, ImmediateHttpResponse):
-                msg = str(e.response)
-            logger.warn(str((
-                'throw', e, msg, tb.tb_frame.f_code.co_filename, 'error line', 
-                tb.tb_lineno, extype, ex)))
+            logger.exception('dehydrate')
+            raise
         return bundle
     
     

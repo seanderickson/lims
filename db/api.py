@@ -241,6 +241,7 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
         kwargs['is_for_detail']=True
         return self.get_list(request, **kwargs)
 
+    @read_authorization
     def get_list(self, request, param_hash={}, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
@@ -753,7 +754,7 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
         kwargs['is_for_detail']=True
         return self.get_list(request, **kwargs)
         
-    
+    @read_authorization
     def get_list(self,request,**kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -1303,7 +1304,6 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
             
         ]
         
-
     def get_detail(self, request, **kwargs):
         logger.info(str(('get_detail')))
 
@@ -1320,7 +1320,7 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
         kwargs['is_for_detail']=True
         return self.get_list(request, **kwargs)
         
-    
+    @read_authorization
     def get_list(self,request,**kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -2030,7 +2030,7 @@ class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
         kwargs['is_for_detail']=True
         return self.get_list(request, **kwargs)
         
-    
+    @read_authorization
     def get_list(self,request,**kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -2230,6 +2230,7 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
         
         return self.get_list(request, **kwargs)
         
+    @read_authorization
     def get_list(self,request,**kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -2392,6 +2393,7 @@ class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):
         
         return self.get_list(request, **kwargs)
         
+    @read_authorization
     def get_list(self,request,**kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -2620,6 +2622,7 @@ class CherryPickPlateResource(SqlAlchemyResource,ManagedModelResource):
         
         return self.get_list(request, **kwargs)
         
+    @read_authorization
     def get_list(self,request,**kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -2861,6 +2864,7 @@ class LibraryCopyResource(SqlAlchemyResource, ManagedModelResource):
         kwargs['is_for_detail']=True
         return self.get_list(request, **kwargs)
     
+    @read_authorization
     def get_list(self,request,**kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -3309,10 +3313,6 @@ class AttachedFileResource(ApiResource):
         except NotFound:
             return http.HttpNotFound()
 
-
-
-        
-    @read_authorization
     def get_detail(self, request, **kwargs):
         logger.info(str(('get_detail')))
         
@@ -3493,6 +3493,7 @@ class UserChecklistItemResource(ApiResource):
         kwargs['is_for_detail']=True
         return self.get_list(request, **kwargs)
        
+    @read_authorization
     def get_list(self,request,**kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -3814,6 +3815,7 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
         kwargs['is_for_detail']=True
         return self.get_list(request, **kwargs)
        
+    @read_authorization
     def get_list(self,request,**kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -4754,17 +4756,20 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
         kwargs['is_for_detail']=True
         return self.get_list(request, **kwargs)
 
+    @read_authorization
     def get_list(self, request, **kwargs):
         return self.get_full_reagent_resource().get_list(request, **kwargs)
 
     def post_list(self, request, **kwargs):
         raise NotImplementedError("Post is not implemented for ReagentResource, use patch instead")
     
+    @write_authorization
     def patch_list(self, request, **kwargs):
         # TODO: NOT TESTED
         return self.put_list(request, **kwargs)
     
     # REWORK, follow ApiLogResource, also, remove transaction.atomic 20150831
+    @write_authorization
     @transaction.atomic()
     def put_list(self, request, **kwargs):
 
@@ -4965,6 +4970,7 @@ class ActivityResource(SqlAlchemyResource,ManagedModelResource):
         
         return self.get_list(request, **kwargs)
             
+    @read_authorization
     def get_list(self,request,**kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -5115,8 +5121,8 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         
         kwargs['is_for_detail']=True
         return self.get_list(request, **kwargs)
-        
     
+    @read_authorization
     def get_list(self,request,**kwargs):
 
         param_hash = self._convert_request_to_dict(request)

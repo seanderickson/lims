@@ -2234,6 +2234,7 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
         
         return self.get_list(request, **kwargs)
     
+    @read_authorization
     def get_list(self,request,**kwargs):
 
         parent_log_id = None
@@ -2528,6 +2529,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
     - "delete_obj" must be implemented
     '''
     
+    @write_authorization
     @un_cache        
     def patch_list(self, request, **kwargs):
 
@@ -2587,6 +2589,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
             response.status_code = 202
             return response
  
+    @write_authorization
     @un_cache        
     def put_list(self,request, **kwargs):
 
@@ -2631,6 +2634,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
             response.status_code = 202
             return response 
 
+    @write_authorization
     @un_cache        
     @transaction.atomic()
     def put_detail(self, request, **kwargs):
@@ -2874,6 +2878,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         return self.get_list(request, **kwargs)
         
     
+    @read_authorization
     def get_list(self,request,**kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -3870,7 +3875,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
         kwargs['is_for_detail']=True
         return self.get_list(request, **kwargs)
         
-    
+    @read_authorization
     def get_list(self,request,**kwargs):
 
         param_hash = self._convert_request_to_dict(request)

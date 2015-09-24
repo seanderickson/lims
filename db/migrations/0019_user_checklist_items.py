@@ -21,7 +21,7 @@ from sqlalchemy.sql.operators import asc_op
 import sys
 import os
 import csv
-from lims import settings
+from lims.base_settings import PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ class Migration(DataMigration):
         # create a separate vocab file: checklist_item_vocab, add to api_init.csv
         # output vocabs into a vocabulary patch file
         vocab_file = os.path.join(
-            settings.PROJECT_ROOT, '..',
+            PROJECT_ROOT, '..',
             'db','static','api_init','vocabularies_checklists_data.csv')
         logger.info('write vocabularies to %s' % vocab_file)
         resource_uri = '/reports/api/v1/vocabularies/%s/%s/'

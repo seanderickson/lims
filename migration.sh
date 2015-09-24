@@ -384,9 +384,11 @@ function frontend_setup {
   
   npm --version 2>&1 || error "npm not found: $?"
   
+  rm ./node_modules # untested 20150923
   npm install >>"$LOGFILE" 2>&1 || error "npm install failed: $?"
   npm install bower
   ./node_modules/.bin/bower cache clean
+  rm ./bower_components # untested
   ./node_modules/.bin/grunt bowercopy >>"$LOGFILE" 2>&1 || error "grunt bowercopy failed: $?"
   
   ./node_modules/.bin/grunt test >>"$LOGFILE" 2>&1 || warn "grunt test failed, see logfile: $?"

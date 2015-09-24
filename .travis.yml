@@ -14,6 +14,6 @@ before_script:
 script: 
   - grunt bowercopy && grunt test
   - cd ../../ && python manage.py migrate south --settings=lims.travis-settings
-  - cd ../../ && python manage.py migrate --all --settings=lims.travis-settings
+  - python manage.py migrate --all --settings=lims.travis-settings
   - python manage.py test --settings=lims.travis-settings --verbosity=2
 

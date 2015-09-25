@@ -834,7 +834,7 @@ class Migration(SchemaMigration):
         # Adding model 'Reagent'
         db.create_table(u'reagent', (
             ('reagent_id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('substance_id', self.gf('django.db.models.fields.CharField')(default='UY2UH7Q', unique=True, max_length=8)),
+#             ('substance_id', self.gf('django.db.models.fields.CharField')(default='UY2UH7Q', unique=True, max_length=8)),
             ('vendor_identifier', self.gf('django.db.models.fields.TextField')(blank=True)),
             ('vendor_name', self.gf('django.db.models.fields.TextField')(blank=True)),
             ('library_contents_version', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.LibraryContentsVersion'], null=True)),
@@ -1958,7 +1958,7 @@ class Migration(SchemaMigration):
             'facility_batch_id': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'library_contents_version': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.LibraryContentsVersion']", 'null': 'True'}),
             'reagent_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UY2UH7Q'", 'unique': 'True', 'max_length': '8'}),
+#             'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UY2UH7Q'", 'unique': 'True', 'max_length': '8'}),
             'vendor_batch_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_identifier': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_name': ('django.db.models.fields.TextField', [], {'blank': 'True'}),

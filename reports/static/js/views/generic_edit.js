@@ -10,10 +10,97 @@ define([
     'models/app_state',
     'text!templates/generic-edit.html',
     'text!templates/modal_ok_cancel.html',
-
+    'bootstrap',
+    'bootstrap-datepicker'
 ], function( $, _, Backbone, backbone_forms, multiselect, quicksearch, Iccbl, appModel,
             editTemplate, modalOkCancel ) {
 
+  var DatePicker = Backbone.Form.editors.Base.extend({
+
+    tagName: 'datepicker',
+
+    events: {
+        'change': function() {
+            // The 'change' event should be triggered whenever something happens
+            // that affects the result of `this.getValue()`.
+            this.trigger('change', this);
+        },
+        'focus': function() {
+            // The 'focus' event should be triggered whenever an input within
+            // this editor becomes the `document.activeElement`.
+            this.trigger('focus', this);
+            // This call automatically sets `this.hasFocus` to `true`.
+        },
+        'blur': function() {
+            // The 'blur' event should be triggered whenever an input within
+            // this editor stops being the `document.activeElement`.
+            this.trigger('blur', this);
+            // This call automatically sets `this.hasFocus` to `false`.
+        }
+    },
+
+    initialize: function(options) {
+        Backbone.Form.editors.Base.prototype.initialize.call(this, options);
+        if (!this.value) {
+          var date = new Date();
+          date.setSeconds(0);
+          date.setMilliseconds(0);
+          
+          this.value = date;
+        }else{
+          this.value = new Date(this.value)
+        }
+    },
+
+    render: function() {
+      var el = $(this.el);
+      el.html([
+               '<div class="input-group date col-sm-2 input-group-sm" >',
+               '  <input type="text" class="form-control">',
+               '  <span class="input-group-addon" id="datepicker-icon" >',
+               '    <i class="glyphicon glyphicon-th"  ></i>',
+               '  </span>',
+               '</div>'                                             
+            ].join(''));
+      var input = $('input', el);
+      input.datepicker({
+          dateFormat: 'dd/mm/yy',
+          autoclose: true,
+          todayBtn: true,
+          orientation: "bottom auto"
+      });
+      
+      // manually get the input-group-addon click
+      $('#datepicker-icon',el).click(function(e){
+        input.datepicker().focus();
+      });
+      this.setValue(this.value);
+        
+      return this;
+    },
+
+    getValue: function() {
+      var input = $('input', this.el),
+      date = input.datepicker('getDate');
+      return date;
+    },
+
+    setValue: function(value) {
+      $('input', this.el).datepicker('setDate', value);
+    },
+
+    focus: function() {
+        if (this.hasFocus) return;
+        this.$el.focus();
+    },
+
+    blur: function() {
+        if (!this.hasFocus) return;
+        this.$el.blur();
+    }
+  });  
+  
+  
   // like 'Select' editor, but will always return a boolean (true or false)
   Backbone.Form.editors.BooleanSelect = Backbone.Form.editors.Select.extend({
     
@@ -176,7 +263,12 @@ define([
           </div> \
         </div>\
       '),
-      
+    datepickerComponentTemplate: _.template([
+       '<div class="form-group" >',
+       '<div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',  
+       '</div>'
+       ].join('')),
+       
     // using custom templates to hold the editors,
     // control the layout with the "controls, control-group" classes
     altRadioFieldTemplate: _.template('\
@@ -210,7 +302,9 @@ define([
         'uri': 'Text',
         'float': 'Number',
         'integer': 'Number',
-        'list': 'Checkboxes' // FIXME: redo with editor_type metadata
+        'decimal': 'Number',
+        'list': 'Checkboxes', 
+        'date': DatePicker
       };
       
       // process the data_types - convert to backbone-forms schema editor type
@@ -221,7 +315,8 @@ define([
         
         var validators = [];
         var fieldSchema = editSchema[key] = {};
-                
+        fieldSchema['title'] = option.title
+        
         fieldSchema['template'] = self.altFieldTemplate;
         
         var data_type = option.data_type || 'Text';
@@ -353,12 +448,16 @@ define([
         console.log('editSchema', key, editSchema[key], option);
       });      
       
-      // Note: Enforced comment
-      editSchema['comment'] = {
-          type: 'TextArea',
-          validators: ['required'], 
-          template: self.altFieldTemplate
-      };
+      if( ! _.has(editSchema, 'apilog_comment')){
+        console.log('enforced apilog_comment');
+        // Note: Enforced comment
+        editSchema['apilog_comment'] = {
+            type: 'TextArea',
+            title: 'Changelog Comment',
+            validators: ['required'], 
+            template: self.altFieldTemplate
+        };
+      }
            
       return editSchema;
     },
@@ -379,8 +478,9 @@ define([
               _.contains(schema.fields[key]['visibility'], 'edit');
       });
       
-      editKeys.push('comment');
-      schema.fields['comment'] = { key: 'comment', title: 'Comment', data_type:'string'};
+      if( ! _.contains(editKeys, 'apilog_comment')){
+        editKeys.push('apilog_comment');
+      }
                   
       return {
         'fieldDefinitions': schema.fields,
@@ -402,11 +502,6 @@ define([
     afterRender: function(){
       // update the multiselect2 with the multiselect enhancements
       console.log('.multiselects',this.$el.find('multiselect2').find('select'));
-      //      this.$el.find('.multiselect2').find('select').multiSelect();
-      //      this.$el.find('.multiselect2').find('select').multiSelect({ 
-      //        selectableOptgroup: true });
-
-      
       // multiselect with search
       this.$el.find('.multiselect2').find('select').multiSelect({
           selectableOptgroup: true,
@@ -494,7 +589,7 @@ define([
       }
       
       var headers = {};
-      headers[appModel.HEADER_APILOG_COMMENT] = self.model.get('comment');
+      headers[appModel.HEADER_APILOG_COMMENT] = self.model.get('apilog_comment');
       this.model.save(null, {
         url: url, // set the url property explicitly
         patch: _patch,

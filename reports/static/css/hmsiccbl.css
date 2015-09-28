@@ -3,22 +3,6 @@ body {
   background-color: #c5d2db;
 }
 
-/* .loading1 { */
-/*     background:rgba(0,0,0,0.3); */
-/* } */
-
-/* #loading { */
-/*     position:fixed; */
-/*     z-index:999; */
-/*     top:0; */
-/*     left:0; */
-/*     width:100%; */
-/*     height: 100%; */
-/*     background: url( "{{ STATIC_URL }}/images/ajax-loading2.gif" ) */
-/*         50% 20% */
-/*         no-repeat; */
-/* } */
-
 #title {
 	  word-wrap:break-word;
 }
@@ -35,20 +19,15 @@ body {
     content: "\e080";    /* adjust as needed, taken from bootstrap.css */
 }
 
-
 /** bootstrap overrides **/
 
 @media screen{
-
   .well {
     padding: 5px;
   }
-
-
   .nav-header {
     padding: 3px 0px;
   }
-  
 	.nav-sidebar {
 	  padding: 0px;
 	  padding-left: 5px;
@@ -66,10 +45,6 @@ div#application_div > .one-space {
     padding-top: 4px;
 }
 
-/* #application_div { */
-/*     padding-left: 6px; */
-/* } */
-
 .no-space [class*="col"] {
     margin-left: 0;
     margin-right: 0;
@@ -82,7 +57,6 @@ div#application_div > .one-space {
     padding-left: 2px;
     padding-top: 4px;
 }
-
 
 /** menu list styling from bootstrap 2.3.2 **/
 
@@ -198,16 +172,6 @@ td.text-wrap-cell {
   vertical-align: top;
 }
 
-/* .iccbl-min-width { */
-/* 	width: 8em !important; */
-/* } */
-
-#content {
-	/* style choice:
-	   for pages with too many columns, will contain them in the parent,
-	   with a scrollbar on the bottom */
-/*   overflow-x: auto;  */
-}
 .ms-container ul{
   display: block;
 }

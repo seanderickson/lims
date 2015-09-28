@@ -149,7 +149,6 @@ if __name__ == "__main__":
     logging.basicConfig(
         level=log_level, 
         format='%(msecs)d:%(module)s:%(lineno)d:%(levelname)s: %(message)s')        
-
     CONTENT_TYPES =   { 
         'json': {'content-type': 'application/json'},
         'csv':  {'content-type': 'text/csv'},
@@ -165,7 +164,7 @@ if __name__ == "__main__":
     
     headers ={}
 
-    #### log in using django form-based auth, and keep the sesion
+    #### log in using django form-based auth, and keep the session
     session = get_logged_in_session(
         args.username, password, base_url)
     # django session based auth requires a csrf token

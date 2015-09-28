@@ -48,17 +48,15 @@ class ChunkIterWrapper(object):
         self.fragment = None
     
     def next(self):
-        logger.info(str(('chunking')))
-        # Note: cStringIO will not accept unicode strings that can not be encoded as 7-bit ascii
+        logger.debug('chunking')
         bytes = cStringIO.StringIO()
-        # NOTE: StringIO will have difficulty decoding UTF-8 mixed with ascii
-        #         bytes = StringIO.StringIO()
         
         bytecount = 0
         try:
             if self.fragment:
-                logger.info(str(('fragment', self.fragment)))
-                #  FIXME: if fragment is still > chunk_size, will just serve it here.
+                logger.debug(str(('fragment', self.fragment)))
+                #  FIXME: 
+                # if fragment (row remainder) is still > chunk_size, will just serve it here.
                 bytecount = len(self.fragment)
                 bytes.write(self.fragment)
                 self.fragment = None
@@ -85,10 +83,11 @@ class ChunkIterWrapper(object):
             raise e   
         finally:
             if bytes.getvalue():
-                logger.info(str(('chunk size', len(bytes.getvalue()), 'chars')))
+                logger.debug('chunk size %s chars' % len(bytes.getvalue()))
                 return bytes.getvalue()
             else:
-                logger.info(str(('normal stop iteration', self.fragment, bytes.getvalue())))
+                logger.debug('normal stop iteration, fragment: %s, bytes: %s' 
+                    % ( self.fragment, bytes.getvalue()))
                 raise StopIteration
 
     def __iter__(self):

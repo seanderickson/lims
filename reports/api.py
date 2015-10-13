@@ -107,7 +107,7 @@ def parse_val(value, key, data_type):
         else:
             raise Exception('unknown data type: %s: "%s"' % (key,data_type))
     except Exception, e:
-        logger.error(str(('value', value)))
+        logger.exception('value not parsed %r' % value)
         raise            
 
     
@@ -214,6 +214,7 @@ def write_authorization(_func):
     ''' 
     @wraps(_func)
     def _inner(self, *args, **kwargs):
+        logger.info('write authorization wrapper')
         request = args[0]
         self._meta.authorization._is_resource_authorized(
             self._meta.resource_name,request.user,'write')
@@ -2087,8 +2088,7 @@ class ResourceResource(ManagedModelResource):
 
     def dehydrate(self, bundle):
         bundle = super(ResourceResource,self).dehydrate(bundle)
-        # Get the schema
-        # FIXME: why is the resource registry keyed off of "field."+key ?
+        # Get the fields schema for each resource
         if ManagedResource.resource_registry.get('fields.'+bundle.obj.key, None):
             resource = ManagedResource.resource_registry['fields.'+bundle.obj.key]
             schema = resource.build_schema();
@@ -2547,18 +2547,19 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
         
         # Look for id's kwargs, to limit the potential candidates for logging
         id_attribute = resource = schema['resource_definition']['id_attribute']
+        kwargs_for_log = kwargs.copy()
         for id_field in id_attribute:
-            kwargs['%s__in'%id_field] = ( 
+            kwargs_for_log['%s__in'%id_field] = ( 
                 LIST_DELIMITER_URL_PARAM.join([x.get(id_field) for x in deserialized]) )
 
-        logger.debug('patch list: %s, %s' %(deserialized,kwargs))
+        logger.debug('patch list: %s, %s' %(deserialized,kwargs_for_log))
 
         # cache state, for logging
         response = self.get_list(
             request,
             desired_format='application/json',
             includes='*',
-            **kwargs)
+            **kwargs_for_log)
         original_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
         original_data = original_data[self._meta.collection_name]
@@ -2574,7 +2575,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
             request,
             desired_format='application/json',
             includes='*',
-            **kwargs)
+            **kwargs_for_log)
         new_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
         new_data = new_data[self._meta.collection_name]
@@ -2686,6 +2687,54 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
             response = self.get_detail(request, **kwargs) 
             response.status_code = 202
             return response
+
+    @write_authorization
+    @un_cache        
+    @transaction.atomic()
+    def patch_detail(self, request, **kwargs):
+
+        deserialized = self._meta.serializer.deserialize(
+            request.body, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'))
+        logger.info(str(('patch detail', deserialized,kwargs)))
+
+        # cache state, for logging
+#         username = self.get_user_resource().find_username(deserialized, **kwargs)
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            includes='*',
+            **kwargs)
+        original_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        original_data = original_data[self._meta.collection_name]
+        logger.info(str(('original data', original_data)))
+
+        with transaction.atomic():
+            
+            self.patch_obj(deserialized, **kwargs)
+
+        # get new state, for logging
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            includes='*',
+            **kwargs)
+        new_data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        new_data = new_data[self._meta.collection_name]
+        
+        logger.info(str(('new data', new_data)))
+        self.log_patches(request, original_data,new_data,**kwargs)
+
+        
+        if not self._meta.always_return_data:
+            return http.HttpAccepted()
+        else:
+            response = self.get_detail(request, **kwargs) 
+            response.status_code = 202
+            return response
+
         
     @un_cache        
     @transaction.atomic()    

@@ -15,9 +15,9 @@ define([
 ], function( $, _, Backbone, backbone_forms, multiselect, quicksearch, Iccbl, appModel,
             editTemplate, modalOkCancel ) {
   
-  var SciunitEditor = Backbone.Form.editors.Base.extend({
+  var SIunitEditor = Backbone.Form.editors.Base.extend({
     
-    tagname: 'sciuniteditor',
+    tagname: 'siuniteditor',
     
     fieldTemplate: _.template([
       '<div data-editor title="<%= help %>"  >',
@@ -32,7 +32,7 @@ define([
       '</form>'
     ].join('')),
 
-    sciunits: [
+    siunits: [
       ['T', 1e12],
       ['G', 1e9],
       ['M', 1e6],
@@ -66,7 +66,7 @@ define([
 
     initialize: function(options) {
       var self = this;
-      console.log('sciunit initialize');
+      console.log('siunit initialize');
       Backbone.Form.editors.Base.prototype.initialize.call(this, options);
 
       var options = this.options = options || {};
@@ -78,9 +78,9 @@ define([
       var units = this.units = [];
       
       if(! symbol){
-        throw 'Error: SciUnitFormFilter requires a "symbol" option' 
+        throw 'Error: SIUnitFormFilter requires a "symbol" option' 
       }
-      _.each(this.sciunits,function(pair){
+      _.each(this.siunits,function(pair){
         units.push({ val: pair[1], label: pair[0] + self.symbol });
       });
       formSchema['unit'] = {
@@ -99,7 +99,7 @@ define([
         template: this.fieldTemplate
       };
       
-      console.log('sciunit initialize complete');
+      console.log('siunit initialize complete');
     
     },
 
@@ -114,7 +114,7 @@ define([
     },
     
     render: function() {
-      console.log('render sciuni', this.value);
+      console.log('render siunit', this.value);
   
       this._observeFormEvents();
 
@@ -130,7 +130,7 @@ define([
       
       if (this.hasFocus) this.trigger('blur', this);
 
-      console.log('render sciuni done', this.nestedForm.getValue());
+      console.log('render siunit done', this.nestedForm.getValue());
       return this;
     },
     
@@ -157,17 +157,17 @@ define([
       this.render();
     },
 
-    _calculate: function(multiplier, sci_mult, val){
-      console.log('calculate',multiplier,sci_mult,val);
+    _calculate: function(multiplier, si_mult, val){
+      console.log('calculate',multiplier,si_mult,val);
       // run strip after every calculation to round out floating point math errors
       function strip(number) {
         return (parseFloat(number.toPrecision(12)));
         };
       val = strip(val * multiplier);
-      if(sci_mult > 0){ // if sci unit is undefined, assume to be 1
-        val = strip(val * sci_mult);
+      if(si_mult > 0){ // if si unit is undefined, assume to be 1
+        val = strip(val * si_mult);
       }
-      console.log('calculate',multiplier,sci_mult,val);
+      console.log('calculate',multiplier,si_mult,val);
       return val;
     },
     
@@ -178,7 +178,7 @@ define([
         return (parseFloat(number.toPrecision(12)));
         };
       number = strip(number/self.multiplier);
-      pair = _.find(this.sciunits, function(pair){
+      pair = _.find(this.siunits, function(pair){
         return pair[1] <= Math.abs(number); 
       });
       
@@ -639,9 +639,9 @@ define([
           fieldSchema['template'] = self.datepickerComponentTemplate;
         } 
         
-        if(fi.display_type == 'sciunit'){
-          console.log('sciunit field: ' + key);
-          fieldSchema['type'] = SciunitEditor;
+        if(fi.display_type == 'siunit'){
+          console.log('siunit field: ' + key);
+          fieldSchema['type'] = SIunitEditor;
           fieldSchema['editorClass'] = '';
         }
         
@@ -834,7 +834,10 @@ define([
       
       this.$el.find('.chosen-select').chosen({
         disable_search_threshold: 3,
-        width: '100%' });
+        width: '100%',
+        allow_single_deselect: true,
+        search_contains: true
+        });
       
       
       // update the multiselect2 with the multiselect enhancements

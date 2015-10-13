@@ -122,10 +122,10 @@ define([
               }
             }else if(data_type=='decimal' || data_type=='float'){
               console.log('testing decimal');
-              if (display_type == 'sciunit'){
-                console.log('testing sciunit');
+              if (display_type == 'siunit'){
+                console.log('testing siunit');
                 expect(displayedVal).to.be.equal(
-                  (new Iccbl.SciUnitsFormatter(cell_options).fromRaw(modelVal)));
+                  (new Iccbl.SIUnitsFormatter(cell_options).fromRaw(modelVal)));
               }else{
                 expect(displayedVal).to.be.equal(
                   (new Iccbl.DecimalFormatter(cell_options).fromRaw(modelVal)));
@@ -250,7 +250,7 @@ define([
             console.log('multiselect2: val', '' + val, ', ', '' + modelVal );
             expect(modelVal.sort()).to.be.deep.equal(val.sort(),'multiselect2 error, val: ' + val);
             
-          }else if (fi['display_type']=='sciunit'){
+          }else if (fi['display_type']=='siunit'){
 
             val = input.find('input').val();
             val = parseFloat(val);

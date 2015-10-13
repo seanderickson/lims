@@ -175,11 +175,11 @@ define([
       
       // Define getters for "display_type"
 
-      function sciUnitGetter(value){
-        var formatter = new Iccbl.SciUnitsFormatter(cell_options)
-        console.log('get sciunit value', value && !_.isEmpty(value), formatter.fromRaw(value));
+      function siUnitGetter(value){
+        var formatter = new Iccbl.SIUnitsFormatter(cell_options)
+        console.log('get siunit value', value && !_.isEmpty(value), formatter.fromRaw(value));
         if(value){
-          console.log('get sciunit value', value, formatter.fromRaw(value));
+          console.log('get siunit value', value, formatter.fromRaw(value));
           return formatter.fromRaw(value);
         }else{
           return value;
@@ -234,7 +234,7 @@ define([
       display_type_formatters = {
         'link': linkGetter,
         'linklist': linkListGetter,
-        'sciunit': sciUnitGetter
+        'siunit': siUnitGetter
       };
       
       // compose getter hierarchy; default<-data_type<-display_type<-vocabulary

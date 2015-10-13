@@ -875,13 +875,13 @@ _.extend(DecimalFormatter.prototype, {
  * @throws {RangeError}
  *           If decimals < 0 or > 20.
  */
-var SciUnitsFormatter = Iccbl.SciUnitsFormatter = function () {
+var SIUnitsFormatter = Iccbl.SIUnitsFormatter = function () {
  Backgrid.NumberFormatter.apply(this, arguments);
 };
 
-SciUnitsFormatter.prototype = new Backgrid.NumberFormatter();
+SIUnitsFormatter.prototype = new Backgrid.NumberFormatter();
 
-_.extend(SciUnitsFormatter.prototype, {
+_.extend(SIUnitsFormatter.prototype, {
 
   /**
    * @member Backgrid.UnitsFormatter
@@ -894,7 +894,7 @@ _.extend(SciUnitsFormatter.prototype, {
    *      string.
    */
   defaults: _.extend({}, NumberFormatter.prototype.defaults, {
-    sciunits: [
+    siunits: [
               ['T', 1e12],
               ['G', 1e9],
               ['M', 1e6],
@@ -927,7 +927,7 @@ _.extend(SciUnitsFormatter.prototype, {
   },
 
   /**
-   * Convert the number to a sciunit value; number = .0025 multiplier = 1000
+   * Convert the number to a siunit value; number = .0025 multiplier = 1000
    * 
    * @return Math.round(number*multiplier,decimals) + symbol
    */
@@ -962,7 +962,7 @@ _.extend(SciUnitsFormatter.prototype, {
       console.log("Error, DecimalCell multiplier < 1: " + multiplier);
     }
      
-    pair = _.find(this.sciunits, function(pair){
+    pair = _.find(this.siunits, function(pair){
       return pair[1] <= Math.abs(number); 
     });
      
@@ -996,7 +996,7 @@ _.extend(SciUnitsFormatter.prototype, {
       var rawValue = NumberFormatter.prototype.toRaw.call(this, tokens[0]);
       if (_.isUndefined(rawValue)) return rawValue;
       var temp = rawValue / this.multiplier;
-      var power_mult = _.find(self.sciunits, function(pair){
+      var power_mult = _.find(self.siunits, function(pair){
         if(pair[0] == tokens[1]) return true;
       });
       return temp*power_mult;
@@ -1042,26 +1042,26 @@ var DecimalCell = Iccbl.DecimalCell = NumberCell.extend({
 
 
 /**
- * A SciUnitsCell is another Backgrid.NumberCell that takes a floating number,
+ * A SIUnitsCell is another Backgrid.NumberCell that takes a floating number,
  * optionally multiplied by a multiplier, showing a decimals number of digits,
  * and displayed with a units symbol.
  * 
- * @class Backgrid.SciUnitsCell
+ * @class Backgrid.SIUnitsCell
  * @extends Backgrid.NumberCell
  */
-var SciUnitsCell = Iccbl.SciUnitsCell = NumberCell.extend({
+var SIUnitsCell = Iccbl.SIUnitsCell = NumberCell.extend({
 
   /** @property */
   className: "units-cell",
 
   /** @property {number} [multiplier=1] */
-  multiplier: SciUnitsFormatter.prototype.defaults.multiplier,
+  multiplier: SIUnitsFormatter.prototype.defaults.multiplier,
 
   /** @property {string} [symbol='%'] */
-  symbol: SciUnitsFormatter.prototype.defaults.symbol,
+  symbol: SIUnitsFormatter.prototype.defaults.symbol,
 
   /** @property {Backgrid.CellFormatter} [formatter=Backgrid.UnitsFormatter] */
-  formatter: SciUnitsFormatter,
+  formatter: SIUnitsFormatter,
 
   /**
    * Initializes this cell and the Units formatter.
@@ -1074,7 +1074,7 @@ var SciUnitsCell = Iccbl.SciUnitsCell = NumberCell.extend({
    *          options.column
    */
   initialize: function () {
-    SciUnitsCell.__super__.initialize.apply(this, arguments);
+    SIUnitsCell.__super__.initialize.apply(this, arguments);
     var formatter = this.formatter;
     formatter.multiplier = this.multiplier;
     formatter.decimals = this.decimals;
@@ -3289,7 +3289,7 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
 });
 
 
-var SciUnitFormFilter = NumberFormFilter.extend({
+var SIUnitFormFilter = NumberFormFilter.extend({
   
   symbol: "",
   
@@ -3301,20 +3301,20 @@ var SciUnitFormFilter = NumberFormFilter.extend({
       '   <div data-fields="lower_criteria" ',
       '     class="input-group-addon iccbl-headerfield-number" for="lower_value"   />',
       '   <div data-fields="lower_value"/>',
-      '   <div class="input-group-addon iccbl-headerfield-number" data-fields="lower_sciunit"/>',
+      '   <div class="input-group-addon iccbl-headerfield-number" data-fields="lower_siunit"/>',
       '</div>',
       '<div class="form-group" data-fields="form_textarea" style="display: none;" />',
       '<div class="input-group" id="range_upper_block" style="display: none;" >',
       '   <span class="input-group-addon" for="upper_value"  style="width: 4em; ">to</span>',
       '   <span data-fields="upper_value"/>',
-      '   <div class="input-group-addon iccbl-headerfield-number" data-fields="upper_sciunit"/>',
+      '   <div class="input-group-addon iccbl-headerfield-number" data-fields="upper_siunit"/>',
       '</div>',
       '</div>',
       '<div class=""  data-fields="invert_field" />',
       '</form>'
     ].join('')),
 
-  sciunits: [
+  siunits: [
       ['T', 1e12],
       ['G', 1e9],
       ['M', 1e6],
@@ -3335,44 +3335,44 @@ var SciUnitFormFilter = NumberFormFilter.extend({
     var formSchema = options.schema = options.schema || {};
     
     if(! options.symbol){
-      throw 'Error: SciUnitFormFilter requires a "symbol" option' 
+      throw 'Error: SIUnitFormFilter requires a "symbol" option' 
     }
-    _.each(this.sciunits,function(pair){
+    _.each(this.siunits,function(pair){
       units.push({ val: pair[1], label: pair[0] + self.symbol });
     });
-    formSchema['lower_sciunit'] = {
+    formSchema['lower_siunit'] = {
       title: '', 
-      key:  'lower_sciunit', // TODO: "key" not needed>?
+      key:  'lower_siunit', // TODO: "key" not needed>?
       type: 'Select',
       options: units,
       template: _.template(self.criteriaTemplate),
       editorClass: 'form-control'
     };
     
-    formSchema['upper_sciunit'] = {
+    formSchema['upper_siunit'] = {
       title: '', 
-      key:  'upper_sciunit', // TODO: "key" not needed>?
+      key:  'upper_siunit', // TODO: "key" not needed>?
       type: 'Select',
       options: units,
       template: _.template(self.criteriaTemplate),
       editorClass: 'form-control'
     };
     
-    options['fields'] = ['lower_sciunit','upper_sciunit']
+    options['fields'] = ['lower_siunit','upper_siunit']
     
-    SciUnitFormFilter.__super__.initialize.call(this, options);
+    SIUnitFormFilter.__super__.initialize.call(this, options);
   },
   
   /**
-   * SciUnitFormFilter Convenience - determine if the form has been set with any
+   * SIUnitFormFilter Convenience - determine if the form has been set with any
    * values
    */
   isSet: function(){
     var values = this.getValue();
     var found = _.find(_.keys(values), function(key){
       if(key == 'lower_criteria' 
-        || key == 'lower_sciunit'
-        || key == 'upper_sciunit' ) return false;
+        || key == 'lower_siunit'
+        || key == 'upper_siunit' ) return false;
       // signal isSet for any field value set
       return values[key] !== '';
     });
@@ -3380,11 +3380,11 @@ var SciUnitFormFilter = NumberFormFilter.extend({
   },
   
   /**
-   * SciUnitFormFilter Form submit handler
+   * SIUnitFormFilter Form submit handler
    */
   _submit: function(){
     var self = this;
-    var searchHash = SciUnitFormFilter.__super__._submit.call(this);
+    var searchHash = SIUnitFormFilter.__super__._submit.call(this);
     
     if(!_.isEmpty(searchHash)){
       var searchKey = _.keys(searchHash)[0];
@@ -3394,12 +3394,12 @@ var SciUnitFormFilter = NumberFormFilter.extend({
 
       if(criteria == 'range'){
         searchHash[searchKey] = [
-            self._calculate(self.multiplier,values['lower_sciunit'],values['lower_value']),
-            self._calculate(self.multiplier,values['upper_sciunit'],values['upper_value'])
+            self._calculate(self.multiplier,values['lower_siunit'],values['lower_value']),
+            self._calculate(self.multiplier,values['upper_siunit'],values['upper_value'])
             ].join(',');
       }else if(criteria == 'in'){
         var newvalues = _.map(searchValue.split(','),function(val){
-          return ''+self._calculate(self.multiplier,values['lower_sciunit'],val);
+          return ''+self._calculate(self.multiplier,values['lower_siunit'],val);
         });
         searchHash[searchKey] = newvalues.join(',');
       }else if(criteria == 'is_null'){
@@ -3408,9 +3408,9 @@ var SciUnitFormFilter = NumberFormFilter.extend({
         // do nothing it's good already
       }else{
         searchHash[searchKey] = ''+self._calculate(
-            self.multiplier,values['lower_sciunit'],values['lower_value']);
+            self.multiplier,values['lower_siunit'],values['lower_value']);
       }
-      console.log('Sciunit new search value: ' + searchHash[searchKey]);
+      console.log('SIunit new search value: ' + searchHash[searchKey]);
     }
     return searchHash
   },
@@ -3436,7 +3436,7 @@ var SciUnitFormFilter = NumberFormFilter.extend({
       return (parseFloat(number.toPrecision(12)));
       };
     number = strip(number/self.multiplier);
-    pair = _.find(this.sciunits, function(pair){
+    pair = _.find(this.siunits, function(pair){
       return pair[1] <= Math.abs(number); 
     });
     
@@ -3452,24 +3452,24 @@ var SciUnitFormFilter = NumberFormFilter.extend({
   },
   
   /**
-   * SciUnitFormFilter Set the form from router generated event
+   * SIUnitFormFilter Set the form from router generated event
    */
   _search: function(hash){
     var self = this;
     var searchHash = _.clone(hash);
-    var found = SciUnitFormFilter.__super__._search.call(this, hash);
+    var found = SIUnitFormFilter.__super__._search.call(this, hash);
     if(found){
       var values = self.getValue();
       
       if(values['lower_value'] !== ''){
         var numberAndUnit = self._findNumberAndUnit(values['lower_value']);
         self.setValue('lower_value', numberAndUnit.number);
-        self.setValue('lower_sciunit', numberAndUnit.unit);
+        self.setValue('lower_siunit', numberAndUnit.unit);
       }
       if(values['upper_value'] !== ''){
         var numberAndUnit = self._findNumberAndUnit(values['upper_value']);
         self.setValue('upper_value', numberAndUnit.number);
-        self.setValue('upper_sciunit', numberAndUnit.unit);
+        self.setValue('upper_siunit', numberAndUnit.unit);
       }
     }
     return found;
@@ -3478,14 +3478,14 @@ var SciUnitFormFilter = NumberFormFilter.extend({
 });
 
 
-var SciUnitHeaderCell = MultiSortHeaderCell.extend({
+var SIUnitHeaderCell = MultiSortHeaderCell.extend({
 
   /** @property */
   symbol: "",
   
   initialize: function(options){
 
-    SciUnitHeaderCell.__super__.initialize.apply(this,arguments);
+    SIUnitHeaderCell.__super__.initialize.apply(this,arguments);
     var self = this;
     this.options = options;
     var name = this.column.get('name');
@@ -3498,18 +3498,18 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
     try{
       cell_options = JSON.parse(cell_options);
     }catch(e){
-      throw new Error('SciUnitHeaderCell: Could not parse display_options for header: ' 
+      throw new Error('SIUnitHeaderCell: Could not parse display_options for header: ' 
           + name + ',' + cell_options);
     }
     if(!cell_options.symbol)
     {
-      throw new Error('SciUnitHeaderCell: field information requires the '+
+      throw new Error('SIUnitHeaderCell: field information requires the '+
           '"symbol" option');
     }
     var symbol = this.symbol = cell_options.symbol;
     var multiplier = this.multiplier = _.has(cell_options, 'multiplier')?cell_options.multiplier:1;
     
-    this._serverSideFilter = new SciUnitFormFilter({
+    this._serverSideFilter = new SIUnitFormFilter({
       columnName: this.column.get('name'),
       symbol: symbol,
       multiplier: multiplier
@@ -3522,7 +3522,7 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
 
   
   /**
-   * SciUnitHeaderCell Form submit handler
+   * SIUnitHeaderCell Form submit handler
    */
   _submit: function(e){
     var self  = this;
@@ -3544,7 +3544,7 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
   },
   
   /**
-   * SciUnitHeaderCell Listen for router generated search events
+   * SIUnitHeaderCell Listen for router generated search events
    */
   _search: function(hash, collection){
     var self = this;
@@ -3563,7 +3563,7 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
   },  
 
   /**
-   * SciUnitHeaderCell clears all possible searches if options.reset, then
+   * SIUnitHeaderCell clears all possible searches if options.reset, then
    * trigger a collection fetch
    */
   clearSearch: function(options){
@@ -3575,7 +3575,7 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
     self.collection.clearSearch(possibleSearches);
   }, 
   
-  /** SciUnitHeaderCell * */
+  /** SIUnitHeaderCell * */
   render : function() {
     SelectorHeaderCell.__super__.render.apply(this);
     var self = this;
@@ -3609,8 +3609,8 @@ var SciUnitHeaderCell = MultiSortHeaderCell.extend({
             this.options['column']['attributes']["description"]);
     
     // TODO: customize the default units values
-    this._serverSideFilter.setValue('lower_sciunit',1);
-    this._serverSideFilter.setValue('upper_sciunit',1);
+    this._serverSideFilter.setValue('lower_siunit',1);
+    this._serverSideFilter.setValue('upper_siunit',1);
     return this;
   }
 
@@ -3932,7 +3932,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   var typeMap = {
     'date': Iccbl.DateCell,
     'link': Iccbl.LinkCell,
-    'siunit': Iccbl.SciUnitsCell,
+    'siunit': Iccbl.SIUnitsCell,
     'float': 'Number',
     'decimal': Iccbl.DecimalCell,
     'image': Iccbl.ImageCell
@@ -3996,7 +3996,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
       var headerCell = NumberHeaderCell;
       
       if(display_type == 'siunit'){
-        headerCell = SciUnitHeaderCell;
+        headerCell = SIUnitHeaderCell;
         if(!cell_options.symbol){
           var msg = ('Error constructing SIUnit header cell: ' +
               'missing required "symbol" backgrid_cell_option');

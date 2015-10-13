@@ -8,11 +8,12 @@ define([
     'views/generic_detail_layout',
     'views/list2',
     'views/user/user2',
+    'views/generic_edit',
     'text!templates/generic-tabbed.html',
     'bootstrap-datepicker'
 ], function($, _, Backbone, Iccbl, layoutmanager, 
             appModel, DetailLayout, 
-            ListView, ReportsUserView, layout) {
+            ListView, ReportsUserView, EditView, layout) {
 
   var UserView = ReportsUserView.extend({
 
@@ -112,7 +113,7 @@ define([
       var form_template = [
          "<div class='form-horizontal container' id='upload_attached_file_form' >",
          "<form data-fieldsets class='form-horizontal container' >",
-         "<input type='file' name='fileInput' />",
+         "<div class='form-group' ><input type='file' name='fileInput' /></div>",
          "</form>",
          "</div>"].join('');      
       var choiceHash = {}
@@ -126,34 +127,61 @@ define([
         self.appModel.error('Error locating vocabulary: ' + 'attachedfiletype.user');
       }
       
+      var fieldTemplate = _.template([
+        '<div class="form-group" >',
+        '    <label class="control-label " for="<%= editorId %>"><%= title %></label>',
+        '    <div class="" >',
+        '      <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
+        '      <div data-error class="text-danger" ></div>',
+        '      <div><%= help %></div>',
+        '    </div>',
+        '  </div>',
+      ].join(''));
+      var fileDateTemplate = _.template([
+        '<div class="form-group" >',
+        '    <label class="control-label" for="<%= editorId %>"><%= title %></label>',
+        '    <div class="" >',
+        '      <div data-editor style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
+        '      <div data-error class="text-danger" ></div>',
+        '      <div><%= help %></div>',
+        '    </div>',
+        '</div>',
+      ].join(''));
+      
       var formSchema = {};
       formSchema['file_type'] = {
         title: 'File Type',
         key: 'file_type',
         type: 'Select',
-        options: choiceHash
+        options: choiceHash,
+        template: fieldTemplate
       };
       formSchema['file_date'] = {
         title: 'File Date',
         key: 'file_date',
-        type: 'Text'
+        type: EditView.DatePicker,
+        template: fileDateTemplate
       };
       formSchema['file_name'] = {
         title: 'Option 2: Name',
         key: 'file_name',
-        type: 'TextArea'
+        type: 'TextArea',
+        template: fieldTemplate
       };
       formSchema['contents'] = {
         title: 'Option 2: Contents',
         key: 'contents',
-        type: 'TextArea'
+        type: 'TextArea',
+        template: fieldTemplate
       };
       formSchema['comments'] = {
         title: 'Comments',
         key: 'comments',
         validators: ['required'],
-        type: 'TextArea'
+        type: 'TextArea',
+        template: fieldTemplate
       };
+
       var FormFields = Backbone.Model.extend({
         schema: formSchema,
         validate: function(attrs){
@@ -192,6 +220,9 @@ define([
             var errors = form.commit({ validate: true }); // runs schema and model validation
             if(!_.isEmpty(errors) ){
               console.log('form errors, abort submit: ',errors);
+              _.each(_.keys(errors), function(key){
+                $('[name="'+key +'"').parents('.form-group').addClass('has-error');
+              });
               return false;
             }else{
               var values = form.getValue();
@@ -243,12 +274,7 @@ define([
           view: _form_el,
           title: 'Upload an Attached File'  });
       
-      dialog.$el.find('input[name="file_date"]').datepicker({
-        orientation: "bottom auto"
-      });
-
     },
-    
     
     setUserChecklistItems: function(delegateStack) {
       var self = this;
@@ -259,10 +285,10 @@ define([
                  'checklistitems'].join('/');
 
       var show_save_button = $([
-          '<a class="btn btn-default btn-sm pull-down" ',
-            'role="button" id="save_button" href="#">',
-            'save</a>'
-          ].join(''));
+        '<a class="btn btn-default btn-sm pull-down" ',
+          'role="button" id="save_button" href="#">',
+          'save</a>'
+        ].join(''));
       var form_template = [
          "<form  class='form-horizontal container' >",
          "<div data-fields='comments'/>",
@@ -313,9 +339,14 @@ define([
             if (options.save === false)
                 return;
             model.url = url;
-            model.set('status_date', (new Date()).toISOString());
-            model.set('admin_username', appModel.getCurrentUser().username);
+            if(_.isEmpty(model.get('status_date'))){
+              model.set('status_date', Iccbl.getISODateString(new Date()));
+            }
+            if(_.isEmpty(model.get('admin_username'))){
+              model.set('admin_username', appModel.getCurrentUser().username);
+            }
             changedCollection.add(model);
+            appModel.setPagePending();
           });
         },
       });
@@ -341,6 +372,9 @@ define([
           okText: 'ok',
           ok: function(e){
             e.preventDefault();
+            
+            appModel.clearPagePending();
+            
             var errors = form.commit();
             if(!_.isEmpty(errors)){
               console.log('form errors, abort submit: ' + JSON.stringify(errors));
@@ -385,7 +419,6 @@ define([
       self.setView("#tab_container", view ).render();
     },
     
-
   });
 
   return UserView;

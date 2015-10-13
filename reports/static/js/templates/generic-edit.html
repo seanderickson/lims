@@ -1,5 +1,8 @@
 <form id='generic-form' class="form-horizontal container" >
-    <%
+    <div data-fieldsets   />
+
+<!--     <%
+
     var tabIndex = 1;
     _(keys).each(function(key) { %>
          <% if( _.has(fieldDefinitions,key)) {
@@ -9,7 +12,7 @@
         <div data-fields="<%= key %>"  ></div>
 
     <% }); %>
-
+ -->
     <div class="controls">
         <button type="button" class="btn btn-default btn-sm" id="save" >Save</button>
         <button type="button" class="btn btn-default btn-sm" id="cancel" >Cancel</button>

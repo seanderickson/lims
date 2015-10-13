@@ -13,12 +13,14 @@ define([
   'views/user/user2',
   'views/user/screensaveruser',
   'views/usergroup/usergroup2',
+  'test/detailTest',
   'text!templates/content.html',
   'text!templates/welcome.html',
   'text!templates/about.html'
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
-         EditView, LibraryView, ScreenView, UserAdminView, UserView, UserGroupAdminView, layout, welcomeLayout, 
+         EditView, LibraryView, ScreenView, UserAdminView, UserView, UserGroupAdminView, 
+         DetailTestView, layout, welcomeLayout, 
          aboutLayout) {
   
   var VIEWS = {
@@ -28,7 +30,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     'ScreenView': ScreenView,
     'UserView': UserView,
     'UserAdminView': UserAdminView,
-    'UserGroupAdminView': UserGroupAdminView
+    'UserGroupAdminView': UserGroupAdminView,
+    'DetailTestView': DetailTestView
   };
     
   var ContentView = Iccbl.UriContainerView.extend({
@@ -84,6 +87,17 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView('#content', view).render();
+    },
+    
+    showDetailTest: function(uriStack){
+      var self = this;
+      self.removeView('#content');
+      self.cleanup();
+      self.off();
+      this.$('#content_title').html("Detail Test");
+      var view = new DetailTestView({uriStack: uriStack});
+      self.setView('#content', view).render();
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
     },
     
     showDetail: function(uriStack, model){
@@ -251,6 +265,11 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var consumedStack = this.consumedStack = [];
 
       if (!_.isEmpty(uriStack)){
+        if(uriStack[0] == 'detail_test'){
+          this.consumedStack.push(uriStack.shift());
+          self.showDetailTest(uriStack);
+          return;
+        }
         var uiResourceId = uriStack.shift();
         this.consumedStack.push(uiResourceId);
       }else{

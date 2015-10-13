@@ -62,16 +62,18 @@ define([
     },
     
     showEdit: function() {
+      console.log('showEdit...');
       var self = this;
-      var showEditFunction = function(){
+      var showEditFunction = function(editOptions){
+        var editOptions = editOptions || {};
         var view = self.subviews['edit'];
         if (!view) {
-          view = new EditView({ model: self.model, uriStack: ['edit'] });
+          view = new EditView(_.extend(
+            { model: self.model, uriStack: ['edit'] }, editOptions));
           Backbone.Layout.setupView(view);
           self.subviews['edit'] = view;
         }
-        self
-        .listenTo(view,'remove',function(){
+        self.listenTo(view,'remove',function(){
           self.showDetail();
         });
         self.listenTo(view , 'uriStack:change', self.reportUriStack);

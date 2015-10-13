@@ -8,46 +8,80 @@ define([
     'views/generic_detail_layout',
     'views/list2',
     'text!templates/generic-tabbed.html',
+    'text!test/models/detail_test_resource.json', 
+    'text!test/models/detail_test_model.json',
+    'text!test/models/detail_test_vocabularies.json',    
+    'text!test/models/detail_test_users.json'    
+    
 ], function($, _, Backbone, Iccbl, layoutmanager, 
             appModel, DetailLayout, 
-            ListView, layout) {
+            ListView, layout, 
+            resource_raw, test_model_raw, test_vocabularies_raw, test_users_raw ) {
 
-  var UserView = Backbone.Layout.extend({
+  var DetailView = Backbone.Layout.extend({
 
     initialize: function(args) {
+      console.log('1detail test initialize');
       var self = this;
       this.tabViews = {}; // view cache
       this.uriStack = args.uriStack;
       this.consumedStack = [];
-      this.title = Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource.schema);
-
-      _.each(_.keys(this.tabbed_resources), function(key){
-        if(key !== 'detail' && !appModel.hasPermission(
-            self.tabbed_resources[key].resource,'read')){
-          delete self.tabbed_resources[key];
+      try{
+        this.resource = JSON.parse(resource_raw);
+      }catch(e){
+        console.log('error reading resource,',e);
+        throw e;
+      }
+      if(_.isUndefined(this.model)){
+        try{
+          this.model = new Backbone.Model(JSON.parse(test_model_raw));
+        }catch(e){
+          console.log('error reading model,',e);
+          throw e;
         }
-      });
+      }
+      this.model.url = 'testingUrl';
+      this.model.resource = this.resource;
+      this.model.resource.schema = _.extend(this.model.resource.schema, new Iccbl.SchemaClass());
+      this.title = Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource.schema);
+      try{
+        _.extend(appModel.get("vocabularies"), JSON.parse(test_vocabularies_raw));
+      }catch(e){
+        console.log('error reading vocabularies,',e);
+        throw e;
+      }
+      try{
+        if(appModel.has('users')){
+          appModel.set("users", new Backbone.Collection(
+            _.union(appModel.get("users"), JSON.parse(test_users_raw))));
+        }else{
+          appModel.set("users", new Backbone.Collection(
+            JSON.parse(test_users_raw)));
+        }
+        appModel.getUserOptions(function(options){
+          self.model.resource.schema.fields['field13']['choices'] = options;
+        });
+      }catch(e){
+        console.log('error reading users,',e);
+        throw e;
+      }
       
       _.bindAll(this, 'click_tab');
+      console.log('detail test initialize done');
     },
     
     template: _.template(layout),
     
     tabbed_resources: {
         detail: { 
-          description: 'User Details', 
-          title: 'User Details', 
+          description: 'Object Details', 
+          title: 'Object Details', 
           invoke: 'setDetail' },
         usergroup: { 
-          description: 'User Groups', 
-          title: 'User Groups', 
-          invoke: 'setGroups', 
-          resource: 'usergroup' },
-//        permission: { 
-//          description: 'User Permissions', 
-//          title: 'User Permissions', 
-//          invoke: 'setPermissions',
-//          resource: 'permission' },
+          description: 'Object List', 
+          title: 'Object List', 
+          invoke: 'setList', 
+          resource: 'test_resource' }
     },
     
     events: {
@@ -67,11 +101,12 @@ define([
      * Layoutmanager hook
      */
     afterRender: function(){
+      console.log('afterRender...', this.uriStack);
       var viewId = 'detail';
       if (!_.isEmpty(this.uriStack)){
         viewId = this.uriStack.shift();
         if(viewId == '+add'){
-          this.uriStack.unshift(viewId); 
+          this.uriStack.unshift(viewId);
           viewId = 'detail';
         }
         if(viewId == 'edit'){
@@ -84,6 +119,7 @@ define([
           throw msg;
         }
       }
+      console.log('afterRender: viewId: ', viewId);
       this.change_to_tab(viewId);
     },
     
@@ -117,10 +153,9 @@ define([
     },
 
     change_to_tab: function(key){
-      console.log('change_to_tab: ', key, 'uriStack: ', this.uriStack );
+      console.log('change to tab: ', key, this.uriStack)
       if(_.has(this.tabbed_resources, key)){
         var delegateStack = _.clone(this.uriStack);
-//        delegateStack.push(key);
         if(!_.isUndefined(this.tabbed_resources[key].alias)){
           key = this.tabbed_resources[key].alias;
         }
@@ -148,28 +183,25 @@ define([
     },
     
     setDetail: function(delegateStack){
+      console.log('setDetail', delegateStack);
+      // TODO: create/or/import a model & schema that exercises test cases
+      // TODO: write mocha test cases
+      
       var key = 'detail';
  
-      this.model.resource.schema.fields['permissions']['choices'] = appModel.get('permissionOptions');
-      
-//      var onEditCallBack = function(displayFunction){
-//        appModel.getUserGroupOptions(function(options){
-//          self.model.resource.schema.fields['super_groups']['choices'] = options;
-//          self.model.resource.schema.fields['sub_groups']['choices'] = options;
-//          appModel.getUserOptions(function(options){
-//            self.model.resource.schema.fields['users']['choices'] = options;
-//            
-//            displayFunction();
-//          });
-//        });
-//      };
-      console.log('setDetail: delegateStack: ', delegateStack);
       var view = this.tabViews[key];
+      var onEditCallBack = function(displayFunction){
+        function saveCallBack(model){
+          alert('save model: ' + JSON.stringify(model.toJSON()));
+        };
+        displayFunction({ saveCallBack: saveCallBack });
+      };      
+      
       if ( !view ) {
         view = new DetailLayout({ 
           model: this.model, 
-          uriStack: delegateStack
-//          onEditCallBack: onEditCallBack 
+          uriStack: delegateStack,
+          onEditCallBack: onEditCallBack 
         });
         this.tabViews[key] = view;
       }
@@ -181,9 +213,13 @@ define([
       return view;
     },
 
-    setGroups: function(delegateStack){
+    setList: function(delegateStack){
+
+      // TODO: FOR TESTING: create or import a list of test objects
+      
+      
       var self = this;
-      var key = 'usergroup';
+      var key = 'test_resource';
       var resource = appModel.getResource('usergroup');
       var url = [self.model.resource.apiUri, 
                  self.model.key,
@@ -201,31 +237,6 @@ define([
       this.setView("#tab_container", view ).render();
     },    
     
-//    setGroups: function(delegateStack){
-//      var self = this;
-//      var key = 'usergroup';
-//      var view = this.tabViews[key];
-//      if ( !view ) {      
-//        view = new GroupsView({ model: this.model, uriStack: delegateStack });
-//        self.tabViews[key] = view;
-//      }
-//      this.consumedStack = [key]; 
-//      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-//      self.setView("#tab_container", view ).render();
-//    },
-
-//    setPermissions: function(delegateStack){
-//      var self = this;
-//      var key = 'permission';
-//      var view = this.tabViews[key];
-//      if ( !view ) {      
-//        view = new PermissionsView({ model: this.model, uriStack: delegateStack });
-//        self.tabViews[key] = view;
-//      }
-//      this.consumedStack = [key]; 
-//      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-//      self.setView("#tab_container", view ).render();
-//    },
     
     onClose: function() {
       // TODO: is this necessary when using Backbone LayoutManager
@@ -235,5 +246,5 @@ define([
 
   });
 
-  return UserView;
+  return DetailView;
 });

@@ -11,7 +11,7 @@ define([
   var DB_API_URI = '/db/' + API_VERSION;
   var DEBUG = true;
   
-  var SchemaClass = function() {};
+  var SchemaClass = Iccbl.SchemaClass = function() {};
   SchemaClass.prototype.detailKeys = function()
   {
     return this.filterKeys('detail');
@@ -242,7 +242,7 @@ define([
      *    },
      * @param scope - scope to search for
      * - "scope" can also be a regex, and will be matched to all scopes using
-     * String.prototype.match(candidateScope,scope)
+     * String.prototype.match(candidateScope,^scope$)
      */
     getVocabulary: function(scope){
       if(!this.has('vocabularies')){
@@ -253,8 +253,8 @@ define([
         // test for regex match/matches
           var matchedVocabularies = {};
           _.each(_.keys(vocabularies), function(candidateScope){
-            if(candidateScope.match(scope)){
-              console.log('matching: ' + scope + ', to: ' + candidateScope );
+            if(candidateScope.match('^' + scope + '$')){
+              console.log('matching: ' + '^' + scope + '$' + ', to: ' + candidateScope );
               _.extend(matchedVocabularies,vocabularies[candidateScope]);
             }
           });
@@ -382,7 +382,7 @@ define([
               self.error('error displaying model: ' + model + ', '+ e);
             }
           },
-          error: this.backboneFetchError
+          error: self.backboneFetchError
 
       });
     },
@@ -407,40 +407,12 @@ define([
             console.log('user: ' + currentUser.username 
                 + ', doesnt have permission to view the menu: ' + key );
           }
-//          var r_perm = 'permission/resource/'+key
-//          var match = false;
-//          _.each(self.getCurrentUser().all_permissions, function(permission){
-//            // NOTE: allow match of [either] 'read' or 'write'
-//            if(permission.indexOf(r_perm) > -1 ) {
-//              match = true;
-//            }
-//          })
-//          if(match){
-//            new_submenus[key] = menu.submenus[key];
-//          }else{
-//            console.log('user: ' + currentUser.username 
-//                + ', doesnt have permission to view the menu: ' + key );
-//          }
         });
         menu.submenus = new_submenus;
       }
       return menu;
     },
-    
-//    hasPermission: function(p_check){
-//      var self = this;
-//      var current_user = self.getCurrentUser();
-//      if (current_user.is_superuser){
-//        return true;
-//      }
-//      var result = _.find(current_user.all_permissions, function(permission){
-//        console.log('check for perm: ' + permission);
-//        return permission.indexOf(p_check) > -1;
-//      });
-//      console.log("perm check: " + p_check + ',' + result);
-//      return result;
-//    },
-    
+        
     /**
      * Test if the current user has the resource/permission - 
      * - if permission is unset, 
@@ -501,7 +473,7 @@ define([
     },
         
     getResourceFromUrl: function(resourceId, schemaUrl, callback){
-      
+      var self = this;
       var uiResources = this.get('ui_resources');
       var ui_resource = {};
       if(_.has(uiResources, resourceId)) {
@@ -523,7 +495,7 @@ define([
             
             callback(ui_resource)
           },
-          error: this.backboneFetchError
+          error: self.backboneFetchError
       });      
       
     },
@@ -594,6 +566,7 @@ define([
     },
     
     error: function(msg){
+      console.log('error: ', msg);
       var msgs = this.get('messages');
       if (msgs && msgs.length > 0) {
         msgs.push(msg);
@@ -637,7 +610,8 @@ define([
      * (see setUriStack; modal confirm dialog will be triggered).
      */
     setPagePending: function(callback){
-      this.set({'pagePending': callback});
+      var val = callback || true;
+      this.set({'pagePending': val});
     },
     clearPagePending: function(){
       this.unset('pagePending');
@@ -651,6 +625,7 @@ define([
      * options.cancel = cancel function
      */
     requestPageChange: function(options){
+      var options = options || {};
       var self = this;
       var callbackOk = options.ok;
       options.ok = function(){
@@ -662,10 +637,10 @@ define([
       if(! self.isPagePending()){
         options.ok();
       }else{
+        options.title = 'Please confirm';
+        options.body = "Pending changes in the page: continue anyway?";
         var pendingFunction = this.get('pagePending');
         if(_.isFunction(pendingFunction)){
-          options.title = 'Please confirm';
-          options.body = "Pending changes in the page: continue anyway?";
           options.cancel = pendingFunction;
         }
         self.showModal(options);
@@ -900,7 +875,6 @@ define([
       var cancelText = (options && options.cancelText)? 
         options.cancelText : 'Cancel and return to page';
       
-          
       var modalDialog = new Backbone.View({
           el: _.template(modalOkCancelTemplate, { 
             body: options.body,

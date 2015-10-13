@@ -64,12 +64,39 @@ requireOptions = Iccbl.requireOptions = function(options,requireOptionKeys){
  * - this can be used to replace any token with a given default value
  */
 var replaceTokens = Iccbl.replaceTokens = function(model,stringWithTokens, default_val) {
+  console.log('1,', model, ', ', stringWithTokens, ', ', default_val);
   var interpolatedString = stringWithTokens.replace(/{([^}]+)}/g, 
     function (match) 
     {
       match = match.replace(/[{}]/g,'');
       if(!_.isUndefined(model.get(match))){
         return model.get(match);
+      }else{
+        if(!_.isUndefined(default_val)){
+          return default_val;
+        }else{
+          return match;
+        }
+      }
+    });
+  return interpolatedString;
+}
+
+/**
+ * Format a string of containing "replacement fields" surrounded by 
+ * curly braces '{}'. Replacment fields are used as keys to lookup the 
+ * replacement values in the valueHash.
+ * If a replacement field key is not found in the valueHash, and a defaul_val
+ * is provided, the default_val will replace the field, otherwise, the 
+ * replacement field key itself is used.
+ */
+var formatString = Iccbl.formatString = function(stringWithTokens, valueHash, default_val) {
+  var interpolatedString = stringWithTokens.replace(/{([^}]+)}/g, 
+    function (match) 
+    {
+      match = match.replace(/[{}]/g,'');
+      if(_.has(valueHash, match)){
+        return valueHash[match];
       }else{
         if(!_.isUndefined(default_val)){
           return default_val;
@@ -93,6 +120,33 @@ var stringToFunction = Iccbl.stringToFunction = function(str) {
   }
   return fn;
 };
+
+/**
+ * Returns the ISO string date part of the Date object, ignoring the timezone.
+ * - for internal representation of dates and communicating dates to the server.
+ * @param jsDate a JavaScript Date object
+ */
+var getISODateString = Iccbl.getISODateString = function(jsDate){
+  return jsDate.toISOString().split('T')[0];
+  // equivalent:
+  //  date = lpad(jsDate.getUTCFullYear(), 4, 0) 
+  //    + '-' + lpad(jsDate.getUTCMonth() + 1, 2, 0) 
+  //    + '-' + lpad(jsDate.getUTCDate(), 2, 0);
+  //  return date;
+}
+
+/**
+ * Returns the "ICCBL" formatted date part of the Date object, ignoring the timezone.
+ * "ICCBL" format is "MM/DD/YYYY"
+ * - for display of dates in the UI
+ * @param jsDate a JavaScript Date object
+ */
+var getIccblUTCDateString = Iccbl.getUTCDateString = function(jsDate){
+  return ( 
+      lpad(jsDate.getUTCMonth() + 1, 2, 0) 
+      + '/' + lpad(jsDate.getUTCDate(), 2, 0) 
+      + '/' + lpad(jsDate.getUTCFullYear(), 4, 0) );
+}
 
 var UrlStack = Iccbl.UrlStack = Backbone.Model.extend({
   defaults: {
@@ -650,27 +704,6 @@ var LinkCell = Iccbl.LinkCell = Backgrid.Cell.extend({
       }).text(formattedValue));
       return this;
     },
-    
-// renderOld : function() {
-// this.$el.empty();
-// var formattedValue =
-// this.formatter.fromRaw(this.model.get(this.column.get("name")));
-// this.$el.append($("<a id='link' >", {
-// tabIndex : -1,
-// href : '',
-// title : formattedValue,
-// //target : "_blank"
-// }).text(formattedValue));
-//
-// this.delegateEvents();
-// return this;
-// },
-//
-// toLink : function(e) {
-// e.preventDefault();
-// this.model.collection.trigger("MyCollection:link", this.model,
-// this.column.get("name"));
-// },
 });
 
   
@@ -1008,7 +1041,6 @@ var DecimalCell = Iccbl.DecimalCell = NumberCell.extend({
  });  
 
 
-
 /**
  * A SciUnitsCell is another Backgrid.NumberCell that takes a floating number,
  * optionally multiplied by a multiplier, showing a decimals number of digits,
@@ -1085,11 +1117,10 @@ var DeleteCell = Iccbl.DeleteCell = Backgrid.Cell.extend({
 
 var CollectionInColumns = Iccbl.CollectionInColumns = Backbone.Collection.extend({
   /**
-   * Override collection parse method: Parse server response data. untested
+   * Override collection parse method: Parse server response data.
    */
   parse : function(response) {
     console.log('Collection on client, parse called');
-    // hack the response for tastypie:
     var pivoted = {};
     var i = 0;
     _.each(response.objects, function(obj) {
@@ -1140,12 +1171,8 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
       try {
         this.changeUri(uriStack);
       }catch (e){
-        // FIXME: better global error handling
-        console.log('error thrown: ' + e);
+        console.log('error thrown: ',e);
         Iccbl.appModel.error('error: ' + e);
-        // FIXME: why is the ajaxStop handler in main.js not being called
-        // anyway?
-        // $('#loading').fadeOut({duration:100});
       }
     }
   },
@@ -2391,27 +2418,21 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
     DateHeaderCell.__super__.render.apply(this);
   
     this.$el.append(this.filterIcon);
-  
-    // Backbone.View.prototype.manage = false;
     this._serverSideFilter.render();
     this.$el.append(this._serverSideFilter.el);
     this._serverSideFilter.$el.hide();
-    // Backbone.View.prototype.manage = false;
-    
+
     this._serverSideFilter.clearButton().click(function(e){
       e.preventDefault();
       e.stopPropagation();
       self.clearSearch();
-// self.collection.fetch({ reset: true });
     });
-    
     this.filterIcon.click(function(e){
       e.stopPropagation();
       e.preventDefault();
       self._serverSideFilter.$el.show();
       self.filterIcon.hide();
     });
-  
     this._serverSideFilter.submitButton().click(function(e){
       e.preventDefault();
       self._submit();
@@ -2570,11 +2591,9 @@ var BooleanHeaderCell = MultiSortHeaderCell.extend({
     if(!_.isEmpty(searchHash)){
       var possibleSearches = self._serverSideFilter.getPossibleSearches();
       self.collection.clearSearch(possibleSearches);
-      
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash);
-// self.collection.fetch({ reset: true });
     }else{
       console.log('nothing submitted');
     }
@@ -2606,10 +2625,9 @@ var BooleanHeaderCell = MultiSortHeaderCell.extend({
    */
   clearSearch: function(options){
     var self=this;
+    var possibleSearches = self._serverSideFilter.getPossibleSearches();
     self._serverSideFilter.$el.hide();
     self.filterIcon.show();
-    
-    var possibleSearches = self._serverSideFilter.getPossibleSearches();
     self.collection.clearSearch(possibleSearches);
   },      
   
@@ -2619,20 +2637,14 @@ var BooleanHeaderCell = MultiSortHeaderCell.extend({
   render : function() {
     var self = this;
     BooleanHeaderCell.__super__.render.apply(this);
-  
     this.$el.append(this.filterIcon);
-  
-    // Backbone.View.prototype.manage = false;
     this._serverSideFilter.render();
     this.$el.append(this._serverSideFilter.el);
     this._serverSideFilter.$el.hide();
-    // Backbone.View.prototype.manage = false;
-    
     this._serverSideFilter.clearButton().click(function(e){
       e.preventDefault();
       e.stopPropagation();
       self.clearSearch();
-// self.collection.fetch({ reset: true });
     });
     
     this.filterIcon.click(function(e){
@@ -2654,9 +2666,7 @@ var BooleanHeaderCell = MultiSortHeaderCell.extend({
 });
 
 var SelectorFormFilter = CriteriumFormFilter.extend({
-  /**
-   * extends from BackbonFormFilter
-   */
+
   criterium: {'': 'unset', 'blank':'is_null','not blank':'not_blank'},
   
   template: _.template([
@@ -2677,6 +2687,7 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
   initialize : function(options) {
     var self = this;
     var options = this.options = options || {};
+    var formSchema = this.schema = {};
     
     if(!options.choiceHash){
       throw "must define choiceHash option for the SelectorFormFilter, options: " + options;
@@ -2688,9 +2699,6 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
     }else{
       var selectedFields = this.selectedFields = options.selectedFields || [];
     }
-    
-    var formSchema = this.schema = {};
-
     _.each(_.keys(choiceHash), function(choice){
       formSchema[choice] = { 
           title: choiceHash[choice],
@@ -2782,14 +2790,14 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
   _search: function(hash){
     var self = this;
     var searchHash = _.clone(hash);
-    
     var searchTerm = null;
+    var found = searchTerm;
+    var name = this.columnName;
+
     _.each(self.getPossibleSearches(), function(term){
       if(_.has(searchHash,term)) searchTerm = term;
     });
     
-    var found = searchTerm;
-    var name = this.columnName;
     if(found){
       if(searchTerm.charAt(0) == '-'){
         self.setValue('invert_field', true);
@@ -2828,14 +2836,16 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
     return [this.columnName + '__in', '-'+this.columnName + '__in',
             this.columnName + '__is_null'];
   },
-
-
 });
 
 var SelectorHeaderCell = MultiSortHeaderCell.extend({
 
   initialize : function(options) {
     var self = this;
+    var choiceHash = {}
+    var vocabulary_scope_ref = this.fieldinformation.vocabulary_scope_ref;
+    var vocabulary;
+    
     this.options = options;
     SelectorHeaderCell.__super__.initialize.apply(this, arguments);
     this.fieldinformation = _.clone(this.column.get('fieldinformation'));
@@ -2846,13 +2856,8 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
          '"choices" list: field key: ' + this.name ].join(''));
       this.fieldinformation.choices = [];
     }
-    var choiceHash = {}
-    var vocabulary_scope_ref = this.fieldinformation.vocabulary_scope_ref;
     try{
-      var vocabulary = Iccbl.appModel.getVocabulary(vocabulary_scope_ref);
-      //    _.each(this.fieldinformation.choices, function(choice){
-      //    choiceHash[choice] = _.has(vocabulary,choice)?vocabulary[choice].title:choice;
-      //  });
+      vocabulary = Iccbl.appModel.getVocabulary(vocabulary_scope_ref);
         _.each(_.keys(vocabulary),function(choice){
           choiceHash[choice] = vocabulary[choice].title;
         });
@@ -2876,10 +2881,10 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
    * SelectorHeaderCell Form submit handler
    */
   _submit: function(e){
-    var self  = this;
     console.log('_submit called');
     if (e) e.preventDefault();      
-    
+
+    var self  = this;
     var searchHash = self._serverSideFilter._submit();
     var possibleSearches = self._serverSideFilter.getPossibleSearches();
     self.collection.clearSearch(possibleSearches);
@@ -2887,7 +2892,6 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash);
-// self.collection.fetch({ reset: true });
     }else{
       self.collection.fetch({});
     }
@@ -2899,7 +2903,6 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
   _search: function(hash, collection){
     var self = this;
     var searchHash = _.clone(hash);
-
     // TODO: could use form.isSet() instead of found
     var found = this._serverSideFilter._search(searchHash);
     if(found){
@@ -2932,16 +2935,13 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
     SelectorHeaderCell.__super__.render.apply(this);
   
     this.$el.append(this.filterIcon);
-
     this._serverSideFilter.render();
     this.$el.append(this._serverSideFilter.el);
     this._serverSideFilter.$el.hide();
-    
     this._serverSideFilter.clearButton().click(function(e){
       e.preventDefault();
       e.stopPropagation();
       self.clearSearch();
-// self.collection.fetch({ reset: true });
     });
     
     this.filterIcon.click(function(e){
@@ -2970,7 +2970,7 @@ var NumberFormFilter = CriteriumFormFilter.extend({
   criterium: {'=':'eq','\u2248':'about','>':'gt', '>=':'gte','<':'lt','<=':'lte',
     '<>':'ne', '...':'range', 'in': 'in','blank':'is_null','not blank':'not_blank'},
 
-  // provide a custom form template; use Bootstrap layout/styling
+  // use Bootstrap layout/styling
   template: _.template([
       '<form class="iccbl-headerfield-form" >',
       '<div class="row center-block" style="margin: 0 0 0 0;" >',
@@ -2992,11 +2992,12 @@ var NumberFormFilter = CriteriumFormFilter.extend({
   initialize : function(options) {
     var self = this;
     var options = this.options = options || {};
-    
     var formSchema = options.schema = options.schema || {};
+    var fields = options.fields = options.fields || [];
+
     formSchema['lower_criteria'] = {
         title: '', 
-        key:  'lower_criteria', // TODO: "key" not needed>?
+        key:  'lower_criteria',
         type: 'Select',
         options: _.keys(self.criterium),
         template: _.template(self.criteriaTemplate),
@@ -3044,7 +3045,6 @@ var NumberFormFilter = CriteriumFormFilter.extend({
     });
     this.model = options['model'] = new FormFields();
     
-    var fields = options.fields = options.fields || [];
     options.fields = fields.concat(
         ['lower_criteria','lower_value','form_textarea','upper_value','invert_field']); 
     
@@ -3089,8 +3089,8 @@ var NumberFormFilter = CriteriumFormFilter.extend({
   _search: function(hash){
     var self = this;
     var searchHash = _.clone(hash);
-    
     var found = false;
+
     _.each(_.keys(self.criterium), function(criteriaKey){
       var criteria = self.criterium[criteriaKey];
       var searchTerm = self.columnName + '__' + criteria;
@@ -3140,10 +3140,11 @@ var NumberFormFilter = CriteriumFormFilter.extend({
     var self  = this;
     if(!self.isSet()) return;
     var searchHash = {};
-    
+    var errors,values,name,invert,criteria,searchKey;
+
     // validate:true: tells bbf to run model.validate(), in addition to
     // field[].validate()
-    var errors = self.commit({ validate: true }); 
+    errors = self.commit({ validate: true }); 
     if(!_.isEmpty(errors)){
       console.log('form errors, abort submit: ' + JSON.stringify(errors));
       this.$el.find('#range_upper_block').addClass(self.errorClass);
@@ -3151,14 +3152,12 @@ var NumberFormFilter = CriteriumFormFilter.extend({
     }else{
       this.$el.find('#range_upper_block').removeClass(self.errorClass);
     }
-    
-    var values = self.getValue();
-    
-    var name = self.columnName;
-    var invert = values['invert_field'];
+    values = self.getValue();
+    name = self.columnName;
+    invert = values['invert_field'];
     if(invert) name = '-'+name;
-    var criteria = self.criterium[values['lower_criteria']];
-    var searchKey = name + '__' + criteria;
+    criteria = self.criterium[values['lower_criteria']];
+    searchKey = name + '__' + criteria;
     
     if(criteria == 'in'){
       searchHash[searchKey] = values['form_textarea'];
@@ -3170,7 +3169,7 @@ var NumberFormFilter = CriteriumFormFilter.extend({
     }else if(''+values['lower_value'] !== ''){
       if(criteria == 'range'){
         if(''+values['upper_value'] !== ''){
-          var searchKey = name + '__' + criteria;
+          searchKey = name + '__' + criteria;
           searchHash[searchKey] = values['lower_value'] + ',' + values['upper_value'];
         }else{
           console.log('upper value not set; validation should have caught this');
@@ -3208,19 +3207,17 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
    * NumberHeaderCell Form submit handler
    */
   _submit: function(e){
-    var self  = this;
     console.log('_submit called');
     if (e) e.preventDefault();      
-    
+    var self  = this;
     var name = this.column.get('name');
     var searchHash = self._serverSideFilter._submit();
+    
     if(!_.isEmpty(searchHash)){
-      var possibleSearches = self._serverSideFilter.getPossibleSearches();
-      self.collection.clearSearch(possibleSearches);
+      self.collection.clearSearch(self._serverSideFilter.getPossibleSearches());
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash);
-// self.collection.fetch({ reset: true });
     }else{
       console.log('nothing submitted');
     }
@@ -3233,9 +3230,9 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
     var self = this;
     var name = this.column.get('name');
     var searchHash = _.clone(hash);
-
     // TODO: could use form.isSet() instead of found
     var found = this._serverSideFilter._search(searchHash);
+
     if(found){
       self._serverSideFilter.$el.show();
       self.filterIcon.hide();
@@ -3253,9 +3250,7 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
     var self=this;
     self._serverSideFilter.$el.hide();
     self.filterIcon.show();
-    
-    var possibleSearches = self._serverSideFilter.getPossibleSearches();
-    self.collection.clearSearch(possibleSearches);
+    self.collection.clearSearch(self._serverSideFilter.getPossibleSearches());
   },      
   
   /**
@@ -3266,18 +3261,13 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
     NumberHeaderCell.__super__.render.apply(this);
   
     this.$el.append(this.filterIcon);
-  
-    // Backbone.View.prototype.manage = false;
     this._serverSideFilter.render();
     this.$el.append(this._serverSideFilter.el);
     this._serverSideFilter.$el.hide();
-    // Backbone.View.prototype.manage = false;
-    
     this._serverSideFilter.clearButton().click(function(e){
       e.preventDefault();
       e.stopPropagation();
       self.clearSearch();
-// self.collection.fetch({ reset: true });
     });
     
     this.filterIcon.click(function(e){
@@ -3301,7 +3291,6 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
 
 var SciUnitFormFilter = NumberFormFilter.extend({
   
-  /** @property */
   symbol: "",
   
   // provide a custom form template; use Bootstrap layout/styling
@@ -3340,21 +3329,17 @@ var SciUnitFormFilter = NumberFormFilter.extend({
   initialize : function(options) {
     var self = this;
     var options = this.options = options || {};
-
     var multiplier = this.multiplier = options.multiplier || 1;
+    var symbol = this.symbol = options.symbol;
+    var units = this.units = [];
+    var formSchema = options.schema = options.schema || {};
     
     if(! options.symbol){
       throw 'Error: SciUnitFormFilter requires a "symbol" option' 
     }
-    var symbol = this.symbol = options.symbol;
-    
-    var units = this.units = [];
     _.each(this.sciunits,function(pair){
       units.push({ val: pair[1], label: pair[0] + self.symbol });
     });
-    
-    var formSchema = options.schema = options.schema || {};
-
     formSchema['lower_sciunit'] = {
       title: '', 
       key:  'lower_sciunit', // TODO: "key" not needed>?
@@ -3404,9 +3389,9 @@ var SciUnitFormFilter = NumberFormFilter.extend({
     if(!_.isEmpty(searchHash)){
       var searchKey = _.keys(searchHash)[0];
       var searchValue = searchHash[searchKey];
-      
       var values = self.getValue();
       var criteria = self.criterium[values['lower_criteria']];
+
       if(criteria == 'range'){
         searchHash[searchKey] = [
             self._calculate(self.multiplier,values['lower_sciunit'],values['lower_value']),
@@ -3710,9 +3695,7 @@ var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
 });
 
 /**
- * Override Backgrid DateTimeFormatter
- * - recognize user input in the format MM/DD/YYYY
- * - but also recognize ISO 8601 format, so values from the server are parsed
+ * Utility function from Backgrid
  */
 function lpad(str, length, padstr) {
   var paddingLen = length - (str + '').length;
@@ -3723,6 +3706,12 @@ function lpad(str, length, padstr) {
   }
   return padding + str;
 }
+
+/**
+ * Override Backgrid DateTimeFormatter
+ * - recognize user input in the format MM/DD/YYYY
+ * - but also recognize ISO 8601 format, so values from the server are parsed
+ */
 var DatetimeFormatter = Iccbl.DatetimeFormatter = function (options) {
   _.extend(this, this.defaults, options || {});
 
@@ -3732,13 +3721,54 @@ var DatetimeFormatter = Iccbl.DatetimeFormatter = function (options) {
 };
 DatetimeFormatter.prototype = new Backgrid.DatetimeFormatter();
 _.extend(DatetimeFormatter.prototype, {
-
-  ICCBL_DATE_RE:  /^(\d{2})\/(\d{2})\/([+\-]?\d{4})-$/,
-  
+  ICCBL_DATE_RE:  /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/,
   // ISO DATE/TIME regex, from Backgrid
   DATE_RE: /^([+\-]?\d{4})-(\d{2})-(\d{2})$/,
   TIME_RE: /^(\d{2}):(\d{2}):(\d{2})(\.(\d{3}))?$/,
   ISO_SPLITTER_RE: /T|Z| +/,
+
+  fromRaw: function (rawData, model) {
+    if (_.isNull(rawData) || _.isUndefined(rawData)) return '';
+    rawData = rawData.trim();
+    if ((rawData + '').trim() === '') return null;
+
+    if(this.ICCBL_DATE_RE.test(rawData)){
+      var DDMMYYYY = this.ICCBL_DATE_RE.exec(rawData) || [];
+      var jsDate = new Date(Date.UTC(DDMMYYYY[3] * 1 || 0,
+        DDMMYYYY[2] * 1 - 1 || 0,
+        DDMMYYYY[1] * 1 || 0));
+      return getIccblUTCDateString(jsDate);
+    }else{
+      var temp = rawData.split('T')[0];
+      if(this.DATE_RE.test(temp)){
+        var YYYYMMDD = this.DATE_RE.exec(temp);
+        var jsDate = new Date(Date.UTC(YYYYMMDD[1]*1, YYYYMMDD[2]*1-1, YYYYMMDD[3]*1 ))
+        return getIccblUTCDateString(jsDate);
+      }else{
+        appModel.error('unrecognized date: ' + rawData );
+      }
+    }
+  },
+
+  toRaw: function(formattedData, model){
+    if (_.isNull(formattedData) || _.isUndefined(formattedData)) return '';
+    if ((formattedData + '').trim() === '') return null;
+    if(this.ICCBL_DATE_RE.test(formattedData)){
+      var DDMMYYYY = this.ICCBL_DATE_RE.exec(formattedData) || [];
+      var jsDate = new Date(Date.UTC(DDMMYYYY[3] * 1 || 0,
+        DDMMYYYY[2] * 1 - 1 || 0,
+        DDMMYYYY[1] * 1 || 0));
+      var temp = getISODateString(jsDate);
+      return temp;
+    }else{
+      return;
+    }
+  },
+  
+  
+  
+  
+  
 
   /**
    * Use Backgrid DatetimeFormatter convert, add in ICCBL_DATE_RE
@@ -3749,39 +3779,39 @@ _.extend(DatetimeFormatter.prototype, {
     var date, time = null;
     if (_.isNumber(data)) {
       var jsDate = new Date(data);
+      date = lpad(jsDate.getUTCFullYear(), 4, 0) + '-' + lpad(jsDate.getUTCMonth() + 1, 2, 0) + '-' + lpad(jsDate.getUTCDate(), 2, 0);
+      time = lpad(jsDate.getUTCHours(), 2, 0) + ':' + lpad(jsDate.getUTCMinutes(), 2, 0) + ':' + lpad(jsDate.getUTCSeconds(), 2, 0);
       // modified 20150831 - use local date/time
-      //      date = lpad(jsDate.getUTCFullYear(), 4, 0) + '-' + lpad(jsDate.getUTCMonth() + 1, 2, 0) + '-' + lpad(jsDate.getUTCDate(), 2, 0);
-      //      time = lpad(jsDate.getUTCHours(), 2, 0) + ':' + lpad(jsDate.getUTCMinutes(), 2, 0) + ':' + lpad(jsDate.getUTCSeconds(), 2, 0);
-      date = lpad(jsDate.getFullYear(), 4, 0) + '-' + lpad(jsDate.getMonth() + 1, 2, 0) + '-' + lpad(jsDate.getDate(), 2, 0);
-      time = lpad(jsDate.getHours(), 2, 0) + ':' + lpad(jsDate.getMinutes(), 2, 0) + ':' + lpad(jsDate.getUTCSeconds(), 2, 0);
+      //date = lpad(jsDate.getFullYear(), 4, 0) + '-' + lpad(jsDate.getMonth() + 1, 2, 0) + '-' + lpad(jsDate.getDate(), 2, 0);
+      //time = lpad(jsDate.getHours(), 2, 0) + ':' + lpad(jsDate.getMinutes(), 2, 0) + ':' + lpad(jsDate.getUTCSeconds(), 2, 0);
     }
     else {
       data = data.trim();
       var parts = data.split(this.ISO_SPLITTER_RE) || [];
-      date = this.DATE_RE.test(parts[0]) ? parts[0] : '';
+      date = this.ICCBL_DATE_RE.test(parts[0]) ? parts[0] : '';
       
-      // Override part here
-      if(this.includeDate && _.isUndefined(date)){
-        date = this.ICCBL_DATE_RE.test(parts[0]) ? parts[0] : [];
-      }
+//      // Override part here
+//      if(this.includeDate && _.isUndefined(date)){
+//        date = this.ICCBL_DATE_RE.test(parts[0]) ? parts[0] : [];
+//      }
       // END
       
       time = date && parts[1] ? parts[1] : this.TIME_RE.test(parts[0]) ? parts[0] : '';
     }
-    
-    var YYYYMMDD = this.DATE_RE.exec(date) || [];
+    // FIXME: review this 
+    var DDMMYYYY = this.ICCBL_DATE_RE.exec(date) || [];
     var HHmmssSSS = this.TIME_RE.exec(time) || [];
 
     if (validate) {
-      if (this.includeDate && _.isUndefined(YYYYMMDD[0])) return;
+      if (this.includeDate && _.isUndefined(DDMMYYYY[0])) return;
       if (this.includeTime && _.isUndefined(HHmmssSSS[0])) return;
       if (!this.includeDate && date) return;
       if (!this.includeTime && time) return;
     }
 
-    var jsDate = new Date(Date.UTC(YYYYMMDD[1] * 1 || 0,
-                                   YYYYMMDD[2] * 1 - 1 || 0,
-                                   YYYYMMDD[3] * 1 || 0,
+    var jsDate = new Date(Date.UTC(DDMMYYYY[3] * 1 || 0,
+                                   DDMMYYYY[2] * 1 - 1 || 0,
+                                   DDMMYYYY[1] * 1 || 0,
                                    HHmmssSSS[1] * 1 || null,
                                    HHmmssSSS[2] * 1 || null,
                                    HHmmssSSS[3] * 1 || null,
@@ -3795,11 +3825,11 @@ _.extend(DatetimeFormatter.prototype, {
       //    lpad(jsDate.getUTCFullYear(), 4, 0) 
       //    + '-' + lpad(jsDate.getUTCMonth() + 1, 2, 0) 
       //    + '-' + lpad(jsDate.getUTCDate(), 2, 0);
-      result = ( 
-          lpad(jsDate.getUTCMonth() + 1, 2, 0) 
-          + '/' + lpad(jsDate.getUTCDate(), 2, 0) 
-          + '/' + lpad(jsDate.getUTCFullYear(), 4, 0)
-          );
+      result = ( getIccblUTCDateString(jsDate) );
+//          lpad(jsDate.getUTCMonth() + 1, 2, 0) 
+//          + '/' + lpad(jsDate.getUTCDate(), 2, 0) 
+//          + '/' + lpad(jsDate.getUTCFullYear(), 4, 0)
+//          );
     }
 
     if (this.includeTime) {

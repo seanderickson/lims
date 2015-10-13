@@ -23,7 +23,8 @@ require.config({
     iccbl_backgrid: 'iccbl-backgrid',
     multiselect: 'libs/multiselect',
     quicksearch: 'libs/jquery.quicksearch',
-    'bootstrap-datepicker': 'libs/bootstrap-datepicker'
+    'bootstrap-datepicker': 'libs/bootstrap-datepicker',
+    chosen: 'libs/chosen'
   },
   shim: {
     underscore: {

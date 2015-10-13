@@ -64,7 +64,8 @@ module.exports = function (grunt) {
           'bootstrap.js' : 'bootstrap/dist/js/bootstrap.js',
           'multiselect.js' : 'multiselect/js/jquery.multi-select.js',
           'jquery.quicksearch.js': 'quicksearch/dist/jquery.quicksearch.js',
-          'bootstrap-datepicker': 'bootstrap-datepicker/dist/js/bootstrap-datepicker.js'
+          'bootstrap-datepicker.js': 'bootstrap-datepicker/dist/js/bootstrap-datepicker.js',
+          'chosen.js': 'chosen/chosen.jquery.min.js'
         } 
     }, 
     css: {
@@ -76,12 +77,14 @@ module.exports = function (grunt) {
         'backgrid.css': 'backgrid/lib/backgrid.css',
         'backgrid-paginator.css': 'backgrid-paginator/backgrid-paginator.css',
         'backgrid-filter.css': 'backgrid-filter/backgrid-filter.css',
-        'multi-select.css': 'multiselect/css/multi-select.css'
+        'multi-select.css': 'multiselect/css/multi-select.css',
+        'chosen.css': 'chosen/chosen.min.css'
       }
     },
     images: {
       files: {
-        'css/img/switch.png' : 'multiselect/img/switch.png'
+        'css/img/switch.png' : 'multiselect/img/switch.png',
+        'css/external/chosen-sprite.png' : 'chosen/chosen-sprite.png'
       }
     },
     fonts: {

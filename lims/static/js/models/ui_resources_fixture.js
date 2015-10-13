@@ -195,5 +195,13 @@
         "rpp": 200,
         "search": {"item_group__ne": "legacy"}
       }
+    },
+    "detail_test": {
+      "header_message": "Detail Test View",
+      "title": "Detail Test View",
+      "route": "list/detailtest",
+      "list_view": "ListView",
+      "detailView": "DetailTestView",
+      "api_resource": "reagent"
     }
 }

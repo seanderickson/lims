@@ -26,6 +26,7 @@
     "backgrid-select-all": "~0.3.5",
     "bootstrap": "~3.0.3",
     "bootstrap-datepicker": "git://github.com/eternicode/bootstrap-datepicker.git#cbec4b6e6d69bd557460f459339262ae0b5f27fc",
+    "chosen": "~1.4.2",
     "jquery": "~2.1.0",
     "layoutmanager": "~0.9.4",
     "lunr.js": "~0.4.3",

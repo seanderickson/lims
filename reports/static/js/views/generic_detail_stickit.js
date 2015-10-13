@@ -2,6 +2,7 @@ define([
     'jquery',
     'underscore',
     'backbone',
+    'backbone_stickit',
     'backgrid',
     'iccbl_backgrid',
     'layoutmanager',
@@ -9,8 +10,7 @@ define([
     'views/generic_detail_stickit',
     'views/simple-list',
     'text!templates/generic-detail-stickit.html'
-
-], function( $, _, Backbone, BackGrid, Iccbl, layoutmanager, 
+], function( $, _, Backbone, stickit, BackGrid, Iccbl, layoutmanager, 
       appModel, DetailView, SimpleListView, detailTemplate) {
 	
 	var DetailView = Backbone.Layout.extend({
@@ -22,218 +22,37 @@ define([
 	   * schema.detailKeys() returns the metahash field keys 'detail' in 'visibility'
 	   */
 	  initialize: function(args) {
+	    console.log('initialize generic_detail_stickit view');
 	    var self = this;
-      var schema = args.schema || this.model.resource.schema;
-      
-      //      var buttons = this.buttons = 
-      //          args.buttons || ['edit','delete','download','history','back'];
+	    var schema = this.schema = args.schema || this.model.resource.schema;
       var buttons = this.buttons = args.buttons || ['download','history','back'];
+      this.detailKeys = args.detailKeys || schema.detailKeys(); 
+      var nestedModels = this.nestedModels = {};
+      var nestedLists = this.nestedLists = {};
       
       if(appModel.hasPermission(self.model.resource.key, 'edit')){
         this.buttons.unshift('edit');
       }
-
       if(appModel.getCurrentUser().is_superuser){
         this.buttons.unshift('delete');
       }
-      
-      var keys = this.detailKeys = args.detailKeys || schema.detailKeys(); //this.model);
-      var events = this.events = {};
+      this.createBindings();
+	  },
+	  
+	  createBindings: function() {
+	    var self = this;
+	    var keys = this.detailKeys;
+	    var schema = this.schema;
       var bindings = this.bindings = {};
       var schemaBindings = this.schemaBindings = {};
-      var nestedModels = this.nestedModels = {};
-      var nestedLists = this.nestedLists = {};
+      
       _.each(keys, function(key) {
-        var fi = schema.fields[key];
-        var data_type = _.isEmpty(fi.data_type)?'string':fi.data_type.toLowerCase();
-        var display_type = _.isEmpty(fi.display_type)?data_type:fi.display_type.toLowerCase();
-        var edit_type = _.isEmpty(fi.edit_type)?display_type:fi.edit_type.toLowerCase();
-        
-        // Default binding
-        bindings['#'+key] = {
-          observe: key,
-          onGet: function(value) {
-            if (_.isUndefined(value) || _.isNull(value)) return '-';
-            else if (_.isString(value) && value === '' ) return '-';
-            else if (_.isObject(value) && _.isEmpty(value)) return '-';
-            else return value;
-          }
-        };
-        
-        // cell type specific render:
-        // display_type has precedence
-        var cell_options;
-        if(!_.isEmpty(fi['display_options'])){
-          cell_options = fi['display_options'];
-          cell_options = cell_options.replace(/'/g,'"');
-          try{
-            cell_options = JSON.parse(cell_options);
-          }catch(e){
-            console.log('warn: display_options is not JSON parseable, column: ' +
-                key + ', options: ' + cell_options);
-          }
-        }
-        
-        if(data_type == 'list'){
-          var temp = bindings['#'+key].onGet;
-          bindings['#'+key].onGet = function(value){
-            var temp1 = temp(value);
-            if(_.isArray(temp1)){
-              return temp1.join(', ');
-            }
-            return temp1;
-          };
-        }
-        
-        if(display_type == 'date'){
-          bindings['#'+key].onGet = function(value){
-            console.log('date value', value);
-            if(!value || _.isUndefined(value)) return '-';
-            try{
-              var date = new Date(value);
-              var month = (date.getMonth()+1);
-              if(month < 10) month = '0' + month;
-              var day = date.getDate();
-              if(day < 10) day = '0' + day;
-              return date.getFullYear() 
-                + '-' + month
-                + '-' + day;
-            }catch(e){
-              console.log('warn: unable to parse date value: ' + key + ', ' + value );
-            }
-            return value;
-          };
-          
-        }else if(display_type == 'siunit'){
-          var formatter = new Iccbl.SciUnitsFormatter(cell_options)
-          bindings['#'+key].onGet = function(value){
-            return formatter.fromRaw(value);
-          }
-        }else if(display_type == 'decimal'){
-          var formatter = new Iccbl.DecimalFormatter(cell_options);
-          bindings['#'+key].onGet = function(value){
-            return formatter.fromRaw(value);
-          }
-        }else if(display_type == 'link' && data_type != 'list' ){
-            var c_options = _.extend({
-              hrefTemplate: '#',
-              target: '_self'
-            }, cell_options );                
-            
-            // Backward compatability: Check for non-json backgrid_cell_options.
-            // interpret as simple string to be interpolated, and not a JSON object.
-            if( c_options.hrefTemplate == '#' && 
-                _.has(fi,'display_options')) {
-              // NOTE: format for backgrid cell options is "/{attribute_key}/"
-              // NOTE: interpreting *all* links as *hash* values only, for now - 
-              // TODO: make this switchable, using a flag in c_options
-              c_options.hrefTemplate = window.location.pathname + '#' + fi['display_options'];
-              c_options.target = '_self';
-            } 
-            var interpolatedVal = Iccbl.replaceTokens(self.model,c_options.hrefTemplate);
- 
-            bindings['#'+key].updateMethod = 'html';
-            var originalOnGet = bindings['#'+key].onGet;
-            bindings['#'+key].onGet = function(rawValue){
-              rawValue = originalOnGet(rawValue);
-              if(false && Iccbl.appModel.DEBUG) 
-                console.log('urilist, raw value: ' + rawValue  + ', ' + interpolatedVal 
-                  + ', hrefTemplate: ' + c_options.hrefTemplate);
-              
-              if(rawValue && rawValue != '-'){
-                var _html = ( '<a ' + 
-                    'id="link-' + key + '" ' + 
-                    'href="' + interpolatedVal + '" ' +
-                    'target="' + c_options.target + '" ' +
-                    'tabIndex=-1 ' +
-                    '>' + rawValue + '</a>'
-                    );
-                return _html;
-              }
-              return rawValue;
-            };
-          
-        }else if(display_type == 'link' && data_type == 'list'){
-
-          var c_options = _.extend({
-            hrefTemplate: 'http//',
-            target: '_blank'
-          }, cell_options );
-          bindings['#'+key].updateMethod = 'html';
-          bindings['#'+key].onGet = function(rawValue){            
-            if(rawValue && !_.isEmpty(rawValue) && rawValue != '-'){
-              var i = 0;
-              var _html = [];
-              _.each(rawValue, function(val){
-                var interpolatedVal = Iccbl.replaceTokens(self.model,c_options.hrefTemplate,val);
-                _html.push( '<a ' + 
-                    'id="link-' + key + '-'+ i + '" ' + 
-                    'href="' + interpolatedVal + '" ' +
-                    'target="' + c_options.target + '" ' +
-                    '>' + val + '</a>'
-                    );
-                i++;
-              });
-              return _html.join(', ');
-            }
-            return '-';
-          };
-        }else if(display_type == 'image'){
-          console.log('todo: implement ImageCell');
-        
-        // FIXME: "nested" and "nested_list" are unused 20150629 after ui_type refactor to data_type
-        }else if(display_type === 'nested'){
-            nestedModels[key] = new Backbone.Model(self.model.get(key));
-            nestedModels[key].resourceId = fi.nested_resource || key;
-        }else if(display_type === 'nested_list'){
-            nestedLists[key] = {};
-            nestedLists[key].list = self.model.get(key);
-            nestedLists[key].resourceId = fi.nested_resource || key;
-            if(!nestedLists[key].list || nestedLists[key].list.length == 0){
-              delete nestedLists[key];
-              self.model.unset(key); // to signal empty
-            }else if (nestedLists[key].length==1) {
-              nestedModels[key] = nestedLists[key][0];
-              nestedModels[key].resourceId = nestedLists[key].resourceId;
-              delete nestedLists[key];
-              self.model.unset(key); // to signal empty
-            }
-        }else if(display_type == 'string' ){
-          // string uses default display type
-        }else{
-          console.log('field', key,'using default display for display_type:',display_type);
-        }
-        
-        if(edit_type == 'select' || edit_type == 'multiselect' ){
-          try{
-            if(fi.vocabulary_scope_ref){
-              var vocabulary = Iccbl.appModel.getVocabulary(fi.vocabulary_scope_ref);
-              if(vocabulary && !_.isUndefined(vocabulary)){
-                bindings['#'+key].onGet = function(value){
-                  if(_.has(vocabulary, value)){
-                      return vocabulary[value].title;
-                  }
-                  console.log('no vocab: ' + key + ', ' + vocabulary );
-                  return value;
-                };
-              }else{
-                console.log('Warning, no vocabulary found for: ' 
-                    + fi.key + ', ' + fi.vocabulary_scope_ref);
-              }
-            }
-          }catch(e){
-            console.log('error getting vocab', e);
-            appModel.error('Warning, no vocabulary found for: ' 
-              + fi.key + ', ' + fi.vocabulary_scope_ref);
-          }
-
-        }
-        
-        // Also build a binding hash for the titles
+        bindings['#'+key] = self.createBinding(key,schema.fields[key]);
         schemaBindings['#title-'+key] = {
           observe: key,
           onGet: function(value) {
             if (value) return value.title + ":";
+            else return 'Title for ' + key;
           },
           attributes: [{
             name: 'title', observe: key,
@@ -244,10 +63,217 @@ define([
         };
       });      
 	  },
-    
+	  
+	  createBinding: function(key, fi){
+	    var self = this;
+	    var vocabulary;
+      var cell_options;
+      var binding;
+      var data_type = _.isEmpty(fi.data_type) ? 'string' : fi.data_type.toLowerCase();
+      var display_type = _.isEmpty(fi.display_type) ? data_type : fi.display_type.toLowerCase();
+      var data_type_formatters,display_type_formatters;
+      
+      function baseGetter(value) {
+        if (_.isUndefined(value) || _.isNull(value)) return '-';
+        else if (_.isString(value) && value === '' ) return '-';
+        else if (_.isObject(value) && _.isEmpty(value)) return '-';
+        else{
+          return value;
+        }
+      }     
+	    binding = {
+          observe: key,
+          onGet: baseGetter
+        };
+      
+      if(display_type == 'link'){
+        binding.updateMethod = 'html';
+        if( data_type == 'list') display_type = 'linklist';
+      }
+
+      if(!_.isEmpty(fi.vocabulary_scope_ref)){
+        vocabulary = Iccbl.appModel.getVocabulary(fi.vocabulary_scope_ref);
+        vocabulary.getTitle = function(value){
+          if (!_.isEmpty(vocabulary[value])){
+            return vocabulary[value].title;
+          }else{
+            console.log('error: ' + key, fi);
+            appModel.error('vocabulary not found for: ' + fi.key + ': ' + value);
+          }
+          return value;
+        };
+      }
+      
+      if(!_.isEmpty(fi['display_options'])){
+        cell_options = fi['display_options'];
+        cell_options = cell_options.replace(/'/g,'"');
+        try{
+          cell_options = JSON.parse(cell_options);
+        }catch(e){
+          console.log('warn: display_options is not JSON parseable, column: ',
+              key,', options: ',cell_options);
+        }
+      }
+  
+      // define "data_type" getters
+      function defaultGetter(value){
+        if(value && vocabulary){
+          return vocabulary.getTitle(value);
+        }
+        return value;
+      }
+      function dateGetter(value){
+        if (value && !_.isEmpty(value)) {
+          try {
+            return Iccbl.getUTCDateString(new Date(value));
+          } catch(e) {
+            var msg = Iccbl.formatString(
+              'unable to parse date value: {value}, for field: {field}',
+              { field:key, value: value } );
+            console.log(msg,e);
+            appModel.error(msg);
+          }
+        }
+        return value;
+      }
+
+      function listGetter(value){
+        var finalValue = value;
+        if(_.isArray(value)){
+          if(vocabulary){
+            finalValue = Iccbl.sortOnOrdinal(value,vocabulary);
+            finalValue = _.map(finalValue,vocabulary.getTitle);
+          }
+          finalValue = finalValue.join(', ');
+        }
+        return finalValue;
+      }
+      function decimalGetter(value){
+        console.log('decimalGetter:', value);
+        var formatted;
+        var formatter = new Iccbl.DecimalFormatter(cell_options);
+        if(_.isString(value) || _.isNumber(value)){
+          formatted = formatter.fromRaw(value);
+          console.log('decimal getter: v:', value, ', formatted: ', 
+            formatted, ', options: ', cell_options);
+          return formatted;
+        }else{
+          return value;
+        }
+      }
+            
+      data_type_formatters = {
+        'date': dateGetter,
+        'list': listGetter,
+        'float': decimalGetter,
+        'decimal': decimalGetter
+        //'integer': defaultGetter,
+        //'string' : defaultGetter,
+        //'boolean' : defaultGetter,
+        //'datetime': defaultGetter,
+      };
+      
+      // Define getters for "display_type"
+
+      function sciUnitGetter(value){
+        var formatter = new Iccbl.SciUnitsFormatter(cell_options)
+        console.log('get sciunit value', value && !_.isEmpty(value), formatter.fromRaw(value));
+        if(value){
+          console.log('get sciunit value', value, formatter.fromRaw(value));
+          return formatter.fromRaw(value);
+        }else{
+          return value;
+        }
+      }
+
+      function linkGetter(value){
+        var finalValue = value;
+        var _options = _.extend(
+          { hrefTemplate: '#', target: '_self' }, cell_options );                
+        // use the display options if needed for backward compatibility
+        if( _.has(fi,'display_options') && _options.hrefTemplate == '#' ) {
+          _options.hrefTemplate = window.location.pathname + '#' + fi['display_options'];
+          _options.target = '_self';
+          } 
+          if(vocabulary){
+            finalValue = vocabulary.getTitle(value);
+          }
+          var interpolatedVal = Iccbl.replaceTokens(self.model,_options.hrefTemplate,value);
+ 
+          if(value && !_.isEmpty(value)){
+            if(vocabulary){
+              finalValue = vocabulary.getTitle(value);
+            }
+            var _html = '<a ' + 
+              'id="link-' + key + '" ' + 
+              'href="' + interpolatedVal + '" ' +
+              'target="' + _options.target + '" ' +
+              'tabIndex=-1 ' +
+              '>' + finalValue + '</a>';
+          return _html;
+        }else{
+          return value;
+        }
+      }
+      
+      function linkListGetter(value){  
+        var modelValue = value;
+        var finalValue = value;
+        console.log('link list getter', value);
+        var _options = _.extend(
+          { hrefTemplate: 'http//', target: '_blank' }, cell_options );
+        if(value){
+          if(vocabulary){
+            finalValue = Iccbl.sortOnOrdinal(modelValue,vocabulary);
+          }
+          return _.map(finalValue, linkGetter).join(', ');
+        }
+        return value;
+      }
+
+      display_type_formatters = {
+        'link': linkGetter,
+        'linklist': linkListGetter,
+        'sciunit': sciUnitGetter
+      };
+      
+      // compose getter hierarchy; default<-data_type<-display_type<-vocabulary
+      if(_.has(data_type_formatters, data_type)){
+        binding.onGet = _.compose(binding.onGet, data_type_formatters[data_type]);
+      }else{
+        binding.onGet = _.compose(binding.onGet, defaultGetter);
+      }
+      if(_.has(display_type_formatters, display_type)){
+        console.log('add getter for field: ', key, ', display_type: ', display_type);
+        binding.onGet = _.compose(baseGetter, display_type_formatters[display_type]);
+      }
+
+      // FIXME: "nested" and "nested_list" are unused 20150629 after ui_type refactor to data_type
+      if(display_type === 'nested'){
+        nestedModels[key] = new Backbone.Model(self.model.get(key));
+        nestedModels[key].resourceId = fi.nested_resource || key;
+      }else if(display_type === 'nested_list'){
+        nestedLists[key] = {};
+        nestedLists[key].list = self.model.get(key);
+        nestedLists[key].resourceId = fi.nested_resource || key;
+        if(!nestedLists[key].list || nestedLists[key].list.length === 0){
+          delete nestedLists[key];
+          self.model.unset(key); // to signal empty
+        }else if (nestedLists[key].length==1) {
+          nestedModels[key] = nestedLists[key][0];
+          nestedModels[key].resourceId = nestedLists[key].resourceId;
+          delete nestedLists[key];
+          self.model.unset(key); // to signal empty
+        }
+      }      
+
+      return binding;
+	  },
+	  
+	  
     afterRender : function() {
+      console.log('generic detail stickit, afterRender');
       var self = this;
-      this.stickit();
       this.stickit(this.model, this.bindings);
       this.schemaFieldsModel = new Backbone.Model(this.model.resource.schema.fields);
       this.stickit(this.schemaFieldsModel, this.schemaBindings);
@@ -309,6 +335,7 @@ define([
         });
       }
 
+      console.log('generic detail stickit, afterRender done');
       return this;
     },
 
@@ -316,7 +343,7 @@ define([
       return {
         'buttons': _.chain(this.buttons), // TODO: buttons from the schema
         'title': Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource.schema),
-        'keys': _.chain(this.detailKeys),
+        'keys': _.chain(this.detailKeys)
       };      
     },    
     

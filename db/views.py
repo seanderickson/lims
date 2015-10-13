@@ -106,7 +106,7 @@ def _download_file(request, attached_file):
         
         # check user permissions
         userprofile = request.user.userprofile
-        if attached_file.screensaver_user.screensaver_user.user != userprofile:
+        if attached_file.screensaver_user.user != userprofile:
             authorization = UserGroupAuthorization()
             if not authorization._is_resource_authorized('attachedfiles',request.user,'read'):
                 logger.warn(str(('UserGroupAuthorization needed',
@@ -124,7 +124,7 @@ def _download_file(request, attached_file):
         return response
     except Exception,e:
         logger.exception('on accessing attached file %s' % attached_file)
-        
+        raise
 
 def screeners(request):
     search = request.GET.get('search', '')

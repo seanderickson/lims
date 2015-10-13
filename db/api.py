@@ -3206,8 +3206,7 @@ class AttachedFileResource(ApiResource):
         if not file_type:
             raise NotImplementedError('must provide a file_type parameter')
         try:
-            # TODO: make ScreeningRoomUser a subclass of ScreensaverUser
-            user = ScreeningRoomUser.objects.get(screensaver_user__username=username)
+            user = ScreensaverUser.objects.get(username=username)
         except ObjectDoesNotExist:
             logger.exception('username does not exist: %s' % request.user.username)
             raise
@@ -3228,7 +3227,9 @@ class AttachedFileResource(ApiResource):
         af.save()
         
         # Log
-        logger.info('log create: %s' %kwargs)
+        new_dict = model_to_dict(af)
+        logger.info('log create: kwargs: %s, af: %s' % (kwargs,new_dict))
+
         log_comment = None
         if HEADER_APILOG_COMMENT in request.META:
             log_comment = request.META[HEADER_APILOG_COMMENT]
@@ -3256,7 +3257,7 @@ class AttachedFileResource(ApiResource):
     
         log.api_action = API_ACTION_PUT
         log.added_keys = json.dumps(new_dict.keys())
-        log.diffs = json.dumps(new_dict)
+        log.diffs = json.dumps(new_dict,cls=DjangoJSONEncoder)
         log.save()
         if(logger.isEnabledFor(logging.DEBUG)):
             logger.debug(str(('create, api log', log)) )
@@ -3383,7 +3384,6 @@ class AttachedFileResource(ApiResource):
             # specific setup
             _af = self.bridge['attached_file']
             _su = self.bridge['screensaver_user']
-            _sru = self.bridge['screening_room_user'] # TODO: link directly to screensaver_user
             _up = self.bridge['reports_userprofile']
             
             j = _af
@@ -3391,8 +3391,7 @@ class AttachedFileResource(ApiResource):
             username = param_hash.pop('username', None)
             if username:
                 isouter=True
-            j = j.join(_sru, _af.c.screensaver_user_id==_sru.c.screensaver_user_id, isouter=isouter)
-            j = j.join(_su, _sru.c.screensaver_user_id==_su.c.screensaver_user_id, isouter=isouter)
+            j = j.join(_su, _af.c.screensaver_user_id==_su.c.screensaver_user_id, isouter=isouter)
             
             # This entire query doesn't fit the pattern, so have to construct it manually
             # bleah
@@ -3973,7 +3972,7 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
                 title_function=title_function  )
              
         except Exception, e:
-            logger.error('on get_list')
+            logger.exception('on get_list')
             raise e  
 
 
@@ -4176,13 +4175,11 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
     
     @transaction.atomic()    
     def delete_obj(self, deserialized, **kwargs):
-        self.clear_cache()
         username = self.get_user_resource().find_username(deserialized,**kwargs)
         ScreensaverUser.objects.get(username=username).delete()
     
     @transaction.atomic()    
     def patch_obj(self,deserialized, **kwargs):
-        self.clear_cache()
 
         username = self.get_user_resource().find_username(deserialized,**kwargs)
         

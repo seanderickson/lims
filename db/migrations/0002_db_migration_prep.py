@@ -177,6 +177,9 @@ class Migration(SchemaMigration):
 #         db.execute(
 #             ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
 #                   table='small_molecule_reagent', column='molecular_mass'))
+
+        # alter attached_file.screensaver_user_id to point to screensaver_user
+        self.alter_attached_file_to_screensaver_user()
         
         ### FIXUP Reagent related tables so that they now point to reagent, not smr:
         # TODO: consider using raw SQL
@@ -448,6 +451,32 @@ class Migration(SchemaMigration):
         db.execute(
             ( "ALTER TABLE {table} ADD PRIMARY KEY ({primary_key})").format(
                   table=sub_table, primary_key=new_primary_key))
+    
+    def alter_attached_file_to_screensaver_user(self):
+        sub_table = 'attached_file'
+        fk_column = 'screensaver_user_id'
+        new_parent = 'screensaver_user'
+        new_parent_column = 'screensaver_user_id'
+        
+        logger.info(str(('alter foreign key', sub_table, fk_column, new_parent, new_parent_column)))
+        db.execute(
+            ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
+                  table=sub_table, column=fk_column))
+        db.execute(
+            ( "ALTER TABLE {table} ADD COLUMN {column} integer").format(
+                  table=sub_table, column=fk_column))
+        db.execute(
+            ( "update {table} set {column} = tmp_{column}").format(
+                  table=sub_table, column=fk_column))
+        db.execute(
+            ("ALTER TABLE {table} ADD CONSTRAINT fk_{column} "
+                "FOREIGN KEY ({column}) "
+                "REFERENCES {other_table} ({other_column}) ").format(
+                    table=sub_table, column=fk_column, 
+                    other_table=new_parent, other_column=new_parent_column))
+        db.execute(
+            ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
+                  table=sub_table, column=fk_column))
 
 
 

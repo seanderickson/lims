@@ -209,10 +209,11 @@ class AttachedFile(models.Model):
     filename = models.TextField()
 #     version = models.IntegerField()
     screen = models.ForeignKey('Screen', null=True, blank=True)
-    screensaver_user = models.ForeignKey('ScreeningRoomUser', null=True, blank=True)
+    screensaver_user = models.ForeignKey('ScreensaverUser', null=True, blank=True)
 #     attached_file_type = models.ForeignKey('AttachedFileType')
     type = models.TextField()
-    created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
+    created_by = models.ForeignKey(
+        'ScreensaverUser', null=True, related_name='attachedfilecreated')
     reagent = models.ForeignKey('Reagent', null=True, blank=True)
     file_date = models.DateField(null=True, blank=True)
     date_loaded = models.DateTimeField(null=True, blank=True)

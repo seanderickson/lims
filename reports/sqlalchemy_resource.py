@@ -18,7 +18,7 @@ from sqlalchemy.sql import and_, or_, not_
 from sqlalchemy.sql import asc, desc, alias, Alias
 from sqlalchemy.sql import func
 from sqlalchemy.sql.elements import literal_column
-from sqlalchemy.sql.expression import column, join
+from sqlalchemy.sql.expression import column, join, cast
 from sqlalchemy.sql.expression import nullsfirst, nullslast
 from tastypie.exceptions import BadRequest, ImmediateHttpResponse
 from tastypie.http import HttpNotFound
@@ -31,6 +31,7 @@ from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
 from reports.utils.sqlalchemy_bridge import Bridge
 from reports.utils.streaming_serializers import sdf_generator, json_generator, \
     get_xls_response, csv_generator, ChunkIterWrapper
+from sqlalchemy.sql.sqltypes import Numeric
 
 
 logger = logging.getLogger(__name__)
@@ -94,10 +95,9 @@ class SqlAlchemyResource(Resource):
             stmt = select([text('*')]).select_from(_alias)
             stmt = stmt.order_by(*order_clauses)
         if filter_expression is not None:
-            logger.info(str(('filter_expression', str(filter_expression))))
+            logger.debug('filter_expression: %r' % filter_expression)
             if not order_clauses:
                 _alias = Alias(stmt)
-                logger.info(str(('filter_expression', str(filter_expression))))
                 stmt = select([text('*')]).select_from(_alias)
             stmt = stmt.where(filter_expression)
 
@@ -115,6 +115,9 @@ class SqlAlchemyResource(Resource):
         
         for key in request.GET.keys():
             val = request.GET.getlist(key)
+            # Jquery Ajax will post array list params with a "[]" suffix - 20151015
+            if '[]' in key and key[-2:] == '[]':
+                key = key[:-2]
             if len(val) == 1:
                 _dict[key] = val[0]
             else:
@@ -122,15 +125,19 @@ class SqlAlchemyResource(Resource):
             
         for key in request.POST.keys():
             val = request.POST.getlist(key)
+            # Jquery Ajax will post array list params with a "[]" suffix - 20151015
+            key = key.replace('[]','')
             if len(val) == 1:
                 _dict[key] = val[0]
             else:
                 _dict[key] = val
         
         # check for single-valued known list values
-        known_list_values = ['includes', 'order_by']
+        known_list_values = ['includes', 'order_by','includes[]', 'order_by[]']
         for key in known_list_values:
             val = _dict.get(key,[])
+            val = request.POST.getlist(key)
+            # Jquery Ajax will post array list params with a "[]" suffix - 20151015
             if isinstance(val, basestring):
                 _dict[key] = [val]
         
@@ -319,7 +326,11 @@ class SqlAlchemyResource(Resource):
         This method borrows from tastypie.resources.ModelResource.apply_sorting
         @param order_params passed as list in the request.GET hash
         '''
-        
+        logger.info('build sqlalchemy ordering: %r, visible fields: %r'
+            % (order_params,visible_fields.keys()))
+        if order_params and isinstance(order_params, basestring):
+            # standard, convert single valued list params
+            order_params = [order_params]
         order_clauses = []
         for order_by in order_params:
             field_name = order_by
@@ -334,7 +345,7 @@ class SqlAlchemyResource(Resource):
             else:
                 logger.warn(str(('order_by field not in visible fields, skipping: ', 
                     order_by )))
-        logger.debug(str(('order_clauses', order_clauses)))     
+        logger.info('order_clauses %r' % order_clauses)     
         return order_clauses
     
     @staticmethod
@@ -365,7 +376,8 @@ class SqlAlchemyResource(Resource):
 
     @staticmethod
     def build_sqlalchemy_filters(schema, param_hash={}, **kwargs):
-        logger.info(str(('param_hash', param_hash, 'kwargs', kwargs)))
+        logger.debug('build_sqlalchemy_filters: param_hash %r, kwargs: %r' 
+            % (param_hash, kwargs))
 
         # ordinary filters
         (filter_expression, filter_fields) = \
@@ -410,7 +422,7 @@ class SqlAlchemyResource(Resource):
         - field_name__filter_expression
         '''
         DEBUG_FILTERS = False or logger.isEnabledFor(logging.DEBUG)
-        logger.info('build_sqlalchemy_filters_from_hash %r' % param_hash)
+        logger.debug('build_sqlalchemy_filters_from_hash %r' % param_hash)
         lookup_sep = django.db.models.constants.LOOKUP_SEP
 
         if param_hash is None:
@@ -486,13 +498,25 @@ class SqlAlchemyResource(Resource):
                     expression = column(field_name).ilike('%{value}%'.format(
                         value=value))
                 elif filter_type == 'lt':
-                    expression = column(field_name) < value
+                    col = column(field_name)
+                    if field['data_type'] in ['integer','float','decimal']:
+                        col = cast(col,Numeric)
+                    expression = col < value
                 elif filter_type == 'lte':
-                    expression = column(field_name) <= value
+                    col = column(field_name)
+                    if field['data_type'] in ['integer','float','decimal']:
+                        col = cast(col,Numeric)
+                    expression = col <= value
                 elif filter_type == 'gt':
-                    expression = column(field_name) > value
+                    col = column(field_name)
+                    if field['data_type'] in ['integer','float','decimal']:
+                        col = cast(col,Numeric)
+                    expression = col > value
                 elif filter_type == 'gte':
-                    expression = column(field_name) >= value
+                    col = column(field_name)
+                    if field['data_type'] in ['integer','float','decimal']:
+                        col = cast(col,Numeric)
+                    expression = col >= value
                 elif filter_type == 'is_blank':
                     col = column(field_name)
                     if field['data_type'] == 'string':
@@ -525,7 +549,10 @@ class SqlAlchemyResource(Resource):
                             field_name, filter_expr, value)))
                         continue
                     else:
-                        expression = column(field_name).between(
+                        col = column(field_name)
+                        if field['data_type'] in ['integer','float','decimal']:
+                            col = cast(col,Numeric)
+                        expression = col.between(
                             value[0],value[1],symmetric=True)
                 else:
                     logger.error(str(('--- unknown filter type: ', 
@@ -536,8 +563,7 @@ class SqlAlchemyResource(Resource):
                 if inverted:
                     expression = not_(expression)
                 
-                logger.info(str(('filter_expr',filter_expr,
-                    'expression',str(expression) )))
+                logger.debug('filter_expr: %r' % filter_expr)
                 expressions.append(expression)
                 filtered_fields.append(field_name)
                 
@@ -720,7 +746,7 @@ class SqlAlchemyResource(Resource):
             rowproxy_generator=None, is_for_detail=False,
             downloadID=None, title_function=None, use_caching=True, meta=None ):
         DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
-        logger.info(str(('stream_response_from_statement',param_hash)))
+        logger.debug('stream_response_from_statement: %r' % param_hash)
 
         try:
             limit = param_hash.get('limit', 0)        

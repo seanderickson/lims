@@ -1711,10 +1711,10 @@ class ManagedResource(LoggingMixin):
             filekeys.extend([ str(kwarg[key]) for 
                 key in schema['id_attribute'] if key in kwargs ])
         else:
-            filekeys.extend([ str(v) for v in kwargs.values()])
+            filekeys.extend([ str(v) for i,v in enumerate(kwargs.values()) if i < 10])
         filename = '_'.join(filekeys)
         filename = re.sub(r'[\W]+','_',filename)
-        logger.info(str(('get_list', filename, kwargs)))
+        logger.debug('get_filename: %r, %r' % (filename, kwargs))
         return filename
 
  
@@ -2429,7 +2429,7 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
         value.
         '''
         # TODO: abstract the form field name
-        logger.info('log patches: %s' %kwargs)
+        logger.debug('log patches: %s' %kwargs)
         log_comment = None
         if HEADER_APILOG_COMMENT in request.META:
             log_comment = request.META[HEADER_APILOG_COMMENT]
@@ -2468,10 +2468,11 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
                         break
                 if prev_dict:
                     break # found
-            logger.info('prev_dict to remove: %s' % prev_dict)
+            logger.debug('prev_dict to remove: %s' % prev_dict)
             if prev_dict:
                 # if found, then it is modified, not deleted
-                logger.info(str(('remove from deleted dict', prev_dict, deleted_items)))
+                logger.debug('remove from deleted dict %r, %r' 
+                    % (prev_dict, deleted_items))
                 deleted_items.remove(prev_dict)
                 
                 difflog = compare_dicts(prev_dict,new_dict)
@@ -2480,10 +2481,11 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
                     log.api_action = str((request.method)).upper()
                     log.diff_dict_to_api_log(difflog)
                     log.save()
-                    logger.info(str(('update, api log', log)) )
+                    logger.debug('update, api log: %r' % log)
                 else:
                     # don't save the log
-                    logger.info(str(('no diffs found', prev_dict,new_dict,difflog)) )
+                    logger.debug('no diffs found: %r, %r, %r' 
+                        % (prev_dict,new_dict,difflog))
             else: # creating
                 log.api_action = API_ACTION_CREATE
                 log.added_keys = json.dumps(new_dict.keys())
@@ -2515,7 +2517,7 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
             log.diff_keys = json.dumps(deleted_dict.keys())
             log.diffs = json.dumps(deleted_dict)
             log.save()
-            logger.info(str(('delete, api log', log)) )
+            logger.debug('delete, api log: %r' % log)
             
 
 class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
@@ -2533,7 +2535,8 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
     @un_cache        
     def patch_list(self, request, **kwargs):
 
-        logger.info(str(('patch list', kwargs)))
+        logger.info('patch list, resource: %r' % self._meta.resource_name)
+        logger.debug('patch list: %r' % kwargs)
 
         deserialized = self._meta.serializer.deserialize(
             request.body, 
@@ -2552,6 +2555,8 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
             kwargs_for_log['%s__in'%id_field] = ( 
                 LIST_DELIMITER_URL_PARAM.join([x.get(id_field) for x in deserialized]) )
 
+        logger.info('patch list, resource: %r, objects: %d' 
+            % (self._meta.resource_name, len(deserialized)))
         logger.debug('patch list: %s, %s' %(deserialized,kwargs_for_log))
 
         # cache state, for logging
@@ -2581,6 +2586,8 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
         new_data = new_data[self._meta.collection_name]
         
         logger.debug('new data: %s'% new_data)
+        logger.info('patch list done, new data: %d' 
+            % (len(new_data)))
         self.log_patches(request, original_data,new_data,**kwargs)
         
         if not self._meta.always_return_data:

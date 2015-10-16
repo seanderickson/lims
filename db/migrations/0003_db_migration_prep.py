@@ -3,6 +3,8 @@ import csv
 import datetime
 import logging
 import os
+import sys
+import pytz
 
 from django.db import models
 from south.db import db
@@ -10,7 +12,8 @@ from south.v2 import SchemaMigration
 
 from db.support.data_converter import default_converter
 from lims.base_settings import PROJECT_ROOT
-from reports.models import Vocabularies
+from reports.models import Vocabularies, ApiLog
+from reports.utils.sqlalchemy_bridge import Bridge
 import lims
 
 
@@ -171,7 +174,7 @@ class Migration(SchemaMigration):
                 #     ordinal=i
                 #     )
                 # v.save()
-                scope = obj.for_entry_type
+                scope = obj.for_entity_type
                 title = obj.value
                 ordinal = i
                 row = [resource_uri % (scope,key),key,scope,ordinal,title] 
@@ -208,7 +211,7 @@ class Migration(SchemaMigration):
             header = ['resource_uri','key','scope','ordinal','title'] 
             vocab_writer.writerow(header)
 
-            ci_group_map = {}
+            # ci_group_map = {}
             scope = 'checklistitem.group'
             default_order = ['mailing', 'forms', 'non-harvard', 'imaging','legacy']
             for obj in orm.ChecklistItem.objects.all().distinct('checklist_item_group'):
@@ -229,13 +232,13 @@ class Migration(SchemaMigration):
                 #     )
                 # v.save()
                 title = obj.checklist_item_group
-                row = [resource_uri % (scope,key),key,scope,ordinal,v.title]
+                row = [resource_uri % (scope,key),key,scope,ordinal,title]
                 vocab_writer.writerow(row)
-                ci_group_map[obj.checklist_item_group] = key 
+                #ci_group_map[obj.checklist_item_group] = key 
                 logger.info(str(('created', row)))
     
             _scope = 'checklistitem.%s.name'
-            ci_name_map = {}
+            # ci_name_map = {}
             for obj in orm.ChecklistItem.objects.all().distinct('item_name'):
                 key = default_converter(obj.item_name)
                 scope = _scope % default_converter(obj.checklist_item_group)
@@ -250,9 +253,9 @@ class Migration(SchemaMigration):
                 # v.save()
                 title = obj.item_name
                 ordinal = obj.order_statistic
-                row = [resource_uri % (scope,key),key,scope,ordinal,v.title]
+                row = [resource_uri % (scope,key),key,scope,ordinal,title]
                 vocab_writer.writerow(row)
-                ci_name_map[obj.item_name] = key
+                # ci_name_map[obj.item_name] = key
                 logger.info(str(('created', row)))
                 
             scope = 'checklistitem.status'
@@ -290,12 +293,11 @@ class Migration(SchemaMigration):
                 # api_init_actions file for later
                 # v = Vocabularies(**_dict)
                 # v.save()
-                row = [resource_uri % (_dict[scope],
-                    _dict[key]),_dict[key],_dict[scope],_dict[ordinal],_dict[title]]
+                row = [resource_uri % (_dict['scope'],_dict['key']),
+                    _dict['key'],_dict['scope'],_dict['ordinal'],_dict['title']]
                 vocab_writer.writerow(row)
                 logger.info(str(('created', row)))
 
-            self.create_user_checklist_items(orm, ci_group_map, ci_name_map)
         
         api_init_actions_file = os.path.join(
             lims.settings.PROJECT_ROOT, '..',
@@ -308,145 +310,6 @@ class Migration(SchemaMigration):
         logger.info('vocabulary creation done')
 
     
-    def create_user_checklist_items(self,orm, ci_group_map, ci_name_map):
-        
-        # prerequisites: 
-        # - convert checklist_item / checklist_item_event entries into into 
-        # checklistitem.* vocabularies (migration 0002)
-        # - create the user_checklist_item table (0002)
-
-        # create entries in the user_checklist_item table
-        # note: status values are hard-coded to correspond to the vocabulary
-        # keys (created in migration 0002)
-        sql_keys = [
-            'suid','cigroup','ciname',
-            'su_username','admin_username','admin_suid','admin_upid',
-            'date_performed', 'date_created','status',
-            ]
-        sql = '''
-select
-screening_room_user_id,
-ci.checklist_item_group,
-ci.item_name,
-su.username su_username,
-admin.username admin_username,
-admin.screensaver_user_id admin_suid,
-up.id admin_upid,
-cie.date_performed,
-cie.date_created,
-case when cie.is_not_applicable then 'n_a'
-     when ci.is_expirable and cie.date_performed is not null then
-    case when cie.is_expiration then 'deactivated' else 'activated' end
-     when cie.date_performed is not null then 'completed'     
-     else 'not_completed'
-     end as status
-from checklist_item ci
-join checklist_item_event cie using(checklist_item_id)
-join screensaver_user su on screening_room_user_id=su.screensaver_user_id
-join screensaver_user admin on cie.created_by_id=admin.screensaver_user_id
-left join reports_userprofile up on up.id=admin.user_id
-order by screening_room_user_id, checklist_item_group, item_name, cie.date_performed asc;
-'''
-
-        bridge = Bridge()
-        conn = bridge.get_engine().connect()
-
-        log_ref_resource_name = 'userchecklistitem'
-        
-        _dict = None
-        log = None
-        
-        uci_hash = {}
-        unique_log_keys = set()
-        try:
-            _list = db.execute(sql)
-            i = 0
-            for row in _list:
-                _dict = dict(zip(sql_keys,row))
-                
-                key = '/'.join([str(_dict['suid']),_dict['cigroup'],_dict['ciname']])
-                previous_dict = uci_hash.get(key)
-                logger.info('prev_dict: %s:%s' % (key,previous_dict))
-                if previous_dict:
-                    uci = previous_dict['obj']
-                    uci.admin_user_id = int(_dict['admin_suid'])
-                    uci.status = _dict['status']
-                    uci.status_date = _dict['date_performed']
-                    uci.save()
-                    logger.info('updated: %r' % uci)
-                    
-                else:
-                    uci_hash[key] = _dict
-                    logger.debug(str(('create user checklist item', _dict, 
-                        _dict['date_performed'].isoformat())))
-                    uci = orm.UserChecklistItem.objects.create(
-                        screensaver_user_id = int(_dict['suid']),
-                        admin_user_id = int(_dict['admin_suid']),
-                        item_group = ci_group_map[_dict['cigroup']],
-                        item_name = ci_name_map[_dict['ciname']],
-                        status = _dict['status'],
-                        status_date = _dict['date_performed'])
-                    uci.save()
-                    _dict['obj'] = uci
-                    
-                    logger.info('created: %r, %s' % (uci, _dict))
-                    i += 1
-
-                date_time = pytz.utc.localize(_dict['date_created'])                
-                if date_time.date() != _dict['date_performed']:
-                    # only use the less accurate date_performed date if that date
-                    # is not equal to the date_created date
-                    date_time = pytz.utc.localize(
-                        datetime.combine(_dict['date_performed'],datetime.min.time()))
-                # create the apilog for this item
-                log = ApiLog()
-                log.ref_resource_name = log_ref_resource_name
-                log.key = '/'.join([_dict['su_username'],uci.item_group,uci.item_name])
-                log.username = _dict['admin_username']
-                log.user_id = _dict['admin_upid']
-                log.date_time = date_time
-                log.api_action = 'PATCH'
-                log.uri = '/'.join([log.ref_resource_name,log.key])
-                log.comment = 'status=%s' % _dict['status']
-                
-                # is the key (date_time, actually) unique?
-                full_key = '/'.join([log.ref_resource_name,log.key,str(log.date_time)])
-                while full_key in unique_log_keys:
-                    # add a second to make it unique; because date performed is a date,
-                    # there are collisions
-                    log.date_time = log.date_time  + timedelta(0,1)
-                    full_key = '/'.join([log.ref_resource_name,log.key,str(log.date_time)])
-                    
-                unique_log_keys.add(full_key)
-                if previous_dict:
-                    diff_keys = ['status']
-                    diffs = {}
-                    logger.info(str(('found previous_dict', previous_dict)))
-                    diff_keys.append('admin_username')
-                    diffs['admin_username'] = [previous_dict['admin_username'], _dict['admin_username']]
-                    
-                    diff_keys.append('status_date')
-                    diffs['status_date'] = [
-                        previous_dict['date_performed'].isoformat(), 
-                        _dict['date_performed'].isoformat()]
-                    
-                    diffs['status'] = [previous_dict['status'],_dict['status']]
-                
-                    log.diff_keys = json.dumps(diff_keys)
-                    log.diffs = json.dumps(diffs)
-     
-                logger.debug(str(('create log', log)))
-                
-                log.save()
-                log = None
-                if i%100 == 0:
-                    logger.info(str(('created', i, 'logs')))
-        except Exception, e:
-            logger.error('migration exc', exc_info=sys.exc_info())
-            raise e  
-
-        print 'created %d user_checklist_items' % i
-        
 
     def backwards(self, orm):
 
@@ -574,13 +437,14 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
             'date_created': ('django.db.models.fields.DateTimeField', [], {}),
             'date_loaded': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
             'date_publicly_available': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
-            'file_contents': ('django.db.models.fields.TextField', [], {}),
+#             'file_contents': ('django.db.models.fields.TextField', [], {}),
+            'contents': ('django.db.models.fields.BinaryField', [], {'null': 'False'}),
             'file_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'filename': ('django.db.models.fields.TextField', [], {}),
             'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Reagent']", 'null': 'True', 'blank': 'True'}),
             'screen': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Screen']", 'null': 'True', 'blank': 'True'}),
-            'screensaver_user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreeningRoomUser']", 'null': 'True', 'blank': 'True'}),
-            'version': ('django.db.models.fields.IntegerField', [], {})
+            'screensaver_user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreensaverUser']", 'null': 'True', 'blank': 'True'}),
+            'type': ('django.db.models.fields.TextField', [], {})
         },
         u'db.attachedfiletype': {
             'Meta': {'object_name': 'AttachedFileType', 'db_table': "u'attached_file_type'"},

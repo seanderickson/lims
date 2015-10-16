@@ -22,7 +22,8 @@ class Migration(DataMigration):
     def forwards(self, orm):
         self.create_screensaver_users(orm)
         self.create_roles(orm)
-        
+        self.create_user_checklist_items(orm)
+    
     def create_screensaver_users(self, orm):
         '''
         Create entries in auth_user, reports.UserProfile for each valid entry 
@@ -291,6 +292,161 @@ class Migration(DataMigration):
                 roles_assigned += j
                 j = 0
         logger.info(str(('created',roles_assigned,'roles for',i,'users')))
+
+
+    def create_user_checklist_items(self,orm):
+        
+        # prerequisites: 
+        # - convert checklist_item / checklist_item_event entries into into 
+        # checklistitem.* vocabularies (migration 0002)
+        # - create the user_checklist_item table (0002)
+
+
+        ci_group_map = {}
+        for obj in orm.ChecklistItem.objects.all().distinct('checklist_item_group'):
+            key = default_converter(obj.checklist_item_group)
+            ci_group_map[obj.checklist_item_group] = key 
+        
+        ci_name_map = {}
+        for obj in orm.ChecklistItem.objects.all().distinct('item_name'):
+            key = default_converter(obj.item_name)
+            ci_name_map[obj.item_name] = key
+
+        # create entries in the user_checklist_item table
+        # note: status values are hard-coded to correspond to the vocabulary
+        # keys (created in migration 0002)
+        sql_keys = [
+            'suid','cigroup','ciname',
+            'su_username','admin_username','admin_suid','admin_upid',
+            'date_performed', 'date_created','status',
+            ]
+        sql = '''
+select
+screening_room_user_id,
+ci.checklist_item_group,
+ci.item_name,
+su.username su_username,
+admin.username admin_username,
+admin.screensaver_user_id admin_suid,
+up.id admin_upid,
+cie.date_performed,
+cie.date_created,
+case when cie.is_not_applicable then 'n_a'
+     when ci.is_expirable and cie.date_performed is not null then
+    case when cie.is_expiration then 'deactivated' else 'activated' end
+     when cie.date_performed is not null then 'completed'     
+     else 'not_completed'
+     end as status
+from checklist_item ci
+join checklist_item_event cie using(checklist_item_id)
+join screensaver_user su on screening_room_user_id=su.screensaver_user_id
+join screensaver_user admin on cie.created_by_id=admin.screensaver_user_id
+left join reports_userprofile up on up.id=admin.user_id
+order by screening_room_user_id, checklist_item_group, item_name, cie.date_performed asc;
+'''
+
+        bridge = Bridge()
+        conn = bridge.get_engine().connect()
+
+        log_ref_resource_name = 'userchecklistitem'
+        
+        _dict = None
+        log = None
+        
+        uci_hash = {}
+        unique_log_keys = set()
+        try:
+            _list = db.execute(sql)
+            i = 0
+            for row in _list:
+                _dict = dict(zip(sql_keys,row))
+                
+                key = '/'.join([str(_dict['suid']),_dict['cigroup'],_dict['ciname']])
+                previous_dict = uci_hash.get(key)
+                logger.info('prev_dict: %s:%s' % (key,previous_dict))
+                if previous_dict:
+                    uci = previous_dict['obj']
+                    uci.admin_user_id = int(_dict['admin_suid'])
+                    uci.status = _dict['status']
+                    uci.status_date = _dict['date_performed']
+                    uci.save()
+                    logger.info('updated: %r' % uci)
+                    
+                else:
+                    uci_hash[key] = _dict
+                    logger.debug(str(('create user checklist item', _dict, 
+                        _dict['date_performed'].isoformat())))
+                    uci = orm.UserChecklistItem.objects.create(
+                        screensaver_user_id = int(_dict['suid']),
+                        admin_user_id = int(_dict['admin_suid']),
+                        item_group = ci_group_map[_dict['cigroup']],
+                        item_name = ci_name_map[_dict['ciname']],
+                        status = _dict['status'],
+                        status_date = _dict['date_performed'])
+                    uci.save()
+                    _dict['obj'] = uci
+                    
+                    logger.info('created: %r, %s' % (uci, _dict))
+                    i += 1
+
+                date_time = pytz.utc.localize(_dict['date_created'])                
+                if date_time.date() != _dict['date_performed']:
+                    # only use the less accurate date_performed date if that date
+                    # is not equal to the date_created date
+                    date_time = pytz.utc.localize(
+                        datetime.datetime.combine(_dict['date_performed'],
+                            datetime.datetime.min.time()))
+                # create the apilog for this item
+                log = ApiLog()
+                log.ref_resource_name = log_ref_resource_name
+                log.key = '/'.join([_dict['su_username'],uci.item_group,uci.item_name])
+                log.username = _dict['admin_username']
+                log.user_id = _dict['admin_upid']
+                log.date_time = date_time
+                log.api_action = 'PATCH'
+                log.uri = '/'.join([log.ref_resource_name,log.key])
+                log.comment = 'status=%s' % _dict['status']
+                
+                # is the key (date_time, actually) unique?
+                full_key = '/'.join([log.ref_resource_name,log.key,str(log.date_time)])
+                while full_key in unique_log_keys:
+                    # add a second to make it unique; because date performed is a date,
+                    # there are collisions
+                    log.date_time = log.date_time  + timedelta(0,1)
+                    full_key = '/'.join([log.ref_resource_name,log.key,str(log.date_time)])
+                    
+                unique_log_keys.add(full_key)
+                if previous_dict:
+                    diff_keys = ['status']
+                    diffs = {}
+                    logger.info(str(('found previous_dict', previous_dict)))
+                    diff_keys.append('admin_username')
+                    diffs['admin_username'] = [previous_dict['admin_username'], _dict['admin_username']]
+                    
+                    diff_keys.append('status_date')
+                    diffs['status_date'] = [
+                        previous_dict['date_performed'].isoformat(), 
+                        _dict['date_performed'].isoformat()]
+                    
+                    diffs['status'] = [previous_dict['status'],_dict['status']]
+                
+                    log.diff_keys = json.dumps(diff_keys)
+                    log.diffs = json.dumps(diffs)
+     
+                logger.debug(str(('create log', log)))
+                
+                log.save()
+                log = None
+                if i%100 == 0:
+                    logger.info(str(('created', i, 'logs')))
+        except Exception, e:
+            logger.exception('migration exc')
+            raise e  
+
+        print 'created %d user_checklist_items' % i
+        
+
+
         
     def backwards(self, orm):
         "Write your backwards methods here."

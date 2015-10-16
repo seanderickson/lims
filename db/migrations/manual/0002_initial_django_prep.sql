@@ -260,8 +260,8 @@ UPDATE attached_file SET contents = loread(lo_open(file_contents, 262144), 10000
  *** TODO: pg_largeobject is owned by user "postgres" on orchestra and cannot 
  *** be deleted.
 DELETE FROM pg_largeobject USING attached_file WHERE loid=file_contents;
-**/
 ALTER TABLE attached_file DROP COLUMN file_contents;
+**/
 
 
 

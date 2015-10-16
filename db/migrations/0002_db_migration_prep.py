@@ -1,10 +1,18 @@
 # -*- coding: utf-8 -*-
+import csv
 import datetime
+import logging
+import os
+
+from django.db import models
 from south.db import db
 from south.v2 import SchemaMigration
-from django.db import models
 
-import logging
+from db.support.data_converter import default_converter
+from lims.base_settings import PROJECT_ROOT
+from reports.models import Vocabularies
+import lims
+
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +25,9 @@ class Migration(SchemaMigration):
     '''
 
     def forwards(self, orm):
+        self.main(orm)
         
+    def main(self,orm):    
         # Adding model 'Substance'
         db.create_table(u'db_substance', (
             (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
@@ -97,9 +107,6 @@ class Migration(SchemaMigration):
         #                   table='reagent', column='facility_batch_id'))
 
         db.delete_column(u'small_molecule_reagent', 'salt_form_id')
-        #         db.execute(
-        #             ( "ALTER TABLE {table} DROP COLUMN {column} ").format(
-        #                   table='small_molecule_reagent', column='salt_form_id'))
 
         db.alter_column(u'well', 'version', 
             self.gf('django.db.models.fields.IntegerField')(null=True))
@@ -307,19 +314,6 @@ class Migration(SchemaMigration):
                       self.gf('django.db.models.fields.IntegerField')(null=True, blank=True),
                       keep_default=False)
         
-#         kwargs = {
-#             'table': 'plate',
-#             'column': 'well_volume'
-#             }
-#         db.execute("ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}".\
-#                 format(**kwargs))
-#         db.execute("ALTER TABLE {table} ADD COLUMN {column} double precision".\
-#                 format(**kwargs))
-#         db.execute("update {table} set {column} = tmp_{column}".\
-#                 format(**kwargs))
-#         db.execute("ALTER TABLE {table} DROP COLUMN tmp_{column} ".\
-#                 format(**kwargs))
-
         # cherry pick assay plate status: replaces cherrypickliquidtransfer activity
         # note: needs "parent" activity on cherry pick to batch activities together
         db.add_column(u'cherry_pick_assay_plate', 'status',
@@ -368,8 +362,7 @@ class Migration(SchemaMigration):
             ('status_date', self.gf('django.db.models.fields.DateField')()),
         ))
         db.send_create_signal(u'db', ['UserChecklistItem'])
-
-    
+        
     def _update_table_autofield(self, table, column):
         
         ###
@@ -478,8 +471,7 @@ class Migration(SchemaMigration):
             ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
                   table=sub_table, column=fk_column))
 
-
-
+    
     def backwards(self, orm):
 
         raise RuntimeError("Cannot reverse the Screensaver initial migrations: "

@@ -21,6 +21,8 @@ class Migration(DataMigration):
         reports_vocabularies table.  (Referencing by scope, key).
         Note: some conversions are also being done in SQL (manual scripts)
         '''
+        # NOTE: migration 0003 shows a newer way of generating the vocabs
+        # - this is ok for these
         
         library_vocabs = ['library_type', 'solvent', 'screen_type', 'screening_status']
         
@@ -39,7 +41,7 @@ class Migration(DataMigration):
         logger.info(str(('converted vocabs on', count, 'libraries')))
         
         
-        screen_vocabs = ['screen_type', 'project_phase', 'species' ] 
+        screen_vocabs = ['screen_type', 'project_phase' ] 
         # Note: data_sharing_levels: using int values instead of names
         
         count = 0
@@ -56,11 +58,6 @@ class Migration(DataMigration):
         
         logger.info(str(('converted vocabs on', count, 'screens')))
         
-#             
-#     def default_converter(self, original_text):
-#         temp = re.sub(r'[\W]+', ' ', original_text)
-#         return '_'.join(temp.lower().split())
-
     def backwards(self, orm):
         "Write your backwards methods here."
 

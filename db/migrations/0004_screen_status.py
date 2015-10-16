@@ -30,6 +30,8 @@ class Migration(DataMigration):
     def forwards(self, orm):
         
         # first, clean up the vocabulary used in the status_item table
+        # NOTE: migration 0003 shows a newer way of generating the vocabs
+        # - this is ok for these
         
         for obj in orm.ScreenStatusItem.objects.all():
             attr = 'status'

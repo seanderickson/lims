@@ -1,23 +1,150 @@
 # -*- coding: utf-8 -*-
-from south.utils import datetime_utils as datetime
-from south.db import db
-from south.v2 import DataMigration
-from django.db import models
-import os
 import csv
-import lims
+import datetime
 import logging
+import os
+
+from django.db import models
+from south.db import db
+from south.v2 import SchemaMigration
+
 from db.support.data_converter import default_converter
+from lims.base_settings import PROJECT_ROOT
 from reports.models import Vocabularies
+import lims
+
 
 logger = logging.getLogger(__name__)
 
 
-class Migration(DataMigration):
+class Migration(SchemaMigration):
+    ''' 
+    Perform all the second set of  db schema migrations needed for screensaver 2
+    '''
 
     def forwards(self, orm):
+        self.main(orm)
+        
+    def main(self,orm):    
+        
+        self.create_vocabularies(orm)
+        
+        # clear out old AttachedFile fields: version, attached_file_type_id
+        # prerequisite: create and assign the type field on attached_file 
+        # (migration 0002)
+        db.delete_column(u'attached_file', 'version')
+        db.delete_column(u'attached_file', 'attached_file_type_id')
+        db.delete_table(u'attached_file_type')
+        logger.info('done')
 
-        # Adding field 'AttachedFile.type'
+    def create_vocabularies(self,orm):
+        
+        self.create_attached_file_type_vocab(orm)
+        self.create_checklist_vocabularies(orm)
+        self.create_screen_vocabularies(orm)
+    
+    def create_screen_vocabularies(self, orm):
+        # simple vocab cases: update without linked tables
+        
+        vocab_file = os.path.join(
+            lims.settings.PROJECT_ROOT, '..',
+            'db','static','api_init','vocabularies_screen_data.csv')
+
+        logger.info('write vocabularies to %s' % vocab_file)
+        resource_uri = '/reports/api/v1/vocabularies/%s/%s/'
+        
+        with open(vocab_file,'w') as _file:
+            vocab_writer = csv.writer(_file)
+            header = ['resource_uri','key','scope','ordinal','title'] 
+            vocab_writer.writerow(header)
+            
+            attr = 'species'
+            scope = 'screen.%s' % attr
+            vocabs = []
+            query = orm.Screen.objects.all()
+            for ordinal,attr_value in (enumerate( 
+                query.values_list(attr, flat=True)
+                    .distinct(attr).order_by(attr)) ):
+                if not attr_value: continue
+                key = default_converter(attr_value)
+                title = attr_value
+                _resource_uri = resource_uri % (scope,key)
+                vocabs.append([_resource_uri,key,scope,ordinal,title])
+            for row in vocabs:
+                title = row[4]
+                key = row[1]
+                query.filter(**{ '%s__exact' %attr: title }).update(**{ attr: key })
+                vocab_writer.writerow(row)
+                logger.info('updated vocab: %r' % row)
+
+            attr = 'assay_type'
+            scope = 'screen.%s' % attr
+            vocabs = []
+            query = orm.Screen.objects.all()
+            for ordinal,attr_value in (enumerate( 
+                query.values_list(attr, flat=True)
+                    .distinct(attr).order_by(attr)) ):
+                if not attr_value: continue
+                key = default_converter(attr_value)
+                title = attr_value
+                _resource_uri = resource_uri % (scope,key)
+                vocabs.append([_resource_uri,key,scope,ordinal,title])
+            for row in vocabs:
+                title = row[4]
+                key = row[1]
+                query.filter(**{ '%s__exact' %attr: title }).update(**{ attr: key })
+                vocab_writer.writerow(row)
+                logger.info('updated vocab: %r' % row)
+
+            attr = 'assay_readout_type'
+            scope = 'datacolumn.%s' % attr
+            vocabs = []
+            query = orm.DataColumn.objects.all()
+            for ordinal,attr_value in (enumerate( 
+                query.values_list(attr, flat=True)
+                    .distinct(attr).order_by(attr)) ):
+                if not attr_value: continue
+                key = default_converter(attr_value)
+                title = attr_value
+                _resource_uri = resource_uri % (scope,key)
+                vocabs.append([_resource_uri,key,scope,ordinal,title])
+            for row in vocabs:
+                title = row[4]
+                key = row[1]
+                query.filter(**{ '%s__exact' %attr: title }).update(**{ attr: key })
+                vocab_writer.writerow(row)
+                logger.info('updated vocab: %r' % row)
+            
+            attr = 'value'
+            scope = 'screen.funding_support'
+            vocabs = []
+            query = orm.FundingSupport.objects.all()
+            for ordinal,attr_value in (enumerate( 
+                query.values_list(attr, flat=True)
+                    .distinct(attr).order_by(attr)) ):
+                if not attr_value: continue
+                key = default_converter(attr_value)
+                title = attr_value
+                _resource_uri = resource_uri % (scope,key)
+                vocabs.append([_resource_uri,key,scope,ordinal,title])
+            for row in vocabs:
+                title = row[4]
+                key = row[1]
+                query.filter(**{ '%s__exact' %attr: title }).update(**{ attr: key })
+                vocab_writer.writerow(row)
+                logger.info('updated vocab: %r' % row)
+            
+        api_init_actions_file = os.path.join(
+            lims.settings.PROJECT_ROOT, '..',
+            'db','static','api_init','api_init_actions.csv')
+        logger.info('write %s entry to %s' % (vocab_file,api_init_actions_file))
+        with open(api_init_actions_file,'a') as _file:
+            writer = csv.writer(_file)
+            writer.writerow(['patch','vocabularies',os.path.basename(vocab_file)])
+        
+    def create_attached_file_type_vocab(self,orm):
+        
+        # add field 'AttachedFile.type'
         db.add_column(u'attached_file', 'type',
                       self.gf('django.db.models.fields.TextField')(null=True),
                       keep_default=False)
@@ -32,44 +159,299 @@ class Migration(DataMigration):
             header = ['resource_uri','key','scope','ordinal','title'] 
             vocab_writer.writerow(header)
 
-            ci_group_map = {}
             scope = 'attachedfiletype.%s'
             for i,obj in enumerate(orm.AttachedFileType.objects.all().order_by('value')):
                 key = default_converter(obj.value)
-                v = Vocabularies.objects.create(
-                    scope=scope % obj.for_entity_type,
-                    key=key,
-                    title=obj.value,
-                    ordinal=i
-                    )
-                v.save()
-                vocab_writer.writerow([
-                    resource_uri % (v.scope,v.key),
-                    v.key,v.scope,v.ordinal,v.title])
-                logger.info(str(('created', v)))
+                # don't create the vocabularies: add this file to the 
+                # api_init_actions file for later
+                # v = Vocabularies.objects.create(
+                #     scope=scope % obj.for_entity_type,
+                #     key=key,
+                #     title=obj.value,
+                #     ordinal=i
+                #     )
+                # v.save()
+                scope = obj.for_entry_type
+                title = obj.value
+                ordinal = i
+                row = [resource_uri % (scope,key),key,scope,ordinal,title] 
+                vocab_writer.writerow(row)
+                logger.info(str(('created', row)))
                 
                 orm.AttachedFile.objects.filter(attached_file_type=obj).update(type=key)
 
-        # Changing field 'AttachedFile.type' to non-null
+        # Change field 'AttachedFile.type' to non-null
         db.alter_column(u'attached_file', 'type', 
             self.gf('django.db.models.fields.TextField')(default=''))
-        # Deleting field 'AttachedFile.version'
-        db.delete_column(u'attached_file', 'version')
-        # Deleting field 'AttachedFile.attached_file_type'
-        db.delete_column(u'attached_file', 'attached_file_type_id')
-                
-        # Deleting model 'AttachedFileType'
-        db.delete_table(u'attached_file_type')
 
-        # FIXME: clean up pg_largeobjects
-        db.delete_column(u'attached_file', 'file_contents')
+        api_init_actions_file = os.path.join(
+            lims.settings.PROJECT_ROOT, '..',
+            'db','static','api_init','api_init_actions.csv')
+        logger.info('write %s entry to %s' % (vocab_file,api_init_actions_file))
+        with open(api_init_actions_file,'a') as _file:
+            writer = csv.writer(_file)
+            writer.writerow(['patch','vocabularies',os.path.basename(vocab_file)])
 
         logger.info('done')
 
 
+    def create_checklist_vocabularies(self,orm):
+        # create a separate vocab file: checklist_item_vocab, add to api_init.csv
+        # output vocabs into a vocabulary patch file
+        vocab_file = os.path.join(
+            PROJECT_ROOT, '..',
+            'db','static','api_init','vocabularies_checklists_data.csv')
+        logger.info('write vocabularies to %s' % vocab_file)
+        resource_uri = '/reports/api/v1/vocabularies/%s/%s/'
+        with open(vocab_file,'w') as _file:
+            vocab_writer = csv.writer(_file)
+            header = ['resource_uri','key','scope','ordinal','title'] 
+            vocab_writer.writerow(header)
+
+            ci_group_map = {}
+            scope = 'checklistitem.group'
+            default_order = ['mailing', 'forms', 'non-harvard', 'imaging','legacy']
+            for obj in orm.ChecklistItem.objects.all().distinct('checklist_item_group'):
+                key = default_converter(obj.checklist_item_group)
+                ordinal = 0
+                for i,x in enumerate(default_order):
+                    if x in obj.checklist_item_group.lower():
+                        ordinal=i 
+                        break
+                    
+                # don't create the vocabularies: add this file to the 
+                # api_init_actions file for later
+                # v = Vocabularies.objects.create(
+                #     scope=scope,
+                #     key=key,
+                #     title=obj.checklist_item_group,
+                #     ordinal=ordinal
+                #     )
+                # v.save()
+                title = obj.checklist_item_group
+                row = [resource_uri % (scope,key),key,scope,ordinal,v.title]
+                vocab_writer.writerow(row)
+                ci_group_map[obj.checklist_item_group] = key 
+                logger.info(str(('created', row)))
+    
+            _scope = 'checklistitem.%s.name'
+            ci_name_map = {}
+            for obj in orm.ChecklistItem.objects.all().distinct('item_name'):
+                key = default_converter(obj.item_name)
+                scope = _scope % default_converter(obj.checklist_item_group)
+                
+                # don't create the vocabularies: add this file to the 
+                # api_init_actions file for later
+                # v = Vocabularies.objects.create(
+                #     scope=_scope,
+                #     key=key,
+                #     title=obj.item_name,
+                #     ordinal=obj.order_statistic )
+                # v.save()
+                title = obj.item_name
+                ordinal = obj.order_statistic
+                row = [resource_uri % (scope,key),key,scope,ordinal,v.title]
+                vocab_writer.writerow(row)
+                ci_name_map[obj.item_name] = key
+                logger.info(str(('created', row)))
+                
+            scope = 'checklistitem.status'
+            status_values = [
+                {
+                    'key': 'not_completed',
+                    'title': 'Not Completed',
+                    'ordinal': 0
+                },
+                {
+                    'key': 'activated',
+                    'title': 'Activated',
+                    'ordinal': 1
+                },
+                {
+                    'key': 'deactivated',
+                    'title': 'Deactivated',
+                    'ordinal': 2
+                },
+                {
+                    'key': 'na',
+                    'title': 'N/A',
+                    'ordinal': 3
+                },
+                {
+                    'key': 'completed',
+                    'title': 'Completed',
+                    'ordinal': 4
+                },
+            ]
+            
+            for _dict in status_values:
+                _dict['scope']=scope
+                # don't create the vocabularies: add this file to the 
+                # api_init_actions file for later
+                # v = Vocabularies(**_dict)
+                # v.save()
+                row = [resource_uri % (_dict[scope],
+                    _dict[key]),_dict[key],_dict[scope],_dict[ordinal],_dict[title]]
+                vocab_writer.writerow(row)
+                logger.info(str(('created', row)))
+
+            self.create_user_checklist_items(orm, ci_group_map, ci_name_map)
+        
+        api_init_actions_file = os.path.join(
+            lims.settings.PROJECT_ROOT, '..',
+            'db','static','api_init','api_init_actions.csv')
+        logger.info('write %s entry to %s' % (vocab_file,api_init_actions_file))
+        with open(api_init_actions_file,'a') as _file:
+            writer = csv.writer(_file)
+            writer.writerow(['patch','vocabularies',os.path.basename(vocab_file)])
+    
+        logger.info('vocabulary creation done')
+
+    
+    def create_user_checklist_items(self,orm, ci_group_map, ci_name_map):
+        
+        # prerequisites: 
+        # - convert checklist_item / checklist_item_event entries into into 
+        # checklistitem.* vocabularies (migration 0002)
+        # - create the user_checklist_item table (0002)
+
+        # create entries in the user_checklist_item table
+        # note: status values are hard-coded to correspond to the vocabulary
+        # keys (created in migration 0002)
+        sql_keys = [
+            'suid','cigroup','ciname',
+            'su_username','admin_username','admin_suid','admin_upid',
+            'date_performed', 'date_created','status',
+            ]
+        sql = '''
+select
+screening_room_user_id,
+ci.checklist_item_group,
+ci.item_name,
+su.username su_username,
+admin.username admin_username,
+admin.screensaver_user_id admin_suid,
+up.id admin_upid,
+cie.date_performed,
+cie.date_created,
+case when cie.is_not_applicable then 'n_a'
+     when ci.is_expirable and cie.date_performed is not null then
+    case when cie.is_expiration then 'deactivated' else 'activated' end
+     when cie.date_performed is not null then 'completed'     
+     else 'not_completed'
+     end as status
+from checklist_item ci
+join checklist_item_event cie using(checklist_item_id)
+join screensaver_user su on screening_room_user_id=su.screensaver_user_id
+join screensaver_user admin on cie.created_by_id=admin.screensaver_user_id
+left join reports_userprofile up on up.id=admin.user_id
+order by screening_room_user_id, checklist_item_group, item_name, cie.date_performed asc;
+'''
+
+        bridge = Bridge()
+        conn = bridge.get_engine().connect()
+
+        log_ref_resource_name = 'userchecklistitem'
+        
+        _dict = None
+        log = None
+        
+        uci_hash = {}
+        unique_log_keys = set()
+        try:
+            _list = db.execute(sql)
+            i = 0
+            for row in _list:
+                _dict = dict(zip(sql_keys,row))
+                
+                key = '/'.join([str(_dict['suid']),_dict['cigroup'],_dict['ciname']])
+                previous_dict = uci_hash.get(key)
+                logger.info('prev_dict: %s:%s' % (key,previous_dict))
+                if previous_dict:
+                    uci = previous_dict['obj']
+                    uci.admin_user_id = int(_dict['admin_suid'])
+                    uci.status = _dict['status']
+                    uci.status_date = _dict['date_performed']
+                    uci.save()
+                    logger.info('updated: %r' % uci)
+                    
+                else:
+                    uci_hash[key] = _dict
+                    logger.debug(str(('create user checklist item', _dict, 
+                        _dict['date_performed'].isoformat())))
+                    uci = orm.UserChecklistItem.objects.create(
+                        screensaver_user_id = int(_dict['suid']),
+                        admin_user_id = int(_dict['admin_suid']),
+                        item_group = ci_group_map[_dict['cigroup']],
+                        item_name = ci_name_map[_dict['ciname']],
+                        status = _dict['status'],
+                        status_date = _dict['date_performed'])
+                    uci.save()
+                    _dict['obj'] = uci
+                    
+                    logger.info('created: %r, %s' % (uci, _dict))
+                    i += 1
+
+                date_time = pytz.utc.localize(_dict['date_created'])                
+                if date_time.date() != _dict['date_performed']:
+                    # only use the less accurate date_performed date if that date
+                    # is not equal to the date_created date
+                    date_time = pytz.utc.localize(
+                        datetime.combine(_dict['date_performed'],datetime.min.time()))
+                # create the apilog for this item
+                log = ApiLog()
+                log.ref_resource_name = log_ref_resource_name
+                log.key = '/'.join([_dict['su_username'],uci.item_group,uci.item_name])
+                log.username = _dict['admin_username']
+                log.user_id = _dict['admin_upid']
+                log.date_time = date_time
+                log.api_action = 'PATCH'
+                log.uri = '/'.join([log.ref_resource_name,log.key])
+                log.comment = 'status=%s' % _dict['status']
+                
+                # is the key (date_time, actually) unique?
+                full_key = '/'.join([log.ref_resource_name,log.key,str(log.date_time)])
+                while full_key in unique_log_keys:
+                    # add a second to make it unique; because date performed is a date,
+                    # there are collisions
+                    log.date_time = log.date_time  + timedelta(0,1)
+                    full_key = '/'.join([log.ref_resource_name,log.key,str(log.date_time)])
+                    
+                unique_log_keys.add(full_key)
+                if previous_dict:
+                    diff_keys = ['status']
+                    diffs = {}
+                    logger.info(str(('found previous_dict', previous_dict)))
+                    diff_keys.append('admin_username')
+                    diffs['admin_username'] = [previous_dict['admin_username'], _dict['admin_username']]
+                    
+                    diff_keys.append('status_date')
+                    diffs['status_date'] = [
+                        previous_dict['date_performed'].isoformat(), 
+                        _dict['date_performed'].isoformat()]
+                    
+                    diffs['status'] = [previous_dict['status'],_dict['status']]
+                
+                    log.diff_keys = json.dumps(diff_keys)
+                    log.diffs = json.dumps(diffs)
+     
+                logger.debug(str(('create log', log)))
+                
+                log.save()
+                log = None
+                if i%100 == 0:
+                    logger.info(str(('created', i, 'logs')))
+        except Exception, e:
+            logger.error('migration exc', exc_info=sys.exc_info())
+            raise e  
+
+        print 'created %d user_checklist_items' % i
+        
+
     def backwards(self, orm):
-        # User chose to not deal with backwards NULL issues for 'AttachedFile.version'
-        raise RuntimeError("Cannot reverse this migration.")
+
+        raise RuntimeError("Cannot reverse the Screensaver initial migrations: "
+            "re-import the database to restore")
 
     models = {
         u'auth.group': {
@@ -192,14 +574,13 @@ class Migration(DataMigration):
             'date_created': ('django.db.models.fields.DateTimeField', [], {}),
             'date_loaded': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
             'date_publicly_available': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
-#             'file_contents': ('django.db.models.fields.TextField', [], {}),
-            'contents': ('django.db.models.fields.BinaryField', [], {'null': 'False'}),
+            'file_contents': ('django.db.models.fields.TextField', [], {}),
             'file_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'filename': ('django.db.models.fields.TextField', [], {}),
             'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Reagent']", 'null': 'True', 'blank': 'True'}),
             'screen': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Screen']", 'null': 'True', 'blank': 'True'}),
             'screensaver_user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreeningRoomUser']", 'null': 'True', 'blank': 'True'}),
-            'type': ('django.db.models.fields.TextField', [], {})
+            'version': ('django.db.models.fields.IntegerField', [], {})
         },
         u'db.attachedfiletype': {
             'Meta': {'object_name': 'AttachedFileType', 'db_table': "u'attached_file_type'"},
@@ -599,7 +980,7 @@ class Migration(DataMigration):
             'Meta': {'object_name': 'Reagent', 'db_table': "u'reagent'"},
             'library_contents_version': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.LibraryContentsVersion']", 'null': 'True'}),
             'reagent_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UWPRH2ZE'", 'unique': 'True', 'max_length': '8'}),
+            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UWPRH326'", 'unique': 'True', 'max_length': '8'}),
             'vendor_batch_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_identifier': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_name': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -908,7 +1289,7 @@ class Migration(DataMigration):
             'version': ('django.db.models.fields.IntegerField', [], {})
         },
         u'db.userchecklistitem': {
-            'Meta': {'unique_together': "((u'screensaver_user', u'item_group', u'item_name'),)", 'object_name': 'UserChecklistItem', 'db_table': "u'user_checklist_item'"},
+            'Meta': {'object_name': 'UserChecklistItem', 'db_table': "u'user_checklist_item'"},
             'admin_user': ('django.db.models.fields.related.ForeignKey', [], {'related_name': "u'userchecklistitems_created'", 'to': u"orm['db.ScreensaverUser']"}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'item_group': ('django.db.models.fields.TextField', [], {}),
@@ -956,24 +1337,24 @@ class Migration(DataMigration):
         },
         u'reports.userprofile': {
             'Meta': {'object_name': 'UserProfile'},
-            'comments': ('django.db.models.fields.TextField', [], {'null': 'True'}),
+            'comments': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
             'created_by_username': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'ecommons_id': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'email': ('django.db.models.fields.TextField', [], {'null': 'True'}),
+            'ecommons_id': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
+            'email': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
             'gender': ('django.db.models.fields.CharField', [], {'max_length': '15', 'null': 'True'}),
-            'harvard_id': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'harvard_id_expiration_date': ('django.db.models.fields.DateField', [], {'null': 'True'}),
-            'harvard_id_requested_expiration_date': ('django.db.models.fields.DateField', [], {'null': 'True'}),
+            'harvard_id': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
+            'harvard_id_expiration_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
+            'harvard_id_requested_expiration_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'json_field': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'json_field_type': ('django.db.models.fields.CharField', [], {'max_length': '128', 'null': 'True'}),
-            'mailing_address': ('django.db.models.fields.TextField', [], {'null': 'True'}),
+            'json_field': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
+            'json_field_type': ('django.db.models.fields.CharField', [], {'max_length': '128', 'null': 'True', 'blank': 'True'}),
+            'mailing_address': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
             'permissions': ('django.db.models.fields.related.ManyToManyField', [], {'to': u"orm['reports.Permission']", 'symmetrical': 'False'}),
-            'phone': ('django.db.models.fields.TextField', [], {'null': 'True'}),
+            'phone': ('django.db.models.fields.TextField', [], {'null': 'True', 'blank': 'True'}),
             'user': ('django.db.models.fields.related.OneToOneField', [], {'to': u"orm['auth.User']", 'unique': 'True', 'null': 'True', 'on_delete': 'models.SET_NULL'}),
             'username': ('django.db.models.fields.TextField', [], {'unique': 'True'})
         }
     }
 
-    complete_apps = ['db']
-    symmetrical = True
+    complete_apps = ['db','reports']
+    

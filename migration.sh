@@ -109,21 +109,23 @@ function gitpull {
 }
 
 function restoredb {
-  echo "restoredb: $(ts) ..." >> "$LOGFILE"
+  echo "restoredb: DB_LOAD_SCHEMA_ONLY:$DB_LOAD_SCHEMA_ONLY  $(ts) ..." >> "$LOGFILE"
 
   # drop DB if exists
   if [[ -x "$DROP_DB_COMMAND" ]]; then
+    echo "execute DROP_DB_COMMAND: $DROP_DB_COMMAND at $(ts) ..." >> "$LOGFILE"
     $DROP_DB_COMMAND $DB $DBUSER >>"$LOGFILE" 2>&1 || error "dropdb failed: $?"
   else
     # test if the db exists
     psql -h $DBHOST -U $DBUSER -lqt | cut -d \| -f 1 | grep -w $DB
-#    if [[ $? ]]; then
     if [[ "$?" -eq 0 ]]; then
+      echo "execute dropdb $(ts) ..." >> "$LOGFILE"
       dropdb -U $DBUSER $DB -h $DBHOST >>"$LOGFILE" 2>&1 || error "dropdb failed: $?"
     fi
   fi
   
   if [[ $CREATE_DB -ne 0 ]]; then
+    echo "execute createdb $(ts) ..." >> "$LOGFILE"
     createdb -U $DBUSER $DB -h $DBHOST --encoding=UTF8 >>"$LOGFILE" 2>&1 || error "createdb fails with status $?" 
   fi
   
@@ -133,10 +135,12 @@ function restoredb {
   # NOTE: restore generates some errors - manual verification is required.
 
   if [[ $DB_LOAD_SCHEMA_ONLY -eq 0 ]]; then
+    echo "execute pg_restore: ${D}/screensaver*${filespec}.excl_big_data.pg_dump - $(ts) ..." >> "$LOGFILE"
     pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
      `ls -1 ${D}/screensaver*${filespec}.excl_big_data.pg_dump` >>"$LOGFILE" 2>&1 
   else
     # For quick testing
+    echo "execute pg_restore: ${D}/screensaver*${filespec}.schema_only.pg_dump - $(ts) ..." >> "$LOGFILE"
     pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
       `ls -1 ${D}/screensaver*${filespec}.schema_only.pg_dump` >>"$LOGFILE" 2>&1 
   fi
@@ -146,24 +150,27 @@ function restoredb {
 }
 
 function restoredb_data {
-  echo "restoredb_data: $(ts) ..." >> "$LOGFILE"
+  echo "restoredb_data: DB_LOAD_SCHEMA_ONLY: $DB_LOAD_SCHEMA_ONLY $(ts) ..." >> "$LOGFILE"
+  echo "restoredb_data: DB_SKIP_BIG_FILES: $DB_SKIP_BIG_FILES $(ts) ..." >> "$LOGFILE"
 
   D=${PG_RESTORE_DIR:-.}
   filespec=${PG_RESTORE_FILESPEC:-''}
 
+  echo "'pg_restore' ${D}/screensaver*${filespec}.attached_file_schema.pg_dump $(ts) ..." >> "$LOGFILE"
   pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
     `ls -1 ${D}/screensaver*${filespec}.attached_file_schema.pg_dump`  >>"$LOGFILE" 2>&1 
+  echo "'pg_restore' ${D}/screensaver*${filespec}.result_data_schema.pg_dump ..." >> "$LOGFILE"
   pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
     `ls -1 ${D}/screensaver*${filespec}.result_data_schema.pg_dump`  >>"$LOGFILE" 2>&1 
 
   if [[ ( $DB_LOAD_SCHEMA_ONLY -eq 0 && $DB_SKIP_BIG_FILES -eq 0 ) ]]; then
     echo "+++ LOADING attached file and result data ... "
-    echo "+++ LOADING attached file data ... " >> "$LOGFILE"
+    echo "+++ LOADING attached file data: ${D}/screensaver*${filespec}.attached_file.pg_dump " >> "$LOGFILE"
 
     pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
       `ls -1 ${D}/screensaver*${filespec}.attached_file.pg_dump`  >>"$LOGFILE" 2>&1 
 
-    echo "+++ LOADING result data ... " >> "$LOGFILE"
+    echo "+++ LOADING result data: ${D}/screensaver*${filespec}.result_data.pg_dump " >> "$LOGFILE"
     pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
       `ls -1 ${D}/screensaver*${filespec}.result_data.pg_dump`  >>"$LOGFILE" 2>&1 
   fi
@@ -233,6 +240,11 @@ function premigratedb {
       >>"$LOGFILE" 2>&1 || error "manual script 0002 failed: $?"
   fi
   
+  migration='0003'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+  fi
+    
   echo "pre migrations completed: $(ts) " >> "$LOGFILE"
  
 }
@@ -284,30 +296,10 @@ function migratedb {
       $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
       echo "migration $migration complete: $(ts)" >> "$LOGFILE"
     fi
-    migration='0017'
-    if [[ ! $completed_migrations =~ $migration ]]; then
-      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
-      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-    fi
     migration='0018'
     if [[ ! $completed_migrations =~ $migration ]]; then
       echo "migration $migration: $(ts) ..." >> "$LOGFILE"
       $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-    fi
-    migration='0019'
-    if [[ ! $completed_migrations =~ $migration ]]; then
-      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
-      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-    fi
-    migration='0020'
-    if [[ ! $completed_migrations =~ $migration ]]; then
-      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
-      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-      psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
-          -f ./db/migrations/manual/0020_change_attachedfile_to_bytea.sql >>"$LOGFILE" 2>&1 || error "manual script 0016 failed: $?"
       echo "migration $migration complete: $(ts)" >> "$LOGFILE"
     fi
     

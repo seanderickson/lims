@@ -236,8 +236,9 @@ alter table screen alter column date_publicly_available SET DATA TYPE timestamp 
 alter table screensaver_user alter column date_created SET DATA TYPE timestamp with time zone;
 alter table screensaver_user alter column date_loaded SET DATA TYPE timestamp with time zone; 
 alter table screensaver_user alter column date_publicly_available SET DATA TYPE timestamp with time zone;
+
 /**
-  *** Add id field to screensaver_user_role ***
+  Add id field to screensaver_user_role:
   Purpose: add an id to capture the natural ordering of the screensaver_user_role table; 
   because the table has no ID, Django ORM doesn't know what to do with it -
   and the South migration cannot do it either.
@@ -246,6 +247,17 @@ alter table screensaver_user alter column date_publicly_available SET DATA TYPE 
 alter table screensaver_user_role add column id integer;
 create sequence screensaver_user_role_sequence;
 update screensaver_user_role set id=nextval('screensaver_user_role_sequence');
+
+
+/** convert attached_file file_contents into a "contents" field of type bytea **/
+
+ALTER TABLE attached_file ADD COLUMN contents bytea;
+
+UPDATE attached_file SET contents = loread(lo_open(file_contents, 262144), 1000000) 
+  WHERE attached_file.file_contents IS NOT NULL;
+  
+DELETE FROM pg_largeobject USING attached_file WHERE loid=file_contents;
+ALTER TABLE attached_file DROP COLUMN file_contents;
 
 
 

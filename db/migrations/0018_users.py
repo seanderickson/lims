@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+
 from django.conf import settings
 from django.contrib.auth.models import User, UserManager
 from django.db import models
@@ -7,9 +8,17 @@ from django.utils.timezone import utc, make_aware
 from south.db import db
 from south.utils import datetime_utils as datetime
 from south.v2 import DataMigration
+import os
+import sys
+import pytz
+
 
 from reports.models import UserProfile, UserGroup, Permission, ApiLog
 from db.support.data_converter import default_converter
+from lims.base_settings import PROJECT_ROOT
+from reports.models import Vocabularies, ApiLog
+from reports.utils.sqlalchemy_bridge import Bridge
+import lims
 
 import logging
 

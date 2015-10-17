@@ -3,8 +3,6 @@ import csv
 import datetime
 import logging
 import os
-import sys
-import pytz
 
 from django.db import models
 from south.db import db

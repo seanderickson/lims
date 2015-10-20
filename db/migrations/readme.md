@@ -11,7 +11,8 @@ mv db/migrations db/migrations.bak # to save the migrations
 
 0001 - initial
 
-- should be faked, as the datbase is already existent 
+- should be faked, if the datbase is already existent, or,
+-- if new project, run only this migration. 
 ./manage.py migrate db 0001 --fake  
 
 

@@ -14,6 +14,8 @@ before_script:
 script: 
   - grunt bowercopy && grunt test
   - cd ../../ && python manage.py syncdb --noinput --settings=lims.travis-settings
-  - python manage.py migrate --all --settings=lims.travis-settings
+  - python manage.py migrate tastypie --settings=lims.travis-settings
+  - python manage.py migrate reports --settings=lims.travis-settings
+  - python manage.py migrate db 0001 --settings=lims.travis-settings
   - python manage.py test --settings=lims.travis-settings --verbosity=2
 

@@ -31,125 +31,85 @@ class Migration(SchemaMigration):
         self.create_vocabularies(orm)
         
         # clear out old AttachedFile fields: version, attached_file_type_id
-        # prerequisite: create and assign the type field on attached_file 
-        # (migration 0002)
         db.delete_column(u'attached_file', 'version')
-        db.delete_column(u'attached_file', 'attached_file_type_id')
-        db.delete_table(u'attached_file_type')
+        
+        # TODO: clean up in final pass/migration
+        # db.delete_table(u'attached_file_type')
+        # db.delete_column(u'attached_file', 'attached_file_type_id')
         logger.info('done')
 
     def create_vocabularies(self,orm):
         
+        self.create_simple_vocabularies(orm)
         self.create_attached_file_type_vocab(orm)
         self.create_checklist_vocabularies(orm)
-        self.create_screen_vocabularies(orm)
     
-    def create_screen_vocabularies(self, orm):
+    def create_vocab(self,orm,vocab_writer,attr,scope,query):
+        resource_uri = '/reports/api/v1/vocabularies/%s/%s/'
+
+        vocabs = []
+        for ordinal,attr_value in (enumerate( 
+            query.values_list(attr, flat=True)
+                .distinct(attr).order_by(attr)) ):
+            if not attr_value: continue
+            key = default_converter(attr_value)
+            title = attr_value
+            _resource_uri = resource_uri % (scope,key)
+            vocabs.append([_resource_uri,key,scope,ordinal,title])
+        for row in vocabs:
+            title = row[4]
+            key = row[1]
+            query.filter(**{ '%s__exact' % attr: title }).update(**{ attr: key })
+            vocab_writer.writerow(row)
+            logger.info('updated vocab: %r' % row)
+    
+    
+    def create_simple_vocabularies(self, orm):
         # simple vocab cases: update without linked tables
         
         vocab_file = os.path.join(
             lims.settings.PROJECT_ROOT, '..',
-            'db','static','api_init','vocabularies_screen_data.csv')
+            'db','static','api_init','vocabularies_data_generated.csv')
 
         logger.info('write vocabularies to %s' % vocab_file)
-        resource_uri = '/reports/api/v1/vocabularies/%s/%s/'
         
         with open(vocab_file,'w') as _file:
             vocab_writer = csv.writer(_file)
             header = ['resource_uri','key','scope','ordinal','title'] 
             vocab_writer.writerow(header)
             
-            attr = 'species'
-            scope = 'screen.%s' % attr
-            vocabs = []
-            query = orm.Screen.objects.all()
-            for ordinal,attr_value in (enumerate( 
-                query.values_list(attr, flat=True)
-                    .distinct(attr).order_by(attr)) ):
-                if not attr_value: continue
-                key = default_converter(attr_value)
-                title = attr_value
-                _resource_uri = resource_uri % (scope,key)
-                vocabs.append([_resource_uri,key,scope,ordinal,title])
-            for row in vocabs:
-                title = row[4]
-                key = row[1]
-                query.filter(**{ '%s__exact' %attr: title }).update(**{ attr: key })
-                vocab_writer.writerow(row)
-                logger.info('updated vocab: %r' % row)
+            input_args = [
+                    ['species', 'screen.species',orm.Screen.objects.all()],
+                    ['assay_type', 'screen.assay_type',orm.Screen.objects.all()],
+                    ['assay_readout_type', 'datacolumn.assay_readout_type',orm.DataColumn.objects.all()],
+                    ['value', 'screen.funding_support',orm.FundingSupport.objects.all()],
+                    ['species', 'screen.species',orm.Screen.objects.all()],
+                    ['species', 'screen.species',orm.Screen.objects.all()],
+                ]            
+            for arg_list in input_args:
+                self.create_vocab(orm, vocab_writer,*arg_list)
 
-            attr = 'assay_type'
-            scope = 'screen.%s' % attr
-            vocabs = []
-            query = orm.Screen.objects.all()
-            for ordinal,attr_value in (enumerate( 
-                query.values_list(attr, flat=True)
-                    .distinct(attr).order_by(attr)) ):
-                if not attr_value: continue
-                key = default_converter(attr_value)
-                title = attr_value
-                _resource_uri = resource_uri % (scope,key)
-                vocabs.append([_resource_uri,key,scope,ordinal,title])
-            for row in vocabs:
-                title = row[4]
-                key = row[1]
-                query.filter(**{ '%s__exact' %attr: title }).update(**{ attr: key })
-                vocab_writer.writerow(row)
-                logger.info('updated vocab: %r' % row)
-
-            attr = 'assay_readout_type'
-            scope = 'datacolumn.%s' % attr
-            vocabs = []
-            query = orm.DataColumn.objects.all()
-            for ordinal,attr_value in (enumerate( 
-                query.values_list(attr, flat=True)
-                    .distinct(attr).order_by(attr)) ):
-                if not attr_value: continue
-                key = default_converter(attr_value)
-                title = attr_value
-                _resource_uri = resource_uri % (scope,key)
-                vocabs.append([_resource_uri,key,scope,ordinal,title])
-            for row in vocabs:
-                title = row[4]
-                key = row[1]
-                query.filter(**{ '%s__exact' %attr: title }).update(**{ attr: key })
-                vocab_writer.writerow(row)
-                logger.info('updated vocab: %r' % row)
-            
-            attr = 'value'
-            scope = 'screen.funding_support'
-            vocabs = []
-            query = orm.FundingSupport.objects.all()
-            for ordinal,attr_value in (enumerate( 
-                query.values_list(attr, flat=True)
-                    .distinct(attr).order_by(attr)) ):
-                if not attr_value: continue
-                key = default_converter(attr_value)
-                title = attr_value
-                _resource_uri = resource_uri % (scope,key)
-                vocabs.append([_resource_uri,key,scope,ordinal,title])
-            for row in vocabs:
-                title = row[4]
-                key = row[1]
-                query.filter(**{ '%s__exact' %attr: title }).update(**{ attr: key })
-                vocab_writer.writerow(row)
-                logger.info('updated vocab: %r' % row)
-            
         api_init_actions_file = os.path.join(
             lims.settings.PROJECT_ROOT, '..',
             'db','static','api_init','api_init_actions.csv')
         logger.info('write %s entry to %s' % (vocab_file,api_init_actions_file))
-        with open(api_init_actions_file,'a') as _file:
-            writer = csv.writer(_file)
-            writer.writerow(['patch','vocabularies',os.path.basename(vocab_file)])
+        with open(api_init_actions_file,'a+') as _file:
+            new_row = ['patch','vocabularies',os.path.basename(vocab_file)]
+            reader = csv.reader(_file)
+            found = False
+            for row in reader:
+                if row == new_row:
+                    found = True
+                    break
+            if not found:
+                writer = csv.writer(_file)
+                writer.writerow(row)
+            else:
+                logger.info('api_init entry for row already created: %r' % row)
+            
         
     def create_attached_file_type_vocab(self,orm):
         
-        # add field 'AttachedFile.type'
-        db.add_column(u'attached_file', 'type',
-                      self.gf('django.db.models.fields.TextField')(null=True),
-                      keep_default=False)
-
         vocab_file = os.path.join(
             lims.settings.PROJECT_ROOT, '..',
             'db','static','api_init','vocabularies_attachedfiletype_data.csv')
@@ -160,19 +120,10 @@ class Migration(SchemaMigration):
             header = ['resource_uri','key','scope','ordinal','title'] 
             vocab_writer.writerow(header)
 
-            scope = 'attachedfiletype.%s'
+            _scope = 'attachedfiletype.%s'
             for i,obj in enumerate(orm.AttachedFileType.objects.all().order_by('value')):
                 key = default_converter(obj.value)
-                # don't create the vocabularies: add this file to the 
-                # api_init_actions file for later
-                # v = Vocabularies.objects.create(
-                #     scope=scope % obj.for_entity_type,
-                #     key=key,
-                #     title=obj.value,
-                #     ordinal=i
-                #     )
-                # v.save()
-                scope = obj.for_entity_type
+                scope = _scope % obj.for_entity_type
                 title = obj.value
                 ordinal = i
                 row = [resource_uri % (scope,key),key,scope,ordinal,title] 
@@ -189,9 +140,19 @@ class Migration(SchemaMigration):
             lims.settings.PROJECT_ROOT, '..',
             'db','static','api_init','api_init_actions.csv')
         logger.info('write %s entry to %s' % (vocab_file,api_init_actions_file))
-        with open(api_init_actions_file,'a') as _file:
-            writer = csv.writer(_file)
-            writer.writerow(['patch','vocabularies',os.path.basename(vocab_file)])
+        with open(api_init_actions_file,'a+') as _file:
+            new_row = ['patch','vocabularies',os.path.basename(vocab_file)]
+            reader = csv.reader(_file)
+            found = False
+            for row in reader:
+                if row == new_row:
+                    found = True
+                    break
+            if not found:
+                writer = csv.writer(_file)
+                writer.writerow(row)
+            else:
+                logger.info('api_init entry for row already created: %r' % row)
 
         logger.info('done')
 
@@ -220,15 +181,6 @@ class Migration(SchemaMigration):
                         ordinal=i 
                         break
                     
-                # don't create the vocabularies: add this file to the 
-                # api_init_actions file for later
-                # v = Vocabularies.objects.create(
-                #     scope=scope,
-                #     key=key,
-                #     title=obj.checklist_item_group,
-                #     ordinal=ordinal
-                #     )
-                # v.save()
                 title = obj.checklist_item_group
                 row = [resource_uri % (scope,key),key,scope,ordinal,title]
                 vocab_writer.writerow(row)
@@ -241,14 +193,6 @@ class Migration(SchemaMigration):
                 key = default_converter(obj.item_name)
                 scope = _scope % default_converter(obj.checklist_item_group)
                 
-                # don't create the vocabularies: add this file to the 
-                # api_init_actions file for later
-                # v = Vocabularies.objects.create(
-                #     scope=_scope,
-                #     key=key,
-                #     title=obj.item_name,
-                #     ordinal=obj.order_statistic )
-                # v.save()
                 title = obj.item_name
                 ordinal = obj.order_statistic
                 row = [resource_uri % (scope,key),key,scope,ordinal,title]
@@ -287,10 +231,6 @@ class Migration(SchemaMigration):
             
             for _dict in status_values:
                 _dict['scope']=scope
-                # don't create the vocabularies: add this file to the 
-                # api_init_actions file for later
-                # v = Vocabularies(**_dict)
-                # v.save()
                 row = [resource_uri % (_dict['scope'],_dict['key']),
                     _dict['key'],_dict['scope'],_dict['ordinal'],_dict['title']]
                 vocab_writer.writerow(row)
@@ -301,12 +241,22 @@ class Migration(SchemaMigration):
             lims.settings.PROJECT_ROOT, '..',
             'db','static','api_init','api_init_actions.csv')
         logger.info('write %s entry to %s' % (vocab_file,api_init_actions_file))
-        with open(api_init_actions_file,'a') as _file:
-            writer = csv.writer(_file)
-            writer.writerow(['patch','vocabularies',os.path.basename(vocab_file)])
+        with open(api_init_actions_file,'a+') as _file:
+            new_row = ['patch','vocabularies',os.path.basename(vocab_file)]
+            reader = csv.reader(_file)
+            found = False
+            for row in reader:
+                if row == new_row:
+                    found = True
+                    break
+            if not found:
+                writer = csv.writer(_file)
+                writer.writerow(row)
+            else:
+                logger.info('api_init entry for row already created: %r' % row)
+
     
         logger.info('vocabulary creation done')
-
     
 
     def backwards(self, orm):

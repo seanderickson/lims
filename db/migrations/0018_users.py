@@ -21,6 +21,8 @@ from reports.utils.sqlalchemy_bridge import Bridge
 import lims
 
 import logging
+import json
+from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -123,10 +125,10 @@ class Migration(DataMigration):
             logger.error(str(('cannot find screensaver_user_id', ssuid, e)))
         
         for su in orm.ScreensaverUser.objects.all():
-            logger.info(str(("processing ecommons:", su.ecommons_id, 'login_id', 
-                su.login_id, su.email, su.first_name, su.last_name)) )
-            newAuthUser = None
-            newUserProfile = None
+            logger.debug("processing ecommons: %r, login_id: %r, email: %r, %s,%s"
+                % (su.ecommons_id, su.login_id, su.email, su.first_name, su.last_name))
+            au = None
+            up = None
             if not su.username:
                 username = None
                 if su.ecommons_id: 
@@ -150,14 +152,14 @@ class Migration(DataMigration):
             username = su.username
             # find or create the auth_user
             try:
-                newAuthUser = AuthUserClass.objects.get(username=username)
+                au = AuthUserClass.objects.get(username=username)
                 logger.info(str(('found auth_user', username)))
             except Exception, e:
                 pass;
                 
-            if not newAuthUser:
+            if not au:
                 try:
-                    newAuthUser = AuthUserClass(
+                    au = AuthUserClass(
                         username = username, 
                         email = su.email if su.email else 'none', 
                         first_name = su.first_name, 
@@ -166,22 +168,22 @@ class Migration(DataMigration):
                         is_active=False,
                         is_staff=False)
     
-                    newAuthUser.save()
-                    logger.info(str(('created user from ecommons', 
-                        newAuthUser.email, newAuthUser.username, type(newAuthUser) )))
+                    au.save()
+                    logger.debug('created user from ecommons: %s, %r' 
+                        % (su.ecommons_id, au))
                 except Exception, e:
                     logger.error(str(('cannot create user ',username,e)))
                     raise
 #                     continue;
             # find or create the userprofile
             try:
-                newUserProfile = UserProfileClass.objects.get(username=username)
+                up = UserProfileClass.objects.get(username=username)
                 logger.info(str(('found userprofile', username)))
             except Exception, e:
                 logger.info(str(('no userprofile', username)))
 #                 created_by_username = None
 #                 if su.created_by:
-#                     newUserProfile
+#                     up
 #                     if su.created_by.ecommons_id:
 #                         created_by_username = su.created_by.ecommons_id
 #                         if not created_by_username:
@@ -193,36 +195,36 @@ class Migration(DataMigration):
                 else:
                     created_by_username = 'sde_EDIT'
                     
-                newUserProfile = UserProfileClass()
+                up = UserProfileClass()
                 
-                newUserProfile.username = username 
-                newUserProfile.email = su.email
-                newUserProfile.phone = su.phone
-                newUserProfile.mailing_address = su.mailing_address
-                newUserProfile.comments = su.comments
-                newUserProfile.ecommons_id = su.ecommons_id
-                newUserProfile.harvard_id = su.harvard_id
-                newUserProfile.harvard_id_expiration_date = \
+                up.username = username 
+                up.email = su.email
+                up.phone = su.phone
+                up.mailing_address = su.mailing_address
+                up.comments = su.comments
+                up.ecommons_id = su.ecommons_id
+                up.harvard_id = su.harvard_id
+                up.harvard_id_expiration_date = \
                     su.harvard_id_expiration_date
-                newUserProfile.harvard_id_requested_expiration_date = \
+                up.harvard_id_requested_expiration_date = \
                     su.harvard_id_requested_expiration_date
-                newUserProfile.created_by_username = created_by_username            
+                up.created_by_username = created_by_username            
 
-                newUserProfile.user = newAuthUser
-                newUserProfile.save()
+                up.user = au
+                up.save()
                     
 #                 if orm.ScreensaverUser.objects.all().filter(
-#                         user=newUserProfile).exists():
+#                         user=up).exists():
 #                     msg = ('==== error: duplicate user found: ',
 #                         username, su,
-#                         orm.ScreensaverUser.objects.all().filter(user=newUserProfile))
+#                         orm.ScreensaverUser.objects.all().filter(user=up))
 #                     print msg
 #                     logger.error(str((msg, 'skipping')))
 #                     continue
 #                 
-            su.user = newUserProfile
+            su.user = up
             su.save()
-            logger.info(str(('saved', str(newUserProfile),'%s'%su)))
+            logger.info('saved %r, %s' % (up,up.username))
             i += 1
             
         logger.info(str(( 'Converted ', i , ' users, skipped: ', skip_count)))
@@ -372,14 +374,14 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
                 
                 key = '/'.join([str(_dict['suid']),_dict['cigroup'],_dict['ciname']])
                 previous_dict = uci_hash.get(key)
-                logger.info('prev_dict: %s:%s' % (key,previous_dict))
+                logger.debug('prev_dict: %s:%s' % (key,previous_dict))
                 if previous_dict:
                     uci = previous_dict['obj']
                     uci.admin_user_id = int(_dict['admin_suid'])
                     uci.status = _dict['status']
                     uci.status_date = _dict['date_performed']
                     uci.save()
-                    logger.info('updated: %r' % uci)
+                    logger.debug('updated: %r' % uci)
                     
                 else:
                     uci_hash[key] = _dict
@@ -395,16 +397,17 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
                     uci.save()
                     _dict['obj'] = uci
                     
-                    logger.info('created: %r, %s' % (uci, _dict))
+                    logger.debug('created: %r' % (uci))
                     i += 1
 
                 date_time = pytz.utc.localize(_dict['date_created'])                
                 if date_time.date() != _dict['date_performed']:
                     # only use the less accurate date_performed date if that date
                     # is not equal to the date_created date
-                    date_time = pytz.utc.localize(
-                        datetime.datetime.combine(_dict['date_performed'],
-                            datetime.datetime.min.time()))
+#                     date_time = _dict['date_performed']
+                    date_time = datetime.datetime.combine(
+                        _dict['date_performed'],
+                        datetime.datetime.min.time())
                 # create the apilog for this item
                 log = ApiLog()
                 log.ref_resource_name = log_ref_resource_name
@@ -420,7 +423,7 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
                 full_key = '/'.join([log.ref_resource_name,log.key,str(log.date_time)])
                 while full_key in unique_log_keys:
                     # add a second to make it unique; because date performed is a date,
-                    # there are collisions
+                    logger.info(str(('time collision for: ',full_key)))
                     log.date_time = log.date_time  + timedelta(0,1)
                     full_key = '/'.join([log.ref_resource_name,log.key,str(log.date_time)])
                     
@@ -428,7 +431,7 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
                 if previous_dict:
                     diff_keys = ['status']
                     diffs = {}
-                    logger.info(str(('found previous_dict', previous_dict)))
+                    logger.debug(str(('found previous_dict', previous_dict)))
                     diff_keys.append('admin_username')
                     diffs['admin_username'] = [previous_dict['admin_username'], _dict['admin_username']]
                     
@@ -446,7 +449,7 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
                 
                 log.save()
                 log = None
-                if i%100 == 0:
+                if i%1000 == 0:
                     logger.info(str(('created', i, 'logs')))
         except Exception, e:
             logger.exception('migration exc')
@@ -575,19 +578,20 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
         },
         u'db.attachedfile': {
             'Meta': {'object_name': 'AttachedFile', 'db_table': "u'attached_file'"},
-            'attached_file_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
-            'attached_file_type': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AttachedFileType']"}),
+            'attached_file_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+#             'attached_file_type': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AttachedFileType']"}),
             'created_by': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreensaverUser']", 'null': 'True', 'blank': 'True'}),
             'date_created': ('django.db.models.fields.DateTimeField', [], {}),
             'date_loaded': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
             'date_publicly_available': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
-            'file_contents': ('django.db.models.fields.TextField', [], {}),
+#             'file_contents': ('django.db.models.fields.TextField', [], {}),
+            'contents': ('django.db.models.fields.BinaryField', [], {'null': 'False'}),
             'file_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'filename': ('django.db.models.fields.TextField', [], {}),
             'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Reagent']", 'null': 'True', 'blank': 'True'}),
             'screen': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Screen']", 'null': 'True', 'blank': 'True'}),
-            'screensaver_user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreeningRoomUser']", 'null': 'True', 'blank': 'True'}),
-            'version': ('django.db.models.fields.IntegerField', [], {})
+            'screensaver_user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreensaverUser']", 'null': 'True', 'blank': 'True'}),
+            'type': ('django.db.models.fields.TextField', [], {})
         },
         u'db.attachedfiletype': {
             'Meta': {'object_name': 'AttachedFileType', 'db_table': "u'attached_file_type'"},

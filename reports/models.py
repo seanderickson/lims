@@ -7,6 +7,7 @@ from django.core.cache import cache
 from django.db import models
 from django.utils import timezone
 from tastypie.utils.dict import dict_strip_unicode_keys
+from django.utils.encoding import python_2_unicode_compatible
 
 
 logger = logging.getLogger(__name__)
@@ -408,7 +409,7 @@ class UserGroup(models.Model):
     def __unicode__(self):
         return unicode(str((self.name)) )
 
- 
+# @python_2_unicode_compatible
 class UserProfile(models.Model):
     objects = MetaManager()
     
@@ -448,14 +449,16 @@ class UserProfile(models.Model):
         max_length=128, null=True); 
     
     # This is the "meta" field, it contains "virtual" json fields
-    json_field = models.TextField(null=True) 
+    json_field = models.TextField(null=True)     
 
-    def __unicode__(self):
-        return unicode(str((
-            self.ecommons_id, 
-            self.username, 
-            str(self.user))))
-
+    def __str__(self):
+        return ('UserProfile: { ecommons_id: %r, username: %r, auth_user: %r }'
+            % (self.ecommons_id, self.username, self.user )) 
+    
+#     def __unicode__(self):
+#         return ('UserProfile: { ecommons_id: %r, username: %r, auth_user: %r }'
+#             % (self.ecommons_id, self.username, self.user )) 
+#     
     def get_field_hash(self):
         if self.json_field:
             return json.loads(self.json_field)
@@ -484,13 +487,8 @@ class UserProfile(models.Model):
     def _get_last_name(self):
         "Returns the person's full name."
         return self.user.last_name
-    last_name = property(_get_last_name)    
+    last_name = property(_get_last_name)   
     
-#     def _get_full_name(self):
-#         "Returns the person's full name."
-#         return '%s %s' % (self.first_name, self.last_name)
-#     full_name = property(_get_full_name)    
-#  
 
 
 # 

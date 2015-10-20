@@ -10,7 +10,7 @@ current_timestamp,
   Purpose: convert the old controlled vocabulary types to newer names 
   * newer names have no spaces, and only alphanumeric and "_","." chars
   * so that they can be used as URI values
-  * TODO: Dynamically generate or perform these updates (in code)
+  * TODO: Dynamically generate or perform these updates (see migration 0003)
 **/
 
 /**

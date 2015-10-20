@@ -362,6 +362,12 @@ class Migration(SchemaMigration):
             ('status_date', self.gf('django.db.models.fields.DateField')()),
         ))
         db.send_create_signal(u'db', ['UserChecklistItem'])
+
+        # add field 'AttachedFile.type'
+        db.add_column(u'attached_file', 'type',
+                      self.gf('django.db.models.fields.TextField')(null=True),
+                      keep_default=False)
+
         
     def _update_table_autofield(self, table, column):
         
@@ -603,8 +609,9 @@ class Migration(SchemaMigration):
             'filename': ('django.db.models.fields.TextField', [], {}),
             'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Reagent']", 'null': 'True', 'blank': 'True'}),
             'screen': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Screen']", 'null': 'True', 'blank': 'True'}),
-            'screensaver_user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreeningRoomUser']", 'null': 'True', 'blank': 'True'}),
-            'version': ('django.db.models.fields.IntegerField', [], {})
+            'screensaver_user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreensaverUser']", 'null': 'True', 'blank': 'True'}),
+#             'version': ('django.db.models.fields.IntegerField', [], {}),
+            'type': ('django.db.models.fields.TextField', [], {})
         },
         u'db.attachedfiletype': {
             'Meta': {'object_name': 'AttachedFileType', 'db_table': "u'attached_file_type'"},

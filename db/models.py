@@ -11,6 +11,7 @@ from reports.utils.gray_codes import create_substance_id
 import datetime
 import logging
 from django.db.models.fields import FloatField
+from django.utils.encoding import python_2_unicode_compatible
 logger = logging.getLogger(__name__)
 
 
@@ -229,12 +230,12 @@ class AttachedFile(models.Model):
     def __str__(self):
         return self.__repr__()
 
-# class AttachedFileType(models.Model):
-#     for_entity_type = models.CharField(max_length=31)
-#     attached_file_type_id = models.IntegerField(primary_key=True)
-#     value = models.TextField()
-#     class Meta:
-#         db_table = 'attached_file_type'
+class AttachedFileType(models.Model):
+    for_entity_type = models.CharField(max_length=31)
+    attached_file_type_id = models.IntegerField(primary_key=True)
+    value = models.TextField()
+    class Meta:
+        db_table = 'attached_file_type'
 
 class CellLine(models.Model):
     cell_line_id = models.IntegerField(primary_key=True)
@@ -282,13 +283,17 @@ class UserChecklistItem(models.Model):
         unique_together=(('screensaver_user','item_group','item_name'))
         
     def __repr__(self):
-        return '%s:%s:%s:%s' % ( self.screensaver_user.username, 
-            self.item_group,self.item_name,self.status) 
+        return ('UserChecklistItem('
+            'screensaver_user=%r, '
+            'item_group=%r, '
+            'item_name=%r, '
+            'status=%r)' ) % ( 
+                self.screensaver_user, self.item_group,self.item_name,
+                self.status) 
     def __unicode__(self):
         return self.__repr__()
     def __str__(self):
         return self.__repr__()
-############
 
 
 class CherryPickRequest(models.Model):
@@ -617,6 +622,7 @@ class ScreenerCherryPick(models.Model):
 
 
 
+@python_2_unicode_compatible
 class ScreensaverUser(models.Model):
 
     # screensaver_user_id = models.IntegerField(primary_key=True)
@@ -656,14 +662,11 @@ class ScreensaverUser(models.Model):
     class Meta:
         db_table = 'screensaver_user'
         
-    def __unicode__(self):
-        return unicode(str((
-            self.screensaver_user_id, 
-            self.first_name, 
-            self.last_name, 
-            self.email, 
-            self.login_id, 
-            self.ecommons_id)))
+    def __str__(self):
+        return ('ScreensaverUser: { '
+            'screensaver_user_id: %r, ' 
+            'user: %r }') % (self.ecommons_id, self.user )
+
 
 class ScreeningRoomUser(models.Model):
     screensaver_user = models.OneToOneField('ScreensaverUser', primary_key=True)

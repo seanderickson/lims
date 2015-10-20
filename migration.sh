@@ -357,7 +357,7 @@ function bootstrap {
   fi
 
   # add user "sde" to the screensaver_users table 20150831
-  curl -v  --dump-header - -H "Content-Type: text/csv" --user sde \
+  curl -v  --dump-header - -H "Content-Type: text/csv" --user sde:${serverpass} \
     -X PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screensaveruser/ \
     --data-binary @${BOOTSTRAP_PRODUCTION_DIR}/screensaver_users-db-prod.csv
 
@@ -504,10 +504,10 @@ main "$@"
 
 #   premigratedb  
 
-#  bootstrap
+#bootstrap
   
   # the later migrations require the bootstrapped data
-#   migratedb
+#migratedb
 
 # $DJANGO_CMD test --verbosity=2 --settings=lims.settings_testing || error "django tests failed: $?"
 # $DJANGO_CMD test --verbosity=2 --settings=lims.settings_testing

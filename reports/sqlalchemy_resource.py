@@ -136,7 +136,6 @@ class SqlAlchemyResource(Resource):
         known_list_values = ['includes', 'order_by','includes[]', 'order_by[]']
         for key in known_list_values:
             val = _dict.get(key,[])
-            val = request.POST.getlist(key)
             # Jquery Ajax will post array list params with a "[]" suffix - 20151015
             if isinstance(val, basestring):
                 _dict[key] = [val]
@@ -157,7 +156,7 @@ class SqlAlchemyResource(Resource):
         TODO: this method is not SqlAlchemy specific
         '''
         logger.info(str(('get_visible_fields: field_hash initial: ', 
-            schema_fields.keys() )))
+            schema_fields.keys(),manual_field_includes )))
         try:
             if visibilities:
                 visibilities = set(visibilities)
@@ -203,8 +202,8 @@ class SqlAlchemyResource(Resource):
             logger.exception('on get_visible_fields')
             raise e 
 
-    def build_sqlalchemy_columns(self, fields, base_query_tables=[], 
-            custom_columns={}):
+    def build_sqlalchemy_columns(self, fields, base_query_tables=None, 
+            custom_columns=None):
         '''
         returns an array of sqlalchemy.sql.schema.Column objects, associated 
         with the sqlalchemy.sql.schema.Table definitions, which are bound to 
@@ -221,6 +220,8 @@ class SqlAlchemyResource(Resource):
         visibility is not set
         '''
         DEBUG_BUILD_COLUMNS = False or logger.isEnabledFor(logging.DEBUG)
+        base_query_tables = base_query_tables or []
+        custom_columns = custom_columns or []
         
         try:
             columns = OrderedDict()
@@ -376,7 +377,7 @@ class SqlAlchemyResource(Resource):
 
     @staticmethod
     def build_sqlalchemy_filters(schema, param_hash={}, **kwargs):
-        logger.debug('build_sqlalchemy_filters: param_hash %r, kwargs: %r' 
+        logger.info('build_sqlalchemy_filters: param_hash %r, kwargs: %r' 
             % (param_hash, kwargs))
 
         # ordinary filters
@@ -396,7 +397,7 @@ class SqlAlchemyResource(Resource):
             search_expressions = []
             filter_fields = set(filter_fields)
             for search_hash in search_data:
-                logger.info(str(('search_hash', search_hash)))
+                logger.info('search_hash: %s' % search_hash)
                 (search_expression, search_fields) = SqlAlchemyResource.\
                     build_sqlalchemy_filters_from_hash(schema,search_hash)
                 search_expressions.append(search_expression)
@@ -411,7 +412,8 @@ class SqlAlchemyResource(Resource):
             else: 
                 filter_expression = search_expressions
                 
-        logger.info(str(('filter_expression', filter_expression, filter_fields)))
+        logger.info('filter_expression: %s, filter_fields: %r'
+            % (filter_expression, filter_fields))
         
         return (filter_expression,filter_fields)
     

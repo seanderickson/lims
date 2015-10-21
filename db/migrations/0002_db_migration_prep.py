@@ -368,6 +368,24 @@ class Migration(SchemaMigration):
                       self.gf('django.db.models.fields.TextField')(null=True),
                       keep_default=False)
 
+        # Adding field 'ServiceActivity.funding_support'
+        # for the funding_support vocabulary (migration 0003)
+        db.add_column(u'service_activity', 'funding_support',
+                      self.gf('django.db.models.fields.TextField')(null=True),
+                      keep_default=False)
+
+        # Adding model 'ScreenFundingSupports'
+        db.create_table(u'screen_funding_supports', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('screen', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Screen'])),
+            ('funding_support', self.gf('django.db.models.fields.TextField')()),
+        ))
+        db.send_create_signal(u'db', ['ScreenFundingSupports'])
+
+        # Adding unique constraint on 'ScreenFundingSupports', fields ['screen', 'funding_support']
+        db.create_unique(u'screen_funding_supports', ['screen_id', 'funding_support'])
+
+
         
     def _update_table_autofield(self, table, column):
         
@@ -409,23 +427,6 @@ class Migration(SchemaMigration):
         db.execute(
             "ALTER SEQUENCE {table}_{column}_seq OWNED BY {table}.{column}".format(
                 table=table, column=column))
-
-        # Adding field 'ServiceActivity.funding_support'
-        # for the funding_support vocabulary (migration 0003)
-        db.add_column(u'service_activity', 'funding_support',
-                      self.gf('django.db.models.fields.TextField')(null=True),
-                      keep_default=False)
-
-        # Adding model 'ScreenFundingSupports'
-        db.create_table(u'screen_funding_supports', (
-            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('screen', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Screen'])),
-            ('funding_support', self.gf('django.db.models.fields.TextField')()),
-        ))
-        db.send_create_signal(u'db', ['ScreenFundingSupports'])
-
-        # Adding unique constraint on 'ScreenFundingSupports', fields ['screen', 'funding_support']
-        db.create_unique(u'screen_funding_supports', ['screen_id', 'funding_support'])
 
 
 

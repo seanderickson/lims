@@ -1184,15 +1184,15 @@ class IResourceTestCase(SimpleTestCase):
                         raise AssertionError('Unknown API command %s' % command)
                     
     def get_content(self, resp):
-        
-        if isinstance(resp, StreamingHttpResponse):
-            buffer = cStringIO.StringIO()
-            for line in resp.streaming_content:
-                buffer.write(line)
-            logger.info(str(('get_content returns: ',buffer.getvalue())))
-            return buffer.getvalue()
-        else:
-            return resp.content
+        return self.serializer.get_content(resp);
+#         if isinstance(resp, StreamingHttpResponse):
+#             buffer = cStringIO.StringIO()
+#             for line in resp.streaming_content:
+#                 buffer.write(line)
+#             logger.info(str(('get_content returns: ',buffer.getvalue())))
+#             return buffer.getvalue()
+#         else:
+#             return resp.content
     
     def deserialize(self, resp):
         """

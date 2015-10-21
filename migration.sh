@@ -235,14 +235,15 @@ function premigratedb {
       -f ./db/migrations/manual/0002_initial_django_prep.sql \
       >>"$LOGFILE" 2>&1 || error "manual script 0002 failed: $?"
 
-    psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
-      -f ./db/migrations/manual/0003_controlled_vocabularies.sql \
-      >>"$LOGFILE" 2>&1 || error "manual script 0002 failed: $?"
   fi
   
   migration='0003'
   if [[ ! $completed_migrations =~ $migration ]]; then
     $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+
+    psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
+      -f ./db/migrations/manual/0003_controlled_vocabularies.sql \
+      >>"$LOGFILE" 2>&1 || error "manual script 0003 failed: $?"
   fi
     
   echo "pre migrations completed: $(ts) " >> "$LOGFILE"

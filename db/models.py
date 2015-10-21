@@ -152,6 +152,12 @@ class ServiceActivity(models.Model):
     activity = models.ForeignKey(Activity, primary_key=True)
     serviced_screen = models.ForeignKey('Screen', null=True, blank=True)
     serviced_user = models.ForeignKey('ScreeningRoomUser')
+    funding_support = models.TextField(null=True)
+    
+    # TODO: remove
+    funding_support_link = models.ForeignKey(
+        'FundingSupport', null=True, db_column='funding_support_id')
+    
     class Meta:
         db_table = 'service_activity'
 
@@ -528,6 +534,14 @@ class ScreenFundingSupportLink(models.Model):
     funding_support = models.ForeignKey(FundingSupport)
     class Meta:
         db_table = 'screen_funding_support_link'
+
+class ScreenFundingSupports(models.Model):
+    screen = models.ForeignKey(Screen)
+    funding_support = models.TextField()
+    class Meta:
+        unique_together = (('screen', 'funding_support'))
+        db_table = 'screen_funding_supports'
+        
 
 class ScreenKeyword(models.Model):
     screen = models.ForeignKey(Screen)

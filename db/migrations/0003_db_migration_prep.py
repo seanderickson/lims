@@ -32,10 +32,16 @@ class Migration(SchemaMigration):
         
         # clear out old AttachedFile fields: version, attached_file_type_id
         db.delete_column(u'attached_file', 'version')
+
+        # Change field 'AttachedFile.type' to non-null
+        db.alter_column(u'attached_file', 'type', 
+            self.gf('django.db.models.fields.TextField')(default=''))
         
-        # TODO: clean up in final pass/migration
+        # TODO: reinstate when clean up in final pass/migration
         # db.delete_table(u'attached_file_type')
         # db.delete_column(u'attached_file', 'attached_file_type_id')
+
+         
         logger.info('done')
 
     def create_vocabularies(self,orm):
@@ -43,6 +49,7 @@ class Migration(SchemaMigration):
         self.create_simple_vocabularies(orm)
         self.create_attached_file_type_vocab(orm)
         self.create_checklist_vocabularies(orm)
+
     
     def create_vocab(self,orm,vocab_writer,attr,scope,query):
         resource_uri = '/reports/api/v1/vocabularies/%s/%s/'
@@ -82,9 +89,9 @@ class Migration(SchemaMigration):
                     ['species', 'screen.species',orm.Screen.objects.all()],
                     ['assay_type', 'screen.assay_type',orm.Screen.objects.all()],
                     ['assay_readout_type', 'datacolumn.assay_readout_type',orm.DataColumn.objects.all()],
-                    ['value', 'screen.funding_support',orm.FundingSupport.objects.all()],
+                    ['value', 'funding_support',orm.FundingSupport.objects.all()],
                     ['species', 'screen.species',orm.Screen.objects.all()],
-                    ['species', 'screen.species',orm.Screen.objects.all()],
+                    ['service_activity_type', 'serviceactivity.type',orm.ServiceActivity.objects.all()],
                 ]            
             for arg_list in input_args:
                 self.create_vocab(orm, vocab_writer,*arg_list)
@@ -106,6 +113,12 @@ class Migration(SchemaMigration):
                 writer.writerow(row)
             else:
                 logger.info('api_init entry for row already created: %r' % row)
+
+
+        for fs in orm.FundingSupport.objects.all():
+            orm.ServiceActivity.objects.all().filter(
+                funding_support_link=fs).update(funding_support=fs.value)
+        
             
         
     def create_attached_file_type_vocab(self,orm):
@@ -131,10 +144,6 @@ class Migration(SchemaMigration):
                 logger.info(str(('created', row)))
                 
                 orm.AttachedFile.objects.filter(attached_file_type=obj).update(type=key)
-
-        # Change field 'AttachedFile.type' to non-null
-        db.alter_column(u'attached_file', 'type', 
-            self.gf('django.db.models.fields.TextField')(default=''))
 
         api_init_actions_file = os.path.join(
             lims.settings.PROJECT_ROOT, '..',

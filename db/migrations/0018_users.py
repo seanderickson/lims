@@ -989,7 +989,7 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
             'Meta': {'object_name': 'Reagent', 'db_table': "u'reagent'"},
             'library_contents_version': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.LibraryContentsVersion']", 'null': 'True'}),
             'reagent_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UWPRH2ZD'", 'unique': 'True', 'max_length': '8'}),
+            'substance_id': ('django.db.models.fields.CharField', [], {'default': "'UWPRH326'", 'unique': 'True', 'max_length': '8'}),
             'vendor_batch_id': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_identifier': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'vendor_name': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -1118,6 +1118,12 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
             u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'screen': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Screen']"})
         },
+        u'db.screenfundingsupports': {
+            'Meta': {'unique_together': "((u'screen', u'funding_support'),)", 'object_name': 'ScreenFundingSupports', 'db_table': "u'screen_funding_supports'"},
+            'funding_support': ('django.db.models.fields.TextField', [], {}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'screen': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Screen']"})
+        },
         u'db.screening': {
             'Meta': {'object_name': 'Screening', 'db_table': "u'screening'"},
             'activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.LabActivity']", 'primary_key': 'True'}),
@@ -1226,6 +1232,8 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
         u'db.serviceactivity': {
             'Meta': {'object_name': 'ServiceActivity', 'db_table': "u'service_activity'"},
             'activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Activity']", 'primary_key': 'True'}),
+            'funding_support': ('django.db.models.fields.TextField', [], {'null': 'True'}),
+            'funding_support_link': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.FundingSupport']", 'null': 'True', 'db_column': "u'funding_support_id'"}),
             'service_activity_type': ('django.db.models.fields.TextField', [], {}),
             'serviced_screen': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Screen']", 'null': 'True', 'blank': 'True'}),
             'serviced_user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreeningRoomUser']"})

@@ -410,6 +410,24 @@ class Migration(SchemaMigration):
             "ALTER SEQUENCE {table}_{column}_seq OWNED BY {table}.{column}".format(
                 table=table, column=column))
 
+        # Adding field 'ServiceActivity.funding_support'
+        # for the funding_support vocabulary (migration 0003)
+        db.add_column(u'service_activity', 'funding_support',
+                      self.gf('django.db.models.fields.TextField')(null=True),
+                      keep_default=False)
+
+        # Adding model 'ScreenFundingSupports'
+        db.create_table(u'screen_funding_supports', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('screen', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['db.Screen'])),
+            ('funding_support', self.gf('django.db.models.fields.TextField')()),
+        ))
+        db.send_create_signal(u'db', ['ScreenFundingSupports'])
+
+        # Adding unique constraint on 'ScreenFundingSupports', fields ['screen', 'funding_support']
+        db.create_unique(u'screen_funding_supports', ['screen_id', 'funding_support'])
+
+
 
     def _alter_table_parent(self, sub_table, new_primary_key, fk_column, 
                             new_parent, new_parent_column):
@@ -1148,6 +1166,12 @@ class Migration(SchemaMigration):
             'number_of_replicates': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'volume_transferred_per_well_to_assay_plates': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '10', 'decimal_places': '9', 'blank': 'True'})
         },
+        u'db.screenfundingsupports': {
+            'Meta': {'unique_together': "((u'screen', u'funding_support'),)", 'object_name': 'ScreenFundingSupports', 'db_table': "u'screen_funding_supports'"},
+            'funding_support': ('django.db.models.fields.TextField', [], {}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'screen': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Screen']"})
+        },
         u'db.screeningroomuser': {
             'Meta': {'object_name': 'ScreeningRoomUser', 'db_table': "u'screening_room_user'"},
             'coms_crhba_permit_number': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -1246,6 +1270,10 @@ class Migration(SchemaMigration):
         u'db.serviceactivity': {
             'Meta': {'object_name': 'ServiceActivity', 'db_table': "u'service_activity'"},
             'activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Activity']", 'primary_key': 'True'}),
+            'funding_support': ('django.db.models.fields.TextField', [], {'null': 'True'}),
+            'funding_support_link': ('django.db.models.fields.related.ForeignKey', [], 
+                {'to': u"orm['db.FundingSupport']", 'null': 'True', 
+                    'db_column': "u'funding_support_id'"}),
             'service_activity_type': ('django.db.models.fields.TextField', [], {}),
             'serviced_screen': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Screen']", 'null': 'True', 'blank': 'True'}),
             'serviced_user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreeningRoomUser']"})

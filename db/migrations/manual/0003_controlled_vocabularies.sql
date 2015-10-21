@@ -10,6 +10,13 @@ current_timestamp,
   Purpose: convert the old controlled vocabulary types to newer names 
   * newer names have no spaces, and only alphanumeric and "_","." chars
   * so that they can be used as URI values
+
+
+
+
+
+
+
   * TODO: Dynamically generate or perform these updates (see migration 0003)
 **/
 
@@ -124,4 +131,11 @@ update data_column set data_type = 'confirmed_positive_indicator' where data_typ
 update data_column set data_type = 'boolean_positive_indicator' where data_type = 'Boolean Positive Indicator';
 
 
+insert into screen_funding_supports (id,screen_id,funding_support) (
+  select nextval('screen_funding_supports_id_seq'), screen.screen_id, value
+  from screen
+  join screen_funding_support_link fsl on(screen.screen_id=fsl.screen_id)
+  join funding_support fs on(fsl.funding_support_id=fs.funding_support_id) 
+  order by screen.screen_id,value
+  );
 COMMIT;

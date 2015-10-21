@@ -1189,6 +1189,7 @@ class IResourceTestCase(SimpleTestCase):
                 buffer = cStringIO.StringIO()
                 for line in resp.streaming_content:
                     buffer.write(line)
+                logger.info(str(('get_content returns: ',buffer.getvalue())))
                 return buffer.getvalue()
         else:
             return resp.content

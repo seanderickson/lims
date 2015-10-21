@@ -709,6 +709,7 @@ class LimsSerializer(PrettyJSONSerializer, BackboneSerializer,CSVSerializer,
                 for line in resp.streaming_content:
                     buffer.write(line)
                 resp.cached_content = buffer.getvalue()
+                logger.info(str(('resp.cached_content',resp.cached_content)))
             return resp.cached_content
         else:
             return resp.content

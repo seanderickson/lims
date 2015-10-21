@@ -912,7 +912,7 @@ class ScreensaverUserResource(DBResourceTestCase):
                 resource_uri + '/mailing_lists_wikis/added_to_iccb_l_nsrb_email_list',
                 format='json', 
                 authentication=self.get_credentials(), data=data_for_get )
-            logger.info(str(('resp',resp)))
+            logger.warn(str(('resp',self.serializer.get_content(resp))))
             new_obj = self.deserialize(resp)
             self.assertTrue(resp.status_code in [200], (resp.status_code, resp))
             logger.info(str(('new_obj', new_obj)))

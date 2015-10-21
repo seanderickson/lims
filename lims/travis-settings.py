@@ -124,11 +124,6 @@ LOGGING = {
         }
     },
     'handlers': {
-        'mail_admins': {
-            'level': 'ERROR',
-            'filters': ['require_debug_false'],
-            'class': 'django.utils.log.AdminEmailHandler'
-        },
         'console':{
             'level': 'DEBUG',
             'class': 'logging.StreamHandler',
@@ -137,14 +132,14 @@ LOGGING = {
     },
     'loggers': {
         'django.request': {
-            'handlers': ['mail_admins'],
-            'level': 'ERROR',
+            'handlers': ['console'],
+            'level': 'WARN',
             'propagate': False,
         },
         'db': {  # set a default handler
             'handlers': ['console'],
             'propagate': False,
-            'level': 'WARN',
+            'level': 'INFO',
         },        
         'db.tests': {  # set a default handler
             'handlers': ['console'],
@@ -159,7 +154,7 @@ LOGGING = {
         'reports': {  # set a default handler
             'handlers': ['console'],
             'propagate': False,
-            'level': 'ERROR',
+            'level': 'INFO',
         },        
         'django.db': {  # for SQL
             'handlers': ['console'],

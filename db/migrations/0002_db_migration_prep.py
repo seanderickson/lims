@@ -92,6 +92,7 @@ class Migration(SchemaMigration):
             ('gene', 'gene_id'),
             ('screensaver_user', 'screensaver_user_id'),
             ('attached_file', 'attached_file_id'),
+            ('activity', 'activity_id')
             )
         for (table, key_field) in table_autofields:
             logger.info(str(('_update_table_autofield', table, key_field)))
@@ -116,6 +117,10 @@ class Migration(SchemaMigration):
         
         db.alter_column(u'screensaver_user', 'version', 
             self.gf('django.db.models.fields.IntegerField')(null=True))
+
+        # Deleting field 'Activity.version'
+        db.delete_column(u'activity', 'version')
+
 
         ### Change Well fixed precision columns to float
 
@@ -386,6 +391,10 @@ class Migration(SchemaMigration):
         db.create_unique(u'screen_funding_supports', ['screen_id', 'funding_support'])
 
 
+
+
+
+    #### END OF MAIN ####
         
     def _update_table_autofield(self, table, column):
         
@@ -550,15 +559,14 @@ class Migration(SchemaMigration):
         },
         u'db.activity': {
             'Meta': {'object_name': 'Activity', 'db_table': "u'activity'"},
-            'activity_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
+            'activity_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'comments': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'created_by': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "u'activities_created'", 'null': 'True', 'to': u"orm['db.ScreensaverUser']"}),
             'date_created': ('django.db.models.fields.DateTimeField', [], {}),
             'date_loaded': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
             'date_of_activity': ('django.db.models.fields.DateField', [], {}),
             'date_publicly_available': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
-            'performed_by': ('django.db.models.fields.related.ForeignKey', [], {'related_name': "u'activities_performed'", 'to': u"orm['db.ScreensaverUser']"}),
-            'version': ('django.db.models.fields.IntegerField', [], {})
+            'performed_by': ('django.db.models.fields.related.ForeignKey', [], {'related_name': "u'activities_performed'", 'to': u"orm['db.ScreensaverUser']"})
         },
         u'db.activityupdateactivity': {
             'Meta': {'object_name': 'ActivityUpdateActivity', 'db_table': "u'activity_update_activity'"},

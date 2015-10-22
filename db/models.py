@@ -32,9 +32,10 @@ class AbaseTestset(models.Model):
         db_table = 'abase_testset'
 
 class Activity(models.Model):
-    activity_id = models.IntegerField(primary_key=True)
-    version = models.IntegerField()
-    date_created = models.DateTimeField()
+    # activity_id = models.IntegerField(primary_key=True)
+    activity_id = models.AutoField(primary_key=True) 
+    # version = models.IntegerField()
+    date_created = models.DateTimeField(default=timezone.now)
     comments = models.TextField(blank=True)
     performed_by = models.ForeignKey('ScreensaverUser',related_name='activities_performed')
     date_of_activity = models.DateField()
@@ -151,6 +152,8 @@ class ServiceActivity(models.Model):
     service_activity_type = models.TextField()
     activity = models.ForeignKey(Activity, primary_key=True)
     serviced_screen = models.ForeignKey('Screen', null=True, blank=True)
+    # consider pointing this to the screensaver_user table
+    # serviced_user = models.ForeignKey('ScreeningRoomUser')
     serviced_user = models.ForeignKey('ScreeningRoomUser')
     funding_support = models.TextField(null=True)
     

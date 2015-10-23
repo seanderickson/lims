@@ -109,15 +109,14 @@ class Migration(DataMigration):
         },
         u'db.activity': {
             'Meta': {'object_name': 'Activity', 'db_table': "u'activity'"},
-            'activity_id': ('django.db.models.fields.IntegerField', [], {'primary_key': 'True'}),
+            'activity_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'comments': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
             'created_by': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "u'activities_created'", 'null': 'True', 'to': u"orm['db.ScreensaverUser']"}),
             'date_created': ('django.db.models.fields.DateTimeField', [], {}),
             'date_loaded': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
             'date_of_activity': ('django.db.models.fields.DateField', [], {}),
             'date_publicly_available': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
-            'performed_by': ('django.db.models.fields.related.ForeignKey', [], {'related_name': "u'activities_performed'", 'to': u"orm['db.ScreensaverUser']"}),
-            'version': ('django.db.models.fields.IntegerField', [], {})
+            'performed_by': ('django.db.models.fields.related.ForeignKey', [], {'related_name': "u'activities_performed'", 'to': u"orm['db.ScreensaverUser']"})
         },
         u'db.activityupdateactivity': {
             'Meta': {'object_name': 'ActivityUpdateActivity', 'db_table': "u'activity_update_activity'"},
@@ -177,18 +176,16 @@ class Migration(DataMigration):
         u'db.attachedfile': {
             'Meta': {'object_name': 'AttachedFile', 'db_table': "u'attached_file'"},
             'attached_file_id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'attached_file_type': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.AttachedFileType']"}),
-            'created_by': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreensaverUser']", 'null': 'True', 'blank': 'True'}),
-            'date_created': ('django.db.models.fields.DateTimeField', [], {}),
+            'contents': ('django.db.models.fields.BinaryField', [], {}),
+            'created_by': ('django.db.models.fields.related.ForeignKey', [], {'related_name': "u'attachedfilecreated'", 'null': 'True', 'to': u"orm['db.ScreensaverUser']"}),
+            'date_created': ('django.db.models.fields.DateTimeField', [], {'default': 'datetime.datetime.now'}),
             'date_loaded': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
             'date_publicly_available': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
-#             'file_contents': ('django.db.models.fields.TextField', [], {}),
-            'contents': ('django.db.models.fields.BinaryField', [], {'null': 'False'}),
             'file_date': ('django.db.models.fields.DateField', [], {'null': 'True', 'blank': 'True'}),
             'filename': ('django.db.models.fields.TextField', [], {}),
             'reagent': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Reagent']", 'null': 'True', 'blank': 'True'}),
             'screen': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Screen']", 'null': 'True', 'blank': 'True'}),
-            'screensaver_user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreeningRoomUser']", 'null': 'True', 'blank': 'True'}),
+            'screensaver_user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreensaverUser']", 'null': 'True', 'blank': 'True'}),
             'type': ('django.db.models.fields.TextField', [], {})
         },
         u'db.attachedfiletype': {
@@ -728,6 +725,12 @@ class Migration(DataMigration):
             'number_of_replicates': ('django.db.models.fields.IntegerField', [], {'null': 'True', 'blank': 'True'}),
             'volume_transferred_per_well_to_assay_plates': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '10', 'decimal_places': '9', 'blank': 'True'})
         },
+        u'db.screenfundingsupports': {
+            'Meta': {'unique_together': "((u'screen', u'funding_support'),)", 'object_name': 'ScreenFundingSupports', 'db_table': "u'screen_funding_supports'"},
+            'funding_support': ('django.db.models.fields.TextField', [], {}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'screen': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Screen']"})
+        },
         u'db.screeningroomuser': {
             'Meta': {'object_name': 'ScreeningRoomUser', 'db_table': "u'screening_room_user'"},
             'coms_crhba_permit_number': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -827,7 +830,9 @@ class Migration(DataMigration):
             'Meta': {'object_name': 'ServiceActivity', 'db_table': "u'service_activity'"},
             'activity': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Activity']", 'primary_key': 'True'}),
             'funding_support': ('django.db.models.fields.TextField', [], {'null': 'True'}),
-            'funding_support_link': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.FundingSupport']", 'null': 'True', 'db_column': "u'funding_support_id'"}),
+            'funding_support_link': ('django.db.models.fields.related.ForeignKey', [], 
+                {'to': u"orm['db.FundingSupport']", 'null': 'True', 
+                    'db_column': "u'funding_support_id'"}),
             'service_activity_type': ('django.db.models.fields.TextField', [], {}),
             'serviced_screen': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.Screen']", 'null': 'True', 'blank': 'True'}),
             'serviced_user': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['db.ScreeningRoomUser']"})

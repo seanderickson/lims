@@ -1,0 +1,22 @@
+resource_uri,key,scope,ordinal,title
+/reports/api/v1/vocabularies/attachedfiletype.user/2009_iccb_l_nsrb_small_molecule_user_agreement/,2009_iccb_l_nsrb_small_molecule_user_agreement,attachedfiletype.user,0,2009 ICCB-L/NSRB Small Molecule User Agreement
+/reports/api/v1/vocabularies/attachedfiletype.user/2010_iccb_l_nsrb_small_molecule_user_agreement/,2010_iccb_l_nsrb_small_molecule_user_agreement,attachedfiletype.user,1,2010 ICCB-L/NSRB Small Molecule User Agreement
+/reports/api/v1/vocabularies/attachedfiletype.screen/data_qc_report/,data_qc_report,attachedfiletype.screen,2,Data QC Report
+/reports/api/v1/vocabularies/attachedfiletype.screen/iccb_l_application/,iccb_l_application,attachedfiletype.screen,3,ICCB-L Application
+/reports/api/v1/vocabularies/attachedfiletype.screen/iccb_l_nsrb_application/,iccb_l_nsrb_application,attachedfiletype.screen,4,ICCB-L/NSRB Application
+/reports/api/v1/vocabularies/attachedfiletype.user/iccb_l_nsrb_application_user/,iccb_l_nsrb_application_user,attachedfiletype.user,5,ICCB-L/NSRB Application (user)
+/reports/api/v1/vocabularies/attachedfiletype.user/iccb_l_nsrb_rnai_user_agreement/,iccb_l_nsrb_rnai_user_agreement,attachedfiletype.user,6,ICCB-L/NSRB RNAi User Agreement
+/reports/api/v1/vocabularies/attachedfiletype.user/iccb_l_training_checklist/,iccb_l_training_checklist,attachedfiletype.user,7,ICCB-L Training Checklist
+/reports/api/v1/vocabularies/attachedfiletype.user/letter_of_support_other/,letter_of_support_other,attachedfiletype.user,8,Letter of Support - Other
+/reports/api/v1/vocabularies/attachedfiletype.user/letter_of_support_rnai/,letter_of_support_rnai,attachedfiletype.user,9,Letter of Support - RNAi
+/reports/api/v1/vocabularies/attachedfiletype.user/letter_of_support_rnai_small_molecule/,letter_of_support_rnai_small_molecule,attachedfiletype.user,10,Letter of Support - RNAi & Small Molecule
+/reports/api/v1/vocabularies/attachedfiletype.user/letter_of_support_small_molecule/,letter_of_support_small_molecule,attachedfiletype.user,11,Letter of Support - Small Molecule
+/reports/api/v1/vocabularies/attachedfiletype.screen/marcus_application/,marcus_application,attachedfiletype.screen,12,Marcus Application
+/reports/api/v1/vocabularies/attachedfiletype.screen/miare_document/,miare_document,attachedfiletype.screen,13,MIARE Document
+/reports/api/v1/vocabularies/attachedfiletype.screen/nerce_screener_supplies_list/,nerce_screener_supplies_list,attachedfiletype.screen,14,NERCE screener supplies list
+/reports/api/v1/vocabularies/attachedfiletype.user/other/,other,attachedfiletype.user,15,Other
+/reports/api/v1/vocabularies/attachedfiletype.screen/primary_screen_report/,primary_screen_report,attachedfiletype.screen,16,Primary Screen Report
+/reports/api/v1/vocabularies/attachedfiletype.user/publication/,publication,attachedfiletype.user,17,Publication
+/reports/api/v1/vocabularies/attachedfiletype.screen/publication/,publication,attachedfiletype.screen,18,Publication
+/reports/api/v1/vocabularies/attachedfiletype.screen/screener_correspondence/,screener_correspondence,attachedfiletype.screen,19,Screener Correspondence
+/reports/api/v1/vocabularies/attachedfiletype.user/user_correspondence/,user_correspondence,attachedfiletype.user,20,User Correspondence

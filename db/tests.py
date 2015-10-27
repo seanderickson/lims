@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+
 import cStringIO
 import json
 import logging
@@ -7,6 +9,7 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
 from django.http.response import StreamingHttpResponse
 from django.test import TestCase
+from django.test.client import encode_multipart, BOUNDARY, MULTIPART_CONTENT
 from django.utils.timezone import now
 from tastypie.test import ResourceTestCase, TestApiClient
 
@@ -21,6 +24,7 @@ from reports.tests import IResourceTestCase, equivocal
 from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, find_obj_in_list
 import reports.tests
 import reports.utils.log_utils
+from django.core.urlresolvers import resolve
 
 
 _ = reports.utils.log_utils.LogMessageFormatter
@@ -740,7 +744,7 @@ class ScreensaverUserResource(DBResourceTestCase):
                 'harvard_id_expiration_date': '2015-05-01'  
             },
             {
-                'username': 'jt1',
+                'username': 'screeningroomuser1',
                 'first_name': 'Joe',
                 'last_name': 'Tester',    
                 'email': 'joe.tester@limstest.com',    
@@ -805,6 +809,24 @@ class ScreensaverUserResource(DBResourceTestCase):
             logger.exception('on patching adminuser %s' % patch_obj)
             raise
 
+        # create a screening_room_user
+        
+        patch_obj = { 'objects': [
+            {
+                'username': 'screeningroomuser1'
+            }
+        ]}
+        resource_uri = BASE_URI_DB + '/screeningroomuser'
+        try:       
+            resp = self.api_client.patch(resource_uri, 
+                format='json', data=patch_obj, 
+                authentication=self.get_credentials())
+            self.assertTrue(resp.status_code in [200,201,202], 
+                _(resp.status_code, self.serialize(resp)))
+        except Exception, e:
+            logger.exception('on patching screening_room_user %s' % patch_obj)
+            raise
+        
         logger.debug(_('==== test_create_user done ====='))
 
     def test1_patch_usergroups(self):
@@ -904,8 +926,8 @@ class ScreensaverUserResource(DBResourceTestCase):
                 format='json', 
                 data=checklist_item_patch, authentication=self.get_credentials())
             self.assertTrue(resp.status_code in [200,201,202], 
-                _(resp.status_code, self.serialize(resp)))
-
+                _(resp.status_code, self.deserialize(resp)))
+            logger.info('checklistitem patch, resp: %s' % self.deserialize(resp))
             data_for_get={ 'limit': 0 }        
             data_for_get.setdefault('includes', ['*'])
             resp = self.api_client.get(
@@ -925,9 +947,118 @@ class ScreensaverUserResource(DBResourceTestCase):
         except Exception, e:
             logger.exception('on userchecklist')
             raise e
+        
+        # TODO: checklistitem logs
                     
     def test3_attached_files(self):
-        # TODO
-        pass
-    
-    
+        '''
+        '''
+        self.test0_create_user();
+
+        # 1. test using embedded "contents" field               
+        test_username = 'st1'
+        attachedfile_item_post = {
+            'created_by_username': 'adminuser', 
+            'type': '2009_iccb_l_nsrb_small_molecule_user_agreement', 
+            'filename': "test_pasted_text.txt",
+            'contents': "This is a test of pasted text\n1\n2\n3\n\n end\n",
+            'file_date': '2015-10-10'
+            }
+        try:       
+            
+#             content = encode_multipart(BOUNDARY, attachedfile_item_post)
+#             logger.info('content: %r' % content)
+#             logger.info('content: %s' % content)
+            content_type = MULTIPART_CONTENT
+
+            resource_uri = BASE_URI_DB + '/screensaveruser/%s/attachedfiles/' % test_username
+            
+            authentication=self.get_credentials()
+            kwargs = {}
+            kwargs['HTTP_AUTHORIZATION'] = authentication
+            
+            django_test_client = self.api_client.client
+            resp = django_test_client.post(resource_uri, 
+                content_type=content_type, 
+                data=attachedfile_item_post, **kwargs)
+            self.assertTrue(resp.status_code in [200,201,202,204], 
+                _('attached file put returns code: %s' % resp.status_code))
+            
+            data_for_get={ 'limit': 0 }        
+            data_for_get.setdefault('includes', ['*'])
+            resp = self.api_client.get(
+                resource_uri,
+                authentication=self.get_credentials(), data=data_for_get )
+            self.assertTrue(resp.status_code in [200], (resp.status_code, resp))
+            new_obj = self.deserialize(resp)
+            logger.info('new obj: %s ' % new_obj)
+            result,msgs = assert_obj1_to_obj2(
+                attachedfile_item_post, new_obj['objects'][0], 
+                excludes=['contents'])
+            self.assertTrue(result,msgs)
+            af = new_obj['objects'][0]
+            uri = '/db/attachedfile/content/%s' % af['attached_file_id']
+            try:
+                admin_user = User.objects.get(username='adminuser')
+                view, args, kwargs = resolve(uri)
+                kwargs['request'] = self.api_client.client.request()
+                kwargs['request'].user=admin_user
+                result = view(*args, **kwargs)
+                logger.info('attached_file request view result: %r' % result)
+                self.assertEqual(result.content, attachedfile_item_post['contents'], 
+                    'download file view returns wrong contents: %r' % result.content)
+            except Exception, e:
+                logger.info(str(('no file found at', uri,e)))
+                raise
+        
+        except Exception, e:
+            logger.exception('on test3_attached_files')
+            raise e
+
+        # TODO: 2. test attached file from file system
+        # TODO: delete attached file
+        # TODO: attachedfile logs
+
+    def test4_service_activity(self):
+        
+        self.test0_create_user();
+        
+        test_username = 'screeningroomuser1'
+        service_activity_post = {
+            'serviced_username': test_username,
+            'activity_type': "image_analysis",
+            'comments': "test",
+            'date_of_activity': "2015-10-27",
+            'funding_support': "clardy_grants",
+            'performed_by_username': "adminuser",
+        }
+
+        
+        try:       
+            resource_uri = BASE_URI_DB + '/serviceactivity'
+            resp = self.api_client.post(resource_uri, 
+                format='json', 
+                data=service_activity_post, authentication=self.get_credentials())
+            self.assertTrue(resp.status_code in [200,201,202], 
+                _(resp.status_code, self.serialize(resp)))
+
+            data_for_get={ 'limit': 0 }        
+            data_for_get.setdefault('includes', ['*'])
+            resp = self.api_client.get(
+                resource_uri,
+                format='json', 
+                authentication=self.get_credentials(), data=data_for_get )
+            logger.warn(str(('resp',self.serializer.get_content(resp))))
+            new_obj = self.deserialize(resp)
+            self.assertTrue(resp.status_code in [200], (resp.status_code, resp))
+            logger.info(str(('new_obj', new_obj)))
+            result,msgs = assert_obj1_to_obj2(
+                service_activity_post, new_obj['objects'][0])
+            self.assertTrue(result,msgs)
+        
+        except Exception, e:
+            logger.exception('on serviceactivity test')
+            raise e
+        
+        # TODO: delete serivceactivity
+        # TODO: serviceactivity logs

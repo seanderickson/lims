@@ -1,3 +1,4 @@
+from __future__ import unicode_literals
 '''
 Based on "django-sabridge" at https://github.com/johnpaulett/django-sabridge
 Copyright (c) 2011, John Paulett

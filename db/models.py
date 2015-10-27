@@ -1,17 +1,22 @@
 
 from __future__ import unicode_literals
+
+import datetime
+import logging
+
 from django.conf import settings
 from django.db import connection
 from django.db import models
+from django.db.models.fields import FloatField
 from django.db.models.query import QuerySet
 from django.db.models.sql.compiler import SQLCompiler
 from django.db.models.sql.query import Query
 from django.utils import timezone
-from reports.utils.gray_codes import create_substance_id
-import datetime
-import logging
-from django.db.models.fields import FloatField
 from django.utils.encoding import python_2_unicode_compatible
+
+from reports.utils.gray_codes import create_substance_id
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -214,13 +219,15 @@ class AssayWell(models.Model):
 class AttachedFile(models.Model):
     attached_file_id = models.AutoField(primary_key=True) 
     date_created = models.DateTimeField(default=timezone.now)
-#     file_contents = models.BinaryField(null=True) # TODO REMOVE
+    # REMOVED in manual migration 0002
+    # file_contents = models.BinaryField(null=True) 
     contents = models.BinaryField()
     filename = models.TextField()
-#     version = models.IntegerField()
+    #     version = models.IntegerField()
     screen = models.ForeignKey('Screen', null=True, blank=True)
     screensaver_user = models.ForeignKey('ScreensaverUser', null=True, blank=True)
-#     attached_file_type = models.ForeignKey('AttachedFileType')
+    # REMOVED in migration 0003
+    # attached_file_type = models.ForeignKey('AttachedFileType')
     type = models.TextField()
     created_by = models.ForeignKey(
         'ScreensaverUser', null=True, related_name='attachedfilecreated')

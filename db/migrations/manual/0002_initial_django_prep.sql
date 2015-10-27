@@ -256,6 +256,8 @@ ALTER TABLE attached_file ADD COLUMN contents bytea;
 UPDATE attached_file SET contents = loread(lo_open(file_contents, 262144), 1000000) 
   WHERE attached_file.file_contents IS NOT NULL;
   
+ALTER TABLE attached_file ALTER COLUMN file_contents DROP NOT NULL;
+
 /**
  *** TODO: pg_largeobject is owned by user "postgres" on orchestra and cannot 
  *** be deleted.

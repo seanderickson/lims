@@ -1,4 +1,4 @@
-
+from __future__ import unicode_literals
 from collections import OrderedDict
 import hashlib
 import logging
@@ -356,7 +356,9 @@ class SqlAlchemyResource(Resource):
         - copied from TP
         """
         # Simple values
-        if value in ['true', 'True', True]:
+        if value is 1:
+            value = 1
+        elif value in ['true', 'True', True]:
             value = True
         elif value in ['false', 'False', False]:
             value = False
@@ -423,7 +425,7 @@ class SqlAlchemyResource(Resource):
         Attempt to create a SqlAlchemy whereclause out of django style filters:
         - field_name__filter_expression
         '''
-        DEBUG_FILTERS = False or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_FILTERS = True or logger.isEnabledFor(logging.DEBUG)
         logger.debug('build_sqlalchemy_filters_from_hash %r' % param_hash)
         lookup_sep = django.db.models.constants.LOOKUP_SEP
 
@@ -474,11 +476,15 @@ class SqlAlchemyResource(Resource):
                 # ])
                 
                 if DEBUG_FILTERS:
-                    logger.info(str(('find filter', field_name, filter_type, value)))
+                    logger.info(str(('find filter', field_name, filter_type, value, type(value))))
                 
                 expression = None
+                col = column(field_name)
                 if filter_type in ['exact','eq']:
-                    expression = column(field_name)==value
+                    expression = col == value
+                    if field['data_type'] in ['integer','float','decimal']:
+                        col = cast(col,Numeric)
+                        expression = col == value
                     if field['data_type'] == 'list':
                         expression = text(
                             "'%s'=any(string_to_array(%s,'%s'))"
@@ -487,40 +493,33 @@ class SqlAlchemyResource(Resource):
                     decimals = 0
                     if '.' in value:
                         decimals = len(value.split('.')[1])
-                    expression = func.round(
-                        sqlalchemy.sql.expression.cast(column(field_name),
-                            sqlalchemy.types.Numeric),decimals) == value
+                    expression = func.round(cast(col,Numeric),decimals) == value
                     if DEBUG_FILTERS:
                         logger.info(str(('create "about" expression for term:',
                             filter_expr,
                             value,'decimals',decimals)))
                 elif filter_type == 'contains':
-                    expression = column(field_name).contains(value)
+                    expression = col.contains(value)
                 elif filter_type == 'icontains':
-                    expression = column(field_name).ilike('%{value}%'.format(
+                    expression = col.ilike('%{value}%'.format(
                         value=value))
                 elif filter_type == 'lt':
-                    col = column(field_name)
                     if field['data_type'] in ['integer','float','decimal']:
                         col = cast(col,Numeric)
                     expression = col < value
                 elif filter_type == 'lte':
-                    col = column(field_name)
                     if field['data_type'] in ['integer','float','decimal']:
                         col = cast(col,Numeric)
                     expression = col <= value
                 elif filter_type == 'gt':
-                    col = column(field_name)
                     if field['data_type'] in ['integer','float','decimal']:
                         col = cast(col,Numeric)
                     expression = col > value
                 elif filter_type == 'gte':
-                    col = column(field_name)
                     if field['data_type'] in ['integer','float','decimal']:
                         col = cast(col,Numeric)
                     expression = col >= value
                 elif filter_type == 'is_blank':
-                    col = column(field_name)
                     if field['data_type'] == 'string':
                         col = func.trim(col)
                     if value and str(value).lower() == 'true':
@@ -533,7 +532,6 @@ class SqlAlchemyResource(Resource):
                              or field['data_type'] == 'list' ):
                             expression = col != ''
                 elif filter_type == 'is_null':
-                    col = column(field_name)
                     if field['data_type'] == 'string':
                         col = func.trim(col)
                     if value and str(value).lower() == 'true':
@@ -541,9 +539,9 @@ class SqlAlchemyResource(Resource):
                     else:
                         expression = col != None
                 elif filter_type == 'in':
-                    expression = column(field_name).in_(value)
+                    expression = col.in_(value)
                 elif filter_type == 'ne':
-                    expression = column(field_name) != value
+                    expression = col != value
                 elif filter_type == 'range':
                     if len(value) != 2:
                         logger.error(str((
@@ -551,7 +549,6 @@ class SqlAlchemyResource(Resource):
                             field_name, filter_expr, value)))
                         continue
                     else:
-                        col = column(field_name)
                         if field['data_type'] in ['integer','float','decimal']:
                             col = cast(col,Numeric)
                         expression = col.between(
@@ -569,7 +566,7 @@ class SqlAlchemyResource(Resource):
                 expressions.append(expression)
                 filtered_fields.append(field_name)
                 
-            logger.info(str(('filtered_fields', filtered_fields)))
+            logger.info('filtered_fields: %s' % filtered_fields)
             if DEBUG_FILTERS:
                 logger.info(str(('values', _values)))
                 
@@ -653,7 +650,8 @@ class SqlAlchemyResource(Resource):
             self._meta.resource_name)) )
     
     def clear_cache(self):
-        logger.debug('clearing the cache: resource: %s' % self._meta.resource_name)
+        logger.debug('clearing the cache from resource: %s (all caches cleared)' 
+            % self._meta.resource_name)
         cache.clear()
 
     def _cached_resultproxy(self, stmt, count_stmt, param_hash, limit, offset):

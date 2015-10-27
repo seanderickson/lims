@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+
 ## {{{ http://code.activestate.com/recipes/137951/ (r1)
 def printDict(di, format="%-25s %s"):
     for (key, val) in di.items():

@@ -1,15 +1,22 @@
+from __future__ import unicode_literals
+
+import json
 import logging
 import os.path
 import sys
-from django.shortcuts import render
-from db.models import ScreensaverUser, Reagent, AttachedFile
-from django.http import HttpResponse
-import json
-from django.utils.encoding import smart_str
-from django.conf import settings
-from django.http.response import Http404
-from reports.api import UserGroupAuthorization
+import types
 from wsgiref.util import FileWrapper
+
+from django.conf import settings
+from django.forms.models import model_to_dict
+from django.http import HttpResponse
+from django.http.response import Http404
+from django.shortcuts import render
+from django.utils.encoding import smart_str
+
+from db.models import ScreensaverUser, Reagent, AttachedFile
+from reports.api import UserGroupAuthorization
+
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +170,6 @@ def screens_sm(request):
 
     return render(request, 'db/index_backbone.html', {'search': search, 'root_url': root_url, 'api_url': url, 'api_url_schema': url_schema })
 
-from django.forms.models import model_to_dict
 
 def screeners_datatables(request):
 #    logger.info(str(('screeners_datatables:', request)))
@@ -214,7 +220,6 @@ def get_fields(model):
     return fields.keys()
 
 
-import types
 
 def get_properties(obj):
     """

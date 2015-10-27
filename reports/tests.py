@@ -1,4 +1,3 @@
-
 """
 About testing:
 
@@ -29,6 +28,8 @@ and run like:
 $ ./manage.py test --settings=lims.test_settings
 
 """
+
+from __future__ import unicode_literals
 
 import cStringIO
 import json

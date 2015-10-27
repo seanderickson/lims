@@ -1,3 +1,4 @@
+from __future__ import unicode_literals
 import StringIO
 import cStringIO
 from collections import OrderedDict
@@ -235,9 +236,6 @@ class XLSSerializer(Serializer):
         if desired_format is None:
             raise UnsupportedFormat("The format indicated '%s' had no available deserialization method. Please check your ``formats`` and ``content_types`` on your Serializer." % format)
 
-        #         if isinstance(content, six.binary_type):
-        #             content = force_text(content)
-        logger.info(str(('content', content)))
         deserialized = getattr(self, "from_%s" % desired_format)(content)
         return deserialized
 
@@ -709,10 +707,8 @@ class LimsSerializer(PrettyJSONSerializer, BackboneSerializer,CSVSerializer,
                 for line in resp.streaming_content:
                     buffer.write(line)
                 resp.cached_content = buffer.getvalue()
-            logger.info(str(('resp.cached_content',resp.cached_content)))
             return resp.cached_content
         else:
-            logger.info(str(('resp.content',resp.content)))
             return resp.content
 
 # class SmilesPNGSerializer(Serializer):

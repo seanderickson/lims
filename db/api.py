@@ -1,42 +1,34 @@
+from __future__ import unicode_literals
 
-import StringIO
-from __builtin__ import StopIteration
-import cStringIO
-from collections import defaultdict, OrderedDict
+from _codecs import encode
+from collections import defaultdict
 from copy import deepcopy
-import csv
 import hashlib
 import io
 import json
 import logging
-import math
 import os.path
 import re
-import shutil
 import sys
-import time
-from zipfile import ZipFile
 
-from PIL import Image
 from django.conf import settings
 from django.conf.urls import url
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db import connection
 from django.db import transaction
 from django.db.models.aggregates import Max, Min
 import django.db.models.constants
 import django.db.models.sql.constants
 from django.forms.models import model_to_dict
 from django.http import Http404
-from django.http.response import StreamingHttpResponse, HttpResponse
+from django.http.response import HttpResponse
 from sqlalchemy import select, asc, text
 import sqlalchemy
-from sqlalchemy.dialects.postgresql import array
-from sqlalchemy.dialects.postgresql import Any
 from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import Any
+from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.sql import and_, or_, not_          
 from sqlalchemy.sql import asc, desc, alias, Alias
 from sqlalchemy.sql import func
@@ -44,6 +36,7 @@ from sqlalchemy.sql.elements import literal_column
 from sqlalchemy.sql.expression import column, join, insert, delete, distinct, \
     exists
 from sqlalchemy.sql.expression import nullsfirst, nullslast
+from sqlalchemy.sql.functions import concat
 from tastypie import fields
 from tastypie import http
 from tastypie.authentication import BasicAuthentication, SessionAuthentication, \
@@ -56,9 +49,7 @@ from tastypie.exceptions import BadRequest, ImmediateHttpResponse, \
 from tastypie.http import HttpNotFound
 from tastypie.resources import Resource
 from tastypie.utils import timezone
-from tastypie.utils.dict import dict_strip_unicode_keys
 from tastypie.utils.urls import trailing_slash
-from tastypie.validation import Validation
 
 from db.models import ScreensaverUser, Screen, LabHead, LabAffiliation, \
     ScreeningRoomUser, ScreenResult, DataColumn, Library, Plate, Copy, \
@@ -67,10 +58,11 @@ from db.models import ScreensaverUser, Screen, LabHead, LabAffiliation, \
     AdministrativeActivity, SmallMoleculeReagent, SilencingReagent, GeneSymbol, \
     NaturalProductReagent, Molfile, Gene, GeneGenbankAccessionNumber, \
     CherryPickRequest, CherryPickAssayPlate, CherryPickLiquidTransfer, \
-    CachedQuery, ChecklistItemEvent, UserChecklistItem, AttachedFile
+    CachedQuery, ChecklistItemEvent, UserChecklistItem, AttachedFile, \
+    ServiceActivity
 from db.support import lims_utils
 from db.support.data_converter import default_converter
-from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM,\
+from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT
 from reports.api import ManagedModelResource, ManagedResource, ApiLogResource, \
     UserGroupAuthorization, ManagedLinkedResource, log_obj_update, \
@@ -79,11 +71,11 @@ from reports.api import ManagedModelResource, ManagedResource, ApiLogResource, \
     UserGroupResource, ApiLogResource, ApiResource, \
     write_authorization, read_authorization
 from reports.dump_obj import dumpObj
-from reports.models import MetaHash, Vocabularies, ApiLog, UserProfile,\
+from reports.models import MetaHash, Vocabularies, ApiLog, UserProfile, \
     API_ACTION_DELETE, API_ACTION_PUT
 from reports.serializers import CursorSerializer, LimsSerializer, XLSSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource, un_cache
-from reports.utils.sqlalchemy_bridge import Bridge
+
 
 PLATE_NUMBER_SQL_FORMAT = 'FM9900000'
 
@@ -93,16 +85,6 @@ def _get_raw_time_string():
   return timezone.now().strftime("%Y%m%d%H%M%S")
     
 
-class ScreeningRoomUserResource(ManagedModelResource):
-    screensaver_user = fields.ToOneField(
-        'db.api.ScreensaverUserResource', attribute='screensaver_user', 
-        full=True, full_detail=True, full_list=False)
-    class Meta:
-        queryset = ScreeningRoomUser.objects.all()
-        authentication = MultiAuthentication(BasicAuthentication(), 
-            SessionAuthentication())
-        authorization= UserGroupAuthorization()
-    
 class LabAffiliationResource(ManagedModelResource):   
     class Meta:
         queryset = LabAffiliation.objects.all()
@@ -829,6 +811,7 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
             _lcp = self.bridge['lab_cherry_pick']
             _cpap = self.bridge['cherry_pick_assay_plate']
             _cplt = self.bridge['cherry_pick_liquid_transfer']
+            _sfs = self.bridge['screen_funding_supports']
 
             # create CTEs -  Common Table Expressions for the intensive queries:
             
@@ -974,13 +957,16 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
                     '  where sr.screen_id=screen.screen_id '
                     '  order by date_of_activity desc LIMIT 1 )'
                     ),
-                # TODO: convert to vocabulary
-                'funding_supports': literal_column(
-                    "(select array_to_string(array_agg(f1.value),'%s') "
-                    '    from ( select fs.value from funding_support fs '
-                    '        join screen_funding_support_link using(funding_support_id) '
-                    '        where screen_id=screen.screen_id '
-                    '        order by fs.value) as f1 )' % LIST_DELIMITER_SQL_ARRAY ), 
+                'funding_supports':
+                    select([func.array_to_string(
+                        func.array_agg(literal_column('funding_support')
+                        ),LIST_DELIMITER_SQL_ARRAY)])
+                        .select_from(
+                            select([_sfs.c.funding_support])
+                                .select_from(_sfs)
+                                .order_by(_sfs.c.funding_support)
+                                .where(_sfs.c.screen_id==literal_column('screen.screen_id'))
+                                .alias('inner')),
                 # FIXME: use cherry_pick_liquid_transfer status vocabulary 
                 'total_plated_lab_cherry_picks': 
                     select([tplcps.c.count]).\
@@ -3171,44 +3157,60 @@ class AttachedFileResource(ApiResource):
     def put_list(self, request, **kwargs):
         raise NotImplementedError("Put list is not implemented for AttachedFiles")
     
+    def put_detail(self, request, **kwargs):
+        raise NotImplementedError("Post detail is not implemented for AttachedFiles")
+    
     def patch_list(self, request, **kwargs):
         raise NotImplementedError("Patch list is not implemented for AttachedFiles")
     
     def patch_detail(self, request, **kwargs):
-        raise NotImplementedError("Patch list is not implemented for AttachedFiles")
+        raise NotImplementedError("Patch detail is not implemented for AttachedFiles")
     
     @write_authorization
     @un_cache        
     @transaction.atomic
-    def put_detail(self, request, **kwargs):
+    def post_detail(self, request, **kwargs):
                 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        logger.info('create attached file: %s' % kwargs)
+        logger.info('create attached file: %s' % param_hash)
         
         attached_file = request.FILES.get('attached_file', None)
         if not attached_file:
             contents = param_hash.get('contents', None)
-            name = param_hash.get('name', None)
-            if not contents or name:
+            filename = param_hash.get('filename', None)
+            if not ( contents and filename ):
                 raise NotImplementedError(
-                    'must provide either "attached_file" or "contents" parameters')
+                    'must provide either "attached_file" or "contents+filename" parameters')
+            contents = contents.encode('utf-8')
+            
+        else:
+            contents = attached_file.read()
+            filename = attached_file.name
+            if param_hash.get('filename', None):
+                filename = param_hash.get('filename', None)
 
-        try:
-            admin_user = ScreensaverUser.objects.get(username=request.user.username)
-        except ObjectDoesNotExist:
-            logger.exception('admin_user/username does not exist: %s' % request.user.username)
-            raise
         username = param_hash.pop('username', None)
         if not username:
             raise NotImplementedError('must provide a username parameter')
-        file_type = param_hash.pop('file_type', None)
-        if not file_type:
-            raise NotImplementedError('must provide a file_type parameter')
         try:
             user = ScreensaverUser.objects.get(username=username)
+            logger.info('using user %s' % user)
         except ObjectDoesNotExist:
-            logger.exception('username does not exist: %s' % request.user.username)
+            logger.exception('username does not exist: %s' % username)
+            raise
+        # TODO: refactor, use validation properties to validate
+        type = param_hash.pop('type', None)
+        if not type:
+            raise NotImplementedError('must provide a type parameter')
+        created_by_username = param_hash.pop('created_by_username', None)
+        if not created_by_username:
+            created_by_username = request.user.username
+        try:
+            admin_user = ScreensaverUser.objects.get(username=created_by_username)
+            logger.info('using admin_user %s' % admin_user)
+        except ObjectDoesNotExist:
+            logger.exception('created_by_username does not exist: %s' % created_by_username)
             raise
         file_date=param_hash.pop('file_date', None)
         if file_date:
@@ -3216,9 +3218,9 @@ class AttachedFileResource(ApiResource):
             file_date = parse_val(file_date,'file_date','date')
             
         af = AttachedFile.objects.create(
-            contents=attached_file.read(),
-            filename=attached_file.name,
-            type=file_type,
+            contents=contents,
+            filename=filename,
+            type=type,
             created_by=admin_user,
             screensaver_user=user,
             )
@@ -3263,7 +3265,22 @@ class AttachedFileResource(ApiResource):
             logger.debug(str(('create, api log', log)) )
 
         logger.info('attached file created: %s for user %s' % (af,user))
-
+        
+        return http.HttpAccepted()
+        
+        # NOTE: return data - multipart/form - what format?
+        # if not self._meta.always_return_data:
+        #     return http.HttpAccepted(status_code=204)
+        # else:
+        #     kwargs = { 'attached_file_id': af.attached_file_id }        
+        #     kwargs['is_for_detail'] = True
+        #     response = self.get_list(request, **kwargs)             
+        #     response.status_code = 202
+        #     return response
+        
+        
+        
+    
     @write_authorization
     @un_cache        
     @transaction.atomic
@@ -3435,6 +3452,268 @@ class AttachedFileResource(ApiResource):
 
 
 
+class ServiceActivityResource(ApiResource):    
+
+    class Meta:
+        queryset = ServiceActivity.objects.all()
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= UserGroupAuthorization()
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+        excludes = ['digested_password']
+        resource_name = 'serviceactivity'
+        
+        max_limit = 10000
+        always_return_data = True
+
+    def __init__(self, **kwargs):
+        self.activity_resource = None
+        super(ServiceActivityResource,self).__init__(**kwargs)
+
+    def prepend_urls(self):
+        return [
+            # override the parent "base_urls" so that we don't need to worry 
+            # about schema again
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+            url((r"^(?P<resource_name>%s)/" 
+                 r"(?P<activity_id>([\d]+))%s$" )
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/for_user/(?P<serviced_username>([\w\d_]+))%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+            url(r"^(?P<resource_name>%s)/for_user/(?P<serviced_username>([\w\d_]+))%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+        ]    
+    def build_schema(self):
+        
+        schema = super(ServiceActivityResource,self).build_schema()
+        logger.debug('=== service activity fields: %r' % schema['fields'])
+        
+        sub_schema = self.get_activity_resource().build_schema();
+        fields = {}
+        fields.update(sub_schema['fields'])
+        for key,val in schema['fields'].items():
+#             if key in fields:
+#                 fields[key].update(val)
+#             else:
+                fields[key] = val
+        
+        schema['fields'] = fields;
+        logger.debug('finalservice activity fields: %r' % schema['fields'])
+        
+        return schema
+
+    def get_activity_resource(self):
+        if not self.activity_resource:
+            self.activity_resource = ActivityResource()
+        return self.activity_resource
+    
+    def patch_obj(self,deserialized, **kwargs):
+
+        logger.info('patch_obj %s' % deserialized)
+
+        schema = self.build_schema()
+        fields = schema['fields']
+        initializer_dict = {}
+        # TODO: wrapper for parsing
+        for key in fields.keys():
+            if deserialized.get(key,None):
+                initializer_dict[key] = parse_val(
+                    deserialized.get(key,None), key,fields[key]['data_type']) 
+        
+        serviced_username = deserialized.get('serviced_username', None)
+        if not serviced_username:
+            raise Exception('serviced_username not specified %s' % deserialized)
+        activity_type = deserialized.get('activity_type', None)
+        if not activity_type:
+            raise Exception('activity_type not specified %s' % deserialized)
+        # TODO: drive this from the metadata "field" property
+        initializer_dict['service_activity_type'] = activity_type
+        performed_by_username = deserialized.get('performed_by_username', None)
+        if not performed_by_username:
+            raise Exception('performed_by_username not specified %s' % deserialized)
+
+        try:
+            serviced_user = ScreeningRoomUser.objects.get(screensaver_user__username=serviced_username)
+            initializer_dict['serviced_user'] = serviced_user
+        except ObjectDoesNotExist:
+            logger.exception('serviced_user/username does not exist: %s' % serviced_username)
+            raise
+        try:
+            performed_by_user = ScreensaverUser.objects.get(username=performed_by_username)
+            initializer_dict['performed_by_user_id'] = performed_by_user.pk
+        except ObjectDoesNotExist:
+            logger.exception('admin_user/username does not exist: %s' % admin_username)
+            raise
+
+        try:
+            activity = None
+            service_activity = None
+            if 'activity_id' in initializer_dict:
+                try:
+                    activity_id = initializer_dict['activity_id']
+                    activity = Activity.objects.get(pk=activity_id)
+                    service_activity = ServiceActivity.objects.get(activity=activity)
+                except ObjectDoesNotExist:
+                    logger.error('Activity does not exist: %s' % activity_id )
+                    raise Exception('Activity does not exist: %s' % activity_id)
+            else:
+                activity = Activity.objects.create(
+                    performed_by=performed_by_user,
+                    date_of_activity=initializer_dict['date_of_activity'])
+            logger.info(str(('initializer dict', initializer_dict)))
+            for key,val in initializer_dict.items():
+                if hasattr(activity,key):
+                    # note: setattr only works for simple attributes, not foreign keys
+                    setattr(activity,key,val)
+                else:
+                    logger.warn('no such attribute on activity: %s:%r' 
+                        % (key, val) )
+            activity.save()
+            if not service_activity:
+                service_activity = ServiceActivity.objects.create(
+                    activity=activity,
+                    serviced_user=serviced_user)
+                logger.info('created service_activity: %s' % service_activity)
+            logger.info('initializer dict %s' % initializer_dict)
+            for key,val in initializer_dict.items():
+                if hasattr(service_activity,key):
+                    # note: setattr only works for simple attributes, not foreign keys
+                    setattr(service_activity,key,val)
+                else:
+                    logger.warn('no such attribute on service_activity: %s:%r' 
+                        % (key, val) )
+            service_activity.save()
+            return service_activity
+        except Exception, e:
+            logger.exception('on patch_obj')
+            raise e
+    
+    def delete_obj(self, **kwargs):
+        activity_id = kwargs.get('activity_id', None)
+        if activity_id:
+            try:
+                ServiceActivity.objects.get(activity__activity_id=activity_id).delete()
+            except ObjectDoesNotExist:
+                logger.warn('no such ServiceActivity: %s' % activity_id)
+                raise Exception('ServiceActivity for activity_id: %s not found' % activity_id)
+        else:
+            raise Exception('ServiceActivity delete action requires an activity_id %s' % kwargs)
+        
+    def get_detail(self, request, **kwargs):
+        logger.info(str(('get_detail')))
+        
+        activity_id = kwargs.pop('activity_id', None)
+        if not activity_id:
+            logger.info(str(('no activity_id provided', kwargs)))
+            raise NotImplementedError('must provide an activity_id parameter')
+        else:
+            kwargs['activity_id__eq'] = activity_id
+        kwargs['is_for_detail']=True
+        return self.get_list(request, **kwargs)
+       
+    @read_authorization
+    def get_list(self,request,**kwargs):
+
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+
+        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+
+
+    def build_list_response(self,request, param_hash={}, **kwargs):
+        ''' 
+        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
+        @returns django.http.response.StreamingHttpResponse 
+        '''
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        is_for_detail = kwargs.pop('is_for_detail', False)
+
+        schema = self.build_schema()
+
+        filename = self._get_filename(schema, kwargs)
+
+        try:
+            
+            # general setup
+          
+            manual_field_includes = set(param_hash.get('includes', []))
+            
+            if DEBUG_GET_LIST: 
+                logger.info(str(('manual_field_includes', manual_field_includes)))
+  
+            (filter_expression, filter_fields) = \
+                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+                  
+            visibilities = set()                
+            if is_for_detail:
+                visibilities.update(['detail','summary'])
+            field_hash = self.get_visible_fields(
+                schema['fields'], filter_fields, manual_field_includes, 
+                is_for_detail=is_for_detail, visibilities=visibilities)
+              
+            order_params = param_hash.get('order_by',[])
+            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+                order_params, field_hash)
+             
+            rowproxy_generator = None
+            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
+                rowproxy_generator = IccblBaseResource.\
+                    create_vocabulary_rowproxy_generator(field_hash)
+ 
+            # specific setup
+            _a = self.bridge['activity']
+            _sa = self.bridge['service_activity']
+            _user_cte = ScreensaverUserResource.get_user_cte().cte('users')
+            _serviced = _user_cte.alias('serviced_user')
+            _performed_by = _user_cte.alias('performed_by')
+            _vocab = self.bridge['reports_vocabularies']
+            j = _a
+            j = j.join(_sa, _a.c.activity_id==_sa.c.activity_id )
+            j = j.join(_serviced, _sa.c.serviced_user_id==_serviced.c.screensaver_user_id)
+            j = j.join(_performed_by,_a.c.performed_by_id==_performed_by.c.screensaver_user_id)
+
+            custom_columns = {
+                'serviced_user': _serviced.c.name,
+                'serviced_username': _serviced.c.username,
+                'performed_by_name': _performed_by.c.name,
+                'performed_by_username': _performed_by.c.username,
+                }
+
+            base_query_tables = ['activity', 'service_activity'] 
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                custom_columns=custom_columns )
+            
+            stmt = select(columns.values()).select_from(j)
+            # general setup
+             
+            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+            
+            title_function = None
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                title_function = lambda key: field_hash[key]['title']
+            
+            return self.stream_response_from_statement(
+                request, stmt, count_stmt, filename, 
+                field_hash=field_hash, 
+                param_hash=param_hash,
+                is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function  )
+             
+        except Exception, e:
+            logger.exception('on get list')
+            raise e  
+
+
 class UserChecklistItemResource(ApiResource):    
 
     class Meta:
@@ -3506,7 +3785,7 @@ class UserChecklistItemResource(ApiResource):
         @returns django.http.response.StreamingHttpResponse 
         '''
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
-
+        logger.info('build_list_response: %s ' % kwargs)
         is_for_detail = kwargs.pop('is_for_detail', False)
 
         schema = self.build_schema()
@@ -3650,8 +3929,8 @@ class UserChecklistItemResource(ApiResource):
             logger.exception('on get list')
             raise e  
 
-    def delete_obj(self, deserialized, **kwargs):
-        raise NotImplemented('delete obj is not implemented for UserChecklistItem')
+    def delete_obj(self, **kwargs):
+        raise NotImplementedError('delete obj is not implemented for UserChecklistItem')
     
     def patch_obj(self,deserialized, **kwargs):
 
@@ -3760,6 +4039,15 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_user_attachedfiledetailview'), 
                 name="api_dispatch_user_attachedfiledetailview"),
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))/serviceactivities%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_user_serviceactivityview'), 
+                name="api_dispatch_user_serviceactivityview"),
+            url((r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))"
+                 r"/serviceactivities/(?P<activity_id>([\d]+))%s$") 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_user_serviceactivitydetailview'), 
+                name="api_dispatch_user_serviceactivitydetailview"),
         ]    
 
     def dispatch_user_groupview(self, request, **kwargs):
@@ -3777,6 +4065,13 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
 
     def dispatch_user_attachedfiledetailview(self, request, **kwargs):
         return AttachedFileResource().dispatch('detail', request, **kwargs)    
+    
+    def dispatch_user_serviceactivityview(self,request,**kwargs):
+        kwargs['serviced_username__eq'] = kwargs.pop('username')
+        return ServiceActivityResource().dispatch('list', request, **kwargs)    
+
+    def dispatch_user_serviceactivitydetailview(self,request,**kwargs):
+        return ServiceActivityResource().dispatch('detail', request, **kwargs)    
     
     def build_schema(self):
         
@@ -3796,7 +4091,26 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
         logger.debug(str(('=== final screensaver_user fields', fields)))
         
         return schema
+    
+    @classmethod
+    def get_user_cte(cls):
 
+        _su = cls.bridge['screensaver_user']
+        _up = cls.bridge['reports_userprofile']
+        _au = cls.bridge['auth_user']
+        
+        j = _su
+        j = j.join(_up, _up.c.id==_su.c.user_id)
+        j = j.join(_au, _au.c.id==_up.c.user_id)
+        user_table = ( 
+            select([
+                _su.c.screensaver_user_id,
+                _au.c.username,
+                concat(_au.c.first_name,' ',_au.c.last_name).label('name')
+                ])
+            .select_from(j))
+        return user_table
+        
     def get_user_resource(self):
         if not self.user_resource:
             self.user_resource = UserResource()
@@ -4153,7 +4467,8 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
         self.clear_cache()
         
         try:
-            self.delete_obj(deserialized, **kwargs)
+            if 'username' in deserialized:
+                self.delete_obj(**deserialized)
         except ObjectDoesNotExist,e:
             pass 
         
@@ -4167,15 +4482,15 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
             request.body, 
             format=request.META.get('CONTENT_TYPE', 'application/json'))
         try:
-            self.delete_obj(deserialized, **kwargs)
+            self.delete_obj(**kwargs)
             # FIXME: logging
             return HttpResponse(status=202)
         except ObjectDoesNotExist,e:
             return HttpResponse(status=404)
     
     @transaction.atomic()    
-    def delete_obj(self, deserialized, **kwargs):
-        username = self.get_user_resource().find_username(deserialized,**kwargs)
+    def delete_obj(self, **kwargs):
+        username = self.get_user_resource().find_username({},**kwargs)
         ScreensaverUser.objects.get(username=username).delete()
     
     @transaction.atomic()    
@@ -4219,17 +4534,72 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
                 if hasattr(screensaver_user,key):
                     setattr(screensaver_user,key,val)
             
-            # also set
+            # also set legacy screensaveruser fields, temporary convenience
             screensaver_user.username = user.username
             screensaver_user.email = user.email
             screensaver_user.user = user
             screensaver_user.save()
+            
             return screensaver_user
             
         except Exception, e:
             logger.exception('on put detail')
             raise e  
 
+
+class ScreeningRoomUserResource(ScreensaverUserResource):
+
+    class Meta:
+        queryset = ScreeningRoomUser.objects.all()
+        authentication = MultiAuthentication(BasicAuthentication(), 
+            SessionAuthentication())
+        authorization= UserGroupAuthorization()
+    
+    @transaction.atomic()    
+    def patch_obj(self,deserialized, **kwargs):
+
+        username = self.get_user_resource().find_username(deserialized,**kwargs)
+        
+        schema = self.build_schema()
+        fields = schema['fields']
+
+        fields = { name:val for name,val in fields.items() 
+            if val['table'] and val['table']=='screening_room_user'}
+        
+        try:
+            # create/get screensaver_user
+
+            su = super(ScreeningRoomUserResource,self).patch_obj(deserialized,**kwargs)
+
+            # create the screening_room_user
+            initializer_dict = {}
+            for key in fields.keys():
+                if deserialized.get(key,None):
+                    initializer_dict[key] = parse_val(
+                        deserialized.get(key,None), key,fields[key]['data_type']) 
+
+            sru = None
+            try:
+                # FIXME: add username field to the screensaver_user table
+                sru = ScreeningRoomUser.objects.get(screensaver_user=su)
+            except ObjectDoesNotExist, e:
+                logger.info('Screening Room User %s does not exist, creating' % username)
+                sru = ScreeningRoomUser.objects.create(screensaver_user=su)
+                sru.save()
+
+            logger.info(str(('initializer dict', initializer_dict)))
+            for key,val in initializer_dict.items():
+                logger.info(str(('set',key,val,hasattr(sru, key))))
+                
+                if hasattr(sru,key):
+                    setattr(sru,key,val)
+            sru.save()
+            
+            return sru
+            
+        except Exception, e:
+            logger.exception('on put detail')
+            raise e  
         
 class ReagentResource(SqlAlchemyResource, ManagedModelResource):
     
@@ -4911,8 +5281,8 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
         return well_bundle
 
 
-# TODO: Eventually, replace much of this with the ApiLog resource; 
-# after determining best way to handle m2m reln's
+# TODO: refactor/divide
+# Activity types: Admin, Lab, Service
 class ActivityResource(SqlAlchemyResource,ManagedModelResource):
 
     performed_by = fields.ToOneField(

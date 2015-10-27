@@ -1,3 +1,4 @@
+from __future__ import unicode_literals
 '''
 Utilities for streaming sql connection cursors in different serialization formats
 '''
@@ -221,8 +222,9 @@ def csv_generator(cursor,request,
         field_hash=None,title_function=None,list_brackets=None):    
     
     pseudo_buffer = Echo()
+    quotechar = b'"' # note that csv under python 2.7 doesn't allow multibyte quote char
     csvwriter = csv.writer(
-        pseudo_buffer, delimiter=CSV_DELIMITER, quotechar='"', 
+        pseudo_buffer, delimiter=CSV_DELIMITER, quotechar=quotechar, 
         quoting=csv.QUOTE_ALL, lineterminator="\n")
     try:
         i=0

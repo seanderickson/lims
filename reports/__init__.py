@@ -1,8 +1,9 @@
-
+from __future__ import unicode_literals
 
 LIST_DELIMITER_CSV = ';'
-LIST_DELIMITER_XLS = ';' 
-CSV_DELIMITER = ','
+LIST_DELIMITER_XLS = ';'
+# Note the csv package does not allow multibyte delimiters 
+CSV_DELIMITER = b','  
 LIST_DELIMITER_SQL_ARRAY = ';'
 LIST_DELIMITER_URL_PARAM = ','
 MAX_ROWS_PER_XLS_FILE = 100000

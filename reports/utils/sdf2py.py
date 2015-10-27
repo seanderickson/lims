@@ -1,11 +1,14 @@
-# Imports an SDF/molfile
-# Original version by Gabriel Barriz
+from __future__ import unicode_literals
 
-import re
-import logging
 import cStringIO
+import logging
+import re
+
 import six
 
+
+# Imports an SDF/molfile
+# Original version by Gabriel Barriz
 logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 

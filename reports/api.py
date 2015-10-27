@@ -1,3 +1,4 @@
+from __future__ import unicode_literals
 from collections import defaultdict, OrderedDict
 from copy import deepcopy
 import csv
@@ -47,7 +48,8 @@ from tastypie.bundle import Bundle
 from tastypie.constants import ALL, ALL_WITH_RELATIONS
 from tastypie.exceptions import NotFound, ImmediateHttpResponse, Unauthorized, \
     BadRequest
-from tastypie.http import HttpForbidden, HttpNotFound, HttpNotImplemented
+from tastypie.http import HttpForbidden, HttpNotFound, HttpNotImplemented,\
+    HttpNoContent
 from tastypie.resources import Resource, ModelResource
 from tastypie.resources import convert_post_to_put
 import tastypie.resources
@@ -67,6 +69,8 @@ from reports.models import MetaHash, Vocabularies, ApiLog, ListLog, Permission, 
 from reports.serializers import LimsSerializer, CsvBooleanField, CSVSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource, un_cache
 from reports.utils.profile_decorator import profile
+import cStringIO
+from django.core.serializers.json import DjangoJSONEncoder
 
 
 logger = logging.getLogger(__name__)
@@ -114,15 +118,20 @@ def parse_val(value, key, data_type):
 class UserGroupAuthorization(Authorization):
     
     def _is_resource_authorized(self, resource_name, user, permission_type):
-        logger.debug("_is_resource_authorized: %s, user: %s, type: %s"
-            % (resource_name, user, permission_type))
+        
+        DEBUG_AUTHORIZATION = False or logger.isEnabledFor(logging.DEBUG)
+        
+        if DEBUG_AUTHORIZATION:
+            logger.info("_is_resource_authorized: %s, user: %s, type: %s"
+                % (resource_name, user, permission_type))
         scope = 'resource'
         prefix = 'permission'
         uri_separator = '/'
         permission_str =  uri_separator.join([prefix,scope,resource_name,permission_type])       
 
-        logger.debug('authorization query: %s, user %s, %s' 
-            % (permission_str, user, user.is_superuser))
+        if DEBUG_AUTHORIZATION:
+            logger.info('authorization query: %s, user %s, %s' 
+                % (permission_str, user, user.is_superuser))
         
         if user.is_superuser:
             logger.debug('%s:%s access allowed for super user: %s' 
@@ -132,25 +141,27 @@ class UserGroupAuthorization(Authorization):
         # FIXME: 20150708 - rewrite this using the "get_detail" method for the user, and 
         # interrogating the groups therein (post refactor of TP methods)
         userprofile = user.userprofile
-        
-        permissions = [x for x in 
-            userprofile.permissions.all().filter(
-                scope=scope, key=resource_name, type=permission_type)]
-        
-        if permissions:
-            logger.debug('user %s, auth query: %s, found matching user permissions %s'
-                % (user,permission_str,permissions))
+        permission_types = [permission_type]
+        if permission_type == 'read':
+            permission_types.append('write')
+        query = userprofile.permissions.all().filter(
+            scope=scope, key=resource_name, type__in=permission_types)
+        if query.exists():
+            if DEBUG_AUTHORIZATION:
+                logger.info('user %s, auth query: %s, found matching user permissions %s'
+                    % (user,permission_str,[str(x) for x in query]))
             logger.info('%s:%s user explicit permission for: %s' 
                 % (resource_name,permission_type,user))
             return True
         
-        logger.debug('user %s, auth query: %s, not found in user permissions %s'
-            % (user,permission_str,permissions))
+        if DEBUG_AUTHORIZATION:
+            logger.info('user %s, auth query: %s, not found in user permissions %s'
+                % (user,permission_str,[str(x) for x in query]))
         
         permissions_group = [ permission 
                 for group in userprofile.usergroup_set.all() 
                 for permission in group.get_all_permissions(
-                    scope=scope, key=resource_name, type=permission_type)]
+                    scope=scope, key=resource_name, type__in=permission_types)]
         if permissions_group:
             if(logger.isEnabledFor(logging.DEBUG)):
                 logger.info(str(('user',user ,'auth query', permission_str,
@@ -275,7 +286,7 @@ class SuperUserAuthorization(ReadOnlyAuthorization):
         raise Unauthorized("Only superuser may update lists.")
 
     def update_detail(self, object_list, bundle):
-        logger.info(str(('create detail', bundle.request.user)))
+        logger.info(str(('update detail authorization', bundle.request.user)))
         if bundle.request.user.is_superuser:
             return True
         raise Unauthorized("Only superuser may update.")
@@ -376,7 +387,7 @@ class IccblBaseResource(Resource):
         # request was accepted and that some action occurred. This also
         # prevents Django from freaking out.
         if not isinstance(response, HttpResponseBase):
-            return tastypie.http.HttpNoContent()
+            return HttpNoContent()
 
         
         ### Custom iccbl-lims parameter: set cookie to tell browser javascript
@@ -1548,7 +1559,7 @@ class ManagedResource(LoggingMixin):
         return current_val
     
     def _handle_500(self, request, exception):
-        logger.error(str(('handle_500 error', self._meta.resource_name, str(exception))))
+        logger.exception('handle_500 error: %s' % self._meta.resource_name)
         return super(ManagedResource, self)._handle_500(request, str((type(exception), str((exception)))) )
         
     # override
@@ -2188,6 +2199,14 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
 
     def prepend_urls(self):
         return [
+            # override the parent "base_urls" so that we don't need to worry 
+            # about schema again
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+            url(r"^(?P<resource_name>%s)/clear_cache%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_clear_cache'), name="api_clear_cache"),
             url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
@@ -2206,6 +2225,14 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
 
+    def dispatch_clear_cache(self, request, **kwargs):
+        self.clear_cache()
+        desired_format = self.determine_format(request)
+        content_type=build_content_type(desired_format)
+        return HttpResponse(content='ok',content_type=content_type)
+
+
+    @read_authorization
     def get_detail(self, request, **kwargs):
         # TODO: this is a strategy for refactoring get_detail to use get_list:
         # follow this with wells/
@@ -2529,6 +2556,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
     - "patch_obj" must be implemented
     - "put" methods call "delete_obj" 
     - "delete_obj" must be implemented
+    - prepend_urls must direct to the detail/list methods
     '''
     
     @write_authorization
@@ -2608,8 +2636,9 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
             raise BadRequest("Invalid data sent, must be nested in '%s'" 
                 % self._meta.collection_name)
         deserialized = deserialized[self._meta.collection_name]
-
-        logger.info(str(('put list', deserialized,kwargs)))
+        
+        logger.info('put_list')
+        logger.debug('put list %s, %s' % (deserialized,kwargs))
         
         with transaction.atomic():
             
@@ -2631,7 +2660,8 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
             LimsSerializer.get_content(response), format='application/json')
         new_data = new_data[self._meta.collection_name]
         
-        logger.info(str(('new data', new_data)))
+        logger.info('put_list created %d objects' % len(new_data))
+        logger.debug('new data: %s' % new_data)
         self.log_patches(request, [],new_data,**kwargs)
 
     
@@ -2644,120 +2674,233 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
 
     @write_authorization
     @un_cache        
-    @transaction.atomic()
+    def post_list(self, request, **kwargs):
+        # NOTE: POST-ing will always be for single items
+        # - this is because tastypie interprets url's with no pk as "list" urls
+        return self.post_detail(request,**kwargs)
+        
+    @write_authorization
+    @un_cache        
+    def post_detail(self, request, **kwargs):
+        return self.patch_detail(request,**kwargs)
+#         raise NotImplementedError('post_detail must be implemented')
+        
+    @write_authorization
+    @un_cache        
     def put_detail(self, request, **kwargs):
                 
         deserialized = self._meta.serializer.deserialize(
             request.body, 
             format=request.META.get('CONTENT_TYPE', 'application/json'))
 
-        logger.info(str(('put detail', deserialized,kwargs)))
-
-        schema = self.build_schema()
-        id_attribute = resource = schema['resource_definition']['id_attribute']
-        for id_field in id_attribute:
-            kwargs['%s'%id_field] = ( 
-                LIST_DELIMITER_URL_PARAM.join([x.get(id_field) for x in deserialized]) )
+        logger.info('put detail: %r, %r' % (deserialized,kwargs))
+        
         # cache state, for logging
-        response = self.get_list(
-            request,
-            desired_format='application/json',
-            includes='*',
-            **kwargs)
-        original_data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        original_data = original_data[self._meta.collection_name]
-        logger.debug('original data: %s'% original_data)
+        # Look for id's kwargs, to limit the potential candidates for logging
+        schema = self.build_schema()
+        id_attribute = schema['resource_definition']['id_attribute']
+        kwargs_for_log = {}
+        for id_field in id_attribute:
+            if deserialized.get(id_field,None):
+                kwargs_for_log[id_field] = deserialized[id_field]
+            elif kwargs.get(id_field,None):
+                kwargs_for_log[id_field] = kwargs[id_field]
+        logger.info('put detail: %s, %s' %(deserialized,kwargs_for_log))
+        if not kwargs_for_log:
+            # then this is a create
+            original_data = []
+        else:
+            response = self.get_detail(
+                request,
+                desired_format='application/json',
+                includes='*',
+                **kwargs_for_log)
+            original_data = self._meta.serializer.deserialize(
+                LimsSerializer.get_content(response), format='application/json')
+            original_data = [original_data]
+            logger.debug('original data %s ', original_data)
         
         with transaction.atomic():
-            logger.info(str(('put_detail:', kwargs)))
-            self.put_obj(deserialized, **kwargs)
+            logger.info('call put_obj')
+            obj = self.put_obj(deserialized, **kwargs)
 
+        if not kwargs_for_log:
+            for id_field in id_attribute:
+                val = getattr(obj, id_field,None)
+                kwargs_for_log['%s' % id_field] = val
         # get new state, for logging
-        response = self.get_list(
+        response = self.get_detail(
             request,
             desired_format='application/json',
             includes='*',
-            **kwargs)
+            **kwargs_for_log)
         new_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
-        new_data = new_data[self._meta.collection_name]
-        
+        new_data = [new_data]
         logger.info(str(('new data', new_data)))
-        self.log_patches(request, [],new_data,**kwargs)
-
-
+        self.log_patches(request, original_data,new_data,**kwargs)
         
         if not self._meta.always_return_data:
             return http.HttpAccepted()
         else:
-            response = self.get_detail(request, **kwargs) 
             response.status_code = 202
             return response
 
     @write_authorization
     @un_cache        
-    @transaction.atomic()
     def patch_detail(self, request, **kwargs):
 
         deserialized = self._meta.serializer.deserialize(
             request.body, 
             format=request.META.get('CONTENT_TYPE', 'application/json'))
-        logger.info(str(('patch detail', deserialized,kwargs)))
+        logger.debug('patch detail %s, %s' % (deserialized,kwargs))
+
+        logger.info('patch detail, resource: %r, object: %s' 
+            % (self._meta.resource_name, deserialized))
 
         # cache state, for logging
-#         username = self.get_user_resource().find_username(deserialized, **kwargs)
-        response = self.get_list(
-            request,
-            desired_format='application/json',
-            includes='*',
-            **kwargs)
-        original_data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        original_data = original_data[self._meta.collection_name]
-        logger.info(str(('original data', original_data)))
-
+        # Look for id's kwargs, to limit the potential candidates for logging
+        schema = self.build_schema()
+        id_attribute = schema['resource_definition']['id_attribute']
+        kwargs_for_log = {}
+        for id_field in id_attribute:
+            if deserialized.get(id_field,None):
+                kwargs_for_log[id_field] = deserialized[id_field]
+            elif kwargs.get(id_field,None):
+                kwargs_for_log[id_field] = kwargs[id_field]
+        logger.info('patch detail: %s, %s' %(deserialized,kwargs_for_log))
+        if not kwargs_for_log:
+            # then this is a create
+            original_data = []
+        else:
+            try:
+                response = self.get_detail(
+                    request,
+                    desired_format='application/json',
+                    includes='*',
+                    **kwargs_for_log)
+                original_data = self._meta.serializer.deserialize(
+                    LimsSerializer.get_content(response), format='application/json')
+                original_data = [original_data]
+                logger.debug('original data %s ', original_data)
+            except Exception, e: 
+                logger.info('exception when querying for existing obj: %s' % e)
+                original_data = []
         with transaction.atomic():
             
-            self.patch_obj(deserialized, **kwargs)
+            obj = self.patch_obj(deserialized, **kwargs)
+
+            for id_field in id_attribute:
+                val = getattr(obj, id_field,None)
+                kwargs_for_log['%s' % id_field] = val
 
         # get new state, for logging
-        response = self.get_list(
+        response = self.get_detail(
             request,
             desired_format='application/json',
             includes='*',
-            **kwargs)
+            **kwargs_for_log)
         new_data = self._meta.serializer.deserialize(
             LimsSerializer.get_content(response), format='application/json')
-        new_data = new_data[self._meta.collection_name]
-        
-        logger.info(str(('new data', new_data)))
+        new_data = [new_data]
+        logger.info(str(('new data', new_data, self._meta.always_return_data)))
         self.log_patches(request, original_data,new_data,**kwargs)
 
         
         if not self._meta.always_return_data:
             return http.HttpAccepted()
         else:
-            response = self.get_detail(request, **kwargs) 
+            response = self.get_detail(request,**kwargs_for_log)
             response.status_code = 202
             return response
 
+    @write_authorization
+    @un_cache        
+    def delete_list(self, request, **kwargs):
+        raise NotImplementedError('delete_list is not implemented for %s'
+            % self._meta.resource_name )
+
+    @write_authorization
+    @un_cache        
+    def delete_detail(self, request, **kwargs):
+
+        logger.debug('delete_detail: %s,  %s' 
+            % (self._meta.resource_name, kwargs))
+
+        # cache state, for logging
+        # Look for id's kwargs, to limit the potential candidates for logging
+        schema = self.build_schema()
+        id_attribute = schema['resource_definition']['id_attribute']
+        kwargs_for_log = {}
+        for id_field in id_attribute:
+            if kwargs.get(id_field,None):
+                kwargs_for_log[id_field] = kwargs[id_field]
+        logger.info('delete detail: %s' %(kwargs_for_log))
+        if not kwargs_for_log:
+            raise Exception('required id keys %s' % id_attribute)
+        else:
+            response = self.get_detail(
+                request,
+                desired_format='application/json',
+                includes='*',
+                **kwargs_for_log)
+            original_data = self._meta.serializer.deserialize(
+                LimsSerializer.get_content(response), format='application/json')
+            logger.debug('original data %s ', original_data)
+
+        with transaction.atomic():
+            
+            self.delete_obj(**kwargs_for_log)
+        # Log
+        logger.info('deleted: %s' %kwargs_for_log)
+        log_comment = None
+        if HEADER_APILOG_COMMENT in request.META:
+            log_comment = request.META[HEADER_APILOG_COMMENT]
+            logger.debug(str(('log comment', log_comment)))
         
+        schema = self.build_schema()
+        id_attribute = resource = schema['resource_definition']['id_attribute']
+
+        log = ApiLog()
+        log.username = request.user.username 
+        log.user_id = request.user.id 
+        log.date_time = timezone.now()
+        log.ref_resource_name = self._meta.resource_name
+        log.key = '/'.join([str(original_data[x]) for x in id_attribute])
+        log.uri = '/'.join([self._meta.resource_name,log.key])
+    
+        # user can specify any valid, escaped json for this field
+        # if 'apilog_json_field' in bundle.data:
+        #     log.json_field = bundle.data['apilog_json_field']
+        
+        log.comment = log_comment
+
+        if 'parent_log' in kwargs:
+            log.parent_log = kwargs.get('parent_log', None)
+    
+        log.api_action = API_ACTION_DELETE
+        log.added_keys = json.dumps(original_data.keys(),cls=DjangoJSONEncoder)
+        log.diffs = json.dumps(original_data,cls=DjangoJSONEncoder)
+        log.save()
+        logger.info(str(('delete, api log', log)) )
+
+        return HttpNoContent()
+
     @un_cache        
     @transaction.atomic()    
     def put_obj(self,deserialized, **kwargs):
         try:
-            self.delete_obj(deserialized, **kwargs)
+            self.delete_obj(**kwargs)
         except ObjectDoesNotExist,e:
             pass 
         
         return self.patch_obj(deserialized, **kwargs)            
 
-    def delete_obj(self, deserialized, **kwargs):
-        raise NotImplemented('delete obj must be implemented')
+    def delete_obj(self, **kwargs):
+        raise NotImplementedError('delete obj must be implemented')
     
     def patch_obj(self,deserialized, **kwargs):
-        raise NotImplemented('patch obj must be implemented')
+        raise NotImplementedError('patch obj must be implemented')
 
 
 
@@ -2922,6 +3065,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
 
         return custom_columns
 
+    @read_authorization
     def get_detail(self, request, **kwargs):
         logger.info(str(('get_detail')))
 
@@ -3305,7 +3449,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
                 if hasattr(user,key):
                     setattr(user,key,val)
             user.save()
-            logger.info(str(('== created/updated auth user', user, user.username)))
+            logger.info(str(('== created/updated auth user', user, user.username, user.first_name)))
             # create the reports userprofile
             
             initializer_dict = {}
@@ -3920,6 +4064,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
 
         return group_all_users.cte('gau')
     
+    @read_authorization
     def get_detail(self, request, **kwargs):
         logger.info(str(('get_detail')))
 
@@ -4281,12 +4426,12 @@ class PermissionResource(ManagedModelResource):
                 if perm.scope==r.scope and perm.key==r.key:
                     found = True
             if not found:
-                logger.info(str(('initialize permission not found: ', 
-                                 r.scope, r.key)))
+                logger.debug('initialize permission: %r:%r'
+                    % (r.scope, r.key))
                 for ptype in permissionTypes:
                     p = Permission.objects.create(
                         scope=r.scope, key=r.key, type=ptype.key)
-                    logger.info(str(('bootstrap created permission', p)))
+                    logger.debug('bootstrap created permission %s' % p)
 
     def prepend_urls(self):
         return [

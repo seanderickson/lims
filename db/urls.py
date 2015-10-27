@@ -1,19 +1,23 @@
+from __future__ import unicode_literals
+
 from django.conf.urls import patterns, url, include
-from db import views
 from tastypie.api import Api
 
+from db import views
 from db.api import ScreensaverUserResource, ScreenResource, \
     ScreenSummaryResource, ScreenResultResource, LabHeadResource, \
-    LabAffiliationResource, ScreeningRoomUserResource, DataColumnResource, LibraryResource,\
-    LibraryCopyResource, LibraryCopyPlateResource, PlateLocationResource,\
+    LabAffiliationResource, ScreeningRoomUserResource, DataColumnResource, LibraryResource, \
+    LibraryCopyResource, LibraryCopyPlateResource, PlateLocationResource, \
     WellResource, ActivityResource, LibraryContentsVersionResource, ReagentResource, \
     SmallMoleculeReagentResource, SilencingReagentResource, NaturalProductReagentResource, \
     CopyWellResource, UserChecklistItemResource, \
-    CopyWellHistoryResource, CherryPickRequestResource,CherryPickPlateResource, \
-    AttachedFileResource
+    CopyWellHistoryResource, CherryPickRequestResource, CherryPickPlateResource, \
+    AttachedFileResource, ServiceActivityResource, ScreeningRoomUserResource
+
 
 v1_api = Api(api_name='v1')
 v1_api.register(ScreensaverUserResource())
+v1_api.register(ScreeningRoomUserResource())
 v1_api.register(ScreenResource())
 v1_api.register(ScreenResultResource())
 v1_api.register(ScreenSummaryResource())
@@ -27,6 +31,7 @@ v1_api.register(LibraryCopyPlateResource())
 v1_api.register(PlateLocationResource())
 v1_api.register(WellResource())
 v1_api.register(ActivityResource())
+v1_api.register(ServiceActivityResource())
 v1_api.register(LibraryContentsVersionResource())
 v1_api.register(ReagentResource())
 v1_api.register(CopyWellHistoryResource())
@@ -37,7 +42,6 @@ v1_api.register(AttachedFileResource())
 v1_api.register(SmallMoleculeReagentResource())
 v1_api.register(SilencingReagentResource())
 v1_api.register(NaturalProductReagentResource())
-
 # v1_api.register(LibraryCopyPlatesResource())
 v1_api.register(CopyWellResource())
 

@@ -100,10 +100,17 @@ function gitpull {
   #  cp -a $SCRIPTPATH $SAVEPATH
   git fetch $REMOTE >>"$LOGFILE" 2>&1 || error "git-fetch failed: $?"
   git checkout $BRANCH >>"$LOGFILE" 2>&1 || error "git-checkout failed: $?"
+  
+  # reset the api_init_actions file, modified during migration
+  git checkout ./db/static/api_init/api_init_actions.csv
+
   #  git checkout -- $SCRIPTPATH >>"$LOGFILE" 2>&1 || error "git-checkout $SCRIPTPATH failed: $?"
+
   git pull --ff-only $REMOTE $BRANCH >>"$LOGFILE" 2>&1 || error "git-pull failed: $?"
+
   #  mv -f $SAVEPATH $SCRIPTPATH
   #  update_deploy_info "$STATUS"
+
   _debug 'done'
   return 0
 }

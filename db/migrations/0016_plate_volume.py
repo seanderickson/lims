@@ -1,10 +1,18 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+from datetime import datetime, time, date,timedelta
+from django.utils.timezone import make_aware
+from pytz import timezone
+import json
 import logging
+
 from django.db import migrations, models
+
 from db.support.data_converter import default_converter
 from reports.models import ApiLog
+import pytz
+
 
 logger = logging.getLogger(__name__)
 
@@ -16,25 +24,24 @@ cpap_uri = '/db/api/v1/' + cpap_resource_name
 plate_resource_name = 'plate'
 plate_uri = '/db/api/v1/' + plate_resource_name
 
+# this is a workaround, because some activities have identical date_of_activity
+times_seen = set()
+
 def _create_generic_log(activity):
     
     log = ApiLog()
 
     log.comment = activity.comments
-    log.date_time = datetime.datetime.combine(
-        activity.date_of_activity, datetime.time())
-#             log.date_time = make_aware(
-#                 activity.date_of_activity, timezone.get_default_timezone())
-    if log.date_time not in self.times_seen:
-        self.times_seen.add(log.date_time)
+    log.date_time = make_aware(datetime.combine(
+        activity.date_of_activity, time()),pytz.timezone('US/Eastern'))
+    if log.date_time not in times_seen:
+        times_seen.add(log.date_time)
     else:
         i = 0
-        while log.date_time in self.times_seen:
+        while log.date_time in times_seen:
             i += 1
-            log.date_time += datetime.timedelta(0,i)
-        self.times_seen.add(log.date_time)
-#         log.date_time = make_aware(log.date_time, timezone.get_default_timezone())
-    
+            log.date_time += timedelta(0,i)
+        times_seen.add(log.date_time)
     
     log.username = activity.performed_by.ecommons_id
     if not log.username:
@@ -48,7 +55,7 @@ def _create_generic_log(activity):
 
 def _create_cpr_log(cpr, activity):
     
-    cpr_log = self._create_generic_log(activity)
+    cpr_log = _create_generic_log(activity)
     cpr_log.ref_resource_name = 'cherrypickrequest'
     cpr_log.key = str(cpr.cherry_pick_request_id)
     cpr_log.uri = '/'.join([base_uri,cpr_log.ref_resource_name,cpr_log.key])
@@ -66,33 +73,12 @@ def _child_log_from(parent_log):
     child_log.comment = parent_log.comment
     return child_log
 
-def forwards(apps,schema_editor):
-    self.times_seen = set() # hack, because some activities have identical date_of_activity
-
-    # 1. assay_plate / library screenings xfers:
-    #    - assay_plate -> library_screening ->> lab_activity
-    # library_screening -> assay_plate -> plate
-    #                                    -> screen
-    self.create_library_screening_logs(apps)
-
-#         # 2. create ApiLogs for WVA's: temporarily store volume adjusment on the log
-# 
-#         # a. do cplt's
-#         self.create_lcp_logs(orm) 
-#                
-#         # b. do wvca's
-#         # c. do orphaned wvas (no cplt or wvca attached)
-#         self.create_well_correction_logs(orm)
-#         
-#         # d. do a final pass, over the logs sorted by date, in order to 
-#         #    construct the previous_volume, new volume in the log
-#         self.create_copywell_adjustments(orm)
     
-    
-def create_library_screening_logs(apps):
+def create_library_screening_logs(apps, schema_editor):
     
     logger.info(str(('create library screening logs')))
-
+    
+    LibraryScreening = apps.get_model('db', 'LibraryScreening')
     screen_to_screening_count = {}
     copyplate_to_screening_count = {}
     copyplate_to_volume = {}
@@ -106,7 +92,7 @@ def create_library_screening_logs(apps):
         logger.debug(str(('for screen', screen.facility_id)))
         
         # screen log for library screening
-        screen_log = self._create_generic_log(activity)
+        screen_log = _create_generic_log(activity)
         screen_log.ref_resource_name = 'screen'
         screen_log.key = screen.facility_id
         screen_log.uri = '/'.join([base_uri,screen_log.ref_resource_name,screen_log.key])
@@ -128,7 +114,7 @@ def create_library_screening_logs(apps):
         for assay_plate in screening.assayplate_set.all().filter(replicate_ordinal=0):
             plate = assay_plate.plate
             # copyplate log for library screening
-            cp_log = self._child_log_from(screen_log)
+            cp_log = _child_log_from(screen_log)
             cp_log.ref_resource_name = 'librarycopyplate' #TODO: "plate" or "copyplate"
             cp_log.key = '/'.join([plate.copy.name, str(plate.plate_number).zfill(5)])
             cp_log.uri = '/'.join([base_uri,cp_log.ref_resource_name,cp_log.key])
@@ -204,7 +190,7 @@ def create_lcp_logs(apps):
 
         # 1. create a parent log on the cherry pick
         extra_information = {}
-        cpr_log = self._create_cpr_log(cpr, activity)
+        cpr_log = _create_cpr_log(cpr, activity)
         
         # Note: "plating_activity" is a pseudo-key: this belies the need for 
         # an "activity" controlleed vocabulary for batch activities.
@@ -240,7 +226,7 @@ def create_lcp_logs(apps):
         # b. cpap child logs        
         j = 0
         for cpap in cplt.cherrypickassayplate_set.all():
-            cpap_log = self._child_log_from(cpr_log)
+            cpap_log = _child_log_from(cpr_log)
             
             cpap_log.ref_resource_name = "cherrypickassayplate"
             cpap_log.key = '/'.join(str(x) for x in [
@@ -265,10 +251,10 @@ def create_lcp_logs(apps):
     logger.info(str((
         'finished step 1:',len(liquid_transfers), 'cpap parent logs',
         len(cpap_parent_logs))))        
-    self.create_lcp_wva_logs(apps,cpap_parent_logs)
+    create_lcp_wva_logs(apps,cpap_parent_logs)
 
     
-def create_lcp_wva_logs(self, apps,cpap_parent_logs):
+def create_lcp_wva_logs(apps,cpap_parent_logs):
     
     logger.info(str(('now create the child logs for all of the '
         'wvas on the cpap on the cplts' )))
@@ -350,7 +336,7 @@ def create_lcp_wva_logs(self, apps,cpap_parent_logs):
             
             adj = dict(zip(colkeys, adjustment))
             
-            log = self._child_log_from(parent_log)
+            log = _child_log_from(parent_log)
             try:
                 
                 log.ref_resource_name = copywell_resource_name
@@ -384,7 +370,7 @@ def create_lcp_wva_logs(self, apps,cpap_parent_logs):
 #                         'volume_adjustment': round(float(adj['volume_adjustment']),10) })
                 if (log.ref_resource_name,log.key,log.date_time) in prev_logs :
                     logger.warn(str(('log key already exists!', log)))
-                    log.date_time = log.date_time + datetime.timedelta(0,i+parent_log_count) # hack, add second
+                    log.date_time = log.date_time + timedelta(0,i+parent_log_count) # hack, add second
                 
                 log.save()
                 prev_logs.add((log.ref_resource_name,log.key,log.date_time))
@@ -433,12 +419,12 @@ def create_well_correction_logs(apps):
                 try:
                     cpr = apps.get_mdodel('db', 'CherryPickRequest').objects.get(pk=cpr_id)  
                     logger.info(str(('process correction activity for cpr',cpr_id)))
-                    parent_log = self._create_cpr_log(cpr, activity)
+                    parent_log = _create_cpr_log(cpr, activity)
                     
                     parent_log.save()
                 except Exception, e:
                     logger.info(str(('could not find cpr', cpr_id)))
-                    parent_log = self._create_generic_log(activity)
+                    parent_log = _create_generic_log(activity)
                     
                     # FIXME: need a parent resource?
                     parent_log.ref_resource_name = 'wellvolumecorrectionactivity'
@@ -451,7 +437,7 @@ def create_well_correction_logs(apps):
                 # create wva logs
                 j = 0
                 for wva in wvac.wellvolumeadjustment_set.all():
-                    log = self._child_log_from(parent_log)
+                    log = _child_log_from(parent_log)
 
                     log.ref_resource_name = copywell_resource_name
                     log.key = wva.copy.name + '/'+ wva.well_id
@@ -467,7 +453,7 @@ def create_well_correction_logs(apps):
                 
         if not matched:
             # this is a manual adjustment, create a generic parent log
-            parent_log = self._create_generic_log(activity)
+            parent_log = _create_generic_log(activity)
             
             # FIXME: need a parent resource?
             parent_log.ref_resource_name = 'wellvolumecorrectionactivity'
@@ -479,7 +465,7 @@ def create_well_correction_logs(apps):
             logger.info(str(('create generic wvca', parent_log)))
             j = 0
             for wva in wvac.wellvolumeadjustment_set.all():
-                log = self._child_log_from(parent_log)
+                log = _child_log_from(parent_log)
 
                 log.ref_resource_name = copywell_resource_name
                 log.key = wva.copy.name + '/'+ wva.well_id
@@ -535,9 +521,9 @@ def create_well_correction_logs(apps):
             raise Exception(str(('manual wva for unknown copy', wva.copy_id,[659,664])))
         
         if wva.copy_id == copy.copy_id:
-            log = self._child_log_from(parent_log)
+            log = _child_log_from(parent_log)
         else:
-            log = self._child_log_from(parent_log1)
+            log = _child_log_from(parent_log1)
             
         log.ref_resource_name = copywell_resource_name
         log.key = wva.copy.name + '/'+ wva.well_id
@@ -603,6 +589,24 @@ class Migration(migrations.Migration):
         ('db', '0015_create_lib_content_diffs_rnai'),
     ]
 
+    # 1 (done). assay_plate / library screenings xfers:
+    #    - assay_plate -> library_screening ->> lab_activity
+    # library_screening -> assay_plate -> plate
+    #                                    -> screen
+    # Follows are preliminary-not yet implemented
+    # # 2. create ApiLogs for WVA's: temporarily store volume adjusment on the log
+    # 
+    # # a. do cplt's
+    # self.create_lcp_logs(orm) 
+    #         
+    # # b. do wvca's
+    # # c. do orphaned wvas (no cplt or wvca attached)
+    # self.create_well_correction_logs(orm)
+    #  
+    # # d. do a final pass, over the logs sorted by date, in order to 
+    # #    construct the previous_volume, new volume in the log
+    # self.create_copywell_adjustments(orm)
+    
     operations = [
-        migrations.RunPython(forwards),
+        migrations.RunPython(create_library_screening_logs),
     ]

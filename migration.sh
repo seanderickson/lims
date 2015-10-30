@@ -147,9 +147,9 @@ function restoredb {
      `ls -1 ${D}/screensaver*${filespec}.excl_big_data.pg_dump` >>"$LOGFILE" 2>&1 
   else
     # For quick testing
-    echo "execute pg_restore: ${D}/screensaver*${filespec}.schema_only.pg_dump - $(ts) ..." >> "$LOGFILE"
+    echo "execute pg_restore: ${D}/screensaver*${filespec}.schema.pg_dump - $(ts) ..." >> "$LOGFILE"
     pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
-      `ls -1 ${D}/screensaver*${filespec}.schema_only.pg_dump` >>"$LOGFILE" 2>&1 
+      `ls -1 ${D}/screensaver*${filespec}.schema.pg_dump` >>"$LOGFILE" 2>&1 
   fi
 
   echo "restoredb completed: $(ts) " >> "$LOGFILE"
@@ -203,18 +203,23 @@ function restoredb_data {
 }
 
 function django_syncdb {
-  # Note; must first create a fixture: "initial_data.json", and fill it with
-  # an admin user for the site;
-  # see: http://stackoverflow.com/questions/1466827/automatically-create-an-admin-user-when-running-djangos-manage-py-syncdb
-  # using: 
-  # first, create a site with:
-  # ./manage.py syncdb 
-  # and respond to the user prompts, then export this information to the fixture:
-  # ./manage.py dumpdata --indent=2 auth > initial_data.json
-  # which creates the user "sde" 
   
-  # Now, this command will use the fixture, "./initial_data.json" to create the first user
-  $DJANGO_CMD syncdb --noinput >>"$LOGFILE" 2>&1 || error "initdb failed: $?"
+  # migrate replaces syncdb; 
+  # note; some of the system migrations (auth, sites, admin, contenttypes ) will
+  # generate errors due to interdependencies; these appear to resolve themselves - 20151030
+  
+  for x in contenttypes auth sites admin sessions tastypie reports;
+  do
+    $DJANGO_CMD migrate $x; #  --fake-initial; 
+  done
+  
+  echo "- Create the adminuser: $adminuser"
+  # update, as of Django >1.7, initial_data is no longer used to initialize superuser
+  # try this method instead
+  _adminuser="'"$adminuser"'"
+  _adminpass="'"$adminpass"'"
+  _adminemail="'"$adminemail"'"
+  echo "from django.contrib.auth.models import User; User.objects.create_superuser($_adminuser, $_adminemail , $_adminpass)" | $DJANGO_CMD shell
 
 }
 
@@ -222,12 +227,10 @@ function premigratedb {
   echo "pre migrations: $(ts) ..." >> "$LOGFILE"
 
   # these migrations can be run before bootstrapping
-  $DJANGO_CMD migrate reports >>"$LOGFILE" 2>&1 || error "reports migration failed: $?"
   
-  $DJANGO_CMD migrate tastypie >>"$LOGFILE" 2>&1 || error "tastypie migration failed: $?"
-
-  # check which migrations are completed - if we've skipped db restore, then only apply latest
-  completed_migrations=$($DJANGO_CMD migrate db --list | grep '*' | awk '{print $2}')
+  # check which migrations are completed 
+  # - if we've skipped db restore, then only apply latest
+  completed_migrations=$($DJANGO_CMD migrate db --list | grep '[X]' | awk '{print $2}')
   echo "completed migrations: $completed_migrations" >> "$LOGFILE"
   
   migration='0001'
@@ -243,7 +246,7 @@ function premigratedb {
       >>"$LOGFILE" 2>&1 || error "manual script 0002 failed: $?"
 
   fi
-  
+    
   migration='0003'
   if [[ ! $completed_migrations =~ $migration ]]; then
     $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
@@ -261,7 +264,7 @@ function migratedb {
   echo "running migrations: $(ts) ..." >> "$LOGFILE"
 
   # check which migrations are completed - if we've skipped db restore, then only apply latest
-  completed_migrations=$($DJANGO_CMD migrate db --list | grep '*' | awk '{print $2}')
+  completed_migrations=$($DJANGO_CMD migrate db --list | grep '[X]' | awk '{print $2}')
   echo "completed migrations: $completed_migrations" >> "$LOGFILE"
   
   migration='0004'
@@ -274,14 +277,6 @@ function migratedb {
     $DJANGO_CMD migrate db 0008 >>"$LOGFILE" 2>&1 || error "db 0008 failed: $?"
   fi
   if [[ $DB_FULL_MIGRATION -eq 1 ]]; then
-    migration='0013'
-    if [[ ! $completed_migrations =~ $migration ]]; then
-        echo "migration $migration: $(ts) ... " >> "$LOGFILE"
-        $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-        psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
-          -f ./db/migrations/manual/0013_create_substance_ids.sql >>"$LOGFILE" 2>&1 || error "manual script 0013 failed: $?"
-        echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-    fi
     migration='0014'
     if [[ ! $completed_migrations =~ $migration ]]; then
       echo "migration $migration: $(ts) ..." >> "$LOGFILE"
@@ -311,6 +306,13 @@ function migratedb {
       echo "migration $migration complete: $(ts)" >> "$LOGFILE"
     fi
     
+    # substance ID generation left until last
+    migration='0099' 
+    if [[ ! $completed_migrations =~ $migration ]]; then
+      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+    fi
   fi
     
   echo "migrations completed: $(ts) " >> "$LOGFILE"
@@ -338,7 +340,7 @@ function bootstrap {
   PYTHONPATH=. python reports/utils/db_init.py  \
     --input_dir=./reports/static/api_init/ \
     -f ./reports/static/api_init/api_init_actions.csv \
-    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -U sde -p ${serverpass} >>"$LOGFILE" 2>&1 
+    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -U sde -p ${adminpass} >>"$LOGFILE" 2>&1 
   if [[ $? -ne 0 ]]; then
     kill $server_pid
     error "bootstrap reports failed: $?"
@@ -347,7 +349,7 @@ function bootstrap {
   PYTHONPATH=. python reports/utils/db_init.py  \
     --input_dir=./db/static/api_init/ \
     -f ./db/static/api_init/api_init_actions.csv \
-    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -U sde -p ${serverpass} >>"$LOGFILE" 2>&1
+    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -U sde -p ${adminpass} >>"$LOGFILE" 2>&1
   if [[ $? -ne 0 ]]; then
     kill $server_pid
     error "bootstrap db failed: $?"
@@ -358,14 +360,14 @@ function bootstrap {
   PYTHONPATH=. python reports/utils/db_init.py  \
     --input_dir=$BOOTSTRAP_PRODUCTION_DIR \
     -f ${BOOTSTRAP_PRODUCTION_DIR}/api_init_actions.csv \
-    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -U sde -p ${serverpass} >>"$LOGFILE" 2>&1
+    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -U sde -p ${adminpass} >>"$LOGFILE" 2>&1
   if [[ $? -ne 0 ]]; then
     kill $server_pid
     error "bootstrap production data failed: $?"
   fi
 
   # add user "sde" to the screensaver_users table 20150831
-  curl -v  --dump-header - -H "Content-Type: text/csv" --user sde:${serverpass} \
+  curl -v  --dump-header - -H "Content-Type: text/csv" --user sde:${adminpass} \
     -X PATCH http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screensaveruser/ \
     --data-binary @${BOOTSTRAP_PRODUCTION_DIR}/screensaver_users-db-prod.csv
 
@@ -505,19 +507,5 @@ function code_bootstrap {
 echo "start migration: $(ts) ..."
 
 main "$@"
-# frontend_setup
-# maybe_activate_virtualenv
-
-#   django_syncdb
-
-#   premigratedb  
-
-#bootstrap
-  
-  # the later migrations require the bootstrapped data
-#migratedb
-
-# $DJANGO_CMD test --verbosity=2 --settings=lims.settings_testing || error "django tests failed: $?"
-# $DJANGO_CMD test --verbosity=2 --settings=lims.settings_testing
 
 echo "migration finished: $(ts)"

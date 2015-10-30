@@ -1,10 +1,9 @@
 # Django settings for lims project
 
+import sys
 import os
 import django.template
 
-# Force the new url syntax 
-django.template.add_to_builtins('django.templatetags.future')
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
@@ -137,8 +136,6 @@ INSTALLED_APPS = (
     'django.contrib.sites',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django_tables2', # for UI tabling
-    'south',
     'tastypie', # manual says this is "not necessary, but useful"
     'reports',
     'lims',

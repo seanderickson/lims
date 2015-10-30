@@ -28,7 +28,7 @@ class LegacySmallMoleculeCasNumber(models.Model):
 
 class AbaseTestset(models.Model):
     abase_testset_id = models.IntegerField(primary_key=True)
-    version = models.IntegerField()
+    # version = models.IntegerField()
     screen = models.ForeignKey('Screen')
     testset_name = models.TextField()
     comments = models.TextField()
@@ -57,7 +57,7 @@ class ActivityUpdateActivity(models.Model):
         db_table = 'activity_update_activity'
 
 class AdministrativeActivity(models.Model):
-    activity = models.ForeignKey(Activity, primary_key=True)
+    activity = models.OneToOneField(Activity, primary_key=True)
     administrative_activity_type = models.TextField()
     class Meta:
         db_table = 'administrative_activity'
@@ -82,7 +82,7 @@ class CopyUpdateActivity(models.Model):
 
 class LabActivity(models.Model):
     screen = models.ForeignKey('Screen')
-    activity = models.ForeignKey(Activity, primary_key=True)
+    activity = models.OneToOneField(Activity, primary_key=True)
     volume_transferred_per_well_from_library_plates = models.DecimalField(
         null=True, max_digits=10, decimal_places=9, blank=True)
     molar_concentration = models.DecimalField(
@@ -95,7 +95,7 @@ class LabActivity(models.Model):
 class LibraryScreening(models.Model):
     abase_testset_id = models.TextField(blank=True)
     is_for_external_library_plates = models.BooleanField()
-    activity = models.ForeignKey('Screening', primary_key=True)
+    activity = models.OneToOneField('Screening', primary_key=True)
     screened_experimental_well_count = models.IntegerField()
     libraries_screened_count = models.IntegerField(null=True, blank=True)
     library_plates_screened_count = models.IntegerField(null=True, blank=True)
@@ -106,7 +106,7 @@ class Screening(models.Model):
     assay_protocol = models.TextField(blank=True)
     number_of_replicates = models.IntegerField(null=True, blank=True)
     assay_protocol_type = models.TextField(blank=True)
-    activity = models.ForeignKey(LabActivity, primary_key=True)
+    activity = models.OneToOneField(LabActivity, primary_key=True)
     assay_protocol_last_modified_date = models.DateField(null=True, blank=True)
     assay_well_volume = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
     volume_transferred_per_well_to_assay_plates = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
@@ -114,8 +114,8 @@ class Screening(models.Model):
         db_table = 'screening'
 
 class EquipmentUsed(models.Model):
-    equipment_used_id = models.IntegerField(primary_key=True)
-    version = models.IntegerField()
+    equipment_used_id = models.AutoField(primary_key=True)
+    # version = models.IntegerField()
     protocol = models.TextField(blank=True)
     description = models.TextField(blank=True)
     equipment = models.TextField()
@@ -155,7 +155,7 @@ class ScreensaverUserUpdateActivity(models.Model):
 
 class ServiceActivity(models.Model):
     service_activity_type = models.TextField()
-    activity = models.ForeignKey(Activity, primary_key=True)
+    activity = models.OneToOneField(Activity, primary_key=True)
     serviced_screen = models.ForeignKey('Screen', null=True, blank=True)
     # consider pointing this to the screensaver_user table
     # serviced_user = models.ForeignKey('ScreeningRoomUser')
@@ -170,8 +170,8 @@ class ServiceActivity(models.Model):
         db_table = 'service_activity'
 
 class AnnotationType(models.Model):
-    annotation_type_id = models.IntegerField(primary_key=True)
-    version = models.IntegerField()
+    annotation_type_id = models.AutoField(primary_key=True)
+    # version = models.IntegerField()
     study = models.ForeignKey('Screen')
     name = models.TextField(blank=True)
     description = models.TextField(blank=True)
@@ -190,9 +190,9 @@ class AnnotationValue(models.Model):
         db_table = 'annotation_value'
 
 class AssayPlate(models.Model):
-    assay_plate_id = models.IntegerField(primary_key=True)
+    assay_plate_id = models.AutoField(primary_key=True)
     replicate_ordinal = models.IntegerField()
-    version = models.IntegerField()
+    # version = models.IntegerField()
     screen = models.ForeignKey('Screen')
     plate = models.ForeignKey('Plate', null=True, blank=True)
     plate_number = models.IntegerField()
@@ -207,7 +207,7 @@ class AssayPlate(models.Model):
         
 class AssayWell(models.Model):
     assay_well_id = models.IntegerField(primary_key=True)
-    version = models.IntegerField()
+    # version = models.IntegerField()
     assay_well_control_type = models.TextField(blank=True)
     is_positive = models.BooleanField()
     screen_result = models.ForeignKey('ScreenResult')
@@ -223,7 +223,7 @@ class AttachedFile(models.Model):
     # file_contents = models.BinaryField(null=True) 
     contents = models.BinaryField()
     filename = models.TextField()
-    #     version = models.IntegerField()
+    # version = models.IntegerField()
     screen = models.ForeignKey('Screen', null=True, blank=True)
     screensaver_user = models.ForeignKey('ScreensaverUser', null=True, blank=True)
     # REMOVED in migration 0003
@@ -256,7 +256,7 @@ class AttachedFileType(models.Model):
 class CellLine(models.Model):
     cell_line_id = models.IntegerField(primary_key=True)
     value = models.TextField(unique=True)
-    version = models.IntegerField()
+    # version = models.IntegerField()
     class Meta:
         db_table = 'cell_line'
         
@@ -266,7 +266,7 @@ class ChecklistItem(models.Model):
     is_expirable = models.BooleanField()
     item_name = models.TextField(unique=True)
     order_statistic = models.IntegerField()
-    version = models.IntegerField()
+    # version = models.IntegerField()
     class Meta:
         db_table = 'checklist_item'
 
@@ -313,9 +313,9 @@ class UserChecklistItem(models.Model):
 
 
 class CherryPickRequest(models.Model):
-    cherry_pick_request_id = models.IntegerField(primary_key=True)
+    cherry_pick_request_id = models.AutoField(primary_key=True)
     # TODO: give cpr a natural key: [screen id/CPR ordinal]
-    version = models.IntegerField()
+    # version = models.IntegerField()
     screen = models.ForeignKey('Screen')
     comments = models.TextField(blank=True)
     requested_by = models.ForeignKey('ScreeningRoomUser')
@@ -350,8 +350,8 @@ class CherryPickRequestEmptyWell(models.Model):
         db_table = 'cherry_pick_request_empty_well'
 
 class LabCherryPick(models.Model):
-    lab_cherry_pick_id = models.IntegerField(primary_key=True)
-    version = models.IntegerField()
+    lab_cherry_pick_id = models.AutoField(primary_key=True)
+    # version = models.IntegerField()
     cherry_pick_request = models.ForeignKey('CherryPickRequest')
     screener_cherry_pick = models.ForeignKey('ScreenerCherryPick')
     source_well = models.ForeignKey('Well')
@@ -362,8 +362,8 @@ class LabCherryPick(models.Model):
         db_table = 'lab_cherry_pick'
 
 class CherryPickAssayPlate(models.Model):
-    cherry_pick_assay_plate_id = models.IntegerField(primary_key=True)
-    version = models.IntegerField()
+    cherry_pick_assay_plate_id = models.AutoField(primary_key=True)
+    # version = models.IntegerField()
     cherry_pick_request = models.ForeignKey('CherryPickRequest')
     plate_ordinal = models.IntegerField()
     attempt_ordinal = models.IntegerField()
@@ -378,7 +378,7 @@ class CherryPickAssayPlate(models.Model):
         db_table = 'cherry_pick_assay_plate'
 
 class CherryPickScreening(models.Model):
-    activity = models.ForeignKey('Screening', primary_key=True)
+    activity = models.OneToOneField('Screening', primary_key=True)
     cherry_pick_request = models.ForeignKey('CherryPickRequest')
     class Meta:
         db_table = 'cherry_pick_screening'
@@ -391,13 +391,13 @@ class CherryPickAssayPlateScreeningLink(models.Model):
 
 class CherryPickLiquidTransfer(models.Model):
     status = models.TextField()
-    activity = models.ForeignKey('LabActivity', primary_key=True)
+    activity = models.OneToOneField('LabActivity', primary_key=True)
     class Meta:
         db_table = 'cherry_pick_liquid_transfer'
 
 class CherryPickRequestUpdateActivity(models.Model):
     cherry_pick_request = models.ForeignKey('CherryPickRequest')
-    update_activity = models.ForeignKey('AdministrativeActivity', unique=True)
+    update_activity = models.OneToOneField('AdministrativeActivity', unique=True)
     class Meta:
         db_table = 'cherry_pick_request_update_activity'
 
@@ -407,6 +407,7 @@ class CollaboratorLink(models.Model):
     class Meta:
         db_table = 'collaborator_link'
 
+# DEPRECATED - vocabulary
 class FundingSupport(models.Model):
     funding_support_id = models.IntegerField(primary_key=True)
     value = models.TextField(unique=True, blank=True)
@@ -414,30 +415,30 @@ class FundingSupport(models.Model):
         db_table = 'funding_support'
 
 class LabAffiliation(models.Model):
-    version = models.IntegerField()
+    # version = models.IntegerField()
     affiliation_name = models.TextField(unique=True)
     affiliation_category = models.TextField()
-    lab_affiliation_id = models.IntegerField(primary_key=True)
+    lab_affiliation_id = models.AutoField(primary_key=True)
     class Meta:
         db_table = 'lab_affiliation'
 
 class Publication(models.Model):
-    publication_id = models.IntegerField(primary_key=True)
+    publication_id = models.AutoField(primary_key=True)
     authors = models.TextField(blank=True)
     journal = models.TextField(blank=True)
     pages = models.TextField(blank=True)
     pubmed_id = models.TextField(blank=True)
     title = models.TextField(blank=True)
-    version = models.IntegerField()
+    # version = models.IntegerField()
     volume = models.TextField(blank=True)
     year_published = models.TextField(blank=True)
-    attached_file = models.ForeignKey(AttachedFile, unique=True, null=True, blank=True)
+    attached_file = models.OneToOneField(AttachedFile, unique=True, null=True, blank=True)
     pubmed_central_id = models.IntegerField(null=True, blank=True)
     class Meta:
         db_table = 'publication'
 
 class RnaiCherryPickRequest(models.Model):
-    cherry_pick_request = models.ForeignKey(CherryPickRequest, primary_key=True)
+    cherry_pick_request = models.OneToOneField(CherryPickRequest, primary_key=True)
     class Meta:
         db_table = 'rnai_cherry_pick_request'
 
@@ -449,11 +450,8 @@ class SchemaHistory(models.Model):
         db_table = 'schema_history'
 
 class Screen(models.Model):
-    # Note: migration scripts have converted this to use a sequence 
-    # (essentially AutoField)
-    #     screen_id = models.IntegerField(primary_key=True) 
     screen_id = models.AutoField(primary_key=True) 
-    version = models.IntegerField()
+    # version = models.IntegerField()
     date_created = models.DateTimeField()
     screen_type = models.TextField(null=False, blank=False)
     title = models.TextField(null=False, blank=False)
@@ -566,11 +564,11 @@ class ScreenPublicationLink(models.Model):
         db_table = 'screen_publication_link'
 
 class ScreenResult(models.Model):
-    screen_result_id = models.IntegerField(primary_key=True)
-    version = models.IntegerField()
+    screen_result_id = models.AutoField(primary_key=True)
+    # version = models.IntegerField()
     replicate_count = models.IntegerField()
     experimental_well_count = models.IntegerField()
-    screen = models.OneToOneField(Screen)
+    screen = models.OneToOneField(Screen, unique=True)
     date_created = models.DateTimeField()
     created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
     channel_count = models.IntegerField(null=True, blank=True)
@@ -580,6 +578,8 @@ class ScreenResult(models.Model):
         db_table = 'screen_result'
 
 class ResultValue(models.Model):
+    # TODO: at some point result_value_id and result_value_id_seq have been 
+    # disconnected; review ss result value loading code
     result_value_id = models.IntegerField(null=True, blank=True)
     assay_well_control_type = models.TextField(blank=True)
     is_exclude = models.NullBooleanField(null=True, blank=True)
@@ -592,8 +592,8 @@ class ResultValue(models.Model):
         db_table = 'result_value'
 
 class DataColumn(models.Model):
-    data_column_id = models.IntegerField(primary_key=True)
-    version = models.IntegerField()
+    data_column_id = models.AutoField(primary_key=True)
+    # version = models.IntegerField()
     ordinal = models.IntegerField()
     replicate_ordinal = models.IntegerField(null=True, blank=True)
     assay_phenotype = models.TextField(blank=True)
@@ -636,8 +636,8 @@ class ScreenStatusItem(models.Model):
         index_together = (('screen', 'status','status_date'),)    
 
 class ScreenerCherryPick(models.Model):
-    screener_cherry_pick_id = models.IntegerField(primary_key=True)
-    version = models.IntegerField()
+    screener_cherry_pick_id = models.AutoField(primary_key=True)
+    # version = models.IntegerField()
     cherry_pick_request = models.ForeignKey(CherryPickRequest)
     screened_well = models.ForeignKey('Well')
     class Meta:
@@ -649,10 +649,9 @@ class ScreenerCherryPick(models.Model):
 @python_2_unicode_compatible
 class ScreensaverUser(models.Model):
 
-    # screensaver_user_id = models.IntegerField(primary_key=True)
     screensaver_user_id = models.AutoField(primary_key=True)
     
-    version = models.IntegerField(blank=True, default=1) # TODO: legacy hibernate version attribute should go away
+    # version = models.IntegerField(blank=True, default=1) # TODO: legacy hibernate version attribute should go away
     date_created = models.DateTimeField(default=timezone.now)
     
     harvard_id = models.TextField(blank=True)
@@ -678,7 +677,8 @@ class ScreensaverUser(models.Model):
     comments = models.TextField(blank=True)
 
     # TODO: it would be nice to move user out of db
-    user = models.ForeignKey('reports.UserProfile', null=True,on_delete=models.SET_NULL)
+    user = models.OneToOneField(
+        'reports.UserProfile', null=True,on_delete=models.SET_NULL)
     # mirror the userprofile, auth_user username
     # FIXME: user migration should convert this field to null=False
     username = models.TextField(null=True, unique=True)
@@ -716,7 +716,6 @@ class AdministratorUser(models.Model):
         db_table = 'administrator_user'
         
 class LabHead(models.Model):
-#    screensaver_user = models.ForeignKey('ScreeningRoomUser', primary_key=True)
     screensaver_user = models.OneToOneField('ScreeningRoomUser', primary_key=True)
     lab_affiliation = models.ForeignKey(LabAffiliation, null=True, blank=True)
     
@@ -738,18 +737,6 @@ class ScreensaverUserRole(models.Model):
 
 
 
-# # 20140828 - provisional, to get a substance_id_seq that is available to test environment
-# # since can't figure out how to create it manually!
-# class Substance(models.Model):
-#     
-#     id = models.AutoField(primary_key=True)
-#     
-#     class Meta:
-#         db_table = 'substance'
-#     
-#     def __unicode__(self):
-#         return str(self.id)    
-#     
 #         
 # def create_id():
 #     # NOTE: using a custom sequence so we don't waste by using reagent_reagent_id_seq
@@ -784,23 +771,24 @@ def create_id():
     # sequence value.  The sequence here is used with the model idfield  
     try:
         cursor = connection.cursor()
-        cursor.execute("SELECT nextval('db_substance_id_seq')")
+        cursor.execute("SELECT nextval('substance_id_seq')")
         row = cursor.fetchone();
         val = row[0]
     
         new_id = create_substance_id(val)
-        if(logger.isEnabledFor(logging.DEBUG)):
-            logger.debug(str(('created_id', val, new_id)))
+        if val % 10000 == 0:
+            logger.info('created substance id %r from %r', new_id,val)
+        logger.debug('seq: %r, created_id: %r', val, new_id)
     #     if val > 1:
-    #         cursor.execute("SELECT setval('db_substance_id_seq', %s)", [val-1])
+    #         cursor.execute("SELECT setval('substance_id_seq', %s)", [val-1])
         return new_id
     except Exception, e:
-        logger.warn(str(('create_substance_id fails', e)))
+        logger.exception('on create_id')
         return None
 
 class Well(models.Model):
     well_id = models.TextField(primary_key=True)
-    version = models.IntegerField(blank=True, null=True)
+#     version = models.IntegerField(blank=True, null=True)
     plate_number = models.IntegerField()
     well_name = models.TextField()
     facility_id = models.TextField(blank=True)
@@ -858,16 +846,18 @@ class CachedQuery(models.Model):
 #     class Meta:
 #         db_table = 'well_query_index'
         
-# create a substance table, as an easy way of creating the db_substance_id_seq
+# create a substance table, as an easy way of creating the substance_id_seq
 class Substance(models.Model):
+    
     comment = models.TextField()
+    
     def __unicode__(self):
         return unicode(str(self.id)) 
-
+    
+    class Meta:
+        db_table = 'substance'
+        
 class Reagent(models.Model):
-    # Note: migration scripts have converted this to use a sequence 
-    # (essentially AutoField)
-    #     reagent_id = models.IntegerField(primary_key=True)
     reagent_id = models.AutoField(primary_key=True)
     
     substance_id = models.CharField(
@@ -898,9 +888,9 @@ class SilencingReagent(models.Model):
     sequence = models.TextField(blank=True)
     anti_sense_sequence = models.TextField(blank=True)
     silencing_reagent_type = models.TextField(blank=True)
-    vendor_gene = models.ForeignKey(
+    vendor_gene = models.OneToOneField(
         'Gene', unique=True, null=True, blank=True, related_name='vendor_reagent')
-    facility_gene = models.ForeignKey(
+    facility_gene = models.OneToOneField(
         'Gene', unique=True, null=True, blank=True, related_name='facility_reagent')
     
     duplex_wells = models.ManyToManyField('Well')
@@ -919,6 +909,7 @@ class Gene(models.Model):
     def __unicode__(self):
         return unicode(str((self.entrezgene_id, self.gene_name)))
 
+# REMOVED - see manual migration 0002
 # class ReagentFacilityGenes(models.Model):
 #     reagent = models.ForeignKey(SilencingReagent, primary_key=True)
 #     gene = models.ForeignKey(Gene, unique=True)
@@ -1035,7 +1026,7 @@ class SmallMoleculePubchemCid(models.Model):
 
 
 class SmallMoleculeCherryPickRequest(models.Model):
-    cherry_pick_request = models.ForeignKey(CherryPickRequest, primary_key=True)
+    cherry_pick_request = models.OneToOneField(CherryPickRequest, primary_key=True)
     class Meta:
         db_table = 'small_molecule_cherry_pick_request'
 
@@ -1045,7 +1036,7 @@ class SmallMoleculeCherryPickRequest(models.Model):
 class TransfectionAgent(models.Model):
     transfection_agent_id = models.IntegerField(primary_key=True)
     value = models.TextField(unique=True)
-    version = models.IntegerField()
+    # version = models.IntegerField()
     class Meta:
         db_table = 'transfection_agent'
 
@@ -1053,12 +1044,8 @@ class TransfectionAgent(models.Model):
 
 
 class Library(models.Model):
-    # Note: migration scripts have converted this to use a sequence
-    # (the original db-discovery only knew that it was the pk)
-    #     library_id = models.IntegerField(primary_key=True) 
     library_id = models.AutoField(primary_key=True) 
-#     version = models.IntegerField()
-    version = models.IntegerField(blank=True, null=True)
+    # version = models.IntegerField()
     library_name = models.TextField(unique=True)
     short_name = models.TextField(unique=True)
     description = models.TextField(blank=True)
@@ -1096,7 +1083,7 @@ class Library(models.Model):
 
 class LibraryContentsVersion(models.Model):
     library_contents_version_id = models.IntegerField(primary_key=True)
-    version = models.IntegerField()
+    # version = models.IntegerField()
     version_number = models.IntegerField()
     library = models.ForeignKey(Library)
     library_contents_loading_activity = models.ForeignKey(
@@ -1106,11 +1093,11 @@ class LibraryContentsVersion(models.Model):
         db_table = 'library_contents_version'
 
 class Copy(models.Model):
-    version = models.IntegerField()
+    # version = models.IntegerField()
     usage_type = models.TextField()
     library = models.ForeignKey('Library')
     name = models.TextField()
-    copy_id = models.IntegerField(primary_key=True)
+    copy_id = models.AutoField(primary_key=True)
     comments = models.TextField(blank=True)
     date_created = models.DateTimeField()
     created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
@@ -1132,8 +1119,8 @@ class Copy(models.Model):
         db_table = 'copy'
 
 class Plate(models.Model):
-    plate_id = models.IntegerField(primary_key=True)
-    version = models.IntegerField()
+    plate_id = models.AutoField(primary_key=True)
+    # version = models.IntegerField()
     plate_type = models.TextField(blank=True)
     plate_number = models.IntegerField()
     
@@ -1190,7 +1177,7 @@ class CopyWell(models.Model):
 
 
 class PlateLocation(models.Model):
-    plate_location_id = models.IntegerField(primary_key=True)
+    plate_location_id = models.AutoField(primary_key=True)
     bin = models.TextField()
     freezer = models.TextField()
     room = models.TextField()
@@ -1200,8 +1187,8 @@ class PlateLocation(models.Model):
 
 
 class WellVolumeAdjustment(models.Model):
-    well_volume_adjustment_id = models.IntegerField(primary_key=True)
-    version = models.IntegerField()
+    well_volume_adjustment_id = models.AutoField(primary_key=True)
+    # version = models.IntegerField()
     well = models.ForeignKey(Well)
     lab_cherry_pick = models.ForeignKey('LabCherryPick', null=True, blank=True)
     well_volume_correction_activity = models.ForeignKey('WellVolumeCorrectionActivity', null=True, blank=True)
@@ -1211,7 +1198,7 @@ class WellVolumeAdjustment(models.Model):
         db_table = 'well_volume_adjustment'
 
 class WellVolumeCorrectionActivity(models.Model):
-    activity = models.ForeignKey(AdministrativeActivity, primary_key=True)
+    activity = models.OneToOneField(AdministrativeActivity, primary_key=True)
     class Meta:
         db_table = 'well_volume_correction_activity'
 

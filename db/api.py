@@ -403,10 +403,7 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
     
     def obj_create(self, bundle, **kwargs):
         bundle.data['date_created'] = timezone.now()
-        
-        bundle.data['version'] = 1
         logger.info(str(('===creating library copy plate', bundle.data)))
-
         return super(LibraryCopyPlateResource, self).obj_create(bundle, **kwargs)
 
  
@@ -1136,7 +1133,6 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
     @transaction.atomic()
     def obj_create(self, bundle, **kwargs):
         bundle.data['date_created'] = timezone.now()
-        bundle.data['version'] = 1
         bundle = super(ScreenResource, self).obj_create(bundle, **kwargs)
         logger.info(str(('created', bundle)))
         return bundle
@@ -3071,10 +3067,7 @@ class LibraryCopyResource(SqlAlchemyResource, ManagedModelResource):
 
     def obj_create(self, bundle, **kwargs):
         bundle.data['date_created'] = timezone.now()
-        
-        bundle.data['version'] = 1
         logger.info(str(('===creating library copy', bundle.data)))
-
         return super(LibraryCopyResource, self).obj_create(bundle, **kwargs)
 
     def is_valid(self, bundle):
@@ -5777,18 +5770,13 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
     @transaction.atomic()
     def obj_create(self, bundle, **kwargs):
         bundle.data['date_created'] = timezone.now()
-        
-        bundle.data['version'] = 1
-        
         logger.debug(str(('===creating library', bundle.data)))
-
         bundle = super(LibraryResource, self).obj_create(bundle, **kwargs)
 
         # clear the cached schema because plate range have updated
         cache.delete(self._meta.resource_name + ':schema')
         
         # now create the wells
-        
         library = bundle.obj
         logger.debug(str((
             'created library', library, library.start_plate, type(library.start_plate))))
@@ -5800,7 +5788,7 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
                 for index in range(0,plate_size):
                     well = Well()
                     # FIXME: get rid of version
-                    well.version = 1
+#                     well.version = 1
                     well.well_name = lims_utils.well_name_from_index(index,plate_size)
                     well.well_id = lims_utils.well_id(plate,well.well_name)
                     well.library = library
@@ -5895,8 +5883,6 @@ class LibraryContentsVersionResource(ManagedModelResource):
     
     def obj_create(self, bundle, **kwargs):
         bundle.data['date_created'] = timezone.now()
-        
-        bundle.data['version'] = 1
         super(LibraryContentsVersionResource, self).obj_create(bundle, **kwargs)
     
 

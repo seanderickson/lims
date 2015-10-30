@@ -1,22 +1,16 @@
 # Django settings for 1km project
+import sys
 
 try:
     from settings import *
 except ImportError:
-    import sys
     print >>sys.stderr, '''Settings not defined.  Please configure a version of
     settings.py for this site.'''
-    del sys
     
 import os.path
 
 
 print 'PROJECT_ROOT: ', PROJECT_ROOT, ', ' , os.path.join(PROJECT_ROOT, '..')
-
-# make tests faster
-# use from the command line with testing like
-# ./manage.py test --settings=lims.testing-settings
-SOUTH_TESTS_MIGRATE = False
 
 # set SQLALCHEMY_POOL_CLASS=sqlalchemy.pool.NullPool for testing
 # environments, so that the test database can be destroyed
@@ -116,3 +110,19 @@ LOGGING = {
         },        
     }
 }
+
+TEST_RUNNER='reports.tests.IccblTestRunner'
+
+# disable migrations while testing
+# see http://stackoverflow.com/questions/25161425/disable-migrations-when-running-unit-tests-in-django-1-7
+class DisableMigrations(object):
+
+    def __contains__(self, item):
+        return True
+
+    def __getitem__(self, item):
+        return "notmigrations"
+
+if 'test' in sys.argv[1:] or 'travis' in sys.argv[1:]:
+    print 'tests in progres, no migrations...'
+    MIGRATION_MODULES = DisableMigrations()

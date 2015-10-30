@@ -27,7 +27,6 @@ summary,fields.screen,,,/reports/api/v1/metahash/fields.screen/summary/,28,,TRUE
 status,fields.screen,,,/reports/api/v1/metahash/fields.screen/status/,27,,TRUE,"The current status of the screen",Status,TRUE,,screen.status,[list;detail;edit],string,,,select,,,
 status_date,fields.screen,,,/reports/api/v1/metahash/fields.screen/status_date/,27,,TRUE,"The date of the most recent change of status for the screen","Status Date",TRUE,,,[list;detail],date,,,,,,
 has_screen_result,fields.screen,,,/reports/api/v1/metahash/fields.screen/has_screen_result/,44,,TRUE,"Whether the screen has a screen result","Screen Result Available",TRUE,,,[list;detail],boolean,,,,,,
-version,fields.screen,,,/reports/api/v1/metahash/fields.screen/version/,45,,TRUE,Version,Version,TRUE,,,[detail],integer,,,,,,
 total_plated_lab_cherry_picks,fields.screen,,,/reports/api/v1/metahash/fields.screen/total_plated_lab_cherry_picks,47,,TRUE,"The number of lab cherry picks that have been plated to date, for all cherry pick requests","Total Plated Lab Cherry Picks",TRUE,,,[detail],integer,,,,,,
 assay_readout_types,fields.screen,,,/reports/api/v1/metahash/fields.screen/assay_readout_types/,48,,TRUE,"The assay readout type for the screen","Assay Readout Type",TRUE,,datacolumn.assay_readout_type,[detail],list,,,multiselect,,,
 libraries_screened_count,fields.screen,,,/reports/api/v1/metahash/fields.screen/libraries_screened_count/,71,,TRUE,"The number of libraries that have been screened","Libraries Screened",TRUE,,,[summary],integer,,,,,,

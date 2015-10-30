@@ -43,7 +43,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db.utils import ProgrammingError
 from django.http.response import StreamingHttpResponse
 from django.test import TestCase
-from django.test.simple import DjangoTestSuiteRunner
+# from django.test.simple import DjangoTestSuiteRunner
 from django.test.testcases import SimpleTestCase
 from django.utils.encoding import force_text
 from tastypie import fields
@@ -61,6 +61,8 @@ from reports.sqlalchemy_resource import SqlAlchemyResource
 import reports.utils.log_utils
 from reports.utils.sdf2py import MOLDATAKEY
 import reports.utils.serialize
+from django.test.runner import DiscoverRunner
+import sys
 
 
 _ = reports.utils.log_utils.LogMessageFormatter   # optional, to improve readability
@@ -255,7 +257,7 @@ def find_all_obj_in_list(list1, list2, **kwargs):
 # "reports.SDFSerializerTest.test2_clean_data_sdf"
 # not 
 # "reports.test.SDFSerializerTest.test2_clean_data_sdf"
-class NoDbTestRunner(DjangoTestSuiteRunner):
+class NoDbTestRunner(DiscoverRunner):
   """ A test runner to test without database creation """
 
   def setup_databases(self, **kwargs):
@@ -272,19 +274,30 @@ class NoDbTestRunner(DjangoTestSuiteRunner):
 # - motivation: use this runner for Travis tests so that the teardown error is
 # not reported as a testing failure.
 # 
-# FIXME for django 1.7 - use django.test.runner.DiscoverRunner
 # FIXME: override of testrunner class to catch teardown error:
 # - caused by holding another db connection for the sqlalchemy bridge
-# NOTE: when using this testrunner, the class finder is different; note that the 
+# NOTE-(verify in DiscoverRunner): when using this testrunner, the class finder is different; note that the 
 # path excludes the module, so 
 # "reports.SDFSerializerTest.test2_clean_data_sdf"
 # not 
 # "reports.test.SDFSerializerTest.test2_clean_data_sdf"
-class IccblTestRunner(DjangoTestSuiteRunner):
+class IccblTestRunner(DiscoverRunner):
     
+    @classmethod
+    def add_arguments(cls, parser):
+        super(IccblTestRunner, cls).add_arguments(parser)
+        
+        parser.add_argument(
+            '--reinit_metahash',
+            action='store_true',
+            help=(
+                'if set (with --keepdb), the _bootstrap_init_files method '
+                'will be called (without --keepdb, _bootstrap_init_files'
+                ' is always called'))
+        
     def teardown_databases(self, old_config, **kwargs):
         try:
-            DjangoTestSuiteRunner.teardown_databases(self, old_config, **kwargs)
+            DiscoverRunner.teardown_databases(self, old_config, **kwargs)
         except Exception, e:
             logger.exception('on teardown')
             
@@ -989,6 +1002,16 @@ class IResourceTestCase(SimpleTestCase):
     def setUp(self):
         super(IResourceTestCase, self).setUp()
  
+    def _bootstrap_init_files(self):
+
+        self.directory = os.path.join(APP_ROOT_DIR, 'reports/static/api_init')
+        serializer=CSVSerializer() 
+        testApiClient = TestApiClient(serializer=serializer) 
+        input_actions_file = os.path.join(self.directory, 'api_init_actions.csv')
+        logger.info(_('open input_actions file', input_actions_file))
+        
+        self._run_api_init_actions(input_actions_file)
+
     def create_basic(self, username, password):
         """
         Creates & returns the HTTP ``Authorization`` header for use with BASIC
@@ -1148,16 +1171,6 @@ class IResourceTestCase(SimpleTestCase):
             # return both collections for further testing
             return (input_data['objects'], new_obj['objects']) 
 
-    def _bootstrap_init_files(self):
-
-        self.directory = os.path.join(APP_ROOT_DIR, 'reports/static/api_init')
-        serializer=CSVSerializer() 
-        testApiClient = TestApiClient(serializer=serializer) 
-        input_actions_file = os.path.join(self.directory, 'api_init_actions.csv')
-        logger.info(_('open input_actions file', input_actions_file))
-        
-        self._run_api_init_actions(input_actions_file)
-
     def _run_api_init_actions(self, input_actions_file):
         
         if not os.path.exists(input_actions_file):
@@ -1220,9 +1233,22 @@ def setUpModule():
     # FIXME: running the bootstrap method as a test suite setup:
     # TODO: create a local TestRunner,TestSuite,
     # so that this can be run before the suite
-    testContext = IResourceTestCase(methodName='_bootstrap_init_files')
-    testContext.setUp()
-    testContext._bootstrap_init_files()
+
+    keepdb = False
+    reinit_metahash = False
+    if len(sys.argv) > 1:
+        for arg in sys.argv:
+            print 'arg: ', arg
+            if 'keepdb' in arg:
+                keepdb = True
+            if 'reinit_metahash' in arg:
+                reinit_metahash = True
+    if reinit_metahash or not keepdb:
+        testContext = IResourceTestCase(methodName='_bootstrap_init_files')
+        testContext.setUp()
+        testContext._bootstrap_init_files()
+    else:
+        print 'skip database metahash initialization when using keepdb'
 
     logger.info(_('=== setup Module done'))
 

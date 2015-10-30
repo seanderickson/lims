@@ -17,7 +17,6 @@ screening_status,fields.library,/reports/api/v1/metahash/fields.library/screenin
 date_created,fields.library,/reports/api/v1/metahash/fields.library/date_created/,,,96,,TRUE,"The date the entity was originally recorded in Screensaver.","Date Recorded",TRUE,,,[detail],date,,,,,,,,,,,
 date_loaded,fields.library,/reports/api/v1/metahash/fields.library/date_loaded/,,,98,,TRUE,"The date the library data was loaded","Date Loaded",TRUE,,,[detail],date,,,,,,,,,,,
 date_publicly_available,fields.library,/reports/api/v1/metahash/fields.library/date_publicly_available/,,,99,,TRUE,"The date the library data was made publicly available","Date Publicly Available",TRUE,,,[detail],date,,,,,,,,,,,
-version,fields.library,/reports/api/v1/metahash/fields.library/version/,,,999,,TRUE,Version,Version,TRUE,,,,integer,,,,,,,,,,,
 date_screenable,fields.library,/reports/api/v1/metahash/fields.library/date_screenable/,,,97,,TRUE,"The earliest date on which a copy of this library was plated","Date First Plated",TRUE,,,[detail],date,,,,,,,,,,,
 description,fields.library,/reports/api/v1/metahash/fields.library/description/,,,14,,TRUE,"A description of the library",Description,TRUE,,,[detail;edit],string,,,,,,,,,,,
 owner,fields.library,/reports/api/v1/metahash/fields.library/owner/,custom,,18,,TRUE,"The user that owns the library, if applicable.",Owner,TRUE,,,[detail;edit],string,,,,,,,,,,,

@@ -9,7 +9,7 @@ import logging
 import re
 
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db.backends.util import CursorDebugWrapper
+from django.db.backends.utils import CursorDebugWrapper
 from django.http.response import StreamingHttpResponse
 from django.utils.encoding import smart_str
 from psycopg2.psycopg1 import cursor

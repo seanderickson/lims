@@ -4,6 +4,7 @@ import cStringIO
 import json
 import logging
 import os
+import sys
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
@@ -13,7 +14,8 @@ from django.test.client import encode_multipart, BOUNDARY, MULTIPART_CONTENT
 from django.utils.timezone import now
 from tastypie.test import ResourceTestCase, TestApiClient
 
-from db.models import Reagent, Substance, Library
+from db.models import Reagent, Substance, Library, ScreensaverUser,\
+    UserChecklistItem,AttachedFile, ServiceActivity, Screen
 import db.models
 from db.support import lims_utils
 from db.test.factories import LibraryFactory, ScreenFactory
@@ -25,6 +27,7 @@ from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, find_obj_in
 import reports.tests
 import reports.utils.log_utils
 from django.core.urlresolvers import resolve
+from reports.models import ApiLog
 
 
 _ = reports.utils.log_utils.LogMessageFormatter
@@ -59,9 +62,7 @@ class DBResourceTestCase(IResourceTestCase):
         testApiClient = TestApiClient(serializer=serializer) 
         input_actions_file = os.path.join(self.directory, 'api_init_actions.csv')
         logger.info(_('open input_actions file', input_actions_file))
-        
         self._run_api_init_actions(input_actions_file)
-
 
 def setUpModule():
 
@@ -70,9 +71,22 @@ def setUpModule():
     # FIXME: running the bootstrap method as a test suite setup:
     # TODO: create a local TestRunner,TestSuite,
     # so that this can be run before the suite
-    testContext = DBResourceTestCase(methodName='_bootstrap_init_files')
-    testContext.setUp()
-    testContext._bootstrap_init_files()
+
+    keepdb = False
+    reinit_metahash = False
+    if len(sys.argv) > 1:
+        for arg in sys.argv:
+            print 'arg: ', arg
+            if 'keepdb' in arg:
+                keepdb = True
+            if 'reinit_metahash' in arg:
+                reinit_metahash = True
+    if reinit_metahash or not keepdb:
+        testContext = DBResourceTestCase(methodName='_bootstrap_init_files')
+        testContext.setUp()
+        testContext._bootstrap_init_files()
+    else:
+        print 'skip database metahash initialization when using keepdb'
 
     logger.info(_('=== setup Module done'))
 
@@ -94,6 +108,13 @@ class LibraryResource(DBResourceTestCase):
         logger.debug('============== LibraryResource setup ============')
         
         super(LibraryResource, self).setUp()
+
+    def tearDown(self):
+        DBResourceTestCase.tearDown(self)
+        
+        logger.info('delete resources')
+        Library.objects.all().delete()
+        ApiLog.objects.all().delete()
 
     def test1_create_library(self):
         
@@ -613,8 +634,15 @@ class ScreenResource(DBResourceTestCase):
         logger.debug('============== ScreenResource setup ============')
         super(ScreenResource, self).setUp()
 
+    def tearDown(self):
+        DBResourceTestCase.tearDown(self)
+        
+        logger.info('delete resources')
+        Screen.objects.all().delete()
+        ApiLog.objects.all().delete()
+    
     def test1_create_screen(self):
-        logger.debug(_('==== test1_create_screen ====='))
+        logger.info('==== test1_create_screen =====')
         
         resource_uri = BASE_URI_DB + '/screen'
         
@@ -653,7 +681,7 @@ class ScreenResource(DBResourceTestCase):
         logger.debug(_('item found', obj))
 
     def _test0_create_screen(self):
-        logger.debug(_('==== test_create_screen ====='))
+        logger.info('==== test_create_screen =====')
         
         # FIXME: should use the Factory
         # the simplest of tests, create some simple screens
@@ -729,6 +757,16 @@ class ScreensaverUserResource(DBResourceTestCase):
         logger.debug('============== ScreensaverUserResource setup ============')
         super(ScreensaverUserResource, self).setUp()
 
+    def tearDown(self):
+        DBResourceTestCase.tearDown(self)
+        
+        logger.info('delete resources')
+        UserChecklistItem.objects.all().delete()
+        AttachedFile.objects.all().delete()
+        ServiceActivity.objects.all().delete()
+        ScreensaverUser.objects.all().delete()
+        ApiLog.objects.all().delete()
+        
     def test0_create_user(self):
         logger.debug(_('==== test_create_user ====='))
         

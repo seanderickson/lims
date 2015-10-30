@@ -265,6 +265,17 @@ DELETE FROM pg_largeobject USING attached_file WHERE loid=file_contents;
 ALTER TABLE attached_file DROP COLUMN file_contents;
 **/
 
+DROP TABLE cell_lineage;
+DROP TABLE cell_related_projects;
+DROP TABLE cell_markers;
+DROP TABLE cell_growth_properties;
+DROP TABLE experimental_cell_information;
+DROP TABLE cell_update_activity;
+DROP TABLE primary_cell;
+DROP TABLE cell;
+DROP TABLE gene_old_entrezgene_id;
+DROP TABLE gene_old_entrezgene_symbol;
+DROP TABLE silencing_reagent_non_targetted_genbank_accession_number;
 
 
 COMMIT;

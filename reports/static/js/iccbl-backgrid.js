@@ -64,7 +64,6 @@ requireOptions = Iccbl.requireOptions = function(options,requireOptionKeys){
  * - this can be used to replace any token with a given default value
  */
 var replaceTokens = Iccbl.replaceTokens = function(model,stringWithTokens, default_val) {
-  console.log('1,', model, ', ', stringWithTokens, ', ', default_val);
   var interpolatedString = stringWithTokens.replace(/{([^}]+)}/g, 
     function (match) 
     {
@@ -248,7 +247,6 @@ var popKeyFromStack = Iccbl.popKeyFromStack = function(resource, urlStack, consu
     if (_.isEmpty(urlStack)){
       var msg = 'not enough items on the URL to create the key for resource: ' + 
           resource.title;
-      window.alert(msg);
       throw msg;
     }
   };
@@ -332,17 +330,23 @@ var getIdFromIdAttribute = Iccbl.getIdFromIdAttribute =
 var getTitleFromTitleAttribute = Iccbl.getTitleFromTitleAttribute = 
     function(model, schema){
   var re_isQuoted = /['"]+/g;
+  var fields = schema['fields'];
   if(_.has(schema['resource_definition'], 'title_attribute')){
-    var title_attribute = schema['resource_definition']['title_attribute'];
-    console.log('create title from ' + title_attribute);
     var title = _.reduce(
       schema['resource_definition']['title_attribute'],
       function(memo, item){
         if(item && item.match(re_isQuoted)){
           memo += item.replace(re_isQuoted, '');
         }else{
-          if( model.has(item) ) memo += model.get(item)
-          else memo += item
+          if( model.has(item) ){
+            var val = model.get(item);
+            if (!_.isEmpty(fields[item].vocabulary_scope_ref)){
+              val = Iccbl.appModel.getVocabularyTitle(fields[item].vocabulary_scope_ref,val);
+            }
+            memo += val
+          }else{
+            memo += item
+          }
         }
         return memo ;
       }, '');
@@ -977,10 +981,7 @@ _.extend(SIUnitsFormatter.prototype, {
   },
  
   /**
-   * FIXME: implement = this is copied from Backgrid percentformatter Takes a
-   * string, possibly appended with `symbol` and/or `decimalSeparator`, and
-   * convert it back to a number for the model like NumberFormatter#toRaw, and
-   * then dividing it by `multiplier`.
+   * FIXME: refactor using SIUnitFormFilter._findNumberAndUnit
    * 
    * @member Backgrid.UnitsFormatter
    * @param {string}
@@ -1555,7 +1556,6 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
     }
     
     this.setCellDirection(column, self.tempdirection=="none"?null:self.tempdirection );
-    console.log('tempdirection2: ' + self.tempdirection);
 
     var args = arguments;
     
@@ -2841,28 +2841,28 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
 var SelectorHeaderCell = MultiSortHeaderCell.extend({
 
   initialize : function(options) {
+    SelectorHeaderCell.__super__.initialize.apply(this, arguments);
+
     var self = this;
     var choiceHash = {}
-    var vocabulary_scope_ref = this.fieldinformation.vocabulary_scope_ref;
     var vocabulary;
     
-    this.options = options;
-    SelectorHeaderCell.__super__.initialize.apply(this, arguments);
     this.fieldinformation = _.clone(this.column.get('fieldinformation'));
+    this.options = options;
 
     if(_.isUndefined(this.fieldinformation.choices)){
       console.log([
          'error: fieldinformation for a selection field type must define a ',
-         '"choices" list: field key: ' + this.name ].join(''));
+         '"choices" list: field key: ' + this.column.get('name')].join(''));
       this.fieldinformation.choices = [];
     }
     try{
-      vocabulary = Iccbl.appModel.getVocabulary(vocabulary_scope_ref);
+      vocabulary = Iccbl.appModel.getVocabulary(this.fieldinformation.vocabulary_scope_ref);
         _.each(_.keys(vocabulary),function(choice){
           choiceHash[choice] = vocabulary[choice].title;
         });
     }catch(e){
-      console.log('e'+JSON.stringify(e));
+      console.log('vocabulary error', this.column.get('name'),e);
     }
     this._serverSideFilter = new SelectorFormFilter({
         choiceHash: choiceHash,
@@ -3297,7 +3297,7 @@ var SIUnitFormFilter = NumberFormFilter.extend({
   template: _.template([
       '<form class="iccbl-headerfield-form" >',
       '<div class="row center-block" style="margin: 0 0 0 0;" >',
-      '<div class="input-group ">',
+      '<div class="input-group  col-sm-2">',
       '   <div data-fields="lower_criteria" ',
       '     class="input-group-addon iccbl-headerfield-number" for="lower_value"   />',
       '   <div data-fields="lower_value"/>',
@@ -3338,6 +3338,12 @@ var SIUnitFormFilter = NumberFormFilter.extend({
       throw 'Error: SIUnitFormFilter requires a "symbol" option' 
     }
     _.each(this.siunits,function(pair){
+      if(options.maxunit){
+        if(options.maxunit < pair[1]) return;
+      }
+      if(options.minunit){
+        if(options.minunit > pair[1]) return;
+      }
       units.push({ val: pair[1], label: pair[0] + self.symbol });
     });
     formSchema['lower_siunit'] = {
@@ -3486,14 +3492,13 @@ var SIUnitHeaderCell = MultiSortHeaderCell.extend({
   initialize: function(options){
 
     SIUnitHeaderCell.__super__.initialize.apply(this,arguments);
+
     var self = this;
-    this.options = options;
     var name = this.column.get('name');
-    
-    // FIXME: cannot pass initialization params, so sending them on the column,
-    // Need to fix
+    // FIXME: cannot pass initialization params, so sending them on the column
     var fi = this.fieldinformation = _.clone(this.column.get('fieldinformation'));
     var cell_options = fi['display_options'];
+    
     cell_options = cell_options.replace(/'/g,'"');
     try{
       cell_options = JSON.parse(cell_options);
@@ -3501,21 +3506,18 @@ var SIUnitHeaderCell = MultiSortHeaderCell.extend({
       throw new Error('SIUnitHeaderCell: Could not parse display_options for header: ' 
           + name + ',' + cell_options);
     }
+    this.options = options;
+
+    
     if(!cell_options.symbol)
     {
       throw new Error('SIUnitHeaderCell: field information requires the '+
           '"symbol" option');
     }
-    var symbol = this.symbol = cell_options.symbol;
-    var multiplier = this.multiplier = _.has(cell_options, 'multiplier')?cell_options.multiplier:1;
     
-    this._serverSideFilter = new SIUnitFormFilter({
-      columnName: this.column.get('name'),
-      symbol: symbol,
-      multiplier: multiplier
-    });
+    this._serverSideFilter = new SIUnitFormFilter(_.extend({
+      columnName: this.column.get('name')}, cell_options ));
     this.filterIcon = $(self.filtericon_text);
-    
     this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
     this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
   },
@@ -3537,7 +3539,6 @@ var SIUnitHeaderCell = MultiSortHeaderCell.extend({
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash);
-// self.collection.fetch({ reset: true });
     }else{
       console.log('nothing submitted');
     }
@@ -3590,7 +3591,6 @@ var SIUnitHeaderCell = MultiSortHeaderCell.extend({
       e.preventDefault();
       e.stopPropagation();
       self.clearSearch();
-// self.collection.fetch({ reset: true });
     });
     
     this.filterIcon.click(function(e){
@@ -3618,9 +3618,9 @@ var SIUnitHeaderCell = MultiSortHeaderCell.extend({
 
 var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
   /** 
-   * override Backgrid.SelectCell render to return the cell value if 
-   * optionValues is malformed
-   * or missing the value.
+   * override Backgrid.SelectCell:
+   * - render to return the cell value if optionValues is malformed or missing 
+   * the value
    */
   render: function () {
     this.$el.empty();
@@ -3658,7 +3658,6 @@ var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
           }
           else {
             throw new TypeError;
-            
           }
         }
       }
@@ -3666,10 +3665,21 @@ var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
     }
     if(!_.isEmpty(rawData) && _.isEmpty(selectedText)){
       selectedText = rawData;
-      Iccbl.appModel.error('column vocabulary is misconfigured: '+  this.column.get("name") );
-      console.log('== column vocabulary is misconfigured: '+  this.column.get("name") 
-        + ",  'optionValues' must be of type " 
-        + "{Array.<Array>|Array.<{name: string, values: Array.<Array>}>}", optionValues,rawData);
+
+      Iccbl.appModel.error(Iccbl.formatString(
+        'column: {column}, vocabulary: {vocabulary} is misconfigured: rawData: {rawData}',
+        { column: this.column.get("name"),
+          vocabulary: _.result(this, "vocabulary_scope_ref"),
+          rawData: rawData 
+        }));
+      console.log(Iccbl.formatString(
+        'column: {column}, vocabulary: {vocabulary} is misconfigured,' 
+          + 'rawData: {rawData}, optionValues: {optionValues}',
+        { column: this.column.get("name"),
+          vocabulary: _.result(this, "vocabulary_scope_ref"),
+          rawData: rawData,
+          optionValues: optionValues
+        }));
     }
     var finalText = selectedText.join(this.delimiter);
     
@@ -3969,10 +3979,11 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
           optionValues.push([vocabulary[choice].title,choice]);
         });
     }catch(e){
-      console.log('e'+JSON.stringify(e));
+      console.log('build column errorr: e',e);
     }
     cell_options = _.extend(cell_options,{
-      optionValues: optionValues
+      optionValues: optionValues,
+      vocabulary_scope_ref: vocabulary_scope_ref
     } );
     column['cell'] = Iccbl.SelectCell.extend(cell_options);
   }

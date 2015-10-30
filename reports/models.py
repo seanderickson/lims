@@ -537,7 +537,7 @@ class RecordValueComplex(models.Model):
     '''
     
     # name of the parent field will be stored in the meta hash
-    parent = models.ForeignKey('Record', unique=True)
+    parent = models.OneToOneField('Record', unique=True)
     # name of the value field will be stored in the meta hash
     value1 = models.TextField(null=True)
     value2 = models.TextField(null=True)

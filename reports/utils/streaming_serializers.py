@@ -171,8 +171,8 @@ def json_generator(cursor,meta,request, is_for_detail=False,field_hash=None):
                                 kwargs['request'] = request
                                 view(*args, **kwargs)
                                 _dict[key] = newval
-                            except Exception, e:
-                                logger.info(str(('no image at', newval,e)))
+                            except Exception:
+                                logger.warn('no image found at %s',newval)
                         else:
                             _dict[key]=newval
 

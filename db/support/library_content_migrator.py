@@ -1,26 +1,26 @@
 # -*- coding: utf-8 -*-
 
 import json
-
-from south.utils import datetime_utils as datetime
-from south.db import db
-from south.v2 import DataMigration
-from django.db import models
-
-from db.api import SmallMoleculeReagentResource, WellResource,\
-    SilencingReagentResource, NaturalProductReagentResource, LibraryResource
-from tastypie.resources import Resource
-from tastypie.bundle import Bundle
-from reports.models import ApiLog
-from django.utils import timezone, tzinfo
-
-from django.utils.timezone import make_aware, UTC
-from django.core.exceptions import ObjectDoesNotExist
-
-from reports.api import compare_dicts, is_empty_diff
-from db.models import SmallMoleculeReagent
-
 import logging
+
+from django.core.exceptions import ObjectDoesNotExist
+from django.db import models
+from django.db.models import Count
+from django.utils import timezone, tzinfo
+from django.utils.timezone import make_aware, UTC
+from tastypie.bundle import Bundle
+from tastypie.resources import Resource
+
+from db.api import SmallMoleculeReagentResource, WellResource, \
+    SilencingReagentResource, NaturalProductReagentResource, LibraryResource
+from db.models import SmallMoleculeReagent
+from reports.api import compare_dicts, is_empty_diff
+from reports.models import ApiLog
+
+
+# from south.utils import datetime_utils as datetime
+# from south.db import db
+# from south.v2 import DataMigration
 logger = logging.getLogger(__name__)
 
 class Migrator:
@@ -127,11 +127,10 @@ from reagent r join natural_product_reagent using(reagent_id)
 where r.library_contents_version_id=%s order by well_id;
 '''
           
-    def do_migration(self, orm, screen_type=None):                
+    def do_migration(self, apps, schema_editor, screen_type=None):                
         i=0
         
-        from django.db.models import Count
-        query = orm.LibraryContentsVersion.objects.all()
+        query = apps.get_model('db','LibraryContentsVersion').objects.all()
         if screen_type:
             query = (query.filter(library__screen_type=screen_type))
 #                           .exclude(library__library_type='natural_products'))
@@ -142,7 +141,7 @@ where r.library_contents_version_id=%s order by well_id;
                 .order_by('library') )]
         logger.info(str(('libraries to consider', library_ids)))
     
-        for library in (orm.Library.objects.all()
+        for library in (apps.get_model('db','Library').objects.all()
                         .filter(library_id__in=library_ids)):
             
             prev_version = None
@@ -178,7 +177,7 @@ where r.library_contents_version_id=%s order by well_id;
                 log.save()
                 logger.debug(str(('created log', log)))
                 if prev_version:
-                    self.diff_library_wells(library, prev_version, version, log)            
+                    self.diff_library_wells(schema_editor,library, prev_version, version, log)            
 
                 
                 prev_version = version
@@ -197,7 +196,10 @@ where r.library_contents_version_id=%s order by well_id;
     
         print 'processed: ', i, 'libraries'
 
-    def diff_library_wells(self, library, version1, version2, parent_log):
+    def diff_library_wells(self, schema_editor,library, version1, version2, parent_log):
+        
+        connection = schema_editor.connection
+        
         screen_type = library.screen_type;
         logger.info(str(('processing: ', library.short_name, 
            'type', library.screen_type, library.library_type, 
@@ -215,12 +217,15 @@ where r.library_contents_version_id=%s order by well_id;
             
         prev_well_map = None
         for version in [version1, version2]:
-            logger.debug(str(('execute sql', version, sql)))
-            _list = db.execute(sql, [version.library_contents_version_id])
-            logger.debug(str(('executed sql', version)))
+            logger.debug('version: %s, execute sql %r', 
+                version.library_contents_version_id, sql)
+            cursor = connection.cursor()
+            cursor.execute(sql, [version.library_contents_version_id])
+            _list = cursor.fetchall()
+            logger.debug('executed, list: %r', _list)
             
             if len(_list) == 0:
-                logger.error(str(('no wells for ', library.short_name, version.version)))
+                logger.error(str(('no wells for ', library.short_name)))
                 continue
 
             cumulative_diff_keys = set()

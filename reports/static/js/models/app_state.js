@@ -9,6 +9,7 @@ define([
   var API_VERSION = 'api/v1';
   var REPORTS_API_URI = '/reports/' + API_VERSION;
   var DB_API_URI = '/db/' + API_VERSION;
+  var SEARCH_DELIMITER = ';';
   var DEBUG = true;
   
   var SchemaClass = Iccbl.SchemaClass = function() {};
@@ -125,7 +126,7 @@ define([
     
     getUsers: function(callBack) {
       var self = this;
-      users = this.get('users');
+      var users = this.get('users');
       if(_.isEmpty(users)){
         console.log('get all users from the server...');
         var resourceUrl = self.dbApiUri + '/screensaveruser'
@@ -138,6 +139,39 @@ define([
         callBack(users);
       }
     },
+
+    /**
+     * Generate a list of "options" suitable for use in a user multiselect.
+     * [ { val: username, label: name:username }, ... ]
+     */
+    getAdminUserOptions: function(callBack){
+      this.getAdminUsers(function(users){
+        var options = [];
+        users.each(function(user){
+          var username = user.get('username');
+          var name = user.get('name');
+          options.unshift({ val: username, label: name + ':' + username });
+        });
+        callBack(options);
+      });
+    },
+    
+    getAdminUsers: function(callBack) {
+      var self = this;
+      var users = this.get('adminUsers');
+      if(_.isEmpty(users)){
+        console.log('get all admin users from the server...');
+        var resourceUrl = self.dbApiUri + '/screensaveruser?is_staff__eq=true'
+        Iccbl.getCollectionOnClient(resourceUrl, function(collection){
+          self.set('adminUsers', collection);
+          callBack(collection);
+        });
+      }
+      else{
+        callBack(users);
+      }
+    },
+        
     
     getUserGroupOptions: function(callBack){
       this.getUserGroups(function(usergroups){
@@ -265,6 +299,29 @@ define([
           throw "Unknown vocabulary: " + scope;
       }
       return vocabularies[scope];
+    },
+    
+    /**
+     * return the title for the vocabulary entry for the specified scope and val.
+     */
+    getVocabularyTitle: function(scope,val){
+      try{
+        vocabulary = this.getVocabulary(scope);
+        if(_.has(vocabulary,val)){
+          val = vocabulary[val].title;
+        }else{
+          var msg = Iccbl.formatString(
+            'vocabulary: {vocabulary} is misconfigured: rawData: {rawData}',
+            { vocabulary: _.result(this, "vocabulary_scope_ref"),
+              rawData: val 
+            });
+          console.log(msg);
+          this.error(msg);
+        }
+      }catch(e){
+        this.error('unknown vocabulary: ' + scope);
+      }
+      return val;
     },
 
     getResources: function(callBack){
@@ -504,21 +561,20 @@ define([
      * Backbone model fetch error handler
      */
     backboneFetchError: function(modelOrCollection, response, options) {
-      //console.log('error fetching the modelOrCollection: '+ modelOrCollection + ', response:
-      // ' + JSON.stringify(response));
-      var url = options.url || modelOrCollection.url || '';
-      var msg = 'Error locating resource: ' + url;
-      this.error(msg);
+      var msg = 'Server Error';
       
       var sep = '\n';
-      if (!_.isUndefined(response.status))
-          msg += sep + response.status;
       if (!_.isUndefined(response.statusText))
-          msg += sep + response.statusText;
-      if (!_.isEmpty(response.responseText))
+          msg += response.statusText;
+      if (!_.isUndefined(response.status))
+          msg += ':' + response.status;
+      if (!_.isUndefined(response.responseJSON))
+          msg += sep + response.responseJSON.error_message;
+      this.error(msg);
+      if (!_.isUndefined(response.responseJSON))
+          msg += sep + response.responseJSON.traceback;
+      else if (!_.isEmpty(response.responseText))
           msg += sep + response.responseText;
-      
-      if(DEBUG) window.alert(msg);
       
       console.log(msg);
     },
@@ -712,7 +768,7 @@ define([
       var form = new Backbone.Form({
         model: formFields,
         template: _.template([
-                              "<div>",
+          "<div>",
           "<form data-fieldsets class='form-horizontal container' >",
           "</form>",
           // tmpFrame is a target for the download
@@ -907,7 +963,14 @@ define([
       $('#modal').html(modalDialog.$el);
       $('#modal').modal({show:true, backdrop: 'static'});
       return modalDialog;
-    }   
+    },
+    
+    createSearchString: function(searchHash){
+      return _.map(_.pairs(searchHash), 
+        function(keyval) {
+          return keyval.join('=');
+        }).join(SEARCH_DELIMITER)
+    }
   });
 
   var appState = new AppState();
@@ -921,7 +984,7 @@ define([
   appState.dbApiUri = DB_API_URI;
   appState.DEBUG = DEBUG;
   appState.LIST_ARGS = ['rpp','page','includes','order','log', 'children','search'];      
-  appState.SEARCH_DELIMITER = ';';
+  appState.SEARCH_DELIMITER = SEARCH_DELIMITER;
   appState.HEADER_APILOG_COMMENT = 'X-APILOG-COMMENT';
 
   Iccbl.appModel = appState;

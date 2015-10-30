@@ -7,7 +7,13 @@ current_timestamp,
 'copy the new substance ids into the database';
 
 /**
-  Purpose: copy the new substance ids into the database efficiently
+  Purpose: copy the new substance ids into the database efficiently:
+  - first write out the substance id table to csv.
+  - copy the csv file to a temp table
+  - update reagent.substance_id from the table
+  
+  NOTE: 20151029 - retired; this functionality is not run from the substance
+  ID migration script.
 **/
 
 

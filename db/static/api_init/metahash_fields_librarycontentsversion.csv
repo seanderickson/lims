@@ -1,11 +1,11 @@
 key,scope,resource_uri,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,data_type,display_type,display_options,edit_type,is_restricted,nested_resource
-version_number,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/version_number/,1,,TRUE,"Version number","Version Number",TRUE,,,[list;detail],integer,link,,,,
-library_short_name,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/library_short_name/,2,,TRUE,"Library short name",Library,TRUE,,,[detail],string,,,,,
-loading_activity,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/loading_activity/,11,,FALSE,"Loading activity","Loading Activity",FALSE,,,[detail],string,,,,,activity
-release_activity,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/release_activity/,12,,FALSE,"Release activity","Release Activity",FALSE,,,[detail],string,,,,,activity
-date_loaded,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/date_loaded/,5,,TRUE,"Date loaded","Date Loaded",TRUE,,,[list;detail],date,,,,,
-loaded_by,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/loaded_by/,6,,FALSE,"Loaded by","Loaded By",FALSE,,,[list;detail],string,link,screensaveruser/{loaded_by_id},,,
-load_comments,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/load_comments/,7,,FALSE,"Load comments",Comments,FALSE,,,[list;detail],string,,,,,
-date_released,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/date_released/,8,,TRUE,"Date released","Date Released",TRUE,,,[list;detail],date,,,,,
-released_by,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/released_by/,9,,FALSE,"Released by","Released By",FALSE,,,[list;detail],string,link,screensaveruser/{released_by_id},,,
-loaded_by_id,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/loaded_by_id/,10,,FALSE,"Screensaver user ID for the user who loaded the library","Loaded By ID",FALSE,,,[detail],integer,,,,,
+version_number,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/version_number/,1,,TRUE,"Version number","Version Number",TRUE,,,[l;d],integer,link,,,,
+library_short_name,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/library_short_name/,2,,TRUE,"Library short name",Library,TRUE,,,[d],string,,,,,
+loading_activity,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/loading_activity/,11,,FALSE,"Loading activity","Loading Activity",FALSE,,,[d],string,,,,,activity
+release_activity,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/release_activity/,12,,FALSE,"Release activity","Release Activity",FALSE,,,[d],string,,,,,activity
+date_loaded,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/date_loaded/,5,,TRUE,"Date loaded","Date Loaded",TRUE,,,[l;d],date,,,,,
+loaded_by,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/loaded_by/,6,,FALSE,"Loaded by","Loaded By",FALSE,,,[l;d],string,link,screensaveruser/{loaded_by_id},,,
+load_comments,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/load_comments/,7,,FALSE,"Load comments",Comments,FALSE,,,[l;d],string,,,,,
+date_released,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/date_released/,8,,TRUE,"Date released","Date Released",TRUE,,,[l;d],date,,,,,
+released_by,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/released_by/,9,,FALSE,"Released by","Released By",FALSE,,,[l;d],string,link,screensaveruser/{released_by_id},,,
+loaded_by_id,fields.librarycontentsversion,/reports/api/v1/metahash/fields.librarycontentsversion/loaded_by_id/,10,,FALSE,"Screensaver user ID for the user who loaded the library","Loaded By ID",FALSE,,,[d],integer,,,,,

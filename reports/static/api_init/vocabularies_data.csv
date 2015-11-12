@@ -1,8 +1,10 @@
 key,scope,resource_uri,ordinal,comment,description,title
-list,field.visibility,/reports/api/v1/vocabularies/field.visibility/list/,1,,"Allow visibility in list views","Visible in list views"
-detail,field.visibility,/reports/api/v1/vocabularies/field.visibility/detail/,2,,"Allow visibility in detail views","Visible in detail views"
-edit,field.visibility,/reports/api/v1/vocabularies/field.visibility/edit/,3,,"Allow visibility in the edit form","Visible in edit forms"
-list_edit,field.visibility,/reports/api/v1/vocabularies/field.visibility/list_edit/,4,,"Allow visibility in the lists in edit mode","Visible in edit list view"
+l,field.visibility,/reports/api/v1/vocabularies/field.visibility/l/,1,,"Allow visibility in list views","Visible in list views"
+d,field.visibility,/reports/api/v1/vocabularies/field.visibility/d/,2,,"Allow visibility in detail views","Visible in detail views"
+e,field.visibility,/reports/api/v1/vocabularies/field.visibility/e/,3,,"Visible in edit views","Visible in edit views"
+c,field.editability,/reports/api/v1/vocabularies/field.editability/c/,1,,"Visible on creation","Visible on creation"
+u,field.editability,/reports/api/v1/vocabularies/field.editability/u/,2,,"Visible on update","Visible on update"
+l,field.editability,/reports/api/v1/vocabularies/field.editability/l/,3,,"Allow visibility in the lists in edit mode","Visible in edit list view"
 list,resource.visibility,/reports/api/v1/vocabularies/resource.visibility/list/,1,,"Allow visibility in list views","Visible in list views"
 detail,resource.visibility,/reports/api/v1/vocabularies/resource.visibility/detail/,3,,"Allow visibility in detail views","Visible in detail views"
 create,resource.visibility,/reports/api/v1/vocabularies/resource.visibility/create/,4,,"Allow visibility in the edit form when creating.","Visible when creating"
@@ -19,6 +21,7 @@ siunit,field.display_type,/reports/api/v1/vocabularies/field.display_type/siunit
 select,field.edit_type,/reports/api/v1/vocabularies/field.edit_type/select/,1,,"Select a single value from a controlled vocabulary",Select
 multiselect,field.edit_type,/reports/api/v1/vocabularies/field.edit_type/multiselect/,2,,"Checkbox select multiple values from a controlled vocabulary",Multi-select
 multiselect2,field.edit_type,/reports/api/v1/vocabularies/field.edit_type/multiselect2/,3,,"Dual column multi-select",Multi-select2
+textarea,field.edit_type,/reports/api/v1/vocabularies/field.edit_type/textarea/,4,,TextArea,TextArea
 fields.CharField,field.json_field_type,/reports/api/v1/vocabularies/field.json_field_type/fields.CharField/,0,,"A tastypie fields.CharField type",CharField
 fields.ListField,field.json_field_type,/reports/api/v1/vocabularies/field.json_field_type/fields.ListField/,5,,"A tastypie fields.ListField type",ListField
 fields.BooleanField,field.json_field_type,/reports/api/v1/vocabularies/field.json_field_type/fields.BooleanField/,2,,"A tastypie fields.BooleanField type",BooleanField

@@ -2,42 +2,42 @@ resource_uri,key,scope,ordinal,title
 /reports/api/v1/vocabularies/checklistitem.group/forms/,forms,checklistitem.group,1,Forms
 /reports/api/v1/vocabularies/checklistitem.group/imaging/,imaging,checklistitem.group,3,Imaging
 /reports/api/v1/vocabularies/checklistitem.group/legacy/,legacy,checklistitem.group,4,Legacy
-/reports/api/v1/vocabularies/checklistitem.group/mailing_lists_wikis/,mailing_lists_wikis,checklistitem.group,0,Mailing Lists & Wikis
-/reports/api/v1/vocabularies/checklistitem.group/non_harvard_screeners/,non_harvard_screeners,checklistitem.group,2,Non-Harvard Screeners
-/reports/api/v1/vocabularies/checklistitem.legacy.name/2009_small_molecule_user_level_one_1_agreement_signed/,2009_small_molecule_user_level_one_1_agreement_signed,checklistitem.legacy.name,3,2009 Small Molecule User Level ONE (1) agreement signed
-/reports/api/v1/vocabularies/checklistitem.legacy.name/2009_small_molecule_user_level_three_3_agreement_signed/,2009_small_molecule_user_level_three_3_agreement_signed,checklistitem.legacy.name,5,2009 Small Molecule User Level THREE (3) agreement signed
-/reports/api/v1/vocabularies/checklistitem.legacy.name/2009_small_molecule_user_level_two_2_agreement_signed/,2009_small_molecule_user_level_two_2_agreement_signed,checklistitem.legacy.name,4,2009 Small Molecule User Level TWO (2) agreement signed
-/reports/api/v1/vocabularies/checklistitem.mailing_lists_wikis.name/added_to_iccb_l_nsrb_email_list/,added_to_iccb_l_nsrb_email_list,checklistitem.mailing_lists_wikis.name,1,Added to ICCB-L/NSRB email list
-/reports/api/v1/vocabularies/checklistitem.mailing_lists_wikis.name/added_to_imaging_email_list/,added_to_imaging_email_list,checklistitem.mailing_lists_wikis.name,3,Added to Imaging email list
-/reports/api/v1/vocabularies/checklistitem.mailing_lists_wikis.name/added_to_mouse_imager_email_list/,added_to_mouse_imager_email_list,checklistitem.mailing_lists_wikis.name,8,Added to mouse imager email list
-/reports/api/v1/vocabularies/checklistitem.mailing_lists_wikis.name/added_to_qpcr_email_list/,added_to_qpcr_email_list,checklistitem.mailing_lists_wikis.name,4,Added to QPCR email list
-/reports/api/v1/vocabularies/checklistitem.mailing_lists_wikis.name/added_to_rnai_email_list/,added_to_rnai_email_list,checklistitem.mailing_lists_wikis.name,2,Added to RNAi email list
-/reports/api/v1/vocabularies/checklistitem.imaging.name/cellworx_training/,cellworx_training,checklistitem.imaging.name,3,CellWoRx training
-/reports/api/v1/vocabularies/checklistitem.forms.name/current_rnai_user_agreement_active/,current_rnai_user_agreement_active,checklistitem.forms.name,5,Current RNAi User Agreement active
-/reports/api/v1/vocabularies/checklistitem.forms.name/current_small_molecule_user_agreement_active/,current_small_molecule_user_agreement_active,checklistitem.forms.name,2,Current Small Molecule User Agreement active
-/reports/api/v1/vocabularies/checklistitem.forms.name/gsk_kinase_inhibitors_library_user_agreement_signed/,gsk_kinase_inhibitors_library_user_agreement_signed,checklistitem.forms.name,12,GSK kinase inhibitors library user agreement signed
-/reports/api/v1/vocabularies/checklistitem.legacy.name/historical_iccb_l_nsrb_server_account_set_up_general_account/,historical_iccb_l_nsrb_server_account_set_up_general_account,checklistitem.legacy.name,1,Historical - ICCB-L/NSRB server account set up (general account)
-/reports/api/v1/vocabularies/checklistitem.legacy.name/historical_iccb_server_account_requested/,historical_iccb_server_account_requested,checklistitem.legacy.name,2,Historical - ICCB server account requested
-/reports/api/v1/vocabularies/checklistitem.imaging.name/iccb_l_nsrb_image_file_server_access_set_up/,iccb_l_nsrb_image_file_server_access_set_up,checklistitem.imaging.name,6,ICCB-L/NSRB image file server access set up
-/reports/api/v1/vocabularies/checklistitem.mailing_lists_wikis.name/id_submitted_for_access_to_screening_room/,id_submitted_for_access_to_screening_room,checklistitem.mailing_lists_wikis.name,7,ID submitted for access to screening room
-/reports/api/v1/vocabularies/checklistitem.imaging.name/id_submitted_for_c_607_access/,id_submitted_for_c_607_access,checklistitem.imaging.name,1,ID submitted for C-607 access
-/reports/api/v1/vocabularies/checklistitem.imaging.name/image_analysis_training/,image_analysis_training,checklistitem.imaging.name,5,Image Analysis training
-/reports/api/v1/vocabularies/checklistitem.imaging.name/image_xpress_micro_training/,image_xpress_micro_training,checklistitem.imaging.name,2,Image Xpress Micro Training
-/reports/api/v1/vocabularies/checklistitem.non_harvard_screeners.name/invited_user_ecommons_account_requested/,invited_user_ecommons_account_requested,checklistitem.non_harvard_screeners.name,1,Invited user eCommons account requested
-/reports/api/v1/vocabularies/checklistitem.mailing_lists_wikis.name/ivis_wiki_access/,ivis_wiki_access,checklistitem.mailing_lists_wikis.name,9,IVIS wiki access
-/reports/api/v1/vocabularies/checklistitem.forms.name/lab_specific_safety_training_completed/,lab_specific_safety_training_completed,checklistitem.forms.name,1,Lab Specific Safety Training Completed
-/reports/api/v1/vocabularies/checklistitem.forms.name/marcus_iccbl_user_agreement_signed/,marcus_iccbl_user_agreement_signed,checklistitem.forms.name,10,Marcus - ICCBL user agreement signed
-/reports/api/v1/vocabularies/checklistitem.forms.name/marcus_library_mta_signed/,marcus_library_mta_signed,checklistitem.forms.name,9,Marcus Library MTA Signed
-/reports/api/v1/vocabularies/checklistitem.forms.name/mlp_molecular_libraries_program_library_user_agreement_signed/,mlp_molecular_libraries_program_library_user_agreement_signed,checklistitem.forms.name,11,MLP (Molecular Libraries Program) library user agreement signed
-/reports/api/v1/vocabularies/checklistitem.forms.name/non_hms_biosafety_training_form_on_file/,non_hms_biosafety_training_form_on_file,checklistitem.forms.name,7,Non-HMS Biosafety Training Form on File
-/reports/api/v1/vocabularies/checklistitem.forms.name/old_data_sharing_agreement_signed/,old_data_sharing_agreement_signed,checklistitem.forms.name,6,Old data sharing agreement signed
-/reports/api/v1/vocabularies/checklistitem.imaging.name/opera_training/,opera_training,checklistitem.imaging.name,4,Opera Training
-/reports/api/v1/vocabularies/checklistitem.mailing_lists_wikis.name/qpcr_wiki_access_set_up/,qpcr_wiki_access_set_up,checklistitem.mailing_lists_wikis.name,6,QPCR wiki access set up
-/reports/api/v1/vocabularies/checklistitem.mailing_lists_wikis.name/rnai_wiki_access_set_up/,rnai_wiki_access_set_up,checklistitem.mailing_lists_wikis.name,5,RNAi wiki access set up
-/reports/api/v1/vocabularies/checklistitem.forms.name/roche_kinase_inhibitors_library_user_agreement_signed/,roche_kinase_inhibitors_library_user_agreement_signed,checklistitem.forms.name,13,Roche kinase inhibitors library user agreement signed
-/reports/api/v1/vocabularies/checklistitem.forms.name/screener_given_a_copy_of_what_every_new_screener_needs_to_know/,screener_given_a_copy_of_what_every_new_screener_needs_to_know,checklistitem.forms.name,8,Screener given a copy of 'What Every New Screener Needs to Know'
-/reports/api/v1/vocabularies/checklistitem.non_harvard_screeners.name/temporary_id_requested/,temporary_id_requested,checklistitem.non_harvard_screeners.name,2,Temporary ID requested
-/reports/api/v1/vocabularies/checklistitem.status/not_completed/,not_completed,checklistitem.status,0,Not Completed
+/reports/api/v1/vocabularies/checklistitem.group/mailing_lists_wikis/,mailing_lists_wikis,checklistitem.group,0,"Mailing Lists & Wikis"
+/reports/api/v1/vocabularies/checklistitem.group/non_harvard_screeners/,non_harvard_screeners,checklistitem.group,2,"Non-Harvard Screeners"
+/reports/api/v1/vocabularies/checklistitem.legacy.name/2009_small_molecule_user_level_one_1_agreement_signed/,2009_small_molecule_user_level_one_1_agreement_signed,checklistitem.legacy.name,3,"2009 Small Molecule User Level ONE (1) agreement signed"
+/reports/api/v1/vocabularies/checklistitem.legacy.name/2009_small_molecule_user_level_three_3_agreement_signed/,2009_small_molecule_user_level_three_3_agreement_signed,checklistitem.legacy.name,5,"2009 Small Molecule User Level THREE (3) agreement signed"
+/reports/api/v1/vocabularies/checklistitem.legacy.name/2009_small_molecule_user_level_two_2_agreement_signed/,2009_small_molecule_user_level_two_2_agreement_signed,checklistitem.legacy.name,4,"2009 Small Molecule User Level TWO (2) agreement signed"
+/reports/api/v1/vocabularies/checklistitem.mailing_lists_wikis.name/added_to_iccb_l_nsrb_email_list/,added_to_iccb_l_nsrb_email_list,checklistitem.mailing_lists_wikis.name,1,"Added to ICCB-L/NSRB email list"
+/reports/api/v1/vocabularies/checklistitem.mailing_lists_wikis.name/added_to_imaging_email_list/,added_to_imaging_email_list,checklistitem.mailing_lists_wikis.name,3,"Added to Imaging email list"
+/reports/api/v1/vocabularies/checklistitem.mailing_lists_wikis.name/added_to_mouse_imager_email_list/,added_to_mouse_imager_email_list,checklistitem.mailing_lists_wikis.name,8,"Added to mouse imager email list"
+/reports/api/v1/vocabularies/checklistitem.mailing_lists_wikis.name/added_to_qpcr_email_list/,added_to_qpcr_email_list,checklistitem.mailing_lists_wikis.name,4,"Added to QPCR email list"
+/reports/api/v1/vocabularies/checklistitem.mailing_lists_wikis.name/added_to_rnai_email_list/,added_to_rnai_email_list,checklistitem.mailing_lists_wikis.name,2,"Added to RNAi email list"
+/reports/api/v1/vocabularies/checklistitem.imaging.name/cellworx_training/,cellworx_training,checklistitem.imaging.name,3,"CellWoRx training"
+/reports/api/v1/vocabularies/checklistitem.forms.name/current_rnai_user_agreement_active/,current_rnai_user_agreement_active,checklistitem.forms.name,5,"Current RNAi User Agreement active"
+/reports/api/v1/vocabularies/checklistitem.forms.name/current_small_molecule_user_agreement_active/,current_small_molecule_user_agreement_active,checklistitem.forms.name,2,"Current Small Molecule User Agreement active"
+/reports/api/v1/vocabularies/checklistitem.forms.name/gsk_kinase_inhibitors_library_user_agreement_signed/,gsk_kinase_inhibitors_library_user_agreement_signed,checklistitem.forms.name,12,"GSK kinase inhibitors library user agreement signed"
+/reports/api/v1/vocabularies/checklistitem.legacy.name/historical_iccb_l_nsrb_server_account_set_up_general_account/,historical_iccb_l_nsrb_server_account_set_up_general_account,checklistitem.legacy.name,1,"Historical - ICCB-L/NSRB server account set up (general account)"
+/reports/api/v1/vocabularies/checklistitem.legacy.name/historical_iccb_server_account_requested/,historical_iccb_server_account_requested,checklistitem.legacy.name,2,"Historical - ICCB server account requested"
+/reports/api/v1/vocabularies/checklistitem.imaging.name/iccb_l_nsrb_image_file_server_access_set_up/,iccb_l_nsrb_image_file_server_access_set_up,checklistitem.imaging.name,6,"ICCB-L/NSRB image file server access set up"
+/reports/api/v1/vocabularies/checklistitem.mailing_lists_wikis.name/id_submitted_for_access_to_screening_room/,id_submitted_for_access_to_screening_room,checklistitem.mailing_lists_wikis.name,7,"ID submitted for access to screening room"
+/reports/api/v1/vocabularies/checklistitem.imaging.name/id_submitted_for_c_607_access/,id_submitted_for_c_607_access,checklistitem.imaging.name,1,"ID submitted for C-607 access"
+/reports/api/v1/vocabularies/checklistitem.imaging.name/image_analysis_training/,image_analysis_training,checklistitem.imaging.name,5,"Image Analysis training"
+/reports/api/v1/vocabularies/checklistitem.imaging.name/image_xpress_micro_training/,image_xpress_micro_training,checklistitem.imaging.name,2,"Image Xpress Micro Training"
+/reports/api/v1/vocabularies/checklistitem.non_harvard_screeners.name/invited_user_ecommons_account_requested/,invited_user_ecommons_account_requested,checklistitem.non_harvard_screeners.name,1,"Invited user eCommons account requested"
+/reports/api/v1/vocabularies/checklistitem.mailing_lists_wikis.name/ivis_wiki_access/,ivis_wiki_access,checklistitem.mailing_lists_wikis.name,9,"IVIS wiki access"
+/reports/api/v1/vocabularies/checklistitem.forms.name/lab_specific_safety_training_completed/,lab_specific_safety_training_completed,checklistitem.forms.name,1,"Lab Specific Safety Training Completed"
+/reports/api/v1/vocabularies/checklistitem.forms.name/marcus_iccbl_user_agreement_signed/,marcus_iccbl_user_agreement_signed,checklistitem.forms.name,10,"Marcus - ICCBL user agreement signed"
+/reports/api/v1/vocabularies/checklistitem.forms.name/marcus_library_mta_signed/,marcus_library_mta_signed,checklistitem.forms.name,9,"Marcus Library MTA Signed"
+/reports/api/v1/vocabularies/checklistitem.forms.name/mlp_molecular_libraries_program_library_user_agreement_signed/,mlp_molecular_libraries_program_library_user_agreement_signed,checklistitem.forms.name,11,"MLP (Molecular Libraries Program) library user agreement signed"
+/reports/api/v1/vocabularies/checklistitem.forms.name/non_hms_biosafety_training_form_on_file/,non_hms_biosafety_training_form_on_file,checklistitem.forms.name,7,"Non-HMS Biosafety Training Form on File"
+/reports/api/v1/vocabularies/checklistitem.forms.name/old_data_sharing_agreement_signed/,old_data_sharing_agreement_signed,checklistitem.forms.name,6,"Old data sharing agreement signed"
+/reports/api/v1/vocabularies/checklistitem.imaging.name/opera_training/,opera_training,checklistitem.imaging.name,4,"Opera Training"
+/reports/api/v1/vocabularies/checklistitem.mailing_lists_wikis.name/qpcr_wiki_access_set_up/,qpcr_wiki_access_set_up,checklistitem.mailing_lists_wikis.name,6,"QPCR wiki access set up"
+/reports/api/v1/vocabularies/checklistitem.mailing_lists_wikis.name/rnai_wiki_access_set_up/,rnai_wiki_access_set_up,checklistitem.mailing_lists_wikis.name,5,"RNAi wiki access set up"
+/reports/api/v1/vocabularies/checklistitem.forms.name/roche_kinase_inhibitors_library_user_agreement_signed/,roche_kinase_inhibitors_library_user_agreement_signed,checklistitem.forms.name,13,"Roche kinase inhibitors library user agreement signed"
+/reports/api/v1/vocabularies/checklistitem.forms.name/screener_given_a_copy_of_what_every_new_screener_needs_to_know/,screener_given_a_copy_of_what_every_new_screener_needs_to_know,checklistitem.forms.name,8,"Screener given a copy of 'What Every New Screener Needs to Know'"
+/reports/api/v1/vocabularies/checklistitem.non_harvard_screeners.name/temporary_id_requested/,temporary_id_requested,checklistitem.non_harvard_screeners.name,2,"Temporary ID requested"
+/reports/api/v1/vocabularies/checklistitem.status/not_completed/,not_completed,checklistitem.status,0,"Not Completed"
 /reports/api/v1/vocabularies/checklistitem.status/activated/,activated,checklistitem.status,1,Activated
 /reports/api/v1/vocabularies/checklistitem.status/deactivated/,deactivated,checklistitem.status,2,Deactivated
 /reports/api/v1/vocabularies/checklistitem.status/na/,na,checklistitem.status,3,N/A

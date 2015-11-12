@@ -143,6 +143,11 @@ ul.backgrid-paginator {
 	padding: 0 0 0 0;
 }
 
+.form-control-disabled {
+  padding-top: 5px;
+  min-height: 1eM;
+}
+
 .iccbl-headerfield-form input[type=number]{
 /*   padding: 0 0 0 0 !important; */
   width: 6em !important;
@@ -197,4 +202,8 @@ td.text-wrap-cell {
 
 .ms-container li{
   display: block;
+}
+
+.multiselect2 .ms-container {
+  width: auto;
 }

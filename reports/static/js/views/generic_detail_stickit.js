@@ -92,18 +92,28 @@ define([
       }
 
       if(!_.isEmpty(fi.vocabulary_scope_ref)){
-        vocabulary = Iccbl.appModel.getVocabulary(fi.vocabulary_scope_ref);
-        vocabulary.getTitle = function(value){
-          if (!_.isEmpty(vocabulary[value])){
-            return vocabulary[value].title;
-          }else{
-            console.log('error: ' + key, fi);
-            appModel.error('vocabulary not found for: ' + fi.key + ': ' + value);
-          }
-          return value;
-        };
+        // replace the fi.choices with the vocabulary, if available
+        try{
+          vocabulary = Iccbl.appModel.getVocabulary(fi.vocabulary_scope_ref);
+        }catch(e){
+          var msg = 'Vocabulary unavailable: field: ' + fi.key +  
+            ', vocabulary_scope_ref: ' + fi.vocabulary_scope_ref;
+          console.log(msg,e);
+          appModel.error(msg);
+        }
       }
       
+      function getTitle(vocabulary,value){
+        if (!_.isEmpty(vocabulary[value])){
+          return vocabulary[value].title;
+        }else{
+          console.log('error: ' + fi.vocabulary_scope_ref + ', key: ' + key, fi);
+          appModel.error('vocabulary not found for: ' + 
+            fi.vocabulary_scope_ref + ', field: ' + fi.key + ': ' + value);
+        }
+        return value;
+      };      
+
       if(!_.isEmpty(fi['display_options'])){
         cell_options = fi['display_options'];
         cell_options = cell_options.replace(/'/g,'"');
@@ -118,7 +128,7 @@ define([
       // define "data_type" getters
       function defaultGetter(value){
         if(value && vocabulary){
-          return vocabulary.getTitle(value);
+          return getTitle(vocabulary,value);
         }
         return value;
       }
@@ -142,7 +152,9 @@ define([
         if(_.isArray(value)){
           if(vocabulary){
             finalValue = Iccbl.sortOnOrdinal(value,vocabulary);
-            finalValue = _.map(finalValue,vocabulary.getTitle);
+            finalValue = _.map(finalValue,function(value){ 
+              return getTitle(vocabulary,value);
+            });
           }
           finalValue = finalValue.join(', ');
         }
@@ -161,6 +173,14 @@ define([
           return value;
         }
       }
+      
+      function booleanGetter(value){
+        if(_.isBoolean(value)){
+          return value;
+        }else{
+          return false;
+        }
+      }
             
       data_type_formatters = {
         'date': dateGetter,
@@ -169,7 +189,7 @@ define([
         'decimal': decimalGetter
         //'integer': defaultGetter,
         //'string' : defaultGetter,
-        //'boolean' : defaultGetter,
+        //'boolean' : defaultGetter
         //'datetime': defaultGetter,
       };
       
@@ -196,13 +216,13 @@ define([
           _options.target = '_self';
           } 
           if(vocabulary){
-            finalValue = vocabulary.getTitle(value);
+            finalValue = getTitle(vocabulary,value);
           }
           var interpolatedVal = Iccbl.replaceTokens(self.model,_options.hrefTemplate,value);
  
           if(value && !_.isEmpty(value)){
             if(vocabulary){
-              finalValue = vocabulary.getTitle(value);
+              finalValue = getTitle(vocabulary,value);
             }
             var _html = '<a ' + 
               'id="link-' + key + '" ' + 
@@ -238,6 +258,7 @@ define([
       };
       
       // compose getter hierarchy; default<-data_type<-display_type<-vocabulary
+      
       if(_.has(data_type_formatters, data_type)){
         binding.onGet = _.compose(binding.onGet, data_type_formatters[data_type]);
       }else{
@@ -249,6 +270,7 @@ define([
       }
 
       // FIXME: "nested" and "nested_list" are unused 20150629 after ui_type refactor to data_type
+      
       if(display_type === 'nested'){
         nestedModels[key] = new Backbone.Model(self.model.get(key));
         nestedModels[key].resourceId = fi.nested_resource || key;
@@ -269,7 +291,6 @@ define([
 
       return binding;
 	  },
-	  
 	  
     afterRender : function() {
       console.log('generic detail stickit, afterRender');

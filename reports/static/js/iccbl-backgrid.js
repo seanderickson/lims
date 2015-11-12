@@ -108,6 +108,8 @@ var formatString = Iccbl.formatString = function(stringWithTokens, valueHash, de
 }
 
 var stringToFunction = Iccbl.stringToFunction = function(str) {
+  if (!str) return;
+  
   var arr = str.split(".");
 
   var fn = (window || this);
@@ -126,7 +128,7 @@ var stringToFunction = Iccbl.stringToFunction = function(str) {
  * @param jsDate a JavaScript Date object
  */
 var getISODateString = Iccbl.getISODateString = function(jsDate){
-  return jsDate.toISOString().split('T')[0];
+  return jsDate ? jsDate.toISOString().split('T')[0] : jsDate;
   // equivalent:
   //  date = lpad(jsDate.getUTCFullYear(), 4, 0) 
   //    + '-' + lpad(jsDate.getUTCMonth() + 1, 2, 0) 
@@ -141,6 +143,7 @@ var getISODateString = Iccbl.getISODateString = function(jsDate){
  * @param jsDate a JavaScript Date object
  */
 var getIccblUTCDateString = Iccbl.getUTCDateString = function(jsDate){
+  if (!jsDate) return jsDate;
   return ( 
       lpad(jsDate.getUTCMonth() + 1, 2, 0) 
       + '/' + lpad(jsDate.getUTCDate(), 2, 0) 
@@ -285,7 +288,9 @@ var getIdKeys = Iccbl.getIdKeys = function(model,schema) {
     console.log('create id from ' + id_attribute);
     var idList = [];
     _.each(id_attribute, function(item){
-      idList.push(model.get(item));
+      if (model.has(item)){
+        idList.push(model.get(item));
+      }
     });
     return idList;
   } else {
@@ -531,23 +536,24 @@ var getCollectionOnClient = Iccbl.getCollectionOnClient = function(url, callback
     success: function(collection, response) {
       callback(collection);
     },
-    error: function(model, response, options) {
-        // console.log('error fetching the model: '+ model + ', response:
-        // ' + JSON.stringify(response));
-        var msg = 'Error locating resource: ' + url;
-        var sep = '\n';
-        if (!_.isUndefined(response.status))
-            msg += sep + response.status;
-        if (!_.isUndefined(response.statusText))
-            msg += sep + response.statusText;
-        if (!_.isEmpty(response.responseText))
-            msg += sep + response.responseText;
-        window.alert(msg);
-        // TODO: 1. use Bootstrap inscreen alert classed message div
-        // TODO: 2. jquery seems to swallow json parsing exceptions, fyi
-        $(document).trigger('ajaxComplete');
-        throw msg;
-    },
+    error: Iccbl.appModel.backboneFetchError, 
+//    error: Iccbl.backboneFetchError function(model, response, options) {
+//        // console.log('error fetching the model: '+ model + ', response:
+//        // ' + JSON.stringify(response));
+//        var msg = 'Error locating resource: ' + url;
+//        var sep = '\n';
+//        if (!_.isUndefined(response.status))
+//            msg += sep + response.status;
+//        if (!_.isUndefined(response.statusText))
+//            msg += sep + response.statusText;
+//        if (!_.isEmpty(response.responseText))
+//            msg += sep + response.responseText;
+//        window.alert(msg);
+//        // TODO: 1. use Bootstrap inscreen alert classed message div
+//        // TODO: 2. jquery seems to swallow json parsing exceptions, fyi
+//        $(document).trigger('ajaxComplete');
+//        throw msg;
+//    },
     always: function(){
       console.log('done: ');
     }
@@ -1211,10 +1217,14 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
     collection.setSorting(column.get("name"), order,
         {sortValue: column.sortValue()});
     console.log('post-sort collection fetch');
-    collection.fetch({reset: true, success: function () {
-      console.log('fetch success, direction: ' + direction);
-      collection.trigger("backgrid:sorted", column, direction, collection);
-    }});
+    collection.fetch({
+      reset: true, 
+      success: function () {
+        console.log('fetch success, direction: ' + direction);
+        collection.trigger("backgrid:sorted", column, direction, collection);
+      },
+      error: Iccbl.appModel.backboneFetchError
+    });
     
     column.set("direction", direction);
 
@@ -1344,7 +1354,9 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     });
 
     if(!_.isEmpty(_data)){
-      self.fetch();
+      self.fetch({
+        error: Iccbl.appModel.backboneFetchError
+      });
       // TODO: 2014-04-11: not sure why removing this works:
       // removed to fix sort not working when custom searches
       // are used. Custom searches seem to still work: further testing of search
@@ -1357,7 +1369,9 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     }else{
       // TODO: test further, part of the double network hit on search - REMOVED
       // 20150113
-            self.fetch();
+      self.fetch({
+        error: Iccbl.appModel.backboneFetchError
+      });
     }
   },
 
@@ -2893,7 +2907,9 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash);
     }else{
-      self.collection.fetch({});
+      self.collection.fetch({
+        error: Iccbl.appModel.backboneFetchError
+      });
     }
   },
   
@@ -3755,7 +3771,7 @@ _.extend(DatetimeFormatter.prototype, {
         var jsDate = new Date(Date.UTC(YYYYMMDD[1]*1, YYYYMMDD[2]*1-1, YYYYMMDD[3]*1 ))
         return getIccblUTCDateString(jsDate);
       }else{
-        appModel.error('unrecognized date: ' + rawData );
+        Iccbl.appModel.error('unrecognized date: ' + rawData );
       }
     }
   },
@@ -3776,10 +3792,6 @@ _.extend(DatetimeFormatter.prototype, {
   },
   
   
-  
-  
-  
-
   /**
    * Use Backgrid DatetimeFormatter convert, add in ICCBL_DATE_RE
    */
@@ -3799,13 +3811,6 @@ _.extend(DatetimeFormatter.prototype, {
       data = data.trim();
       var parts = data.split(this.ISO_SPLITTER_RE) || [];
       date = this.ICCBL_DATE_RE.test(parts[0]) ? parts[0] : '';
-      
-//      // Override part here
-//      if(this.includeDate && _.isUndefined(date)){
-//        date = this.ICCBL_DATE_RE.test(parts[0]) ? parts[0] : [];
-//      }
-      // END
-      
       time = date && parts[1] ? parts[1] : this.TIME_RE.test(parts[0]) ? parts[0] : '';
     }
     // FIXME: review this 
@@ -3836,10 +3841,10 @@ _.extend(DatetimeFormatter.prototype, {
       //    + '-' + lpad(jsDate.getUTCMonth() + 1, 2, 0) 
       //    + '-' + lpad(jsDate.getUTCDate(), 2, 0);
       result = ( getIccblUTCDateString(jsDate) );
-//          lpad(jsDate.getUTCMonth() + 1, 2, 0) 
-//          + '/' + lpad(jsDate.getUTCDate(), 2, 0) 
-//          + '/' + lpad(jsDate.getUTCFullYear(), 4, 0)
-//          );
+      //          lpad(jsDate.getUTCMonth() + 1, 2, 0) 
+      //          + '/' + lpad(jsDate.getUTCDate(), 2, 0) 
+      //          + '/' + lpad(jsDate.getUTCFullYear(), 4, 0)
+      //          );
     }
 
     if (this.includeTime) {
@@ -3920,7 +3925,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   var orderStack = _orderStack || [];
   var column = {};
   var visible = _.has(prop, 'visibility') && 
-                    _.contains(prop['visibility'], 'list');
+                    _.contains(prop['visibility'], 'l');
 
   var data_type = _.isEmpty(prop.data_type)?'string':prop.data_type.toLowerCase();
   var display_type = _.isEmpty(prop.display_type)?data_type:prop.display_type.toLowerCase();
@@ -3966,10 +3971,13 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     'order' : prop['ordinal'],
     'sortable': prop['ordering'],
     'searchable': prop['filtering'],
-    'editable' : _.contains(prop['visibility'],'list_edit'),
+    'editable' : false,
     'visible': visible,
     'fieldinformation': prop
   });
+  if(_.has(prop,'editability') && _.contains(prop['editability'],'l')){
+    column['editable'] = true;
+  }
   if(!_.isEmpty(prop.vocabulary_scope_ref)){
     var optionValues = [];
     var vocabulary_scope_ref = prop.vocabulary_scope_ref;
@@ -4057,7 +4065,7 @@ var createBackgridColModel = Iccbl.createBackgridColModel =
     var column = createBackgridColumn(key, prop, orderStack);
     column.key = key;
     var visible = _.has(prop, 'visibility') && 
-      _.contains(prop['visibility'], 'list');
+      _.contains(prop['visibility'], 'l');
     if (visible || _.contains(manualIncludes, key) ) {
       if(_.contains(manualIncludes, '-'+key)){
         console.log('Column: ' + key + ' is manually excluded');

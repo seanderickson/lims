@@ -62,8 +62,8 @@ define([
         key:  'search_target', // TODO: "key" not needed>?
         type: Select2,
         options: [{ val: 'reagent', label: 'Wells'},
-                  { val: 'librarycopyplates', label: 'Plate copies'},
-                  { val: 'librarycopies', label: 'Copies'},
+                  { val: 'librarycopyplate', label: 'Plate copies'},
+                  { val: 'librarycopy', label: 'Copies'},
                   { val: 'copywell', label: 'Copy Wells'},
                   ],
         template: _.template(self.fieldTemplate),
@@ -278,7 +278,7 @@ define([
             }
           }
         };
-      }else if(search_target == 'librarycopyplates'){
+      }else if(search_target == 'librarycopyplate'){
         matching_hash = {
           matching_order: ['plate_number','copy_name'],
           copy_name: {
@@ -292,16 +292,16 @@ define([
             help: 'a 1-5 digit number'
           },
         };
-      }else if(search_target == 'librarycopies'){
+      }else if(search_target == 'librarycopy'){
         matching_hash = {
-          matching_order: ['copy_name','library_short_name'],
+          matching_order: ['name','library_short_name'],
           library_short_name: {
             title: 'Library short name',
             pattern: /\w+/,
             help: 'single word pattern to match',
             type: 'icontains'
           },
-          copy_name: {
+          name: {
             title: 'Copy name',
             pattern: /\b([a-zA-Z0-9]*[a-zA-Z][a-zA-Z0-9]*)\b/,
             help: 'letters and numbers with no spaces'            

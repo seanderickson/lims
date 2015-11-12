@@ -29,6 +29,12 @@ define([
         title: "Attached Files",
         invoke: "setAttachedFiles",
         resource: 'attachedfile'
+      },
+      serviceactivity: {
+        description: "Service Activities",
+        title: "Service Activities",
+        invoke: "setServiceActivities",
+        resource: 'serviceactivity'
       }
     },
     
@@ -44,6 +50,272 @@ define([
           delete self.tabbed_resources[key];
         }
       });
+    },
+
+    setDetail: function(delegateStack){
+      var key = 'detail';
+      var self = this;
+      console.log('setDetail: ', delegateStack);
+        
+      // Create model validation rules based on classification
+      this.model.validate = function(attrs) {
+        var errs = {};
+
+        if ( attrs.classification == 'principal_investigator' &&
+            _.isEmpty(attrs.lab_head_affiliation) ){
+          errs.lab_head_affiliation = 'Required if PI';
+        }
+        if (!_.isEmpty(errs)) return errs;
+      };
+      
+      // onEditCallBack: wraps the edit display function
+      // - lazy fetch of the expensive principal investigators hash
+      // - perform post-render enhancement of the display
+      var onEditCallBack = function(displayFunction){
+        
+        this.model.resource.schema.fields['permissions']['choices'] = (
+            appModel.get('permissionOptions'));
+        
+        appModel.getPrincipalInvestigatorOptions(function(options){
+
+          self.model.resource.schema.fields['lab_head_username']['choices'] = options;
+          
+          var editForm = displayFunction();
+          
+          // with the edit view available, set up the lab_head_affiliation rules
+          // - add listener to update options dynamically
+          // - attach the "add lab affiliation" button to the view
+          
+          
+          // - add listener to update view options when classification changes
+          //    - note we want to replace this with model-driven events
+          self.model.on('sync', function(){
+            // TODO: should only need to do this if the classification has changed
+            // to "PI"; but the changedAttributes are unreliable for detecting this
+            if(self.model.get('classification')=='principal_investigator'){
+              appModel.unset('principal_investigators');
+            }
+          });
+    
+          var addLabAffiliationButton = $([
+            '<a class="btn btn-default btn-sm" ',
+              'role="button" id="add_button" href="#">',
+              'Add</a>'
+            ].join(''));
+          
+          addLabAffiliationButton.click(function(event){
+            event.preventDefault();
+            self.addLabAffiliation(editForm);
+          });
+
+          // Render the editForm; then add the add lab affiliation button
+          var temp = editForm.afterRender;
+          editForm.afterRender = function(){
+            editForm.$el.find('div[key="lab_head_affiliation"]').append(addLabAffiliationButton);
+            temp.call(editForm,arguments);
+            
+            // Set up lab_head_affiliation availability based on classification
+            if(editForm.getValue('classification') != 'principal_investigator'){
+                editForm.$el.find('[key="form-group-lab_head_affiliation"]').hide();
+            }
+            // attach classification change listener
+            editForm.listenTo(this, "change:classification", function(e){
+              var classification = editForm.getValue('classification');
+              console.log('classification:' + classification)
+              if(classification == 'principal_investigator'){
+                editForm.$el.find('[key="form-group-lab_head_affiliation"]').show();
+                editForm.setValue('lab_head_username',self.model.get('username'));
+                editForm.$el.find('[key="lab_head_username"]').find('.chosen-select').trigger("chosen:updated");
+              } else {
+                editForm.setValue('lab_head_affiliation','');
+                editForm.setValue('lab_head_username','');
+                editForm.$el.find('[key="lab_head_username"]').find('.chosen-select').trigger("chosen:updated");
+                editForm.$el.find('[key="form-group-lab_head_affiliation"]').hide();
+              }
+            });
+          }; // after render
+        });
+      };
+
+      var view = this.tabViews[key];
+      if (view) {
+        // remove the view to refresh the page form
+        this.removeView(this.tabViews[key]);
+      }
+      view = new DetailLayout({ 
+        model: this.model, 
+        uriStack: delegateStack,
+        onEditCallBack: onEditCallBack 
+      });
+
+      this.tabViews[key] = view;
+      
+      // NOTE: have to re-listen after removing a view
+      this.listenTo(view , 'uriStack:change', this.reportUriStack);
+      // Note: since detail_layout reports the tab, the consumedStack is empty here
+      this.consumedStack = []; 
+      this.setView("#tab_container", view ).render();
+      return view;
+    },
+
+    addLabAffiliation: function(editForm){
+      var self = this;
+      var form_template = [
+         "<div class='form-horizontal container' id='addLabAffiliationForm' >",
+         "<form data-fieldsets class='form-horizontal container' >",
+         "</form>",
+         "</div>"].join('');      
+      var choiceHash = {}
+      try{
+        var vocabulary = Iccbl.appModel.getVocabulary('labaffiliation.category');
+          _.each(_.keys(vocabulary),function(choice){
+            choiceHash[choice] = vocabulary[choice].title;
+          });
+        var currentAffiliationNames = Iccbl.appModel.getVocabulary('labaffiliation.category.*');
+      }catch(e){
+        console.log('on get vocabulary', e);
+        self.appModel.error('Error locating vocabulary: ' + 'labaffiliation.category');
+      }
+      var fieldTemplate = _.template([
+        '<div class="form-group" >',
+        '    <label class="control-label " for="<%= editorId %>"><%= title %></label>',
+        '    <div class="" >',
+        '      <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
+        '      <div data-error class="text-danger" ></div>',
+        '      <div><%= help %></div>',
+        '    </div>',
+        '  </div>',
+      ].join(''));
+      
+      var formSchema = {};
+      formSchema['affiliation_category'] = {
+        title: 'Affiliation Category',
+        key: 'affiliation_category',
+        type: 'Select',
+        validators: ['required'],
+        options: choiceHash,
+        template: fieldTemplate
+      };
+      formSchema['affiliation_name'] = {
+        title: 'Affiliation Name',
+        key: 'affiliation_name',
+        type: 'Text',
+        validators: ['required'],
+        template: fieldTemplate
+      };
+      formSchema['comments'] = {
+        title: 'Comments',
+        key: 'comments',
+        validators: ['required'],
+        type: 'TextArea',
+        template: fieldTemplate
+      };
+
+      var FormFields = Backbone.Model.extend({
+        schema: formSchema,
+        validate: function(attrs){
+          console.log('form validate', attrs);
+          var errs = {};
+          var newVal = attrs['affiliation_name'];
+          if (newVal){
+            newVal = newVal.toLowerCase().replace(/\W+/g, '_');
+            if(_.has(currentAffiliationNames,newVal)){
+              errs['affiliation_name'] = '"'+ attrs['affiliation_name'] + '" is already used';
+            }
+          }
+          if (!_.isEmpty(errs)) return errs;
+        }
+      });
+      var formFields = new FormFields();
+      var form = new Backbone.Form({
+        model: formFields,
+        template: _.template(form_template)
+      });
+      var _form_el = form.render().el;
+
+      var dialog = appModel.showModal({
+        okText: 'create',
+        view: _form_el,
+        title: 'Create a new Lab Affiliation',
+        ok: function(e){
+          e.preventDefault();
+          var errors = form.commit({ validate: true }); // runs schema and model validation
+          if(!_.isEmpty(errors) ){
+            console.log('form errors, abort submit: ',errors);
+            _.each(_.keys(errors), function(key){
+              $('[name="'+key +'"').parents('.form-group').addClass('has-error');
+            });
+            return false;
+          }else{
+            var values = form.getValue();
+            var resource = appModel.getResource('vocabularies');
+            var key = values['affiliation_name'].toLowerCase().replace(/\W+/g, '_');
+            
+            var data = {
+              'scope': 'labaffiliation.category.' + values['affiliation_category'],
+              'key': key,
+              'title': values['affiliation_name'],
+              'description': values['affiliation_name'],
+              'ordinal': (_.max(currentAffiliationNames, function(affil){ return affil.ordinal }) + 1),
+              'comment': values['comment']
+            };
+            
+            $.ajax({
+              url: resource.apiUri,    
+              data: JSON.stringify(data),
+              contentType: 'application/json',
+              method: 'POST',
+              success: function(data){
+                appModel.getVocabularies(function(vocabularies){
+                  appModel.set('vocabularies', vocabularies);
+                });
+                appModel.showModalMessage({
+                  title: 'Lab Affiliation Created',
+                  okText: 'ok',
+                  body: '"' + values['affiliation_name'] + '"',
+                  ok: function(e){
+                    e.preventDefault();
+                    editForm.$el.find('[key="lab_head_affiliation"]')
+                      .find('.chosen-select').append($('<option>',{
+                        value: data['key']
+                      }).text(data['title']));
+                    editForm.$el.find('[key="lab_head_affiliation"]')
+                      .find('.chosen-select').trigger("chosen:updated");
+
+                    appModel.unset('principal_investigators');
+                    appModel.unset('vocabularies');
+                    appModel.getVocabularies(function(vocabularies){
+                      appModel.set('vocabularies', vocabularies);
+                      appModel.getPrincipalInvestigatorOptions(function(vocabulary){
+                        var choiceHash = []
+                        _.each(_.keys(vocabulary),function(choice){
+                          if(vocabulary[choice].is_retired){
+                            console.log('skipping retired vocab: ',choice,vocabulary[choice].title );
+                          }else{
+                            choiceHash.push({ val: choice, label: vocabulary[choice].title });
+                          }
+                        });
+                        
+                        editForm.fields['lab_head_username'].setOptions(choiceHash);
+                        editForm.$el.find('[key="lab_head_username"]')
+                          .find('.chosen-select').trigger("chosen:updated");
+                      });
+                    });
+                  }
+                });
+              },
+              done: function(model, resp){
+                // TODO: done replaces success as of jq 1.8
+                console.log('done');
+              },
+              error: appModel.jqXHRError
+            });
+          
+            return true;
+          }
+        }
+      });
+    
     },
     
     /**
@@ -61,6 +333,150 @@ define([
       UserView.__super__.change_to_tab.apply(this, arguments);      
     },
     
+    setServiceActivities: function(delegateStack) {
+      var self = this;
+      var key = 'serviceactivity';
+      var resource = appModel.getResource('serviceactivity');
+
+      if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
+          !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
+        // Detail view
+        var activity_id = delegateStack.shift();
+        self.consumedStack.push(activity_id);
+        var _key = activity_id
+        appModel.getModel(resource.key, _key, function(model){
+          view = new DetailLayout({
+            model: model, 
+            uriStack: _.clone(delegateStack)
+          });
+          Backbone.Layout.setupView(view);
+          //self.tabViews[key] = view;
+
+          // NOTE: have to re-listen after removing a view
+          self.listenTo(view , 'uriStack:change', self.reportUriStack);
+          self.setView("#tab_container", view ).render();
+        });        
+        return;
+      }else{
+        // List view
+        (function listView(){
+          var view, url;
+          var extraControls = [];
+          var addServiceActivityButton = $([
+            '<a class="btn btn-default btn-sm pull-down" ',
+              'role="button" id="add_button" href="#">',
+              'Add</a>'
+            ].join(''));
+          var showDeleteButton = $([
+            '<a class="btn btn-default btn-sm pull-down" ',
+              'role="button" id="showDeleteButton" href="#">',
+              'Delete</a>'
+            ].join(''));
+          var showHistoryButton = $([
+            '<a class="btn btn-default btn-sm pull-down" ',
+              'role="button" id="showHistoryButton" href="#">',
+              'History</a>'
+            ].join(''));
+          
+          addServiceActivityButton.click(function(e){
+            e.preventDefault();
+            self.addServiceActivity(delegateStack);
+          });
+          showHistoryButton.click(function(e){
+            e.preventDefault();
+            var newUriStack = ['apilog','order','-date_time', 'search'];
+            var search = {};
+            search['ref_resource_name'] = 'serviceactivity';
+            search['changes__icontains'] = '"serviced_username": "' + self.model.get('username') + '"';
+            newUriStack.push(appModel.createSearchString(search));
+            var route = newUriStack.join('/');
+            console.log('history route: ' + route);
+            appModel.router.navigate(route, {trigger: true});
+            self.remove();
+          });
+          if(appModel.hasPermission(self.model.resource.key, 'edit')){
+            extraControls.unshift(addServiceActivityButton);
+          }
+          if(appModel.hasPermission(self.model.resource.key, 'edit')){
+            extraControls.unshift(showDeleteButton);
+          }
+          extraControls.unshift(showHistoryButton);
+          console.log('extraControls',extraControls);
+          url = [self.model.resource.apiUri, 
+                     self.model.key,
+                     'serviceactivities'].join('/');
+          view = new ListView({ options: {
+            uriStack: _.clone(delegateStack),
+            schemaResult: resource.schema,
+            resource: resource,
+            url: url,
+            extraControls: extraControls
+          }});
+          showDeleteButton.click(function(e){
+            e.preventDefault();
+            if (! view.grid.columns.findWhere({name: 'deletor'})){
+              view.grid.columns.unshift({ 
+                name: 'deletor', label: 'Delete', text:'X', 
+                description: 'delete record', 
+                cell: Iccbl.DeleteCell, sortable: false });
+            }
+          });
+          Backbone.Layout.setupView(view);
+          self.consumedStack = [key]; 
+          self.reportUriStack([]);
+          self.listenTo(view , 'uriStack:change', self.reportUriStack);
+          self.setView("#tab_container", view ).render();
+        })();
+      }
+    },
+    
+    addServiceActivity: function(delegateStack) {
+      var self = this;
+      
+      var resource = Iccbl.appModel.getResource('serviceactivity');
+      var defaults = {};
+      appModel.getAdminUserOptions(function(options){
+        resource.schema.fields['performed_by_username']['choices'] = options;
+
+        _.each(resource.fields, function(value, key){
+            if (key == 'resource_uri') {
+              defaults[key] = resource.resource_uri;
+            } else if (key == 'id'){
+            } else {
+              defaults[key] = '';
+            }
+        });
+        
+        defaults['serviced_username'] = self.model.get('username');
+        defaults['serviced_user'] = self.model.get('name');
+        defaults['performed_by_username'] = appModel.getCurrentUser().username;
+        
+        delegateStack.unshift('+add');
+        var NewModel = Backbone.Model.extend({
+          resource: resource,
+          urlRoot: resource.apiUri, 
+          defaults: defaults
+//          save: function(){
+//            console.log('save',arguments);
+//            return NewModel.__super__.save.apply(this,arguments);
+//          }
+        });
+        var view = new DetailLayout({
+          model: new NewModel(), 
+          uriStack: _.clone(delegateStack)
+        });
+        Backbone.Layout.setupView(view);
+        self.listenTo(view,'remove',function(){
+          self.setServiceActivities([]);
+          self.removeView(view); // todo - test
+        });
+        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        self.setView("#tab_container", view ).render();
+
+      });
+      
+    },
+    
     setAttachedFiles: function(delegateStack) {
       var self = this;
       var key = 'attachedfile';
@@ -68,14 +484,14 @@ define([
       var url = [self.model.resource.apiUri, 
                  self.model.key,
                  'attachedfiles'].join('/');
-      var upload_attached_file = $([
+      var uploadAttachedFileButton = $([
         '<a class="btn btn-default btn-sm pull-down" ',
           'role="button" id="save_button" href="#">',
           'Add</a>'
         ].join(''));
-      var show_delete = $([
+      var showDeleteButton = $([
           '<a class="btn btn-default btn-sm pull-down" ',
-            'role="button" id="show_delete" href="#">',
+            'role="button" id="showDeleteButton" href="#">',
             'Delete</a>'
           ].join(''));
       
@@ -84,13 +500,13 @@ define([
         schemaResult: resource.schema,
         resource: resource,
         url: url,
-        extraControls: [upload_attached_file, show_delete]
+        extraControls: [uploadAttachedFileButton, showDeleteButton]
       }});
-      upload_attached_file.click(function(e){
+      uploadAttachedFileButton.click(function(e){
         e.preventDefault();
         self.upload(view.collection)
       });
-      show_delete.click(function(e){
+      showDeleteButton.click(function(e){
         e.preventDefault();
         if (! view.grid.columns.findWhere({name: 'deletor'})){
           view.grid.columns.unshift({ 
@@ -107,11 +523,11 @@ define([
       self.setView("#tab_container", view ).render();
       
     },
-
+        
     upload: function(attachedfileCollection){
       var self = this;
       var form_template = [
-         "<div class='form-horizontal container' id='upload_attached_file_form' >",
+         "<div class='form-horizontal container' id='uploadAttachedFileButton_form' >",
          "<form data-fieldsets class='form-horizontal container' >",
          "<div class='form-group' ><input type='file' name='fileInput' /></div>",
          "</form>",
@@ -137,21 +553,11 @@ define([
         '    </div>',
         '  </div>',
       ].join(''));
-      var fileDateTemplate = _.template([
-        '<div class="form-group" >',
-        '    <label class="control-label" for="<%= editorId %>"><%= title %></label>',
-        '    <div class="" >',
-        '      <div data-editor style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
-        '      <div data-error class="text-danger" ></div>',
-        '      <div><%= help %></div>',
-        '    </div>',
-        '</div>',
-      ].join(''));
       
       var formSchema = {};
-      formSchema['file_type'] = {
+      formSchema['type'] = {
         title: 'File Type',
-        key: 'file_type',
+        key: 'type',
         type: 'Select',
         options: choiceHash,
         template: fieldTemplate
@@ -160,11 +566,11 @@ define([
         title: 'File Date',
         key: 'file_date',
         type: EditView.DatePicker,
-        template: fileDateTemplate
+        template: fieldTemplate
       };
-      formSchema['file_name'] = {
+      formSchema['filename'] = {
         title: 'Option 2: Name',
-        key: 'file_name',
+        key: 'filename',
         type: 'TextArea',
         template: fieldTemplate
       };
@@ -194,12 +600,11 @@ define([
               errs.contents = 'Specify either file or contents, not both';
             }
           } else {
-            console.log('2',attrs.contents, _.isEmpty(attrs.contents));
             if (_.isEmpty(attrs.contents)){
               errs.contents = 'Specify either file or contents';
             }else{
-              if (_.isEmpty(attrs.file_name)){
-                errs.file_name = 'Must specify a filename with the file contents';
+              if (_.isEmpty(attrs.filename)){
+                errs.filename = 'Must specify a filename with the file contents';
               }
             }
           }
@@ -226,7 +631,6 @@ define([
               return false;
             }else{
               var values = form.getValue();
-              console.log('form values', values);
               var comments = values['comments'];
               var headers = {};
               headers[appModel.HEADER_APILOG_COMMENT] = comments;
@@ -237,10 +641,16 @@ define([
               });
 
               var file = $('input[name="fileInput"]')[0].files[0];
+              var filename;
               if(file){
                 data.append('attached_file',file);
+                filename = file.name;
+                if(!_.isEmpty(values['filename'])){
+                  filename = values['filename'];
+                }
+              }else{
+                filename = values['filename'];
               }
-              console.log('file: ' , file);
               
               var url = [self.model.resource.apiUri, 
                          self.model.key,
@@ -251,14 +661,14 @@ define([
                 cache: false,
                 contentType: false,
                 processData: false,
-                type: 'PUT',
+                type: 'POST',
                 headers: headers, 
                 success: function(data){
                   attachedfileCollection.fetch({ reset: true });
                   appModel.showModalMessage({
                     title: 'Attached File uploaded',
                     okText: 'ok',
-                    body: '"' + file.name + '"'
+                    body: '"' + filename + '"'
                   });
                 },
                 done: function(model, resp){
@@ -364,7 +774,7 @@ define([
         console.log('changed collection', changedCollection,changedCollection.url);
         
         if(changedCollection.isEmpty()){
-          appModel.error('nothing changed');
+          appModel.error('No changes to save');
           return;
         }
         

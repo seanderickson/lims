@@ -37,7 +37,7 @@
   },
   "resolutions": {
     "jquery": "~2.1.0",
-    "underscore": "^1.5.0"
+    "underscore": "^1.8.0"
   },
   "devDependencies": {
     "mocha": "~2.1.0",

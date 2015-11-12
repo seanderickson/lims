@@ -117,10 +117,8 @@ define([
     },
 
     change_to_tab: function(key){
-      console.log('change_to_tab: ', key, 'uriStack: ', this.uriStack );
       if(_.has(this.tabbed_resources, key)){
         var delegateStack = _.clone(this.uriStack);
-//        delegateStack.push(key);
         if(!_.isUndefined(this.tabbed_resources[key].alias)){
           key = this.tabbed_resources[key].alias;
         }
@@ -129,6 +127,11 @@ define([
         }else{
           this.key = key;
         }        
+        if(key !== 'detail'){
+          this.consumedStack = [key];
+        }else{
+          this.consumedStack = [];
+        }
         
         this.$('li').removeClass('active'); // TODO: use bootstrap tabs
         this.$('#' + key).addClass('active');
@@ -201,31 +204,6 @@ define([
       this.setView("#tab_container", view ).render();
     },    
     
-//    setGroups: function(delegateStack){
-//      var self = this;
-//      var key = 'usergroup';
-//      var view = this.tabViews[key];
-//      if ( !view ) {      
-//        view = new GroupsView({ model: this.model, uriStack: delegateStack });
-//        self.tabViews[key] = view;
-//      }
-//      this.consumedStack = [key]; 
-//      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-//      self.setView("#tab_container", view ).render();
-//    },
-
-//    setPermissions: function(delegateStack){
-//      var self = this;
-//      var key = 'permission';
-//      var view = this.tabViews[key];
-//      if ( !view ) {      
-//        view = new PermissionsView({ model: this.model, uriStack: delegateStack });
-//        self.tabViews[key] = view;
-//      }
-//      this.consumedStack = [key]; 
-//      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-//      self.setView("#tab_container", view ).render();
-//    },
     
     onClose: function() {
       // TODO: is this necessary when using Backbone LayoutManager

@@ -720,8 +720,9 @@ define([
     
     download: function(e){
       var self = this;
-      e.preventDefault();
       var limitForDownload = 0;
+
+      e.preventDefault();
       
       // find any extra search data
       if(_.has(self._options, 'search_data')){
@@ -825,7 +826,7 @@ define([
         var key = pair[1]['key'];
         var prop = pair[1];
         var _visible = (_.has(prop, 'visibility') && 
-            _.contains(prop['visibility'], 'list'));
+            _.contains(prop['visibility'], 'l'));
         default_visible[key] = _visible;
         _visible = _visible || _.contains(includes, key);
         _visible = _visible && !_.contains(includes, '-'+key);

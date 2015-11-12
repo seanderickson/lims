@@ -15,9 +15,13 @@ define([
   var SchemaClass = Iccbl.SchemaClass = function() {};
   SchemaClass.prototype.detailKeys = function()
   {
-    return this.filterKeys('detail');
+    return this.filterKeys('visibility','d');
   };  
-  SchemaClass.prototype.filterKeys = function(visibility_term)
+  SchemaClass.prototype.editVisibleKeys = function()
+  {
+    return this.filterKeys('visibility','e');
+  };  
+  SchemaClass.prototype.filterKeys = function(select_field, visibility_term)
   {
     console.log('filter keys for: ' + visibility_term );
     var self = this;
@@ -25,8 +29,8 @@ define([
       _.keys(self.fields), self.fields)
     var detailKeys = _(keys).filter(function(key){
       return _.has(self.fields, key) && 
-          _.has(self.fields[key], 'visibility') && 
-          _.contains(self.fields[key]['visibility'], visibility_term);
+          _.has(self.fields[key], select_field) && 
+          _.contains(self.fields[key][select_field], visibility_term);
     });
     return detailKeys;
   };  
@@ -122,6 +126,49 @@ define([
         });
         callBack(options);
       });
+    },
+    getPrincipalInvestigatorOptions: function(callBack){
+      this.getPrincipalInvestigators(function(users){
+        var options = [{ val:'',label:'' }];
+        users.each(function(user){
+          var username = user.get('username');
+          var lab_name = user.get('lab_name');
+          options.push({ val: username, label: lab_name, optgroup: 'test1' });
+        });
+        callBack(options);
+      });
+    },
+    
+    getPrincipalInvestigators: function(callBack){
+      
+      var self = this;
+      var pis = this.get('principal_investigators');
+      var url = self.dbApiUri + '/screensaveruser';
+      if(_.isEmpty(pis)){
+        
+        var CollectionClass = Iccbl.CollectionOnClient.extend({
+          url: url 
+        });
+        var instance = new CollectionClass();
+        instance.fetch({
+          data: { 
+            limit: 0,
+            // TODO: implement an "excludes" setting
+            includes: ['lab_name','username','-mailing_address','-permissions',
+                       '-all_permissions','-usergroups','-phone','-email'], 
+            lab_head_affiliation__is_null: false,
+            order_by: ['lab_name']
+          },
+          success: function(collection, response) {
+            self.set('principal_investigators', collection);
+            callBack(collection);
+          },
+          error: Iccbl.appModel.backboneFetchError, 
+        });
+      }
+      else{
+        callBack(pis);
+      }
     },
     
     getUsers: function(callBack) {
@@ -285,18 +332,18 @@ define([
       var vocabularies = this.get('vocabularies');
       if(!_.has(vocabularies, scope)) {
         // test for regex match/matches
-          var matchedVocabularies = {};
-          _.each(_.keys(vocabularies), function(candidateScope){
-            if(candidateScope.match('^' + scope + '$')){
-              console.log('matching: ' + '^' + scope + '$' + ', to: ' + candidateScope );
-              _.extend(matchedVocabularies,vocabularies[candidateScope]);
-            }
-          });
-          if(!_.isEmpty(matchedVocabularies)){
-            console.log('matchedVocabularies', scope, matchedVocabularies );
-            return matchedVocabularies;
+        var matchedVocabularies = {};
+        _.each(_.keys(vocabularies), function(candidateScope){
+          if(candidateScope.match('^' + scope + '$')){
+            console.log('matching: ' + '^' + scope + '$' + ', to: ' + candidateScope );
+            _.extend(matchedVocabularies,vocabularies[candidateScope]);
           }
-          throw "Unknown vocabulary: " + scope;
+        });
+        if(!_.isEmpty(matchedVocabularies)){
+          console.log('matchedVocabularies', scope, matchedVocabularies );
+          return matchedVocabularies;
+        }
+        throw "Unknown vocabulary: " + scope;
       }
       return vocabularies[scope];
     },
@@ -416,7 +463,7 @@ define([
 
       var ModelClass = Backbone.Model.extend({
         url : url,
-        defaults : {},
+        defaults : { },
         parse: function(resp, options){
           // workaround for if the server returns the object in an "objects" array
           if(_.has(resp,'objects') && _.isArray(resp.objects)
@@ -428,6 +475,7 @@ define([
       });
       var instance = new ModelClass();
       instance.fetch({
+          data: { includes: '*' },
           // to force inclusion of all columns: data: { includes: '*' },
           success : function(model) {
             model.resource = resource;
@@ -515,8 +563,8 @@ define([
             "title"
           ],
           visibility: [
-            "list",
-            "detail"
+            "l",
+            "d"
           ]
         }
      *    
@@ -561,22 +609,28 @@ define([
      * Backbone model fetch error handler
      */
     backboneFetchError: function(modelOrCollection, response, options) {
-      var msg = 'Server Error';
+      this.jqXHRError(response, response.statusText, response.status );
       
-      var sep = '\n';
-      if (!_.isUndefined(response.statusText))
-          msg += response.statusText;
-      if (!_.isUndefined(response.status))
-          msg += ':' + response.status;
-      if (!_.isUndefined(response.responseJSON))
-          msg += sep + response.responseJSON.error_message;
-      this.error(msg);
-      if (!_.isUndefined(response.responseJSON))
-          msg += sep + response.responseJSON.traceback;
-      else if (!_.isEmpty(response.responseText))
-          msg += sep + response.responseText;
-      
-      console.log(msg);
+//      var msg = '';
+//      var sep = '\n';
+//      if (!_.isUndefined(response.responseJSON)){
+//        _.each(_.keys(response.responseJSON), function(key){
+//          msg += sep + key + ': ' + response.responseJSON[key];
+//        });
+//      }
+//      else if (!_.isEmpty(response.responseText)){
+//        msg += sep + response.responseText;
+//      }
+//      else if (!_.isUndefined(response.statusText)){
+//        msg += 'Server Error: '
+//        if (!_.isUndefined(response.status)){
+//          msg += response.status + ':';
+//        }
+//        msg += response.statusText;
+//      }
+//
+//      this.error(msg);
+//      console.log(msg);
     },
     
     /**
@@ -688,8 +742,6 @@ define([
         if(callbackOk) callbackOk();
         self.clearPagePending();
       };
-      
-
       if(! self.isPagePending()){
         options.ok();
       }else{
@@ -930,11 +982,12 @@ define([
       var okText = (options && options.okText)? options.okText : 'Continue';
       var cancelText = (options && options.cancelText)? 
         options.cancelText : 'Cancel and return to page';
-      
-      var modalDialog = new Backbone.View({
-          el: _.template(modalOkCancelTemplate, { 
+      console.log('options', options);
+      var template = _.template(modalOkCancelTemplate)({ 
             body: options.body,
-            title: options.title } ),
+            title: options.title } );
+      var modalDialog = new Backbone.View({
+          el: template,
           events: {
               'click #modal-cancel':function(event) {
                   console.log('cancel button click event, '); 

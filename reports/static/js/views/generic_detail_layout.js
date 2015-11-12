@@ -69,7 +69,9 @@ define([
         var view = self.subviews['edit'];
         if (!view) {
           view = new EditView(_.extend(
-            { model: self.model, uriStack: ['edit'] }, editOptions));
+            { model: self.model, 
+              uriStack: ['edit'] 
+            }, editOptions));
           Backbone.Layout.setupView(view);
           self.subviews['edit'] = view;
         }
@@ -77,9 +79,12 @@ define([
           self.showDetail();
         });
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
-        self.setView("#detail_content", view ).render();
+        view = self.setView("#detail_content", view ).render();
+        return view;
       };
-
+      
+      // onEditCallBack: used by owning resource to specify actions to take 
+      // before editing (i.e. build option choiceHashes )
       if(this.args.onEditCallBack){
         this.args.onEditCallBack(showEditFunction);
       }else{
@@ -143,12 +148,7 @@ define([
       var search = {};
       search['ref_resource_name'] = this.model.resource.key;
       search['key'] = this.model.key;
-      newUriStack.push(
-          _.map(
-            _.pairs(search), 
-            function(keyval) {
-              return keyval.join('=');
-            }).join(appModel.SEARCH_DELIMITER));
+      newUriStack.push(appModel.createSearchString(search));
       var route = newUriStack.join('/');
       console.log('history route: ' + route);
       appModel.router.navigate(route, {trigger: true});

@@ -7,13 +7,14 @@ define([
     'quicksearch',
     'iccbl_backgrid',
     'models/app_state',
+    'views/generic_detail_stickit',
     'text!templates/generic-edit.html',
     'text!templates/modal_ok_cancel.html',
     'bootstrap',
     'bootstrap-datepicker',
     'chosen'
 ], function( $, _, Backbone, backbone_forms, multiselect, quicksearch, Iccbl, appModel,
-            editTemplate, modalOkCancel ) {
+            DetailView, editTemplate, modalOkCancel ) {
   
   var SIunitEditor = Backbone.Form.editors.Base.extend({
     
@@ -81,6 +82,12 @@ define([
         throw 'Error: SIUnitFormFilter requires a "symbol" option' 
       }
       _.each(this.siunits,function(pair){
+        if(options.schema.maxunit){
+          if(options.schema.maxunit < pair[1]) return;
+        }
+        if(options.schema.minunit){
+          if(options.schema.minunit > pair[1]) return;
+        }
         units.push({ val: pair[1], label: pair[0] + self.symbol });
       });
       formSchema['unit'] = {
@@ -323,65 +330,45 @@ define([
     
   });  
 
-  var DisabledField = Backbone.Form.editors.Base.extend({
+  var DisabledField = Backbone.Form.editors.Text.extend({
 
     tagName: 'p',
-
-    events: {
-        'change': function() {
-            // The 'change' event should be triggered whenever something happens
-            // that affects the result of `this.getValue()`.
-            this.trigger('change', this);
-        },
-        'focus': function() {
-            // The 'focus' event should be triggered whenever an input within
-            // this editor becomes the `document.activeElement`.
-            this.trigger('focus', this);
-            // This call automatically sets `this.hasFocus` to `true`.
-        },
-        'blur': function() {
-            // The 'blur' event should be triggered whenever an input within
-            // this editor stops being the `document.activeElement`.
-            this.trigger('blur', this);
-            // This call automatically sets `this.hasFocus` to `false`.
-        }
-    },
 
     initialize: function(options) {
         Backbone.Form.editors.Base.prototype.initialize.call(this, options);
     },
 
     getValue: function() {
+      return this.value;
     },
-
     setValue: function(value) {
+      this.value = value;
     },
 
-    focus: function() {
-        if (this.hasFocus) return;
-        this.$el.focus();
-    },
-
-    blur: function() {
-        if (!this.hasFocus) return;
-        this.$el.blur();
-    },
-    
-    render: function() {
-      // FIXME: delegate disabled rendering to generic_detail render
-      var el = $(this.el);
-      var val = this.value;
-      if(_.isArray(this.value)){
-        val = this.value.join(', ');
+    _getValue: function() {
+      if(this.binding){
+        var val = this.binding.onGet(this.value);
+        if(_.isBoolean(val)){
+          if(! val) return 'false';
+        }
+        return val;
+      }else{
+        console.log('no view binding found for disabled field, value', this.value);
+        if(_.isArray(this.value)){
+          return this.value.join(', ');
+        }
+        return this.value;
       }
-      el.html(val);
+    },
+
+    render: function() {
+      this.$el.html(this._getValue());
       return this;
     }
-    
   });  
 
   // like 'Select' editor, but will always return a boolean (true or false)
-  Backbone.Form.editors.BooleanSelect = Backbone.Form.editors.Select.extend({
+  var BooleanSelect = Backbone.Form.editors.Select.extend({
     
     initialize: function(options) {
       options.schema.options = [{ val: 'true', label: 'Yes' },
@@ -401,7 +388,7 @@ define([
   // FIXME: 20150624 - overriding the checkbox editor, to use "div" instead of "<ul><li>
   // - something in CSS/JS is overriding the click function and not allowing 
   // selection of checkboxes in the <ul>,<li> elements
-  Backbone.Form.editors.Checkboxes = Backbone.Form.editors.Checkboxes.extend({
+  var Checkboxes = Backbone.Form.editors.Checkboxes.extend({
 
     tagName: 'div',
 
@@ -494,24 +481,36 @@ define([
   });
   
   
-  Backbone.Form.editors.MultiSelect2 = Backbone.Form.editors.Select.extend({
+  var MultiSelect2 = Backbone.Form.editors.Select.extend({
     render: function() {
       this.$el.attr('multiple', 'multiple');
       this.setOptions(this.schema.options);
- 
       return this;
     }
   });
   
   
-  
   var EditView = Backbone.Form.extend({
     
     initialize: function(args) {
+
       console.log('Editview initialize: ', args);
+      
       this.uriStack = args.uriStack;
       this.consumedStack = []; 
       this.saveCallBack = args.saveCallBack;
+      var schema = this.model.resource.schema;
+      var keys = this.keys = Iccbl.sortOnOrdinal(
+          _.keys(schema.fields), schema.fields)
+      this.editableKeys = _(keys).filter(function(key){
+          return _.has(schema.fields[key], 'editability') &&
+              (_.contains(schema.fields[key]['editability'], 'c') ||
+              _.contains(schema.fields[key]['editability'], 'u'));
+      });
+
+      var delegateModel = new Backbone.Model(_.clone(this.model.attributes ));
+      delegateModel.resource = this.model.resource;
+      this.delegateDetailView = new DetailView({ model: delegateModel });
       
       // NOTE: due to a phantomjs js bug, must convert arguments to a real array
       Backbone.Form.prototype.initialize.apply(this,Array.prototype.slice.apply(arguments));
@@ -522,9 +521,20 @@ define([
     },
     
     altFieldTemplate:  _.template([
+      '<div class="form-group" key="form-group-<%=key%>">',
+      '    <label class="control-label col-sm-2" for="<%= editorId %>"><%= title %></label>',
+      '    <div class="<%= editorAttrs.widthClass%>" >',
+      '      <div data-editor  key="<%=key%>" style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
+      '      <div data-error class="text-danger" ></div>',
+      '      <div><%= help %></div>',
+      '    </div>',
+      '  </div>',
+    ].join('')),
+
+    altTextAreaFieldTemplate:  _.template([
       '<div class="form-group" >',
       '    <label class="control-label col-sm-2" for="<%= editorId %>"><%= title %></label>',
-      '    <div class="col-sm-2" >',
+      '    <div class="<%= editorAttrs.widthClass%>" >',
       '      <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
       '      <div data-error class="text-danger" ></div>',
       '      <div><%= help %></div>',
@@ -532,21 +542,21 @@ define([
       '  </div>',
     ].join('')),
 
-    datepickerComponentTemplate:  _.template([
+    altMultiselectFieldTemplate:  _.template([
       '<div class="form-group" >',
       '    <label class="control-label col-sm-2" for="<%= editorId %>"><%= title %></label>',
-      '    <div class="col-sm-2" >',
-      '      <div data-editor style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
+      '    <div class="<%= editorAttrs.widthClass%>" >',
+      '      <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
       '      <div data-error class="text-danger" ></div>',
       '      <div><%= help %></div>',
       '    </div>',
-      '</div>',
+      '  </div>',
     ].join('')),
-    
+
     altMultiselect2FieldTemplate:  _.template('\
       <div class="form-group" > \
           <label class="control-label col-sm-2" for="<%= editorId %>"><%= title %></label>\
-          <div class="col-sm-10" >\
+          <div class="<%= editorAttrs.widthClass%>" >\
             <div data-editor  class="multiselect2" style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />\
             <div data-error class="text-danger" ></div>\
             <div><%= help %></div>\
@@ -557,7 +567,7 @@ define([
     altRadioFieldTemplate: _.template('\
       <div class="form-group"  ><fieldset> \
           <label class="control-label col-sm-2" for="<%= editorId %>"><%= title %></label>\
-          <div class="col-sm-10" >\
+          <div class="<%= editorAttrs.widthClass%>" >\
             <div data-editor  ></div>\
             <div data-error></div>\
             <div><%= help %></div>\
@@ -566,215 +576,188 @@ define([
     '),
 
     schema: function() {
-      console.log('schema...', this.model);
+      
       var self = this;
       var schema = this.model.resource.schema;
-      var keys = Iccbl.sortOnOrdinal(
-          _.keys(schema.fields), schema.fields)
-      var editKeys = _(keys).filter(function(key){
-          return _.has(schema.fields, key) &&
-              _.has(schema.fields[key], 'visibility') &&
-              _.contains(schema.fields[key]['visibility'], 'edit');
-      });
+      var keys = this.keys;
       
+      var editvisibleKeys = this.model.resource.schema.editVisibleKeys();
+      var editableKeys = this.editableKeys;
+      var finaleditableKeys = this.finaleditableKeys = [];
       var editSchema = {};
-      var itemcount = 0;
-      var typeMap = {
-        'boolean': 'Checkbox',
-        'string': 'Text',
-        'uri': 'Text',
-        'float': 'Number',
-        'integer': 'Number',
-        'decimal': 'Number',
-        'list': 'Checkboxes', 
-        'date': DatePicker
-      };
       
-      // process the data_types - convert to backbone-forms schema editor type
+      var typeMap = {
+        'boolean': 
+          {
+            type: Backbone.Form.editors.Checkbox,
+            editorAttrs: { widthClass: 'col-sm-10'}
+          },
+        'string': 
+          {
+            type: Backbone.Form.editors.Text,
+            editorClass: 'form-control',
+            editorAttrs: { widthClass: 'col-sm-4'}
+          },
+        'uri': 
+          {
+            type: Backbone.Form.editors.Text,
+            editorAttrs: { widthClass: 'col-sm-4'}
+          },
+        'float': 
+          {
+            type: Backbone.Form.editors.Number,
+            editorClass: 'form-control',
+            editorAttrs: { widthClass: 'col-sm-4'}
+          },
+        'integer': 
+          {
+            type: Backbone.Form.editors.Number,
+            editorClass: 'form-control',
+            editorAttrs: { widthClass: 'col-sm-4'}
+          },
+        'decimal': 
+          {
+            type: Backbone.Form.editors.Number,
+            editorClass: 'form-control',
+            editorAttrs: { widthClass: 'col-sm-4'}
+          },
+        'list': 
+          {
+            // NOTE: list will only be a multi-select if the edit type is set 
+            type: Backbone.Form.editors.Text,
+            editorAttrs: { widthClass: 'col-sm-6' }
+          },
+        'date': 
+          {
+            type: DatePicker,
+            editorAttrs: { widthClass: 'col-sm-3'}
+          },
+        'textarea':
+          {
+            type: Backbone.Form.editors.TextArea.extend({
+              initialize: function(){
+                Backbone.Form.editors.TextArea.prototype.initialize.apply(this, arguments);
+                if(_.has(this.schema,'rows')){
+                  this.$el.attr('rows',this.schema['rows']);
+                }
+              }
+            }),
+            editorClass: 'form-control',
+            template: self.altTextAreaFieldTemplate,
+            editorAttrs: { widthClass: 'col-sm-10'} 
+          },
+        'siunit': 
+          {
+            type: SIunitEditor,
+            editorClass: '',
+            editorAttrs: { widthClass: 'col-sm-4'}
+          },
+        'select':
+          {
+            type: Backbone.Form.editors.Select,
+            editorClass: 'chosen-select',
+            editorAttrs: { widthClass: 'col-sm-5'}
+
+          },
+        'multiselect':
+          {
+            type: Checkboxes,
+            template: self.altMultiselectFieldTemplate,
+            editorAttrs: { widthClass: 'col-sm-10'}
+          },
+        'multiselect2':
+          {
+            type: MultiSelect2,
+            template: self.altMultiselect2FieldTemplate,
+            editorAttrs: { widthClass: 'col-sm-10'}
+          },
+        'radio':
+          {
+            template: self.altRadioFieldTemplate,
+            editorAttrs: { widthClass: 'col-sm-10'}
+          }
+      };
+      var defaultFieldSchema = 
+        {
+           template: self.altFieldTemplate,
+           editorAttrs: { widthClass: 'col-sm-10', maxlength: 50}
+         };
+      // determine if the model is new, or being updated
+      var id_hash = Iccbl.getIdKeys(this.model, schema);
+      var edit_visibility = 'u';
+      if(_.isEmpty(id_hash)){
+        edit_visibility = 'c';
+      }
+      
       _.each(keys, function(key){
-        console.log('build edit schema for key: ',key);
-        
-        var validators = [];
-        var fieldSchema = editSchema[key] = {};
+
+        var fieldSchema;
         var fi = schema.fields[key];
         var cell_options;
-        
-        if(!_.isEmpty(fi['display_options'])){
-          cell_options = fi['display_options'];
-          cell_options = cell_options.replace(/'/g,'"');
-          try{
-            cell_options = JSON.parse(cell_options);
-            _.extend(fieldSchema,cell_options);
-          }catch(e){
-            console.log('warn: display_options is not JSON parseable, column: ',
-                key,', options: ',cell_options);
-          }
-        }
-        
-        fieldSchema['title'] = fi.title
-        fieldSchema['template'] = self.altFieldTemplate;
-        
-        var data_type = fi.data_type || 'Text';
-        data_type = data_type.toLowerCase();
-        fieldSchema['type'] = data_type.charAt(0).toUpperCase() + data_type.slice(1);
-        
-        if(!_.contains(editKeys, key)){
-          console.log('create disabled entry', key, fi['visibility'])
-          fieldSchema['disabled'] = true;
-          fieldSchema['type'] = DisabledField;
-          fieldSchema['editorClass'] = 'form-control-static';
+        var isDisabled = false;
+
+        if(!(_.contains(editvisibleKeys,key) || _.contains(editableKeys,key))){
           return;
         }
+        fieldSchema = editSchema[key] = _.extend({}, defaultFieldSchema);
         
-        if(_.has(typeMap, fi.data_type)){
-          fieldSchema['type'] = typeMap[fi.data_type];
+        fieldSchema['title'] = fi.title
+        
+        if(!_.contains(editableKeys, key)){
+          isDisabled = true;
         }
-        
-        if(fi.data_type == 'string' || fi.data_type == 'float' 
-          || fi.data_type == 'decimal' || fi.data_type == 'integer' ){
-          fieldSchema['editorClass'] = 'form-control';
+        if(!_.contains(fi['editability'],edit_visibility)){
+          isDisabled = true;
         }
+        if(isDisabled){
         
-        if(fi.data_type == 'date'){
-          fieldSchema['template'] = self.datepickerComponentTemplate;
-        } 
-        
-        if(fi.display_type == 'siunit'){
-          console.log('siunit field: ' + key);
-          fieldSchema['type'] = SIunitEditor;
-          fieldSchema['editorClass'] = '';
-        }
-        
-        if(fi.edit_type == 'select'){
-          fieldSchema['type'] = 'Select';
-          fieldSchema['editorClass'] = 'chosen-select';
-        } 
-        else if(fi.edit_type == 'multiselect'){
-          fieldSchema['type'] = 'Checkboxes';
-        } 
-        else if(fi.edit_type == 'multiselect2'){
-          fieldSchema['type'] = 'MultiSelect2';
-          fieldSchema['template'] = self.altMultiselect2FieldTemplate;
-        } 
-        
-        if(fi.edit_type == 'select' 
-          || fi.edit_type == 'multiselect'
-          || fi.edit_type == 'multiselect2'){
+          console.log('create disabled entry', key, fi['edit_visibility'])
+          fieldSchema['type'] = DisabledField.extend({
+            initialize: function(){
+              DisabledField.__super__.initialize.apply(this,arguments);
+              this.binding = self.delegateDetailView.createBinding(key,fi)
+            }
+          });
+          fieldSchema['editorClass'] = 'form-control-disabled';
 
-          fieldSchema['options'] = fi.choices || [];
-          if(!_.isEmpty(fi.vocabulary_scope_ref)){
-            // replace the fi.choices with the vocabulary, if available
+        }else{
+          
+          console.log('build edit schema for key: ',key);
+          finaleditableKeys.push(key);
+
+          if(!_.isEmpty(fi['display_options'])){
+            cell_options = fi['display_options'];
+            cell_options = cell_options.replace(/'/g,'"');
             try{
-              var vocabulary = appModel.getVocabulary(fi.vocabulary_scope_ref);
-              var choiceHash = {}
-              _.each(_.keys(vocabulary),function(choice){
-                choiceHash[choice] = vocabulary[choice].title;
-              });
-              if(fi.edit_type == 'select'){
-                choiceHash[''] = '';
-              }
-              fieldSchema['options'] = choiceHash;
+              cell_options = JSON.parse(cell_options);
+              _.extend(fieldSchema,cell_options);
             }catch(e){
-              var msg = 'Vocabulary unavailable: field: ' + fi.key +  
-                ', vocabulary_scope_ref: ' + fi.vocabulary_scope_ref;
-              console.log(msg,e);
-              appModel.error(msg);
+              console.log('warn: display_options is not JSON parseable, column: ',
+                  key,', options: ',cell_options);
+              appModel.error(
+                'Configuration error: display_options is not JSON parseable, field: ' + key);
             }
           }
-        }
-        
-        if(fi.edit_type == 'radio'){
-          fieldSchema['template'] = self.altRadioFieldTemplate;
-        }
-        
-        //// validation stuff ////
-
-        if(fieldSchema['type']  == 'Number')
-        {
-          // TODO: check for the "min" "max","range" validation properties and implement
-          if( fi.min && !_.isUndefined(fi.min)){
-            var validator = function checkMin(value, formValues) {
-              var err = {
-                  type: 'Min',
-                  message: 'must be >= ' + fi.min
-              };
-
-              if (value <= fi.min ) return err;
-            };
-            validators.unshift(validator);
+          if(_.has(typeMap, fi.data_type)){
+            _.extend(fieldSchema, typeMap[fi.data_type]);
           }
-          if( !_.isUndefined(fi.range)){
-            var validator = function checkRange(value, formValues) {
-              
-              var last = '';
-              var rangeMsg = '';
-              var value_ok = false;
-              var schema_lower = 0, schema_upper = 0
-              for(var i=0; i<fi.range.length; i++){
-                var schema_val = fi.range[i]
-                if(i>0) rangeMsg += ', ';
-                if(i%2 == 0){
-                  rangeMsg += '> ' + schema_val
-                }else{
-                  rangeMsg += '< ' + schema_val
-                }
-              }
-              // compare range in pairs
-              for(var i=0; i<fi.range.length; i+=2){
-                schema_lower = parseInt(fi.range[i])
-                if(fi.range.length > i+1){
-                  schema_upper = parseInt(fi.range[i+1])
-                  if(value >schema_lower && value<schema_upper){
-                    value_ok = true;
-                    break;
-                  }
-                }else{
-                  if(value > schema_lower){
-                    value_ok = true;
-                    break; // not nec
-                  }
-                }
-              }
-              var result = {
-                  type: 'Range',
-                  message: 'value not in range: ' + value + ' range: ' + rangeMsg
-              };
-
-              if (!value_ok) return result;
-            };
-            validators.unshift(validator);
+          if(_.has(typeMap, fi.edit_type)){
+            _.extend(fieldSchema, typeMap[fi.edit_type]);
           }
-        }
-        if(fi.required){
-          validators.unshift('required');
-        }
-        if(!_.isUndefined(fi.regex) && !_.isEmpty(fi.regex)){
-          var validator = { type: 'regexp', regexp: new RegExp(fi.regex) };
-          if(!_.isUndefined(fi.validation_message) && !_.isEmpty(fi.validation_message)){
-            validator.message = fi.validation_message;
-            // TODO: rework, if req'd, to use tokenized strings (will need 
-            // to reimplement backbone-forms
-            //  function(value, formValues){
-            //    //                TODO: figure out how to get the pending model
-            //    return 'value: ' + value + ' is incorrect: ' + Iccbl.replaceTokens(new Backbone.Model(formValues), fi.validation_message);
-            //  };
+          if(_.contains(['select','multiselect','multiselect2'],fi.edit_type)){
+            fieldSchema['options'] = self._createVocabularyChoices(fi);
           }
-          validators.unshift(validator);
+          fieldSchema.validators = self._createValidators(fi);
+          
+          if (cell_options){
+            // editorAttrs are available as data for the template compilation
+            fieldSchema.editorAttrs = _.extend({},fieldSchema.editorAttrs,cell_options)
+          }
+          
+          console.log('editSchema for key created: ', key, editSchema[key]);
+          
         }
-        if(!_.isEmpty(validators)){
-          editSchema[key].validators = validators;
-        }
-        
-        editSchema[key]['maxlength'] = 50;
 
-        if(itemcount++ == 0){
-          // Set autofocus (HTML5) on the first field
-          // NOTE: see
-          // http://stackoverflow.com/questions/20457902/how-to-automatically-focus-first-backbone-forms-input-field
-          // - we may want to revisit this for a more robust solution
-          editSchema[key]['editorAttrs'] = { autofocus: 'autofocus'}
-        }
-        console.log('editSchema for key created: ', key, editSchema[key]);
       });      
       
       console.log('editSchema created');
@@ -782,17 +765,124 @@ define([
       if( ! _.has(editSchema, 'apilog_comment')){
         console.log('enforced apilog_comment');
         // Note: Enforced comment
-        editSchema['apilog_comment'] = {
+        editSchema['apilog_comment'] = _.extend({},defaultFieldSchema, {
             type: 'TextArea',
             title: 'Changelog Comment',
             validators: ['required'], 
             template: self.altFieldTemplate
-        };
+        });
       }
            
       return editSchema;
     },
-  
+
+    _createValidators: function(fi) {
+        
+      var validators = [], validator;
+      
+      if (_.contains(['integer','float','decimal'],fi.data_type))
+      {
+        if (fi.min && !_.isUndefined(fi.min)){
+          validator = function checkMin(value, formValues) {
+            var err = {
+                type: 'Min',
+                message: 'must be >= ' + fi.min
+            };
+            if (value <= fi.min ) return err;
+          };
+          validators.unshift(validator);
+        }
+        if( !_.isUndefined(fi.range)){
+          validator = function checkRange(value, formValues) {
+            
+            var last = '';
+            var rangeMsg = '';
+            var value_ok = false;
+            var schema_lower = 0, schema_upper = 0, schema_val;
+            for(var i=0; i<fi.range.length; i++){
+              schema_val = fi.range[i]
+              if(i>0) rangeMsg += ', ';
+              if(i%2 == 0){
+                rangeMsg += '> ' + schema_val
+              }else{
+                rangeMsg += '< ' + schema_val
+              }
+            }
+            // compare range in pairs
+            for(var i=0; i<fi.range.length; i+=2){
+              schema_lower = parseInt(fi.range[i])
+              if(fi.range.length > i+1){
+                schema_upper = parseInt(fi.range[i+1])
+                if(value >schema_lower && value<schema_upper){
+                  value_ok = true;
+                  break;
+                }
+              }else{
+                if(value > schema_lower){
+                  value_ok = true;
+                  break; // not nec
+                }
+              }
+            }
+            if (!value_ok){
+              return {
+                  type: 'Range',
+                  message: 'value not in range: ' + value + ' range: ' + rangeMsg
+              };
+            }
+          };
+          validators.unshift(validator);
+        }
+      }
+
+      if(fi.required){
+        validators.unshift('required');
+      }
+      
+      if(!_.isUndefined(fi.regex) && !_.isEmpty(fi.regex)){
+        validator = { type: 'regexp', regexp: new RegExp(fi.regex) };
+        console.log('create RegExp: ', fi.regex, validator );
+        if(!_.isUndefined(fi.validation_message) && !_.isEmpty(fi.validation_message)){
+          validator.message = fi.validation_message;
+          // TODO: rework, if req'd, to use tokenized strings (will need 
+          // to reimplement backbone-forms
+          //  function(value, formValues){
+          //    //                TODO: figure out how to get the pending model
+          //    return 'value: ' + value + ' is incorrect: ' + Iccbl.replaceTokens(new Backbone.Model(formValues), fi.validation_message);
+          //  };
+        }
+        validators.unshift(validator);
+      }
+      return validators;
+    },
+    
+    _createVocabularyChoices: function(fi){
+      var choiceHash = fi.choices || [];
+      if(!_.isEmpty(fi.vocabulary_scope_ref)){
+        choiceHash = []
+        // replace the fi.choices with the vocabulary, if available
+        try{
+          var vocabulary = appModel.getVocabulary(fi.vocabulary_scope_ref);
+          _.each(_.keys(vocabulary),function(choice){
+            if(vocabulary[choice].is_retired){
+              console.log('skipping retired vocab: ',choice,vocabulary[choice].title );
+            }else{
+              choiceHash.push({ val: choice, label: vocabulary[choice].title });
+            }
+          });
+          if(fi.edit_type == 'select' && !fi.required ){
+            choiceHash.unshift({ val: '', label: ''});
+          }
+        }catch(e){
+          var msg = 'Vocabulary unavailable: field: ' + fi.key +  
+            ', vocabulary_scope_ref: ' + fi.vocabulary_scope_ref;
+          console.log(msg,e);
+          appModel.error(msg);
+        }
+      }
+      return choiceHash;
+    },
+    
     /** 
      * Override the Backbone Forms templateData: this will take the place of
      * the serialize function, since we're overriding the 
@@ -800,21 +890,13 @@ define([
      */    
     templateData: function() {
       var schema = this.model.resource.schema;
-      var keys = Iccbl.sortOnOrdinal(
-          _.keys(this.model.attributes), schema.fields)
-      var editKeys = _(keys).filter(function(key){
-          return _.has(schema.fields, key) &&
-              _.has(schema.fields[key], 'visibility') &&
-              _.contains(schema.fields[key]['visibility'], 'edit');
-      });
-      
-      if( ! _.contains(editKeys, 'apilog_comment')){
-        editKeys.push('apilog_comment');
+      if( ! _.contains(this.editableKeys, 'apilog_comment')){
+        this.editableKeys.push('apilog_comment');
       }
                   
       return {
         'fieldDefinitions': schema.fields,
-        'keys': _.chain(editKeys)
+        'keys': _.chain(this.editableKeys)
       };      
     },	
 
@@ -831,7 +913,9 @@ define([
      */
     afterRender: function(){
       console.log('afterRender...');
-      
+
+      console.log('setup single selects using chosen...');
+      // See http://harvesthq.github.io/chosen/
       this.$el.find('.chosen-select').chosen({
         disable_search_threshold: 3,
         width: '100%',
@@ -839,13 +923,17 @@ define([
         search_contains: true
         });
       
-      
+      // TODO: move this to the multiselect2 render()
+      console.log('setup multiselect2 elements using loudev multiselect');
+      // see: http://loudev.com/
+      // see: https://github.com/lou/multi-select
       // update the multiselect2 with the multiselect enhancements
-      // multiselect with search
+      // multiselect with search using:
+      // https://github.com/riklomas/quicksearch
       this.$el.find('.multiselect2').find('select').multiSelect({
         selectableOptgroup: true,
-        selectableHeader: "<input type='text' class='search-input' autocomplete='off'>",
-        selectionHeader: "<input type='text' class='search-input' autocomplete='off'>",
+        selectableHeader: "<input type='text' class='form-control' autocomplete='off'>",
+        selectionHeader: "<input type='text' class='form-control' autocomplete='off'>",
         afterInit: function(ms){
           var that = this,
               $selectableSearch = that.$selectableUl.prev(),
@@ -877,94 +965,136 @@ define([
           this.qs1.cache();
           this.qs2.cache();
         }
-      });    
+      });
+      
+      // Set autofocus (HTML5) on the first field
+      // see: http://stackoverflow.com/questions/20457902/how-to-automatically-focus-first-backbone-forms-input-field
+      this.$el.find('input').first().attr('autofocus','autofocus');
+      
+      console.log('afterRender finished');
     },
-
+    
+    
     template: _.template(editTemplate),
+    
+    /**
+     * Filter Backbone's changeAttributes:
+     * - only include fields that were editable ('create' or 'update' edit_visibility)
+     * - remove nulls/empty strings
+     * - sort lists to test equality (TODO: support for ordered lists)
+     */
+    _getChangedAttributes(model){
+      var self = this;
+      var changedAttributes = model.changedAttributes();
+      console.log('original changedAttributes: ', changedAttributes);
+      if(changedAttributes){
+        changedAttributes = _.pick(changedAttributes, this.finaleditableKeys);
+      }
+      // finally, equate null to empty string
+      changedAttributes = _.omit(changedAttributes, function(value,key,object){
+        if(_.isEmpty(value) || _.isNull(value)){
+          return (_.isEmpty(model.previous(key)) || _.isNull(model.previous(key)));
+        }
+        if(_.isArray(value)){
+          // TODO: Invalid if the attribute is an ordered array
+          if(!_.isEmpty(model.previous(key))){
+            return _.isEmpty(_.difference(value,model.previous(key)));
+          }
+        }
+        // Cleanup strings containing newlines: 
+        // carriage-return,line-feed (0x13,0x10) may be converted to line feed only (0x10)
+        // NOTE: JSON does not officially support control-characters, so 
+        // newlines should be escaped/unescaped on send/receive in the API (TODO)
+        if(_.isString(value) && model.previous(key)){
+          return ( value.replace(/(\r\n|\n|\r)/gm,"\n") 
+              == model.previous(key).replace(/(\r\n|\n|\r)/gm,"\n") );
+        }
+      });
+      
+      return changedAttributes;
+    },
     
     save: function( event ) {
       event.preventDefault();
       var self = this;
+      var errors, changedAttributes, url,
+        options = {};
+      var headers = options['headers'] = {};
       
-      var errors = this.commit();
-      
+      $('.has-error').removeClass('has-error');
+      errors = this.commit({ validate: true });
       if(errors){
-        console.log(JSON.stringify(errors));
+        console.log('errors in form:', errors);
         _.each(_.keys(errors), function(key){
           var error = errors[key];
-          
           $('[name="'+key +'"').parents('.form-group').addClass('has-error');
+          console.log('added error for: "', key, '", val: "', self.fields[key].getValue(), '"');
         });
         return;
       }
+      
+      changedAttributes = self._getChangedAttributes(this.model);
+      if (! changedAttributes){
+        appModel.error('no changes were detected');
+        return;
+      }
+
+      // Set up options for Backbone sync / AJAX 
+      
+      // Wait for the server before setting the new attributes on the model
+      options['wait'] = true;
       
       // Fixup the URL - if it points to the model instance, make it point to 
       // the API resource only: tastypie wants this
       // Note: this is happening if the model was fetched specifically for this
       // page, and has the url used to fetch it, rather than the collection url.
-      var key = Iccbl.getIdFromIdAttribute( self.model,self.model.resource.schema );
-      var url = _.result(this.model, 'url');
-      ////    if ( url && url.indexOf(key) != -1 ) {
-      ////    url = url.substring( 0,url.indexOf(key) );
-      ////  }    
-      
-      // TODO: this should be standard to have url end with '/'
+      url = options['url'] = _.result(this.model, 'url');
+      // TODO: this should be optional (for most resources, to have url end with '/'
       if( url && url.charAt(url.length-1) != '/'){
         url += '/';
       }
       
-      var _patch = true;
-      if (_.contains(this.uriStack, '+add')){
-        _patch = false;
-        // NOTE: don't set the key, since this is a create/POST to the resource URL
-        //        url += key;
+      options['key'] = Iccbl.getIdFromIdAttribute( self.model,self.model.resource.schema );
+      if (_.contains(this.uriStack, '+add') || !options['key'] ){
+        options['patch'] = false;
       }else{
+        options['patch'] = true;
         // TODO: check if creating new or updating here
         // set the id specifically on the model: backbone requires this to 
         // determine whether a "POST" or "PATCH" will be used
-        this.model.id = key;
+        this.model.id = options['key'];
       }
       
-      var headers = {};
       headers[appModel.HEADER_APILOG_COMMENT] = self.model.get('apilog_comment');
       
       if(!_.isUndefined(this.saveCallBack) && _.isFunction(this.saveCallBack)){
         this.saveCallBack(this.model,headers,_patch,url);
       }else{
-        this.model.save(null, {
-          url: url, // set the url property explicitly
-          patch: _patch,
-          // Note:
-          // You have to send { dataType: 'text' } to have the success function 
-          // work with jQuery and empty responses ( otherwise, fails on JSON.parse 
-          // of the empty response).        
-          //        dataType: 'text', 
-          // The other solution: use "always_return_data" in the tastypie
-          // resource definitions - which we are doing.
-          headers: headers,
-          wait: true // wait for the server before setting the new attributes on the model
-        })
-        .success(function(model, resp){
-          // note, not a real backbone model, just JSON
-          model = new Backbone.Model(model);
-          var key = Iccbl.getIdFromIdAttribute( model,self.model.resource.schema );
-          //        appModel.set('routing_options', {trigger: true});
-          //        self.reportUriStack([key]);
-          appModel.router.navigate(self.model.resource.key + '/' + key, {trigger:true});
-        })
-        .done(function(model, resp){
-          // TODO: done replaces success as of jq 1.8
-          console.log('model saved');
-        })
-        .error(function(model,response,options){
-          // TODO: investigate: wait:true does not work if the model was already updated
-          self.model.set(self.model.previousAttributes());
-          appModel.backboneFetchError(model,response,options);
-        })
-        .always(function() {
-          // always replaces complete as of jquery 1.8
-          self.trigger('remove');
-        });
+        // Note:
+        // You have to send { dataType: 'text' } to have the success function 
+        // work with jQuery and empty responses ( otherwise, fails on JSON.parse 
+        // of the empty response).        
+        //        dataType: 'text', 
+        // The other solution: use "always_return_data" in the tastypie
+        // resource definitions - which we are doing.
+        console.log('save, changedAttributes: ', changedAttributes);
+        this.model.save(changedAttributes, options)
+          .success(function(model, resp) {
+            console.log('success');
+            // note, not a real backbone model, just JSON
+            model = new Backbone.Model(model);
+            var key = Iccbl.getIdFromIdAttribute( model,self.model.resource.schema );
+            appModel.router.navigate(self.model.resource.key + '/' + key, {trigger:true});
+          })
+          .done(function(model, resp) {
+            // TODO: done replaces success as of jq 1.8
+            console.log('model saved');
+          })
+          .error(appModel.jqXHRError)
+          .always(function() {
+            // always replaces complete as of jquery 1.8
+            self.trigger('remove');
+          });
       }
       
     },

@@ -144,6 +144,23 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       self.cleanup();
       self.off();
       
+      var addNewResourceButton = $([
+        '<a class="btn btn-default btn-sm pull-down" ',
+          'role="button" id="add_button" href="#">',
+          'Add</a>'
+        ].join(''));
+      addNewResourceButton.click(function(e){
+        e.preventDefault();
+        newUriStack = [resource.key,'+add'];
+        var route = newUriStack.join('/');
+        console.log('history route: ' + route);
+        appModel.router.navigate(route, {trigger: true});
+      });
+      var extraControls = [];
+      if (appModel.hasPermission(resource, 'edit')){
+        extraControls.push(addNewResourceButton);
+      }
+      
       var uriStack = _.clone(uriStack);
       var viewClass = ListView;
       if (_.has(resource, 'listView')){
@@ -213,7 +230,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             schemaResult: schemaResult, 
             resource: resource, 
             collection: collection, 
-            search_data: search_data
+            search_data: search_data,
+            extraControls: extraControls
           }
         });
       }else{ // normal list view
@@ -221,7 +239,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           options: { 
             uriStack: uriStack,
             schemaResult: schemaResult, 
-            resource: resource
+            resource: resource,
+            extraControls: extraControls
           }
         });
       }

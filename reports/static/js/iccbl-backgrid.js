@@ -537,23 +537,6 @@ var getCollectionOnClient = Iccbl.getCollectionOnClient = function(url, callback
       callback(collection);
     },
     error: Iccbl.appModel.backboneFetchError, 
-//    error: Iccbl.backboneFetchError function(model, response, options) {
-//        // console.log('error fetching the model: '+ model + ', response:
-//        // ' + JSON.stringify(response));
-//        var msg = 'Error locating resource: ' + url;
-//        var sep = '\n';
-//        if (!_.isUndefined(response.status))
-//            msg += sep + response.status;
-//        if (!_.isUndefined(response.statusText))
-//            msg += sep + response.statusText;
-//        if (!_.isEmpty(response.responseText))
-//            msg += sep + response.responseText;
-//        window.alert(msg);
-//        // TODO: 1. use Bootstrap inscreen alert classed message div
-//        // TODO: 2. jquery seems to swallow json parsing exceptions, fyi
-//        $(document).trigger('ajaxComplete');
-//        throw msg;
-//    },
     always: function(){
       console.log('done: ');
     }
@@ -2270,7 +2253,6 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash);
-// self.collection.fetch({ reset: true });
     }else{
       console.log('nothing submitted');
     }
@@ -2328,7 +2310,6 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
       e.preventDefault();
       e.stopPropagation();
       self.clearSearch();
-// self.collection.fetch({ reset: true });
     });
     
     this.filterIcon.click(function(e){
@@ -2386,7 +2367,6 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
       console.log('server side filter add search: ' + 
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash);
-// self.collection.fetch({ reset: true });
     }else{
       console.log('Date Cell nothing submitted');
     }

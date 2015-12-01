@@ -72,14 +72,14 @@
         "title": "Natural Key",
         "key": "natural_key",
         "data_type": "string",
-        "visibility": ["list","detail"]
+        "visibility": ["l","d"]
       },
       "name": {
         "ordinal": 0,
         "title": "Name",
         "key": "name",
         "data_type": "string",
-        "visibility": ["list","detail"]
+        "visibility": ["l","d"]
       },
       "field1": {
         "data_type": "integer", 
@@ -104,8 +104,9 @@
         "validation_message": null, 
         "value_template": null, 
         "visibility": [
-          "list","detail","edit"
+          "l","d","e"
         ], 
+        "editability": ["c","u"],
         "vocabulary_scope_ref": null
       },
       "field2": {
@@ -131,8 +132,9 @@
         "validation_message": null, 
         "value_template": null, 
         "visibility": [
-          "list","detail","edit"
+          "l","d","e"
         ], 
+        "editability": ["c","u"],
         "vocabulary_scope_ref": null
       },
       "field2a": {
@@ -158,8 +160,9 @@
         "validation_message": null, 
         "value_template": null, 
         "visibility": [
-          "list","detail","edit"
+          "l","d","e"
         ], 
+        "editability": ["c","u"],
         "vocabulary_scope_ref": null
       },
       "field3": {
@@ -185,8 +188,9 @@
         "validation_message": null, 
         "value_template": null, 
         "visibility": [
-          "list","detail","edit"
+          "l","d","e"
         ], 
+        "editability": ["c","u"],
         "vocabulary_scope_ref": null
       },
       "field4": {
@@ -218,8 +222,9 @@
         "validation_message": null, 
         "value_template": null, 
         "visibility": [
-          "list","detail","edit"
+          "l","d","e"
         ], 
+        "editability": ["c","u"],
         "vocabulary_scope_ref": "test_resource.field4"
       },
       "field50": {
@@ -268,8 +273,9 @@
         "validation_message": null, 
         "value_template": null, 
         "visibility": [
-          "list","detail","edit"
+          "l","d","e"
         ], 
+        "editability": ["c","u"],
         "vocabulary_scope_ref": "test_resource.field50"
       }, 
       "field5": {
@@ -318,8 +324,9 @@
         "validation_message": null, 
         "value_template": null, 
         "visibility": [
-          "list","detail","edit"
+          "l","d","e"
         ], 
+        "editability": ["c","u"],
         "vocabulary_scope_ref": "test_resource.field5"
       },
       "field7": {
@@ -345,8 +352,9 @@
         "validation_message": null, 
         "value_template": null, 
         "visibility": [
-          "list","detail","edit"
+          "l","d","e"
         ], 
+        "editability": ["c","u"],
         "vocabulary_scope_ref": null
       },
       "field8": {
@@ -372,8 +380,9 @@
         "validation_message": null, 
         "value_template": null, 
         "visibility": [
-          "list","detail","edit"
+          "l","d","e"
         ], 
+        "editability": ["c","u"],
         "vocabulary_scope_ref": null
       },
       "field9": {
@@ -399,7 +408,7 @@
         "validation_message": null, 
         "value_template": null, 
         "visibility": [
-          "list","detail"
+          "l","d"
         ], 
         "vocabulary_scope_ref": null
       },
@@ -426,7 +435,7 @@
         "validation_message": null, 
         "value_template": null, 
         "visibility": [
-          "list","detail"
+          "l","d"
         ], 
         "vocabulary_scope_ref": null
       },
@@ -453,8 +462,9 @@
         "validation_message": null, 
         "value_template": null, 
         "visibility": [
-          "list","detail","edit"
+          "l","d","e"
         ], 
+        "editability": ["c","u"],
         "vocabulary_scope_ref": null
       },
       "field12": {
@@ -480,8 +490,9 @@
         "validation_message": null, 
         "value_template": null, 
         "visibility": [
-          "list","detail","edit"
+          "l","d","e"
         ], 
+        "editability": ["c","u"],
         "vocabulary_scope_ref": null
       },
       "field13": {
@@ -507,8 +518,9 @@
         "validation_message": null, 
         "value_template": null, 
         "visibility": [
-          "list","detail","edit"
+          "l","d","e"
         ], 
+        "editability": ["c","u"],
         "vocabulary_scope_ref": null
       }
       

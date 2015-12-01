@@ -21,6 +21,21 @@ define([
   {
     return this.filterKeys('visibility','e');
   };  
+  SchemaClass.prototype.allEditVisibleKeys = function()
+  {
+    return _.union(
+      this.editVisibleKeys(),
+      this.createKeys(),
+      this.updateKeys());
+  };  
+  SchemaClass.prototype.createKeys = function()
+  {
+    return this.filterKeys('editability','c');
+  };  
+  SchemaClass.prototype.updateKeys = function()
+  {
+    return this.filterKeys('editability','u');
+  };  
   SchemaClass.prototype.filterKeys = function(select_field, visibility_term)
   {
     console.log('filter keys for: ' + visibility_term );
@@ -1012,9 +1027,10 @@ define([
       }
       modalDialog.$el.find('#modal-cancel').html(cancelText);
       modalDialog.$el.find('#modal-ok').html(okText);
-      $('#modal').empty();
-      $('#modal').html(modalDialog.$el);
-      $('#modal').modal({show:true, backdrop: 'static'});
+      $modal = $('#modal');
+      $modal.empty();
+      $modal.html(modalDialog.$el);
+      $modal.modal({show:true, backdrop: 'static'});
       return modalDialog;
     },
     

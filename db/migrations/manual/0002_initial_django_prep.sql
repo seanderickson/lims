@@ -170,6 +170,28 @@ alter table :_table alter column id set default nextval(:_quoted_sequence::regcl
 alter sequence :_table_sequence owned by :_table.id;
 
 
+
+\set _table screen_keyword
+\set _unique_constraint screen_id,keyword
+
+\set _unique_constraint_name :_table _unique
+\set _table_sequence :_table _sequence
+\set _table_pkey :_table _pkey
+\set _quoted_sequence '\'' :_table_sequence '\''
+
+alter table :_table drop constraint :_table_pkey;
+alter table :_table add constraint :_unique_constraint_name UNIQUE(:_unique_constraint);
+alter table :_table add column id integer;
+create sequence :_table_sequence;
+update :_table set id=nextval(:_quoted_sequence);
+/** since this table will still be used, make the changes for the autofield **/
+alter table :_table add primary key(id);
+/** Set the default nextval for Django ORM (AutoField) usage. **/
+alter table :_table alter column id set default nextval(:_quoted_sequence::regclass);
+alter sequence :_table_sequence owned by :_table.id;
+
+
+
 /**
   *** Add id field to silencing_reagent_duplex_wells ***
   Purpose: add an id to silencing_reagent_duplex_wells table; 
@@ -264,6 +286,34 @@ ALTER TABLE attached_file ALTER COLUMN file_contents DROP NOT NULL;
 DELETE FROM pg_largeobject USING attached_file WHERE loid=file_contents;
 ALTER TABLE attached_file DROP COLUMN file_contents;
 **/
+
+
+/**
+  Create a many-to-many join table for the screen.collaborators field, then
+  populate it using the legacy table (todo: remove the legacy table)
+**/
+CREATE TABLE "screen_collaborators" (
+  "id" serial NOT NULL PRIMARY KEY, 
+  "screen_id" integer NOT NULL, 
+  "screensaveruser_id" integer NOT NULL, 
+  UNIQUE ("screen_id", "screensaveruser_id")
+  );
+INSERT into screen_collaborators 
+  ( select nextval('screen_collaborators_id_seq'), screen_id, collaborator_id 
+      from collaborator_link );
+        
+ALTER TABLE "screen_collaborators" ADD CONSTRAINT "screen_collaborators_screen_id_fk" 
+  FOREIGN KEY ("screen_id") 
+  REFERENCES "screen" ("screen_id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "screen_collaborators" ADD CONSTRAINT "screen_collaborators_screensaver_user_id_fk" 
+  FOREIGN KEY ("screensaveruser_id") 
+  REFERENCES "screensaver_user" ("screensaver_user_id") DEFERRABLE INITIALLY DEFERRED;
+CREATE INDEX "screen_collaborators_e4ec8585" ON "screen_collaborators" ("screen_id");
+CREATE INDEX "screen_collaborators_ad850f96" ON "screen_collaborators" ("screensaveruser_id");
+DROP TABLE collaborator_link;
+
+/** done - collaborator_link table **/
+
 
 DROP TABLE cell_lineage;
 DROP TABLE cell_related_projects;

@@ -1,6 +1,5 @@
 key,scope,table,id_attribute,title_attribute,resource_uri,ordinal,comment,description,title,visibility,alias,is_restricted,api_name,linked_table_module,supertype,content_types
 screensaveruser,resource,screensaver_user,[username],"[first_name;' ';last_name;' (';username;)]",/reports/api/v1/resource/screensaveruser/,0,,"The Screensaver user resource","Screensaver User",[list;detail;create],,,db,reports.model.User,user,[xls]
-screeningroomuser,resource,screening_room_user,[username],"[first_name;' ';last_name;' (';username;)]",/reports/api/v1/resource/screeningroomuser/,0,,"The Screening Room user resource","Screening Room User",[list;detail;create],,,db,,,[xls]
 screen,resource,screen,[facility_id],"[facility_id;': ';title]",/reports/api/v1/resource/screen/,0,,"The Screen resources",Screen,[list;detail;create],,,db,,,[xls]
 screenresult,resource,assay_well,[screen_facility_id;well_id],[screen_facility_id;/;well_id],/reports/api/v1/resource/screenresult/,0,,"The Screen result resource","Screen Result",[list;detail;create],,,db,,,[xls]
 screensummary,resource,screen,[facility_id],[facility_id],/reports/api/v1/resource/screensummary/,0,,"The Screening Summary resource","Screen Summary",[list;detail;create],,,db,,,[xls]
@@ -10,7 +9,6 @@ librarycopy,resource,copy,[library_short_name;name],"[library_short_name;': ';na
 librarycopyplate,resource,plate,[plate_number;copy_name],"[library_short_name;': ';copy_name;': ';plate_number]",/reports/api/v1/resource/librarycopyplate/,0,,"A plate in a copy of the library","Library Copy Plate",[list;detail;create],,,db,,,[xls]
 platelocation,resource,plate_location,[room;freezer;shelf;bin],"[room;' ';freezer;' ';shelf;' ';bin]",/reports/api/v1/resource/platelocation/,0,,"Location of a library copy plate","Plate Location",[list;detail;create],,,db,,,[xls]
 well,resource,well,[well_id],[well_id],/reports/api/v1/resource/well/,0,,"A well on a library source plate","Library Well",[list;detail;create],,,db,,,[xls]
-librarycontentsversion,resource,library_contents_version,[library_short_name;version_number],[library_short_name;-;version_number],/reports/api/v1/resource/librarycontentsversion/,0,,"The Library Contents Version","Library Contents Version",[list;detail;create],,,db,,,[xls]
 activity,resource,activity,[activity_id],[activity_id],/reports/api/v1/resource/activity/,0,,"Log of an administrative activity",Activity,[list;detail;create],,,db,,,[xls]
 serviceactivity,resource,service_activity,[activity_id],"[activity_type;' - ';activity_id]",/reports/api/v1/resource/serviceactivity/,0,,"Log of a service activity performed for a screensaver user","Service Activity",[list;detail;create],,,db,,,[xls]
 reagent,resource,reagent,[substance_id],[well_id],/reports/api/v1/resource/reagent/,0,,"A general reagent",Reagent,[list;detail;create],,,db,,activity,[xls]

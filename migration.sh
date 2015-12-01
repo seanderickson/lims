@@ -208,8 +208,9 @@ function django_syncdb {
   # note; some of the system migrations (auth, sites, admin, contenttypes ) will
   # generate errors due to interdependencies; these appear to resolve themselves - 20151030
   
-  for x in contenttypes auth sites admin sessions tastypie reports;
+  for x in sites auth contenttypes admin sessions tastypie reports;
   do
+    echo "migrate app: $x ..." >> "$LOGFILE"
     $DJANGO_CMD migrate $x; #  --fake-initial; 
   done
   
@@ -272,9 +273,18 @@ function migratedb {
     $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
   fi
   
+  migration='0005'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
+  
   migration='0008'
   if [[ ! $completed_migrations =~ $migration ]]; then
-    $DJANGO_CMD migrate db 0008 >>"$LOGFILE" 2>&1 || error "db 0008 failed: $?"
+    echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
   fi
   if [[ $DB_FULL_MIGRATION -eq 1 ]]; then
     migration='0014'
@@ -296,6 +306,13 @@ function migratedb {
       echo "migration $migration: $(ts) ..." >> "$LOGFILE"
       psql -U $DBUSER $DB -h $DBHOST -a -v ON_ERROR_STOP=1 \
           -f ./db/migrations/manual/0016_create_copy_wells.sql >>"$LOGFILE" 2>&1 || error "manual script 0016 failed: $?"
+      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+    fi
+    
+    migration='0098' 
+    if [[ ! $completed_migrations =~ $migration ]]; then
+      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
       $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
       echo "migration $migration complete: $(ts)" >> "$LOGFILE"
     fi
@@ -500,6 +517,28 @@ function code_bootstrap {
 
 echo "start migration: $(ts) ..."
 
-main "$@"
+# main "$@"
+
+  restoredb
+  
+  restoredb_data
+    
+  maybe_activate_virtualenv
+  
+  
+  django_syncdb
+
+  premigratedb  
+
+  bootstrap
+  
+  # the later migrations require the bootstrapped data
+  migratedb
+
+
+
+
+
+
 
 echo "migration finished: $(ts)"

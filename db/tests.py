@@ -652,7 +652,7 @@ class ScreenResource(DBResourceTestCase):
         resp = self.api_client.post(
             resource_uri, format='json', data=screen_item, 
             authentication=self.get_credentials())
-        self.assertTrue(resp.status_code in [201], 
+        self.assertTrue(resp.status_code <= 204, 
             _(resp.status_code, self.deserialize(resp)))
         
         # create another screen
@@ -661,7 +661,7 @@ class ScreenResource(DBResourceTestCase):
         resp = self.api_client.post(
             resource_uri, format='json', data=screen_item, 
             authentication=self.get_credentials())
-        self.assertTrue(resp.status_code in [201], (resp.status_code, resp))
+        self.assertTrue(resp.status_code in [200], (resp.status_code, resp))
 
         # find the screens        
         data_for_get={ 'limit': 0, 'includes': ['*'] }        
@@ -805,9 +805,9 @@ class ScreensaverUserResource(DBResourceTestCase):
                 format='json', data=simple_user_input, 
                 authentication=self.get_credentials())
             self.assertTrue(resp.status_code in [200,201,202], 
-                _(resp.status_code, self.serialize(resp)))
+                _(resp.status_code, self.deserialize(resp)))
         except Exception, e:
-            logger.exception(_('on creating', simple_user_input), e)
+            logger.exception('on creating: %s', simple_user_input)
             raise
 
         logger.debug('created items, now get them')
@@ -842,33 +842,34 @@ class ScreensaverUserResource(DBResourceTestCase):
                 format='json', data=patch_obj, 
                 authentication=self.get_credentials())
             self.assertTrue(resp.status_code in [200,201,202], 
-                _(resp.status_code, self.serialize(resp)))
+                _(resp.status_code, self.deserialize(resp)))
         except Exception, e:
             logger.exception('on patching adminuser %s' % patch_obj)
             raise
 
-        # create a screening_room_user
-        
-        patch_obj = { 'objects': [
-            {
-                'username': 'screeningroomuser1'
-            }
-        ]}
-        resource_uri = BASE_URI_DB + '/screeningroomuser'
-        try:       
-            resp = self.api_client.patch(resource_uri, 
-                format='json', data=patch_obj, 
-                authentication=self.get_credentials())
-            self.assertTrue(resp.status_code in [200,201,202], 
-                _(resp.status_code, self.serialize(resp)))
-        except Exception, e:
-            logger.exception('on patching screening_room_user %s' % patch_obj)
-            raise
+#         # create a screening_room_user
+#         
+#         patch_obj = { 'objects': [
+#             {
+#                 'username': 'screeningroomuser1'
+#             }
+#         ]}
+#         resource_uri = BASE_URI_DB + '/screeningroomuser'
+#         try:       
+#             resp = self.api_client.patch(resource_uri, 
+#                 format='json', data=patch_obj, 
+#                 authentication=self.get_credentials())
+#             self.assertTrue(resp.status_code in [200,201,202], 
+#                 _(resp.status_code, self.deserialize(resp)))
+#         except Exception, e:
+#             logger.exception('on patching screening_room_user %s' % patch_obj)
+#             raise
         
         logger.debug(_('==== test_create_user done ====='))
 
     def test1_patch_usergroups(self):
         
+        self.test0_create_user();
         group_patch = { 'objects': [
             { 
                 'name': 'usergroup1'
@@ -886,7 +887,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp = self.api_client.put(resource_uri, 
                 format='json', data=group_patch, authentication=self.get_credentials())
             self.assertTrue(resp.status_code in [200,201,202], 
-                _(resp.status_code, self.serialize(resp)))
+                _(resp.status_code, self.deserialize(resp)))
 
             resp = self.api_client.get(resource_uri, format='json', 
                 authentication=self.get_credentials(), data={ 'limit': 999 })
@@ -909,11 +910,11 @@ class ScreensaverUserResource(DBResourceTestCase):
                 'usergroups': ['usergroup1']
             },
             {
-                'username': 'jt1',
+                'username': 'screeningroomuser1',
                 'usergroups': ['usergroup2']
             },
             {
-                'username': 'bt1',
+                'username': 'adminuser',
                 'usergroups': ['usergroup3']
             },
         ]};
@@ -922,7 +923,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp = self.api_client.put(resource_uri, 
                 format='json', data=userpatch, authentication=self.get_credentials())
             self.assertTrue(resp.status_code in [200,201,202], 
-                _(resp.status_code, self.serialize(resp)))
+                _(resp.status_code, self.deserialize(resp)))
 
             data_for_get={ 'limit': 0 }        
             data_for_get.setdefault('includes', ['*'])
@@ -1004,9 +1005,6 @@ class ScreensaverUserResource(DBResourceTestCase):
             }
         try:       
             
-#             content = encode_multipart(BOUNDARY, attachedfile_item_post)
-#             logger.info('content: %r' % content)
-#             logger.info('content: %s' % content)
             content_type = MULTIPART_CONTENT
 
             resource_uri = BASE_URI_DB + '/screensaveruser/%s/attachedfiles/' % test_username
@@ -1078,7 +1076,7 @@ class ScreensaverUserResource(DBResourceTestCase):
                 format='json', 
                 data=service_activity_post, authentication=self.get_credentials())
             self.assertTrue(resp.status_code in [200,201,202], 
-                _(resp.status_code, self.serialize(resp)))
+                _(resp.status_code, self.deserialize(resp)))
 
             data_for_get={ 'limit': 0 }        
             data_for_get.setdefault('includes', ['*'])

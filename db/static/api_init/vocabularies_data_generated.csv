@@ -51,14 +51,6 @@ resource_uri,key,scope,ordinal,title
 /reports/api/v1/vocabularies/funding_support/sanofi_aventis/,sanofi_aventis,funding_support,30,sanofi_aventis
 /reports/api/v1/vocabularies/funding_support/unspecified/,unspecified,funding_support,31,unspecified
 /reports/api/v1/vocabularies/funding_support/yuan_nih_06_07/,yuan_nih_06_07,funding_support,32,yuan_nih_06_07
-/reports/api/v1/vocabularies/screen.species/bacteria/,bacteria,screen.species,0,bacteria
-/reports/api/v1/vocabularies/screen.species/c_elegans/,c_elegans,screen.species,1,c_elegans
-/reports/api/v1/vocabularies/screen.species/drosophila/,drosophila,screen.species,2,drosophila
-/reports/api/v1/vocabularies/screen.species/human/,human,screen.species,3,human
-/reports/api/v1/vocabularies/screen.species/mouse/,mouse,screen.species,4,mouse
-/reports/api/v1/vocabularies/screen.species/other/,other,screen.species,5,other
-/reports/api/v1/vocabularies/screen.species/yeast/,yeast,screen.species,6,yeast
-/reports/api/v1/vocabularies/screen.species/zebrafish/,zebrafish,screen.species,7,zebrafish
 /reports/api/v1/vocabularies/serviceactivity.type/assay_dev_consult/,assay_dev_consult,serviceactivity.type,0,assay_dev_consult
 /reports/api/v1/vocabularies/serviceactivity.type/automation/,automation,serviceactivity.type,1,automation
 /reports/api/v1/vocabularies/serviceactivity.type/image_analysis/,image_analysis,serviceactivity.type,2,image_analysis
@@ -85,3 +77,11 @@ resource_uri,key,scope,ordinal,title
 /reports/api/v1/vocabularies/serviceactivity.type/training_qpcr_roche/,training_qpcr_roche,serviceactivity.type,23,training_qpcr_roche
 /reports/api/v1/vocabularies/serviceactivity.type/training_velos/,training_velos,serviceactivity.type,24,training_velos
 /reports/api/v1/vocabularies/serviceactivity.type/training_wellmate/,training_wellmate,serviceactivity.type,25,training_wellmate
+/reports/api/v1/vocabularies/user.classification/graduate_student/,graduate_student,user.classification,0,graduate_student
+/reports/api/v1/vocabularies/user.classification/iccb_fellow/,iccb_fellow,user.classification,1,iccb_fellow
+/reports/api/v1/vocabularies/user.classification/iccb_l_nsrb_staff/,iccb_l_nsrb_staff,user.classification,2,iccb_l_nsrb_staff
+/reports/api/v1/vocabularies/user.classification/other/,other,user.classification,3,other
+/reports/api/v1/vocabularies/user.classification/postdoc/,postdoc,user.classification,4,postdoc
+/reports/api/v1/vocabularies/user.classification/principal_investigator/,principal_investigator,user.classification,5,principal_investigator
+/reports/api/v1/vocabularies/user.classification/research_assistant/,research_assistant,user.classification,6,research_assistant
+/reports/api/v1/vocabularies/user.classification/unassigned/,unassigned,user.classification,7,unassigned

@@ -7,7 +7,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
 from django.db.models import Count
 from django.utils import timezone, tzinfo
-from django.utils.timezone import make_aware, UTC
+from django.utils.timezone import make_aware
 from tastypie.bundle import Bundle
 from tastypie.resources import Resource
 

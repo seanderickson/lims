@@ -9,12 +9,13 @@ import os
 
 from django.contrib.auth.models import User, UserManager
 from django.db import migrations, models
-from django.utils.timezone import utc, make_aware
+# from django.utils.timezone import utc, make_aware
 import pytz
 
 from db.support.data_converter import default_converter
 from lims.base_settings import PROJECT_ROOT
 from reports.models import Vocabularies, ApiLog
+from datetime import timedelta
 
 
 # from reports.utils.sqlalchemy_bridge import Bridge
@@ -138,7 +139,7 @@ def create_screensaver_users(apps, schema_editor):
         # find or create the auth_user
         try:
             au = AuthUserClass.objects.get(username=username)
-            logger.info(str(('found auth_user', username)))
+            logger.debug('found auth_user: %s', username)
         except Exception, e:
             pass;
             
@@ -149,7 +150,8 @@ def create_screensaver_users(apps, schema_editor):
                     email = su.email if su.email else 'none', 
                     first_name = su.first_name, 
                     last_name = su.last_name,
-                    date_joined = datetime.datetime.utcnow().replace(tzinfo=utc),
+                    date_joined = datetime.datetime.now().replace(
+                        tzinfo=pytz.timezone('US/Eastern')),
                     is_active=False,
                     is_staff=False)
 
@@ -163,18 +165,9 @@ def create_screensaver_users(apps, schema_editor):
         # find or create the userprofile
         try:
             up = UserProfileClass.objects.get(username=username)
-            logger.info(str(('found userprofile', username)))
+            logger.debug('found userprofile: %s', username)
         except Exception, e:
             logger.info(str(('no userprofile', username)))
-#                 created_by_username = None
-#                 if su.created_by:
-#                     up
-#                     if su.created_by.ecommons_id:
-#                         created_by_username = su.created_by.ecommons_id
-#                         if not created_by_username:
-#                             created_by_username = su.created_by.login_id
-#                             if not created_by_username:
-#                                 created_by_username = su.created_by_id
             if su.created_by: 
                 created_by_username = su.created_by.username
             else:
@@ -198,18 +191,9 @@ def create_screensaver_users(apps, schema_editor):
             up.user = au
             up.save()
                 
-#                 if orm.ScreensaverUser.objects.all().filter(
-#                         user=up).exists():
-#                     msg = ('==== error: duplicate user found: ',
-#                         username, su,
-#                         orm.ScreensaverUser.objects.all().filter(user=up))
-#                     print msg
-#                     logger.error(str((msg, 'skipping')))
-#                     continue
-#                 
         su.user = up
         su.save()
-        logger.info('saved %r, %s' % (up,up.username))
+        logger.debug('saved %r, %s' % (up,up.username))
         i += 1
         
     logger.info(str(( 'Converted ', i , ' users, skipped: ', skip_count)))
@@ -225,76 +209,105 @@ def create_roles(apps, schema_editor):
     UserProfileClass = apps.get_model('reports','UserProfile')
     UserGroupClass = apps.get_model('reports','UserGroup')
     ScreensaverUser = apps.get_model('db', 'ScreensaverUser')
+    ScreensaverUserRole = apps.get_model('db', 'ScreensaverUserRole')
     role_group_map = {}
     
-    role_group_map['screensaverUser'] = \
-        UserGroupClass.objects.get_or_create(name='screensaverUser')[0]
-    role_group_map['smDsl1MutualScreens'] = \
-        UserGroupClass.objects.get_or_create(name='smallMoleculeLevel1')[0]
-    role_group_map['smDsl2MutualPositives'] = \
-        UserGroupClass.objects.get_or_create(name='smallMoleculeLevel2')[0]
-    role_group_map['smDsl3SharedScreens'] = \
-        UserGroupClass.objects.get_or_create(name='smallMoleculeLevel3')[0]
-    role_group_map['rnaiDsl1MutualScreens'] = \
-        UserGroupClass.objects.get_or_create(name='rnaiDsl1MutualScreens')[0]
-    role_group_map['rnaiDsl2MutualPositives'] = \
-        UserGroupClass.objects.get_or_create(name='rnaiDsl2MutualPositives')[0]
-    role_group_map['rnaiDsl3SharedScreens'] = \
-        UserGroupClass.objects.get_or_create(name='rnaiDsl3SharedScreens')[0]
-#      screensaver_user_role     
-# -------------------------------
-#  billingAdmin
-#  cherryPickRequestsAdmin
-#  developer
-#  labHeadsAdmin
-#  librariesAdmin
-#  libraryCopiesAdmin
-#  marcusAdmin
-#  readEverythingAdmin
-#  rnaiDsl1MutualScreens
-#  rnaiDsl2MutualPositives
-#  rnaiDsl3SharedScreens
-#  screenDataSharingLevelsAdmin
-#  screenDslExpirationNotify
-#  screenResultsAdmin
-#  screensAdmin
-#  screensaverUser
-#  serviceActivityAdmin
-#  smDsl1MutualScreens
-#  smDsl2MutualPositives
-#  smDsl3SharedScreens
-#  userAgreementExpirationNotify
-#  userChecklistItemsAdmin
-#  userRolesAdmin
-#  usersAdmin
-
-    i = j = 0
+    for ssrole in ( ScreensaverUserRole.objects.all()
+        .distinct('screensaver_user_role')
+        .values_list('screensaver_user_role', flat=True) ):
+        role_group_map[ssrole] = UserGroupClass.objects.get_or_create(name=ssrole)[0]
+        logger.info('created user group: %s',ssrole)
+    
     roles_assigned = 0
-    for up in UserProfileClass.objects.all():
-        su_query = ScreensaverUser.objects.all().filter(user=up)
-        if su_query.exists():
-            su = su_query[0]
+    users_assigned = 0
+    for su in ScreensaverUser.objects.all():
+        up = su.user
+        if su.screensaveruserrole_set.exists(): 
+            users_assigned += 1
+        for role in su.screensaveruserrole_set.all():
+            if role.screensaver_user_role in role_group_map:
+                ug = role_group_map[role.screensaver_user_role]
+                ug.users.add(up)
+                ug.save()
+                roles_assigned += 1
+            else:
+                logger.error('unknown group: %s',role.screensaver_user_role)
             
-            for role in su.screensaveruserrole_set.all():
-                 logger.debug(str(( 'user', up.username , 'found role', role.screensaver_user_role)))
-                 if j==0: i += 1
-                 j += 1
-                 if role.screensaver_user_role in role_group_map:
-                     ug = role_group_map[role.screensaver_user_role]
-                     ug.users.add(up)
-                     ug.save()
-                 else:
-                    logger.error(str(('unknown group',role.screensaver_user_role)) )
-            roles_assigned += j
-            j = 0
-    logger.info(str(('created',roles_assigned,'roles for',i,'users')))
+    logger.info(str(('created',roles_assigned,'roles for',users_assigned,'users')))
+    
+    
+#     
+#     role_group_map['screensaverUser'] = \
+#         UserGroupClass.objects.get_or_create(name='screensaverUser')[0]
+#     role_group_map['smDsl1MutualScreens'] = \
+#         UserGroupClass.objects.get_or_create(name='smallMoleculeLevel1')[0]
+#     role_group_map['smDsl2MutualPositives'] = \
+#         UserGroupClass.objects.get_or_create(name='smallMoleculeLevel2')[0]
+#     role_group_map['smDsl3SharedScreens'] = \
+#         UserGroupClass.objects.get_or_create(name='smallMoleculeLevel3')[0]
+#     role_group_map['rnaiDsl1MutualScreens'] = \
+#         UserGroupClass.objects.get_or_create(name='rnaiDsl1MutualScreens')[0]
+#     role_group_map['rnaiDsl2MutualPositives'] = \
+#         UserGroupClass.objects.get_or_create(name='rnaiDsl2MutualPositives')[0]
+#     role_group_map['rnaiDsl3SharedScreens'] = \
+#         UserGroupClass.objects.get_or_create(name='rnaiDsl3SharedScreens')[0]
+#         
+#         
+# #      screensaver_user_role     
+# # -------------------------------
+# #  billingAdmin
+# #  cherryPickRequestsAdmin
+# #  developer
+# #  labHeadsAdmin
+# #  librariesAdmin
+# #  libraryCopiesAdmin
+# #  marcusAdmin
+# #  readEverythingAdmin
+# #  rnaiDsl1MutualScreens
+# #  rnaiDsl2MutualPositives
+# #  rnaiDsl3SharedScreens
+# #  screenDataSharingLevelsAdmin
+# #  screenDslExpirationNotify
+# #  screenResultsAdmin
+# #  screensAdmin
+# #  screensaverUser
+# #  serviceActivityAdmin
+# #  smDsl1MutualScreens
+# #  smDsl2MutualPositives
+# #  smDsl3SharedScreens
+# #  userAgreementExpirationNotify
+# #  userChecklistItemsAdmin
+# #  userRolesAdmin
+# #  usersAdmin
+# 
+#     i = j = 0
+#     roles_assigned = 0
+#     for up in UserProfileClass.objects.all():
+#         su_query = ScreensaverUser.objects.all().filter(user=up)
+#         if su_query.exists():
+#             su = su_query[0]
+#             
+#             for role in su.screensaveruserrole_set.all():
+#                  logger.debug(str(( 'user', up.username , 
+#                      'found role', role.screensaver_user_role)))
+#                  if j==0: i += 1
+#                  j += 1
+#                  if role.screensaver_user_role in role_group_map:
+#                      ug = role_group_map[role.screensaver_user_role]
+#                      ug.users.add(up)
+#                      ug.save()
+#                  else:
+#                     logger.error(str(('unknown group',role.screensaver_user_role)) )
+#             roles_assigned += j
+#             j = 0
+#     logger.info(str(('created',roles_assigned,'roles for',i,'users')))
 
 
 def create_user_checklist_items(apps, schema_editor):
     
     # prerequisites: 
     # - convert checklist_item / checklist_item_event entries into into 
-    # checklistitem.* vocabularies (migration 0002)
+    # checklistitem.* vocabularies (migration 0003)
     # - create the user_checklist_item table (0002)
 
     ChecklistItem = apps.get_model('db','ChecklistItem')
@@ -315,7 +328,7 @@ def create_user_checklist_items(apps, schema_editor):
     sql_keys = [
         'suid','cigroup','ciname',
         'su_username','admin_username','admin_suid','admin_upid',
-        'date_performed', 'date_created','status',
+        'date_performed', 'date_created','status','is_notified'
         ]
     sql = '''
 select
@@ -333,7 +346,14 @@ case when cie.is_not_applicable then 'n_a'
 case when cie.is_expiration then 'deactivated' else 'activated' end
  when cie.date_performed is not null then 'completed'     
  else 'not_completed'
- end as status
+ end as status,
+ ( 
+   select 1 from screening_room_user sru 
+    where sru.last_notified_smua_checklist_item_event_id = cie.checklist_item_event_id
+       UNION    
+   select 1 from screening_room_user sru 
+    where sru.last_notified_rnaiua_checklist_item_event_id = cie.checklist_item_event_id
+) as is_notified
 from checklist_item ci
 join checklist_item_event cie using(checklist_item_id)
 join screensaver_user su on screening_room_user_id=su.screensaver_user_id
@@ -362,14 +382,35 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
             
             key = '/'.join([str(_dict['suid']),_dict['cigroup'],_dict['ciname']])
             previous_dict = uci_hash.get(key)
-            logger.debug('prev_dict: %s:%s' % (key,previous_dict))
+            logger.debug('previous_dict: %s:%s' % (key,previous_dict))
+
+            date_time = pytz.timezone('US/Eastern').localize(_dict['date_created'])                
+            if date_time.date() != _dict['date_performed']:
+                # only use the less accurate date_performed date if that date
+                # is not equal to the date_created date
+#                     date_time = _dict['date_performed']
+                date_time = pytz.timezone('US/Eastern').localize(
+                    datetime.datetime.combine(
+                        _dict['date_performed'],
+                        datetime.datetime.min.time()))
+                
+            
             if previous_dict:
                 uci = previous_dict['obj']
                 uci.admin_user_id = int(_dict['admin_suid'])
                 uci.status = _dict['status']
+                uci.previous_status = previous_dict['status']
+                if(previous_dict['is_notified']):
+                    # notified date will be this event - 60 days (smua/rnaiua)
+                    uci.status_notified_date = (
+                        _dict['date_performed'] - datetime.timedelta(days=60))
                 uci.status_date = _dict['date_performed']
+                
+                logger.debug('saving, dict: %s, prev_dict: %s, status date %s, status_notified: %s', 
+                    _dict, previous_dict, uci.status_date, uci.status_notified_date)
                 uci.save()
-                logger.debug('updated: %r' % uci)
+                logger.debug('update uci: %s,%s,%s,%s', 
+                    uci.status,uci.status_date,uci.previous_status,uci.status_notified_date)
                 
             else:
                 uci_hash[key] = _dict
@@ -385,17 +426,9 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
                 uci.save()
                 _dict['obj'] = uci
                 
-                logger.debug('created: %r' % (uci))
+                logger.debug('created uci: %s,%s,%s', uci.status, uci.status_date)
                 i += 1
 
-            date_time = pytz.utc.localize(_dict['date_created'])                
-            if date_time.date() != _dict['date_performed']:
-                # only use the less accurate date_performed date if that date
-                # is not equal to the date_created date
-#                     date_time = _dict['date_performed']
-                date_time = datetime.datetime.combine(
-                    _dict['date_performed'],
-                    datetime.datetime.min.time())
             # create the apilog for this item
             log = ApiLog()
             log.ref_resource_name = log_ref_resource_name
@@ -429,11 +462,14 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
                     _dict['date_performed'].isoformat()]
                 
                 diffs['status'] = [previous_dict['status'],_dict['status']]
+                
+                diff_keys.append('previous_status')
+                diffs['previous_status'] = [ None, previous_dict['status']]
             
                 log.diff_keys = json.dumps(diff_keys)
                 log.diffs = json.dumps(diffs)
  
-            logger.debug(str(('create log', log)))
+            logger.debug('create log: %s', log)
             
             log.save()
             log = None
@@ -454,7 +490,32 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # Note: for users migration 0005;
+        # - the fields last_notified_smua_checklist_item_event, (also rnai)
+        # will be moved to the userchecklistitem status_notified_date;
+        # And nightly batch scripts will have to be modified accordingly
+        # (property needed on the vocabulary/checklistitem: 
+        # - "expiration_interval","expire_notify_days" properties,
+        # - state machine here: i.e. status ordering, 
+        # --allowed status transitions??  
+        # --(note also, should have an "available_status_types" to restrict the 
+        # status-states that the item can move through, using this to run the 
+        # expiration reports for nightly automatic expirations.
+        #     not_completed
+        #     activated
+        #     deactivated 
+        #     na
+        #     completed
+#         migrations.AddField(
+#             model_name='userchecklistitem',
+#             name='status_notified_date', 
+#             field=models.DateField(null=True)),
+#         migrations.AddField(
+#             model_name='userchecklistitem',
+#             name='previous_status', 
+#             field=models.TextField(null=True)),
+
         migrations.RunPython(create_screensaver_users),
         migrations.RunPython(create_roles),
-        migrations.RunPython(create_user_checklist_items),
+#         migrations.RunPython(create_user_checklist_items),
     ]

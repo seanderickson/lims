@@ -110,11 +110,29 @@ ul.backgrid-paginator {
   text-align: left;
 }
 
-/** other **/
 
-/** TODO: for detail view - develop a better container for showing long text 
-  and this may not be needed **/
-.dl-horizontal  dt {
+/** Styles for using a table for detail view (may use data-list style instead, below)*/
+
+td.dl-title {
+  text-align: left;
+  background: #dddddd;
+  font-weight:bold;
+/*   padding-bottom: 4px !important; */
+  border-width: 4px;
+  border-style: solid;
+  border-color: transparent;  
+}
+.table > tbody > tr > td.dl-title {
+  border-top: 1px solid transparent;
+}
+
+td.dl-data {
+ border-top: 1px solid transparent !important;
+}
+
+/** Styles for using a data-list for detail view (may use table stye instead, above)*/
+
+.dl-horizontal dt {
   white-space: normal;
   overflow-x: inherit;
 }
@@ -123,19 +141,46 @@ ul.backgrid-paginator {
   overflow-x: inherit;
 }
 
-.form-horizontal * {
+/*DL, DT, DD TAGS LIST DATA*/
+ 
+dl dt {
+    background:#dddddd;
+/*     color:#fff; */    
+    float:left; 
+    font-weight:bold; 
+    margin-right:10px; 
+/*     padding:5px;   */
+    width:100px; 
+    vertical-align: bottom;
+}
+ 
+dl dd {
+    margin:2px 0; 
+    vertical-align: bottom;
+/*     padding:5px 0; */
+}
+
+.form-horizontal .control-label{
+  padding-top: 0px; 
+}
+.form-horizontal *{
 	min-height: 0px; 
 	padding-top: 0px; 
 	margin-bottom: 0px;
 	list-style: none;
 }
-.form-horizontal li {
+li.form-horizontal {
   display: inline;
   padding-left: 0px;
   padding-right: 5px;
 }
-.form-horizontal ul {
+ul.form-horizontal {
   display: inline;
+  padding-left: 5px;
+}
+
+ul.chosen-choices {
+  display: block;
   padding-left: 5px;
 }
 

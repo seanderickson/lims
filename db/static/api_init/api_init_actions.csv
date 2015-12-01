@@ -27,3 +27,4 @@ patch,vocabularies,vocabularies_data_generated.csv
 patch,vocabularies,vocabularies_attachedfiletype_data.csv
 patch,vocabularies,vocabularies_checklists_data.csv
 patch,metahash,metahash_fields_serviceactivity.csv
+patch,vocabularies,vocabularies_lab_affiliations_data.csv

@@ -83,36 +83,10 @@ def convert_django_autofields(apps, schema_editor):
         logger.info(str(('_update_table_autofield', table, key_field)))
         _update_table_autofield(schema_editor,table, key_field)
 
-def alter_attached_file_to_screensaver_user(apps, schema_editor):
-    db = schema_editor
-    
-    sub_table = 'attached_file'
-    fk_column = 'screensaver_user_id'
-    new_parent = 'screensaver_user'
-    new_parent_column = 'screensaver_user_id'
-    
-    logger.info(str(('alter foreign key', sub_table, fk_column, new_parent, new_parent_column)))
-    db.execute(
-        ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
-              table=sub_table, column=fk_column))
-    db.execute(
-        ( "ALTER TABLE {table} ADD COLUMN {column} integer").format(
-              table=sub_table, column=fk_column))
-    db.execute(
-        ( "update {table} set {column} = tmp_{column}").format(
-              table=sub_table, column=fk_column))
-    db.execute(
-        ("ALTER TABLE {table} ADD CONSTRAINT fk_{column} "
-            "FOREIGN KEY ({column}) "
-            "REFERENCES {other_table} ({other_column}) ").format(
-                table=sub_table, column=fk_column, 
-                other_table=new_parent, other_column=new_parent_column))
-    db.execute(
-        ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
-              table=sub_table, column=fk_column))
 
-def _alter_table_parent(db, sub_table, new_primary_key, fk_column, 
-                        new_parent, new_parent_column):
+def _alter_table_reference(db, sub_table, fk_column, 
+                        new_parent, new_parent_column, new_primary_key=None,
+                        null_ok=True ):
     
     # alter table molfile rename column reagent_id to smr_reagent_id;
     # alter table molfile add column reagent_id integer;
@@ -124,7 +98,7 @@ def _alter_table_parent(db, sub_table, new_primary_key, fk_column,
     # ALTER TABLE small_molecule_compound_name ADD PRIMARY KEY (reagent_id, ordinal);
 
     ## NOTE: we are copying/deleting/making new foreign key because it is 
-    ## proving difficult to find the constraint for the extant foreign key
+    ## proving difficult to find the constraint to drop for the extant foreign key
     logger.info(str(('alter foreign key', sub_table, fk_column, new_parent, new_parent_column)))
     db.execute(
         ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
@@ -142,31 +116,92 @@ def _alter_table_parent(db, sub_table, new_primary_key, fk_column,
                 table=sub_table, column=fk_column, 
                 other_table=new_parent, other_column=new_parent_column))
     db.execute(
-        ( "ALTER TABLE {table} ALTER COLUMN {column} set NOT NULL").format(
-              table=sub_table, column=fk_column))
-    db.execute(
         ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
               table=sub_table, column=fk_column))
-    db.execute(
-        ( "ALTER TABLE {table} ADD PRIMARY KEY ({primary_key})").format(
-              table=sub_table, primary_key=new_primary_key))
+
+    if new_primary_key or not null_ok:
+        db.execute(
+            ( "ALTER TABLE {table} ALTER COLUMN {column} set NOT NULL").format(
+                  table=sub_table, column=fk_column))
+    if new_primary_key:
+        db.execute(
+            ( "ALTER TABLE {table} ADD PRIMARY KEY ({primary_key})").format(
+                  table=sub_table, primary_key=new_primary_key))
+    
 
 def alter_table_parents(apps, schema_editor):
     db = schema_editor
-    _alter_table_parent(
-        db,'molfile', 'reagent_id','reagent_id', 'reagent', 'reagent_id')
-    _alter_table_parent(
-        db,'small_molecule_compound_name', 'reagent_id,ordinal', 
-        'reagent_id', 'reagent', 'reagent_id')
-    _alter_table_parent(
-        db,'small_molecule_pubchem_cid', 'reagent_id,pubchem_cid',
-        'reagent_id', 'reagent', 'reagent_id')
-    _alter_table_parent(
-        db,'small_molecule_chembank_id', 'reagent_id,chembank_id',
-        'reagent_id', 'reagent', 'reagent_id')
-    _alter_table_parent(
-        db,'small_molecule_chembl_id', 'reagent_id,chembl_id',
-        'reagent_id', 'reagent', 'reagent_id')
+    _alter_table_reference(
+        db,'molfile','reagent_id', 'reagent', 'reagent_id', 'reagent_id')
+    _alter_table_reference(
+        db,'small_molecule_compound_name', 
+        'reagent_id', 'reagent', 'reagent_id', 'reagent_id,ordinal')
+    _alter_table_reference(
+        db,'small_molecule_pubchem_cid',
+        'reagent_id', 'reagent', 'reagent_id', 'reagent_id,pubchem_cid')
+    _alter_table_reference(
+        db,'small_molecule_chembank_id',
+        'reagent_id', 'reagent', 'reagent_id', 'reagent_id,chembank_id')
+    _alter_table_reference(
+        db,'small_molecule_chembl_id',
+        'reagent_id', 'reagent', 'reagent_id', 'reagent_id,chembl_id')
+
+
+def alter_table_references(apps, schema_editor):
+    db = schema_editor
+    
+    # move foreign key from screening_room_user to screensaver_user
+    _alter_table_reference(
+        db,'attached_file', 'screensaver_user_id', 'screensaver_user', 
+        'screensaver_user_id', null_ok=True)
+    _alter_table_reference(
+        db,'library', 'owner_screener_id','screensaver_user', 
+        'screensaver_user_id')
+    _alter_table_reference(
+        db,'service_activity', 'serviced_user_id','screensaver_user', 
+        'screensaver_user_id', null_ok=False)
+    _alter_table_reference(
+        db,'cherry_pick_request', 'requested_by_id','screensaver_user', 
+        'screensaver_user_id', null_ok=False)
+    _alter_table_reference(
+        db,'cherry_pick_request', 'volume_approved_by_id','screensaver_user', 
+        'screensaver_user_id', null_ok=True)
+    _alter_table_reference(
+        db,'screen', 'lead_screener_id','screensaver_user', 
+        'screensaver_user_id', null_ok=True)
+    _alter_table_reference(
+        db,'screen', 'lab_head_id','screensaver_user', 
+        'screensaver_user_id', null_ok=True)
+
+#     _alter_table_reference(
+#         db,'lab_head', 'screensaver_user_id','screensaver_user', 
+#         'screensaver_user_id', null_ok=True)
+
+#     sub_table = 'attached_file'
+#     fk_column = 'screensaver_user_id'
+#     new_parent = 'screensaver_user'
+#     new_parent_column = 'screensaver_user_id'
+#     
+#     logger.info(str(('alter foreign key', sub_table, fk_column, new_parent, new_parent_column)))
+#     db.execute(
+#         ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
+#               table=sub_table, column=fk_column))
+#     db.execute(
+#         ( "ALTER TABLE {table} ADD COLUMN {column} integer").format(
+#               table=sub_table, column=fk_column))
+#     db.execute(
+#         ( "update {table} set {column} = tmp_{column}").format(
+#               table=sub_table, column=fk_column))
+#     db.execute(
+#         ("ALTER TABLE {table} ADD CONSTRAINT fk_{column} "
+#             "FOREIGN KEY ({column}) "
+#             "REFERENCES {other_table} ({other_column}) ").format(
+#                 table=sub_table, column=fk_column, 
+#                 other_table=new_parent, other_column=new_parent_column))
+#     db.execute(
+#         ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
+#               table=sub_table, column=fk_column))
+
 
 def create_reagent_ids(apps, schema_editor):
     
@@ -269,8 +304,55 @@ class Migration(migrations.Migration):
         migrations.RemoveField(model_name='copy',name='version'),
         migrations.RemoveField(model_name='plate',name='version'),
         migrations.RemoveField(model_name='wellvolumeadjustment',name='version'),
+
+        # screening_room_user decommission
+        migrations.AddField(
+            model_name='screensaveruser',
+            name='classification', 
+            field=models.TextField(null=True)),
+        migrations.RunSQL(
+            'UPDATE screensaver_user su '
+            ' set classification=user_classification '
+            ' from  screening_room_user sru '
+            ' where sru.screensaver_user_id=su.screensaver_user_id'),
+        migrations.AddField(
+            model_name='screensaveruser',
+            name='lab_head', 
+            field=models.ForeignKey('ScreensaverUser',null=True,
+                related_name='lab_member')),
+        migrations.RunSQL(
+            'UPDATE screensaver_user su '
+            ' set lab_head_id=sru.lab_head_id '
+            ' from  screening_room_user sru '
+            ' where sru.screensaver_user_id=su.screensaver_user_id'),
+        migrations.RunSQL(
+            'UPDATE screensaver_user su '
+            ' set lab_head_id=lh.screensaver_user_id '
+            ' from  lab_head lh '
+            ' where lh.screensaver_user_id=su.screensaver_user_id'),
+
+#         migrations.AddField(
+#             model_name='screensaveruser',
+#             name='lab_head_affiliation_link', 
+#             field=models.ForeignKey('LabAffiliation',null=True)),
+#         migrations.RunSQL(
+#             'UPDATE screensaver_user su '
+#             ' set lab_head_affiliation_link_id=lh.lab_affiliation_id '
+#             ' from lab_head lh '
+#             ' where su.screensaver_user_id=lh.screensaver_user_id'),
          
-        migrations.RunPython(alter_attached_file_to_screensaver_user),
+        migrations.RunPython(alter_table_references),
+        
+        # move the lab_head->screening_room_user explicitly, because there are dependent fk's
+        migrations.RunSQL(
+            'ALTER TABLE lab_head '
+            'DROP CONSTRAINT fk_lab_head_to_screening_room_user'),
+        migrations.RunSQL(
+            'ALTER TABLE lab_head '
+            'ADD CONSTRAINT fk_lab_head_to_screensaver_user '
+            'FOREIGN KEY (screensaver_user_id) '
+            'REFERENCES screensaver_user(screensaver_user_id)'),
+
         migrations.RunPython(alter_table_parents),
         migrations.RunSQL(("ALTER TABLE {table} DROP COLUMN {column} ").format(
                   table='molfile', column='ordinal')),
@@ -363,7 +445,9 @@ class Migration(migrations.Migration):
                 ('item_group', models.TextField()),
                 ('item_name', models.TextField()),
                 ('status', models.TextField()),
+                ('previous_status', models.TextField(null=True)),
                 ('status_date', models.DateField()),
+                ('status_notified_date', models.DateField(null=True)),
             ],
             options={
                 'db_table': 'user_checklist_item',
@@ -389,6 +473,10 @@ class Migration(migrations.Migration):
             name='type',
             field=models.TextField(null=True),
         ),
+        migrations.AlterField(
+            model_name='attachedfile',
+            name='attached_file_type',
+            field=models.ForeignKey(to='db.AttachedFileType', null=True)),
         migrations.AddField(
             model_name='serviceactivity',
             name='funding_support',
@@ -409,6 +497,25 @@ class Migration(migrations.Migration):
             name='screenfundingsupports',
             unique_together=set([('screen', 'funding_support')]),
         ),
-               
+        migrations.CreateModel(
+            name='UserFacilityUsageRole',
+            fields=[
+                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('facility_usage_role', models.TextField()),
+                ('screensaver_user', models.ForeignKey(to='db.ScreensaverUser')),
+            ],
+            options={
+                'db_table': 'user_facility_usage_role',
+            },
+        ),
+        migrations.AlterUniqueTogether(
+            name='userfacilityusagerole',
+            unique_together=set([('screensaver_user', 'facility_usage_role')]),
+        ),
+        migrations.AddField(
+            model_name='screensaveruser',
+            name='lab_head_affiliation', 
+            field=models.TextField(null=True)),
+        
         
     ]

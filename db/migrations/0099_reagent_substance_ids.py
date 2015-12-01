@@ -85,7 +85,7 @@ def create_substance_ids(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0016_plate_volume'),
+        ('db', '0098_db_post_migrate'),
     ]
 
     operations = [

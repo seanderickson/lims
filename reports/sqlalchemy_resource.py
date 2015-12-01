@@ -43,12 +43,12 @@ def un_cache(_func):
     ''' 
     @wraps(_func)
     def _inner(self, *args, **kwargs):
-        logger.warn(str(('decorator un_cache', self, kwargs )))
+        logger.info('decorator un_cache: %s, %s', self, _func )
         SqlAlchemyResource.clear_cache(self)
         SqlAlchemyResource.set_caching(self,False)
         result = _func(self, *args, **kwargs)
         SqlAlchemyResource.set_caching(self,True)
-        logger.warn(str(('decorator un_cache done', kwargs )))
+        logger.info('decorator un_cache done: %s, %s', self, _func )
         return result
 
     return _inner
@@ -155,19 +155,22 @@ class SqlAlchemyResource(Resource):
         TODO: this method can be static
         TODO: this method is not SqlAlchemy specific
         '''
-        logger.info(str(('get_visible_fields: field_hash initial: ', 
-            schema_fields.keys(),manual_field_includes )))
+        DEBUG_VISIBILITY = False or logger.isEnabledFor(logging.DEBUG)
+        
+        if DEBUG_VISIBILITY:
+            logger.info('get_visible_fields: field_hash initial: %s, manual: %s', 
+                schema_fields.keys(),manual_field_includes )
         try:
             if visibilities:
                 visibilities = set(visibilities)
             else:
-                visibilities = set(['list'])
+                visibilities = set(['l'])
             if is_for_detail:
-                visibilities.add('detail')
+                visibilities.add('d')
                 # also return the edit fields, let the UI filter them
                 # expedient, so the model does not have to be reloaded to edit
                 # TODO: review; security issue
-                visibilities.add('edit')
+                visibilities.add('e')
             temp = { key:field for key,field in schema_fields.items() 
                 if ((field.get('visibility', None) 
                         and visibilities & set(field['visibility'])) 
@@ -182,7 +185,8 @@ class SqlAlchemyResource(Resource):
             dependency_fields = set()
             for field in temp.values():
                 dependency_fields.update(field.get('dependencies',[]))
-            logger.info(str(('dependency_fields', dependency_fields)))
+            if DEBUG_VISIBILITY:
+                logger.info('dependency_fields %s', dependency_fields)
             if dependency_fields:
                 temp.update({ key:field 
                     for key,field in schema_fields.items() if key in dependency_fields })
@@ -195,7 +199,8 @@ class SqlAlchemyResource(Resource):
             field_hash = OrderedDict(sorted(temp.iteritems(), 
                 key=lambda x: x[1].get('ordinal',999))) 
     
-            logger.info(str(('field_hash final: ', field_hash.keys() )))
+            if DEBUG_VISIBILITY:
+                logger.info('field_hash final: %s', field_hash.keys())
             return field_hash
 
         except Exception, e:
@@ -310,9 +315,9 @@ class SqlAlchemyResource(Resource):
                         stmt2 = stmt2.select_from(join_stmt).label(key)
                         columns[key] = stmt2
                 else:
-                    logger.warn(str((
-                        'field is not in the base tables or in a linked field, '
-                        'and is not custom', key)))
+                    logger.warn(
+                        'field is not in the base tables nor in a linked field, '
+                        'and is not custom: %s', key)
             if DEBUG_BUILD_COLUMNS: logger.info(str(('columns', columns.keys())))
             return columns
         except Exception, e:
@@ -327,8 +332,11 @@ class SqlAlchemyResource(Resource):
         This method borrows from tastypie.resources.ModelResource.apply_sorting
         @param order_params passed as list in the request.GET hash
         '''
-        logger.info('build sqlalchemy ordering: %r, visible fields: %r'
-            % (order_params,visible_fields.keys()))
+        DEBUG_ORDERING = False or logger.isEnabledFor(logging.DEBUG)
+        
+        if DEBUG_ORDERING:
+            logger.info('build sqlalchemy ordering: %s, visible fields: %s',
+                order_params,visible_fields.keys())
         if order_params and isinstance(order_params, basestring):
             # standard, convert single valued list params
             order_params = [order_params]
@@ -346,7 +354,8 @@ class SqlAlchemyResource(Resource):
             else:
                 logger.warn(str(('order_by field not in visible fields, skipping: ', 
                     order_by )))
-        logger.info('order_clauses %r' % order_clauses)     
+        if DEBUG_ORDERING:
+            logger.info('order_clauses %s',order_clauses)     
         return order_clauses
     
     @staticmethod
@@ -379,8 +388,11 @@ class SqlAlchemyResource(Resource):
 
     @staticmethod
     def build_sqlalchemy_filters(schema, param_hash={}, **kwargs):
-        logger.info('build_sqlalchemy_filters: param_hash %r, kwargs: %r' 
-            % (param_hash, kwargs))
+        DEBUG_FILTERS = False or logger.isEnabledFor(logging.DEBUG)
+        
+        if DEBUG_FILTERS: 
+            logger.info('build_sqlalchemy_filters: param_hash %s, kwargs: %s', 
+                param_hash, kwargs)
 
         # ordinary filters
         (filter_expression, filter_fields) = \
@@ -414,8 +426,9 @@ class SqlAlchemyResource(Resource):
             else: 
                 filter_expression = search_expressions
                 
-        logger.info('filter_expression: %s, filter_fields: %r'
-            % (filter_expression, filter_fields))
+        if DEBUG_FILTERS: 
+            logger.info('filter_expression: %s, filter_fields: %s',
+                filter_expression, filter_fields)
         
         return (filter_expression,filter_fields)
     
@@ -425,7 +438,7 @@ class SqlAlchemyResource(Resource):
         Attempt to create a SqlAlchemy whereclause out of django style filters:
         - field_name__filter_expression
         '''
-        DEBUG_FILTERS = True or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_FILTERS = False or logger.isEnabledFor(logging.DEBUG)
         logger.debug('build_sqlalchemy_filters_from_hash %r' % param_hash)
         lookup_sep = django.db.models.constants.LOOKUP_SEP
 
@@ -566,7 +579,7 @@ class SqlAlchemyResource(Resource):
                 expressions.append(expression)
                 filtered_fields.append(field_name)
                 
-            logger.info('filtered_fields: %s' % filtered_fields)
+            logger.debug('filtered_fields: %s', filtered_fields)
             if DEBUG_FILTERS:
                 logger.info(str(('values', _values)))
                 
@@ -665,6 +678,7 @@ class SqlAlchemyResource(Resource):
         
         TODO: cache clearing on database writes
         '''
+        DEBUG_CACHE = False or logger.isEnabledFor(logging.DEBUG)
         if limit == 0:
             raise Exception('limit for caching must be >0')
         
@@ -676,15 +690,16 @@ class SqlAlchemyResource(Resource):
             # for the memcache
             m = hashlib.md5()
             compiled_stmt = str(stmt.compile(compile_kwargs={"literal_binds": True}))
-            logger.debug(str(('compiled_stmt',compiled_stmt)))
+            logger.debug('compiled_stmt %s',compiled_stmt)
             if 'limit' in compiled_stmt.lower():
                 # remove limit and offset; will calculate
                 compiled_stmt = compiled_stmt[:compiled_stmt.lower().rfind('limit')]
-            logger.debug(str(('compiled_stmt for hash key', compiled_stmt)))
+            logger.debug('compiled_stmt for hash key: %s', compiled_stmt)
             key_digest = '%s_%s_%s' %(compiled_stmt, str(limit), str(offset))
             m.update(key_digest)
             key = m.hexdigest()
-            logger.debug(str(('hash key:', key_digest, key, limit, offset)))
+            logger.debug('hash key: digest: %s, key: %s, limit: %s, offset: %s', 
+                key_digest, key, limit, offset)
             cache_hit = cache.get(key)
             if cache_hit:
                 if ('stmt' not in cache_hit or
@@ -696,7 +711,9 @@ class SqlAlchemyResource(Resource):
                 # Note: if no cache hit, then retrive limit*n results, and 
                 # cache several iterations at once.
                 new_limit = limit * prefetch_number 
-                logger.info(str(('limit', limit, 'new limit for caching', new_limit)))
+                if DEBUG_CACHE:
+                    logger.info('no cache hit, create cache, limit: %s, new limit for caching: %s',
+                        limit, new_limit)
                 if new_limit > 0:
                     stmt = stmt.limit(new_limit)
                 logger.info('no cache hit, executing stmt')
@@ -704,9 +721,11 @@ class SqlAlchemyResource(Resource):
                 prefetched_result = [dict(row) for row in resultset] if resultset else []
                 logger.info('executed stmt')
                 
-                logger.info(str(('no cache hit, execute count')))
+                if DEBUG_CACHE:
+                    logger.info('no cache hit, execute count')
                 count = conn.execute(count_stmt).scalar()
-                logger.info(str(('count', count)))
+                if DEBUG_CACHE:
+                    logger.info('count: %s', count)
                 
                 # now fill in the cache with the prefetched sets or rows
                 for y in range(prefetch_number):
@@ -722,16 +741,17 @@ class SqlAlchemyResource(Resource):
                             'stmt': compiled_stmt,
                             'cached_result': _result,
                             'count': count }
-                        logger.info(str(('add to cache, key', key, limit, new_offset)))
+                        if DEBUG_CACHE:
+                            logger.info('add to cache, key: %s, limit: %s, offset: %s',
+                                key, limit, new_offset)
                         cache.set( key, _cache, None)
                         if y == 0:
                             cache_hit = _cache
                     else:
-                        logger.info(str(('not caching: prefetched length: ',
-                            len(prefetched_result), _start, 'end')))
+                        logger.info('not caching: prefetched length: %s, start: %s, end: %s',
+                            len(prefetched_result), _start, 'end')
                         break
-                logger.info(str(('cached iterations:', y+1)))
-#                 cached_result = [dict(row) for row in resultset] if resultset else []
+                logger.info('store cached iterations: %s', y+1)
             else:
                 logger.info(str(('cache hit')))   
                 
@@ -770,19 +790,20 @@ class SqlAlchemyResource(Resource):
                 offset = -offset
             stmt = stmt.offset(offset)
     
-            logger.info(str(('offset', offset, 'limit', limit)))
+            logger.debug(str(('offset', offset, 'limit', limit)))
             conn = self.bridge.get_engine().connect()
             
-            logger.info(str(('stmt', 
-                str(stmt.compile(compile_kwargs={"literal_binds": True})), 
-                'param_hash', param_hash)))
+            if True:
+                logger.info('stmt: %s, param_hash: %s ', 
+                    str(stmt.compile(compile_kwargs={"literal_binds": True})), 
+                    param_hash)
             if DEBUG_STREAMING:
                 logger.info(str(('count stmt', str(count_stmt))))
             
             desired_format = param_hash.get('desired_format',self.get_format(request))
             result = None
             if desired_format == 'application/json':
-                logger.info(str(('streaming json')))
+                logger.debug('streaming json')
                 if not is_for_detail and use_caching and self.use_cache and limit > 0:
                     cache_hit = self._cached_resultproxy(
                         stmt, count_stmt, param_hash, limit, offset)
@@ -798,11 +819,14 @@ class SqlAlchemyResource(Resource):
                     logger.info(str(('====count====', count)))
                     
                 else:
-                    logger.info(str(('execute stmt')))
+                    if DEBUG_STREAMING:
+                        logger.info('execute count stmt')
                     count = conn.execute(count_stmt).scalar()
-                    logger.info('excuted count stmt')
+                    if DEBUG_STREAMING:
+                        logger.info('excuted count stmt')
                     result = conn.execute(stmt)
-                    logger.info('excuted stmt')
+                    if DEBUG_STREAMING:
+                        logger.info('excuted stmt')
     
                 if not meta:
                     meta = {
@@ -858,8 +882,8 @@ class SqlAlchemyResource(Resource):
             is_for_detail=False,
             downloadID=None, title_function=None, meta=None):
           
-        logger.info(str(('meta', meta, 'session', request.session, 
-            request.session.session_key)))
+        logger.debug('meta %s, session key: %s', 
+            meta,request.session.session_key)
 
         try:
                     
@@ -870,8 +894,8 @@ class SqlAlchemyResource(Resource):
             desired_format = param_hash.get(
                 'desired_format',self.get_format(request))
             content_type=build_content_type(desired_format)
-            logger.info(str(('desired_format', desired_format, 
-                'content_type', content_type)))
+            logger.debug('desired_format: %s, content_type: %s', 
+                desired_format, content_type)
             
             response = None
             

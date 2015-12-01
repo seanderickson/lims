@@ -190,7 +190,7 @@ class Migration(migrations.Migration):
                 ('is_expiration', models.BooleanField()),
                 ('checklist_item_id', models.IntegerField()),
                 ('is_not_applicable', models.BooleanField()),
-                ('date_created', models.DateTimeField()),
+                ('date_created', models.DateTimeField(default=django.utils.timezone.now)),
                 ('date_loaded', models.DateTimeField(null=True, blank=True)),
                 ('date_publicly_available', models.DateTimeField(null=True, blank=True)),
             ],
@@ -251,7 +251,7 @@ class Migration(migrations.Migration):
                 ('assay_protocol_comments', models.TextField(blank=True)),
                 ('cherry_pick_assay_protocols_followed', models.TextField(blank=True)),
                 ('cherry_pick_followup_results_status', models.TextField(blank=True)),
-                ('date_created', models.DateTimeField()),
+                ('date_created', models.DateTimeField(default=django.utils.timezone.now)),
                 ('keep_source_plate_cherry_picks_together', models.BooleanField()),
                 ('date_loaded', models.DateTimeField(null=True, blank=True)),
                 ('date_publicly_available', models.DateTimeField(null=True, blank=True)),
@@ -280,15 +280,15 @@ class Migration(migrations.Migration):
                 'db_table': 'cherry_pick_request_update_activity',
             },
         ),
-        migrations.CreateModel(
-            name='CollaboratorLink',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-            ],
-            options={
-                'db_table': 'collaborator_link',
-            },
-        ),
+#         migrations.CreateModel(
+#             name='CollaboratorLink',
+#             fields=[
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+#             ],
+#             options={
+#                 'db_table': 'collaborator_link',
+#             },
+#         ),
         migrations.CreateModel(
             name='Copy',
             fields=[
@@ -297,7 +297,7 @@ class Migration(migrations.Migration):
                 ('name', models.TextField()),
                 ('copy_id', models.AutoField(serialize=False, primary_key=True)),
                 ('comments', models.TextField(blank=True)),
-                ('date_created', models.DateTimeField()),
+                ('date_created', models.DateTimeField(default=django.utils.timezone.now)),
                 ('date_plated', models.DateField(null=True, blank=True)),
                 ('primary_plate_status', models.TextField()),
                 ('primary_plate_location_id', models.IntegerField(null=True, blank=True)),
@@ -493,7 +493,7 @@ class Migration(migrations.Migration):
                 ('screening_status', models.TextField()),
                 ('date_received', models.DateField(null=True, blank=True)),
                 ('date_screenable', models.DateField(null=True, blank=True)),
-                ('date_created', models.DateTimeField()),
+                ('date_created', models.DateTimeField(default=django.utils.timezone.now)),
                 ('plate_size', models.TextField()),
                 ('latest_released_contents_version_id', models.IntegerField(null=True, blank=True)),
                 ('experimental_well_count', models.IntegerField(null=True, blank=True)),
@@ -543,7 +543,7 @@ class Migration(migrations.Migration):
 #                 ('max_remaining_volume', models.FloatField(null=True, blank=True)),
 #                 ('screening_count', models.IntegerField(null=True, blank=True)),
                 ('facility_id', models.TextField(blank=True)),
-                ('date_created', models.DateTimeField()),
+                ('date_created', models.DateTimeField(default=django.utils.timezone.now)),
                 ('status', models.TextField()),
                 ('retired_activity_id', models.IntegerField(unique=True, null=True, blank=True)),
                 ('plated_activity_id', models.IntegerField(unique=True, null=True, blank=True)),
@@ -662,7 +662,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('screen_id', models.AutoField(serialize=False, primary_key=True)),
                 ('version', models.IntegerField()),
-                ('date_created', models.DateTimeField()),
+                ('date_created', models.DateTimeField(default=django.utils.timezone.now)),
                 ('screen_type', models.TextField()),
                 ('title', models.TextField()),
                 ('summary', models.TextField(blank=True)),
@@ -790,7 +790,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
                 ('keyword', models.TextField()),
-                ('screen', models.ForeignKey(to='db.Screen')),
+                ('screen', models.ForeignKey(to='db.Screen', related_name='keywords')),
             ],
             options={
                 'db_table': 'screen_keyword',
@@ -814,7 +814,7 @@ class Migration(migrations.Migration):
                 ('version', models.IntegerField()),
                 ('replicate_count', models.IntegerField()),
                 ('experimental_well_count', models.IntegerField()),
-                ('date_created', models.DateTimeField()),
+                ('date_created', models.DateTimeField(default=django.utils.timezone.now)),
                 ('channel_count', models.IntegerField(null=True, blank=True)),
                 ('date_loaded', models.DateTimeField(null=True, blank=True)),
                 ('date_publicly_available', models.DateTimeField(null=True, blank=True)),
@@ -1198,7 +1198,8 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='screensaveruser',
             name='created_by',
-            field=models.ForeignKey(blank=True, to='db.ScreensaverUser', null=True),
+            field=models.ForeignKey(blank=True, to='db.ScreensaverUser', 
+                null=True, related_name='created_user'),
         ),
 #         migrations.AddField(
 #             model_name='screensaveruser',
@@ -1320,11 +1321,11 @@ class Migration(migrations.Migration):
             name='library',
             field=models.ForeignKey(to='db.Library'),
         ),
-        migrations.AddField(
-            model_name='collaboratorlink',
-            name='screen',
-            field=models.ForeignKey(to='db.Screen'),
-        ),
+#         migrations.AddField(
+#             model_name='collaboratorlink',
+#             name='screen',
+#             field=models.ForeignKey(to='db.Screen'),
+#         ),
         migrations.AddField(
             model_name='cherrypickrequestupdateactivity',
             name='cherry_pick_request',
@@ -1338,7 +1339,8 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='cherrypickrequest',
             name='created_by',
-            field=models.ForeignKey(blank=True, to='db.ScreensaverUser', null=True),
+            field=models.ForeignKey(blank=True, to='db.ScreensaverUser', 
+                null=True, related_name='created_cherry_pick'),
         ),
         migrations.AddField(
             model_name='cherrypickrequest',
@@ -1378,7 +1380,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='attachedfile',
             name='attached_file_type',
-            field=models.ForeignKey(blank=True, to='db.AttachedFileType', null=True),
+            field=models.ForeignKey(blank=True, to='db.AttachedFileType', null=False),
         ),
         migrations.AddField(
             model_name='assaywell',
@@ -1444,7 +1446,8 @@ class Migration(migrations.Migration):
             name='LabHead',
             fields=[
                 ('screensaver_user', models.OneToOneField(primary_key=True, serialize=False, to='db.ScreeningRoomUser')),
-                ('lab_affiliation', models.ForeignKey(blank=True, to='db.LabAffiliation', null=True)),
+                ('lab_affiliation', models.ForeignKey(blank=True, 
+                    to='db.LabAffiliation', null=True)),
             ],
             options={
                 'db_table': 'lab_head',
@@ -1506,7 +1509,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='serviceactivity',
             name='serviced_user',
-            field=models.ForeignKey(to='db.ScreeningRoomUser'),
+            field=models.ForeignKey(to='db.ScreensaverUser'),
         ),
         migrations.AddField(
             model_name='screenupdateactivity',
@@ -1549,7 +1552,8 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='screen',
             name='lead_screener',
-            field=models.ForeignKey(blank=True, to='db.ScreeningRoomUser', null=True),
+            field=models.ForeignKey(blank=True, to='db.ScreensaverUser', 
+                null=True, related_name='led_screen'),
         ),
         migrations.AddField(
             model_name='screen',
@@ -1574,7 +1578,8 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='library',
             name='owner_screener',
-            field=models.ForeignKey(blank=True, to='db.ScreeningRoomUser', null=True),
+            field=models.ForeignKey(blank=True, to='db.ScreensaverUser', 
+                null=True, related_name='owned_library'),
         ),
         migrations.AddField(
             model_name='labactivity',
@@ -1589,15 +1594,26 @@ class Migration(migrations.Migration):
             name='genegenbankaccessionnumber',
             unique_together=set([('gene', 'genbank_accession_number')]),
         ),
+        migrations.AlterUniqueTogether(
+            name='screenkeyword',
+            unique_together=set([('screen', 'keyword')]),
+        ),
+        
         migrations.AddField(
             model_name='equipmentused',
             name='lab_activity',
             field=models.ForeignKey(to='db.LabActivity'),
         ),
+#         migrations.AddField(
+#             model_name='collaboratorlink',
+#             name='collaborator',
+#             field=models.ForeignKey(to='db.ScreeningRoomUser'),
+#         ),
         migrations.AddField(
-            model_name='collaboratorlink',
-            name='collaborator',
-            field=models.ForeignKey(to='db.ScreeningRoomUser'),
+            model_name='screen',
+            name='collaborators',
+            field=models.ManyToManyField(to='db.ScreensaverUser',
+                related_name='collaborating_screens'),
         ),
         migrations.AddField(
             model_name='cherrypickrequestupdateactivity',
@@ -1607,12 +1623,14 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='cherrypickrequest',
             name='requested_by',
-            field=models.ForeignKey(to='db.ScreeningRoomUser'),
+            field=models.ForeignKey(to='db.ScreeningRoomUser',
+                                    related_name='requested_cherry_pick'),
         ),
         migrations.AddField(
             model_name='cherrypickrequest',
             name='volume_approved_by',
-            field=models.ForeignKey(blank=True, to='db.AdministratorUser', null=True),
+            field=models.ForeignKey(blank=True, to='db.AdministratorUser', 
+                null=True, related_name='approved_cherry_pick'),
         ),
         migrations.AddField(
             model_name='checklistitemeventupdateactivity',
@@ -1676,7 +1694,8 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='screen',
             name='lab_head',
-            field=models.ForeignKey(blank=True, to='db.LabHead', null=True),
+            field=models.ForeignKey(blank=True, to='db.ScreensaverUser', 
+                related_name='lab_head_screen', null=True),
         ),
         migrations.AddField(
             model_name='cherrypickassayplate',

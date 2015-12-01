@@ -2,7 +2,6 @@
 from __future__ import unicode_literals
 
 from datetime import datetime, time, date,timedelta
-from django.utils.timezone import make_aware
 from pytz import timezone
 import json
 import logging
@@ -32,8 +31,8 @@ def _create_generic_log(activity):
     log = ApiLog()
 
     log.comment = activity.comments
-    log.date_time = make_aware(datetime.combine(
-        activity.date_of_activity, time()),pytz.timezone('US/Eastern'))
+    log.date_time = pytz.timezone('US/Eastern').localize(
+        datetime.combine(activity.date_of_activity, time()))
     if log.date_time not in times_seen:
         times_seen.add(log.date_time)
     else:

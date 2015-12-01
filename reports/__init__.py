@@ -18,3 +18,7 @@ HEADER_APILOG_COMMENT = 'HTTP_X_APILOG_COMMENT'
 
 LIST_BRACKETS = '[]' # default char to surround nested list in xls, csv
 
+class ValidationError(Exception):
+    def __init__(self,errors):
+        super(ValidationError, self).__init__('validation error')
+        self.errors = errors

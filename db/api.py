@@ -24,10 +24,8 @@ import django.db.models.sql.constants
 from django.forms.models import model_to_dict
 from django.http import Http404
 from django.http.response import HttpResponse
-from sqlalchemy import select, asc, text
+from sqlalchemy import select, asc, text, case
 import sqlalchemy
-from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.dialects.postgresql import Any
 from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.sql import and_, or_, not_          
 from sqlalchemy.sql import asc, desc, alias, Alias
@@ -51,9 +49,9 @@ from tastypie.resources import Resource
 from tastypie.utils import timezone
 from tastypie.utils.urls import trailing_slash
 
-from db.models import ScreensaverUser, Screen, LabHead, LabAffiliation, \
-    ScreeningRoomUser, ScreenResult, DataColumn, Library, Plate, Copy, \
-    CopyWell, \
+from db.models import ScreensaverUser, Screen, \
+    ScreenResult, DataColumn, Library, Plate, Copy, \
+    CopyWell, UserFacilityUsageRole, \
     PlateLocation, Reagent, Well, LibraryContentsVersion, Activity, \
     AdministrativeActivity, SmallMoleculeReagent, SilencingReagent, GeneSymbol, \
     NaturalProductReagent, Molfile, Gene, GeneGenbankAccessionNumber, \
@@ -64,6 +62,7 @@ from db.support import lims_utils
 from db.support.data_converter import default_converter
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT
+from reports import ValidationError
 from reports.api import ManagedModelResource, ManagedResource, ApiLogResource, \
     UserGroupAuthorization, ManagedLinkedResource, log_obj_update, \
     UnlimitedDownloadResource, IccblBaseResource, VocabulariesResource, \
@@ -84,47 +83,6 @@ logger = logging.getLogger(__name__)
 def _get_raw_time_string():
   return timezone.now().strftime("%Y%m%d%H%M%S")
     
-
-class LabAffiliationResource(ManagedModelResource):   
-    class Meta:
-        queryset = LabAffiliation.objects.all()
-        authentication = MultiAuthentication(BasicAuthentication(), 
-                                             SessionAuthentication())
-        authorization= UserGroupAuthorization()
-    
-class LabHeadResource(ManagedModelResource):
-
-    screens = fields.ToManyField('db.api.ScreenResource', 'screens', 
-        related_name='lab_head', blank=True, null=True)
-
-    lab_affiliation = fields.ToOneField('db.api.LabAffiliationResource', 
-        attribute='lab_affiliation',  full=True, null=True)
-    
-    # rather than walk the inheritance hierarchy, will flatten this hierarchy 
-    # in the dehydrate method
-    #    screening_room_user = fields.ToOneField('db.api.ScreeningRoomUserResource', 
-    #        attribute='screensaver_user',  full=True)
-    
-    id = fields.IntegerField(attribute='screensaver_user_id')
-    
-    class Meta:
-        queryset = LabHead.objects.all()
-        authentication = MultiAuthentication(BasicAuthentication(), 
-                                             SessionAuthentication())
-        authorization= UserGroupAuthorization()
-        
-    def dehydrate(self, bundle):
-        # flatten the inheritance hierarchy, rather than show nested
-        # "lab_head->screening_room_user->screensaver_user"
-        bundle.data.update(model_to_dict(bundle.obj.screensaver_user))
-        bundle.data.update(model_to_dict(
-            bundle.obj.screensaver_user.screensaver_user))
-        bundle.data['screens'] = [
-            model_to_dict(x) 
-            for x in Screen.objects.filter(
-                lab_head_id=bundle.obj.screensaver_user.screensaver_user_id)]
-        
-        return bundle        
     
 
 class PlateLocationResource(ManagedModelResource):
@@ -689,7 +647,7 @@ class SmallMoleculeReagentResource(ManagedLinkedResource):
         super(SmallMoleculeReagentResource,self).__init__(**kwargs)
 
 
-class ScreenResource(SqlAlchemyResource,ManagedModelResource):
+class ScreenResource(ApiResource):
     
     class Meta:
         queryset = Screen.objects.all() #.order_by('facility_id')
@@ -760,7 +718,7 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
             param_hash['facility_id__eq'] = facility_id
 
         screen_type = param_hash.get('screen_type__eq', None)
-
+        screens_for_username = param_hash.get('screens_for_username', None)
         try:
             
             # general setup
@@ -775,6 +733,9 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
 #                 else:
 #                     manual_field_includes.append('fields.smallmoleculereagent')
             
+            if screens_for_username:
+                screener_role_cte = ScreenResource.get_screener_role_cte()
+                manual_field_includes.add('screensaver_user_role')
             
             if DEBUG_GET_LIST: 
                 logger.info(str(('manual_field_includes', manual_field_includes)))
@@ -784,7 +745,7 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
                   
             visibilities = set()                
             if is_for_detail:
-                visibilities.update(['detail','summary'])
+                visibilities.update(['d','e'])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
                 is_for_detail=is_for_detail, visibilities=visibilities)
@@ -809,8 +770,40 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
             _cpap = self.bridge['cherry_pick_assay_plate']
             _cplt = self.bridge['cherry_pick_liquid_transfer']
             _sfs = self.bridge['screen_funding_supports']
-
+            _screen_collaborators = self.bridge['screen_collaborators']
+            _user_cte = ScreensaverUserResource.get_user_cte().cte('users')
+            _collaborator = _user_cte.alias('collaborator')
+            _activity = self.bridge['activity']
+            _srua = self.bridge['screen_result_update_activity']
+            _screen_keyword = self.bridge['screen_keyword']
+            
             # create CTEs -  Common Table Expressions for the intensive queries:
+            
+            collaborators = ( 
+                select([
+                    _screen_collaborators.c.screen_id,
+                    _collaborator.c.name,
+                    _collaborator.c.username,
+                    _collaborator.c.email,
+                    func.concat(_collaborator.c.name,' <',_collaborator.c.email,'>').label('fullname')])
+                    .select_from(_collaborator.join(
+                        _screen_collaborators,_collaborator.c.screensaver_user_id==_screen_collaborators.c.screensaveruser_id))
+                    .order_by(_collaborator.c.username) )
+            collaborators = collaborators.cte('collaborators')
+
+            screen_result_update_activity = (
+                select([ 
+                    func.max(_activity.c.date_of_activity).label('date_of_activity'),
+                    _screen.c.screen_id
+                    ])
+                    .select_from(
+                        _activity.join(_srua, _srua.c.update_activity_id==_activity.c.activity_id)
+                            .join(_screen_result,_screen_result.c.screen_result_id==_srua.c.screen_result_id)
+                            .join(_screen, _screen.c.screen_id==_screen_result.c.screen_id)
+                        )
+                    .group_by(_screen.c.screen_id)
+                    .order_by(_screen.c.screen_id)
+                ).cte('screen_result_update_activity')
             
             # create a cte for the max screened replicates_per_assay_plate
             # - cross join version:
@@ -896,10 +889,41 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
                         join(_cplt,_cplt.c.activity_id==_cpap.c.cherry_pick_liquid_transfer_id)).\
                     group_by(_cpr.c.screen_id).\
                     where(_cplt.c.status == 'Successful' ).cte('tplcps')
-                        
+            # create inner screen-screen_result query to create index join not hash join
+            new_screen_result = ( select([
+                    _screen.c.screen_id,
+                    _screen_result.c.screen_result_id,
+                    _screen_result.c.experimental_well_count])
+                .select_from(_screen.join(_screen_result, _screen.c.screen_id==_screen_result.c.screen_id, isouter=True))
+                .cte('screen_result') )
+                           
             custom_columns = {
+                'collaborator_usernames': (
+                    select([func.array_to_string(
+                        func.array_agg(collaborators.c.username), LIST_DELIMITER_SQL_ARRAY)])
+                        .select_from(collaborators)
+                        .where(collaborators.c.screen_id==literal_column('screen.screen_id'))),
+                'collaborator_names': (
+                    select([func.array_to_string(
+                        func.array_agg(collaborators.c.fullname), LIST_DELIMITER_SQL_ARRAY)])
+                        .select_from(collaborators)
+                        .where(collaborators.c.screen_id==literal_column('screen.screen_id'))),
+#                 'collaborator_names': (
+#                     select([func.array_to_string(
+#                         func.array_agg(func.concat(
+#                             _collaborator.c.name,' ',_collaborator.c.email)), LIST_DELIMITER_SQL_ARRAY)])
+#                         .select_from(_collaborator.join(
+#                             _screen_collaborators,_collaborator.c.screensaver_user_id==_screen_collaborators.c.screensaveruser_id))
+#                         .order_by(_collaborator.c.username)
+#                         .where(_screen_collaborators.c.screen_id==literal_column('screen.screen_id'))),
+            
                 'lab_head_name': literal_column(
                     '( select su.first_name || $$ $$ || su.last_name'
+                    '  from screensaver_user su '
+                    '  where su.screensaver_user_id=screen.lab_head_id )'
+                    ),
+                'lab_head_username': literal_column(
+                    '( select su.username'
                     '  from screensaver_user su '
                     '  where su.screensaver_user_id=screen.lab_head_id )'
                     ),
@@ -908,12 +932,18 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
                     '  from screensaver_user su '
                     '  where su.screensaver_user_id=screen.lead_screener_id )'
                     ),
+                'lead_screener_username': literal_column(
+                    '( select su.username '
+                    '  from screensaver_user su '
+                    '  where su.screensaver_user_id=screen.lead_screener_id )'
+                    ),
                 'lab_affiliation': literal_column(
-                    '( select lf.affiliation_name '
-                    '  from lab_affiliation lf '
-                    '  join lab_head using(lab_affiliation_id) '
-                    '  where lab_head.screensaver_user_id=screen.lab_head_id )'
+                    '( select v.title '
+                    '  from reports_vocabularies v '
+                    '  join screensaver_user lh on(lh.lab_head_affiliation=v.key) '
+                    '  where lh.screensaver_user_id=screen.lab_head_id )'
                     ).label('lab_affiliation'),
+#                 'has_screen_result': literal_column("'x'"),
                 'has_screen_result': literal_column(
                     '(select exists(select null from screen_result '
                     '     where screen_id=screen.screen_id ) ) '
@@ -946,14 +976,21 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
                     '  where la.screen_id=screen.screen_id '
                     '  order by date_of_activity desc LIMIT 1 )'
                     ),
-                'screenresult_last_imported': literal_column(
-                    '( select date_of_activity '
-                    '  from activity '
-                    '  join screen_result_update_activity srua on(update_activity_id=activity_id) '
-                    '  join screen_result sr using(screen_result_id) '
-                    '  where sr.screen_id=screen.screen_id '
-                    '  order by date_of_activity desc LIMIT 1 )'
-                    ),
+                # TODO: rework the update activity
+#                 'screenresult_last_imported': literal_column("'x'"),
+#                 'screenresult_last_imported': screen_result_update_activity.c.date_of_activity,
+                'screenresult_last_imported':
+                    select([screen_result_update_activity.c.date_of_activity])
+                        .select_from(screen_result_update_activity)
+                        .where(screen_result_update_activity.c.screen_id==literal_column('screen.screen_id')),
+#                 'screenresult_last_imported': literal_column(
+#                     '( select date_of_activity '
+#                     '  from activity '
+#                     '  join screen_result_update_activity srua on(update_activity_id=activity_id) '
+#                     '  join screen_result sr using(screen_result_id) '
+#                     '  where sr.screen_id=screen.screen_id '
+#                     '  order by date_of_activity desc LIMIT 1 )'
+#                     ),
                 'funding_supports':
                     select([func.array_to_string(
                         func.array_agg(literal_column('funding_support')
@@ -969,17 +1006,9 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
                     select([tplcps.c.count]).\
                         select_from(tplcps).\
                         where(tplcps.c.screen_id==_screen.c.screen_id),
-                # 'total_plated_lab_cherry_picks': literal_column(
-                # '( select count(*) '                                             
-                # '  from cherry_pick_request cpr '
-                # '  join lab_cherry_pick lcp using(cherry_pick_request_id) '
-                # '  join cherry_pick_assay_plate cpap using(cherry_pick_assay_plate_id) '
-                # '  join cherry_pick_liquid_transfer cplt '
-                # '    on(cherry_pick_liquid_transfer_id=activity_id)'
-                # "  where cplt.status = 'Successful' "  
-                # '  and cpr.screen_id=screen.screen_id )'),
                 
                 # TODO: convert to vocabulary
+#                 'assay_readout_types': literal_column("'x'"),
                 'assay_readout_types': literal_column(
                     "(select array_to_string(array_agg(f1.assay_readout_type),'%s') "
                     '    from ( select distinct(assay_readout_type) '
@@ -990,42 +1019,26 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
                 'library_plates_screened': 
                     select([lps.c.count]).\
                         select_from(lps).where(lps.c.screen_id==_screen.c.screen_id),
-                # 'library_plates_screened': literal_column(
-                #     '( select count(distinct(plate_number)) '
-                #     '  from assay_plate where screen_id=screen.screen_id)'),
+
+#                 'library_plates_data_loaded': literal_column("'x'"),
                 'library_plates_data_loaded': 
                     select([lpdl.c.count]).\
                         select_from(lpdl).where(lpdl.c.screen_id==_screen.c.screen_id),
-                # 'library_plates_data_loaded': literal_column(
-                #     '( select count(distinct(plate_number)) '
-                #     '  from assay_plate ' 
-                #     '  where screen_result_data_loading_id is not null '
-                #     '  and screen_id=screen.screen_id )'),
+
+#                 'assay_plates_screened': literal_column("'x'"),
                 'assay_plates_screened': 
                     select([aps.c.count]).\
                         select_from(aps).where(aps.c.screen_id==_screen.c.screen_id),
-                # 'assay_plates_screened': literal_column(
-                #     '( select count(*) '
-                #     '  from assay_plate where screen_id=screen.screen_id )') ,
+
+#                 'assay_plates_data_loaded': literal_column("'x'"),
                 'assay_plates_data_loaded': 
                     select([apdl.c.count]).\
                         select_from(apdl).where(apdl.c.screen_id==_screen.c.screen_id),
-                # 'assay_plates_data_loaded': literal_column(
-                #     '( select count(1) '
-                #     '  from assay_plate '
-                #     '  where screen_result_data_loading_id is not null '
-                #     '  and screen_id=screen.screen_id )'),
+
                 'libraries_screened_count': 
                     select([libraries_screened.c.count]).\
                         select_from(libraries_screened).\
                         where(libraries_screened.c.screen_id==_screen.c.screen_id ),
-                # 'libraries_screened_count': literal_column(
-                #     '( select count(distinct(l.library_id)) '
-                #     '  from assay_plate ap '
-                #     '  join plate p using(plate_id)' 
-                #     '  join copy using(copy_id) '
-                #     '  join library l using(library_id) '
-                #     '  where screen_id=screen.screen_id )'),
                     
                 # FIXME: use administrative activity vocabulary
                 'last_data_loading_date': literal_column(
@@ -1043,53 +1056,27 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
                 'max_screened_replicate_count': 
                     select([func.max(apsrc.c.max_per_plate)+1]).\
                         select_from(apsrc).where(apsrc.c.screen_id==_screen.c.screen_id),
+#                 'min_data_loaded_replicate_count': literal_column("'x'"),
                 'min_data_loaded_replicate_count': 
                     select([func.min(apdlrc.c.max_per_plate)+1]).\
                         select_from(apdlrc).where(apdlrc.c.screen_id==_screen.c.screen_id),
+#                 'max_data_loaded_replicate_count': literal_column("'x'"),
                 'max_data_loaded_replicate_count': 
                     select([func.max(apdlrc.c.max_per_plate)+1]).\
                         select_from(apdlrc).where(apdlrc.c.screen_id==_screen.c.screen_id),
-                
-#                 'min_screened_replicate_count': literal_column(
-#                     '( select max +1 from '
-#                     '  ( select plate_number, max(replicate_ordinal) from '
-#                     '    ( select plate_number, replicate_ordinal '
-#                     '      from assay_plate where screen_id=screen.screen_id  '
-#                     '      group by plate_number, replicate_ordinal '
-#                     '      order by plate_number, replicate_ordinal asc nulls last) a '
-#                     '  group by plate_number order by max asc nulls last) b limit 1 )'),
-#                 'max_screened_replicate_count': literal_column(
-#                     '( select max +1 from '
-#                     '  ( select plate_number, max(replicate_ordinal) from '
-#                     '    ( select plate_number, replicate_ordinal '
-#                     '      from assay_plate where screen_id=screen.screen_id  '
-#                     '      group by plate_number, replicate_ordinal '
-#                     '      order by plate_number, replicate_ordinal desc nulls last) a '
-#                     '  group by plate_number order by max desc nulls last) b limit 1 )'),
-#                 'min_data_loaded_replicate_count': literal_column('\n'.join([
-#                     '( select max +1 from ',
-#                     '  ( select plate_number, max(replicate_ordinal) from ',
-#                     '    ( select plate_number, replicate_ordinal ',
-#                     '      from assay_plate ',
-#                     '      where screen_id=screen.screen_id  ',
-#                     '      and screen_result_data_loading_id is not null ',
-#                     '      group by plate_number, replicate_ordinal ',
-#                     '      order by plate_number, replicate_ordinal asc nulls last) a ',
-#                     '  group by plate_number order by max asc nulls last) b limit 1 )'])),
-#                 'max_data_loaded_replicate_count': literal_column('\n'.join([
-#                     '( select max +1 from ',
-#                     '  ( select plate_number, max(replicate_ordinal) from ',
-#                     '    ( select plate_number, replicate_ordinal ',
-#                     '      from assay_plate ',
-#                     '      where screen_id=screen.screen_id  ',
-#                     '      and screen_result_data_loading_id is not null ',
-#                     '      group by plate_number, replicate_ordinal ',
-#                     '      order by plate_number, replicate_ordinal desc nulls last) a ',
-#                     '  group by plate_number order by max desc nulls last) b limit 1 )'])),
+                'experimental_well_count': literal_column('screen_result.experimental_well_count'),                
+                'pin_transfer_approved_by_username': literal_column("'tbd'"),
+                'pin_transfer_date_approved': literal_column("'tbd'"),
+                'pin_transfer_comments': literal_column("'tbd'"),
+                'keywords': (
+                    select([func.array_to_string(func.array_agg(
+                            _screen_keyword.c.keyword),LIST_DELIMITER_SQL_ARRAY)])
+                       .select_from(_screen_keyword)
+                       .where(_screen_keyword.c.screen_id==_screen.c.screen_id)),
             }
-            
-            
-            
+            if screens_for_username:
+                custom_columns['screensaver_user_role'] = screener_role_cte.c.screensaver_user_role
+                
             columns = self.build_sqlalchemy_columns(
                 field_hash.values(), base_query_tables=base_query_tables,
                 custom_columns=custom_columns )
@@ -1097,9 +1084,21 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
             # build the query statement
 
             j = _screen
-            j = j.join(_screen_result, 
-                _screen.c.screen_id==_screen_result.c.screen_id, isouter=True)
+            if screens_for_username:
+                j = j.join(
+                    screener_role_cte,
+                    screener_role_cte.c.screen_id==_screen.c.screen_id)
+
+#             j = j.join(screen_result_update_activity,screen_result_update_activity.c.screen_id==_screen.c.screen_id)
+            j = j.join(new_screen_result, 
+                _screen.c.screen_id==new_screen_result.c.screen_id)
+#             j = j.join(_screen_result, 
+#                 _screen.c.screen_id==_screen_result.c.screen_id, isouter=True)
             stmt = select(columns.values()).select_from(j)
+
+            if screens_for_username:
+                stmt = stmt.where(
+                    screener_role_cte.c.username==screens_for_username)
 
             # general setup
              
@@ -1123,20 +1122,120 @@ class ScreenResource(SqlAlchemyResource,ManagedModelResource):
             logger.exception('on get list')
             raise e  
 
+
+    @classmethod
+    def get_screener_role_cte(cls):
+
+        _su = cls.bridge['screensaver_user']
+        _screen = cls.bridge['screen']
+        _screen_collab = cls.bridge['screen_collaborators']
+        collab = _su.alias('collab')
+        ls = _su.alias('ls')
+        pi = _su.alias('pi')
+        
+        j = _screen
+        j = j.join(_screen_collab, _screen_collab.c.screen_id==_screen.c.screen_id, isouter=True)
+        j = j.join(collab,collab.c.screensaver_user_id==_screen_collab.c.screensaveruser_id, isouter=True)
+        j = j.join(ls,ls.c.screensaver_user_id==_screen.c.lead_screener_id, isouter=True)
+        j = j.join(pi,pi.c.screensaver_user_id==_screen.c.lab_head_id, isouter=True)
+        
+        sa = (
+            select([
+                _screen.c.facility_id,
+                _screen.c.screen_id,
+                ls.c.username.label('lead_screener_username'),
+                pi.c.username.label('pi_username'),
+                func.array_agg(collab.c.username).label('collab_usernames')
+            ]).select_from(j)
+            .group_by(_screen.c.facility_id,_screen.c.screen_id,
+                ls.c.username,pi.c.username)
+            ).cte('screen_associates')
+        screener_roles = (
+            select([
+                _su.c.username,
+                sa.c.facility_id,
+                sa.c.screen_id,
+                case([
+                    (_su.c.username==sa.c.lead_screener_username,
+                        'lead_screener'),
+                    (_su.c.username==sa.c.pi_username,
+                        'principal_investigator')
+                    ],
+                    else_='collaborator').label('screensaver_user_role')
+                ]).select_from(sa)
+                .where(or_(
+                    # TODO: replace with "any_()" from sqlalchemy 1.1 when avail
+                    _su.c.username == text(' any(collab_usernames) '),
+                    _su.c.username == sa.c.lead_screener_username,
+                    _su.c.username == sa.c.pi_username))
+        ).cte('screener_roles')
+        return screener_roles
+    
     def build_schema(self):
         schema = super(ScreenResource,self).build_schema()
+
+        if 'fields' in schema and 'facility_id' in schema['fields']:        
+            max_facility_id_sql = '''
+                select facility_id::text, project_phase from screen 
+                where project_phase='primary_screen' 
+                order by facility_id::integer desc
+                limit 1;
+            '''
+            conn = self.bridge.get_engine().connect()
+            max_facility_id = int(conn.execute(max_facility_id_sql).scalar() or 0)
+            schema['fields']['facility_id']['default'] = max_facility_id + 1
+        
         temp = [ x.screen_type for x in self.Meta.queryset.distinct('screen_type')]
         schema['extraSelectorOptions'] = { 
             'label': 'Type', 'searchColumn': 'screen_type', 'options': temp }
         return schema
 
-    @transaction.atomic()
-    def obj_create(self, bundle, **kwargs):
-        bundle.data['date_created'] = timezone.now()
-        bundle = super(ScreenResource, self).obj_create(bundle, **kwargs)
-        logger.info(str(('created', bundle)))
-        return bundle
+    @transaction.atomic()    
+    def delete_obj(self, deserialized, **kwargs):
+        id_kwargs = self.get_id(deserialized,**kwargs)
+        Screen.objects.get(**id_kwargs).delete()
     
+    @transaction.atomic()    
+    def patch_obj(self,deserialized, **kwargs):
+        
+        id_kwargs = self.get_id(deserialized,**kwargs)
+        
+        schema = self.build_schema()
+        fields = schema['fields']
+        try:
+            # create/update the screen
+            screen = None
+            try:
+                screen = Screen.objects.get(**id_kwargs)
+            except ObjectDoesNotExist, e:
+                logger.info('Screen %s does not exist, creating', id_kwargs)
+                screen = Screen(**id_kwargs)
+            initializer_dict = {}
+            for key in fields.keys():
+                if key in deserialized:
+                    initializer_dict[key] = parse_val(
+                        deserialized.get(key,None), key,fields[key]['data_type']) 
+            if initializer_dict:
+                logger.info('initializer dict: %s', initializer_dict)
+                for key,val in initializer_dict.items():
+                    if hasattr(screen,key):
+                        setattr(screen,key,val)
+            else:
+                logger.info('no (basic) screen fields to update %s', deserialized)
+            
+            errors = self.validate(screen)
+            if errors:
+                raise ValidationError(errors)
+            
+            screen.save()
+                    
+            logger.info('patch_obj done')
+            return screen
+            
+        except Exception, e:
+            logger.exception('on patch detail')
+            raise e  
+
 
 class ScreenResultResource(SqlAlchemyResource,ManagedResource):
 
@@ -1161,7 +1260,20 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
         super(ScreenResultResource,self).__init__(**kwargs)
         
         conn = self.bridge.get_engine().connect()
+        try:
+            conn.execute(text('select * from "well_query_index"; '));
+            logger.debug('The well_query_index table exists')
+        except Exception as e:
+            logger.info('The well_query_index table does not exist: %s',e)
+            self._create_well_query_index_table(conn)
+        try:
+            conn.execute(text('select * from "well_data_column_positive_index"; '));
+            logger.debug('The well_data_column_positive_index table exists')
+        except Exception as e:
+            logger.info('The well_data_column_positive_index table does not exist: %s',e)
+            self._create_well_data_column_positive_index_table(conn)
         
+    def _create_well_query_index_table(self,conn):
         try:
             # create the well_query_index table if it does not exist
             conn.execute(text(
@@ -1176,6 +1288,7 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
                 str(e), e, 'note that this exception is normal if the table already exists',
                 '(PostgreSQL <9.1 has no "CREATE TABLE IF NOT EXISTS" clause')))
 
+    def _create_well_data_column_positive_index_table(self,conn):
         try:
             # create the well_data_column_positive_index table if it does not exist
             conn.execute(text(
@@ -1262,7 +1375,6 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
             logger.exception('on screenresult clear cache')
             raise e  
             
-
     def prepend_urls(self):
 
         return [
@@ -1709,7 +1821,7 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
                         max_ordinal = fi['ordinal']
                 # translate the datacolumn definitions into field information definitions
                 field_defaults = {
-                    'visibility': ['list','detail'],
+                    'visibility': ['l','d'],
                     'data_type': 'string',
                     'filtering': True,
                     'is_datacolumn': True,
@@ -1750,7 +1862,7 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
                     data['fields'][columnName] = _dict
                     if show_mutual_positives:
                         _visibility = set(_dict['visibility'])
-                        _visibility.update(['list','detail'])
+                        _visibility.update(['l','d'])
                         _dict['visibility'] = list(_visibility)
             return data
         except Exception, e:
@@ -1817,7 +1929,7 @@ class DataColumnResource(ManagedModelResource):
         for fi in new_fields_schema.values():
             # set all supertype visibility to detail - users will only want 
             # datacolumn definitions
-            fi['visibility'] = ['detail'] 
+            fi['visibility'] = ['d'] 
         new_fields_schema.update(schema['fields'])
         schema['fields'] = new_fields_schema
         
@@ -1833,7 +1945,7 @@ class DataColumnResource(ManagedModelResource):
         bundle =  ManagedModelResource.dehydrate(self, bundle)
         
         field_defaults = {
-            'visibility': ['list','detail'],
+            'visibility': ['l','d'],
             'data_type': 'string',
             'filtering': True,
             }
@@ -3107,6 +3219,8 @@ class LibraryCopyResource(SqlAlchemyResource, ManagedModelResource):
                 'bundle errors', bundle.errors, len(bundle.errors.keys()))))
             return False
         return True
+    
+    
 
 class AttachedFileResource(ApiResource):
 
@@ -3377,7 +3491,7 @@ class AttachedFileResource(ApiResource):
                   
             visibilities = set()                
             if is_for_detail:
-                visibilities.update(['detail','summary'])
+                visibilities.update(['d','e'])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
                 is_for_detail=is_for_detail, visibilities=visibilities)
@@ -3533,7 +3647,7 @@ class ServiceActivityResource(ApiResource):
             raise Exception('performed_by_username not specified %s' % deserialized)
 
         try:
-            serviced_user = ScreeningRoomUser.objects.get(screensaver_user__username=serviced_username)
+            serviced_user = ScreensaverUser.objects.get(username=serviced_username)
             initializer_dict['serviced_user'] = serviced_user
         except ObjectDoesNotExist:
             logger.exception('serviced_user/username does not exist: %s' % serviced_username)
@@ -3588,7 +3702,7 @@ class ServiceActivityResource(ApiResource):
             logger.exception('on patch_obj')
             raise e
     
-    def delete_obj(self, **kwargs):
+    def delete_obj(self, deserialized, **kwargs):
         activity_id = kwargs.get('activity_id', None)
         if activity_id:
             try:
@@ -3647,7 +3761,7 @@ class ServiceActivityResource(ApiResource):
                   
             visibilities = set()                
             if is_for_detail:
-                visibilities.update(['detail','summary'])
+                visibilities.update(['d','e'])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
                 is_for_detail=is_for_detail, visibilities=visibilities)
@@ -3717,7 +3831,7 @@ class UserChecklistItemResource(ApiResource):
         ordering = []
         filtering = {}
         serializer = LimsSerializer()
-        excludes = ['digested_password']
+        excludes = ['']
         resource_name = 'userchecklistitem'
         max_limit = 10000
         always_return_data = True
@@ -3807,7 +3921,7 @@ class UserChecklistItemResource(ApiResource):
                   
             visibilities = set()                
             if is_for_detail:
-                visibilities.update(['detail','summary'])
+                visibilities.update(['d','e'])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
                 is_for_detail=is_for_detail, visibilities=visibilities)
@@ -3824,7 +3938,7 @@ class UserChecklistItemResource(ApiResource):
             # specific setup
             _su = self.bridge['screensaver_user']
             _admin = _su.alias('admin')
-            _sru = self.bridge['screening_room_user']
+#             _sru = self.bridge['screening_room_user']
             _up = self.bridge['reports_userprofile']
             _uci = self.bridge['user_checklist_item']
             
@@ -3922,7 +4036,7 @@ class UserChecklistItemResource(ApiResource):
             logger.exception('on get list')
             raise e  
 
-    def delete_obj(self, **kwargs):
+    def delete_obj(self, deserialized, **kwargs):
         raise NotImplementedError('delete obj is not implemented for UserChecklistItem')
     
     def patch_obj(self,deserialized, **kwargs):
@@ -3987,7 +4101,7 @@ class UserChecklistItemResource(ApiResource):
             logger.error('on patch_obj')
             raise e
             
-class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResource):    
+class ScreensaverUserResource(ApiResource):    
 
     class Meta:
         queryset = ScreensaverUser.objects.all()
@@ -4041,6 +4155,10 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_user_serviceactivitydetailview'), 
                 name="api_dispatch_user_serviceactivitydetailview"),
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))/screens%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_user_screenview'), 
+                name="api_dispatch_user_screenview"),
         ]    
 
     def dispatch_user_groupview(self, request, **kwargs):
@@ -4062,6 +4180,10 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
     def dispatch_user_serviceactivityview(self,request,**kwargs):
         kwargs['serviced_username__eq'] = kwargs.pop('username')
         return ServiceActivityResource().dispatch('list', request, **kwargs)    
+
+    def dispatch_user_screenview(self,request,**kwargs):
+        kwargs['screens_for_username'] = kwargs.pop('username')
+        return ScreenResource().dispatch('list', request, **kwargs)    
 
     def dispatch_user_serviceactivitydetailview(self,request,**kwargs):
         return ServiceActivityResource().dispatch('detail', request, **kwargs)    
@@ -4099,7 +4221,8 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
             select([
                 _su.c.screensaver_user_id,
                 _au.c.username,
-                concat(_au.c.first_name,' ',_au.c.last_name).label('name')
+                concat(_au.c.first_name,' ',_au.c.last_name).label('name'),
+                _au.c.email
                 ])
             .select_from(j))
         return user_table
@@ -4121,7 +4244,6 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
         kwargs['is_for_detail']=True
         return self.get_list(request, **kwargs)
        
-    @read_authorization
     def get_list(self,request,**kwargs):
 
         param_hash = self._convert_request_to_dict(request)
@@ -4129,6 +4251,7 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
 
         return self.build_list_response(request,param_hash=param_hash, **kwargs)
 
+    @read_authorization
     def build_list_response(self,request, param_hash={}, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
@@ -4164,7 +4287,7 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
                   
             visibilities = set()                
             if is_for_detail:
-                visibilities.update(['detail','summary'])
+                visibilities.update(['d','e'])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
                 is_for_detail=is_for_detail, visibilities=visibilities)
@@ -4177,29 +4300,43 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
                 rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup
+            _su = self.bridge['screensaver_user']
             _au = self.bridge['auth_user']
             _up = self.bridge['reports_userprofile']
             _s = self.bridge['screen']
-            _cl = self.bridge['collaborator_link']
-            _su = self.bridge['screensaver_user']
-            _admin = self.bridge['administrator_user']
-            _sru = self.bridge['screening_room_user']
-            _lh = self.bridge['lab_head']
-            _la = self.bridge['lab_affiliation']
-            _sru_fr = self.bridge['screening_room_user_facility_usage_role']
-            _su_r = self.bridge['screensaver_user_role']
-            
+#             _cl = self.bridge['collaborator_link']
+            _screen_collab = self.bridge['screen_collaborators']
+            _fur = self.bridge['user_facility_usage_role']
             _lhsu = _su.alias('lhsu')
+            _vocab = self.bridge['reports_vocabularies']
+            
+            # get the checklist items & groups
+            affiliation_category_table = ( 
+                select([
+                    _vocab.c.ordinal,
+                    _vocab.c.key.label('category_key'),
+                    _vocab.c.title.label('category'),
+                    func.array_to_string(array(['labaffiliation.category',
+                        _vocab.c.key]),'.').label('scope')])
+                .select_from(_vocab)
+                .where(_vocab.c.scope=='labaffiliation.category') )
+            affiliation_category_table = Alias(affiliation_category_table)
+            affiliation_table = (
+                select([
+                    _vocab.c.ordinal,
+                    affiliation_category_table.c.scope,
+                    affiliation_category_table.c.category,
+                    _vocab.c.key.label('affiliation_name'),
+                    _vocab.c.title])
+                .select_from(
+                    _vocab.join(affiliation_category_table,
+                        _vocab.c.scope==affiliation_category_table.c.scope))
+                ).order_by(affiliation_category_table.c.ordinal,_vocab.c.ordinal)
+            affiliation_table = affiliation_table.cte('la')
             
             custom_columns = {
                 'name': literal_column(
                     "auth_user.last_name || ', ' || auth_user.first_name"),
-                # TODO: redo classification
-                'classification': literal_column(
-                    "( select coalesce( user_classification, 'admin') "
-                    ' from  screensaver_user s1'
-                    ' left join screening_room_user using(screensaver_user_id) '
-                    ' where s1.screensaver_user_id = screensaver_user.screensaver_user_id)'),
                 'screens_lab_head':
                     select([func.array_to_string(
                             func.array_agg(_s.c.facility_id),LIST_DELIMITER_SQL_ARRAY)]).\
@@ -4213,29 +4350,34 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
                 'screens_collaborator':
                     select([func.array_to_string(
                             func.array_agg(_s.c.facility_id),LIST_DELIMITER_SQL_ARRAY)]).\
-                        select_from(_s.join(_cl,_s.c.screen_id==_cl.c.screen_id)).\
-                        where(_cl.c.collaborator_id==_su.c.screensaver_user_id),
+                        select_from(_s.join(_screen_collab,_s.c.screen_id==_screen_collab.c.screen_id)).\
+                        where(_screen_collab.c.screensaveruser_id==_su.c.screensaver_user_id),
                 'lab_name':
-                    select([func.array_to_string(array([
-                        _lhsu.c.last_name,', ',_lhsu.c.first_name,' - ',
-                        _la.c.affiliation_name]),'')]).\
-                    select_from(
-                        _la.join(_lh,_la.c.lab_affiliation_id==_lh.c.lab_affiliation_id).\
-                        join(_lhsu, _lh.c.screensaver_user_id==_lhsu.c.screensaver_user_id).\
-                        join(_sru,_lh.c.screensaver_user_id==_sru.c.lab_head_id )).\
-                    where(_sru.c.screensaver_user_id==_su.c.screensaver_user_id),
+                    ( select([func.array_to_string(array(
+                            [_lhsu.c.last_name,', ',_lhsu.c.first_name,' - ',
+                             affiliation_table.c.title, 
+                             ' (',affiliation_table.c.category,')']),'')])
+                        .select_from(
+                            _lhsu.join(affiliation_table,
+                                affiliation_table.c.affiliation_name==_lhsu.c.lab_head_affiliation))
+                        .where(_lhsu.c.screensaver_user_id==_su.c.lab_head_id)),
+                'lab_head_username':
+                    ( select([_lhsu.c.username])
+                        .select_from(_lhsu)
+                        .where(_lhsu.c.screensaver_user_id==_su.c.lab_head_id)),
                 'facility_usage_roles': 
                     select([func.array_to_string(
-                            func.array_agg(_sru_fr.c.facility_usage_role),
+                            func.array_agg(_fur.c.facility_usage_role),
                                 LIST_DELIMITER_SQL_ARRAY)]).\
-                        select_from(_sru_fr).\
-                        where(_sru_fr.c.screening_room_user_id==_su.c.screensaver_user_id),
-                'data_access_roles': 
-                    select([func.array_to_string(
-                            func.array_agg(_su_r.c.screensaver_user_role),
-                                LIST_DELIMITER_SQL_ARRAY)]).\
-                        select_from(_su_r).\
-                        where(_su_r.c.screensaver_user_id==_su.c.screensaver_user_id),
+                        select_from(_fur).\
+                        where(_fur.c.screensaver_user_id==_su.c.screensaver_user_id),
+                # TODO: remove: replace with usergroups
+                'data_access_roles': literal_column("''"),
+#                     select([func.array_to_string(
+#                             func.array_agg(_su_r.c.screensaver_user_role),
+#                                 LIST_DELIMITER_SQL_ARRAY)]).\
+#                         select_from(_su_r).\
+#                         where(_su_r.c.screensaver_user_id==_su.c.screensaver_user_id),
                 }
 
             # delegate to the user resource
@@ -4243,11 +4385,13 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
             _temp = { key:field for key,field in field_hash.items() 
                 if field.get('scope', None) in default_fields }
             field_hash = _temp
-            logger.info(str(('final field hash: ', field_hash.keys())))
+            logger.debug('final field hash: %s', field_hash.keys())
+            logger.info(
+                'TODO: passing screensaver_user fields to reports_userprofile '
+                'causes warnings')
             sub_columns = self.get_user_resource().build_sqlalchemy_columns(
                 field_hash.values(),
                 custom_columns=custom_columns)
-
             base_query_tables = ['screensaver_user','reports_user','auth_user'] 
             columns = self.build_sqlalchemy_columns(
                 field_hash.values(), base_query_tables=base_query_tables,
@@ -4256,8 +4400,9 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
             # build the query statement
             
             j = _su
-            j = _su.join(_up,_su.c.user_id==_up.c.id).\
-                    join(_au,_up.c.user_id==_au.c.id)
+#             j = j.join(_sru,_su.c.screensaver_user_id==_sru.c.screensaver_user_id, isouter=True)
+            j = j.join(_up,_su.c.user_id==_up.c.id)
+            j = j.join(_au,_up.c.user_id==_au.c.id)
             stmt = select(columns.values()).select_from(j)
             # natural order
             stmt = stmt.order_by(_au.c.last_name,_au.c.first_name)
@@ -4265,7 +4410,7 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
             # general setup
              
             (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
-            
+            logger.debug('stmt: %s', str(stmt.compile(compile_kwargs={"literal_binds": True})))
             title_function = None
             if param_hash.get(HTTP_PARAM_USE_TITLES, False):
                 title_function = lambda key: field_hash[key]['title']
@@ -4282,317 +4427,113 @@ class ScreensaverUserResource(ManagedSqlAlchemyResourceMixin, ManagedModelResour
             logger.exception('on get_list')
             raise e  
 
-
-    # reworked 20150706   
-    @write_authorization
     @un_cache        
-    def put_list(self,request, **kwargs):
-
-        deserialized = self._meta.serializer.deserialize(
-            request.body, 
-            format=request.META.get('CONTENT_TYPE', 'application/json'))
-        if not self._meta.collection_name in deserialized:
-            raise BadRequest("Invalid data sent, must be nested in '%s'" 
-                % self._meta.collection_name)
-        deserialized = deserialized[self._meta.collection_name]
-
-        logger.info(str(('put list', deserialized,kwargs)))
-        
-        with transaction.atomic():
-            
-            # TODO: review REST actions:
-            # PUT deletes the endpoint
-            
-            ScreensaverUser.objects.all().delete()
-            
-            for _dict in deserialized:
-                self.put_obj(_dict)
-
-        # get new state, for logging
-        response = self.get_list(
-            request,
-            desired_format='application/json',
-            includes='*',
-            **kwargs)
-        new_data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        new_data = new_data[self._meta.collection_name]
-        
-        logger.info(str(('new data', new_data)))
-        self.log_patches(request, [],new_data,**kwargs)
-
-    
-        if not self._meta.always_return_data:
-            return http.HttpAccepted()
-        else:
-            response = self.get_list(request, **kwargs)             
-            response.status_code = 202
-            return response
-        
-    @un_cache        
-    def patch_list(self, request, **kwargs):
-
-        deserialized = self._meta.serializer.deserialize(
-            request.body, 
-            format=request.META.get('CONTENT_TYPE', 'application/json'))
-        if not self._meta.collection_name in deserialized:
-            raise BadRequest("Invalid data sent, must be nested in '%s'" 
-                % self._meta.collection_name)
-        deserialized = deserialized[self._meta.collection_name]
-
-        logger.info(str(('patch list', deserialized,kwargs)))
-        
-        usernames = LIST_DELIMITER_URL_PARAM.join(
-            [x.get('username',None) for x in deserialized])
-        kwargs['username__in'] = usernames
-        
-        # cache state, for logging
-        response = self.get_list(
-            request,
-            desired_format='application/json',
-            includes='*',
-            **kwargs)
-        original_data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        original_data = original_data[self._meta.collection_name]
-
-        logger.info(str(('original_data', original_data)))
-        
-        with transaction.atomic():
-            
-            for _dict in deserialized:
-                self.patch_obj(_dict)
-                
-        # get new state, for logging
-        response = self.get_list(
-            request,
-            desired_format='application/json',
-            includes='*',
-            **kwargs)
-        new_data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        new_data = new_data[self._meta.collection_name]
-
-        logger.info(str(('new_data', new_data)))
-        
-        
-        self.log_patches(request, original_data,new_data,**kwargs)
-        
-        if not self._meta.always_return_data:
-            return http.HttpAccepted()
-        else:
-            response = self.get_list(request, **kwargs)             
-            response.status_code = 202
-            return response
-                
-    @un_cache        
-    @transaction.atomic()
-    def patch_detail(self, request, **kwargs):
-
-        deserialized = self._meta.serializer.deserialize(
-            request.body, 
-            format=request.META.get('CONTENT_TYPE', 'application/json'))
-        logger.info(str(('patch detail', deserialized,kwargs)))
-
-        # cache state, for logging
-        username = self.get_user_resource().find_username(deserialized, **kwargs)
-        response = self.get_list(
-            request,
-            desired_format='application/json',
-            includes='*',
-            **kwargs)
-        original_data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        original_data = original_data[self._meta.collection_name]
-        logger.info(str(('original data', original_data)))
-
-        with transaction.atomic():
-            
-            self.patch_obj(deserialized, **kwargs)
-
-        # get new state, for logging
-        response = self.get_list(
-            request,
-            desired_format='application/json',
-            includes='*',
-            **kwargs)
-        new_data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        new_data = new_data[self._meta.collection_name]
-        
-        logger.info(str(('new data', new_data)))
-        self.log_patches(request, original_data,new_data,**kwargs)
-
-        
-        if not self._meta.always_return_data:
-            return http.HttpAccepted()
-        else:
-            response = self.get_detail(request, **kwargs) 
-            response.status_code = 202
-            return response
-
-    @un_cache        
-    @transaction.atomic()
     def put_detail(self, request, **kwargs):
+        raise NotImplementedError('put_list must be implemented')
                 
-        deserialized = self._meta.serializer.deserialize(
-            request.body, 
-            format=request.META.get('CONTENT_TYPE', 'application/json'))
-
-        logger.info(str(('put detail', deserialized,kwargs)))
-        
-        with transaction.atomic():
-            logger.info(str(('put_detail:', kwargs)))
-            
-            self.put_obj(deserialized, **kwargs)
-        
-        # FIXME: logging
-        
-        if not self._meta.always_return_data:
-            return http.HttpAccepted()
-        else:
-            response = self.get_detail(request, **kwargs) 
-            response.status_code = 202
-            return response
-        
     @transaction.atomic()    
-    def put_obj(self,deserialized, **kwargs):
-        self.clear_cache()
-        
-        try:
-            if 'username' in deserialized:
-                self.delete_obj(**deserialized)
-        except ObjectDoesNotExist,e:
-            pass 
-        
-        return self.patch_obj(deserialized, **kwargs)
-    
-    @un_cache        
-    @transaction.atomic()
-    def delete_detail(self,request, **kwargs):
-        # FIXME: NOT TESTED
-        deserialized = self._meta.serializer.deserialize(
-            request.body, 
-            format=request.META.get('CONTENT_TYPE', 'application/json'))
-        try:
-            self.delete_obj(**kwargs)
-            # FIXME: logging
-            return HttpResponse(status=202)
-        except ObjectDoesNotExist,e:
-            return HttpResponse(status=404)
-    
-    @transaction.atomic()    
-    def delete_obj(self, **kwargs):
-        username = self.get_user_resource().find_username({},**kwargs)
-        ScreensaverUser.objects.get(username=username).delete()
+    def delete_obj(self, deserialized, **kwargs):
+        id_kwargs = self.get_id(deserialized,**kwargs)
+        ScreensaverUser.objects.get(**id_kwargs).delete()
     
     @transaction.atomic()    
     def patch_obj(self,deserialized, **kwargs):
-
-        username = self.get_user_resource().find_username(deserialized,**kwargs)
+        
+        logger.info('patch_obj: screensaveruser: %s', kwargs)
+#         username = self.get_user_resource().find_username(deserialized,**kwargs)
+        id_kwargs = self.get_id(deserialized,**kwargs)
+        username = id_kwargs['username']
+        logger.info('username: %s', id_kwargs)
         
         schema = self.build_schema()
         fields = schema['fields']
-
         fields = { name:val for name,val in fields.items() 
-            if val['table'] and val['table']=='screensaver_user'}
-        
+            if val['scope']=='fields.screensaveruser'}
+        logger.info('fields.screensaveruser fields: %s', fields.keys())
         try:
             # create/get userprofile
-
             user = self.get_user_resource().patch_obj(deserialized,**kwargs)
+            logger.info('patched userprofile %s', user)
 
             # create the screensaver_user
-            
-            initializer_dict = {}
-            for key in fields.keys():
-                if deserialized.get(key,None):
-                    initializer_dict[key] = parse_val(
-                        deserialized.get(key,None), key,fields[key]['data_type']) 
-
             screensaver_user = None
             try:
-                # FIXME: add username field to the screensaver_user table
                 screensaver_user = ScreensaverUser.objects.get(user__username=username)
             except ObjectDoesNotExist, e:
                 logger.info('Screensaver User %s does not exist, creating' % username)
                 # FIXME: add username field to the screensaver_user table
                 screensaver_user = ScreensaverUser.objects.create(username=username)
                 screensaver_user.save()
-            
-            logger.info(str(('initializer dict', initializer_dict)))
-            for key,val in initializer_dict.items():
-                logger.info(str(('set',key,val,hasattr(screensaver_user, key))))
-                
-                if hasattr(screensaver_user,key):
-                    setattr(screensaver_user,key,val)
+            initializer_dict = {}
+            for key in fields.keys():
+                if key in deserialized:
+                    initializer_dict[key] = parse_val(
+                        deserialized.get(key,None), key,fields[key]['data_type']) 
+            if initializer_dict:
+                logger.info('initializer dict: %s', initializer_dict)
+                for key,val in initializer_dict.items():
+                    if hasattr(screensaver_user,key):
+                        setattr(screensaver_user,key,val)
+            else:
+                logger.info('no (basic) screensaver_user fields to update %s', deserialized)
             
             # also set legacy screensaveruser fields, temporary convenience
             screensaver_user.username = user.username
             screensaver_user.email = user.email
             screensaver_user.user = user
+            screensaver_user.first_name = user.first_name
+            screensaver_user.last_name = user.last_name
+            
+            errors = self.validate(screensaver_user)
+            if errors:
+                raise ValidationError(errors)
+            
             screensaver_user.save()
             
+            if 'lab_head_username' in initializer_dict:
+                lh_username = initializer_dict['lab_head_username']
+                if lh_username:
+                    try:
+                        lab_head = ScreensaverUser.objects.get(username=lh_username)
+                        screensaver_user.lab_head = lab_head
+                        screensaver_user.save()
+                    except ObjectDoesNotExist, e:
+                        logger.info('Lab Head Screensaver User %s does not exist', lh_username)
+                        raise BadRequest('lab_head_username not found %s' % lh_username)
+                else:
+                    screensaver_user.lab_head = None
+                    screensaver_user.save();
+                    
+            if 'facility_usage_roles' in initializer_dict:
+                current_roles = set([r.facility_usage_role 
+                    for r in screensaver_user.userfacilityusagerole_set.all()])
+                new_roles = set(initializer_dict['facility_usage_roles'])
+                logger.info('roles to delete: %s', current_roles-new_roles)
+                (screensaver_user.userfacilityusagerole_set
+                    .filter(facility_usage_role__in=current_roles-new_roles)
+                    .delete())
+                for role in new_roles-current_roles:
+                    logger.info('create f-usage role: %s, %s', screensaver_user, role)
+                    ur = UserFacilityUsageRole.objects.create(
+                        screensaver_user=screensaver_user,
+                        facility_usage_role=role)            
+                    ur.save()
+
+#             if 'classification' in initializer_dict:
+#                 try:
+#                     sru = ScreensaverUser.objects.get(screensaver_user=screensaver_user)
+#                 except ObjectDoesNotExist, e:
+#                     logger.info('Screening Room User %s does not exist, creating' % username)
+#                     sru = ScreensaverUser.objects.create(screensaver_user=screensaver_user)
+#                 sru.user_classification = initializer_dict['classification']
+#                 sru.save()
+            logger.info('patch_obj done')
             return screensaver_user
             
         except Exception, e:
-            logger.exception('on put detail')
+            logger.exception('on patch detail')
             raise e  
 
-
-class ScreeningRoomUserResource(ScreensaverUserResource):
-
-    class Meta:
-        queryset = ScreeningRoomUser.objects.all()
-        authentication = MultiAuthentication(BasicAuthentication(), 
-            SessionAuthentication())
-        authorization= UserGroupAuthorization()
-    
-    @transaction.atomic()    
-    def patch_obj(self,deserialized, **kwargs):
-
-        username = self.get_user_resource().find_username(deserialized,**kwargs)
-        
-        schema = self.build_schema()
-        fields = schema['fields']
-
-        fields = { name:val for name,val in fields.items() 
-            if val['table'] and val['table']=='screening_room_user'}
-        
-        try:
-            # create/get screensaver_user
-
-            su = super(ScreeningRoomUserResource,self).patch_obj(deserialized,**kwargs)
-
-            # create the screening_room_user
-            initializer_dict = {}
-            for key in fields.keys():
-                if deserialized.get(key,None):
-                    initializer_dict[key] = parse_val(
-                        deserialized.get(key,None), key,fields[key]['data_type']) 
-
-            sru = None
-            try:
-                # FIXME: add username field to the screensaver_user table
-                sru = ScreeningRoomUser.objects.get(screensaver_user=su)
-            except ObjectDoesNotExist, e:
-                logger.info('Screening Room User %s does not exist, creating' % username)
-                sru = ScreeningRoomUser.objects.create(screensaver_user=su)
-                sru.save()
-
-            logger.info(str(('initializer dict', initializer_dict)))
-            for key,val in initializer_dict.items():
-                logger.info(str(('set',key,val,hasattr(sru, key))))
-                
-                if hasattr(sru,key):
-                    setattr(sru,key,val)
-            sru.save()
-            
-            return sru
-            
-        except Exception, e:
-            logger.exception('on put detail')
-            raise e  
         
 class ReagentResource(SqlAlchemyResource, ManagedModelResource):
     

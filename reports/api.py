@@ -62,6 +62,7 @@ from tastypie.validation import Validation
 # from db.models import ScreensaverUser
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT
+from reports import ValidationError
 from reports.dump_obj import dumpObj
 from reports.models import API_ACTION_CREATE
 from reports.models import MetaHash, Vocabularies, ApiLog, ListLog, Permission, \
@@ -79,6 +80,7 @@ def parse_val(value, key, data_type):
     """
     All values are read as strings from the input files, so this function 
     converts them as directed.
+    TODO: validation
     """
     try:
         if ( value is None 
@@ -321,11 +323,11 @@ class IccblBaseResource(Resource):
         - uses Resource.content_types
         '''
         format = request.GET.get('format', None)
-        logger.info(str(('format', format)))
+        logger.debug('format %s', format)
         if format:
             if format in self.content_types:
                 format = self.content_types[format]
-                logger.info(str(('format', format)))
+                logger.debug('format', format)
             else:
                 logger.error(str(('unknown format', desired_format)))
                 raise ImmediateHttpResponse("unknown format: %s" % desired_format)
@@ -340,13 +342,14 @@ class IccblBaseResource(Resource):
                         raise ImmediateHttpResponse("no best match format for HTTP_ACCEPT: " +
                             request.META['HTTP_ACCEPT'])
                         
-                    logger.info(str(('format', format, request.META['HTTP_ACCEPT'])))
+                    logger.debug('format %s, HTTP_ACCEPT: %s', format, 
+                        request.META['HTTP_ACCEPT'])
                 except ValueError:
                     logger.error(str(('Invalid Accept header')))
                     raise ImmediateHttpResponse('Invalid Accept header')
             elif request.META.get('CONTENT_TYPE', '*/*') != '*/*':
                 format = request.META.get('CONTENT_TYPE', '*/*')
-        logger.info(str(('got format', format)))
+        logger.debug('got format: %s', format)
         return format
 
     def dispatch(self, request_type, request, **kwargs):
@@ -1291,6 +1294,8 @@ class ManagedResource(LoggingMixin):
             # Set:
             # - Default field table
             # - Field dependencies
+            logger.debug('== debugging: schema resource definition so far: %s', 
+                schema['resource_definition'])
             default_table = schema['resource_definition']['table']
             if DEBUG_BUILD_SCHEMA: 
                 logger.info(str(('default_table', default_table)))
@@ -1309,12 +1314,12 @@ class ManagedResource(LoggingMixin):
                 if DEBUG_BUILD_SCHEMA: 
                     logger.info(str(('field', key, 'dependencies', dep_fields)))
                 field['dependencies'] = dep_fields
-                
         except Exception, e:
-            if DEBUG_BUILD_SCHEMA:
+            if not getattr(self, 'suppress_errors_on_bootstrap', False):
                 logger.exception('on build schema')
-            logger.info(str(('build_schema: resource information not available',
-                self._meta.resource_name, e)))
+            else:
+                logger.info('build_schema: resource %s, ex: %s',
+                    self._meta.resource_name, e)
         
         if DEBUG_BUILD_SCHEMA: 
             logger.info('------build_schema,done: ' + self.scope ) 
@@ -1404,7 +1409,7 @@ class ManagedResource(LoggingMixin):
             logger.warn(str((
                 'bundle errors', bundle.errors, len(bundle.errors.keys()),
                 'bundle_data', data)))
-
+#             return ImmediateHttpResponse(bundle.errors)
             return False
         return True
         
@@ -1530,6 +1535,25 @@ class ManagedResource(LoggingMixin):
         else:
             return dict(zip(id_attribute,keys))
 
+    def get_id(self,deserialized,**kwargs):
+        schema = self.build_schema()
+        id_attribute = schema['resource_definition']['id_attribute']
+        kwargs_for_id = {}
+        for id_field in id_attribute:
+            if deserialized and deserialized.get(id_field,None):
+                kwargs_for_id[id_field] = deserialized[id_field]
+            elif kwargs and kwargs.get(id_field,None):
+                kwargs_for_id[id_field] = kwargs[id_field]
+            elif 'resource_uri' in deserialized:
+                return self.find_key_from_resource_uri(deserialized['resource_uri'])
+            else:
+                raise NotImplementedError((
+                    'id attributes: %r not found in deserialized: %r, nor in kwargs: %r'
+                    % (id_attribute, deserialized, kwargs)))
+                
+        return kwargs_for_id
+
+
     def _get_attribute(self, obj, attribute):
         '''
         get an attribute that is possibly defined by dot notation:
@@ -1588,42 +1612,63 @@ class ManagedResource(LoggingMixin):
                 # note use an ordered dict here so that the args can be returned as
                 # a positional array for 
                 kwargs = OrderedDict() 
-                id_attribute = resource['id_attribute']
-                for x in id_attribute:
-                    val = ''
-                    if isinstance(bundle_or_obj, Bundle):
-                        val = self._get_attribute(bundle_or_obj.obj, x)
-                    else:
-                        if hasattr(bundle_or_obj, x):
-                            val = self._get_attribute(bundle_or_obj,x)  
-                        elif isinstance(bundle_or_obj, dict):
-                            val = self._get_hashvalue(bundle_or_obj, x) # allows simple dicts
-                        else:
-                            raise Exception(str(('obj', type(obj), obj, 'does not contain', x)))
-                    if isinstance(val, datetime.datetime):
-                        val = val.isoformat()
-                    else:
-                        val = str(val)
-                    
-                    kwargs[x] = val
+
+#                 id_attribute = resource['id_attribute']
+#                 for x in id_attribute:
+#                     val = ''
+#                     if isinstance(bundle_or_obj, Bundle):
+#                         val = self._get_attribute(bundle_or_obj.obj, x)
+#                     else:
+#                         if hasattr(bundle_or_obj, x):
+#                             val = self._get_attribute(bundle_or_obj,x)  
+#                         elif isinstance(bundle_or_obj, dict):
+#                             val = self._get_hashvalue(bundle_or_obj, x) # allows simple dicts
+#                         else:
+#                             raise Exception(str(('obj', type(obj), obj, 'does not contain', x)))
+#                     if isinstance(val, datetime.datetime):
+#                         val = val.isoformat()
+#                     else:
+#                         val = str(val)
+#                     
+#                     kwargs[x] = val
+#                 
+#                 return kwargs
                 
-                return kwargs
-            
+                
+                if 'id_attribute' in resource:
+                    id_attribute = resource['id_attribute']
+                    for x in id_attribute:
+                        val = ''
+                        if isinstance(bundle_or_obj, Bundle):
+                            val = self._get_attribute(bundle_or_obj.obj, x)
+                        else:
+                            if hasattr(bundle_or_obj, x):
+                                val = self._get_attribute(bundle_or_obj,x)  
+                            elif isinstance(bundle_or_obj, dict):
+                                val = self._get_hashvalue(bundle_or_obj, x) # allows simple dicts
+                            else:
+                                raise Exception(str(('obj', type(obj), obj, 'does not contain', x)))
+                        if isinstance(val, datetime.datetime):
+                            val = val.isoformat()
+                        else:
+                            val = str(val)
+                         
+                        kwargs[x] = val
+                     
+                    return kwargs
+                else:
+                    logger.warn('Resource: %s, "id_attribute" not yet loaded', resource_name)
         except Exception, e:
-            logger.warn(str(('cannot grab id_attribute for', resource_name,
-                id_attribute,  e)))
+            logger.warn('resource: %s, id_attribute: %s, exception: %s ', resource_name,
+                id_attribute,  e)
             if logger.isEnabledFor(logging.INFO):
                 try:
-                    logger.info(str((
-                        'unable to locate resource: ', resource_name,
-                        ' has it been loaded yet for this resource?',
-                        'also note that this may not work with south, since model methods',
-                        'are not available: ', e, 
-                        'type', type(bundle_or_obj),
-                        id_attribute,
-                         )))
+                    logger.exception((
+                        'Unable to locate resource: %s has it been loaded yet?',
+                        'type: %s, id_attribute: %s'),
+                        resource_name, type(bundle_or_obj),id_attribute)
                 except Exception, e:
-                    logger.info(str(('reporting exception', e)))
+                    logger.exception('reporting exception')
         # Fall back to base class implementation 
         # (using the declared primary key only, for ModelResource)
         # This is useful in order to bootstrap the ResourceResource
@@ -1654,10 +1699,9 @@ class ManagedResource(LoggingMixin):
                 raise Resolver404("URI not found in 'self.urls'.")
         except Resolver404:
             raise NotFound("The URL provided '%s' was not a link to a valid resource." % uri)
-
         bundle = self.build_bundle(request=request)
         return self.obj_get(bundle=bundle, **self.remove_api_resource_names(kwargs))
-
+        
     def get_local_resource_uri(
             self, bundle_or_obj=None, url_name='api_dispatch_list'):
         '''
@@ -1931,6 +1975,15 @@ class MetaHashResource(ManagedModelResource):
         bundle = super(MetaHashResource, self).obj_update(bundle, **kwargs);
         self.reset_field_defs(getattr(bundle.obj,'scope'))
         return bundle
+    
+    @log_obj_delete
+    def obj_delete(self, bundle, **kwargs):
+        logger.info('delete: %s, %s', bundle, kwargs)
+        return ManagedModelResource.obj_delete(self, bundle, **kwargs)
+    
+    def obj_delete_list(self, bundle, **kwargs):
+        logger.info('obj delete list %s', kwargs)
+        ManagedModelResource.obj_delete_list(self, bundle, **kwargs)
     
     def is_valid(self, bundle, request=None):
         '''
@@ -2455,18 +2508,21 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
         - dicts have the same identity if the id_attribute keys have the same
         value.
         '''
-        # TODO: abstract the form field name
-        logger.debug('log patches: %s' %kwargs)
+        DEBUG_PATCH_LOG = False or logger.isEnabledFor(logging.DEBUG)
+        if DEBUG_PATCH_LOG:
+            logger.info('log patches: %s' %kwargs)
         log_comment = None
         if HEADER_APILOG_COMMENT in request.META:
             log_comment = request.META[HEADER_APILOG_COMMENT]
             logger.debug(str(('log comment', log_comment)))
         
-        logger.debug('log patches original: %s, =====new data===== %s'
-            % (original_data,new_data))
+        if DEBUG_PATCH_LOG:
+            logger.info('log patches original: %s, =====new data===== %s',
+                original_data,new_data)
         schema = self.build_schema()
         id_attribute = resource = schema['resource_definition']['id_attribute']
-
+        if DEBUG_PATCH_LOG:
+            logger.info('===id_attribute: %s', id_attribute)
         deleted_items = list(original_data)        
         for new_dict in new_data:
             log = ApiLog()
@@ -2476,7 +2532,7 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
             log.ref_resource_name = self._meta.resource_name
             log.key = '/'.join([str(new_dict[x]) for x in id_attribute])
             log.uri = '/'.join([self._meta.resource_name,log.key])
-        
+            
             # user can specify any valid, escaped json for this field
             # if 'apilog_json_field' in bundle.data:
             #     log.json_field = bundle.data['apilog_json_field']
@@ -2488,6 +2544,8 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
             
             prev_dict = None
             for c_dict in original_data:
+                if DEBUG_PATCH_LOG:
+                    logger.info('consider prev dict: %s', c_dict)
                 prev_dict = c_dict
                 for key in id_attribute:
                     if new_dict[key] != c_dict[key]:
@@ -2495,11 +2553,12 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
                         break
                 if prev_dict:
                     break # found
-            logger.debug('prev_dict to remove: %s' % prev_dict)
+            if DEBUG_PATCH_LOG:
+                logger.info('prev_dict: %s, ======new_dict====: %s', prev_dict, new_dict)
             if prev_dict:
                 # if found, then it is modified, not deleted
-                logger.debug('remove from deleted dict %r, %r' 
-                    % (prev_dict, deleted_items))
+                logger.debug('remove from deleted dict %r, %r',
+                    prev_dict, deleted_items)
                 deleted_items.remove(prev_dict)
                 
                 difflog = compare_dicts(prev_dict,new_dict)
@@ -2508,18 +2567,20 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
                     log.api_action = str((request.method)).upper()
                     log.diff_dict_to_api_log(difflog)
                     log.save()
-                    logger.debug('update, api log: %r' % log)
+                    if DEBUG_PATCH_LOG:
+                        logger.info('update, api log: %r' % log)
                 else:
                     # don't save the log
-                    logger.debug('no diffs found: %r, %r, %r' 
-                        % (prev_dict,new_dict,difflog))
+                    if DEBUG_PATCH_LOG:
+                        logger.info('no diffs found: %r, %r, %r' 
+                            % (prev_dict,new_dict,difflog))
             else: # creating
                 log.api_action = API_ACTION_CREATE
                 log.added_keys = json.dumps(new_dict.keys())
                 log.diffs = json.dumps(new_dict)
                 log.save()
-                if(logger.isEnabledFor(logging.DEBUG)):
-                    logger.debug(str(('create, api log', log)) )
+                if DEBUG_PATCH_LOG:
+                    logger.info('create, api log: %s', log)
                 
         for deleted_dict in deleted_items:
             log = ApiLog()
@@ -2544,7 +2605,8 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
             log.diff_keys = json.dumps(deleted_dict.keys())
             log.diffs = json.dumps(deleted_dict)
             log.save()
-            logger.debug('delete, api log: %r' % log)
+            if DEBUG_PATCH_LOG:
+                logger.info('delete, api log: %r',log)
             
 
 class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
@@ -2559,6 +2621,29 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
     - prepend_urls must direct to the detail/list methods
     '''
     
+    def _get_list_response(self,request,**kwargs_for_log):
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            includes='*',
+            **kwargs_for_log)
+        _data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        _data = _data[self._meta.collection_name]
+        logger.debug(' data: %s'% _data)
+        return _data
+
+    def _get_detail_response(self,request,**kwargs_for_log):
+        response = self.get_detail(
+            request,
+            desired_format='application/json',
+            includes='*',
+            **kwargs_for_log)
+        _data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        logger.debug(' data: %s'% _data)
+        return _data
+
     @write_authorization
     @un_cache        
     def patch_list(self, request, **kwargs):
@@ -2573,45 +2658,27 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
             raise BadRequest("Invalid data sent, must be nested in '%s'" 
                 % self._meta.collection_name)
         deserialized = deserialized[self._meta.collection_name]
-
-        schema = self.build_schema()
         
         # Look for id's kwargs, to limit the potential candidates for logging
+        schema = self.build_schema()
         id_attribute = resource = schema['resource_definition']['id_attribute']
         kwargs_for_log = kwargs.copy()
         for id_field in id_attribute:
             kwargs_for_log['%s__in'%id_field] = ( 
                 LIST_DELIMITER_URL_PARAM.join([x.get(id_field) for x in deserialized]) )
 
-        logger.info('patch list, resource: %r, objects: %d' 
-            % (self._meta.resource_name, len(deserialized)))
-        logger.debug('patch list: %s, %s' %(deserialized,kwargs_for_log))
-
-        # cache state, for logging
-        response = self.get_list(
-            request,
-            desired_format='application/json',
-            includes='*',
-            **kwargs_for_log)
-        original_data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        original_data = original_data[self._meta.collection_name]
-        logger.debug('original data: %s'% original_data)
-
-        with transaction.atomic():
-            
-            for _dict in deserialized:
-                self.patch_obj(_dict)
+        # get original state, for logging
+        original_data = self._get_list_response(request,**kwargs_for_log)
+        try:
+            with transaction.atomic():
                 
+                for _dict in deserialized:
+                    self.patch_obj(_dict)
+        except ValidationError as e:
+            raise ImmediateHttpResponse(response=self.error_response(request, e.errors))
+            
         # get new state, for logging
-        response = self.get_list(
-            request,
-            desired_format='application/json',
-            includes='*',
-            **kwargs_for_log)
-        new_data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        new_data = new_data[self._meta.collection_name]
+        new_data = self._get_list_response(request,**kwargs_for_log)
         
         logger.debug('new data: %s'% new_data)
         logger.info('patch list done, new data: %d' 
@@ -2622,13 +2689,17 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
             return http.HttpAccepted()
         else:
             response = self.get_list(request, **kwargs)             
-            response.status_code = 202
+            response.status_code = 200
             return response
  
     @write_authorization
     @un_cache        
     def put_list(self,request, **kwargs):
 
+#         # TODO: enforce a policy that either objects are patched or deleted
+#         raise NotImplementedError('put_list must be implemented')
+    
+        # but keep this as an example
         deserialized = self._meta.serializer.deserialize(
             request.body, 
             format=request.META.get('CONTENT_TYPE', 'application/json'))
@@ -2639,29 +2710,21 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
         
         logger.info('put_list')
         logger.debug('put list %s, %s' % (deserialized,kwargs))
-        
-        with transaction.atomic():
-            
-            # TODO: review REST actions:
-            # PUT deletes the endpoint
-            
-            self._meta.queryset.delete()
-            
-            for _dict in deserialized:
-                self.put_obj(_dict)
+        try:
+            with transaction.atomic():
+                
+                # TODO: review REST actions:
+                # PUT deletes the endpoint
+                
+                self._meta.queryset.delete()
+                
+                for _dict in deserialized:
+                    self.put_obj(_dict)
+        except ValidationError as e:
+            raise ImmediateHttpResponse(response=self.error_response(request, e.errors))
 
         # get new state, for logging
-        response = self.get_list(
-            request,
-            desired_format='application/json',
-            includes='*',
-            **kwargs)
-        new_data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        new_data = new_data[self._meta.collection_name]
-        
-        logger.info('put_list created %d objects' % len(new_data))
-        logger.debug('new data: %s' % new_data)
+        new_data = self._get_list_response(request,**kwargs)
         self.log_patches(request, [],new_data,**kwargs)
 
     
@@ -2669,7 +2732,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
             return http.HttpAccepted()
         else:
             response = self.get_list(request, **kwargs)             
-            response.status_code = 202
+            response.status_code = 200
             return response 
 
     @write_authorization
@@ -2683,12 +2746,14 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
     @un_cache        
     def post_detail(self, request, **kwargs):
         return self.patch_detail(request,**kwargs)
-#         raise NotImplementedError('post_detail must be implemented')
         
     @write_authorization
     @un_cache        
     def put_detail(self, request, **kwargs):
                 
+        # TODO: enforce a policy that either objects are patched or deleted
+        raise NotImplementedError('put_detail must be implemented')
+
         deserialized = self._meta.serializer.deserialize(
             request.body, 
             format=request.META.get('CONTENT_TYPE', 'application/json'))
@@ -2710,15 +2775,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
             # then this is a create
             original_data = []
         else:
-            response = self.get_detail(
-                request,
-                desired_format='application/json',
-                includes='*',
-                **kwargs_for_log)
-            original_data = self._meta.serializer.deserialize(
-                LimsSerializer.get_content(response), format='application/json')
-            original_data = [original_data]
-            logger.debug('original data %s ', original_data)
+            original_data = self._get_list_response(request,**kwargs_for_log)
         
         with transaction.atomic():
             logger.info('call put_obj')
@@ -2729,21 +2786,13 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
                 val = getattr(obj, id_field,None)
                 kwargs_for_log['%s' % id_field] = val
         # get new state, for logging
-        response = self.get_detail(
-            request,
-            desired_format='application/json',
-            includes='*',
-            **kwargs_for_log)
-        new_data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        new_data = [new_data]
-        logger.info(str(('new data', new_data)))
+        new_data = self._get_list_response(request,**kwargs_for_log)
         self.log_patches(request, original_data,new_data,**kwargs)
         
         if not self._meta.always_return_data:
             return http.HttpAccepted()
         else:
-            response.status_code = 202
+            response.status_code = 200
             return response
 
     @write_authorization
@@ -2763,28 +2812,20 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
         schema = self.build_schema()
         id_attribute = schema['resource_definition']['id_attribute']
         kwargs_for_log = {}
-        for id_field in id_attribute:
-            if deserialized.get(id_field,None):
-                kwargs_for_log[id_field] = deserialized[id_field]
-            elif kwargs.get(id_field,None):
-                kwargs_for_log[id_field] = kwargs[id_field]
-        logger.info('patch detail: %s, %s' %(deserialized,kwargs_for_log))
+        try:
+            kwargs_for_log = self.get_id(deserialized,**kwargs)
+            logger.info('patch detail: %s, %s' %(deserialized,kwargs_for_log))
+        except Exception:
+            # this can be ok, if the ID is generated
+            logger.info('object id not posted')
         if not kwargs_for_log:
             # then this is a create
             original_data = []
         else:
             try:
-                response = self.get_detail(
-                    request,
-                    desired_format='application/json',
-                    includes='*',
-                    **kwargs_for_log)
-                original_data = self._meta.serializer.deserialize(
-                    LimsSerializer.get_content(response), format='application/json')
-                original_data = [original_data]
-                logger.debug('original data %s ', original_data)
+                original_data = [self._get_detail_response(request,**kwargs_for_log)]
             except Exception, e: 
-                logger.info('exception when querying for existing obj: %s' % e)
+                logger.exception('exception when querying for existing obj: %s', kwargs_for_log)
                 original_data = []
         with transaction.atomic():
             
@@ -2795,15 +2836,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
                 kwargs_for_log['%s' % id_field] = val
 
         # get new state, for logging
-        response = self.get_detail(
-            request,
-            desired_format='application/json',
-            includes='*',
-            **kwargs_for_log)
-        new_data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        new_data = [new_data]
-        logger.info(str(('new data', new_data, self._meta.always_return_data)))
+        new_data = [self._get_detail_response(request,**kwargs_for_log)]
         self.log_patches(request, original_data,new_data,**kwargs)
 
         
@@ -2811,7 +2844,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
             return http.HttpAccepted()
         else:
             response = self.get_detail(request,**kwargs_for_log)
-            response.status_code = 202
+            response.status_code = 200
             return response
 
     @write_authorization
@@ -2839,19 +2872,15 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
         if not kwargs_for_log:
             raise Exception('required id keys %s' % id_attribute)
         else:
-            response = self.get_detail(
-                request,
-                desired_format='application/json',
-                includes='*',
-                **kwargs_for_log)
-            original_data = self._meta.serializer.deserialize(
-                LimsSerializer.get_content(response), format='application/json')
-            logger.debug('original data %s ', original_data)
+            original_data = self._get_detail_response(request,**kwargs_for_log)
 
         with transaction.atomic():
             
             self.delete_obj(**kwargs_for_log)
+
         # Log
+        # TODO: consider log_patches
+        
         logger.info('deleted: %s' %kwargs_for_log)
         log_comment = None
         if HEADER_APILOG_COMMENT in request.META:
@@ -2890,18 +2919,71 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
     @transaction.atomic()    
     def put_obj(self,deserialized, **kwargs):
         try:
-            self.delete_obj(**kwargs)
+            self.delete_obj(deserialized, **kwargs)
         except ObjectDoesNotExist,e:
             pass 
         
         return self.patch_obj(deserialized, **kwargs)            
 
-    def delete_obj(self, **kwargs):
+    def delete_obj(self, deserialized, **kwargs):
         raise NotImplementedError('delete obj must be implemented')
     
     def patch_obj(self,deserialized, **kwargs):
         raise NotImplementedError('patch obj must be implemented')
 
+    def validate(self, obj):
+        
+        schema = self.build_schema()
+        fields = schema['fields']
+        
+        # do validations
+        errors = {}
+        
+        for name, field in fields.items():
+            keyerrors = []
+            value = getattr(obj, name, None)
+            
+            if field.get('required', False):
+                logger.debug(str(('check required: ', name, value)))
+                
+                if not value:
+                     keyerrors.append('required')
+                if isinstance(value, basestring):
+                    if len(value.strip()) == 0:
+                        keyerrors.append('required')
+                        
+            if not value:
+                if keyerrors:
+                    errors[name] = keyerrors            
+                continue
+            
+            ##FIXME: some vocab fields are not choices fields
+            if 'choices' in field and field['choices']:
+                logger.debug(str(('check choices: ', name, value, field['choices'])))
+                if field['data_type'] != 'list':
+                    if str(value) not in field['choices']: # note: comparing as string
+                        keyerrors.append(
+                            "'%s' is not one of %r" % (value, field['choices']))
+                else:
+                    for x in value:
+                        if str(x) not in field['choices']: # note: comparing as string
+                            keyerrors.append(
+                                '%r are not members of %r' % (value, field['choices']))
+
+            if 'regex' in field and field['regex']:
+                logger.debug('name: %s, value: %s check regex: %s', name, value, field['regex'] )
+                if not re.match(field['regex'], value):
+                    msg = field.get('validation_message', None)
+                    if not msg:
+                        msg = "'%s' does not match pattern: '%s'" % (value, field['regex'])
+                    keyerrors.append(msg)
+
+            if keyerrors:
+                errors[name] = keyerrors
+                
+        if errors:
+            logger.warn('errors in submitted obj: %s, errs: %s', obj, errors)
+        return errors
 
 
 class UserResource(ManagedSqlAlchemyResourceMixin):
@@ -3133,7 +3215,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
                   
             visibilities = set()                
             if is_for_detail:
-                visibilities.update(['detail','summary'])
+                visibilities.update(['d','e'])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
                 is_for_detail=is_for_detail, visibilities=visibilities)
@@ -3191,19 +3273,19 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         return self.get_local_resource_uri(
             bundle_or_obj=bundle_or_obj, url_name=url_name)
         
-    def find_username(self,deserialized, **kwargs):
-        username = kwargs.get('username', None)
-        if not username and 'username' in deserialized:
-                username = deserialized['username']
-        if not username and 'resource_uri' in deserialized:
-            keys = self.find_key_from_resource_uri(deserialized['resource_uri'])
-            username = keys.get('username', None)
-        if not username:
-            logger.info('no username provided',kwargs, deserialized)
-            raise NotImplementedError(str((
-                'must provide a username parameter',
-                kwargs, deserialized)) )
-        return username
+#     def find_username(self,deserialized, **kwargs):
+#         username = kwargs.get('username', None)
+#         if not username and 'username' in deserialized:
+#                 username = deserialized['username']
+#         if not username and 'resource_uri' in deserialized:
+#             keys = self.find_key_from_resource_uri(deserialized['resource_uri'])
+#             username = keys.get('username', None)
+#         if not username:
+#             logger.info('no username provided: %s, %s',kwargs, deserialized)
+#             raise NotImplementedError(str((
+#                 'must provide a username parameter',
+#                 kwargs, deserialized)) )
+#         return username
 
     # reworked 20150706   
     @un_cache        
@@ -3260,7 +3342,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             return http.HttpAccepted()
         else:
             response = self.get_list(request, **kwargs)             
-            response.status_code = 202
+            response.status_code = 200
             return response
 
     @un_cache        
@@ -3310,7 +3392,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             return http.HttpAccepted()
         else:
             response = self.get_list(request, **kwargs)             
-            response.status_code = 202
+            response.status_code = 200
             return response
 
     @un_cache        
@@ -3360,7 +3442,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             return http.HttpAccepted()
         else:
             response = self.get_detail(request, **kwargs) 
-            response.status_code = 202
+            response.status_code = 200
             return response
 
     @un_cache        
@@ -3383,7 +3465,7 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             return http.HttpAccepted()
         else:
             response = self.get_detail(request, **kwargs) 
-            response.status_code = 202
+            response.status_code = 200
             return response
         
     @transaction.atomic()    
@@ -3406,21 +3488,23 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             format=request.META.get('CONTENT_TYPE', 'application/json'))
         try:
             self.delete_obj(deserialized, **kwargs)
-            return HttpResponse(status=202)
+            return HttpResponse(status=204)
         except ObjectDoesNotExist,e:
             return HttpResponse(status=404)
     
     @transaction.atomic()    
     def delete_obj(self, deserialized, **kwargs):
-        username = self.find_username(deserialized,**kwargs)
-        UserProfile.objects.get(username=username).delete()
+#         username = self.find_username(deserialized,**kwargs)
+        id_kwargs = self.get_id(deserialized,**kwargs)
+        UserProfile.objects.get(**id_kwargs).delete()
     
     @transaction.atomic()    
     def patch_obj(self,deserialized, **kwargs):
 
         logger.info(str(('patch obj', deserialized,kwargs)))
         
-        username = self.find_username(deserialized,**kwargs)
+#         username = self.find_username(deserialized,**kwargs)
+        id_kwargs = self.get_id(deserialized,**kwargs)
         
         schema = self.build_schema()
         fields = schema['fields']
@@ -3433,87 +3517,101 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         try:
             # create the auth_user
 
+            try:
+                user = DjangoUser.objects.get(**id_kwargs)
+            except ObjectDoesNotExist, e:
+                logger.info('User %s does not exist, creating', id_kwargs)
+                user = DjangoUser.objects.create_user(
+                    id_kwargs['username']) # , **initializer_dict)
+                logger.info('created Auth.User: %s', user)
+
             initializer_dict = {}
             for key in auth_user_fields.keys():
-                if deserialized.get(key,None):
+                if key in deserialized:
                     initializer_dict[key] = parse_val(
                         deserialized.get(key,None), key, 
                         auth_user_fields[key]['data_type']) 
-            try:
-                user = DjangoUser.objects.get_by_natural_key(username)
-            except ObjectDoesNotExist, e:
-                logger.info('User %s does not exist, creating' % username)
-                user = DjangoUser.objects.create_user(
-                    username) # , **initializer_dict)
-            for key,val in initializer_dict.items():
-                if hasattr(user,key):
-                    setattr(user,key,val)
-            user.save()
-            logger.info(str(('== created/updated auth user', user, user.username, user.first_name)))
+            if initializer_dict:
+                for key,val in initializer_dict.items():
+                    if hasattr(user,key):
+                        setattr(user,key,val)
+                user.save()
+                logger.info(str(('== created/updated auth user', user, user.username, user.first_name)))
+            else:
+                logger.info('no auth_user fields to update %s', deserialized)
+                
             # create the reports userprofile
-            
             initializer_dict = {}
             for key in userprofile_fields.keys():
-                if deserialized.get(key,None):
+                if key in deserialized:
                     initializer_dict[key] = parse_val(
                         deserialized.get(key,None), key,
                         userprofile_fields[key]['data_type']) 
 
             userprofile = None
             try:
-                userprofile = UserProfile.objects.get(username=username)
+                userprofile = UserProfile.objects.get(**id_kwargs)
             except ObjectDoesNotExist, e:
-                logger.info('Reports User %s does not exist, creating' % username)
-                userprofile = UserProfile.objects.create(username=username)
+                logger.info('Reports User %s does not exist, creating' % id_kwargs)
+                userprofile = UserProfile.objects.create(**id_kwargs)
                 userprofile.save()
+                logger.info('created UserProfile: %s', userprofile)
             
             userprofile.user = user
 
-            logger.info(str(('initializer dict', initializer_dict)))
-            for key,val in initializer_dict.items():
-                logger.info(str(('set',key,val,hasattr(userprofile, key))))
+            if initializer_dict:
+                logger.info('initializer dict: %r', initializer_dict)
+                for key,val in initializer_dict.items():
+                    logger.info('set: %s to %r, %s',key,val,hasattr(userprofile, key))
+                    
+                    if key == 'permissions':
+                        # FIXME: first check if permissions have changed
+                        userprofile.permissions.clear()
+                        if val:
+                            pr = self.get_permission_resource()
+                            for p in val:
+                                permission_key = ( 
+                                    pr.find_key_from_resource_uri(p))
+                                try:
+                                    permission = Permission.objects.get(**permission_key)
+                                    userprofile.permissions.add(permission)
+                                except ObjectDoesNotExist, e:
+                                    logger.warn(str(('no such permission', p, 
+                                        permission_key, initializer_dict)))
+                                    # if permission does not exist, create it
+                                    # TODO: should be created through the permission resource
+                                    permission = Permission.objects.create(**permission_key)
+                                    permission.save()
+                                    logger.info(str(('created permission', permission)))
+                                    userprofile.permissions.add(permission)
+                                    userprofile.save()
+                    elif key == 'usergroups':
+                        # FIXME: first check if groups have changed
+                        logger.info(str(('process groups', val)))
+                        userprofile.usergroup_set.clear()
+                        if val:
+                            ugr = self.get_usergroup_resource()
+                            for g in val:
+                                usergroup_key = ugr.find_key_from_resource_uri(g)
+                                try:
+                                    usergroup = UserGroup.objects.get(**usergroup_key)
+                                    usergroup.users.add(userprofile)
+                                    usergroup.save()
+                                    logger.info(str(('added user to usergroup', userprofile,userprofile.user, usergroup)))
+                                except ObjectDoesNotExist, e:
+                                    logger.info(str(('no such usergroup', g, 
+                                        usergroup_key, initializer_dict)))
+                                    raise e
+                    elif hasattr(userprofile,key):
+                        setattr(userprofile,key,val)
                 
-                if key == 'permissions':
-                    userprofile.permissions.clear()
-                    pr = self.get_permission_resource()
-                    for p in val:
-                        permission_key = ( 
-                            pr.find_key_from_resource_uri(p))
-                        try:
-                            permission = Permission.objects.get(**permission_key)
-                            userprofile.permissions.add(permission)
-                        except ObjectDoesNotExist, e:
-                            logger.warn(str(('no such permission', p, 
-                                permission_key, initializer_dict)))
-                            # if permission does not exist, create it
-                            # TODO: should be created through the permission resource
-                            permission = Permission.objects.create(**permission_key)
-                            permission.save()
-                            logger.info(str(('created permission', permission)))
-                            userprofile.permissions.add(permission)
-                            userprofile.save()
-                elif key == 'usergroups':
-                    logger.info(str(('process groups', val)))
-                    userprofile.usergroup_set.clear()
-                    ugr = self.get_usergroup_resource()
-                    for g in val:
-                        usergroup_key = ugr.find_key_from_resource_uri(g)
-                        try:
-                            usergroup = UserGroup.objects.get(**usergroup_key)
-                            usergroup.users.add(userprofile)
-                            usergroup.save()
-                            logger.info(str(('added user to usergroup', userprofile,userprofile.user, usergroup)))
-                        except ObjectDoesNotExist, e:
-                            logger.info(str(('no such usergroup', g, 
-                                usergroup_key, initializer_dict)))
-                            raise e
-                elif hasattr(userprofile,key):
-                    setattr(userprofile,key,val)
-            
-            # also set
-            userprofile.email = user.email
-            userprofile.save()
-            logger.info(str(('== created/updated userprofile', user, user.username)))
+                # also set
+                userprofile.email = user.email
+                userprofile.save()
+                logger.info(str(('== created/updated userprofile', user, user.username)))
+            else:
+                logger.info('no reports_userprofile fields to update %s', deserialized)
+
             return userprofile
             
         except Exception, e:
@@ -3667,7 +3765,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
             return http.HttpAccepted()
         else:
             response = self.get_list(request, **kwargs)             
-            response.status_code = 202
+            response.status_code = 200
             return response
         
     @un_cache        
@@ -3718,7 +3816,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
             return http.HttpAccepted()
         else:
             response = self.get_list(request, **kwargs)             
-            response.status_code = 202
+            response.status_code = 200
             return response
 
     @un_cache        
@@ -3768,7 +3866,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
             return http.HttpAccepted()
         else:
             response = self.get_detail(request, **kwargs) 
-            response.status_code = 202
+            response.status_code = 200
             return response
 
     @un_cache        
@@ -3790,7 +3888,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
             return http.HttpAccepted()
         else:
             response = self.get_detail(request, **kwargs) 
-            response.status_code = 202
+            response.status_code = 200
             return response
         
     @transaction.atomic()    
@@ -3813,7 +3911,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
             format=request.META.get('CONTENT_TYPE', 'application/json'))
         try:
             self.delete_obj(deserialized, **kwargs)
-            return HttpResponse(status=202)
+            return HttpResponse(status=204)
         except ObjectDoesNotExist,e:
             return HttpResponse(status=404)
     
@@ -4128,7 +4226,7 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
                   
             visibilities = set()                
             if is_for_detail:
-                visibilities.update(['detail','summary'])
+                visibilities.update(['d','e'])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
                 is_for_detail=is_for_detail, visibilities=visibilities)

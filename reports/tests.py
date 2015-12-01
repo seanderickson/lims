@@ -16,11 +16,29 @@ SQLite database engine the tests will by default use an in-memory database
 If you want to use a different database name, specify TEST_NAME in the dictionary 
 for any given database in DATABASES.
 
-Aside from using a separate database, the test runner will otherwise use all of
-the same database settings you have in your settings file: ENGINE, USER, HOST, 
-etc. The test database is created by the user specified by USER, so you'll need
-to make sure that the given user account has sufficient privileges to create a
-new database on the system.
+IccblTestRunner: set in the settings.py:
+run as:
+./manage.py test db.tests.TestName --settings=lims.settings_testing --keepdb
+Options:
+--keepdb:
+    if not set, the database is always reinitialized
+    if set, then the database is not destroyed after tests are run
+--reinit_metahash
+    if not set, then the metahash that would be left over from running with 
+    --keepdb will be reused
+    otherwise, all of the "_bootstrap_init_files" procedures are run
+
+
+To Run tests without a database:
+Example:
+./manage.py test reports.SDFSerializerTest.test2_clean_data_sdf \
+     --settings=lims.settings_testing_debug --verbosity=2 \
+     --testrunner=reports.tests.NoDbTestRunner
+NOTE: when using this testrunner, the class finder is different; note that the 
+path excludes the module, so 
+"reports.SDFSerializerTest.test2_clean_data_sdf"
+not 
+"reports.test.SDFSerializerTest.test2_clean_data_sdf"
 
 NOTE: to run using sqlite in memory, use a test_settings file with the database as:
 DATABASES['default'] = {'ENGINE': 'django.db.backends.sqlite3'}
@@ -1063,7 +1081,7 @@ class IResourceTestCase(SimpleTestCase):
             resp = self.api_client.patch(
                 resource_uri, format='csv', data=input_data, 
                 authentication=self.get_credentials(), **data_for_get )
-            self.assertTrue(resp.status_code in [202, 204], 
+            self.assertTrue(resp.status_code <= 204, 
                 (resp.status_code, self.deserialize(resp)))
             
             logger.debug(_('check patched data for',resource_name,
@@ -1126,7 +1144,7 @@ class IResourceTestCase(SimpleTestCase):
                 resource_uri, format='csv', data=input_data, 
                 authentication=self.get_credentials(), **data_for_get )
             logger.debug(_('Response: ' , resp.status_code))
-            self.assertTrue(resp.status_code in [200, 202, 204], 
+            self.assertTrue(resp.status_code <= 204, 
                             str((resp.status_code, self.serialize(resp) )) )
     
             logger.debug(_('check put data for',resource_name,
@@ -1378,7 +1396,7 @@ class TestApiInit(IResourceTestCase):
                             logger.debug(str(('action: ', json.dumps(action), 
                                               'response: ' , resp.status_code)))
                             self.assertTrue(
-                                resp.status_code in [200], (resp.status_code, resp))
+                                resp.status_code <= 204, (resp.status_code, resp))
                             
                             # now see if we can get these objects back
                             resp = testApiClient.get(
@@ -1497,7 +1515,7 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
             uri = BASE_URI + '/user'
             resp = self.api_client.put(uri, 
                 format='json', data=self.bootstrap_items, authentication=self.get_credentials())
-            self.assertTrue(resp.status_code in [200,201,202], 
+            self.assertTrue(resp.status_code <= 204, 
                 (resp.status_code, self.serialize(resp)))
             #                 self.assertHttpCreated(resp)
         except Exception, e:
@@ -1596,7 +1614,7 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
         resp = self.api_client.patch( uri, 
                     format='json', data=user_patch, 
                     authentication=self.get_credentials())
-        self.assertTrue(resp.status_code in [202, 204], 
+        self.assertTrue(resp.status_code <= 204, 
                         (resp.status_code, self.serialize(resp)))  
         
         # now try again as the updated user:
@@ -1652,7 +1670,7 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
         resp = self.api_client.patch( uri, 
                     format='json', data=user_patch, 
                     authentication=self.get_credentials())
-        self.assertTrue(resp.status_code in [202, 204], 
+        self.assertTrue(resp.status_code <= 204, 
                         (resp.status_code, self.serialize(resp)))  
         
         # now try again as the updated user:
@@ -1660,7 +1678,7 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
         resp = self.api_client.patch(
             resource_uri, format='json', data=json_data, 
             authentication=self.create_basic(username, password) )
-        self.assertTrue(resp.status_code in [202, 204], 
+        self.assertTrue(resp.status_code <= 204, 
                         (resp.status_code, self.serialize(resp)))
 
         #         # is it set?
@@ -1738,7 +1756,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         uri = BASE_URI + '/user' + '/' + username
         resp = self.api_client.patch(uri, format='json', data=user_patch, 
                                      authentication=self.get_credentials())
-        self.assertTrue(resp.status_code in [202, 204], 
+        self.assertTrue(resp.status_code <= 204, 
                         (resp.status_code, self.serialize(resp)))  
         
         # check the user settings/groups
@@ -1810,7 +1828,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         resp = self.api_client.patch(uri, format='json', 
             data=usergroup_patch, 
             authentication=self.get_credentials())
-        self.assertTrue(resp.status_code in [202, 204], 
+        self.assertTrue(resp.status_code <= 204, 
             (resp.status_code, self.serialize(resp)))  
         
         # is it set?
@@ -1880,7 +1898,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         resp = self.api_client.patch(uri, format='json', 
             data=usergroup_patch, 
             authentication=self.get_credentials())
-        self.assertTrue(resp.status_code in [202, 204], 
+        self.assertTrue(resp.status_code <= 204, 
                         (resp.status_code, self.serialize(resp)))  
         
         # is it set?
@@ -1949,7 +1967,7 @@ class RecordResource(IResourceTestCase):
         resp = self.api_client.patch(
             resource_uri, format='json', data={ 'objects': bootstrap_items }, 
             authentication=self.get_credentials())
-        self.assertTrue(resp.status_code in [202,204], 
+        self.assertTrue(resp.status_code <= 204, 
             (resp.status_code, resp, 'resource_uri', self.resource_uri,
                 'item', bootstrap_items))
              
@@ -1982,7 +2000,7 @@ class RecordResource(IResourceTestCase):
         resp = self.api_client.patch(
             resource_uri, format='json', data={ 'objects': bootstrap_items }, 
             authentication=self.get_credentials())
-        self.assertTrue(resp.status_code in [202,204], 
+        self.assertTrue(resp.status_code <= 204, 
             (resp.status_code, resp, 'resource_uri', self.resource_uri,
                 'item', bootstrap_items))
 
@@ -2107,7 +2125,7 @@ class RecordResource(IResourceTestCase):
             resource_uri, format='json', data={ 'objects': record_fields}, 
             authentication=self.get_credentials())
         logger.debug(str(('===resp',self.deserialize(resp) )))
-        self.assertTrue(resp.status_code in [202,204], 
+        self.assertTrue(resp.status_code <= 204, 
             (resp.status_code, resp, 'resource_uri', self.resource_uri,
                 'item', record_fields))
             #             self.assertHttpCreated(resp)
@@ -2211,7 +2229,7 @@ class RecordResource(IResourceTestCase):
         resp = self.api_client.patch(
             resource_uri, format='json', data={ 'objects': datapoints }, 
             authentication=self.get_credentials())
-        self.assertTrue(resp.status_code in [202,204], 
+        self.assertTrue(resp.status_code <= 204, 
             (resp.status_code, resp, 'resource_uri', self.resource_uri))
 
         logger.debug('=== get the datapoints patched in the record table')

@@ -159,7 +159,7 @@ class ServiceActivity(models.Model):
     serviced_screen = models.ForeignKey('Screen', null=True, blank=True)
     # consider pointing this to the screensaver_user table
     # serviced_user = models.ForeignKey('ScreeningRoomUser')
-    serviced_user = models.ForeignKey('ScreeningRoomUser')
+    serviced_user = models.ForeignKey('ScreensaverUser')
     funding_support = models.TextField(null=True)
     
     # TODO: remove
@@ -277,7 +277,7 @@ class ChecklistItemEvent(models.Model):
     checklist_item_id = models.IntegerField()
     screening_room_user = models.ForeignKey('ScreeningRoomUser')
     is_not_applicable = models.BooleanField()
-    date_created = models.DateTimeField()
+    date_created = models.DateTimeField(default=timezone.now)
     created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
     date_loaded = models.DateTimeField(null=True, blank=True)
     date_publicly_available = models.DateTimeField(null=True, blank=True)
@@ -294,6 +294,11 @@ class UserChecklistItem(models.Model):
     item_name = models.TextField()
     status = models.TextField()
     status_date = models.DateField()
+    
+    #added 20151104
+    status_notified_date = models.DateField(null=True)
+    previous_status = models.TextField(null=True)
+    
     class Meta:
         db_table = 'user_checklist_item'
         unique_together=(('screensaver_user','item_group','item_name'))
@@ -318,10 +323,14 @@ class CherryPickRequest(models.Model):
     # version = models.IntegerField()
     screen = models.ForeignKey('Screen')
     comments = models.TextField(blank=True)
-    requested_by = models.ForeignKey('ScreeningRoomUser')
+    # requested_by = models.ForeignKey('ScreeningRoomUser')
+    requested_by = models.ForeignKey('ScreensaverUser', 
+        related_name='requested_cherry_pick')
     is_randomized_assay_plate_layout = models.BooleanField()
     legacy_cherry_pick_request_number = models.IntegerField(null=True, blank=True)
-    volume_approved_by = models.ForeignKey('AdministratorUser', null=True, blank=True)
+    # volume_approved_by = models.ForeignKey('AdministratorUser', null=True, blank=True)
+    volume_approved_by = models.ForeignKey('ScreensaverUser', 
+        null=True, blank=True, related_name='approved_cherry_pick')
     number_unfulfilled_lab_cherry_picks = models.IntegerField()
     assay_plate_type = models.TextField()
     transfer_volume_per_well_approved = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
@@ -331,8 +340,9 @@ class CherryPickRequest(models.Model):
     assay_protocol_comments = models.TextField(blank=True)
     cherry_pick_assay_protocols_followed = models.TextField(blank=True)
     cherry_pick_followup_results_status = models.TextField(blank=True)
-    date_created = models.DateTimeField()
-    created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
+    date_created = models.DateTimeField(default=timezone.now)
+    created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True,
+        related_name='created_cherry_pick')
     keep_source_plate_cherry_picks_together = models.BooleanField()
     date_loaded = models.DateTimeField(null=True, blank=True)
     date_publicly_available = models.DateTimeField(null=True, blank=True)
@@ -401,11 +411,11 @@ class CherryPickRequestUpdateActivity(models.Model):
     class Meta:
         db_table = 'cherry_pick_request_update_activity'
 
-class CollaboratorLink(models.Model):
-    collaborator = models.ForeignKey('ScreeningRoomUser')
-    screen = models.ForeignKey('Screen')
-    class Meta:
-        db_table = 'collaborator_link'
+# class CollaboratorLink(models.Model):
+#     collaborator = models.ForeignKey('ScreeningRoomUser')
+#     screen = models.ForeignKey('Screen')
+#     class Meta:
+#         db_table = 'collaborator_link'
 
 # DEPRECATED - vocabulary
 class FundingSupport(models.Model):
@@ -413,14 +423,6 @@ class FundingSupport(models.Model):
     value = models.TextField(unique=True, blank=True)
     class Meta:
         db_table = 'funding_support'
-
-class LabAffiliation(models.Model):
-    # version = models.IntegerField()
-    affiliation_name = models.TextField(unique=True)
-    affiliation_category = models.TextField()
-    lab_affiliation_id = models.AutoField(primary_key=True)
-    class Meta:
-        db_table = 'lab_affiliation'
 
 class Publication(models.Model):
     publication_id = models.AutoField(primary_key=True)
@@ -451,25 +453,56 @@ class SchemaHistory(models.Model):
 
 class Screen(models.Model):
     screen_id = models.AutoField(primary_key=True) 
-    # version = models.IntegerField()
-    date_created = models.DateTimeField()
+    facility_id = models.TextField(unique=True)
+    project_phase = models.TextField()
+    project_id = models.TextField(blank=True)
+    # New, from status migration (0004)
+    status = models.TextField(null=True, blank=True)
+    status_date = models.DateField(null=True, blank=True)
+    
+    assay_type = models.TextField(null=True, blank=True)
+
     screen_type = models.TextField(null=False, blank=False)
     title = models.TextField(null=False, blank=False)
     summary = models.TextField(blank=True)
-    comments = models.TextField(blank=True)
-    abase_study_id = models.TextField(blank=True)
-    abase_protocol_id = models.TextField(blank=True)
-    publishable_protocol = models.TextField(blank=True)
-    lead_screener = models.ForeignKey('ScreeningRoomUser', null=True, blank=True)
-    lab_head = models.ForeignKey('LabHead', null=True, blank=True)
-    publishable_protocol_entered_by = models.TextField(blank=True)
-    publishable_protocol_comments = models.TextField(blank=True)
-    study_type = models.TextField(null=False, blank=False)
-    url = models.TextField(blank=True)
+
+    lead_screener = models.ForeignKey('ScreensaverUser', null=True, 
+        blank=True, related_name='led_screen')
+    lab_head = models.ForeignKey('ScreensaverUser', null=True, blank=True,
+        related_name='lab_head_screen')
+    collaborators = models.ManyToManyField('ScreensaverUser', related_name='collaborating_screens')
+
+    date_of_application = models.DateField(null=True, blank=True)
     data_meeting_complete = models.DateField(null=True, blank=True)
     data_meeting_scheduled = models.DateField(null=True, blank=True)
-    date_of_application = models.DateField(null=True, blank=True)
+    perturbagen_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
+    perturbagen_ug_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
+    
+    publishable_protocol = models.TextField(blank=True)
+    publishable_protocol_comments = models.TextField(blank=True)
+    publishable_protocol_entered_by = models.TextField(blank=True)
     publishable_protocol_date_entered = models.DateField(null=True, blank=True)
+
+    data_sharing_level = models.IntegerField(null=False)
+    data_privacy_expiration_date = models.DateField(null=True, blank=True)
+    max_allowed_data_privacy_expiration_date = models.DateField(null=True, blank=True)
+    min_allowed_data_privacy_expiration_date = models.DateField(null=True, blank=True)
+    data_privacy_expiration_notified_date = models.DateField(null=True, blank=True)
+    
+    comments = models.TextField(blank=True)
+
+    coms_registration_number = models.TextField(blank=True)
+    coms_approval_date = models.DateField(null=True, blank=True)
+
+    pubchem_deposited_date = models.DateField(null=True, blank=True)
+    pubchem_assay_id = models.IntegerField(null=True, blank=True)
+
+    pin_transfer_admin_activity = models.ForeignKey(AdministrativeActivity, null=True, blank=True)
+    
+    abase_study_id = models.TextField(blank=True)
+    abase_protocol_id = models.TextField(blank=True)
+    study_type = models.TextField(null=False, blank=False)
+    url = models.TextField(blank=True)
     amount_to_be_charged_for_screen = models.DecimalField(null=True, max_digits=9, decimal_places=2, blank=True)
     billing_comments = models.TextField(blank=True)
     is_billing_for_supplies_only = models.BooleanField(default=False) # TODO: obsolete? still used?
@@ -483,15 +516,8 @@ class Screen(models.Model):
     fee_form_requested_initials = models.TextField(blank=True)
     see_comments = models.BooleanField(default=False)
     to_be_requested = models.BooleanField(default=False)  #  TODO: obsolete? still used?
-    coms_registration_number = models.TextField(blank=True)
-    coms_approval_date = models.DateField(null=True, blank=True)
-    pin_transfer_admin_activity = models.ForeignKey(AdministrativeActivity, null=True, blank=True)
-    data_sharing_level = models.IntegerField(null=False)
     created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
-    data_privacy_expiration_date = models.DateField(null=True, blank=True)
-    max_allowed_data_privacy_expiration_date = models.DateField(null=True, blank=True)
-    min_allowed_data_privacy_expiration_date = models.DateField(null=True, blank=True)
-    data_privacy_expiration_notified_date = models.DateField(null=True, blank=True)
+    
     screened_experimental_well_count = models.IntegerField(null=False, default=0)
     unique_screened_experimental_well_count = models.IntegerField(null=False, default=0)
     total_plated_lab_cherry_picks = models.IntegerField(null=False, default=0)
@@ -504,29 +530,28 @@ class Screen(models.Model):
     min_data_loaded_replicate_count = models.IntegerField(null=True, blank=True)
     max_data_loaded_replicate_count = models.IntegerField(null=True, blank=True)
     libraries_screened_count = models.IntegerField(null=True, blank=True)
-    facility_id = models.TextField(unique=True)
-    project_phase = models.TextField()
-    project_id = models.TextField(blank=True)
-    pubchem_assay_id = models.IntegerField(null=True, blank=True)
-    pubchem_deposited_date = models.DateField(null=True, blank=True)
+    
     image_url = models.TextField(blank=True)
     well_studied = models.ForeignKey('Well', null=True, blank=True)
     species = models.TextField(blank=True)
 # Note: this is not in production
 #     cell_line = models.ForeignKey(CellLine, null=True, blank=True) 
     transfection_agent = models.ForeignKey('TransfectionAgent', null=True, blank=True)
+
+    date_created = models.DateTimeField(default=timezone.now)
     date_loaded = models.DateTimeField(null=True, blank=True)
     date_publicly_available = models.DateTimeField(null=True, blank=True)
-    perturbagen_molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
-    perturbagen_ug_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
-
-    status = models.TextField(null=True, blank=True)
-    status_date = models.DateField(null=True, blank=True)
-    
-    assay_type = models.TextField(null=True, blank=True)
     
     class Meta:
         db_table = 'screen'
+
+class ScreenKeyword(models.Model):
+    screen = models.ForeignKey('Screen', related_name='keywords')
+    keyword = models.TextField()
+    class Meta:
+        unique_together = (('screen', 'keyword'))
+        db_table = 'screen_keyword'
+
 
 class ScreenBillingItem(models.Model):
     screen = models.ForeignKey(Screen)
@@ -537,12 +562,6 @@ class ScreenBillingItem(models.Model):
     class Meta:
         db_table = 'screen_billing_item'
 
-class ScreenFundingSupportLink(models.Model):
-    screen = models.ForeignKey(Screen)
-    funding_support = models.ForeignKey(FundingSupport)
-    class Meta:
-        db_table = 'screen_funding_support_link'
-
 class ScreenFundingSupports(models.Model):
     screen = models.ForeignKey(Screen)
     funding_support = models.TextField()
@@ -550,12 +569,12 @@ class ScreenFundingSupports(models.Model):
         unique_together = (('screen', 'funding_support'))
         db_table = 'screen_funding_supports'
         
-
-class ScreenKeyword(models.Model):
-    screen = models.ForeignKey(Screen)
-    keyword = models.TextField()
-    class Meta:
-        db_table = 'screen_keyword'
+# TODO: Obsoleted by ScreenFundingSupports: remove after migrations are all done
+# class ScreenFundingSupportLink(models.Model):
+#     screen = models.ForeignKey(Screen)
+#     funding_support = models.ForeignKey(FundingSupport)
+#     class Meta:
+#         db_table = 'screen_funding_support_link'
 
 class ScreenPublicationLink(models.Model):
     screen = models.ForeignKey(Screen)
@@ -569,7 +588,7 @@ class ScreenResult(models.Model):
     replicate_count = models.IntegerField()
     experimental_well_count = models.IntegerField()
     screen = models.OneToOneField(Screen, unique=True)
-    date_created = models.DateTimeField()
+    date_created = models.DateTimeField(default=timezone.now)
     created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
     channel_count = models.IntegerField(null=True, blank=True)
     date_loaded = models.DateTimeField(null=True, blank=True)
@@ -665,14 +684,15 @@ class ScreensaverUser(models.Model):
     phone = models.TextField(blank=True)
     mailing_address = models.TextField(blank=True)
     ecommons_id = models.TextField(blank=True)
-    created_by = models.ForeignKey('self', null=True, blank=True)
+    created_by = models.ForeignKey('self', null=True, blank=True,
+        related_name='created_user')
     date_loaded = models.DateTimeField(null=True, blank=True)
     date_publicly_available = models.DateTimeField(null=True, blank=True)
 
     # legacy fields, superceded by reports.userprofile/auth_user
     login_id = models.TextField(unique=True, null=True)
     digested_password = models.TextField(null=True)
-
+    
     # legacy: convert to apilog
     comments = models.TextField(blank=True)
 
@@ -682,7 +702,17 @@ class ScreensaverUser(models.Model):
     # mirror the userprofile, auth_user username
     # FIXME: user migration should convert this field to null=False
     username = models.TextField(null=True, unique=True)
+
+    # screening_room_user fields
+    classification = models.TextField(null=True)
+    lab_head = models.ForeignKey('ScreensaverUser', null=True, blank=True, 
+        related_name='lab_member')
     
+        
+    # 20151105 - LabHead Refactoring: this field, if set, designates user as a "Lab Head"
+    lab_head_affiliation = models.ForeignKey('LabAffiliation', null=True, blank=True)
+    lab_head_affiliation = models.TextField(null=True)
+
     class Meta:
         db_table = 'screensaver_user'
         
@@ -691,15 +721,23 @@ class ScreensaverUser(models.Model):
             'screensaver_user_id: %r, ' 
             'user: %r }') % (self.ecommons_id, self.user )
 
-
+# TODO: remove after all migrations
 class ScreeningRoomUser(models.Model):
     screensaver_user = models.OneToOneField('ScreensaverUser', primary_key=True)
+    # TODO: remove after all migrations
     user_classification = models.TextField()
+    # TODO: remove after all migrations
     lab_head = models.ForeignKey('LabHead', null=True, blank=True)
+    
     coms_crhba_permit_number = models.TextField(blank=True)
     coms_crhba_permit_principal_investigator = models.TextField(blank=True)
-    last_notified_smua_checklist_item_event = models.ForeignKey(ChecklistItemEvent, null=True, blank=True, related_name='smua_user')
-    last_notified_rnaiua_checklist_item_event = models.ForeignKey(ChecklistItemEvent, null=True, blank=True, related_name='rnai_ua_user')
+    
+    # TODO: remove after all migrations
+    last_notified_smua_checklist_item_event = models.ForeignKey(
+        ChecklistItemEvent, null=True, blank=True, related_name='smua_user')
+    # TODO: remove after all migrations
+    last_notified_rnaiua_checklist_item_event = models.ForeignKey(
+        ChecklistItemEvent, null=True, blank=True, related_name='rnai_ua_user')
     class Meta:
         db_table = 'screening_room_user'
 
@@ -714,14 +752,36 @@ class AdministratorUser(models.Model):
     screensaver_user = models.OneToOneField('ScreensaverUser', primary_key=True)
     class Meta:
         db_table = 'administrator_user'
-        
+    
+    
+# legacy after migrations   
 class LabHead(models.Model):
-    screensaver_user = models.OneToOneField('ScreeningRoomUser', primary_key=True)
-    lab_affiliation = models.ForeignKey(LabAffiliation, null=True, blank=True)
+#     screensaver_user = models.OneToOneField('ScreeningRoomUser', primary_key=True)
+    screensaver_user = models.OneToOneField('ScreensaverUser', primary_key=True)
+    lab_affiliation = models.ForeignKey('LabAffiliation', null=True, blank=True)
     
     class Meta:
         db_table = 'lab_head'
 
+# legacy - converted to vocabulary - remove after migrations
+class LabAffiliation(models.Model):
+    # version = models.IntegerField()
+    affiliation_name = models.TextField(unique=True)
+    title = models.TextField(null=True)
+    affiliation_category = models.TextField()
+    lab_affiliation_id = models.AutoField(primary_key=True)
+    class Meta:
+        db_table = 'lab_affiliation'
+
+
+class UserFacilityUsageRole(models.Model):
+    screensaver_user = models.ForeignKey('ScreensaverUser')
+    facility_usage_role = models.TextField()
+    class Meta:
+        db_table = 'user_facility_usage_role'
+        unique_together = (('screensaver_user', 'facility_usage_role'))
+
+# TODO: obsoleted by UserFacilityUsageRole: remove after migrations are all done
 class ScreeningRoomUserFacilityUsageRole(models.Model):
     screening_room_user = models.ForeignKey(ScreeningRoomUser)
     facility_usage_role = models.TextField()
@@ -796,7 +856,8 @@ class Well(models.Model):
     library = models.ForeignKey('Library')
     deprecation_admin_activity = models.ForeignKey('AdministrativeActivity', null=True, blank=True)
     is_deprecated = models.BooleanField(default=False)
-    latest_released_reagent = models.ForeignKey('Reagent', null=True, blank=True, related_name='reagent_well')
+    latest_released_reagent = models.ForeignKey(
+        'Reagent', null=True, blank=True, related_name='reagent_well')
     
 #     reagent = models.ForeignKey('Reagent', null=True, related_name='wells')
 #     reagent = models.ForeignKey('Reagent', to_field='substance_id')
@@ -1057,7 +1118,7 @@ class Library(models.Model):
     screening_status = models.TextField()
     date_received = models.DateField(null=True, blank=True)
     date_screenable = models.DateField(null=True, blank=True)
-    date_created = models.DateTimeField()
+    date_created = models.DateTimeField(default=timezone.now)
     plate_size = models.TextField()
 
     # FIXME: need to create a migration script that will invalidate all of the
@@ -1067,7 +1128,9 @@ class Library(models.Model):
     experimental_well_count = models.IntegerField(null=True, blank=True)
     is_pool = models.NullBooleanField(null=True, blank=True)
     created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
-    owner_screener = models.ForeignKey('ScreeningRoomUser', null=True, blank=True)
+#     owner_screener = models.ForeignKey('ScreeningRoomUser', null=True, blank=True)
+    owner_screener = models.ForeignKey('ScreensaverUser', null=True, 
+        blank=True, related_name='owned_library')
     solvent = models.TextField()
     date_loaded = models.DateTimeField(null=True, blank=True)
     date_publicly_available = models.DateTimeField(null=True, blank=True)
@@ -1099,7 +1162,7 @@ class Copy(models.Model):
     name = models.TextField()
     copy_id = models.AutoField(primary_key=True)
     comments = models.TextField(blank=True)
-    date_created = models.DateTimeField()
+    date_created = models.DateTimeField(default=timezone.now)
     created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
     date_plated = models.DateField(null=True, blank=True)
     primary_plate_status = models.TextField()
@@ -1141,7 +1204,7 @@ class Plate(models.Model):
     
     copy = models.ForeignKey(Copy)
     facility_id = models.TextField(blank=True)
-    date_created = models.DateTimeField()
+    date_created = models.DateTimeField(default=timezone.now)
     created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
     plate_location = models.ForeignKey('PlateLocation', null=True, blank=True)
     status = models.TextField()

@@ -5,11 +5,12 @@ define([
     'iccbl_backgrid',
     'layoutmanager',
     'models/app_state',
+    'views/user/user_group_permissions',
     'views/generic_detail_layout',
     'views/list2',
     'text!templates/generic-tabbed.html',
 ], function($, _, Backbone, Iccbl, layoutmanager, 
-            appModel, DetailLayout, 
+            appModel, UserGroupPermissionView, DetailLayout, 
             ListView, layout) {
 
   var UserView = Backbone.Layout.extend({
@@ -38,11 +39,16 @@ define([
           description: 'User Details', 
           title: 'User Details', 
           invoke: 'setDetail' },
-        usergroup: { 
-          description: 'User Groups', 
-          title: 'User Groups', 
-          invoke: 'setGroups', 
-          resource: 'usergroup' },
+//        usergroup: { 
+//          description: 'User Groups', 
+//          title: 'User Groups', 
+//          invoke: 'setGroups', 
+//          resource: 'usergroup' },
+        usergrouppermissions: { 
+          description: 'User Groups and Permissions', 
+          title: 'User Groups and Permissions', 
+          invoke: 'setGroupsPermissions'
+        },
 //        permission: { 
 //          description: 'User Permissions', 
 //          title: 'User Permissions', 
@@ -167,15 +173,15 @@ define([
 //        });
 //      };
       console.log('setDetail: delegateStack: ', delegateStack);
-      var view = this.tabViews[key];
-      if ( !view ) {
-        view = new DetailLayout({ 
+//      var view = this.tabViews[key];
+//      if ( !view ) {
+        var view = new DetailLayout({ 
           model: this.model, 
           uriStack: delegateStack
 //          onEditCallBack: onEditCallBack 
         });
         this.tabViews[key] = view;
-      }
+//      }
       // NOTE: have to re-listen after removing a view
       this.listenTo(view , 'uriStack:change', this.reportUriStack);
       // Note: since detail_layout reports the tab, the consumedStack is empty here
@@ -183,26 +189,60 @@ define([
       this.setView("#tab_container", view ).render();
       return view;
     },
-
-    setGroups: function(delegateStack){
+    
+    setGroupsPermissions(delegateStack){
       var self = this;
-      var key = 'usergroup';
-      var resource = appModel.getResource('usergroup');
-      var url = [self.model.resource.apiUri, 
-                 self.model.key,
-                 'groups'].join('/');
-      view = new ListView({ options: {
-        uriStack: _.clone(delegateStack),
-        schemaResult: resource.schema,
-        resource: resource,
-        url: url
-      }});
+
+      var pUserModel = this.model.clone();
+      pUserModel.key = this.model.key;
+      var resource = _.extend({},this.model.resource);
+      resource.schema = _.extend({}, this.model.resource.schema );
+      resource.schema.fields = _.pick(
+        this.model.resource.schema.fields,
+        ['username','first_name','last_name','usergroups','permissions']);
+      resource.schema.fields['first_name']['visibility'] = [];
+      resource.schema.fields['last_name']['visibility'] = [];
+      resource.schema.fields['usergroups']['visibility'] = [];
+      resource.schema.fields['usergroups']['editability'] = ['u'];
+      resource.schema.fields['permissions']['editability'] = ['u'];
+      resource.schema.fields['first_name']['editability'] = [];
+      resource.schema.fields['last_name']['editability'] = [];
+      pUserModel.resource = resource;
+      pUserModel.resource.schema.fields['permissions']['choices'] = (
+          appModel.get('permissionOptions'));
+      
+      var view = new DetailLayout({ 
+        model: pUserModel, 
+        uriStack: delegateStack,
+        DetailView: UserGroupPermissionView
+      });
+      
       Backbone.Layout.setupView(view);
-      this.consumedStack = [key]; 
-      self.reportUriStack([]);
+      this.consumedStack = ['usergrouppermissions']; 
+      //      self.reportUriStack([]);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
-    },    
+    },
+
+//    setGroups: function(delegateStack){
+//      var self = this;
+//      var key = 'usergroup';
+//      var resource = appModel.getResource('usergroup');
+//      var url = [self.model.resource.apiUri, 
+//                 self.model.key,
+//                 'groups'].join('/');
+//      var view = new ListView({ options: {
+//        uriStack: _.clone(delegateStack),
+//        schemaResult: resource.schema,
+//        resource: resource,
+//        url: url
+//      }});
+//      Backbone.Layout.setupView(view);
+//      this.consumedStack = [key]; 
+//      self.reportUriStack([]);
+//      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+//      this.setView("#tab_container", view ).render();
+//    },    
     
     
     onClose: function() {

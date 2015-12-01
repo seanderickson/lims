@@ -18,6 +18,12 @@ define([
   var UserView = ReportsUserView.extend({
 
     screensaver_tabbed_resources: {
+      screens: {
+        description: "Screens associated with this user",
+        title: "Screens",
+        invoke: "setScreens",
+        resource: 'screen'
+      },
       userchecklistitem: {
         description: "User Checklist Items",
         title: "User Checklist Items",
@@ -65,6 +71,11 @@ define([
             _.isEmpty(attrs.lab_head_affiliation) ){
           errs.lab_head_affiliation = 'Required if PI';
         }
+        
+        if (!attrs.username && !attrs.ecommons_id){
+          errs.username = errs.ecommons_id = 'Either Ecommons or Username must be entered'
+        }
+        
         if (!_.isEmpty(errs)) return errs;
       };
       
@@ -119,7 +130,7 @@ define([
                 editForm.$el.find('[key="form-group-lab_head_affiliation"]').hide();
             }
             // attach classification change listener
-            editForm.listenTo(this, "change:classification", function(e){
+            editForm.listenTo(this, "classification:change", function(e){
               var classification = editForm.getValue('classification');
               console.log('classification:' + classification)
               if(classification == 'principal_investigator'){
@@ -160,22 +171,23 @@ define([
 
     addLabAffiliation: function(editForm){
       var self = this;
+      var choiceHash = {}
+      var currentAffiliationNames, vocabulary;
+      try{
+        vocabulary = Iccbl.appModel.getVocabulary('labaffiliation.category');
+          _.each(_.keys(vocabulary),function(choice){
+            choiceHash[choice] = vocabulary[choice].title;
+          });
+        currentAffiliationNames = Iccbl.appModel.getVocabulary('labaffiliation.category.*');
+      }catch(e){
+        console.log('on get vocabulary', e);
+        self.appModel.error('Error locating vocabulary: ' + 'labaffiliation.category');
+      }
       var form_template = [
          "<div class='form-horizontal container' id='addLabAffiliationForm' >",
          "<form data-fieldsets class='form-horizontal container' >",
          "</form>",
          "</div>"].join('');      
-      var choiceHash = {}
-      try{
-        var vocabulary = Iccbl.appModel.getVocabulary('labaffiliation.category');
-          _.each(_.keys(vocabulary),function(choice){
-            choiceHash[choice] = vocabulary[choice].title;
-          });
-        var currentAffiliationNames = Iccbl.appModel.getVocabulary('labaffiliation.category.*');
-      }catch(e){
-        console.log('on get vocabulary', e);
-        self.appModel.error('Error locating vocabulary: ' + 'labaffiliation.category');
-      }
       var fieldTemplate = _.template([
         '<div class="form-group" >',
         '    <label class="control-label " for="<%= editorId %>"><%= title %></label>',
@@ -275,6 +287,10 @@ define([
                   body: '"' + values['affiliation_name'] + '"',
                   ok: function(e){
                     e.preventDefault();
+                    // manually add the new lha and lab head username to the multiselects
+                    // TODO: possibly use backbone.stickit here to update the options 
+                    // on model events.
+                    
                     editForm.$el.find('[key="lab_head_affiliation"]')
                       .find('.chosen-select').append($('<option>',{
                         value: data['key']
@@ -332,6 +348,61 @@ define([
     change_to_tab: function(key){
       UserView.__super__.change_to_tab.apply(this, arguments);      
     },
+    
+    setScreens: function(delegateStack) {
+      var self = this;
+      var key = 'screens';
+      var originalResource = appModel.getResource('screen');
+      var resource = _.extend({},originalResource);
+      resource.schema = _.extend({}, originalResource.schema );
+      resource.schema.fields = _.pick(
+        originalResource.schema.fields,
+        ['facility_id','title','screen_type','screensaver_user_role', 'status','status_date',
+         'date_of_last_activity','date_created']);
+      resource.schema.fields['screen_type']['visibility'] = ['l'];
+      resource.schema.fields['screensaver_user_role']['visibility'] = ['l'];
+
+      var url = [self.model.resource.apiUri, 
+                 self.model.key,
+                 'screens'].join('/');
+      var addScreenButton = $([
+        '<a class="btn btn-default btn-sm pull-down" ',
+          'role="button" id="add_button" href="#">',
+          'Add</a>'
+        ].join(''));
+      addScreenButton.click(function(e){
+        e.preventDefault();
+        var route = 'screen/+add';
+        appModel.router.navigate(route, {trigger: true});
+      });
+      
+      var view = new ListView({ options: {
+          uriStack: _.clone(delegateStack),
+          schemaResult: resource.schema,
+          resource: resource,
+          url: url,
+          extraControls: [addScreenButton]
+      }});
+      Backbone.Layout.setupView(view);
+      self.consumedStack = [key]; 
+      self.reportUriStack([]);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView("#tab_container", view ).render();      
+    },
+    
+//    setScreens1: function(delegateStack) {
+//      var self=this;
+//      var key = 'screens';
+//      var view = new UserScreensView({
+//        model: self.model,
+//        uriStack: _.clone(delegateStack)
+//      });
+//      Backbone.Layout.setupView(view);
+//      self.consumedStack = [key]; 
+//      self.reportUriStack([]);
+//      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+//      self.setView("#tab_container", view ).render();      
+//    },
     
     setServiceActivities: function(delegateStack) {
       var self = this;

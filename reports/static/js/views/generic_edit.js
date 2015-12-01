@@ -271,10 +271,10 @@ define([
     initialize: function(options) {
         Backbone.Form.editors.Base.prototype.initialize.call(this, options);
         if (!this.value) {
-          var date = new Date();
-          date.setSeconds(0);
-          date.setMilliseconds(0);
-          this.value = date;
+//          var date = new Date();
+//          date.setSeconds(0);
+//          date.setMilliseconds(0);
+//          this.value = date;
         }else{
           this.value = new Date(this.value)
         }
@@ -480,11 +480,37 @@ define([
 
   });
   
-  
   var MultiSelect2 = Backbone.Form.editors.Select.extend({
     render: function() {
       this.$el.attr('multiple', 'multiple');
       this.setOptions(this.schema.options);
+      return this;
+    }
+  });
+  
+  var ChosenMultiSelect = Backbone.Form.editors.Select.extend({
+    render: function() {
+      Backbone.Form.editors.Select.prototype.render.apply(this);
+      
+      this.$el.attr('multiple', 'multiple');
+      this.setOptions(this.schema.options);
+      
+      if(this.schema.placeholder){
+        this.$el.attr('data-placeholder', this.schema.placeholder);
+      }
+      return this;
+    }
+  });
+  
+  var ChosenSelect = Backbone.Form.editors.Select.extend({
+    render: function() {
+      Backbone.Form.editors.Select.prototype.render.apply(this);
+      
+      this.setOptions(this.schema.options);
+      
+      if(this.schema.placeholder){
+        this.$el.attr('data-placeholder', this.schema.placeholder);
+      }
       return this;
     }
   });
@@ -502,11 +528,6 @@ define([
       var schema = this.model.resource.schema;
       var keys = this.keys = Iccbl.sortOnOrdinal(
           _.keys(schema.fields), schema.fields)
-      this.editableKeys = _(keys).filter(function(key){
-          return _.has(schema.fields[key], 'editability') &&
-              (_.contains(schema.fields[key]['editability'], 'c') ||
-              _.contains(schema.fields[key]['editability'], 'u'));
-      });
 
       var delegateModel = new Backbone.Model(_.clone(this.model.attributes ));
       delegateModel.resource = this.model.resource;
@@ -580,10 +601,15 @@ define([
       var self = this;
       var schema = this.model.resource.schema;
       var keys = this.keys;
+      var allEditVisibleKeys = this.model.resource.schema.allEditVisibleKeys();
+      var editableKeys = this.model.resource.schema.updateKeys();
+      if(_.isEmpty(_.compact(_.values(
+        self.model.pick(this.model.resource['id_attribute']))))){
+        // then add in the "create" keys
+        editableKeys = _.union(editableKeys,this.model.resource.schema.createKeys());
+      }
       
-      var editvisibleKeys = this.model.resource.schema.editVisibleKeys();
-      var editableKeys = this.editableKeys;
-      var finaleditableKeys = this.finaleditableKeys = [];
+      var finalEditableKeys = this.finalEditableKeys = [];
       var editSchema = {};
       
       var typeMap = {
@@ -654,7 +680,7 @@ define([
           },
         'select':
           {
-            type: Backbone.Form.editors.Select,
+            type: ChosenSelect,
             editorClass: 'chosen-select',
             editorAttrs: { widthClass: 'col-sm-5'}
 
@@ -670,6 +696,12 @@ define([
             type: MultiSelect2,
             template: self.altMultiselect2FieldTemplate,
             editorAttrs: { widthClass: 'col-sm-10'}
+          },
+        'multiselect3':
+          {
+            type: ChosenMultiSelect,
+            editorClass: 'chosen-select',
+            editorAttrs: { widthClass: 'col-sm-5'}
           },
         'radio':
           {
@@ -694,9 +726,8 @@ define([
         var fieldSchema;
         var fi = schema.fields[key];
         var cell_options;
-        var isDisabled = false;
 
-        if(!(_.contains(editvisibleKeys,key) || _.contains(editableKeys,key))){
+        if(!_.contains(allEditVisibleKeys,key)){
           return;
         }
         fieldSchema = editSchema[key] = _.extend({}, defaultFieldSchema);
@@ -704,12 +735,6 @@ define([
         fieldSchema['title'] = fi.title
         
         if(!_.contains(editableKeys, key)){
-          isDisabled = true;
-        }
-        if(!_.contains(fi['editability'],edit_visibility)){
-          isDisabled = true;
-        }
-        if(isDisabled){
         
           console.log('create disabled entry', key, fi['edit_visibility'])
           fieldSchema['type'] = DisabledField.extend({
@@ -723,7 +748,7 @@ define([
         }else{
           
           console.log('build edit schema for key: ',key);
-          finaleditableKeys.push(key);
+          finalEditableKeys.push(key);
 
           if(!_.isEmpty(fi['display_options'])){
             cell_options = fi['display_options'];
@@ -744,7 +769,7 @@ define([
           if(_.has(typeMap, fi.edit_type)){
             _.extend(fieldSchema, typeMap[fi.edit_type]);
           }
-          if(_.contains(['select','multiselect','multiselect2'],fi.edit_type)){
+          if(_.contains(['select','multiselect','multiselect2','multiselect3'],fi.edit_type)){
             fieldSchema['options'] = self._createVocabularyChoices(fi);
           }
           fieldSchema.validators = self._createValidators(fi);
@@ -890,13 +915,16 @@ define([
      */    
     templateData: function() {
       var schema = this.model.resource.schema;
-      if( ! _.contains(this.editableKeys, 'apilog_comment')){
-        this.editableKeys.push('apilog_comment');
+      
+      // Add comment field
+      // TODO: turn on from the resource schema
+      if( ! _.contains(this.finalEditableKeys, 'apilog_comment')){
+        this.finalEditableKeys.push('apilog_comment');
       }
                   
       return {
         'fieldDefinitions': schema.fields,
-        'keys': _.chain(this.editableKeys)
+        'keys': _.chain(this.finalEditableKeys)
       };      
     },	
 
@@ -988,19 +1016,21 @@ define([
       var changedAttributes = model.changedAttributes();
       console.log('original changedAttributes: ', changedAttributes);
       if(changedAttributes){
-        changedAttributes = _.pick(changedAttributes, this.finaleditableKeys);
+        changedAttributes = _.pick(changedAttributes, this.finalEditableKeys);
       }
       // finally, equate null to empty string
       changedAttributes = _.omit(changedAttributes, function(value,key,object){
         if(_.isEmpty(value) || _.isNull(value)){
           return (_.isEmpty(model.previous(key)) || _.isNull(model.previous(key)));
         }
-        if(_.isArray(value)){
-          // TODO: Invalid if the attribute is an ordered array
-          if(!_.isEmpty(model.previous(key))){
-            return _.isEmpty(_.difference(value,model.previous(key)));
-          }
-        }
+//        if(_.isArray(value)){
+//          // TODO: Invalid if the attribute is an ordered array
+//          if(!_.isEmpty(model.previous(key))){
+//            // find additions & deletions
+//            return (_.isEmpty(_.without(value,model.previous(key)));
+//                && _.isEmpty(_.without(model.previous(key),value)));
+//          }
+//        }
         // Cleanup strings containing newlines: 
         // carriage-return,line-feed (0x13,0x10) may be converted to line feed only (0x10)
         // NOTE: JSON does not officially support control-characters, so 
@@ -1034,7 +1064,7 @@ define([
       }
       
       changedAttributes = self._getChangedAttributes(this.model);
-      if (! changedAttributes){
+      if (! changedAttributes || _.isEmpty(changedAttributes)){
         appModel.error('no changes were detected');
         return;
       }
@@ -1081,10 +1111,11 @@ define([
         this.model.save(changedAttributes, options)
           .success(function(model, resp) {
             console.log('success');
-            // note, not a real backbone model, just JSON
-            model = new Backbone.Model(model);
-            var key = Iccbl.getIdFromIdAttribute( model,self.model.resource.schema );
-            appModel.router.navigate(self.model.resource.key + '/' + key, {trigger:true});
+// TODO: removed: 20151117 - triggering a 'remove' should be enough
+//            // note, not a real backbone model, just JSON
+//            model = new Backbone.Model(model);
+//            var key = Iccbl.getIdFromIdAttribute( model,self.model.resource.schema );
+//            appModel.router.navigate(self.model.resource.key + '/' + key, {trigger:true});
           })
           .done(function(model, resp) {
             // TODO: done replaces success as of jq 1.8
@@ -1093,6 +1124,7 @@ define([
           .error(appModel.jqXHRError)
           .always(function() {
             // always replaces complete as of jquery 1.8
+            console.log('trigger remove');
             self.trigger('remove');
           });
       }

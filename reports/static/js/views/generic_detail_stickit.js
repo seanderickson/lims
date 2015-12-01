@@ -25,16 +25,16 @@ define([
 	    console.log('initialize generic_detail_stickit view');
 	    var self = this;
 	    var schema = this.schema = args.schema || this.model.resource.schema;
-      var buttons = this.buttons = args.buttons || ['download','history','back'];
       this.detailKeys = args.detailKeys || schema.detailKeys(); 
       var nestedModels = this.nestedModels = {};
       var nestedLists = this.nestedLists = {};
       
-      if(appModel.hasPermission(self.model.resource.key, 'edit')){
-        this.buttons.unshift('edit');
+      var buttons = this.buttons = args.buttons || ['download','history','back','edit','delete'];
+      if(! appModel.hasPermission(self.model.resource.key, 'edit')){
+        this.buttons = _.without(this.buttons,'edit');
       }
-      if(appModel.getCurrentUser().is_superuser){
-        this.buttons.unshift('delete');
+      if(! appModel.getCurrentUser().is_superuser){
+        this.buttons = _.without(this.buttons,'delete');
       }
       this.createBindings();
 	  },
@@ -83,6 +83,7 @@ define([
       }     
 	    binding = {
           observe: key,
+          updateMethod: 'html',
           onGet: baseGetter
         };
       
@@ -102,10 +103,21 @@ define([
           appModel.error(msg);
         }
       }
+      if( fi.vocabulary ){
+        vocabulary = fi.vocabulary;
+      }
       
       function getTitle(vocabulary,value){
         if (!_.isEmpty(vocabulary[value])){
-          return vocabulary[value].title;
+          if(vocabulary[value].title){
+            return vocabulary[value].title;
+          }else if(_.isString(vocabulary[value])){
+            return _.escape(vocabulary[value]);//.replace(/</g,'&lt;');//.replace(/>/g,'&gt').replace(/&/g,'&amp');
+          }else{
+            console.log('error: ' + fi.vocabulary_scope_ref + ', key: ' + key, fi);
+            appModel.error('vocabulary misconfigured for: ' + 
+              fi.vocabulary_scope_ref + ', field: ' + fi.key + ': ' + value);
+          }
         }else{
           console.log('error: ' + fi.vocabulary_scope_ref + ', key: ' + key, fi);
           appModel.error('vocabulary not found for: ' + 
@@ -128,10 +140,14 @@ define([
       // define "data_type" getters
       function defaultGetter(value){
         if(value && vocabulary){
-          return getTitle(vocabulary,value);
+          value = getTitle(vocabulary,value);
+        }
+        if(value && _.isString(value)){
+          value = value.replace(/(\r\n|\n|\r)/gm,"<br/>")
         }
         return value;
       }
+      
       function dateGetter(value){
         if (value && !_.isEmpty(value)) {
           try {
@@ -173,7 +189,7 @@ define([
           return value;
         }
       }
-      
+      updateMethod: 'html',
       function booleanGetter(value){
         if(_.isBoolean(value)){
           return value;
@@ -236,19 +252,16 @@ define([
         }
       }
       
-      function linkListGetter(value){  
-        var modelValue = value;
-        var finalValue = value;
-        console.log('link list getter', value);
-        var _options = _.extend(
-          { hrefTemplate: 'http//', target: '_blank' }, cell_options );
-        if(value){
+      function linkListGetter(values){  
+        var modelValues = values;
+        var finalValues = values;
+        if(values){
           if(vocabulary){
-            finalValue = Iccbl.sortOnOrdinal(modelValue,vocabulary);
+            finalValues = Iccbl.sortOnOrdinal(modelValues,vocabulary);
           }
-          return _.map(finalValue, linkGetter).join(', ');
+          return _.map(finalValues, linkGetter).join(', ');
         }
-        return value;
+        return finalValues;
       }
 
       display_type_formatters = {

@@ -1,12 +1,14 @@
-<h4><%= title %></h4>
-<dl class="dl-horizontal">
+<table class='table table-condensed data-list'>
         <% 
         keys.each(function(key) {
          %>
-            <dt id="title-<%=key %>" title='' />
-            <dd id="<%=key %>">&nbsp;</dd>
+         <tr>
+            <td class='col-sm-2 dl-title' id="title-<%=key %>" title='' />
+            <td class='dl-data' id="<%=key %>">&nbsp;</td>
+         </tr>
      <% }); %>
-</dl>
+</table>
+
 <form id='generic-form' class="form-horizontal" >
     <div class="controls">
         <% 

@@ -2,7 +2,6 @@ define([
   'jquery',
   'underscore',
   'backbone',
-//  'backbone_pageable',
   'backgrid',
   'iccbl_backgrid',
   'models/app_state',
@@ -13,40 +12,39 @@ define([
     $, _, Backbone, Backgrid, Iccbl, appModel, 
     genericSelector, listTemplate, modalTemplate ){
 
-//  // for compatibility with require.js, attach PageableCollection in the right place on the Backbone object
-//  // see https://github.com/wyuenho/backbone-pageable/issues/62
-//  Backbone.PageableCollection = BackbonePageableCollection;
-
-//  var ajaxStart = function(){
-//      $('#loading').fadeIn({duration:100});
-//  };
-//  var ajaxComplete = function(){
-//      $('#loading').fadeOut({duration:100});
-//  };
-//  $(document).bind("ajaxComplete", function(){
-//      ajaxComplete(); // TODO: bind this closer to the collection
-//  });
-
   var ListView = Backbone.Layout.extend({
     LIST_ROUTE_ORDER: ['rpp', 'page','order','search'],
 
-    initialize : function(attributes, options) {
+    initialize : function(args) {
         var self = this;
-        this.options = options;
-        var schemaResult = this.schemaResult = options.schemaResult;
-
-        this.objects_to_destroy = _([]);
-
+        this.args = args;
+        var resource = this.resource = args.resource;
+        var schema = this.schema = resource.schema;
+        var collection = this.collection = args.collection;
+        var includes = args.includes || [];
+        var orderStack = args.orderStack || [];
+        var columns;
         var data = { message: '' };
         var compiledTemplate = this.compiledTemplate = _.template( listTemplate, data );
-
-        var collection = this.collection = options.collection;
         
-        console.log('initialize list:' + JSON.stringify(this.options.columns));
+        this.model = collection.listModel;
+        
+        if(!args.columns){
+          columns = Iccbl.createBackgridColModel(
+            schema.fields, 
+            orderStack,
+            includes);
+        }else{
+          columns = args.columns;
+        }
+        this.objects_to_destroy = _([]);
+
+        console.log('initialize list:' + JSON.stringify(this.args.columns));
         var grid = this.grid = new Backgrid.Grid({
-          columns: this.options.columns,
-          collection: this.options.collection,
+          columns: columns,
+          collection: collection,
         });
+        grid.$el.addClass("col-sm-12 table-striped table-condensed table-hover");
 
         this.objects_to_destroy.push(grid);
 
@@ -57,12 +55,12 @@ define([
         this.objects_to_destroy.push(paginator);
 
         // Extraselector
-        if( _.has(schemaResult, 'extraSelectorOptions')){
+        if( _.has(schema, 'extraSelectorOptions')){
             var searchHash = self.model.get('search');
             console.log('extraselector init: searchTerms: ' + JSON.stringify(searchHash));
 
             var extraSelectorModel = new Backbone.Model({ selection: '' });
-            var extraSelectorKey = schemaResult.extraSelectorOptions.searchColumn;
+            var extraSelectorKey = schema.extraSelectorOptions.searchColumn;
             _.each(_.keys(searchHash), function(key){
                 console.log('key: ' + key + ', extrSelectorKey: ' + extraSelectorKey);
                 if( key == extraSelectorKey){
@@ -70,7 +68,7 @@ define([
                 }
             });
             var extraSelectorInstance = self.extraSelectorInstance =
-                new genericSelector({ model: extraSelectorModel } , schemaResult.extraSelectorOptions );
+                new genericSelector({ model: extraSelectorModel } , schema.extraSelectorOptions );
             this.objects_to_destroy.push(extraSelectorInstance);
 
             this.listenTo(this.model, 'change: search', function(){
@@ -100,9 +98,9 @@ define([
               
             } catch (e){
               console.log('caught error: ' + JSON.stringify(e));
-              var idList = Iccbl.getIdKeys(model,schemaResult);
+              var idList = Iccbl.getIdKeys(model,schema);
               appModel.set({
-                current_scratch: { schemaResult: schemaResult, model: model},
+                current_scratch: { schema: schema, model: model},
               });
               // NOTE: prefer to send custom signal, rather than uriStack:change for 
               // detail/edit; this allows the parent to decide URI signalling
@@ -110,11 +108,13 @@ define([
             self.trigger('detail', model);
           });        
         
-        // TODO: work out the specifics of communication complete event
-//        this.listenTo(self.collection, 'request', ajaxStart);
-//        this.listenTo(self.collection, 'error', ajaxComplete);
-//        this.listenTo(self.collection, 'complete', ajaxComplete);
-
+        this.listenTo(collection,'sync', function(collection){
+          if(collection.size()<=collection.listModel.get('rpp')){
+            console.log('hide paginator', collection.size(),collection.listModel.get('rpp'));
+            self.$("#paginator-div").hide();
+          }
+        });
+        
         console.log('list view initialized');
     },
 

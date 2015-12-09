@@ -13,19 +13,20 @@ define([
 ], function($, _, Backbone, stickit, backbone_forms, Iccbl, appModel,
             DetailView, EditView, layoutTemplate ) {
 
-	var DetailLayout = Backbone.Layout.extend({
-	  
-	  initialize: function(args) {
-	    console.log('---- initialize detail layout');
+  var DetailLayout = Backbone.Layout.extend({
+
+    initialize: function(args) {
+      console.log('---- initialize detail layout');
       this.uriStack = args.uriStack;
       this.consumedStack = [];
-	    this.subviews = {};
-	    this.args = args;
+      this.subviews = {};
+      this.args = args;
+      this.DetailView = args.DetailView || DetailView;
       _.bindAll(this, 'showDetail');
       _.bindAll(this, 'showEdit');
-	  },
+    },
 
-	  events: {
+    events: {
       'click button#download': 'download',
       'click button#delete': 'delete',
       'click button#edit': 'clickEdit',
@@ -48,7 +49,7 @@ define([
       var self = this;
       var view = this.subviews['detail'];
       if (!view) {
-        view = new DetailView(_.extend({}, self.args, { model: this.model }));
+        view = new this.DetailView(_.extend({}, self.args, { model: this.model }));
         this.subviews['detail'] = view;
       }
       this.setView("#detail_content", view ).render();
@@ -58,11 +59,11 @@ define([
     clickEdit: function(event){
       event.preventDefault();
       this.reportUriStack(['edit']);
-      this.showEdit();
+      this.showEdit('edit');
     },
     
-    showEdit: function() {
-      console.log('showEdit...');
+    showEdit: function(viewId) {
+      console.log('showEdit: viewId: ' + viewId);
       var self = this;
       var showEditFunction = function(editOptions){
         var editOptions = editOptions || {};
@@ -70,12 +71,13 @@ define([
         if (!view) {
           view = new EditView(_.extend(
             { model: self.model, 
-              uriStack: ['edit'] 
+              uriStack: [viewId] 
             }, editOptions));
           Backbone.Layout.setupView(view);
           self.subviews['edit'] = view;
         }
         self.listenTo(view,'remove',function(){
+          self.removeView(view);
           self.showDetail();
         });
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
@@ -92,30 +94,15 @@ define([
       }
       
     },    
-    
-    showAdd: function() {
-      var view = this.subviews['add'];
-      if (!view) {
-        // TODO: "+add" is signaling to the editview 
-        view = new EditView({ model: this.model, uriStack: ['+add'] });
-        Backbone.Layout.setupView(view);
-        this.subviews['add'] = view;
-      }
-      this.listenTo(view,'remove',function(){
-        this.showDetail();
-      });
-      this.listenTo(view , 'uriStack:change', this.reportUriStack);
-      this.setView("#detail_content", view ).render();
-    },
-    
+
     afterRender: function(){
       if (!_.isEmpty(this.uriStack)){
         viewId = this.uriStack.shift();
         if (viewId == 'edit') {
-          this.showEdit();
+          this.showEdit(viewId);
           return;
         }else if (viewId == '+add') {
-          this.showAdd();
+          this.showEdit(viewId);
           return;
         }
       }
@@ -123,15 +110,13 @@ define([
     },
      
     download: function(e){
-//      $('#tmpFrame').attr('src', this.model.url + '?format=csv' );
       e.preventDefault();
       appModel.download(this.model.url, this.model.resource);
     },
 
     cancel: function(event){
       event.preventDefault();
-      this.remove();
-      appModel.router.back();
+      this.showDetail();
     },    
     
     back: function(event){
@@ -163,6 +148,7 @@ define([
      * Child view bubble up URI stack change event
      */
     reportUriStack: function(reportedUriStack) {
+      console.log('reportUriStack --- ' );
       var consumedStack = this.consumedStack || [];
       var actualStack = consumedStack.concat(reportedUriStack);
       this.trigger('uriStack:change', actualStack );

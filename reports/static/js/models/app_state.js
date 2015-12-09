@@ -148,7 +148,7 @@ define([
         users.each(function(user){
           var username = user.get('username');
           var lab_name = user.get('lab_name');
-          options.push({ val: username, label: lab_name, optgroup: 'test1' });
+          options.push({ val: username, label: lab_name });
         });
         callBack(options);
       });
@@ -171,7 +171,8 @@ define([
             // TODO: implement an "excludes" setting
             includes: ['lab_name','username','-mailing_address','-permissions',
                        '-all_permissions','-usergroups','-phone','-email'], 
-            lab_head_affiliation__is_null: false,
+            lab_head_affiliation__is_blank: false,
+            classification__eq: 'principal_investigator',
             order_by: ['lab_name']
           },
           success: function(collection, response) {
@@ -190,11 +191,23 @@ define([
       var self = this;
       var users = this.get('users');
       if(_.isEmpty(users)){
-        console.log('get all users from the server...');
-        var resourceUrl = self.dbApiUri + '/screensaveruser'
-        Iccbl.getCollectionOnClient(resourceUrl, function(collection){
-          self.set('users', collection);
-          callBack(collection);
+        console.log('get all users (for option hash) from the server...');
+        var url = self.dbApiUri + '/screensaveruser'
+        var CollectionClass = Iccbl.CollectionOnClient.extend({
+          url: url 
+        });
+        var instance = new CollectionClass();
+        instance.fetch({
+          data: { 
+            limit: 0,
+            exact_fields: ['username','name','email'], 
+            order_by: ['name']
+          },
+          success: function(collection, response) {
+            self.set('users', collection);
+            callBack(collection);
+          },
+          error: Iccbl.appModel.backboneFetchError, 
         });
       }
       else{
@@ -329,6 +342,30 @@ define([
       self.set('permissionOptions',permissionOptions);
     },
 
+    
+    /** 
+     * Return an array of options for a vocabulary select.
+     */
+    getVocabularySelectOptions: function(scope){
+      choiceHash = []
+      try{
+        var vocabulary = this.getVocabulary(fi.vocabulary_scope_ref);
+        _.each(_.keys(vocabulary),function(choice){
+          if(vocabulary[choice].is_retired){
+            console.log('skipping retired vocab: ',choice,vocabulary[choice].title );
+          }else{
+            choiceHash.push({ val: choice, label: vocabulary[choice].title });
+          }
+        });
+      }catch(e){
+        var msg = 'Vocabulary unavailable: field: ' + fi.key +  
+          ', vocabulary_scope_ref: ' + fi.vocabulary_scope_ref;
+        console.log(msg,e);
+        this.error(msg);
+      }
+      return choiceHash;
+    },
+    
     /**
      * return the set of vocabulary items for a scope:
      *    v.scope: { 
@@ -709,7 +746,13 @@ define([
     }, 
     
     setUriStack: function(value){
-      this.set({ uriStack: value });
+      if(this.get('uriStack') == value ){
+        // signal a change event if this method was called with the same value
+        // - for the menu signaling
+        this.trigger('change:uriStack', this);
+      }else{
+        this.set({ uriStack: value });
+      }
     },
 
     //    setUriStack: function(value){
@@ -769,6 +812,130 @@ define([
         self.showModal(options);
       }
     },
+    
+    /** Add a vocabulary term to the editForm & to the server:
+     * @param vocabulary_scope_ref
+     * @param name or title of the vocabulary
+     * @param callback(new_vocabulary_item) callback recieves the new vocab term.
+     **/
+    addVocabularyItemDialog: function(
+        vocabulary_scope_ref, vocabulary_name, callback, options){
+      
+      var self = this;
+      var options = options || {};
+      var description = options.description || 'Enter a ' + vocabulary_name;
+      var choiceHash = {}
+      var currentVocab, vocabulary;
+      var formSchema = {};
+      var formKey = vocabulary_scope_ref;  // name of the form field being added
+
+      try{
+        currentVocab = self.getVocabulary(vocabulary_scope_ref);
+      }catch(e){
+        console.log('on get vocabulary', e);
+        self.error('Error locating vocabulary: ' + vocabulary_scope_ref);
+        return;
+      }
+      formSchema[formKey] = {
+        title: vocabulary_name,
+        key: formKey,
+        editorAttrs: { placeholder: description },
+        type: 'Text',
+        validators: ['required'],
+        template: self.vocabulary_field_template 
+      };
+      formSchema['comments'] = {
+        title: 'Comments',
+        key: 'comments',
+        validators: ['required'],
+        type: 'TextArea',
+        template: self.vocabulary_field_template
+      };
+
+      var FormFields = Backbone.Model.extend({
+        schema: formSchema,
+        validate: function(attrs){
+          var errs = {};
+          var newVal = attrs[formKey];
+          if (newVal){
+            newVal = newVal.toLowerCase().replace(/\W+/g, '_');
+            if(_.has(currentVocab,newVal)){
+              errs[formKey] = '"'+ attrs[formKey] + '" is already used';
+            }
+          }
+          if (!_.isEmpty(errs)) return errs;
+        }
+      });
+      var formFields = new FormFields();
+      var form = new Backbone.Form({
+        model: formFields,
+        template: self.vocabulary_form_template
+      });
+      var _form_el = form.render().el;
+
+      var dialog = self.showModal({
+        okText: 'Create',
+        view: _form_el,
+        title: 'Create a new ' + vocabulary_name,
+        ok: function(e){
+          e.preventDefault();
+          var errors = form.commit({ validate: true }); // runs schema and model validation
+          if(!_.isEmpty(errors) ){
+            _.each(_.keys(errors), function(key){
+              $('[name="'+key +'"').parents('.form-group').addClass('has-error');
+            });
+            return false;
+          }else{
+            var values = form.getValue();
+            var resource = self.getResource('vocabularies');
+            var key = values[formKey].toLowerCase().replace(/\W+/g, '_');
+            var ordinal = currentVocab.length + 1;
+            var max_item = _.max(currentVocab, function(item){ return item.ordinal });
+            if (max_item){
+              ordinal = max_item.ordinal + 1;
+            }
+            
+            var data = {
+              'scope': vocabulary_scope_ref,
+              'key': key,
+              'title': values[formKey],
+              'description': values[formKey],
+              'ordinal': ordinal,
+              'comment': values['comment']
+            };
+            
+            $.ajax({
+              url: resource.apiUri,    
+              data: JSON.stringify(data),
+              contentType: 'application/json',
+              method: 'POST',
+              success: function(data){
+                self.getVocabularies(function(vocabularies){
+                  self.set('vocabularies', vocabularies);
+                  callback(data);
+                });
+                self.showModalMessage({
+                  title: 'New ' + vocabulary_name + ' created',
+                  okText: 'Ok',
+                  body: '"' + values[formKey] + '"',
+                  ok: function(e){
+                    e.preventDefault();
+                  }
+                });
+              },
+              done: function(model, resp){
+                console.log('done');
+              },
+              error: self.jqXHRError
+            });
+          
+            return true;
+          }
+        }
+      });
+    
+    }, //addVocabularyItem  
+    
 
     download: function(url, resource, post_data){
       var self = this;
@@ -1043,6 +1210,24 @@ define([
   });
 
   var appState = new AppState();
+  
+  appState.vocabulary_form_template = _.template([
+     "<div class='form-horizontal container' id='add_value_field' >",
+     "<form data-fieldsets class='form-horizontal container' >",
+     "</form>",
+     "</div>"].join(''));      
+  appState.vocabulary_field_template = _.template([
+    '<div class="form-group" >',
+    '    <label class="control-label " for="<%= editorId %>"><%= title %></label>',
+    '    <div class="" >',
+    '      <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
+    '      <div data-error class="text-danger" ></div>',
+    '      <div><%= help %></div>',
+    '    </div>',
+    '  </div>',
+  ].join(''));
+  
+  
   
   appState.schemaClass = new SchemaClass(); // make accessible to outside world
   

@@ -77,6 +77,7 @@ define([
       if (!_.isEmpty(this.uriStack)){
         viewId = this.uriStack.shift();
         if(viewId == '+add'){
+          this.$('ul.nav-tabs > li').addClass('disabled');
           this.uriStack.unshift(viewId); 
           viewId = 'detail';
         }
@@ -100,17 +101,19 @@ define([
       var consumedStack = this.consumedStack || [];
       var actualStack = consumedStack.concat(reportedUriStack);
       this.trigger('uriStack:change', actualStack );
+      
+      console.log('++++hack remove disabled state');
+      this.$('ul.nav-tabs > li').removeClass('disabled');
     },
     
     click_tab : function(event){
       var self = this;
       event.preventDefault();
-      // Block clicks from the wrong elements
-      // TODO: how to make this specific to this view? (it is also catching
-      //clicks on the table paginator)
       var key = event.currentTarget.id;
       if(_.isEmpty(key)) return;
-      
+      if(this.$('#'+key).hasClass('disabled')){
+        return;
+      }
       if(this.key && this.key === key){
         return;
       }

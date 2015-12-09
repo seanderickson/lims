@@ -14,7 +14,7 @@ define([
   'views/list2', 
   'views/collectionColumns',
   'text!templates/generic-tabbed.html'
-], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, DetailView, 
+], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, DetailLayout, 
             ListView, CollectionColumnView, tabbedTemplate){
 
   var ScreenView = Backbone.Layout.extend({
@@ -90,13 +90,12 @@ define([
       if (!_.isEmpty(this.uriStack)){
         viewId = this.uriStack.shift();
         if (viewId == '+add') {
+          this.$('ul.nav-tabs > li').addClass('disabled');
           this.uriStack.unshift(viewId);
-          this.showAdd();
-          return;
+          viewId = 'detail';
         }else if (viewId == 'edit'){
-          this.uriStack.unshift(viewId);
-          this.showEdit();
-          return;
+          this.uriStack.unshift(viewId); 
+          viewId = 'detail';
         }
 
         if (!_.has(this.tabbed_resources, viewId)){
@@ -110,12 +109,19 @@ define([
 
     click_tab : function(event){
       event.preventDefault();
-      // Block clicks from the wrong elements
-      // TODO: how to make this specific to this view? (it is also catching
-      // clicks on the table paginator)
       var key = event.currentTarget.id;
       if(_.isEmpty(key)) return;
-      this.change_to_tab(key);
+      if(this.$('#'+key).hasClass('disabled')){
+        return;
+      }
+      if(this.key && this.key === key){
+        return;
+      }
+      appModel.requestPageChange({
+        ok: function(){
+          self.change_to_tab(key);
+        }
+      });
     },
 
     change_to_tab: function(key){
@@ -147,55 +153,65 @@ define([
       return this;
     },
 
-    showAdd: function() {
-      var self = this;
-      var delegateStack = _.clone(this.uriStack);
-      var view = new DetailLayout({
-        model: self.model,
-        uriStack: delegateStack
-      });
-      Backbone.Layout.setupView(view);
-
-      // NOTE: have to re-listen after removing a view
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      this.setView("#tab_container", view ).render();
-      this.$('li').removeClass('active');
-      this.$('#detail').addClass('active');
-    },
-    
-    showEdit: function() {
-      var self = this;
-      var delegateStack = _.clone(this.uriStack);
-      var view = new DetailLayout({
-        model: self.model,
-        uriStack: delegateStack, 
-        buttons: ['download', 'upload']
-      });
-      Backbone.Layout.setupView(view);
-
-      // NOTE: have to re-listen after removing a view
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      this.setView("#tab_container", view ).render();
-      this.$('li').removeClass('active');
-      this.$('#detail').addClass('active');
-    },
-
     setDetail: function(delegateStack){
+      var self = this;
       var key = 'detail';
+      // set up a custom vocabulary that joins username to name; will be 
+      // used as the text of the linklist
+      this.model.resource.schema.fields['collaborator_usernames'].vocabulary = (
+          _.object(this.model.get('collaborator_usernames'),
+            this.model.get('collaborator_names')));
       
+      // onEditCallBack: wraps the edit display function
+      // - lazy fetch of the expensive principal investigators hash
+      // - perform post-render enhancement of the display
+      var onEditCallBack = function(displayFunction){
+        console.log('on edit callback...');
+        appModel.getPrincipalInvestigatorOptions(function(piOptions){
+          appModel.getUserOptions(function(userOptions){
+            self.model.resource.schema.fields['collaborator_usernames']['choices'] = userOptions;
+            self.model.resource.schema.fields['lead_screener_username']['choices'] = (
+                [{ val: '', label: ''}].concat(userOptions));
+            self.model.resource.schema.fields['lab_head_username']['choices'] = piOptions;
+            var editForm = displayFunction();
+
+            // Render the editForm; then add the add cell line
+            var temp = editForm.afterRender;
+            editForm.afterRender = function(){
+              
+              self._addVocabularyButton(
+                editForm, 'cell_lines', 'cell_line', 'Cell Line', { description: 'ATCC Designation' });
+             
+              self._addVocabularyButton(
+                editForm, 'transfection_agent', 'transfection_agent', 'Transfection Agent');
+             
+              self._addVocabularyButton(
+                editForm, 'species', 'screen.species', 'Screened Species');
+             
+              temp.call(editForm,arguments);
+            };
+          
+          });
+        });
+      };
+
       var view = this.tabViews[key];
-      if ( !view ) {
-        view = new DetailView({ 
-          model: this.model,
-          uriStack: delegateStack, 
-          buttons: ['download'] });
-        this.tabViews[key] = view;
-      } 
-      // NOTE: have to re-listen after removing a view
+      if (view) {
+        this.removeView(this.tabViews[key]);
+      }
+      view = new DetailLayout({ 
+        model: this.model, 
+        uriStack: delegateStack,
+        onEditCallBack: onEditCallBack 
+      });
+
+      this.tabViews[key] = view;
+      
       this.listenTo(view , 'uriStack:change', this.reportUriStack);
-      // NOTE: if subview doesn't report stack, report it here
-      //      this.reportUriStack([]);
+      // Note: since detail_layout reports the tab, the consumedStack is empty here
+      this.consumedStack = []; 
       this.setView("#tab_container", view ).render();
+      return view;
 
 //      if(!self.screen.get('has_screen_result')){
 //        self.$('#results').hide();
@@ -204,11 +220,36 @@ define([
 //      }
 
     },
-
+     
+    _addVocabularyButton: function(
+        editForm, fieldKey, vocabulary_scope_ref, vocabulary_name, options){
+      var options = options || {};
+      var addButton = $([
+        '<a class="btn btn-default btn-sm" ',
+          'role="button" id="add_' + fieldKey + '_button" href="#">',
+          'Add</a>'
+        ].join(''));
+      addButton.click(function(event){
+        event.preventDefault();
+        appModel.addVocabularyItemDialog(
+          vocabulary_scope_ref, vocabulary_name,
+          function(new_vocab_item){
+            // manually add the new vocabulary options to the multiselect
+            editForm.$el.find('[key="' + fieldKey + '"]')
+              .find('.chosen-select').append($('<option>',{
+                value: new_vocab_item['key']
+              }).text(new_vocab_item['title']));
+            editForm.$el.find('[key="' + fieldKey + '"]')
+              .find('.chosen-select').trigger("chosen:updated");
+          }, options);
+      });
+      editForm.$el.find('div[key="form-group-' + fieldKey + '"]').append(addButton);
+    },
+    
     setSummary : function(){
       var self = this;
       var summaryKeys = self.model.resource.schema.filterKeys('summary')
-      var detailView = new DetailView({
+      var detailView = new DetailLayout({
         model : self.model,
         detailKeys: summaryKeys
       });

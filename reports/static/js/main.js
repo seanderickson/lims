@@ -22,8 +22,8 @@ requirejs(['require-config'],
     // Jquery object with new methods
     'bootstrap'
   ],
-      function($, _, Backbone, Iccbl, appModel, AppView, AppRouter, 
-               reports_ui_resources_raw, reports_menu_raw, ui_resources_raw, menu_raw ) {
+  function($, _, Backbone, Iccbl, appModel, AppView, AppRouter, 
+    reports_ui_resources_raw, reports_menu_raw, ui_resources_raw, menu_raw ) {
     
     console.log('init screensaver/reports...')
     

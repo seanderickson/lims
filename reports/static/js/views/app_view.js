@@ -40,6 +40,32 @@ define([
         this.searchView = new SearchView(),
         Backbone.Layout.setupView(this.searchView);
         this.setView("#search_box", this.searchView ).render();
+        
+        var addScreenButton = $([
+          '<a class="btn btn-default btn-sm pull-down" ',
+            'role="button" id="add_screen_button" href="#">',
+            'Add Screen</a>'
+          ].join(''));
+        addScreenButton.click(function(e){
+          e.preventDefault();
+          var route = 'screen/+add';
+          appModel.router.navigate(route, {trigger: true});
+        });
+        var addUserButton = $([
+          '<a class="btn btn-default btn-sm pull-down" ',
+            'role="button" id="add_user_button" href="#">',
+            'Add User</a>'
+          ].join(''));
+        addUserButton.click(function(e){
+          e.preventDefault();
+          var route = 'screensaveruser/+add';
+          appModel.router.navigate(route, {trigger: true});
+        });
+        $('#additional_buttons_box').append(addScreenButton);
+        $('#additional_buttons_box').append(addUserButton);
+        
+        
+        
       },
       
       template: _.template(layout)

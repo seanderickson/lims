@@ -177,6 +177,10 @@ var UrlStack = Iccbl.UrlStack = Backbone.Model.extend({
   
 });
 
+/**
+ * Sort the list of field keys using the associated ordinal for the key in the 
+ * fieldHash
+ */
 var sortOnOrdinal = Iccbl.sortOnOrdinal = function(keys, fieldHash) {
     var sorted = _(keys).sort(function(a, b) {
         if (!_.has(fieldHash, a) || !_.has(fieldHash, b)) {
@@ -355,7 +359,6 @@ var getTitleFromTitleAttribute = Iccbl.getTitleFromTitleAttribute =
         }
         return memo ;
       }, '');
-    console.log('extracted title: ' + title + ' from ' + model);
     return title;
   }else{
     throw new TypeError("'title_attribute' not found on the schema: " + 
@@ -1304,6 +1307,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
   setSearch: function(searchHash) {
     var self = this;
     var searchHash = _.clone(searchHash);
+    self.listModel.set('search', searchHash);
     
     // Tell all the header cells
     // TODO: test further - REMOVED 20150113
@@ -4031,10 +4035,11 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
 };
 
 var createBackgridColModel = Iccbl.createBackgridColModel = 
-  function(restFields, orderStack, _manualIncludes) {
+  function(restFields, _orderStack, _manualIncludes) {
     
   console.log('--createBackgridColModel');
   var manualIncludes = _manualIncludes || [];
+  var orderStack = _orderStack || [];
 
   var colModel = [];
   var i = 0;

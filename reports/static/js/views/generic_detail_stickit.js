@@ -230,22 +230,22 @@ define([
         if( _.has(fi,'display_options') && _options.hrefTemplate == '#' ) {
           _options.hrefTemplate = window.location.pathname + '#' + fi['display_options'];
           _options.target = '_self';
-          } 
+        } 
+        if(vocabulary){
+          finalValue = getTitle(vocabulary,value);
+        }
+        var interpolatedVal = Iccbl.replaceTokens(self.model,_options.hrefTemplate,value);
+ 
+        if(value && !_.isEmpty(value)){
           if(vocabulary){
             finalValue = getTitle(vocabulary,value);
           }
-          var interpolatedVal = Iccbl.replaceTokens(self.model,_options.hrefTemplate,value);
- 
-          if(value && !_.isEmpty(value)){
-            if(vocabulary){
-              finalValue = getTitle(vocabulary,value);
-            }
-            var _html = '<a ' + 
-              'id="link-' + key + '" ' + 
-              'href="' + interpolatedVal + '" ' +
-              'target="' + _options.target + '" ' +
-              'tabIndex=-1 ' +
-              '>' + finalValue + '</a>';
+          var _html = '<a ' + 
+            'id="link-' + key + '" ' + 
+            'href="' + interpolatedVal + '" ' +
+            'target="' + _options.target + '" ' +
+            'tabIndex=-1 ' +
+            '>' + finalValue + '</a>';
           return _html;
         }else{
           return value;

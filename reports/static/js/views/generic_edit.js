@@ -21,6 +21,9 @@ define([
     tagname: 'siuniteditor',
     
     fieldTemplate: _.template([
+      '<div data-editor class="form-control" title="<%= help %>"  >',
+      ].join('')),
+    unitFieldTemplate: _.template([
       '<div data-editor title="<%= help %>"  >',
       ].join('')),
 
@@ -67,7 +70,7 @@ define([
 
     initialize: function(options) {
       var self = this;
-      console.log('siunit initialize');
+      console.log('siunit initialize', options);
       Backbone.Form.editors.Base.prototype.initialize.call(this, options);
 
       var options = this.options = options || {};
@@ -96,7 +99,7 @@ define([
         type: 'Select',
         options: units,
         editorClass: 'form-control',
-        template: this.fieldTemplate
+        template: this.unitFieldTemplate
       };
       formSchema['number'] = {
         title: '', 
@@ -123,16 +126,24 @@ define([
     render: function() {
       console.log('render siunit', this.value);
   
-      this._observeFormEvents();
-
+      var formModel;
+      
+      if(this.value){
+        formModel= new Backbone.Model(this._findNumberAndUnit(this.value));
+      }else{
+        formModel= new Backbone.Model({ number: 0, unit: this.defaultUnit });
+      }
+      
       this.nestedForm = new Backbone.Form({
         schema: this.formSchema,
-        model: new Backbone.Model(this._findNumberAndUnit(this.value)),
+        model: formModel,
         idPrefix: this.id + '_',
         Field: Backbone.Form.NestedField,
         template: this.formTemplate
       });
-
+      
+      this._observeFormEvents();
+      
       this.$el.html(this.nestedForm.render().el);
       
       if (this.hasFocus) this.trigger('blur', this);
@@ -214,6 +225,7 @@ define([
     },
   
     _observeFormEvents: function() {
+      // redirect all of the nested events up
       console.log('obs');
       if (!this.nestedForm) return;
       
@@ -303,7 +315,7 @@ define([
     render: function() {
       var el = $(this.el);
       el.html([
-         '<div class="input-group date input-group-sm" >',
+         '<div class="input-group date" >',
          '  <input type="text" class="form-control">',
          '  <span class="input-group-addon" id="datepicker-icon" >',
          '    <i class="glyphicon glyphicon-th"  ></i>',
@@ -315,7 +327,8 @@ define([
       input.datepicker({
           dateFormat: 'dd/mm/yyyy',
           autoclose: true,
-          todayBtn: true,
+          todayBtn: 'linked',
+          todayHighlight: true,
           orientation: "bottom auto"
       });
       
@@ -543,7 +556,7 @@ define([
     
     altFieldTemplate:  _.template([
       '<div class="form-group" key="form-group-<%=key%>">',
-      '    <label class="control-label col-sm-2" for="<%= editorId %>"><%= title %></label>',
+      '    <label class="control-label col-sm-2" for="<%= editorId %>" ><%= title %></label>',
       '    <div class="<%= editorAttrs.widthClass%>" >',
       '      <div data-editor  key="<%=key%>" style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
       '      <div data-error class="text-danger" ></div>',
@@ -712,7 +725,8 @@ define([
       var defaultFieldSchema = 
         {
            template: self.altFieldTemplate,
-           editorAttrs: { widthClass: 'col-sm-10', maxlength: 50}
+           editorAttrs: { widthClass: 'col-sm-10', maxlength: 50},
+           fieldAttrs: {}
          };
       // determine if the model is new, or being updated
       var id_hash = Iccbl.getIdKeys(this.model, schema);
@@ -732,11 +746,12 @@ define([
         }
         fieldSchema = editSchema[key] = _.extend({}, defaultFieldSchema);
         
-        fieldSchema['title'] = fi.title
+        fieldSchema['title'] = fi.title;
+        fieldSchema['fieldAttrs'] = { title: fi.description };
         
         if(!_.contains(editableKeys, key)){
         
-          console.log('create disabled entry', key, fi['edit_visibility'])
+          console.log('create disabled entry', key, fi['editability'])
           fieldSchema['type'] = DisabledField.extend({
             initialize: function(){
               DisabledField.__super__.initialize.apply(this,arguments);
@@ -769,15 +784,17 @@ define([
           if(_.has(typeMap, fi.edit_type)){
             _.extend(fieldSchema, typeMap[fi.edit_type]);
           }
-          if(_.contains(['select','multiselect','multiselect2','multiselect3'],fi.edit_type)){
-            fieldSchema['options'] = self._createVocabularyChoices(fi);
-          }
-          fieldSchema.validators = self._createValidators(fi);
-          
           if (cell_options){
             // editorAttrs are available as data for the template compilation
             fieldSchema.editorAttrs = _.extend({},fieldSchema.editorAttrs,cell_options)
           }
+          if(_.contains(['select','multiselect','multiselect2','multiselect3'],fi.edit_type)){
+            fieldSchema['options'] = self._createVocabularyChoices(fi);
+            if (!fieldSchema.placeholder){
+              fieldSchema.placeholder = 'choose ' + fieldSchema.title + '...';
+            }
+          }
+          fieldSchema.validators = self._createValidators(fi);
           
           console.log('editSchema for key created: ', key, editSchema[key]);
           
@@ -1111,11 +1128,12 @@ define([
         this.model.save(changedAttributes, options)
           .success(function(model, resp) {
             console.log('success');
-// TODO: removed: 20151117 - triggering a 'remove' should be enough
-//            // note, not a real backbone model, just JSON
-//            model = new Backbone.Model(model);
-//            var key = Iccbl.getIdFromIdAttribute( model,self.model.resource.schema );
-//            appModel.router.navigate(self.model.resource.key + '/' + key, {trigger:true});
+            if(options['patch']==false){
+              // this is an +add event
+              model = new Backbone.Model(model);
+              var key = Iccbl.getIdFromIdAttribute( model,self.model.resource.schema );
+              appModel.router.navigate(self.model.resource.key + '/' + key, {trigger:true});
+            }
           })
           .done(function(model, resp) {
             // TODO: done replaces success as of jq 1.8

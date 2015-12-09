@@ -93,13 +93,13 @@ define([
           
           var editForm = displayFunction();
           
+          // Set up the dynamic add lab_affiliation form
           // with the edit view available, set up the lab_head_affiliation rules
           // - add listener to update options dynamically
           // - attach the "add lab affiliation" button to the view
           
-          
           // - add listener to update view options when classification changes
-          //    - note we want to replace this with model-driven events
+          //    - note we want to replace this with model-driven events (backbone.stickit)
           self.model.on('sync', function(){
             // TODO: should only need to do this if the classification has changed
             // to "PI"; but the changedAttributes are unreliable for detecting this
@@ -139,7 +139,7 @@ define([
                 editForm.$el.find('[key="lab_head_username"]').find('.chosen-select').trigger("chosen:updated");
               } else {
                 editForm.setValue('lab_head_affiliation','');
-                editForm.setValue('lab_head_username','');
+                //editForm.setValue('lab_head_username','');
                 editForm.$el.find('[key="lab_head_username"]').find('.chosen-select').trigger("chosen:updated");
                 editForm.$el.find('[key="form-group-lab_head_affiliation"]').hide();
               }
@@ -173,15 +173,16 @@ define([
       var self = this;
       var choiceHash = {}
       var currentAffiliationNames, vocabulary;
+      var vocabulary_scope_ref = 'labaffiliation.category';
       try{
-        vocabulary = Iccbl.appModel.getVocabulary('labaffiliation.category');
+        vocabulary = Iccbl.appModel.getVocabulary(vocabulary_scope_ref);
           _.each(_.keys(vocabulary),function(choice){
             choiceHash[choice] = vocabulary[choice].title;
           });
         currentAffiliationNames = Iccbl.appModel.getVocabulary('labaffiliation.category.*');
       }catch(e){
         console.log('on get vocabulary', e);
-        self.appModel.error('Error locating vocabulary: ' + 'labaffiliation.category');
+        self.appModel.error('Error locating vocabulary: ' + vocabulary_scope_ref);
       }
       var form_template = [
          "<div class='form-horizontal container' id='addLabAffiliationForm' >",
@@ -262,13 +263,17 @@ define([
             var values = form.getValue();
             var resource = appModel.getResource('vocabularies');
             var key = values['affiliation_name'].toLowerCase().replace(/\W+/g, '_');
-            
+            var ordinal = currentAffiliationNames.length + 1;
+            var max_item = _.max(currentAffiliationNames, function(affil){ return affil.ordinal });
+            if (max_item){
+              ordinal = max_item.ordinal + 1;
+            }
             var data = {
               'scope': 'labaffiliation.category.' + values['affiliation_category'],
               'key': key,
               'title': values['affiliation_name'],
               'description': values['affiliation_name'],
-              'ordinal': (_.max(currentAffiliationNames, function(affil){ return affil.ordinal }) + 1),
+              'ordinal': ordinal,
               'comment': values['comment']
             };
             
@@ -389,20 +394,6 @@ define([
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();      
     },
-    
-//    setScreens1: function(delegateStack) {
-//      var self=this;
-//      var key = 'screens';
-//      var view = new UserScreensView({
-//        model: self.model,
-//        uriStack: _.clone(delegateStack)
-//      });
-//      Backbone.Layout.setupView(view);
-//      self.consumedStack = [key]; 
-//      self.reportUriStack([]);
-//      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-//      self.setView("#tab_container", view ).render();      
-//    },
     
     setServiceActivities: function(delegateStack) {
       var self = this;

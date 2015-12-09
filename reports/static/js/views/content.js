@@ -53,24 +53,31 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       // Note: have to fill up the default fields so that the edit form will
       // show those fields
       var defaults = {};
-      _.each(_.keys(resource.schema.fields), function(key){
+      _.each(resource.schema.allEditVisibleKeys(), function(key){
         
         var field = resource.schema.fields[key];
-        if(_.isArray(field.visibility)  
-            && _.contains(field.visibility, 'edit')){
-          console.log('add field: ' + field.key );
-        
-          if (key == 'resource_uri') {
-              defaults[key] = self.options.url;
-          } else if (key == 'id'){
-            // nop 
-            // always exclude the id field to signal create case to the server
-          } else {
-            if(!_.isEmpty(field.default)){
-              defaults[key] = field.default;
-            }else{
-              defaults[key] = ''; // fill the rest of the fields with blanks
+        console.log('add field: ' + field.key );
+      
+        if (key == 'resource_uri') {
+            defaults[key] = self.options.url;
+        } else if (key == 'id'){
+          // nop 
+          // always exclude the id field to signal create case to the server
+        } else {
+          if(field.default && !_.isNull(field.default)){
+            try {
+              defaults[key] = JSON.parse(field.default);
+            }catch(e){
+              if (field.data_type == 'date' && field.default == 'now'){
+                defaults[key] = Iccbl.getISODateString(new Date());
+              }else{
+                appModel.error('Warning, unparseable default for field: ' 
+                  + field.key + ', value: ' + field.default );
+                defaults[key] = '';
+              }
             }
+          }else{
+            defaults[key] = ''; // fill the rest of the fields with blanks
           }
         }
       });
@@ -80,10 +87,22 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       });
       var newModel = new NewModel();
       newModel.resource = resource;
-      
+      console.log('new model', newModel);
       this.$('#content_title').html(resource.title + ': Add' );
       var viewClass = DetailLayout;
+      if (_.has(resource, 'detailView')){
+        if (_.has(VIEWS, resource['detailView'])) {
+          viewClass = VIEWS[resource['detailView']];
+          console.log('found view ' + resource['detailView']);
+        }else{
+          var msg = 'detailView class specified could not be found: ' + 
+              resource['detailView'];
+          console.log(msg);
+          throw msg;
+        }
+      }
       var view = new viewClass({ model: newModel, uriStack: uriStack});
+
       Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView('#content', view).render();
@@ -334,7 +353,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         // DETAIL VIEW
         
         if(uriStack[0] == '+add'){
-          //        consumedStack = uriStack.unshift();
           self.showAdd(resource, uriStack);
         }else{ 
           var _key = Iccbl.popKeyFromStack(resource, uriStack, consumedStack );

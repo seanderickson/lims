@@ -65,6 +65,10 @@ def create_simple_vocabularies(apps):
                 # dep: 0020(provisional) -> moves to 0002: move classification column
                 ['classification', 'user.classification',
                     apps.get_model('db', 'ScreensaverUser').objects.all()],
+                ['value', 'cell_line',
+                    apps.get_model('db', 'CellLine').objects.all()],
+                ['value', 'transfection_agent',
+                    apps.get_model('db', 'TransfectionAgent').objects.all()],
             ]            
         for arg_list in input_args:
             create_vocab(vocab_writer, *arg_list)
@@ -88,6 +92,7 @@ def create_simple_vocabularies(apps):
             logger.info('api_init entry for row already created: %r' % row)
 
     # update the new service_activity.funding_support
+    # see below for manual sql for screen funding supports
     for fs in apps.get_model('db', 'FundingSupport').objects.all():
         apps.get_model('db', 'ServiceActivity').objects.all().filter(
             funding_support_link=fs).update(funding_support=fs.value)
@@ -370,6 +375,8 @@ def create_vocabularies(apps, schema_editor):
     create_checklist_vocabularies(apps)
 
     create_lab_affiliation_vocab(apps)
+    
+    
 
 def update_facility_usage_roles(apps, schema_editor):
     UserFacilityUsageRole = apps.get_model('db', 'UserFacilityUsageRole')
@@ -399,22 +406,43 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RunPython(create_vocabularies),
+        migrations.RunSQL('delete from screen_funding_supports;'),
         migrations.RunSQL('''
-insert into screen_funding_supports (id,screen_id,funding_support) (
-  select nextval('screen_funding_supports_id_seq'), screen.screen_id, value
-  from screen
-  join screen_funding_support_link fsl on(screen.screen_id=fsl.screen_id)
-  join funding_support fs on(fsl.funding_support_id=fs.funding_support_id) 
-  order by screen.screen_id,value
-  );
+            insert into screen_funding_supports (id,screen_id,funding_support) (
+              select nextval('screen_funding_supports_id_seq'), screen.screen_id, value
+              from screen
+              join screen_funding_support_link fsl on(screen.screen_id=fsl.screen_id)
+              join funding_support fs on(fsl.funding_support_id=fs.funding_support_id) 
+              order by screen.screen_id,value
+              );
         '''.strip()),
+        migrations.RunSQL('delete from user_facility_usage_role;'),
         migrations.RunSQL('''
-insert into user_facility_usage_role (id,screensaver_user_id,facility_usage_role) (
-  select nextval('user_facility_usage_role_id_seq'), su.screensaver_user_id, facility_usage_role
-  from screening_room_user su
-  join screening_room_user_facility_usage_role roles on(su.screensaver_user_id=roles.screening_room_user_id)
-  order by su.screensaver_user_id,roles.facility_usage_role
-  );
+            insert into user_facility_usage_role (id,screensaver_user_id,facility_usage_role) (
+              select nextval('user_facility_usage_role_id_seq'), su.screensaver_user_id, facility_usage_role
+              from screening_room_user su
+              join screening_room_user_facility_usage_role roles on(su.screensaver_user_id=roles.screening_room_user_id)
+              order by su.screensaver_user_id,roles.facility_usage_role
+              );
+        '''.strip()),
+        # Transfer the cell_line vocab from the "screen_cell_line" table to the 
+        # "screen_cell_lines" vocab table
+        migrations.RunSQL('delete from screen_cell_lines;'),
+        migrations.RunSQL('''
+            insert into screen_cell_lines (id,screen_id,cell_line) (
+              select nextval('screen_cell_lines_id_seq'), screen.screen_id, value
+              from screen
+              join screen_cell_line scl on(screen.screen_id=scl.screen_id)
+              join cell_line cl on(scl.cell_line_id=cl.cell_line_id) 
+              order by screen.screen_id,value
+              );
+        '''.strip()),
+        # Transfer the transfection_agent vocab from the transfection_agent
+        # table to the screen.transfection_agent field
+        migrations.RunSQL('''
+            update screen set transfection_agent = value 
+            from transfection_agent ta 
+            where ta.transfection_agent_id=screen.transfection_agent_id;
         '''.strip()),
         migrations.RunPython(update_facility_usage_roles),
     ]

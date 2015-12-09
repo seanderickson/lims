@@ -487,7 +487,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
                 ('funding_support', models.TextField()),
-                ('screen', models.ForeignKey(to='db.Screen')),
+                ('screen', models.ForeignKey(related_name='fundingsupports', to='db.Screen')),
             ],
             options={
                 'db_table': 'screen_funding_supports',
@@ -496,6 +496,26 @@ class Migration(migrations.Migration):
         migrations.AlterUniqueTogether(
             name='screenfundingsupports',
             unique_together=set([('screen', 'funding_support')]),
+        ),
+        migrations.CreateModel(
+            name='ScreenCellLines',
+            fields=[
+                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('cell_line', models.TextField()),
+                ('screen', models.ForeignKey(related_name='celllines', to='db.Screen')),
+            ],
+            options={
+                'db_table': 'screen_cell_lines',
+            },
+        ),
+        migrations.AlterUniqueTogether(
+            name='screencelllines',
+            unique_together=set([('screen', 'cell_line')]),
+        ),
+        migrations.AddField(
+            model_name='screen',
+            name='transfection_agent',
+            field=models.TextField(null=True),
         ),
         migrations.CreateModel(
             name='UserFacilityUsageRole',

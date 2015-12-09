@@ -46,6 +46,7 @@ def create_screensaver_users(apps, schema_editor):
         obj.delete()
     except Exception,e:
         logger.error(str(('cannot find/delete screensaver_user_id', ssuid, e)))
+    
     # remove the second jgq10 erroneous account
     ssuid = 3166
     try:
@@ -67,6 +68,7 @@ def create_screensaver_users(apps, schema_editor):
         su.save()
     except Exception,e:
         logger.error(str(('cannot find/delete screensaver_user_id', ssuid, e)))
+    
     ssuid = 3945
     # for min-joon han dupl
     try:
@@ -77,14 +79,12 @@ def create_screensaver_users(apps, schema_editor):
         su.save()
     except Exception,e:
         logger.error(str(('cannot find/delete screensaver_user_id', ssuid, e)))
+    
     ssuid = 129
     # for maria chmura
     try:
         su = ScreensaverUser.objects.get(screensaver_user_id=ssuid)
-        username = '%s_%s' % (su.first_name, su.last_name)
-        username = default_converter(username)[:auth_user_username_limit]
-        su.username = username
-        su.save()
+        su.delete()
     except Exception,e:
         logger.error(str(('cannot find/delete screensaver_user_id', ssuid, e)))
     

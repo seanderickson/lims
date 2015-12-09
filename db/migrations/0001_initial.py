@@ -1609,12 +1609,15 @@ class Migration(migrations.Migration):
 #             name='collaborator',
 #             field=models.ForeignKey(to='db.ScreeningRoomUser'),
 #         ),
+        
+        # New screen_collaborators table, see manual/0002 sql for creation
         migrations.AddField(
             model_name='screen',
             name='collaborators',
             field=models.ManyToManyField(to='db.ScreensaverUser',
                 related_name='collaborating_screens'),
         ),
+        
         migrations.AddField(
             model_name='cherrypickrequestupdateactivity',
             name='update_activity',

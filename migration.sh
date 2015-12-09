@@ -172,27 +172,28 @@ function restoredb_data {
 
   if [[ ( $DB_LOAD_SCHEMA_ONLY -eq 0 && $DB_SKIP_BIG_FILES -eq 0 ) ]]; then
     echo "+++ LOADING attached file and result data ... "
-    echo "+++ LOADING attached file data: ${D}/screensaver*${filespec}.attached_file.pg_dump " >> "$LOGFILE"
+    echo "+++ LOADING attached file data: ${D}/screensaver*${filespec}.attached_file.pg_dump $(ts)" >> "$LOGFILE"
 
     pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
       `ls -1 ${D}/screensaver*${filespec}.attached_file.pg_dump`  >>"$LOGFILE" 2>&1 
 
-    echo "+++ LOADING result data: ${D}/screensaver*${filespec}.result_data.pg_dump " >> "$LOGFILE"
+    echo "+++ LOADING result data: ${D}/screensaver*${filespec}.result_data.pg_dump $(ts)" >> "$LOGFILE"
     pg_restore -Fc --no-owner -h $DBHOST -d $DB -U $DBUSER \
       `ls -1 ${D}/screensaver*${filespec}.result_data.pg_dump`  >>"$LOGFILE" 2>&1 
   fi
   
   if [[ ( $DB_LOAD_TESTING_DATA -eq 1 ) ]]; then
     for x in `ls -1 ${TESTING_DATA_DIR}/result_value*`; do
-      echo "importing: $x"
+      echo "importing: $x $(ts)"
       psql -h $DBHOST -d $DB -U $DBUSER -c "\copy result_value from $x"
     done          
     for x in `ls -1 ${TESTING_DATA_DIR}/assay_well*`; do
-      echo "importing: $x"
+      echo "importing: $x $(ts)"
       psql -h $DBHOST -d $DB -U $DBUSER -c "\copy assay_well from $x"
     done          
   fi  
   
+  echo "vacuum analyze $(ts)"
   psql -h $DBHOST -d $DB -U $DBUSER -c "vacuum analyze;"
   
   # TODO: create a check to validate db imports

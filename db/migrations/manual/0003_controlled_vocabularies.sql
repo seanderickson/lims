@@ -11,12 +11,6 @@ current_timestamp,
   * newer names have no spaces, and only alphanumeric and "_","." chars
   * so that they can be used as URI values
 
-
-
-
-
-
-
   * TODO: Dynamically generate or perform these updates (see migration 0003)
 **/
 

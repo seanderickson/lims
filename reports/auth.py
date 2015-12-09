@@ -13,9 +13,9 @@ class CustomAuthenticationBackend():
     """
 
     def authenticate(self, username=None, password=None):
-        logger.info(str(('find and authenticate the user', username)))
+        logger.info('find and authenticate the user: %s', username)
 
-        # test for superuser logging in as another user
+        # Test for superuser logging in as another user
         matchObject = re.match(r'(\w+)\:(\w+)', username)
         if(matchObject):
             superuser = matchObject.group(1)

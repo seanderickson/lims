@@ -194,6 +194,7 @@ def json_generator(cursor,meta,request, is_for_detail=False,field_hash=None):
                     # so "tm" becomes \u2122
                     # Upon fp.write  the unicode is converted to the default charset?
                     # also, CStringIO doesn't support UTF-8 mixed with ascii, for instance
+                    # NOTE2: control characters are not allowed: should convert \n to "\\n"
                     yield ', ' + json.dumps(_dict, cls=DjangoJSONEncoder,
                         sort_keys=True, ensure_ascii=True, indent=2, encoding="utf-8")
             except Exception, e:
@@ -201,7 +202,7 @@ def json_generator(cursor,meta,request, is_for_detail=False,field_hash=None):
                 logger.info(str(('exception')))
                 logger.error(str(('ex', _dict, e)))
                 raise e
-        logger.info('streaming finished')
+        logger.debug('streaming finished')
         
         if not is_for_detail:
             yield ' ] }'

@@ -1007,6 +1007,7 @@ class IResourceTestCase(SimpleTestCase):
         try:
             self.user = User.objects.get(username=self.username)
         except ObjectDoesNotExist:
+            logger.warn('creating superuser: %s', self.username)
             self.user = User.objects.create_superuser(
                 self.username, 'testsuperuser@example.com', self.password)
         

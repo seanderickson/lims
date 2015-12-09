@@ -20,14 +20,17 @@ class ApiError(Exception):
     
     def __init__(self, url, action, result):
         err_msg = ''
+        logger.exception('result.content: %r', result.content)
         try:
             json_status = result.json()
             if json_status and 'error_message' in json_status:
                 err_msg = json_status['error_message']
+            else:
+                err_msg = str(result.content)
         except ValueError,e:
             logger.warn('There is no json in the response')
             logger.warn(str(('-----raw response text-------', result.text)) )
-            err_msg = result.content
+            err_msg = str(result.content)
 
         self.message = str((
             url,'action',action, result.reason, result.status_code, err_msg )) \
@@ -111,7 +114,7 @@ def patch(patch_file, obj_url,headers, session=None, authentication=None):
                     logger.debug('----no json object to report')
                     logger.debug(str(('text response', r.text)))
     except Exception, e:
-        logger.error(str(('patch', obj_url, 'exception recorded while contacting server', e)))
+        logger.error('patch: %s , exception, %r', obj_url, e)
         raise e
 
 

@@ -1,87 +1,154 @@
 resource_uri,key,scope,ordinal,title
 /reports/api/v1/vocabularies/screen.species/bacteria/,bacteria,screen.species,0,bacteria
-/reports/api/v1/vocabularies/screen.species/c_elegans/,c_elegans,screen.species,1,c_elegans
-/reports/api/v1/vocabularies/screen.species/drosophila/,drosophila,screen.species,2,drosophila
+/reports/api/v1/vocabularies/screen.species/c_elegans/,c_elegans,screen.species,1,C. Elegans
+/reports/api/v1/vocabularies/screen.species/drosophila/,drosophila,screen.species,2,Drosophila
 /reports/api/v1/vocabularies/screen.species/human/,human,screen.species,3,human
 /reports/api/v1/vocabularies/screen.species/mouse/,mouse,screen.species,4,mouse
-/reports/api/v1/vocabularies/screen.species/other/,other,screen.species,5,other
+/reports/api/v1/vocabularies/screen.species/other/,other,screen.species,5,Other
 /reports/api/v1/vocabularies/screen.species/yeast/,yeast,screen.species,6,yeast
 /reports/api/v1/vocabularies/screen.species/zebrafish/,zebrafish,screen.species,7,zebrafish
-/reports/api/v1/vocabularies/screen.assay_type/biochemical/,biochemical,screen.assay_type,0,biochemical
-/reports/api/v1/vocabularies/screen.assay_type/cell_based/,cell_based,screen.assay_type,1,cell_based
-/reports/api/v1/vocabularies/screen.assay_type/multi_cellular_organism/,multi_cellular_organism,screen.assay_type,2,multi_cellular_organism
-/reports/api/v1/vocabularies/datacolumn.assay_readout_type/absorbance/,absorbance,datacolumn.assay_readout_type,0,absorbance
-/reports/api/v1/vocabularies/datacolumn.assay_readout_type/fluorescence_activated_cell_sorting/,fluorescence_activated_cell_sorting,datacolumn.assay_readout_type,1,fluorescence_activated_cell_sorting
-/reports/api/v1/vocabularies/datacolumn.assay_readout_type/fluorescence_intensity/,fluorescence_intensity,datacolumn.assay_readout_type,2,fluorescence_intensity
-/reports/api/v1/vocabularies/datacolumn.assay_readout_type/fp/,fp,datacolumn.assay_readout_type,3,fp
-/reports/api/v1/vocabularies/datacolumn.assay_readout_type/fret/,fret,datacolumn.assay_readout_type,4,fret
-/reports/api/v1/vocabularies/datacolumn.assay_readout_type/imaging/,imaging,datacolumn.assay_readout_type,5,imaging
-/reports/api/v1/vocabularies/datacolumn.assay_readout_type/luminescence/,luminescence,datacolumn.assay_readout_type,6,luminescence
-/reports/api/v1/vocabularies/datacolumn.assay_readout_type/unspecified/,unspecified,datacolumn.assay_readout_type,7,unspecified
-/reports/api/v1/vocabularies/funding_support/b_i_rnai_2011/,b_i_rnai_2011,funding_support,0,b_i_rnai_2011
-/reports/api/v1/vocabularies/funding_support/b_i_rnai_2012/,b_i_rnai_2012,funding_support,1,b_i_rnai_2012
-/reports/api/v1/vocabularies/funding_support/b_i_rnai_2013/,b_i_rnai_2013,funding_support,2,b_i_rnai_2013
-/reports/api/v1/vocabularies/funding_support/clardy_grants/,clardy_grants,funding_support,3,clardy_grants
-/reports/api/v1/vocabularies/funding_support/d_andrea_cmcr/,d_andrea_cmcr,funding_support,4,d_andrea_cmcr
-/reports/api/v1/vocabularies/funding_support/d_andrea_ohsu/,d_andrea_ohsu,funding_support,5,d_andrea_ohsu
-/reports/api/v1/vocabularies/funding_support/darpa_1km/,darpa_1km,funding_support,6,darpa_1km
-/reports/api/v1/vocabularies/funding_support/gates_elledge_r/,gates_elledge_r,funding_support,7,gates_elledge_r
-/reports/api/v1/vocabularies/funding_support/gray_library_screen/,gray_library_screen,funding_support,8,gray_library_screen
-/reports/api/v1/vocabularies/funding_support/harvard_catalyst/,harvard_catalyst,funding_support,9,harvard_catalyst
-/reports/api/v1/vocabularies/funding_support/hhmi_elledge_sm/,hhmi_elledge_sm,funding_support,10,hhmi_elledge_sm
-/reports/api/v1/vocabularies/funding_support/hits/,hits,funding_support,11,hits
-/reports/api/v1/vocabularies/funding_support/hms_cetr/,hms_cetr,funding_support,12,hms_cetr
-/reports/api/v1/vocabularies/funding_support/iccb_l_external/,iccb_l_external,funding_support,13,iccb_l_external
-/reports/api/v1/vocabularies/funding_support/iccb_l_hms_affiliate/,iccb_l_hms_affiliate,funding_support,14,iccb_l_hms_affiliate
-/reports/api/v1/vocabularies/funding_support/iccb_l_hms_quad_internal/,iccb_l_hms_quad_internal,funding_support,15,iccb_l_hms_quad_internal
-/reports/api/v1/vocabularies/funding_support/icg/,icg,funding_support,16,icg
-/reports/api/v1/vocabularies/funding_support/levy_adp_2014_2015/,levy_adp_2014_2015,funding_support,17,levy_adp_2014_2015
-/reports/api/v1/vocabularies/funding_support/lincs/,lincs,funding_support,18,lincs
-/reports/api/v1/vocabularies/funding_support/lsp/,lsp,funding_support,19,lsp
-/reports/api/v1/vocabularies/funding_support/marcus_library_screen/,marcus_library_screen,funding_support,20,marcus_library_screen
-/reports/api/v1/vocabularies/funding_support/mirna_consortium_2009/,mirna_consortium_2009,funding_support,21,mirna_consortium_2009
-/reports/api/v1/vocabularies/funding_support/mitchison_p01/,mitchison_p01,funding_support,22,mitchison_p01
-/reports/api/v1/vocabularies/funding_support/nerce_nsrb/,nerce_nsrb,funding_support,23,nerce_nsrb
-/reports/api/v1/vocabularies/funding_support/nerce_nsrb_to_iccbl/,nerce_nsrb_to_iccbl,funding_support,24,nerce_nsrb_to_iccbl
-/reports/api/v1/vocabularies/funding_support/novartis/,novartis,funding_support,25,novartis
-/reports/api/v1/vocabularies/funding_support/nsrb_rnai_external/,nsrb_rnai_external,funding_support,26,nsrb_rnai_external
-/reports/api/v1/vocabularies/funding_support/nsrb_rnai_hms_affiliate/,nsrb_rnai_hms_affiliate,funding_support,27,nsrb_rnai_hms_affiliate
-/reports/api/v1/vocabularies/funding_support/nsrb_rnai_quad_internal/,nsrb_rnai_quad_internal,funding_support,28,nsrb_rnai_quad_internal
-/reports/api/v1/vocabularies/funding_support/other/,other,funding_support,29,other
-/reports/api/v1/vocabularies/funding_support/sanofi_aventis/,sanofi_aventis,funding_support,30,sanofi_aventis
-/reports/api/v1/vocabularies/funding_support/unspecified/,unspecified,funding_support,31,unspecified
-/reports/api/v1/vocabularies/funding_support/yuan_nih_06_07/,yuan_nih_06_07,funding_support,32,yuan_nih_06_07
-/reports/api/v1/vocabularies/serviceactivity.type/assay_dev_consult/,assay_dev_consult,serviceactivity.type,0,assay_dev_consult
-/reports/api/v1/vocabularies/serviceactivity.type/automation/,automation,serviceactivity.type,1,automation
-/reports/api/v1/vocabularies/serviceactivity.type/image_analysis/,image_analysis,serviceactivity.type,2,image_analysis
-/reports/api/v1/vocabularies/serviceactivity.type/informatics/,informatics,serviceactivity.type,3,informatics
-/reports/api/v1/vocabularies/serviceactivity.type/medchem_analytical/,medchem_analytical,serviceactivity.type,4,medchem_analytical
-/reports/api/v1/vocabularies/serviceactivity.type/medchem_consult/,medchem_consult,serviceactivity.type,5,medchem_consult
-/reports/api/v1/vocabularies/serviceactivity.type/medchem_synthesis/,medchem_synthesis,serviceactivity.type,6,medchem_synthesis
-/reports/api/v1/vocabularies/serviceactivity.type/other/,other,serviceactivity.type,7,other
-/reports/api/v1/vocabularies/serviceactivity.type/training_acumen/,training_acumen,serviceactivity.type,8,training_acumen
-/reports/api/v1/vocabularies/serviceactivity.type/training_biomekfx/,training_biomekfx,serviceactivity.type,9,training_biomekfx
-/reports/api/v1/vocabularies/serviceactivity.type/training_combi/,training_combi,serviceactivity.type,10,training_combi
-/reports/api/v1/vocabularies/serviceactivity.type/training_combi_nl/,training_combi_nl,serviceactivity.type,11,training_combi_nl
-/reports/api/v1/vocabularies/serviceactivity.type/training_cybio/,training_cybio,serviceactivity.type,12,training_cybio
-/reports/api/v1/vocabularies/serviceactivity.type/training_envision/,training_envision,serviceactivity.type,13,training_envision
-/reports/api/v1/vocabularies/serviceactivity.type/training_flexstation_iii/,training_flexstation_iii,serviceactivity.type,14,training_flexstation_iii
-/reports/api/v1/vocabularies/serviceactivity.type/training_hp_d300/,training_hp_d300,serviceactivity.type,15,training_hp_d300
-/reports/api/v1/vocabularies/serviceactivity.type/training_ixm/,training_ixm,serviceactivity.type,16,training_ixm
-/reports/api/v1/vocabularies/serviceactivity.type/training_lumina_ii/,training_lumina_ii,serviceactivity.type,17,training_lumina_ii
-/reports/api/v1/vocabularies/serviceactivity.type/training_m5/,training_m5,serviceactivity.type,18,training_m5
-/reports/api/v1/vocabularies/serviceactivity.type/training_octet/,training_octet,serviceactivity.type,19,training_octet
-/reports/api/v1/vocabularies/serviceactivity.type/training_other/,training_other,serviceactivity.type,20,training_other
-/reports/api/v1/vocabularies/serviceactivity.type/training_qpcr_abi/,training_qpcr_abi,serviceactivity.type,21,training_qpcr_abi
-/reports/api/v1/vocabularies/serviceactivity.type/training_qpcr_qstudio_7_flex/,training_qpcr_qstudio_7_flex,serviceactivity.type,22,training_qpcr_qstudio_7_flex
-/reports/api/v1/vocabularies/serviceactivity.type/training_qpcr_roche/,training_qpcr_roche,serviceactivity.type,23,training_qpcr_roche
-/reports/api/v1/vocabularies/serviceactivity.type/training_velos/,training_velos,serviceactivity.type,24,training_velos
-/reports/api/v1/vocabularies/serviceactivity.type/training_wellmate/,training_wellmate,serviceactivity.type,25,training_wellmate
-/reports/api/v1/vocabularies/user.classification/graduate_student/,graduate_student,user.classification,0,graduate_student
-/reports/api/v1/vocabularies/user.classification/iccb_fellow/,iccb_fellow,user.classification,1,iccb_fellow
-/reports/api/v1/vocabularies/user.classification/iccb_l_nsrb_staff/,iccb_l_nsrb_staff,user.classification,2,iccb_l_nsrb_staff
-/reports/api/v1/vocabularies/user.classification/other/,other,user.classification,3,other
-/reports/api/v1/vocabularies/user.classification/postdoc/,postdoc,user.classification,4,postdoc
-/reports/api/v1/vocabularies/user.classification/principal_investigator/,principal_investigator,user.classification,5,principal_investigator
-/reports/api/v1/vocabularies/user.classification/research_assistant/,research_assistant,user.classification,6,research_assistant
-/reports/api/v1/vocabularies/user.classification/unassigned/,unassigned,user.classification,7,unassigned
+/reports/api/v1/vocabularies/screen.assay_type/biochemical/,biochemical,screen.assay_type,0,Biochemical
+/reports/api/v1/vocabularies/screen.assay_type/cell_based/,cell_based,screen.assay_type,1,Cell-based
+/reports/api/v1/vocabularies/screen.assay_type/multi_cellular_organism/,multi_cellular_organism,screen.assay_type,2,Multi-cellular organism
+/reports/api/v1/vocabularies/datacolumn.assay_readout_type/absorbance/,absorbance,datacolumn.assay_readout_type,0,Absorbance
+/reports/api/v1/vocabularies/datacolumn.assay_readout_type/fluorescence_activated_cell_sorting/,fluorescence_activated_cell_sorting,datacolumn.assay_readout_type,1,Fluorescence Activated Cell Sorting
+/reports/api/v1/vocabularies/datacolumn.assay_readout_type/fluorescence_intensity/,fluorescence_intensity,datacolumn.assay_readout_type,2,Fluorescence Intensity
+/reports/api/v1/vocabularies/datacolumn.assay_readout_type/fp/,fp,datacolumn.assay_readout_type,3,FP
+/reports/api/v1/vocabularies/datacolumn.assay_readout_type/fret/,fret,datacolumn.assay_readout_type,4,FRET
+/reports/api/v1/vocabularies/datacolumn.assay_readout_type/imaging/,imaging,datacolumn.assay_readout_type,5,Imaging
+/reports/api/v1/vocabularies/datacolumn.assay_readout_type/luminescence/,luminescence,datacolumn.assay_readout_type,6,Luminescence
+/reports/api/v1/vocabularies/datacolumn.assay_readout_type/unspecified/,unspecified,datacolumn.assay_readout_type,7,Unspecified
+/reports/api/v1/vocabularies/funding_support/b_i_rnai_2011/,b_i_rnai_2011,funding_support,0,B-I RNAi 2011
+/reports/api/v1/vocabularies/funding_support/b_i_rnai_2012/,b_i_rnai_2012,funding_support,1,B-I RNAi 2012
+/reports/api/v1/vocabularies/funding_support/b_i_rnai_2013/,b_i_rnai_2013,funding_support,2,B-I RNAi 2013
+/reports/api/v1/vocabularies/funding_support/clardy_grants/,clardy_grants,funding_support,3,Clardy Grants
+/reports/api/v1/vocabularies/funding_support/d_andrea_cmcr/,d_andrea_cmcr,funding_support,4,D'Andrea CMCR
+/reports/api/v1/vocabularies/funding_support/d_andrea_ohsu/,d_andrea_ohsu,funding_support,5,D'Andrea OHSU
+/reports/api/v1/vocabularies/funding_support/darpa_1km/,darpa_1km,funding_support,6,DARPA 1KM
+/reports/api/v1/vocabularies/funding_support/gates_elledge_r/,gates_elledge_r,funding_support,7,Gates-Elledge (R)
+/reports/api/v1/vocabularies/funding_support/gray_library_screen/,gray_library_screen,funding_support,8,Gray Library Screen
+/reports/api/v1/vocabularies/funding_support/harvard_catalyst/,harvard_catalyst,funding_support,9,Harvard Catalyst
+/reports/api/v1/vocabularies/funding_support/hhmi_elledge_sm/,hhmi_elledge_sm,funding_support,10,HHMI-Elledge (SM)
+/reports/api/v1/vocabularies/funding_support/hits/,hits,funding_support,11,HiTS
+/reports/api/v1/vocabularies/funding_support/hms_cetr/,hms_cetr,funding_support,12,HMS-CETR
+/reports/api/v1/vocabularies/funding_support/iccb_l_external/,iccb_l_external,funding_support,13,ICCB-L External
+/reports/api/v1/vocabularies/funding_support/iccb_l_hms_affiliate/,iccb_l_hms_affiliate,funding_support,14,ICCB-L HMS Affiliate
+/reports/api/v1/vocabularies/funding_support/iccb_l_hms_quad_internal/,iccb_l_hms_quad_internal,funding_support,15,ICCB-L HMS Quad (Internal)
+/reports/api/v1/vocabularies/funding_support/icg/,icg,funding_support,16,ICG
+/reports/api/v1/vocabularies/funding_support/levy_adp_2014_2015/,levy_adp_2014_2015,funding_support,17,Levy ADP (2014-2015)
+/reports/api/v1/vocabularies/funding_support/lincs/,lincs,funding_support,18,LINCS
+/reports/api/v1/vocabularies/funding_support/lsp/,lsp,funding_support,19,LSP
+/reports/api/v1/vocabularies/funding_support/marcus_library_screen/,marcus_library_screen,funding_support,20,Marcus Library Screen
+/reports/api/v1/vocabularies/funding_support/mirna_consortium_2009/,mirna_consortium_2009,funding_support,21,miRNA Consortium 2009
+/reports/api/v1/vocabularies/funding_support/mitchison_p01/,mitchison_p01,funding_support,22,Mitchison P01
+/reports/api/v1/vocabularies/funding_support/nerce_nsrb/,nerce_nsrb,funding_support,23,NERCE/NSRB
+/reports/api/v1/vocabularies/funding_support/nerce_nsrb_to_iccbl/,nerce_nsrb_to_iccbl,funding_support,24,NERCE/NSRB to ICCBL
+/reports/api/v1/vocabularies/funding_support/novartis/,novartis,funding_support,25,Novartis
+/reports/api/v1/vocabularies/funding_support/nsrb_rnai_external/,nsrb_rnai_external,funding_support,26,NSRB-RNAi External
+/reports/api/v1/vocabularies/funding_support/nsrb_rnai_hms_affiliate/,nsrb_rnai_hms_affiliate,funding_support,27,NSRB-RNAi HMS Affiliate
+/reports/api/v1/vocabularies/funding_support/nsrb_rnai_quad_internal/,nsrb_rnai_quad_internal,funding_support,28,NSRB-RNAi Quad (internal)
+/reports/api/v1/vocabularies/funding_support/other/,other,funding_support,29,Other
+/reports/api/v1/vocabularies/funding_support/sanofi_aventis/,sanofi_aventis,funding_support,30,Sanofi-Aventis
+/reports/api/v1/vocabularies/funding_support/unspecified/,unspecified,funding_support,31,Unspecified
+/reports/api/v1/vocabularies/funding_support/yuan_nih_06_07/,yuan_nih_06_07,funding_support,32,Yuan NIH 06-07
+/reports/api/v1/vocabularies/serviceactivity.type/assay_dev_consult/,assay_dev_consult,serviceactivity.type,0,Assay Dev Consult
+/reports/api/v1/vocabularies/serviceactivity.type/automation/,automation,serviceactivity.type,1,Automation
+/reports/api/v1/vocabularies/serviceactivity.type/image_analysis/,image_analysis,serviceactivity.type,2,Image Analysis
+/reports/api/v1/vocabularies/serviceactivity.type/informatics/,informatics,serviceactivity.type,3,Informatics
+/reports/api/v1/vocabularies/serviceactivity.type/medchem_analytical/,medchem_analytical,serviceactivity.type,4,MedChem - Analytical
+/reports/api/v1/vocabularies/serviceactivity.type/medchem_consult/,medchem_consult,serviceactivity.type,5,MedChem - Consult
+/reports/api/v1/vocabularies/serviceactivity.type/medchem_synthesis/,medchem_synthesis,serviceactivity.type,6,MedChem - Synthesis
+/reports/api/v1/vocabularies/serviceactivity.type/other/,other,serviceactivity.type,7,Other
+/reports/api/v1/vocabularies/serviceactivity.type/training_acumen/,training_acumen,serviceactivity.type,8,Training - Acumen
+/reports/api/v1/vocabularies/serviceactivity.type/training_biomekfx/,training_biomekfx,serviceactivity.type,9,Training - BiomekFX
+/reports/api/v1/vocabularies/serviceactivity.type/training_combi/,training_combi,serviceactivity.type,10,Training - Combi
+/reports/api/v1/vocabularies/serviceactivity.type/training_combi_nl/,training_combi_nl,serviceactivity.type,11,Training - Combi nL
+/reports/api/v1/vocabularies/serviceactivity.type/training_cybio/,training_cybio,serviceactivity.type,12,Training - CyBio
+/reports/api/v1/vocabularies/serviceactivity.type/training_envision/,training_envision,serviceactivity.type,13,Training - Envision
+/reports/api/v1/vocabularies/serviceactivity.type/training_flexstation_iii/,training_flexstation_iii,serviceactivity.type,14,Training - Flexstation III
+/reports/api/v1/vocabularies/serviceactivity.type/training_hp_d300/,training_hp_d300,serviceactivity.type,15,Training - HP D300
+/reports/api/v1/vocabularies/serviceactivity.type/training_ixm/,training_ixm,serviceactivity.type,16,Training - IXM
+/reports/api/v1/vocabularies/serviceactivity.type/training_lumina_ii/,training_lumina_ii,serviceactivity.type,17,Training - Lumina II
+/reports/api/v1/vocabularies/serviceactivity.type/training_m5/,training_m5,serviceactivity.type,18,Training - M5
+/reports/api/v1/vocabularies/serviceactivity.type/training_octet/,training_octet,serviceactivity.type,19,Training - Octet
+/reports/api/v1/vocabularies/serviceactivity.type/training_other/,training_other,serviceactivity.type,20,Training - Other
+/reports/api/v1/vocabularies/serviceactivity.type/training_qpcr_abi/,training_qpcr_abi,serviceactivity.type,21,Training - QPCR-ABI
+/reports/api/v1/vocabularies/serviceactivity.type/training_qpcr_qstudio_7_flex/,training_qpcr_qstudio_7_flex,serviceactivity.type,22,Training - QPCR-Qstudio 7 Flex
+/reports/api/v1/vocabularies/serviceactivity.type/training_qpcr_roche/,training_qpcr_roche,serviceactivity.type,23,Training - QPCR-Roche
+/reports/api/v1/vocabularies/serviceactivity.type/training_velos/,training_velos,serviceactivity.type,24,Training - Velos
+/reports/api/v1/vocabularies/serviceactivity.type/training_wellmate/,training_wellmate,serviceactivity.type,25,Training - Wellmate
+/reports/api/v1/vocabularies/user.classification/graduate_student/,graduate_student,user.classification,0,Graduate Student
+/reports/api/v1/vocabularies/user.classification/iccb_fellow/,iccb_fellow,user.classification,1,ICCB Fellow
+/reports/api/v1/vocabularies/user.classification/iccb_l_nsrb_staff/,iccb_l_nsrb_staff,user.classification,2,ICCB-L/NSRB staff
+/reports/api/v1/vocabularies/user.classification/other/,other,user.classification,3,Other
+/reports/api/v1/vocabularies/user.classification/postdoc/,postdoc,user.classification,4,Postdoc
+/reports/api/v1/vocabularies/user.classification/principal_investigator/,principal_investigator,user.classification,5,Principal Investigator
+/reports/api/v1/vocabularies/user.classification/research_assistant/,research_assistant,user.classification,6,Research Assistant
+/reports/api/v1/vocabularies/user.classification/unassigned/,unassigned,user.classification,7,Unassigned
+/reports/api/v1/vocabularies/cell_line/293_hek_293/,293_hek_293,cell_line,0,293 [HEK-293]
+/reports/api/v1/vocabularies/cell_line/293t_17_hek_293t_17/,293t_17_hek_293t_17,cell_line,1,293T/17 [HEK 293T/17]
+/reports/api/v1/vocabularies/cell_line/a_375/,a_375,cell_line,2,A-375
+/reports/api/v1/vocabularies/cell_line/a549/,a549,cell_line,3,A549
+/reports/api/v1/vocabularies/cell_line/be_2_c/,be_2_c,cell_line,4,BE(2)-C
+/reports/api/v1/vocabularies/cell_line/bt_474/,bt_474,cell_line,5,BT-474
+/reports/api/v1/vocabularies/cell_line/c2c12/,c2c12,cell_line,6,C2C12
+/reports/api/v1/vocabularies/cell_line/c_33_a/,c_33_a,cell_line,7,C-33 A
+/reports/api/v1/vocabularies/cell_line/colo_858/,colo_858,cell_line,8,COLO 858
+/reports/api/v1/vocabularies/cell_line/cos/,cos,cell_line,9,COS
+/reports/api/v1/vocabularies/cell_line/crl_2813/,crl_2813,cell_line,10,CRL-2813
+/reports/api/v1/vocabularies/cell_line/es_2/,es_2,cell_line,11,ES-2
+/reports/api/v1/vocabularies/cell_line/h2373/,h2373,cell_line,12,H2373
+/reports/api/v1/vocabularies/cell_line/h4/,h4,cell_line,13,H4
+/reports/api/v1/vocabularies/cell_line/hct_116/,hct_116,cell_line,14,HCT 116
+/reports/api/v1/vocabularies/cell_line/hela/,hela,cell_line,15,HeLa
+/reports/api/v1/vocabularies/cell_line/hela_s3/,hela_s3,cell_line,16,HeLa S3
+/reports/api/v1/vocabularies/cell_line/hep_g2/,hep_g2,cell_line,17,Hep G2
+/reports/api/v1/vocabularies/cell_line/hepg2_15/,hepg2_15,cell_line,18,HepG2-15
+/reports/api/v1/vocabularies/cell_line/ht_1080/,ht_1080,cell_line,19,HT-1080
+/reports/api/v1/vocabularies/cell_line/ht_29/,ht_29,cell_line,20,HT-29
+/reports/api/v1/vocabularies/cell_line/htert_rpe_1/,htert_rpe_1,cell_line,21,hTERT RPE-1
+/reports/api/v1/vocabularies/cell_line/huh_7/,huh_7,cell_line,22,Huh-7
+/reports/api/v1/vocabularies/cell_line/huv_ec_c/,huv_ec_c,cell_line,23,HUV-EC-C
+/reports/api/v1/vocabularies/cell_line/hybridoma_from_balb_c_mouse_luc_90_anti_human_cs1/,hybridoma_from_balb_c_mouse_luc_90_anti_human_cs1,cell_line,24,"Hybridoma from Balb/c mouse, LUC 90 anti-human CS1"
+/reports/api/v1/vocabularies/cell_line/jurkat/,jurkat,cell_line,25,Jurkat
+/reports/api/v1/vocabularies/cell_line/lovo/,lovo,cell_line,26,LoVo
+/reports/api/v1/vocabularies/cell_line/mcf7/,mcf7,cell_line,27,MCF7
+/reports/api/v1/vocabularies/cell_line/mda_mb_231/,mda_mb_231,cell_line,28,MDA-MB-231
+/reports/api/v1/vocabularies/cell_line/mda_mb_468/,mda_mb_468,cell_line,29,MDA-MB-468
+/reports/api/v1/vocabularies/cell_line/mdck_canine_kidney/,mdck_canine_kidney,cell_line,30,MDCK--canine kidney
+/reports/api/v1/vocabularies/cell_line/mefs/,mefs,cell_line,31,MEFs
+/reports/api/v1/vocabularies/cell_line/mewo/,mewo,cell_line,32,MeWo
+/reports/api/v1/vocabularies/cell_line/n_a/,n_a,cell_line,33,N/A
+/reports/api/v1/vocabularies/cell_line/nctc_clone_929_l_cell_l_929_derivative_of_strain_l/,nctc_clone_929_l_cell_l_929_derivative_of_strain_l,cell_line,34,"NCTC clone 929 [L cell, L-929, derivative of Strain L]"
+/reports/api/v1/vocabularies/cell_line/oct4gip_es_cells_pmid_11932748/,oct4gip_es_cells_pmid_11932748,cell_line,35,Oct4GiP ES cells (PMID: 11932748)
+/reports/api/v1/vocabularies/cell_line/oe19/,oe19,cell_line,36,OE19
+/reports/api/v1/vocabularies/cell_line/pc_3/,pc_3,cell_line,37,PC-3
+/reports/api/v1/vocabularies/cell_line/peripheral_blood_mononuclear_cells/,peripheral_blood_mononuclear_cells,cell_line,38,Peripheral blood mononuclear cells
+/reports/api/v1/vocabularies/cell_line/primary_chondrocytes/,primary_chondrocytes,cell_line,39,Primary chondrocytes
+/reports/api/v1/vocabularies/cell_line/primary_human_foreskin_fibroblasts_hff/,primary_human_foreskin_fibroblasts_hff,cell_line,40,Primary human foreskin fibroblasts (HFF)
+/reports/api/v1/vocabularies/cell_line/primary_human_proximal_tubular_epithelial_cells/,primary_human_proximal_tubular_epithelial_cells,cell_line,41,Primary human proximal tubular epithelial cells
+/reports/api/v1/vocabularies/cell_line/primary_macrophages/,primary_macrophages,cell_line,42,Primary macrophages
+/reports/api/v1/vocabularies/cell_line/primary_red_blood_cells/,primary_red_blood_cells,cell_line,43,Primary red blood cells
+/reports/api/v1/vocabularies/cell_line/raw_264_7/,raw_264_7,cell_line,44,RAW 264.7
+/reports/api/v1/vocabularies/cell_line/rgc_5/,rgc_5,cell_line,45,RGC-5 
+/reports/api/v1/vocabularies/cell_line/rpe_fucci/,rpe_fucci,cell_line,46,RPE-Fucci
+/reports/api/v1/vocabularies/cell_line/saos2/,saos2,cell_line,47,Saos2
+/reports/api/v1/vocabularies/cell_line/sh_sy5y/,sh_sy5y,cell_line,48,SH-SY5Y
+/reports/api/v1/vocabularies/cell_line/siha/,siha,cell_line,49,SiHa
+/reports/api/v1/vocabularies/cell_line/sjsa_1/,sjsa_1,cell_line,50,SJSA-1
+/reports/api/v1/vocabularies/cell_line/sk_n_as/,sk_n_as,cell_line,51,SK-N-AS
+/reports/api/v1/vocabularies/cell_line/tc_797/,tc_797,cell_line,52,TC-797
+/reports/api/v1/vocabularies/cell_line/thp1_lucia_cells/,thp1_lucia_cells,cell_line,53,THP1 Lucia cells
+/reports/api/v1/vocabularies/cell_line/thp1_lucia_isg_cells/,thp1_lucia_isg_cells,cell_line,54,THP1-Lucia ISG cells
+/reports/api/v1/vocabularies/cell_line/u_2_os/,u_2_os,cell_line,55,U-2 OS
+/reports/api/v1/vocabularies/cell_line/u3a_cells_stat1_null_pmid_18824601/,u3a_cells_stat1_null_pmid_18824601,cell_line,56,U3A cells STAT1-null (PMID 18824601)
+/reports/api/v1/vocabularies/cell_line/wm_115/,wm_115,cell_line,57,WM-115
+/reports/api/v1/vocabularies/transfection_agent/dharmafect_1/,dharmafect_1,transfection_agent,0,DharmaFECT 1
+/reports/api/v1/vocabularies/transfection_agent/dharmafect_2/,dharmafect_2,transfection_agent,1,DharmaFECT 2
+/reports/api/v1/vocabularies/transfection_agent/dharmafect_4/,dharmafect_4,transfection_agent,2,DharmaFECT 4
+/reports/api/v1/vocabularies/transfection_agent/hiperfect/,hiperfect,transfection_agent,3,HiPerFect
+/reports/api/v1/vocabularies/transfection_agent/lipofectamine_2000/,lipofectamine_2000,transfection_agent,4,Lipofectamine 2000
+/reports/api/v1/vocabularies/transfection_agent/lipofectamine_rnaimax/,lipofectamine_rnaimax,transfection_agent,5,Lipofectamine RNAiMAX
+/reports/api/v1/vocabularies/transfection_agent/lonza_amaxa_nucleofector_4d/,lonza_amaxa_nucleofector_4d,transfection_agent,6,Lonza Amaxa Nucleofector 4D
+/reports/api/v1/vocabularies/transfection_agent/oligofectamine/,oligofectamine,transfection_agent,7,Oligofectamine
+/reports/api/v1/vocabularies/transfection_agent/x_tremegene/,x_tremegene,transfection_agent,8,X-tremeGENE

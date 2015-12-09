@@ -79,6 +79,7 @@ module.exports = function (grunt) {
         'backgrid-filter.css': 'backgrid-filter/backgrid-filter.css',
         'multi-select.css': 'multiselect/css/multi-select.css',
         'chosen.css': 'chosen/chosen.min.css',
+        'chosen.bootstrap.css': 'chosen-bootstrap/chosen.bootstrap.css',
         'bootstrap-datepicker3.css': 'bootstrap-datepicker/dist/css/bootstrap-datepicker3.css'
       }
     },

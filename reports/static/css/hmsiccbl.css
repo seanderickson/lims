@@ -161,11 +161,10 @@ dl dd {
 }
 
 .form-horizontal .control-label{
-  padding-top: 0px; 
+  padding-top: 7px; 
 }
 .form-horizontal *{
 	min-height: 0px; 
-	padding-top: 0px; 
 	margin-bottom: 0px;
 	list-style: none;
 }

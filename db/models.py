@@ -253,13 +253,6 @@ class AttachedFileType(models.Model):
     class Meta:
         db_table = 'attached_file_type'
 
-class CellLine(models.Model):
-    cell_line_id = models.IntegerField(primary_key=True)
-    value = models.TextField(unique=True)
-    # version = models.IntegerField()
-    class Meta:
-        db_table = 'cell_line'
-        
 class ChecklistItem(models.Model):
     checklist_item_id = models.IntegerField(primary_key=True)
     checklist_item_group = models.TextField()
@@ -417,7 +410,7 @@ class CherryPickRequestUpdateActivity(models.Model):
 #     class Meta:
 #         db_table = 'collaborator_link'
 
-# DEPRECATED - vocabulary
+# DEPRECATED - TODO: REMOVE - replaced by vocabulary
 class FundingSupport(models.Model):
     funding_support_id = models.IntegerField(primary_key=True)
     value = models.TextField(unique=True, blank=True)
@@ -534,10 +527,12 @@ class Screen(models.Model):
     image_url = models.TextField(blank=True)
     well_studied = models.ForeignKey('Well', null=True, blank=True)
     species = models.TextField(blank=True)
-# Note: this is not in production
-#     cell_line = models.ForeignKey(CellLine, null=True, blank=True) 
-    transfection_agent = models.ForeignKey('TransfectionAgent', null=True, blank=True)
 
+#     cell_line = models.ForeignKey('CellLine', null=True, blank=True) 
+    
+#     transfection_agent = models.ForeignKey('TransfectionAgent', null=True, blank=True)
+    transfection_agent = models.TextField(null=True);
+    
     date_created = models.DateTimeField(default=timezone.now)
     date_loaded = models.DateTimeField(null=True, blank=True)
     date_publicly_available = models.DateTimeField(null=True, blank=True)
@@ -562,8 +557,9 @@ class ScreenBillingItem(models.Model):
     class Meta:
         db_table = 'screen_billing_item'
 
+# NEW
 class ScreenFundingSupports(models.Model):
-    screen = models.ForeignKey(Screen)
+    screen = models.ForeignKey(Screen, related_name='fundingsupports')
     funding_support = models.TextField()
     class Meta:
         unique_together = (('screen', 'funding_support'))
@@ -576,6 +572,23 @@ class ScreenFundingSupports(models.Model):
 #     class Meta:
 #         db_table = 'screen_funding_support_link'
 
+# NEW
+class ScreenCellLines(models.Model):
+    screen = models.ForeignKey(Screen, related_name='celllines')
+    cell_line = models.TextField()
+    
+    class Meta:
+        unique_together = (('screen', 'cell_line'))
+        db_table = 'screen_cell_lines'
+    
+# TODO: Obsoleted by ScreenCellLines: remove after all migrations are done
+class CellLine(models.Model):
+    cell_line_id = models.IntegerField(primary_key=True)
+    value = models.TextField(unique=True)
+    # version = models.IntegerField()
+    class Meta:
+        db_table = 'cell_line'
+        
 class ScreenPublicationLink(models.Model):
     screen = models.ForeignKey(Screen)
     publication_id = models.IntegerField(unique=True)
@@ -670,45 +683,45 @@ class ScreensaverUser(models.Model):
 
     screensaver_user_id = models.AutoField(primary_key=True)
     
-    # version = models.IntegerField(blank=True, default=1) # TODO: legacy hibernate version attribute should go away
     date_created = models.DateTimeField(default=timezone.now)
-    
-    harvard_id = models.TextField(blank=True)
-    harvard_id_expiration_date = models.DateField(null=True, blank=True)
-    harvard_id_requested_expiration_date = models.DateField(null=True, blank=True)
-
-    ## deprecated - moved to reports.UserProfile and auth.User
-    first_name = models.TextField()
-    last_name = models.TextField()
-    email = models.TextField(blank=True)
-    phone = models.TextField(blank=True)
-    mailing_address = models.TextField(blank=True)
-    ecommons_id = models.TextField(blank=True)
     created_by = models.ForeignKey('self', null=True, blank=True,
         related_name='created_user')
     date_loaded = models.DateTimeField(null=True, blank=True)
     date_publicly_available = models.DateTimeField(null=True, blank=True)
-
-    # legacy fields, superceded by reports.userprofile/auth_user
-    login_id = models.TextField(unique=True, null=True)
-    digested_password = models.TextField(null=True)
-    
-    # legacy: convert to apilog
     comments = models.TextField(blank=True)
 
-    # TODO: it would be nice to move user out of db
-    user = models.OneToOneField(
-        'reports.UserProfile', null=True,on_delete=models.SET_NULL)
+    # FIXME - moved to reports.UserProfile
+    phone = models.TextField(blank=True)
+    mailing_address = models.TextField(blank=True)
+    harvard_id = models.TextField(blank=True)
+    harvard_id_expiration_date = models.DateField(null=True, blank=True)
+    harvard_id_requested_expiration_date = models.DateField(null=True, blank=True)
+    
+    # TODO: make this unique
+    ecommons_id = models.TextField(null=True)
+
+    # FIXME - moved to auth.User
+    first_name = models.TextField()
+    last_name = models.TextField()
+    email = models.TextField(null=True)
+
     # mirror the userprofile, auth_user username
     # FIXME: user migration should convert this field to null=False
     username = models.TextField(null=True, unique=True)
+
+    # FIXME: legacy fields
+    login_id = models.TextField(unique=True, null=True)
+    digested_password = models.TextField(null=True)
+    
+    
+    user = models.OneToOneField(
+        'reports.UserProfile', null=True,on_delete=models.SET_NULL)
 
     # screening_room_user fields
     classification = models.TextField(null=True)
     lab_head = models.ForeignKey('ScreensaverUser', null=True, blank=True, 
         related_name='lab_member')
     
-        
     # 20151105 - LabHead Refactoring: this field, if set, designates user as a "Lab Head"
     lab_head_affiliation = models.ForeignKey('LabAffiliation', null=True, blank=True)
     lab_head_affiliation = models.TextField(null=True)
@@ -1093,7 +1106,7 @@ class SmallMoleculeCherryPickRequest(models.Model):
 
 
 
-
+# TODO: remove - replaced by vocabulary
 class TransfectionAgent(models.Model):
     transfection_agent_id = models.IntegerField(primary_key=True)
     value = models.TextField(unique=True)

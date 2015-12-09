@@ -766,11 +766,54 @@ class ScreensaverUserResource(DBResourceTestCase):
         ServiceActivity.objects.all().delete()
         ScreensaverUser.objects.all().delete()
         ApiLog.objects.all().delete()
+
+    def test01_create_user_iccbl(self):
+        logger.debug('=== test01_create_user_iccbl')
+        # create users using only ecommons, username
+        simple_user_input = { 'objects': [   
+            {
+                'ecommons_id': 'tester01c',
+                'first_name': 'FirstName01c',
+                'last_name': 'LastName01c',    
+                'email': 'tester01c@limstest.com',    
+                'harvard_id': '332122',
+                'harvard_id_expiration_date': '2018-05-01',
+            },
+        ]}
+        resource_uri = BASE_URI_DB + '/screensaveruser'
+
+        try:       
+            resp = self.api_client.put(resource_uri, 
+                format='json', data=simple_user_input, 
+                authentication=self.get_credentials())
+            self.assertTrue(resp.status_code in [200,201,202], 
+                _(resp.status_code, self.deserialize(resp)))
+        except Exception, e:
+            logger.exception('on creating: %s', simple_user_input)
+            raise
+
+        logger.debug('created items, now get them')
+        data_for_get={ 
+            'limit': 0,
+            'includes': '*'
+             }
+        resp = self.api_client.get(resource_uri, format='json', 
+            authentication=self.get_credentials(), data=data_for_get)
+        new_obj = self.deserialize(resp)
+        self.assertTrue(resp.status_code in [200], (resp.status_code, resp))
+        
+        for i,item in enumerate(simple_user_input['objects']):
+            result, obj = find_obj_in_list(item, new_obj['objects'], id_keys_to_check=['ecommons_id'])
+            self.assertTrue(
+                result, _('bootstrap item not found', item, new_obj['objects']))
+            logger.debug(_('item found', obj))
+            self.assertTrue(obj['ecommons_id']==obj['username'],
+                'username should equal the ecommons id if only ecommons is provided: %r' % obj)
         
     def test0_create_user(self):
         logger.debug(_('==== test_create_user ====='))
         
-        # the simplest of tests, create some simple users
+        # simple test, create some simple users
         simple_user_input = { 'objects': [   
             {
                 'username': 'st1',
@@ -847,24 +890,6 @@ class ScreensaverUserResource(DBResourceTestCase):
             logger.exception('on patching adminuser %s' % patch_obj)
             raise
 
-#         # create a screening_room_user
-#         
-#         patch_obj = { 'objects': [
-#             {
-#                 'username': 'screeningroomuser1'
-#             }
-#         ]}
-#         resource_uri = BASE_URI_DB + '/screeningroomuser'
-#         try:       
-#             resp = self.api_client.patch(resource_uri, 
-#                 format='json', data=patch_obj, 
-#                 authentication=self.get_credentials())
-#             self.assertTrue(resp.status_code in [200,201,202], 
-#                 _(resp.status_code, self.deserialize(resp)))
-#         except Exception, e:
-#             logger.exception('on patching screening_room_user %s' % patch_obj)
-#             raise
-        
         logger.debug(_('==== test_create_user done ====='))
 
     def test1_patch_usergroups(self):

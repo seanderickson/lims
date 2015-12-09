@@ -237,10 +237,9 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
                 logger.info(str((msgs)))
                 raise ImmediateHttpResponse(response=self.error_response(request,msgs))
                  
-                 
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail)
+                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
@@ -743,12 +742,9 @@ class ScreenResource(ApiResource):
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
                   
-            visibilities = set()                
-            if is_for_detail:
-                visibilities.update(['d','e'])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, visibilities=visibilities)
+                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
@@ -776,6 +772,9 @@ class ScreenResource(ApiResource):
             _activity = self.bridge['activity']
             _srua = self.bridge['screen_result_update_activity']
             _screen_keyword = self.bridge['screen_keyword']
+            _su = self.bridge['screensaver_user']
+            _lhsu = _su.alias('lhsu')
+            _screen_cell_lines = self.bridge['screen_cell_lines']
             
             # create CTEs -  Common Table Expressions for the intensive queries:
             
@@ -897,6 +896,9 @@ class ScreenResource(ApiResource):
                 .select_from(_screen.join(_screen_result, _screen.c.screen_id==_screen_result.c.screen_id, isouter=True))
                 .cte('screen_result') )
                            
+            affiliation_table = ScreensaverUserResource.get_lab_affiliation_cte()
+            affiliation_table = affiliation_table.cte('la')
+
             custom_columns = {
                 'collaborator_usernames': (
                     select([func.array_to_string(
@@ -917,16 +919,24 @@ class ScreenResource(ApiResource):
 #                         .order_by(_collaborator.c.username)
 #                         .where(_screen_collaborators.c.screen_id==literal_column('screen.screen_id'))),
             
-                'lab_head_name': literal_column(
-                    '( select su.first_name || $$ $$ || su.last_name'
-                    '  from screensaver_user su '
-                    '  where su.screensaver_user_id=screen.lab_head_id )'
-                    ),
-                'lab_head_username': literal_column(
-                    '( select su.username'
-                    '  from screensaver_user su '
-                    '  where su.screensaver_user_id=screen.lab_head_id )'
-                    ),
+#                 'lab_name': literal_column(
+#                     '( select su.first_name || $$ $$ || su.last_name'
+#                     '  from screensaver_user su '
+#                     '  where su.screensaver_user_id=screen.lab_head_id )'
+#                     ),
+                'lab_name':
+                    ( select([func.array_to_string(array(
+                            [_lhsu.c.last_name,', ',_lhsu.c.first_name,' - ',
+                             affiliation_table.c.title, 
+                             ' (',affiliation_table.c.category,')']),'')])
+                        .select_from(
+                            _lhsu.join(affiliation_table,
+                                affiliation_table.c.affiliation_name==_lhsu.c.lab_head_affiliation))
+                        .where(_lhsu.c.screensaver_user_id==_screen.c.lab_head_id)),
+                'lab_head_username':
+                    ( select([_lhsu.c.username])
+                        .select_from(_lhsu)
+                        .where(_lhsu.c.screensaver_user_id==_screen.c.lab_head_id)),
                 'lead_screener_name': literal_column(
                     '( select su.first_name || $$ $$ || su.last_name'
                     '  from screensaver_user su '
@@ -948,20 +958,11 @@ class ScreenResource(ApiResource):
                     '(select exists(select null from screen_result '
                     '     where screen_id=screen.screen_id ) ) '
                     ),
-                # TODO: convert to vocabulary
-                'cell_lines': literal_column("'tbd'"),
-#                 'cell_lines': literal_column(
-#                     "(select array_to_string(array_agg(c1.value),'%s') "
-#                     '    from ( select c.value from cell_line c '
-#                     '        join screen_cell_line using(cell_line_id) '
-#                     '        where screen_id=screen.screen_id '
-#                     '        order by c.value) as c1 )' % LIST_DELIMITER_SQL_ARRAY )
-#                     .label('cell_lines'), 
-                # TODO: convert to vocabulary
-                'transfection_agent': literal_column(
-                    '( select value from transfection_agent '
-                    '  where screen.transfection_agent_id=transfection_agent_id) '
-                    ),
+                'cell_lines': (
+                    select([func.array_to_string(
+                        func.array_agg(_screen_cell_lines.c.cell_line), LIST_DELIMITER_SQL_ARRAY)])
+                        .select_from(_screen_cell_lines)
+                        .where(_screen_cell_lines.c.screen_id==literal_column('screen.screen_id'))),
                 'date_of_first_activity': literal_column(
                     '( select date_of_activity '
                     '  from activity '
@@ -1510,7 +1511,7 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
                                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail)
+                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
@@ -2172,7 +2173,7 @@ class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
                                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail)
+                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
@@ -2375,7 +2376,7 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
                                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail)
+                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
@@ -2525,7 +2526,7 @@ class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):
                                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail)
+                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
@@ -2762,7 +2763,7 @@ class CherryPickPlateResource(SqlAlchemyResource,ManagedModelResource):
                                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail)
+                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
@@ -3011,7 +3012,7 @@ class LibraryCopyResource(SqlAlchemyResource, ManagedModelResource):
                                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail)
+                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
@@ -3489,12 +3490,9 @@ class AttachedFileResource(ApiResource):
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
                   
-            visibilities = set()                
-            if is_for_detail:
-                visibilities.update(['d','e'])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, visibilities=visibilities)
+                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
@@ -3759,12 +3757,9 @@ class ServiceActivityResource(ApiResource):
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
                   
-            visibilities = set()                
-            if is_for_detail:
-                visibilities.update(['d','e'])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, visibilities=visibilities)
+                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
@@ -3919,12 +3914,9 @@ class UserChecklistItemResource(ApiResource):
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
                   
-            visibilities = set()                
-            if is_for_detail:
-                visibilities.update(['d','e'])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, visibilities=visibilities)
+                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
@@ -4208,6 +4200,33 @@ class ScreensaverUserResource(ApiResource):
         return schema
     
     @classmethod
+    def get_lab_affiliation_cte(cls):
+        
+        _vocab = cls.bridge['reports_vocabularies']
+        affiliation_category_table = ( 
+            select([
+                _vocab.c.ordinal,
+                _vocab.c.key.label('category_key'),
+                _vocab.c.title.label('category'),
+                func.array_to_string(array(['labaffiliation.category',
+                    _vocab.c.key]),'.').label('scope')])
+            .select_from(_vocab)
+            .where(_vocab.c.scope=='labaffiliation.category') )
+        affiliation_category_table = Alias(affiliation_category_table)
+        affiliation_table = (
+            select([
+                _vocab.c.ordinal,
+                affiliation_category_table.c.scope,
+                affiliation_category_table.c.category,
+                _vocab.c.key.label('affiliation_name'),
+                _vocab.c.title])
+            .select_from(
+                _vocab.join(affiliation_category_table,
+                    _vocab.c.scope==affiliation_category_table.c.scope))
+            ).order_by(affiliation_category_table.c.ordinal,_vocab.c.ordinal)
+        return affiliation_table
+    
+    @classmethod
     def get_user_cte(cls):
 
         _su = cls.bridge['screensaver_user']
@@ -4276,22 +4295,20 @@ class ScreensaverUserResource(ApiResource):
         try:
             
             # general setup
-          
-            manual_field_includes = set(param_hash.get('includes', []))
             
+            manual_field_includes = set(param_hash.get('includes', []))
+            exact_fields = set(param_hash.get('exact_fields',[]))
+        
             if DEBUG_GET_LIST: 
                 logger.info(str(('manual_field_includes', manual_field_includes)))
+                logger.info(str(('exact_fields', exact_fields)))
   
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
                   
-            visibilities = set()                
-            if is_for_detail:
-                visibilities.update(['d','e'])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, visibilities=visibilities)
-              
+                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
              
@@ -4308,30 +4325,8 @@ class ScreensaverUserResource(ApiResource):
             _screen_collab = self.bridge['screen_collaborators']
             _fur = self.bridge['user_facility_usage_role']
             _lhsu = _su.alias('lhsu')
-            _vocab = self.bridge['reports_vocabularies']
             
-            # get the checklist items & groups
-            affiliation_category_table = ( 
-                select([
-                    _vocab.c.ordinal,
-                    _vocab.c.key.label('category_key'),
-                    _vocab.c.title.label('category'),
-                    func.array_to_string(array(['labaffiliation.category',
-                        _vocab.c.key]),'.').label('scope')])
-                .select_from(_vocab)
-                .where(_vocab.c.scope=='labaffiliation.category') )
-            affiliation_category_table = Alias(affiliation_category_table)
-            affiliation_table = (
-                select([
-                    _vocab.c.ordinal,
-                    affiliation_category_table.c.scope,
-                    affiliation_category_table.c.category,
-                    _vocab.c.key.label('affiliation_name'),
-                    _vocab.c.title])
-                .select_from(
-                    _vocab.join(affiliation_category_table,
-                        _vocab.c.scope==affiliation_category_table.c.scope))
-                ).order_by(affiliation_category_table.c.ordinal,_vocab.c.ordinal)
+            affiliation_table = ScreensaverUserResource.get_lab_affiliation_cte()
             affiliation_table = affiliation_table.cte('la')
             
             custom_columns = {
@@ -4436,14 +4431,25 @@ class ScreensaverUserResource(ApiResource):
         id_kwargs = self.get_id(deserialized,**kwargs)
         ScreensaverUser.objects.get(**id_kwargs).delete()
     
+    def get_id(self, deserialized, **kwargs):
+        try:
+            return ApiResource.get_id(self, deserialized, **kwargs)
+        except ValueError as e:
+            if deserialized and deserialized.get('ecommons_id', None):
+                return { 'ecommons_id': deserialized['ecommons_id']}
+            elif kwargs and kwargs.get('ecommons_id', None):
+                return { 'ecommons_id': kwargs['ecommons_id']}
+            else:
+                raise ValueError, '%s, nor was an ecommons_id specified' % e
+                
     @transaction.atomic()    
     def patch_obj(self,deserialized, **kwargs):
         
-        logger.info('patch_obj: screensaveruser: %s', kwargs)
-#         username = self.get_user_resource().find_username(deserialized,**kwargs)
+        logger.info('patch_obj: screensaveruser: %r, %r',deserialized, kwargs)
         id_kwargs = self.get_id(deserialized,**kwargs)
-        username = id_kwargs['username']
-        logger.info('username: %s', id_kwargs)
+        logger.info('id_kwargs: %s', id_kwargs)
+        username = id_kwargs.get('username', None)
+        ecommons_id = id_kwargs.get('ecommons_id', None)
         
         schema = self.build_schema()
         fields = schema['fields']
@@ -4458,12 +4464,26 @@ class ScreensaverUserResource(ApiResource):
             # create the screensaver_user
             screensaver_user = None
             try:
-                screensaver_user = ScreensaverUser.objects.get(user__username=username)
-            except ObjectDoesNotExist, e:
-                logger.info('Screensaver User %s does not exist, creating' % username)
-                # FIXME: add username field to the screensaver_user table
-                screensaver_user = ScreensaverUser.objects.create(username=username)
-                screensaver_user.save()
+                screensaver_user = ScreensaverUser.objects.get(user=user)
+            except ObjectDoesNotExist:
+                try:
+                    if username:
+                        screensaver_user = ScreensaverUser.objects.get(user__username=username)
+                    elif ecommons_id:
+                        screensaver_user = ScreensaverUser.objects.get(user__ecommons_id=ecommons_id)
+                    else:
+                        raise NotImplementedError('username or ecommons_id must be specified')
+                except ObjectDoesNotExist, e:
+                    if not username:
+                        logger.info('username not specified, setting username to ecommons_id: %s', ecommons_id)
+                        username = ecommons_id
+                    
+                    if hasattr(user,'screensaveruser'):
+                        raise ValueError('user already exists: %s: %s' % (user, user.screensaveruser))
+                        
+                    logger.info('Screensaver User %s does not exist, creating' % username)
+                    screensaver_user = ScreensaverUser.objects.create(username=username)
+                    screensaver_user.save()
             initializer_dict = {}
             for key in fields.keys():
                 if key in deserialized:
@@ -4477,12 +4497,19 @@ class ScreensaverUserResource(ApiResource):
             else:
                 logger.info('no (basic) screensaver_user fields to update %s', deserialized)
             
+            screensaver_user.user = user
+
             # also set legacy screensaveruser fields, temporary convenience
             screensaver_user.username = user.username
-            screensaver_user.email = user.email
-            screensaver_user.user = user
             screensaver_user.first_name = user.first_name
             screensaver_user.last_name = user.last_name
+            screensaver_user.email = user.email
+            screensaver_user.ecommons_id = user.ecommons_id
+            # already moved:
+            # harvard_id
+            # harvard_id_expiration_date
+            # harvard_id_requested_expiration_date
+            # mailing_address
             
             errors = self.validate(screensaver_user)
             if errors:
@@ -4490,7 +4517,7 @@ class ScreensaverUserResource(ApiResource):
             
             screensaver_user.save()
             
-            if 'lab_head_username' in initializer_dict:
+            if initializer_dict.get('lab_head_username',None):
                 lh_username = initializer_dict['lab_head_username']
                 if lh_username:
                     try:
@@ -4504,7 +4531,7 @@ class ScreensaverUserResource(ApiResource):
                     screensaver_user.lab_head = None
                     screensaver_user.save();
                     
-            if 'facility_usage_roles' in initializer_dict:
+            if initializer_dict.get('facility_usage_roles',None):
                 current_roles = set([r.facility_usage_role 
                     for r in screensaver_user.userfacilityusagerole_set.all()])
                 new_roles = set(initializer_dict['facility_usage_roles'])
@@ -4648,8 +4675,8 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
                 raise ImmediateHttpResponse(response=self.error_response(request,msgs))
                  
             field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes,
-                is_for_detail=is_for_detail)
+                schema['fields'], filter_fields, manual_field_includes, 
+                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
             
             logger.info(str(('field hash scopes', 
                 set([field.get('scope', None) 
@@ -5305,7 +5332,7 @@ class ActivityResource(SqlAlchemyResource,ManagedModelResource):
                                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail)
+                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = \
@@ -5457,7 +5484,7 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
                 
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail)
+                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
              
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)

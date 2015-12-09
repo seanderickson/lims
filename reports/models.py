@@ -416,8 +416,8 @@ class UserProfile(models.Model):
     
     # link to django.contrib.auth.models.User, note: allow null so that it
     # can be created at the same time, but it is not allowed to be null in practice
-    #     user = models.OneToOneField(settings.AUTH_USER_MODEL, null=True) #, null=True, blank=True) 
-    user = models.OneToOneField(User, null=True, on_delete=models.SET_NULL) #, null=True, blank=True) 
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, null=True, on_delete=models.CASCADE) #, null=True, blank=True) 
+    # user = models.OneToOneField(User, null=True, on_delete=models.SET_NULL) #, null=True, blank=True) 
     
     # will mirror the auth_user.username field
     username = models.TextField(null=False,blank=False, unique=True) 
@@ -426,7 +426,10 @@ class UserProfile(models.Model):
     phone = models.TextField(null=True)
     mailing_address = models.TextField(null=True)
     comments = models.TextField(null=True)
+
+    # TODO: make this unique
     ecommons_id = models.TextField(null=True)
+
     harvard_id = models.TextField(null=True)
     harvard_id_expiration_date = models.DateField(null=True)
     harvard_id_requested_expiration_date = models.DateField(null=True)
@@ -438,9 +441,8 @@ class UserProfile(models.Model):
     # deprecated, move to auth.user
     #     first_name = models.TextField()
     #     last_name = models.TextField()
-    email = models.TextField(null=True)
+    # email = models.TextField(null=True)
 
-    
     # permissions assigned directly to the user, as opposed to by group
     permissions = models.ManyToManyField('reports.Permission')
 
@@ -479,16 +481,19 @@ class UserProfile(models.Model):
         temp = self.get_field_hash()
         temp[field] = value;
         self.json_field = json.dumps(temp)
+    
+    @property
+    def email(self):
+        return self.user.email  
         
-    def _get_first_name(self):
+    @property    
+    def first_name(self):
         "Returns the person's full name."
         return self.user.first_name
-    first_name = property(_get_first_name)    
-    
-    def _get_last_name(self):
+    @property
+    def last_name(self):
         "Returns the person's full name."
         return self.user.last_name
-    last_name = property(_get_last_name)   
     
 
 

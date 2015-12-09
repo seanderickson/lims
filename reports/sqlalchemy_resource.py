@@ -133,7 +133,8 @@ class SqlAlchemyResource(Resource):
                 _dict[key] = val
         
         # check for single-valued known list values
-        known_list_values = ['includes', 'order_by','includes[]', 'order_by[]']
+        known_list_values = ['includes','exact_fields', 'order_by',
+            'includes[]', 'order_by[]','exact_fields[]']
         for key in known_list_values:
             val = _dict.get(key,[])
             # Jquery Ajax will post array list params with a "[]" suffix - 20151015
@@ -144,15 +145,17 @@ class SqlAlchemyResource(Resource):
         
         return _dict    
     
-    def get_visible_fields(self, schema_fields, filter_fields, manual_field_includes,
-                           is_for_detail=False, visibilities=[]):
+    def get_visible_fields(self, 
+        schema_fields, filter_fields, manual_field_includes,
+        is_for_detail=False, visibilities=[], exact_fields=[]):
         '''
         Construct an ordered dict of schema fields that are visible, based on
-        - "list" in schema field["visibility"]
-        - field key in (filter_fields or manual_field_includes)
-        - field key in a schema field['dependencies'] 
+        - the field["visibility"] of each field on the resource,
+        - if the field is in the manual_field_includes
+        - if the field is in the filter_fields
+        - if the field key in another fields schema field['dependencies'] 
         
-        TODO: this method can be static
+        
         TODO: this method is not SqlAlchemy specific
         '''
         DEBUG_VISIBILITY = False or logger.isEnabledFor(logging.DEBUG)
@@ -161,32 +164,40 @@ class SqlAlchemyResource(Resource):
             logger.info('get_visible_fields: field_hash initial: %s, manual: %s', 
                 schema_fields.keys(),manual_field_includes )
         try:
-            if visibilities:
-                visibilities = set(visibilities)
+            if exact_fields:
+                temp = { key:field for key,field in schema_fields.items()
+                    if key in exact_fields or key in filter_fields }
             else:
-                visibilities = set(['l'])
-            if is_for_detail:
-                visibilities.add('d')
-                # also return the edit fields, let the UI filter them
-                # expedient, so the model does not have to be reloaded to edit
-                # TODO: review; security issue
-                visibilities.add('e')
-            temp = { key:field for key,field in schema_fields.items() 
-                if ((field.get('visibility', None) 
-                        and visibilities & set(field['visibility'])) 
-                    or field['key'] in manual_field_includes
-                    or '*' in manual_field_includes ) }
+                if visibilities:
+                    visibilities = set(visibilities)
+                else:
+                    visibilities = set([])
+                    if is_for_detail:
+                        visibilities.add('d')
+                        # also return the edit fields, let the UI filter them
+                        # expedient, so the model does not have to be reloaded to edit
+                        # TODO: review; security issue
+                        visibilities.add('e')
+                    else:
+                        visibilities = set(['l'])
+                        
+                temp = { key:field for key,field in schema_fields.items() 
+                    if ((field.get('visibility', None) 
+                            and visibilities & set(field['visibility'])) 
+                        or field['key'] in manual_field_includes
+                        or '*' in manual_field_includes ) }
             
-            # manual excludes
-            temp = { key:field for key,field in temp.items() 
-                if '-%s' % key not in manual_field_includes }
+                # manual excludes
+                temp = { key:field for key,field in temp.items() 
+                    if '-%s' % key not in manual_field_includes }
             
             # dependency fields
             dependency_fields = set()
             for field in temp.values():
                 dependency_fields.update(field.get('dependencies',[]))
-            if DEBUG_VISIBILITY:
-                logger.info('dependency_fields %s', dependency_fields)
+                logger.info('field: %s, dependencies: %s', field['key'],field.get('dependencies',[]))
+#             if DEBUG_VISIBILITY:
+            logger.info('dependency_fields %s', dependency_fields)
             if dependency_fields:
                 temp.update({ key:field 
                     for key,field in schema_fields.items() if key in dependency_fields })

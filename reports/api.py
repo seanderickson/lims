@@ -87,8 +87,11 @@ def parse_val(value, key, data_type):
             or value == '' 
             or value == 'None' 
             or value == u'None' 
-            or value == u'n/a'):  
-            return None
+            or value == u'n/a'):
+            if data_type == 'string': 
+                return ''
+            else:  
+                return None
         if data_type == 'string':
             return value
         elif data_type == 'integer':
@@ -1547,7 +1550,7 @@ class ManagedResource(LoggingMixin):
             elif 'resource_uri' in deserialized:
                 return self.find_key_from_resource_uri(deserialized['resource_uri'])
             else:
-                raise NotImplementedError((
+                raise ValueError((
                     'id attributes: %r not found in deserialized: %r, nor in kwargs: %r'
                     % (id_attribute, deserialized, kwargs)))
                 
@@ -2380,7 +2383,7 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
                                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail)
+                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.\
@@ -2658,15 +2661,18 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
             raise BadRequest("Invalid data sent, must be nested in '%s'" 
                 % self._meta.collection_name)
         deserialized = deserialized[self._meta.collection_name]
-        
+        logger.debug('-----deserialized: %r' % deserialized)
         # Look for id's kwargs, to limit the potential candidates for logging
         schema = self.build_schema()
         id_attribute = resource = schema['resource_definition']['id_attribute']
         kwargs_for_log = kwargs.copy()
         for id_field in id_attribute:
-            kwargs_for_log['%s__in'%id_field] = ( 
-                LIST_DELIMITER_URL_PARAM.join([x.get(id_field) for x in deserialized]) )
-
+            ids = []
+            # Test for each id key; it's ok on create for ids to be None
+            for _dict in [x for x in deserialized if x.get(id_field, None)]:
+                ids.append(_dict.get(id_field))
+            if ids:
+                kwargs_for_log['%s__in'%id_field] = LIST_DELIMITER_URL_PARAM.join(ids)
         # get original state, for logging
         original_data = self._get_list_response(request,**kwargs_for_log)
         try:
@@ -2675,11 +2681,11 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
                 for _dict in deserialized:
                     self.patch_obj(_dict)
         except ValidationError as e:
+            logger.info('validation error %s ', e)
             raise ImmediateHttpResponse(response=self.error_response(request, e.errors))
             
         # get new state, for logging
         new_data = self._get_list_response(request,**kwargs_for_log)
-        
         logger.debug('new data: %s'% new_data)
         logger.info('patch list done, new data: %d' 
             % (len(new_data)))
@@ -2708,6 +2714,20 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
                 % self._meta.collection_name)
         deserialized = deserialized[self._meta.collection_name]
         
+        # Look for id's kwargs, to limit the potential candidates for logging
+        schema = self.build_schema()
+        id_attribute = resource = schema['resource_definition']['id_attribute']
+        kwargs_for_log = kwargs.copy()
+        for id_field in id_attribute:
+            ids = []
+            # Test for each id key; it's ok on create for ids to be None
+            for _dict in [x for x in deserialized if x.get(id_field, None)]:
+                ids.append(_dict.get(id_field))
+            if ids:
+                kwargs_for_log['%s__in'%id_field] = LIST_DELIMITER_URL_PARAM.join(ids)
+        # get original state, for logging
+        original_data = self._get_list_response(request,**kwargs_for_log)
+
         logger.info('put_list')
         logger.debug('put list %s, %s' % (deserialized,kwargs))
         try:
@@ -2724,8 +2744,20 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
             raise ImmediateHttpResponse(response=self.error_response(request, e.errors))
 
         # get new state, for logging
-        new_data = self._get_list_response(request,**kwargs)
-        self.log_patches(request, [],new_data,**kwargs)
+        new_data = self._get_list_response(request,**kwargs_for_log)
+        kwargs_for_log = kwargs.copy()
+        for id_field in id_attribute:
+            ids = []
+            # After patch, the id keys must be present
+            for _dict in [x for x in deserialized]:
+                ids.append(_dict.get(id_field))
+            if ids:
+                kwargs_for_log['%s__in'%id_field] = LIST_DELIMITER_URL_PARAM.join(ids)
+        
+        logger.debug('new data: %s'% new_data)
+        logger.info('patch list done, new data: %d' 
+            % (len(new_data)))
+        self.log_patches(request, original_data,new_data,**kwargs)
 
     
         if not self._meta.always_return_data:
@@ -2798,7 +2830,6 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
     @write_authorization
     @un_cache        
     def patch_detail(self, request, **kwargs):
-
         deserialized = self._meta.serializer.deserialize(
             request.body, 
             format=request.META.get('CONTENT_TYPE', 'application/json'))
@@ -2986,7 +3017,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
         return errors
 
 
-class UserResource(ManagedSqlAlchemyResourceMixin):
+class UserResource(ApiResource):
 
     def __init__(self, **kwargs):
         super(UserResource,self).__init__(**kwargs)
@@ -3213,12 +3244,9 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
                   
-            visibilities = set()                
-            if is_for_detail:
-                visibilities.update(['d','e'])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, visibilities=visibilities)
+                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_params.append('username')
@@ -3273,224 +3301,221 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         return self.get_local_resource_uri(
             bundle_or_obj=bundle_or_obj, url_name=url_name)
         
-#     def find_username(self,deserialized, **kwargs):
-#         username = kwargs.get('username', None)
-#         if not username and 'username' in deserialized:
-#                 username = deserialized['username']
-#         if not username and 'resource_uri' in deserialized:
-#             keys = self.find_key_from_resource_uri(deserialized['resource_uri'])
-#             username = keys.get('username', None)
-#         if not username:
-#             logger.info('no username provided: %s, %s',kwargs, deserialized)
-#             raise NotImplementedError(str((
-#                 'must provide a username parameter',
-#                 kwargs, deserialized)) )
-#         return username
-
-    # reworked 20150706   
-    @un_cache        
-    @transaction.atomic()
-    def put_list(self,request, **kwargs):
-        # TODO: refactor
-        self._meta.authorization._is_resource_authorized(
-            self._meta.resource_name, request.user, 'write')
-
-        deserialized = self._meta.serializer.deserialize(
-            request.body, 
-            format=request.META.get('CONTENT_TYPE', 'application/json'))
-        if not self._meta.collection_name in deserialized:
-            raise BadRequest("Invalid data sent, must be nested in '%s'" 
-                % self._meta.collection_name)
-        deserialized = deserialized[self._meta.collection_name]
-        
-        # cache state, for logging
-        response = self.get_list(
-            request,
-            desired_format='application/json',
-            includes='*',
-            **kwargs)
-        original_data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        original_data = original_data[self._meta.collection_name]
-        logger.debug('original data==: %s' % original_data)
-
-        with transaction.atomic():
-            
-            # TODO: review REST actions:
-            # PUT deletes the endpoint
-            
-            UserProfile.objects.all().delete()
-            
-            for _dict in deserialized:
-                self.put_obj(_dict)
-
-        # get new state, for logging
-        response = self.get_list(
-            request,
-            desired_format='application/json',
-            includes='*',
-            **kwargs)
-        new_data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        new_data = new_data[self._meta.collection_name]
-        
-        logger.debug('new data==: %s' % new_data)
-        self.log_patches(request, original_data,new_data,**kwargs)
-
-    
-        if not self._meta.always_return_data:
-            return http.HttpAccepted()
-        else:
-            response = self.get_list(request, **kwargs)             
-            response.status_code = 200
-            return response
-
-    @un_cache        
-    def patch_list(self, request, **kwargs):
-        # TODO: refactor
-        self._meta.authorization._is_resource_authorized(
-            self._meta.resource_name, request.user, 'write')
-
-        deserialized = self._meta.serializer.deserialize(
-            request.body, 
-            format=request.META.get('CONTENT_TYPE', 'application/json'))
-        if not self._meta.collection_name in deserialized:
-            raise BadRequest("Invalid data sent, must be nested in '%s'" 
-                % self._meta.collection_name)
-        deserialized = deserialized[self._meta.collection_name]
-
-        # cache state, for logging
-        response = self.get_list(
-            request,
-            desired_format='application/json',
-            includes='*',
-            **kwargs)
-        original_data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        original_data = original_data[self._meta.collection_name]
-        logger.debug('original data==: %s' % original_data)
-
-        with transaction.atomic():
-            
-            for _dict in deserialized:
-                self.patch_obj(_dict)
-                
-        # get new state, for logging
-        response = self.get_list(
-            request,
-            desired_format='application/json',
-            includes='*',
-            **kwargs)
-        new_data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        new_data = new_data[self._meta.collection_name]
-        
-        logger.debug('new data==: %s' % new_data)
-        self.log_patches(request, original_data,new_data,**kwargs)
-        
-        if not self._meta.always_return_data:
-            return http.HttpAccepted()
-        else:
-            response = self.get_list(request, **kwargs)             
-            response.status_code = 200
-            return response
-
-    @un_cache        
-    @transaction.atomic()
-    def patch_detail(self, request, **kwargs):
-        logger.info(str(('patch detail', kwargs)))
-        # TODO: refactor
-        self._meta.authorization._is_resource_authorized(
-            self._meta.resource_name, request.user, 'write')
-
-        deserialized = self._meta.serializer.deserialize(
-            request.body, 
-            format=request.META.get('CONTENT_TYPE', 'application/json'))
-
-        # cache state, for logging
-#         username = self.find_username(deserialized, **kwargs)
-        response = self.get_list(
-            request,
-            desired_format='application/json',
-            includes='*',
-            **kwargs)
-        original_data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        original_data = original_data[self._meta.collection_name]
-        logger.debug('original data==: %s' % original_data)
-
-        with transaction.atomic():
-            logger.info(str(('patch_detail:', kwargs)))
-            
-            self.patch_obj(deserialized, **kwargs)
-
-        # get new state, for logging
-        response = self.get_list(
-            request,
-            desired_format='application/json',
-            includes='*',
-            **kwargs)
-        new_data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        new_data = new_data[self._meta.collection_name]
-        
-        logger.debug('new data==: %s' % new_data)
-        self.log_patches(request, original_data,new_data,**kwargs)
-
-        
-        if not self._meta.always_return_data:
-            return http.HttpAccepted()
-        else:
-            response = self.get_detail(request, **kwargs) 
-            response.status_code = 200
-            return response
-
-    @un_cache        
-    @transaction.atomic()
-    def put_detail(self, request, **kwargs):
-        # TODO: refactor
-        self._meta.authorization._is_resource_authorized(
-            self._meta.resource_name, request.user, 'write')
-                
-        deserialized = self._meta.serializer.deserialize(
-            request.body, 
-            format=request.META.get('CONTENT_TYPE', 'application/json'))
-        
-        with transaction.atomic():
-            logger.info(str(('put_detail:', kwargs)))
-            
-            self.put_obj(deserialized, **kwargs)
-        
-        if not self._meta.always_return_data:
-            return http.HttpAccepted()
-        else:
-            response = self.get_detail(request, **kwargs) 
-            response.status_code = 200
-            return response
-        
-    @transaction.atomic()    
-    def put_obj(self,deserialized, **kwargs):
-        
+    def get_id(self, deserialized, **kwargs):
         try:
-            self.delete_obj(deserialized, **kwargs)
-        except ObjectDoesNotExist,e:
-            pass 
-        
-        return self.patch_obj(deserialized, **kwargs)
-    
-    def delete_detail(self,deserialized, **kwargs):
-        # TODO: refactor
-        self._meta.authorization._is_resource_authorized(
-            self._meta.resource_name, request.user, 'write')
+            return ApiResource.get_id(self, deserialized, **kwargs)
+        except ValueError as e:
+            if deserialized and deserialized.get('ecommons_id', None):
+                return { 'ecommons_id': deserialized['ecommons_id']}
+            elif kwargs and kwargs.get('ecommons_id', None):
+                return { 'ecommons_id': kwargs['ecommons_id']}
+            else:
+                raise ValueError, '%s, nor was an ecommons_id specified' % e
 
-        deserialized = self._meta.serializer.deserialize(
-            request.body, 
-            format=request.META.get('CONTENT_TYPE', 'application/json'))
-        try:
-            self.delete_obj(deserialized, **kwargs)
-            return HttpResponse(status=204)
-        except ObjectDoesNotExist,e:
-            return HttpResponse(status=404)
+#     # reworked 20150706   
+#     @un_cache        
+#     @transaction.atomic()
+#     def put_list(self,request, **kwargs):
+#         # TODO: refactor
+#         self._meta.authorization._is_resource_authorized(
+#             self._meta.resource_name, request.user, 'write')
+# 
+#         deserialized = self._meta.serializer.deserialize(
+#             request.body, 
+#             format=request.META.get('CONTENT_TYPE', 'application/json'))
+#         if not self._meta.collection_name in deserialized:
+#             raise BadRequest("Invalid data sent, must be nested in '%s'" 
+#                 % self._meta.collection_name)
+#         deserialized = deserialized[self._meta.collection_name]
+#         
+#         # cache state, for logging
+#         response = self.get_list(
+#             request,
+#             desired_format='application/json',
+#             includes='*',
+#             **kwargs)
+#         original_data = self._meta.serializer.deserialize(
+#             LimsSerializer.get_content(response), format='application/json')
+#         original_data = original_data[self._meta.collection_name]
+#         logger.debug('original data==: %s' % original_data)
+# 
+#         with transaction.atomic():
+#             
+#             # TODO: review REST actions:
+#             # PUT deletes the endpoint
+#             
+#             UserProfile.objects.all().delete()
+#             
+#             for _dict in deserialized:
+#                 self.put_obj(_dict)
+# 
+#         # get new state, for logging
+#         response = self.get_list(
+#             request,
+#             desired_format='application/json',
+#             includes='*',
+#             **kwargs)
+#         new_data = self._meta.serializer.deserialize(
+#             LimsSerializer.get_content(response), format='application/json')
+#         new_data = new_data[self._meta.collection_name]
+#         
+#         logger.debug('new data==: %s' % new_data)
+#         self.log_patches(request, original_data,new_data,**kwargs)
+# 
+#     
+#         if not self._meta.always_return_data:
+#             return http.HttpAccepted()
+#         else:
+#             response = self.get_list(request, **kwargs)             
+#             response.status_code = 200
+#             return response
+
+#     @un_cache        
+#     def patch_list(self, request, **kwargs):
+#         # TODO: refactor
+#         self._meta.authorization._is_resource_authorized(
+#             self._meta.resource_name, request.user, 'write')
+# 
+#         deserialized = self._meta.serializer.deserialize(
+#             request.body, 
+#             format=request.META.get('CONTENT_TYPE', 'application/json'))
+#         if not self._meta.collection_name in deserialized:
+#             raise BadRequest("Invalid data sent, must be nested in '%s'" 
+#                 % self._meta.collection_name)
+#         deserialized = deserialized[self._meta.collection_name]
+# 
+#         # cache state, for logging
+#         response = self.get_list(
+#             request,
+#             desired_format='application/json',
+#             includes='*',
+#             **kwargs)
+#         original_data = self._meta.serializer.deserialize(
+#             LimsSerializer.get_content(response), format='application/json')
+#         original_data = original_data[self._meta.collection_name]
+#         logger.debug('original data==: %s' % original_data)
+# 
+#         with transaction.atomic():
+#             
+#             for _dict in deserialized:
+#                 self.patch_obj(_dict)
+#                 
+#         # get new state, for logging
+#         response = self.get_list(
+#             request,
+#             desired_format='application/json',
+#             includes='*',
+#             **kwargs)
+#         new_data = self._meta.serializer.deserialize(
+#             LimsSerializer.get_content(response), format='application/json')
+#         new_data = new_data[self._meta.collection_name]
+#         
+#         logger.debug('new data==: %s' % new_data)
+#         self.log_patches(request, original_data,new_data,**kwargs)
+#         
+#         if not self._meta.always_return_data:
+#             return http.HttpAccepted()
+#         else:
+#             response = self.get_list(request, **kwargs)             
+#             response.status_code = 200
+#             return response
+
+#     @un_cache        
+#     @transaction.atomic()
+#     def patch_detail(self, request, **kwargs):
+#         logger.info(str(('patch detail', kwargs)))
+#         # TODO: refactor
+#         self._meta.authorization._is_resource_authorized(
+#             self._meta.resource_name, request.user, 'write')
+# 
+#         deserialized = self._meta.serializer.deserialize(
+#             request.body, 
+#             format=request.META.get('CONTENT_TYPE', 'application/json'))
+# 
+#         # cache state, for logging
+# #         username = self.find_username(deserialized, **kwargs)
+#         response = self.get_list(
+#             request,
+#             desired_format='application/json',
+#             includes='*',
+#             **kwargs)
+#         original_data = self._meta.serializer.deserialize(
+#             LimsSerializer.get_content(response), format='application/json')
+#         original_data = original_data[self._meta.collection_name]
+#         logger.debug('original data==: %s' % original_data)
+# 
+#         with transaction.atomic():
+#             logger.info(str(('patch_detail:', kwargs)))
+#             
+#             self.patch_obj(deserialized, **kwargs)
+# 
+#         # get new state, for logging
+#         response = self.get_list(
+#             request,
+#             desired_format='application/json',
+#             includes='*',
+#             **kwargs)
+#         new_data = self._meta.serializer.deserialize(
+#             LimsSerializer.get_content(response), format='application/json')
+#         new_data = new_data[self._meta.collection_name]
+#         
+#         logger.debug('new data==: %s' % new_data)
+#         self.log_patches(request, original_data,new_data,**kwargs)
+# 
+#         
+#         if not self._meta.always_return_data:
+#             return http.HttpAccepted()
+#         else:
+#             response = self.get_detail(request, **kwargs) 
+#             response.status_code = 200
+#             return response
+
+#     @un_cache        
+#     @transaction.atomic()
+#     def put_detail(self, request, **kwargs):
+#         # TODO: refactor
+#         self._meta.authorization._is_resource_authorized(
+#             self._meta.resource_name, request.user, 'write')
+#                 
+#         deserialized = self._meta.serializer.deserialize(
+#             request.body, 
+#             format=request.META.get('CONTENT_TYPE', 'application/json'))
+#         
+#         with transaction.atomic():
+#             logger.info(str(('put_detail:', kwargs)))
+#             
+#             self.put_obj(deserialized, **kwargs)
+#         
+#         if not self._meta.always_return_data:
+#             return http.HttpAccepted()
+#         else:
+#             response = self.get_detail(request, **kwargs) 
+#             response.status_code = 200
+#             return response
+        
+#     @transaction.atomic()    
+#     def put_obj(self,deserialized, **kwargs):
+#         
+#         try:
+#             self.delete_obj(deserialized, **kwargs)
+#         except ObjectDoesNotExist,e:
+#             pass 
+#         
+#         return self.patch_obj(deserialized, **kwargs)
+    
+#     def delete_detail(self,deserialized, **kwargs):
+#         # TODO: refactor
+#         self._meta.authorization._is_resource_authorized(
+#             self._meta.resource_name, request.user, 'write')
+# 
+#         deserialized = self._meta.serializer.deserialize(
+#             request.body, 
+#             format=request.META.get('CONTENT_TYPE', 'application/json'))
+#         try:
+#             self.delete_obj(deserialized, **kwargs)
+#             return HttpResponse(status=204)
+#         except ObjectDoesNotExist,e:
+#             return HttpResponse(status=404)
     
     @transaction.atomic()    
     def delete_obj(self, deserialized, **kwargs):
@@ -3501,10 +3526,12 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
     @transaction.atomic()    
     def patch_obj(self,deserialized, **kwargs):
 
-        logger.info(str(('patch obj', deserialized,kwargs)))
+        logger.info('patch_obj: %r, %r', deserialized,kwargs)
         
 #         username = self.find_username(deserialized,**kwargs)
         id_kwargs = self.get_id(deserialized,**kwargs)
+        username = id_kwargs.get('username', None)
+        ecommons_id = id_kwargs.get('ecommons_id', None)
         
         schema = self.build_schema()
         fields = schema['fields']
@@ -3516,13 +3543,16 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
         
         try:
             # create the auth_user
-
+            if not username:
+                logger.info('username not specified, setting username to ecommons_id: %s', ecommons_id)
+                username = ecommons_id
+                deserialized['username'] = username
+                
             try:
-                user = DjangoUser.objects.get(**id_kwargs)
+                user = DjangoUser.objects.get(username=username)
             except ObjectDoesNotExist, e:
                 logger.info('User %s does not exist, creating', id_kwargs)
-                user = DjangoUser.objects.create_user(
-                    id_kwargs['username']) # , **initializer_dict)
+                user = DjangoUser.objects.create_user(username=username)
                 logger.info('created Auth.User: %s', user)
 
             initializer_dict = {}
@@ -3552,17 +3582,19 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
             try:
                 userprofile = UserProfile.objects.get(**id_kwargs)
             except ObjectDoesNotExist, e:
+                if hasattr(user, 'userprofile'):
+                    raise ValueError('user already exists: %s: %s' % (user, user.userprofile))
                 logger.info('Reports User %s does not exist, creating' % id_kwargs)
                 userprofile = UserProfile.objects.create(**id_kwargs)
-                userprofile.save()
                 logger.info('created UserProfile: %s', userprofile)
             
             userprofile.user = user
+            userprofile.save()
 
             if initializer_dict:
                 logger.info('initializer dict: %r', initializer_dict)
                 for key,val in initializer_dict.items():
-                    logger.info('set: %s to %r, %s',key,val,hasattr(userprofile, key))
+                    logger.debug('set: %s to %r, %s',key,val,hasattr(userprofile, key))
                     
                     if key == 'permissions':
                         # FIXME: first check if permissions have changed
@@ -3598,15 +3630,14 @@ class UserResource(ManagedSqlAlchemyResourceMixin):
                                     usergroup.users.add(userprofile)
                                     usergroup.save()
                                     logger.info(str(('added user to usergroup', userprofile,userprofile.user, usergroup)))
-                                except ObjectDoesNotExist, e:
-                                    logger.info(str(('no such usergroup', g, 
-                                        usergroup_key, initializer_dict)))
-                                    raise e
+                                except ObjectDoesNotExist as e:
+                                    msg = ('no such usergroup: %r, initializer: %r'
+                                        % (usergroup_key, initializer_dict))
+                                    logger.exception(msg)
+                                    raise ValidationError(msg)
                     elif hasattr(userprofile,key):
                         setattr(userprofile,key,val)
-                
-                # also set
-                userprofile.email = user.email
+
                 userprofile.save()
                 logger.info(str(('== created/updated userprofile', user, user.username)))
             else:
@@ -4224,12 +4255,9 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
                   
-            visibilities = set()                
-            if is_for_detail:
-                visibilities.update(['d','e'])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, visibilities=visibilities)
+                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)

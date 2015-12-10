@@ -10,6 +10,7 @@ import os
 import re
 import sys
 import traceback
+import importlib
 
 import dateutil
 from django.conf import settings
@@ -26,7 +27,8 @@ from django.forms.models import model_to_dict
 from django.http.request import HttpRequest
 from django.http.response import HttpResponse
 from django.http.response import HttpResponseBase
-from django.utils import timezone, importlib
+from django.utils import timezone
+
 from django.utils.encoding import smart_text
 import six
 from sqlalchemy import select, asc, text
@@ -2287,14 +2289,8 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
         content_type=build_content_type(desired_format)
         return HttpResponse(content='ok',content_type=content_type)
 
-
-    @read_authorization
     def get_detail(self, request, **kwargs):
-        # TODO: this is a strategy for refactoring get_detail to use get_list:
-        # follow this with wells/
-        logger.info(str(('get_detail', kwargs)))
-        kwargs['is_for_detail']=True
-        
+        logger.info(str(('get_detail')))
 
         id = kwargs.get('id', None)
         if id:
@@ -2314,34 +2310,37 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
         if not date_time:
             logger.info(str(('no date_time provided')))
             raise NotImplementedError('must provide a date_time parameter')
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+        kwargs['is_for_detail']=True
+        return self.build_list_response(request, **kwargs)
         
-        return self.get_list(request, **kwargs)
-    
     @read_authorization
     def get_list(self,request,**kwargs):
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+
+        return self.build_list_response(request, **kwargs)
+
+        
+    def build_list_response(self,request, **kwargs):
+        ''' 
+        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
+        @returns django.http.response.StreamingHttpResponse 
+        '''
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         parent_log_id = None
         if 'parent_log_id' in kwargs:
             parent_log_id = kwargs.pop('parent_log_id')
             
-        param_hash = self._convert_request_to_dict(request)
+        param_hash = {}
         param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
 
         if parent_log_id:
             kwargs['parent_log_id'] = parent_log_id
-        
-        return self.build_list_response(request,param_hash=param_hash, **kwargs)
-    
-    def build_list_response(self,request, param_hash={}, **kwargs):
-        ''' 
-        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy 
-        implementation
-        @returns django.http.response.StreamingHttpResponse 
-        '''
-        DEBUG_GET_LIST = True or logger.isEnabledFor(logging.DEBUG)
 
-        if DEBUG_GET_LIST:
-            logger.info(str(('param_hash', param_hash, 'kwargs', kwargs )))
         is_for_detail = kwargs.pop('is_for_detail', False)
              
         schema = super(ApiLogResource,self).build_schema()
@@ -2383,7 +2382,8 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
                                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
+                param_hash.get('visibilities'), 
+                exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.\
@@ -2621,6 +2621,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
     - "patch_obj" must be implemented
     - "put" methods call "delete_obj" 
     - "delete_obj" must be implemented
+    - wrap mutating methods in "un_cache"
     - prepend_urls must direct to the detail/list methods
     '''
     
@@ -3178,7 +3179,6 @@ class UserResource(ApiResource):
 
         return custom_columns
 
-    @read_authorization
     def get_detail(self, request, **kwargs):
         logger.info(str(('get_detail')))
 
@@ -3186,36 +3186,30 @@ class UserResource(ApiResource):
         if not username:
             logger.info(str(('no username provided', kwargs)))
             raise NotImplementedError('must provide a username parameter')
-        
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
-        return self.get_list(request, **kwargs)
+        return self.build_list_response(request, **kwargs)
         
-    
     @read_authorization
     def get_list(self,request,**kwargs):
 
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
 
-        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+        return self.build_list_response(request, **kwargs)
 
-    def build_sqlalchemy_columns(self, fields, custom_columns=None ):
         
-        if not custom_columns:
-            custom_columns = {}
-        custom_columns.update(self.get_custom_columns())
-        base_query_tables = ['auth_user','reports_userprofile'] 
-
-        return super(UserResource,self).build_sqlalchemy_columns(
-            fields,base_query_tables=base_query_tables,custom_columns=custom_columns)
-        
-    def build_list_response(self,request, param_hash={}, **kwargs):
+    def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
         @returns django.http.response.StreamingHttpResponse 
         '''
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
         is_for_detail = kwargs.pop('is_for_detail', False)
 
         schema = super(UserResource,self).build_schema()
@@ -3246,7 +3240,8 @@ class UserResource(ApiResource):
                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
+                param_hash.get('visibilities'), 
+                exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_params.append('username')
@@ -3300,6 +3295,16 @@ class UserResource(ApiResource):
         '''
         return self.get_local_resource_uri(
             bundle_or_obj=bundle_or_obj, url_name=url_name)
+
+    def build_sqlalchemy_columns(self, fields, custom_columns=None ):
+        
+        if not custom_columns:
+            custom_columns = {}
+        custom_columns.update(self.get_custom_columns())
+        base_query_tables = ['auth_user','reports_userprofile'] 
+
+        return super(UserResource,self).build_sqlalchemy_columns(
+            fields,base_query_tables=base_query_tables,custom_columns=custom_columns)
         
     def get_id(self, deserialized, **kwargs):
         try:
@@ -4193,7 +4198,6 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
 
         return group_all_users.cte('gau')
     
-    @read_authorization
     def get_detail(self, request, **kwargs):
         logger.info(str(('get_detail')))
 
@@ -4201,26 +4205,30 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
         if not name:
             logger.info(str(('no group name provided')))
             raise NotImplementedError('must provide a group name parameter')
-        
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
-        return self.get_list(request, **kwargs)
+        return self.build_list_response(request, **kwargs)
         
     @read_authorization
     def get_list(self,request,**kwargs):
 
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
 
-        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+        return self.build_list_response(request, **kwargs)
 
         
-    def build_list_response(self,request, param_hash={}, **kwargs):
+    def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
         @returns django.http.response.StreamingHttpResponse 
         '''
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
         is_for_detail = kwargs.pop('is_for_detail', False)
 
         schema = super(UserGroupResource,self).build_schema()
@@ -4257,7 +4265,8 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
+                param_hash.get('visibilities'), 
+                exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)

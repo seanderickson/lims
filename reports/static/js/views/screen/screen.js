@@ -108,6 +108,7 @@ define([
     },
 
     click_tab : function(event){
+      var self = this;
       event.preventDefault();
       var key = event.currentTarget.id;
       if(_.isEmpty(key)) return;
@@ -246,14 +247,29 @@ define([
       editForm.$el.find('div[key="form-group-' + fieldKey + '"]').append(addButton);
     },
     
-    setSummary : function(){
+    setSummary : function(delegateStack){
       var self = this;
-      var summaryKeys = self.model.resource.schema.filterKeys('summary')
-      var detailView = new DetailLayout({
-        model : self.model,
-        detailKeys: summaryKeys
-      });
-      $('#tab_container').html(detailView.render().el);
+      var key = 'summary';
+      var view = this.tabViews[key];
+      // if (!view){
+        var summaryKeys = self.model.resource.schema.filterKeys('visibility', 'summary');
+        var summaryModel = appModel.getModel(
+          self.model.resource.key, self.model.key, 
+          function(model){
+            view = new DetailLayout({ 
+              model: model, 
+              uriStack: delegateStack,
+              detailKeys: summaryKeys
+            });
+            self.tabViews[key] = view;
+            
+            self.listenTo(view , 'uriStack:change', this.reportUriStack);
+            self.setView("#tab_container", view ).render();
+            self.reportUriStack([]);
+          },{ visibilities: ['summary']});
+//      }else{
+//        // use the already loaded view, implement cache clearing
+//      }
     },
 
     setDatacolumns: function(delegateStack){
@@ -423,6 +439,7 @@ define([
          '</form>'
          ].join(''));      
       var createResults = function(schemaResult){
+        var initialSearchHash;
         view = new ListView({ options: {
           uriStack: _.clone(delegateStack),
           schemaResult: schemaResult,
@@ -434,6 +451,16 @@ define([
         self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.setView("#tab_container", view ).render();
+        initialSearchHash = view.listModel.get('search');
+        if(_.has(initialSearchHash, 'is_positive__eq')
+            && initialSearchHash.is_positive__eq.toLowerCase()=='true'){
+          show_positives_control.find('input[type="checkbox"]').prop('checked',true);
+        }
+        if(_.has(initialSearchHash, 'show_mutual_positives')
+            && initialSearchHash.show_mutual_positives.toLowerCase()=='true'){
+          show_mutual_positives_control.find('input[type="checkbox"]').prop('checked',true);
+        }
+        
         show_positives_control.click(function(e){
           if(e.target.checked){
             var searchHash = _.clone(view.listModel.get('search'));

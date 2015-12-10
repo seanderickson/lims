@@ -5,7 +5,7 @@ from tastypie.api import Api
 
 from db import views
 from db.api import ScreensaverUserResource, ScreenResource, \
-    ScreenSummaryResource, ScreenResultResource,  \
+    ScreenResultResource,  \
     DataColumnResource, LibraryResource, \
     LibraryCopyResource, LibraryCopyPlateResource, PlateLocationResource, \
     WellResource, ActivityResource, LibraryContentsVersionResource, ReagentResource, \
@@ -19,7 +19,6 @@ v1_api = Api(api_name='v1')
 v1_api.register(ScreensaverUserResource())
 v1_api.register(ScreenResource())
 v1_api.register(ScreenResultResource())
-v1_api.register(ScreenSummaryResource())
 v1_api.register(DataColumnResource())
 v1_api.register(LibraryResource())
 v1_api.register(LibraryCopyResource())

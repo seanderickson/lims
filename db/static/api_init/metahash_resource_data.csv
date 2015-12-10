@@ -2,7 +2,6 @@ key,scope,table,id_attribute,title_attribute,resource_uri,ordinal,comment,descri
 screensaveruser,resource,screensaver_user,[username],"[first_name;' ';last_name;' (';username;)]",/reports/api/v1/resource/screensaveruser/,0,,"The Screensaver user resource","Screensaver User",[list;detail;create],,,db,reports.model.User,user,[xls]
 screen,resource,screen,[facility_id],"[facility_id;': ';title]",/reports/api/v1/resource/screen/,0,,"The Screen resources",Screen,[list;detail;create],,,db,,,[xls]
 screenresult,resource,assay_well,[screen_facility_id;well_id],[screen_facility_id;/;well_id],/reports/api/v1/resource/screenresult/,0,,"The Screen result resource","Screen Result",[list;detail;create],,,db,,,[xls]
-screensummary,resource,screen,[facility_id],[facility_id],/reports/api/v1/resource/screensummary/,0,,"The Screening Summary resource","Screen Summary",[list;detail;create],,,db,,,[xls]
 datacolumn,resource,data_column,[data_column_id],[name],/reports/api/v1/resource/datacolumn/,0,,"The Screen Result Datacolumn resource","Data Column",[list;detail;create],,,db,,,[xls]
 library,resource,library,[short_name],[short_name],/reports/api/v1/resource/library/,0,,"The reagent library resource",Library,[list;detail;create],,,db,,,[xls]
 librarycopy,resource,copy,[library_short_name;name],"[library_short_name;': ';name]",/reports/api/v1/resource/librarycopy/,0,,"A copy of the library","Library Copy",[list;detail;create],,,db,,,[xls]

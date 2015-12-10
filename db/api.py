@@ -177,24 +177,29 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
         if not copy_name:
             logger.info(str(('no plate_number provided')))
             raise NotImplementedError('must provide a plate_number parameter')
-        
-        kwargs['is_for_detail']=True
-        return self.get_list(request, **kwargs)
 
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+        kwargs['is_for_detail']=True
+        return self.build_list_response(request, **kwargs)
+        
     @read_authorization
-    def get_list(self, request, param_hash={}, **kwargs):
+    def get_list(self,request,**kwargs):
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+
+        return self.build_list_response(request, **kwargs)
+
+        
+    def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
         @returns django.http.response.StreamingHttpResponse 
         '''
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
-
-        return self.build_list_response(request,param_hash=param_hash, **kwargs)
-        
-    def build_list_response(self,request, param_hash={}, **kwargs):
-            
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
         
         is_for_detail = kwargs.pop('is_for_detail', False)
 
@@ -239,7 +244,8 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
                  
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
+                param_hash.get('visibilities'), 
+                exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
@@ -687,25 +693,29 @@ class ScreenResource(ApiResource):
             logger.info(str(('no facility_id provided')))
             raise NotImplementedError('must provide a facility_id parameter')
         
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
-        return self.get_list(request, **kwargs)
+        return self.build_list_response(request, **kwargs)
         
     @read_authorization
     def get_list(self,request,**kwargs):
 
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
 
-        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+        return self.build_list_response(request, **kwargs)
 
         
-    def build_list_response(self,request, param_hash={}, **kwargs):
+    def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
         @returns django.http.response.StreamingHttpResponse 
         '''
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
         is_for_detail = kwargs.pop('is_for_detail', False)
              
         schema = super(ScreenResource,self).build_schema()
@@ -744,7 +754,8 @@ class ScreenResource(ApiResource):
                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
+                param_hash.get('visibilities'), 
+                exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
@@ -888,7 +899,8 @@ class ScreenResource(ApiResource):
                         join(_cplt,_cplt.c.activity_id==_cpap.c.cherry_pick_liquid_transfer_id)).\
                     group_by(_cpr.c.screen_id).\
                     where(_cplt.c.status == 'Successful' ).cte('tplcps')
-            # create inner screen-screen_result query to create index join not hash join
+            # Create an inner screen-screen_result query to prompt the  
+            # query planner to index join not hash join
             new_screen_result = ( select([
                     _screen.c.screen_id,
                     _screen_result.c.screen_result_id,
@@ -910,20 +922,6 @@ class ScreenResource(ApiResource):
                         func.array_agg(collaborators.c.fullname), LIST_DELIMITER_SQL_ARRAY)])
                         .select_from(collaborators)
                         .where(collaborators.c.screen_id==literal_column('screen.screen_id'))),
-#                 'collaborator_names': (
-#                     select([func.array_to_string(
-#                         func.array_agg(func.concat(
-#                             _collaborator.c.name,' ',_collaborator.c.email)), LIST_DELIMITER_SQL_ARRAY)])
-#                         .select_from(_collaborator.join(
-#                             _screen_collaborators,_collaborator.c.screensaver_user_id==_screen_collaborators.c.screensaveruser_id))
-#                         .order_by(_collaborator.c.username)
-#                         .where(_screen_collaborators.c.screen_id==literal_column('screen.screen_id'))),
-            
-#                 'lab_name': literal_column(
-#                     '( select su.first_name || $$ $$ || su.last_name'
-#                     '  from screensaver_user su '
-#                     '  where su.screensaver_user_id=screen.lab_head_id )'
-#                     ),
                 'lab_name':
                     ( select([func.array_to_string(array(
                             [_lhsu.c.last_name,', ',_lhsu.c.first_name,' - ',
@@ -953,7 +951,6 @@ class ScreenResource(ApiResource):
                     '  join screensaver_user lh on(lh.lab_head_affiliation=v.key) '
                     '  where lh.screensaver_user_id=screen.lab_head_id )'
                     ).label('lab_affiliation'),
-#                 'has_screen_result': literal_column("'x'"),
                 'has_screen_result': literal_column(
                     '(select exists(select null from screen_result '
                     '     where screen_id=screen.screen_id ) ) '
@@ -978,20 +975,10 @@ class ScreenResource(ApiResource):
                     '  order by date_of_activity desc LIMIT 1 )'
                     ),
                 # TODO: rework the update activity
-#                 'screenresult_last_imported': literal_column("'x'"),
-#                 'screenresult_last_imported': screen_result_update_activity.c.date_of_activity,
                 'screenresult_last_imported':
                     select([screen_result_update_activity.c.date_of_activity])
                         .select_from(screen_result_update_activity)
                         .where(screen_result_update_activity.c.screen_id==literal_column('screen.screen_id')),
-#                 'screenresult_last_imported': literal_column(
-#                     '( select date_of_activity '
-#                     '  from activity '
-#                     '  join screen_result_update_activity srua on(update_activity_id=activity_id) '
-#                     '  join screen_result sr using(screen_result_id) '
-#                     '  where sr.screen_id=screen.screen_id '
-#                     '  order by date_of_activity desc LIMIT 1 )'
-#                     ),
                 'funding_supports':
                     select([func.array_to_string(
                         func.array_agg(literal_column('funding_support')
@@ -1009,7 +996,6 @@ class ScreenResource(ApiResource):
                         where(tplcps.c.screen_id==_screen.c.screen_id),
                 
                 # TODO: convert to vocabulary
-#                 'assay_readout_types': literal_column("'x'"),
                 'assay_readout_types': literal_column(
                     "(select array_to_string(array_agg(f1.assay_readout_type),'%s') "
                     '    from ( select distinct(assay_readout_type) '
@@ -1021,17 +1007,14 @@ class ScreenResource(ApiResource):
                     select([lps.c.count]).\
                         select_from(lps).where(lps.c.screen_id==_screen.c.screen_id),
 
-#                 'library_plates_data_loaded': literal_column("'x'"),
                 'library_plates_data_loaded': 
                     select([lpdl.c.count]).\
                         select_from(lpdl).where(lpdl.c.screen_id==_screen.c.screen_id),
 
-#                 'assay_plates_screened': literal_column("'x'"),
                 'assay_plates_screened': 
                     select([aps.c.count]).\
                         select_from(aps).where(aps.c.screen_id==_screen.c.screen_id),
 
-#                 'assay_plates_data_loaded': literal_column("'x'"),
                 'assay_plates_data_loaded': 
                     select([apdl.c.count]).\
                         select_from(apdl).where(apdl.c.screen_id==_screen.c.screen_id),
@@ -1057,11 +1040,9 @@ class ScreenResource(ApiResource):
                 'max_screened_replicate_count': 
                     select([func.max(apsrc.c.max_per_plate)+1]).\
                         select_from(apsrc).where(apsrc.c.screen_id==_screen.c.screen_id),
-#                 'min_data_loaded_replicate_count': literal_column("'x'"),
                 'min_data_loaded_replicate_count': 
                     select([func.min(apdlrc.c.max_per_plate)+1]).\
                         select_from(apdlrc).where(apdlrc.c.screen_id==_screen.c.screen_id),
-#                 'max_data_loaded_replicate_count': literal_column("'x'"),
                 'max_data_loaded_replicate_count': 
                     select([func.max(apdlrc.c.max_per_plate)+1]).\
                         select_from(apdlrc).where(apdlrc.c.screen_id==_screen.c.screen_id),
@@ -1090,11 +1071,8 @@ class ScreenResource(ApiResource):
                     screener_role_cte,
                     screener_role_cte.c.screen_id==_screen.c.screen_id)
 
-#             j = j.join(screen_result_update_activity,screen_result_update_activity.c.screen_id==_screen.c.screen_id)
             j = j.join(new_screen_result, 
                 _screen.c.screen_id==new_screen_result.c.screen_id)
-#             j = j.join(_screen_result, 
-#                 _screen.c.screen_id==_screen_result.c.screen_id, isouter=True)
             stmt = select(columns.values()).select_from(j)
 
             if screens_for_username:
@@ -1175,7 +1153,8 @@ class ScreenResource(ApiResource):
     def build_schema(self):
         schema = super(ScreenResource,self).build_schema()
 
-        if 'fields' in schema and 'facility_id' in schema['fields']:        
+        if 'fields' in schema and 'facility_id' in schema['fields']:
+            # TODO: cache       
             max_facility_id_sql = '''
                 select facility_id::text, project_phase from screen 
                 where project_phase='primary_screen' 
@@ -1236,7 +1215,6 @@ class ScreenResource(ApiResource):
         except Exception, e:
             logger.exception('on patch detail')
             raise e  
-
 
 class ScreenResultResource(SqlAlchemyResource,ManagedResource):
 
@@ -1398,7 +1376,7 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
             
         ]
-        
+
     def get_detail(self, request, **kwargs):
         logger.info(str(('get_detail')))
 
@@ -1411,18 +1389,19 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
         if not well_id:
             logger.info(str(('no well_id provided')))
             raise NotImplementedError('must provide a well_id parameter')
-        
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
-        return self.get_list(request, **kwargs)
+        return self.build_list_response(request, **kwargs)
         
     @read_authorization
     def get_list(self,request,**kwargs):
 
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
 
-        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+        return self.build_list_response(request, **kwargs)
 
+        
     def _build_result_value_column(self,field_information):
         '''
         Each result value will be added to the query as a subquery select:
@@ -1447,14 +1426,16 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
         rv_select = rv_select.label(field_name)
         return rv_select
     
+    def build_list_response(self,request, **kwargs):
+        ''' 
     # store id's in a temp table version
-    def build_list_response(self,request, param_hash={}, **kwargs):
+        '''
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
-        DEBUG_GET_LIST = True or logger.isEnabledFor(logging.DEBUG)
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
         
-        if DEBUG_GET_LIST:
-            logger.info(str(('kwargs',kwargs,'param_hash',param_hash)))
-
         is_for_detail = kwargs.pop('is_for_detail', False)
 
         screen_facility_id = param_hash.pop('screen_facility_id', None)
@@ -1511,7 +1492,8 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
                                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
+                param_hash.get('visibilities'), 
+                exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
@@ -1780,18 +1762,11 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
             logger.info(str(('find: ' , facility_id)))
             screenresult = ScreenResult.objects.get(
                 screen__facility_id=facility_id)
-            logger.info(str(('screenresult resource', 
-                             facility_id,screenresult.screen)))
-            
-            if screenresult:
-                return self.create_response(
-                    request, self.build_schema(screenresult))
-            else:
-                raise Http404(unicode((
-                    'no results for the screen: ', facility_id)))
+            return self.create_response(
+                request, self.build_schema(screenresult))
         except ObjectDoesNotExist, e:
             raise Http404(unicode((
-                'no screen found for facility id', facility_id)))
+                'no screen result found for facility id', facility_id)))
     
     data_type_lookup = {
         'partition_positive_indicator': {
@@ -2015,52 +1990,6 @@ class DataColumnResource(ManagedModelResource):
         ]    
     
 
-class ScreenSummaryResource(ManagedModelResource):
-        
-    class Meta:
-        queryset = Screen.objects.all() #.order_by('facility_id')
-        authentication = MultiAuthentication(BasicAuthentication(), 
-                                             SessionAuthentication())
-        authorization= UserGroupAuthorization()
-        resource_name = 'screensummary'
-        
-        ordering = []
-        filtering = {}
-        serializer = LimsSerializer()
-
-    def __init__(self, **kwargs):
-#        self.
-        super(ScreenSummaryResource,self).__init__(**kwargs)
-
-    def prepend_urls(self):
-        # NOTE: this match "((?=(schema))__|(?!(schema))[\w\d_.-]+)" allows us 
-        # to match any word, except "schema", and use it as the key value to 
-        # search for.
-        # also note the double underscore "__" is because we also don't want to
-        # match in the first clause.
-        # We don't want "schema" since that reserved word is used by tastypie 
-        # for the schema definition for the resource (used by the UI)
-        return [
-            url(r"^(?P<resource_name>%s)/(?P<facility_id>((?=(schema))__|(?!(schema))[^/]+))%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-        ]    
-
-    def dehydrate(self, bundle):
-        screen = bundle.obj
-        try:
-            # TODO: this is an example of the old activity system; we'll want 
-            # to refactor this to a generic entry in apilog and then the actual 
-            # values
-            activities = bundle.obj.screenupdateactivity_set.all().filter(
-                update_activity__administrative_activity_type='Screen Result Data Loading')
-            if len(activities) > 0: 
-                bundle.data['screenresult_last_imported'] =  \
-                    activities[:1][0].update_activity.activity.date_created;
-        except ScreenResult.DoesNotExist, e:
-            logger.info(unicode(('no screenresult for ', bundle.obj)))
-        return bundle
-
 # Deprecate - use apilog viewer
 class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
     class Meta:
@@ -2108,8 +2037,6 @@ class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
         ]
 
     def get_detail(self, request, **kwargs):
-        # TODO: this is a strategy for refactoring get_detail to use get_list:
-        # follow this with wells/
         logger.info(str(('get_detail')))
 
         copy_name = kwargs.get('copy_name', None)
@@ -2121,26 +2048,30 @@ class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
         if not well_id:
             logger.info(str(('no well_id provided')))
             raise NotImplementedError('must provide a well_id parameter')
-        
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
-        return self.get_list(request, **kwargs)
+        return self.build_list_response(request, **kwargs)
         
     @read_authorization
     def get_list(self,request,**kwargs):
 
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
 
-        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+        return self.build_list_response(request, **kwargs)
 
         
-    def build_list_response(self,request, param_hash={}, **kwargs):
+    def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
         @returns django.http.response.StreamingHttpResponse 
         '''
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
         is_for_detail = kwargs.pop('is_for_detail', False)
 
         schema = super(CopyWellHistoryResource,self).build_schema()
@@ -2173,7 +2104,8 @@ class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
                                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
+                param_hash.get('visibilities'), 
+                exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
@@ -2303,9 +2235,7 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
         ]
 
     def get_detail(self, request, **kwargs):
-        # TODO: this is a strategy for refactoring get_detail to use get_list:
-        # follow this with wells/
-        logger.info(str(('get_detail', kwargs)))
+        logger.info(str(('get_detail')))
 
         library_short_name = kwargs.get('library_short_name', None)
         if not library_short_name:
@@ -2320,26 +2250,30 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
         if not well_id:
             logger.info(str(('no well_id provided')))
             raise NotImplementedError('must provide a well_id parameter')
-        
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
-        
-        return self.get_list(request, **kwargs)
+        return self.build_list_response(request, **kwargs)
         
     @read_authorization
     def get_list(self,request,**kwargs):
 
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
 
-        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+        return self.build_list_response(request, **kwargs)
 
-    def build_list_response(self,request, param_hash={}, **kwargs):
+        
+    def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
         @returns django.http.response.StreamingHttpResponse 
         '''
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
         is_for_detail = kwargs.pop('is_for_detail', False)
 
         schema = super(CopyWellResource,self).build_schema()
@@ -2376,7 +2310,8 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
                                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
+                param_hash.get('visibilities'), 
+                exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
@@ -2475,34 +2410,36 @@ class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):
         ]
 
     def get_detail(self, request, **kwargs):
-        # TODO: this is a strategy for refactoring get_detail to use get_list:
-        # follow this with wells/
-        logger.info(str(('get_detail', kwargs)))
+        logger.info(str(('get_detail')))
 
         cherry_pick_request_id = kwargs.get('cherry_pick_request_id', None)
         if not cherry_pick_request_id:
             logger.info(str(('no cherry_pick_request_id provided')))
             raise NotImplementedError('must provide a cherry_pick_request_id parameter')
-        
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
-        
-        return self.get_list(request, **kwargs)
+        return self.build_list_response(request, **kwargs)
         
     @read_authorization
     def get_list(self,request,**kwargs):
 
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
 
-        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+        return self.build_list_response(request, **kwargs)
 
-    def build_list_response(self,request, param_hash={}, **kwargs):
+        
+    def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
         @returns django.http.response.StreamingHttpResponse 
         '''
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
         is_for_detail = kwargs.pop('is_for_detail', False)
 
         schema = super(CherryPickRequestResource,self).build_schema()
@@ -2526,7 +2463,8 @@ class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):
                                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
+                param_hash.get('visibilities'), 
+                exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
@@ -2694,9 +2632,7 @@ class CherryPickPlateResource(SqlAlchemyResource,ManagedModelResource):
         ]
 
     def get_detail(self, request, **kwargs):
-        # TODO: this is a strategy for refactoring get_detail to use get_list:
-        # follow this with wells/
-        logger.info(str(('get_detail', kwargs)))
+        logger.info(str(('get_detail')))
 
         cherry_pick_request_id = kwargs.get('cherry_pick_request_id', None)
         if not cherry_pick_request_id:
@@ -2713,25 +2649,29 @@ class CherryPickPlateResource(SqlAlchemyResource,ManagedModelResource):
             logger.info(str(('no attempt_ordinal provided')))
             raise NotImplementedError('must provide a attempt_ordinal parameter')
 
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
-        
-        return self.get_list(request, **kwargs)
+        return self.build_list_response(request, **kwargs)
         
     @read_authorization
     def get_list(self,request,**kwargs):
 
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
 
-        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+        return self.build_list_response(request, **kwargs)
 
-    def build_list_response(self,request, param_hash={}, **kwargs):
+        
+    def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
         @returns django.http.response.StreamingHttpResponse 
         '''
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
         is_for_detail = kwargs.pop('is_for_detail', False)
 
         schema = super(CherryPickPlateResource,self).build_schema()
@@ -2763,7 +2703,8 @@ class CherryPickPlateResource(SqlAlchemyResource,ManagedModelResource):
                                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
+                param_hash.get('visibilities'), 
+                exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
@@ -2942,8 +2883,6 @@ class LibraryCopyResource(SqlAlchemyResource, ManagedModelResource):
         return LibraryCopyPlateResource().dispatch('list', request, **kwargs)    
         
     def get_detail(self, request, **kwargs):
-        # TODO: this is a strategy for refactoring get_detail to use get_list:
-        # follow this with wells/
         logger.info(str(('get_detail')))
 
         library_short_name = kwargs.get('library_short_name', None)
@@ -2955,25 +2894,30 @@ class LibraryCopyResource(SqlAlchemyResource, ManagedModelResource):
         if not copy_name:
             logger.info(str(('no copy "name" provided')))
             raise NotImplementedError('must provide a copy "name" parameter')
-        
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
-        return self.get_list(request, **kwargs)
-    
+        return self.build_list_response(request, **kwargs)
+        
     @read_authorization
     def get_list(self,request,**kwargs):
 
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
 
-        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+        return self.build_list_response(request, **kwargs)
+
         
-    def build_list_response(self,request, param_hash={}, **kwargs):
+    def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
         @returns django.http.response.StreamingHttpResponse 
         '''
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
         is_for_detail = kwargs.pop('is_for_detail', False)
              
         schema = super(LibraryCopyResource,self).build_schema()
@@ -3012,7 +2956,8 @@ class LibraryCopyResource(SqlAlchemyResource, ManagedModelResource):
                                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
+                param_hash.get('visibilities'), 
+                exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
@@ -3441,30 +3386,35 @@ class AttachedFileResource(ApiResource):
 
     def get_detail(self, request, **kwargs):
         logger.info(str(('get_detail')))
-        
+
         attached_file_id = kwargs.get('attached_file_id', None)
         if not attached_file_id:
             logger.info(str(('no attached_file_id provided', kwargs)))
             raise NotImplementedError('must provide a attached_file_id parameter')
-        
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
-        return self.get_list(request, **kwargs)
-       
+        return self.build_list_response(request, **kwargs)
+        
     @read_authorization
     def get_list(self,request,**kwargs):
 
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
 
-        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+        return self.build_list_response(request, **kwargs)
 
-    def build_list_response(self,request, param_hash={}, **kwargs):
+        
+    def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
         @returns django.http.response.StreamingHttpResponse 
         '''
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
         is_for_detail = kwargs.pop('is_for_detail', False)
 
         schema = self.build_schema()
@@ -3492,7 +3442,8 @@ class AttachedFileResource(ApiResource):
                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
+                param_hash.get('visibilities'), 
+                exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
@@ -3713,32 +3664,37 @@ class ServiceActivityResource(ApiResource):
         
     def get_detail(self, request, **kwargs):
         logger.info(str(('get_detail')))
-        
+
         activity_id = kwargs.pop('activity_id', None)
         if not activity_id:
             logger.info(str(('no activity_id provided', kwargs)))
             raise NotImplementedError('must provide an activity_id parameter')
         else:
             kwargs['activity_id__eq'] = activity_id
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
-        return self.get_list(request, **kwargs)
-       
+        return self.build_list_response(request, **kwargs)
+        
     @read_authorization
     def get_list(self,request,**kwargs):
 
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
 
-        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+        return self.build_list_response(request, **kwargs)
 
-
-    def build_list_response(self,request, param_hash={}, **kwargs):
+        
+    def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
         @returns django.http.response.StreamingHttpResponse 
         '''
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
         is_for_detail = kwargs.pop('is_for_detail', False)
 
         schema = self.build_schema()
@@ -3759,7 +3715,8 @@ class ServiceActivityResource(ApiResource):
                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
+                param_hash.get('visibilities'), 
+                exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
@@ -3854,7 +3811,7 @@ class UserChecklistItemResource(ApiResource):
 
     def get_detail(self, request, **kwargs):
         logger.info(str(('get_detail')))
-        
+
         username = kwargs.get('username', None)
         if not username:
             logger.info(str(('no username provided')))
@@ -3869,25 +3826,30 @@ class UserChecklistItemResource(ApiResource):
         if not item_name:
             logger.info(str(('no item_name provided')))
             raise NotImplementedError('must provide a item_name parameter')
-        
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
-        return self.get_list(request, **kwargs)
-       
+        return self.build_list_response(request, **kwargs)
+        
     @read_authorization
     def get_list(self,request,**kwargs):
 
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
 
-        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+        return self.build_list_response(request, **kwargs)
 
-    def build_list_response(self,request, param_hash={}, **kwargs):
+        
+    def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
         @returns django.http.response.StreamingHttpResponse 
         '''
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
-        logger.info('build_list_response: %s ' % kwargs)
+
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
         is_for_detail = kwargs.pop('is_for_detail', False)
 
         schema = self.build_schema()
@@ -3916,7 +3878,8 @@ class UserChecklistItemResource(ApiResource):
                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
+                param_hash.get('visibilities'), 
+                exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
@@ -4259,25 +4222,30 @@ class ScreensaverUserResource(ApiResource):
         if not (screensaver_user_id or username):
             logger.info(str(('no screensaver_user_id or username provided',kwargs)))
             raise NotImplementedError('must provide a screensaver_user_id or username parameter')
-        
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
-        return self.get_list(request, **kwargs)
-       
+        return self.build_list_response(request, **kwargs)
+        
+    @read_authorization
     def get_list(self,request,**kwargs):
 
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
 
-        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+        return self.build_list_response(request, **kwargs)
 
-    @read_authorization
-    def build_list_response(self,request, param_hash={}, **kwargs):
+        
+    def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
         @returns django.http.response.StreamingHttpResponse 
         '''
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
         is_for_detail = kwargs.pop('is_for_detail', False)
 
         schema = self.build_schema()
@@ -4308,7 +4276,9 @@ class ScreensaverUserResource(ApiResource):
                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
+                param_hash.get('visibilities'), 
+                exact_fields=set(param_hash.get('exact_fields',[])))
+            
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
              
@@ -4676,7 +4646,8 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
                  
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
+                param_hash.get('visibilities'), 
+                exact_fields=set(param_hash.get('exact_fields',[])))
             
             logger.info(str(('field hash scopes', 
                 set([field.get('scope', None) 
@@ -5072,18 +5043,17 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
         return data
 
     def get_detail(self, request, **kwargs):
-        # TODO: this is a strategy for refactoring get_detail to use get_list:
-        # follow this with all resources
         logger.info(str(('get_detail')))
- 
+
         well_id = kwargs.get('well_id', None)
         if not well_id:
             logger.info(str(('no well_id provided')))
             raise NotImplementedError('must provide a well_id parameter')
-         
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
         return self.get_list(request, **kwargs)
-
+        
     @read_authorization
     def get_list(self, request, **kwargs):
         return self.get_full_reagent_resource().get_list(request, **kwargs)
@@ -5290,29 +5260,31 @@ class ActivityResource(SqlAlchemyResource,ManagedModelResource):
         ]
 
     def get_detail(self, request, **kwargs):
-        # TODO: this is a strategy for refactoring get_detail to use get_list:
-        # follow this with wells/
-        logger.info(str(('get_detail', kwargs)))
+        logger.info(str(('get_detail')))
 
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
+        return self.build_list_response(request, **kwargs)
         
-        return self.get_list(request, **kwargs)
-            
     @read_authorization
     def get_list(self,request,**kwargs):
 
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
 
-        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+        return self.build_list_response(request, **kwargs)
 
-    def build_list_response(self,request, param_hash={}, **kwargs):
+        
+    def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
         @returns django.http.response.StreamingHttpResponse 
         '''
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
         is_for_detail = kwargs.pop('is_for_detail', False)
 
         schema = super(ActivityResource,self).build_schema()
@@ -5332,7 +5304,8 @@ class ActivityResource(SqlAlchemyResource,ManagedModelResource):
                                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
+                param_hash.get('visibilities'), 
+                exact_fields=set(param_hash.get('exact_fields',[])))
               
             order_params = param_hash.get('order_by',[])
             order_clauses = \
@@ -5436,9 +5409,7 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         return self.reagent_resource
 
     def get_detail(self, request, **kwargs):
-        # TODO: this is a strategy for refactoring get_detail to use get_list:
-        # follow this with wells/
-        logger.info(str(('get_detail', kwargs)))
+        logger.info(str(('get_detail')))
 
         library_short_name = kwargs.pop('short_name', None)
         if not library_short_name:
@@ -5446,26 +5417,30 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
             raise NotImplementedError('must provide a short_name parameter')
         else:
             kwargs['short_name__eq'] = library_short_name
-        
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
-        return self.get_list(request, **kwargs)
-    
+        return self.build_list_response(request, **kwargs)
+        
     @read_authorization
     def get_list(self,request,**kwargs):
 
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
 
-        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+        return self.build_list_response(request, **kwargs)
+
         
-    def build_list_response(self,request, param_hash={}, **kwargs):
+    def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns djanog.http.response.StreamingHttpResponse 
+        @returns django.http.response.StreamingHttpResponse 
         '''
-        
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
         is_for_detail = kwargs.pop('is_for_detail', False)
         
         schema = super(LibraryResource,self).build_schema()
@@ -5484,7 +5459,8 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
                 
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
-                is_for_detail=is_for_detail, exact_fields=set(param_hash.get('exact_fields',[])))
+                param_hash.get('visibilities'), 
+                exact_fields=set(param_hash.get('exact_fields',[])))
              
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)

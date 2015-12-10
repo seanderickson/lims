@@ -133,11 +133,11 @@ class SqlAlchemyResource(Resource):
                 _dict[key] = val
         
         # check for single-valued known list values
-        known_list_values = ['includes','exact_fields', 'order_by',
-            'includes[]', 'order_by[]','exact_fields[]']
+        # Note: Jquery Ajax will post array list params with a "[]" suffix - 20151015
+        known_list_values = ['includes','exact_fields', 'order_by', 'visibilities',
+            'includes[]', 'order_by[]','exact_fields[]', 'visibilities[]']
         for key in known_list_values:
             val = _dict.get(key,[])
-            # Jquery Ajax will post array list params with a "[]" suffix - 20151015
             if isinstance(val, basestring):
                 _dict[key] = [val]
         
@@ -147,7 +147,7 @@ class SqlAlchemyResource(Resource):
     
     def get_visible_fields(self, 
         schema_fields, filter_fields, manual_field_includes,
-        is_for_detail=False, visibilities=[], exact_fields=[]):
+        visibilities, exact_fields=[]):
         '''
         Construct an ordered dict of schema fields that are visible, based on
         - the field["visibility"] of each field on the resource,
@@ -159,7 +159,7 @@ class SqlAlchemyResource(Resource):
         TODO: this method is not SqlAlchemy specific
         '''
         DEBUG_VISIBILITY = False or logger.isEnabledFor(logging.DEBUG)
-        
+        visibilities = set(visibilities)
         if DEBUG_VISIBILITY:
             logger.info('get_visible_fields: field_hash initial: %s, manual: %s', 
                 schema_fields.keys(),manual_field_includes )
@@ -168,18 +168,18 @@ class SqlAlchemyResource(Resource):
                 temp = { key:field for key,field in schema_fields.items()
                     if key in exact_fields or key in filter_fields }
             else:
-                if visibilities:
-                    visibilities = set(visibilities)
-                else:
-                    visibilities = set([])
-                    if is_for_detail:
-                        visibilities.add('d')
-                        # also return the edit fields, let the UI filter them
-                        # expedient, so the model does not have to be reloaded to edit
-                        # TODO: review; security issue
-                        visibilities.add('e')
-                    else:
-                        visibilities = set(['l'])
+#                 if visibilities:
+#                     visibilities = set(visibilities)
+#                 else:
+#                     visibilities = set([])
+#                     if is_for_detail:
+#                         visibilities.add('d')
+#                         # also return the edit fields, let the UI filter them
+#                         # expedient, so the model does not have to be reloaded to edit
+#                         # TODO: review; security issue
+#                         visibilities.add('e')
+#                     else:
+#                         visibilities = set(['l'])
                         
                 temp = { key:field for key,field in schema_fields.items() 
                     if ((field.get('visibility', None) 
@@ -777,31 +777,31 @@ class SqlAlchemyResource(Resource):
             rowproxy_generator=None, is_for_detail=False,
             downloadID=None, title_function=None, use_caching=True, meta=None ):
         DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
-        logger.debug('stream_response_from_statement: %r' % param_hash)
+
+        logger.info('stream_response_from_statement: %r' % param_hash)
+        limit = param_hash.get('limit', 0)        
+        try:
+            limit = int(limit)
+        except Exception:
+            raise BadRequest(
+                "Invalid limit '%s' provided. Please provide a positive integer." 
+                % limit)
+        if limit > 0:    
+            stmt = stmt.limit(limit)
+
+        offset = param_hash.get('offset', 0 )
+        try:
+            offset = int(offset)
+        except Exception:
+            raise BadRequest(
+                "Invalid offset '%s' provided. Please provide a positive integer." 
+                % offset)
+        if offset < 0:    
+            offset = -offset
+        stmt = stmt.offset(offset)
 
         try:
-            limit = param_hash.get('limit', 0)        
-            try:
-                limit = int(limit)
-            except ValueError:
-                raise BadRequest(
-                    "Invalid limit '%s' provided. Please provide a positive integer." 
-                    % limit)
-            if limit > 0:    
-                stmt = stmt.limit(limit)
-    
-            offset = param_hash.get('offset', 0 )
-            try:
-                offset = int(offset)
-            except ValueError:
-                raise BadRequest(
-                    "Invalid offset '%s' provided. Please provide a positive integer." 
-                    % offset)
-            if offset < 0:    
-                offset = -offset
-            stmt = stmt.offset(offset)
-    
-            logger.debug(str(('offset', offset, 'limit', limit)))
+            logger.debug('offset: %s, limit: %s', offset, limit)
             conn = self.bridge.get_engine().connect()
             
             if True:

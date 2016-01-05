@@ -100,13 +100,13 @@ define([
       });
     },
     
-    setUrlOption: function(target, val){
-      this.set('urlOption:' + target, val);
-    },
-    
-    getUrlOption: function(target){
-      this.get('urlOption:' + target);
-    },
+//    setUrlOption: function(target, val){
+//      this.set('urlOption:' + target, val);
+//    },
+//    
+//    getUrlOption: function(target){
+//      this.get('urlOption:' + target);
+//    },
     
     setCurrentUser: function(callBack) {
       var self = this;

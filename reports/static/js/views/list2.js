@@ -299,22 +299,11 @@ define([
       if(previousStack && _.isEqual(previousStack,newStack)){
         console.log('no new stack updates');
       }else{
-//        var route_update = false;
-//        var changedAttributes = self.listModel.changedAttributes();
-//        var previousAttributes = self.listModel.previousAttributes();
-//        _.each(_.keys(changedAttributes), function(key){
-//          if(_.has(previousAttributes, key)){ 
-//            route_update = true;
-//            console.log('valid changed attribute', key, changedAttributes, previousAttributes);
-//          }
-//        });
-//        
-////        if(route_update){
-////            // replace false (default) to create browser history
-////          appModel.set('routing_options', {replace: true});  
-////        }
-//
-        // calling this to update the title
+        if (!previousStack){
+          // Note: replace: true - to suppress router history:
+          // at this point, reportState is modifying the URL to show rpp, pagesSize, etc.
+          appModel.set('routing_options', {replace: true});  
+        }
         self.getCollectionUrl(0);
         self.trigger('uriStack:change', newStack );
       }
@@ -674,10 +663,8 @@ define([
 
       var orderStack = self.listModel.get('order') || [];
       self.collection.state.orderStack = _.clone(orderStack);
-      // TODO: test further: added 20150114
       if(!_.isEmpty(orderStack)){
         self.collection.setSorting();
-        //        fetched = true;
       }
 
       this.listenTo(self.collection, 'sync', function(event){
@@ -844,11 +831,13 @@ define([
         return _fields[key]['ordinal'];
       });
       _.each(main_keys, function(key){
-        form_template.push( _.template(field_template, { 
-          editorId: key+'-id', 
-          title: _fields[key]['title'],
-          name: key 
-        }));
+        form_template.push( 
+          _.template(field_template)({ 
+              editorId: key+'-id', 
+              title: _fields[key]['title'],
+              name: key 
+            })
+        );
       });
       // second, any fields from other scopes/resources
       var _extra_scopes_shown = [];
@@ -866,7 +855,7 @@ define([
           sub_resource = appModel.getResource(fieldResource);
         }
         form_template.push(
-          _.template(header_template, 
+          _.template(header_template)( 
             {
               id: scope,
               name: sub_resource.title,
@@ -874,7 +863,8 @@ define([
             }));
         
         _.each(_extra_scopes[scope], function(sub_key){
-          form_template.push( _.template(field_template, { name: sub_key }) );
+          form_template.push( 
+            _.template(field_template)({ name: sub_key }) );
           if(formFields.get(sub_key)){
             _extra_scopes_shown.push(scope);
           }

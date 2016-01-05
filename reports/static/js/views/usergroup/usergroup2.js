@@ -59,6 +59,7 @@ define([
      */
     serialize: function() {
       return {
+        'base_url': self.model.resource.key + '/' + self.model.key,
         'tab_resources': this.tabbed_resources
       }      
     }, 

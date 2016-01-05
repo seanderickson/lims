@@ -49,7 +49,8 @@ define([
       var self = this;
       var view = this.subviews['detail'];
       if (!view) {
-        view = new this.DetailView(_.extend({}, self.args, { model: this.model }));
+        view = new this.DetailView(
+          _.extend({}, self.args, { model: this.model }));
         this.subviews['detail'] = view;
       }
       this.setView("#detail_content", view ).render();
@@ -69,8 +70,9 @@ define([
         var editOptions = editOptions || {};
         var view = self.subviews['edit'];
         if (!view) {
-          view = new EditView(_.extend(
-            { model: self.model, 
+          view = new EditView(
+            _.extend({}, self.args, { 
+              model: self.model, 
               uriStack: [viewId] 
             }, editOptions));
           Backbone.Layout.setupView(view);

@@ -7,7 +7,7 @@
                 console.log('error, undefined ui_resource:' + JSON.stringify(key) );
             }else{
     %>
-                 <li id="<%= key %>" title="<%=tab_resource.description %>"><a href="#"><%= tab_resource.title %></a></li>
+                 <li id="<%= key %>" title="<%=tab_resource.description %>"><a href="#<%= base_url %>/<%= key %>"><%= tab_resource.title %></a></li>
     <%
             }
         });

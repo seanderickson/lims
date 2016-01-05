@@ -282,12 +282,7 @@ define([
 
     initialize: function(options) {
         Backbone.Form.editors.Base.prototype.initialize.call(this, options);
-        if (!this.value) {
-//          var date = new Date();
-//          date.setSeconds(0);
-//          date.setMilliseconds(0);
-//          this.value = date;
-        }else{
+        if (this.value){
           this.value = new Date(this.value)
         }
     },
@@ -538,14 +533,34 @@ define([
       this.uriStack = args.uriStack;
       this.consumedStack = []; 
       this.saveCallBack = args.saveCallBack;
-      var schema = this.model.resource.schema;
-      var keys = this.keys = Iccbl.sortOnOrdinal(
-          _.keys(schema.fields), schema.fields)
 
+      this.modelSchema = args.modelSchema || this.model.resource.schema;
+      this.modelFields = args.modelFields || this.modelSchema.fields;
+      this.editKeys = args.editKeys || this.modelSchema.allEditVisibleKeys();
+      this.editableKeys = args.editableKeys || this.modelSchema.updateKeys();
+      if(_.isEmpty(_.compact(_.values(
+        this.model.pick(this.model.resource['id_attribute']))))){
+        this.editableKeys = _.union(this.editableKeys,this.modelSchema.createKeys());
+      }
+      // Add comment field
+      if( _.propertyOf(this.model.resource,'require_comment_on_save')
+          && !_.contains(this.editableKeys, 'apilog_comment')){
+        this.editableKeys.push('apilog_comment');
+        this.modelFields = _.extend({
+          'apilog_comment': {
+            edit_type: 'textarea',
+            title: 'Changelog Comment',
+            is_required: true
+          }
+        }, this.modelFields);
+      }
+      this.finalEditableKeys = [];
+      
+      // The delegateModel/View is used to display visible, but not editable fields
       var delegateModel = new Backbone.Model(_.clone(this.model.attributes ));
       delegateModel.resource = this.model.resource;
       this.delegateDetailView = new DetailView({ model: delegateModel });
-      
+
       // NOTE: due to a phantomjs js bug, must convert arguments to a real array
       Backbone.Form.prototype.initialize.apply(this,Array.prototype.slice.apply(arguments));
     },
@@ -612,17 +627,6 @@ define([
     schema: function() {
       
       var self = this;
-      var schema = this.model.resource.schema;
-      var keys = this.keys;
-      var allEditVisibleKeys = this.model.resource.schema.allEditVisibleKeys();
-      var editableKeys = this.model.resource.schema.updateKeys();
-      if(_.isEmpty(_.compact(_.values(
-        self.model.pick(this.model.resource['id_attribute']))))){
-        // then add in the "create" keys
-        editableKeys = _.union(editableKeys,this.model.resource.schema.createKeys());
-      }
-      
-      var finalEditableKeys = this.finalEditableKeys = [];
       var editSchema = {};
       
       var typeMap = {
@@ -728,28 +732,18 @@ define([
            editorAttrs: { widthClass: 'col-sm-10', maxlength: 50},
            fieldAttrs: {}
          };
-      // determine if the model is new, or being updated
-      var id_hash = Iccbl.getIdKeys(this.model, schema);
-      var edit_visibility = 'u';
-      if(_.isEmpty(id_hash)){
-        edit_visibility = 'c';
-      }
       
-      _.each(keys, function(key){
+      _.each(this.editKeys, function(key){
 
-        var fieldSchema;
-        var fi = schema.fields[key];
+        var fi = self.modelFields[key];
         var cell_options;
 
-        if(!_.contains(allEditVisibleKeys,key)){
-          return;
-        }
-        fieldSchema = editSchema[key] = _.extend({}, defaultFieldSchema);
+        var fieldSchema = editSchema[key] = _.extend({}, defaultFieldSchema);
         
         fieldSchema['title'] = fi.title;
         fieldSchema['fieldAttrs'] = { title: fi.description };
         
-        if(!_.contains(editableKeys, key)){
+        if(!_.contains(self.editableKeys, key)){
         
           console.log('create disabled entry', key, fi['editability'])
           fieldSchema['type'] = DisabledField.extend({
@@ -763,7 +757,7 @@ define([
         }else{
           
           console.log('build edit schema for key: ',key);
-          finalEditableKeys.push(key);
+          self.finalEditableKeys.push(key);
 
           if(!_.isEmpty(fi['display_options'])){
             cell_options = fi['display_options'];
@@ -803,18 +797,7 @@ define([
       });      
       
       console.log('editSchema created');
-      
-      if( ! _.has(editSchema, 'apilog_comment')){
-        console.log('enforced apilog_comment');
-        // Note: Enforced comment
-        editSchema['apilog_comment'] = _.extend({},defaultFieldSchema, {
-            type: 'TextArea',
-            title: 'Changelog Comment',
-            validators: ['required'], 
-            template: self.altFieldTemplate
-        });
-      }
-           
+                 
       return editSchema;
     },
 
@@ -931,16 +914,8 @@ define([
      * Backbone Layoutmanager renderTemplate as well.
      */    
     templateData: function() {
-      var schema = this.model.resource.schema;
-      
-      // Add comment field
-      // TODO: turn on from the resource schema
-      if( ! _.contains(this.finalEditableKeys, 'apilog_comment')){
-        this.finalEditableKeys.push('apilog_comment');
-      }
-                  
       return {
-        'fieldDefinitions': schema.fields,
+        'fieldDefinitions': this.modelFields,
         'keys': _.chain(this.finalEditableKeys)
       };      
     },	
@@ -1040,14 +1015,16 @@ define([
         if(_.isEmpty(value) || _.isNull(value)){
           return (_.isEmpty(model.previous(key)) || _.isNull(model.previous(key)));
         }
-//        if(_.isArray(value)){
-//          // TODO: Invalid if the attribute is an ordered array
-//          if(!_.isEmpty(model.previous(key))){
-//            // find additions & deletions
-//            return (_.isEmpty(_.without(value,model.previous(key)));
-//                && _.isEmpty(_.without(model.previous(key),value)));
-//          }
-//        }
+        
+        //        if(_.isArray(value)){
+        //          // TODO: Invalid if the attribute is an ordered array
+        //          if(!_.isEmpty(model.previous(key))){
+        //            // find additions & deletions
+        //            return (_.isEmpty(_.without(value,model.previous(key)));
+        //                && _.isEmpty(_.without(model.previous(key),value)));
+        //          }
+        //        }
+
         // Cleanup strings containing newlines: 
         // carriage-return,line-feed (0x13,0x10) may be converted to line feed only (0x10)
         // NOTE: JSON does not officially support control-characters, so 

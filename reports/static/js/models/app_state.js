@@ -100,6 +100,14 @@ define([
       });
     },
     
+    setUrlOption: function(target, val){
+      this.set('urlOption:' + target, val);
+    },
+    
+    getUrlOption: function(target){
+      this.get('urlOption:' + target);
+    },
+    
     setCurrentUser: function(callBack) {
       var self = this;
       this.getModel('user', window.user, function(model){
@@ -168,9 +176,7 @@ define([
         instance.fetch({
           data: { 
             limit: 0,
-            // TODO: implement an "excludes" setting
-            includes: ['lab_name','username','-mailing_address','-permissions',
-                       '-all_permissions','-usergroups','-phone','-email'], 
+            exact_fields: ['lab_name','username','name'], 
             lab_head_affiliation__is_blank: false,
             classification__eq: 'principal_investigator',
             order_by: ['lab_name']
@@ -349,7 +355,7 @@ define([
     getVocabularySelectOptions: function(scope){
       choiceHash = []
       try{
-        var vocabulary = this.getVocabulary(fi.vocabulary_scope_ref);
+        var vocabulary = this.getVocabulary(scope);
         _.each(_.keys(vocabulary),function(choice){
           if(vocabulary[choice].is_retired){
             console.log('skipping retired vocab: ',choice,vocabulary[choice].title );
@@ -358,8 +364,7 @@ define([
           }
         });
       }catch(e){
-        var msg = 'Vocabulary unavailable: field: ' + fi.key +  
-          ', vocabulary_scope_ref: ' + fi.vocabulary_scope_ref;
+        var msg = 'Vocabulary unavailable: vocabulary_scope_ref: ' + scope;
         console.log(msg,e);
         this.error(msg);
       }
@@ -508,9 +513,13 @@ define([
     /**
      * Get a model from the server
      */
-    getModel: function(resourceId, key, callBack) {
+    getModel: function(resourceId, key, callBack, options) {
       var self = this;
+      var options = options || {};
       var resource = this.getResource(resourceId);
+      if(_.isArray(key)){
+        key = key.join('/');
+      }
       var url = resource.apiUri + '/' + key;
 
       var ModelClass = Backbone.Model.extend({
@@ -526,8 +535,9 @@ define([
         }
       });
       var instance = new ModelClass();
+      var data = _.extend({ includes: '*' }, options);
       instance.fetch({
-          data: { includes: '*' },
+          data: data,
           // to force inclusion of all columns: data: { includes: '*' },
           success : function(model) {
             model.resource = resource;

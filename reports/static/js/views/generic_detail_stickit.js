@@ -223,7 +223,6 @@ define([
       }
 
       function linkGetter(value){
-        var finalValue = value;
         var _options = _.extend(
           { hrefTemplate: '#', target: '_self' }, cell_options );                
         // use the display options if needed for backward compatibility
@@ -231,21 +230,18 @@ define([
           _options.hrefTemplate = window.location.pathname + '#' + fi['display_options'];
           _options.target = '_self';
         } 
-        if(vocabulary){
-          finalValue = getTitle(vocabulary,value);
-        }
-        var interpolatedVal = Iccbl.replaceTokens(self.model,_options.hrefTemplate,value);
- 
-        if(value && !_.isEmpty(value)){
+
+        if(value && !_.isNull(value)){
+          var interpolatedVal = Iccbl.replaceTokens(self.model,_options.hrefTemplate,value);
           if(vocabulary){
-            finalValue = getTitle(vocabulary,value);
+            value = getTitle(vocabulary,value);
           }
           var _html = '<a ' + 
-            'id="link-' + key + '" ' + 
+            'id="' + key + '" ' + 
             'href="' + interpolatedVal + '" ' +
             'target="' + _options.target + '" ' +
             'tabIndex=-1 ' +
-            '>' + finalValue + '</a>';
+            '>' + value + '</a>';
           return _html;
         }else{
           return value;

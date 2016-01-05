@@ -311,7 +311,7 @@ class IccblTestRunner(DiscoverRunner):
             help=(
                 'if set (with --keepdb), the _bootstrap_init_files method '
                 'will be called (without --keepdb, _bootstrap_init_files'
-                ' is always called'))
+                ' is always called)'))
         
     def teardown_databases(self, old_config, **kwargs):
         try:
@@ -1177,7 +1177,7 @@ class IResourceTestCase(SimpleTestCase):
                 self.assertTrue(result,
                     ('not equal', msg, inputobj, outputobj))
 
-                logger.debug(_('outputobj[resource_uri]', outputobj['resource_uri']))
+                logger.debug('outputobj[resource_uri]: %r', outputobj['resource_uri'])
                 self.assertTrue(resource_name in outputobj['resource_uri'], 
                     ('wrong resource_uri returned:', filename, outputobj['resource_uri'],
                          'should contain', resource_name))
@@ -1199,7 +1199,7 @@ class IResourceTestCase(SimpleTestCase):
             if not api_init_actions:
                 raise AssertionError('no actions read from file: %s' % input_actions_file)
             for action in api_init_actions:
-                logger.info(_('process action', action))
+                logger.warn('process action: %r', action)
                 command = action['command'].lower() 
                 resource = action['resource'].lower()
 

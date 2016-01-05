@@ -1120,19 +1120,49 @@ class ManagedResource(LoggingMixin):
                 scope='resource', key=self._meta.resource_name)
             resource_definition = resource_def.model_to_dict(scope='fields.resource')
             
-            ## Get the supertype fields
-            # TODO: -could- get the schema from the supertype resource
-            supertype = resource_definition.get('supertype', '')
-            if supertype:
-                supertype_fields = deepcopy(
-                    MetaHash.objects.get_and_parse(
-                        scope='fields.' + supertype, field_definition_scope='fields.metahash'))
-                supertype_fields.update(_fields)
-                _fields = supertype_fields
+            def get_supertype_fields(resource_definition):
+                supertype = resource_definition.get('supertype', None)
+                if supertype:
+                    temp = MetaHash.objects.get(
+                        scope='resource', key=supertype)
+                    super_resource_def = temp.model_to_dict(scope='fields.resource')
+                    fields = get_supertype_fields(super_resource_def)
+                    
+                    fields.update(deepcopy(
+                        MetaHash.objects.get_and_parse(
+                            scope='fields.' + supertype, 
+                            field_definition_scope='fields.metahash')))
+                    return fields
+                else:
+                    return {}    
+            supertype_fields = get_supertype_fields(resource_definition)
+            if supertype_fields: 
+                logger.debug('resource: %s, supertype fields: %r', 
+                    self._meta.resource_name, supertype_fields.keys())
+            
+            supertype_fields.update(_fields)
+            _fields = supertype_fields
+            for item in _fields.values():
+                item['scope'] = 'fields.%s' % self._meta.resource_name
+            
+#             ## Get the supertype fields
+#             # TODO: -could- get the schema from the supertype resource
+#             supertype = resource_definition.get('supertype', '')
+#             if supertype:
+#                 supertype_fields = deepcopy(
+#                     MetaHash.objects.get_and_parse(
+#                         scope='fields.' + supertype, field_definition_scope='fields.metahash'))
+#                 supertype_fields.update(_fields)
+#                 _fields = supertype_fields
+#                 for item in _fields.values():
+#                     item['scope'] = 'fields.%s' % self._meta.resource_name
         except Exception, e:
-            logger.info(str(('in create_fields: resource information not available',
-                self._meta.resource_name, e)))
-
+            if not getattr(self, 'suppress_errors_on_bootstrap', False):
+                logger.exception('in create_fields: resource information not available: %r',
+                    self._meta.resource_name)
+            else:
+                logger.info('in create_fields: resource information not available: %r',
+                    self._meta.resource_name)
         ## build field alias table
         self.field_alias_map = {}
         for field_name, item in _fields.items():
@@ -1266,7 +1296,12 @@ class ManagedResource(LoggingMixin):
                     'visibility':[] }
             
         except Exception, e:
-            logger.exception('on build schema')
+            if not getattr(self, 'suppress_errors_on_bootstrap', False):
+                logger.exception('in build schema: %r',
+                    self._meta.resource_name)
+            else:
+                logger.info('in build schema: %r',
+                    self._meta.resource_name)
             raise e
             
         try:
@@ -1280,21 +1315,50 @@ class ManagedResource(LoggingMixin):
                 logger.info(str(('content_types1', self._meta.resource_name, 
                     schema['resource_definition']['content_types'])))
             
-            # TODO: -could- get the schema from the supertype resource
-            supertype = schema['resource_definition'].get('supertype', '')
-            if supertype:
-                # TODO: better encapsulation for supertype field definitions
-                supertype_resource = self._get_resource_def(resource_name=supertype);
-                supertype_fields = deepcopy(
-                    MetaHash.objects.get_and_parse(
-                        scope='fields.' + supertype, field_definition_scope='fields.metahash'))
-                for field in supertype_fields.values():
-                    if not field['table']:
-                        field['table'] = supertype_resource['table']
-                if DEBUG_BUILD_SCHEMA: 
-                    logger.info(str(('supertype_fields',supertype_fields.keys())))
-                supertype_fields.update(schema['fields'])
-                schema['fields'] = supertype_fields
+            def get_supertype_fields(resource_definition):
+                supertype = resource_definition.get('supertype', None)
+                if supertype:
+                    temp = MetaHash.objects.get(
+                        scope='resource', key=supertype)
+                    super_resource_def = temp.model_to_dict(scope='fields.resource')
+                    fields = get_supertype_fields(super_resource_def)
+                    
+                    fields.update(deepcopy(
+                        MetaHash.objects.get_and_parse(
+                            scope='fields.' + supertype, 
+                            field_definition_scope='fields.metahash')))
+                    for field in fields.values():
+                        if not field['table']:
+                            field['table'] = super_resource_def['table']
+                    return fields
+                else:
+                    return {}    
+            _fields = schema['fields']
+            supertype_fields = get_supertype_fields(schema['resource_definition'])
+            logger.debug('resource: %s, supertype fields: %r', 
+                self._meta.resource_name, supertype_fields.keys())
+            supertype_fields.update(_fields)
+            _fields = supertype_fields
+            for item in _fields.values():
+                item['scope'] = 'fields.%s' % self._meta.resource_name
+            schema['fields'] =  _fields
+#             supertype = schema['resource_definition'].get('supertype', '')
+#             if supertype:
+#                 # TODO: supertypes form a graph, so this should traverse *all* the
+#                 # way up, but only looks at immediate parent.
+#                 # TODO: better encapsulation for supertype field definitions
+#                 supertype_resource = self._get_resource_def(resource_name=supertype);
+#                 supertype_fields = deepcopy(
+#                     MetaHash.objects.get_and_parse(
+#                         scope='fields.' + supertype, field_definition_scope='fields.metahash'))
+#                 for field in supertype_fields.values():
+#                     if not field['table']:
+#                         field['table'] = supertype_resource['table']
+#                 supertype_fields.update(schema['fields'])
+#                 for item in supertype_fields.values():
+#                     item['scope'] = 'fields.%s' % self._meta.resource_name
+#                 logger.info(str(('fields + supertype_fields',supertype_fields.keys())))
+#                 schema['fields'] = supertype_fields
             
             # Set:
             # - Default field table
@@ -1323,7 +1387,7 @@ class ManagedResource(LoggingMixin):
             if not getattr(self, 'suppress_errors_on_bootstrap', False):
                 logger.exception('on build schema')
             else:
-                logger.info('build_schema: resource %s, ex: %s',
+                logger.info('build_schema: resource %r, ex: %r',
                     self._meta.resource_name, e)
         
         if DEBUG_BUILD_SCHEMA: 
@@ -1766,12 +1830,24 @@ class ManagedResource(LoggingMixin):
         return response
  
     def _get_filename(self,schema, kwargs):
-        filekeys = [self._meta.resource_name]
+        logger.info('kwargs for filename: %r ', kwargs)
+        filekeys = []
         if 'id_attribute' in schema:
             filekeys.extend([ str(kwarg[key]) for 
                 key in schema['id_attribute'] if key in kwargs ])
         else:
-            filekeys.extend([ str(v) for i,v in enumerate(kwargs.values()) if i < 10])
+            _dict = {key:val for key,val in kwargs.items() 
+                if key not in [
+                    'visibilities','exact_fields','api_name','resource_name',
+                    'includes','order_by']}
+            for i,(x,y) in enumerate(_dict.items()):
+                filekeys.append(str(x))
+                filekeys.append(str(y))
+                if i == 10:
+                    break
+                
+        filekeys.insert(0,self._meta.resource_name)
+        logger.info('filekeys: %r', filekeys)
         filename = '_'.join(filekeys)
         filename = re.sub(r'[\W]+','_',filename)
         logger.debug('get_filename: %r, %r' % (filename, kwargs))
@@ -1955,12 +2031,14 @@ class MetaHashResource(ManagedModelResource):
     
     def put_list(self, request, **kwargs):
         self.suppress_errors_on_bootstrap = True
+        logger.error('supress errors on bootstrap: %r', self._meta.resource_name)
         result = super(MetaHashResource, self).put_list(request, **kwargs)
         self.suppress_errors_on_bootstrap = False
         return result
     
     def patch_list(self, request, **kwargs):
         self.suppress_errors_on_bootstrap = True
+        logger.error('supress errors on bootstrap: %r', self._meta.resource_name)
         result = super(MetaHashResource, self).patch_list(request, **kwargs)
         self.suppress_errors_on_bootstrap = False
         return result
@@ -2018,7 +2096,7 @@ class MetaHashResource(ManagedModelResource):
         return data['scope'] + '/' + data['key']
 
 
-class VocabulariesResource(ManagedModelResource):
+class VocabulariesResource(ManagedModelResource, SqlAlchemyResource):
     '''
     This resource extends the ManagedModelResource using a new table 
     (vocabularies) but has fields defined in the Metahash table.
@@ -2047,12 +2125,191 @@ class VocabulariesResource(ManagedModelResource):
             'label': 'Vocabulary', 'searchColumn': 'scope', 'options': temp }
         return schema
     
-    def dehydrate(self, bundle):
-        # add in a convenience element for viewing
-        bundle = super(VocabulariesResource,self).dehydrate(bundle)
-        bundle.data['1'] = bundle.data['scope']
-        bundle.data['2'] = bundle.data['key']
-        return bundle
+#     def dehydrate(self, bundle):
+#         # add in a convenience element for viewing
+#         logger.info('dehydrate: %r, %r', bundle.data['scope'], bundle.data['key'])
+#         bundle = super(VocabulariesResource,self).dehydrate(bundle)
+#         bundle.data['1'] = bundle.data['scope']
+#         bundle.data['2'] = bundle.data['key']
+#         return bundle
+    
+    def get_detail(self, request, **kwargs):
+        logger.info(str(('get_detail')))
+
+        key = kwargs.get('key', None)
+        if not key:
+            logger.info(str(('no key provided')))
+            raise NotImplementedError('must provide a key parameter')
+        
+        scope = kwargs.get('scope', None)
+        if not item_group:
+            logger.info(str(('no scope provided')))
+            raise NotImplementedError('must provide a scope parameter')
+        
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+        kwargs['is_for_detail']=True
+        return self.build_list_response(request, **kwargs)
+        
+    @read_authorization
+    def get_list(self,request,**kwargs):
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+
+        return self.build_list_response(request, **kwargs)
+
+        
+    def build_list_response(self,request, **kwargs):
+        ''' 
+        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
+        @returns django.http.response.StreamingHttpResponse 
+        '''
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
+        is_for_detail = kwargs.pop('is_for_detail', False)
+
+        schema = self.build_schema()
+
+        filename = self._get_filename(schema, kwargs)
+
+        key = param_hash.pop('key', None)
+        if key:
+            param_hash['key__eq'] = key
+
+        scope = param_hash.pop('scope', None)
+        if scope:
+            param_hash['scope__eq'] = scope
+        
+        try:
+            
+            # general setup
+          
+            manual_field_includes = set(param_hash.get('includes', []))
+            
+            if DEBUG_GET_LIST: 
+                logger.info(str(('manual_field_includes', manual_field_includes)))
+  
+            (filter_expression, filter_fields) = \
+                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+            
+            original_field_hash = schema['fields']
+            # Add convenience fields "1" and "2", which aid in viewing with json viewers
+            original_field_hash['1'] = {
+                'key': '1',
+                'scope': 'fields.vocabularies',
+                'data_type': 'string',
+                'json_field_type': 'convenience_field',
+                'ordering': 'false',
+                'visibilities': []
+                }
+            original_field_hash['2'] = {
+                'key': '2',
+                'scope': 'fields.vocabularies',
+                'data_type': 'string',
+                'json_field_type': 'convenience_field',
+                'ordering': 'false',
+                'visibilities': []
+                }
+            original_field_hash['resource_uri'] = {
+                'key': 'resource_uri',
+                'scope': 'fields.vocabularies',
+                'data_type': 'string',
+                'json_field_type': 'convenience_field',
+                'ordering': 'false',
+                'visibilities': []
+                }
+            fields_for_sql = { key:field for key, field in original_field_hash.items() 
+                if not field.get('json_field_type',None) }
+            fields_for_json = { key:field for key, field in original_field_hash.items() 
+                if field.get('json_field_type',None) }
+            
+            field_hash = self.get_visible_fields(
+                fields_for_sql, filter_fields, manual_field_includes, 
+                param_hash.get('visibilities'), 
+                exact_fields=set(param_hash.get('exact_fields',[])))
+            field_hash['json_field'] = {
+                'key': 'json_field',
+                'scope': 'fields.vocabularies',
+                'data_type': 'string',
+                'table': 'reports_vocabularies',
+                'field': 'json_field',
+                'ordering': 'false',
+                'visibilities': ['l','d']
+                }
+              
+            order_params = param_hash.get('order_by',[])
+            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+                order_params, field_hash)
+             
+            def json_field_rowproxy_generator(cursor):
+                '''
+                Wrap connection cursor to fetch fields embedded in the 'json_field'
+                '''
+                class Row:
+                    def __init__(self, row):
+                        self.row = row
+                        self.json_content = json.loads(row['json_field'])
+                    def has_key(self, key):
+                        return (key in fields_for_json or self.row.has_key(key))
+                    def keys(self):
+                        return self.row.keys() + fields_for_json.keys();
+                    def __getitem__(self, key):
+                        if key == '1':
+                            return row['scope']
+                        elif key == '2':
+                            return row['key']
+                        elif key == 'resource_uri':
+                            return '/'.join(['vocabularies', row['scope'], row['key']])
+                        elif key not in row:
+                            if key in fields_for_json:
+                                if key not in self.json_content:
+                                    logger.debug(
+                                        'key %r not found in json content %r', 
+                                        key, self.json_content)
+                                    return None
+                                else:
+                                    return self.json_content[key]
+                            else:
+                                return None
+                        else:
+                            return self.row[key]
+                for row in cursor:
+                    yield Row(row)
+                    
+            # specific setup
+            _vocab = self.bridge['reports_vocabularies']
+            custom_columns = {
+                'json_field' : literal_column('json_field')
+                }
+            base_query_tables = ['reports_vocabularies'] 
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                custom_columns=custom_columns )
+            j = _vocab
+            stmt = select(columns.values()).select_from(j)
+
+            # general setup
+            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+            
+            title_function = None
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                title_function = lambda key: field_hash[key]['title']
+            
+            return self.stream_response_from_statement(
+                request, stmt, count_stmt, filename, 
+                field_hash=original_field_hash, 
+                param_hash=param_hash,
+                is_for_detail=is_for_detail,
+                rowproxy_generator=json_field_rowproxy_generator,
+                title_function=title_function  )
+             
+        except Exception, e:
+            logger.exception('on get list')
+            raise e  
+    
     
     @staticmethod
     def get_vocabularies_by_scope(scope):
@@ -2095,12 +2352,14 @@ class VocabulariesResource(ManagedModelResource):
         super(VocabulariesResource,self).clear_cache()
         cache.delete('vocabularies');
 
+    @un_cache
     def put_list(self, request, **kwargs):
         self.suppress_errors_on_bootstrap = True
         result = super(VocabulariesResource, self).put_list(request, **kwargs)
         self.suppress_errors_on_bootstrap = False
         return result
     
+    @un_cache
     def patch_list(self, request, **kwargs):
         self.suppress_errors_on_bootstrap = True
         result = super(VocabulariesResource, self).patch_list(request, **kwargs)
@@ -3098,11 +3357,9 @@ class UserResource(ApiResource):
         _upp = self.bridge['reports_userprofile_permissions']
         _ugu = self.bridge['reports_usergroup_users']
         
-        ### TODO: work in progress - 20150617
         # Create a recursive CTE to enumerate all groups/supergroups/subgroups
         group_all_supergroups = \
             UserGroupResource.recursive_supergroup_query(self.bridge)
-#             group_all_supergroups1 = group_all_supergroups.alias('gasg1')
 
         group_all_permissions = \
             UserGroupResource.recursive_permissions_query(self.bridge,group_all_supergroups)

@@ -139,11 +139,6 @@ class ApiLog(models.Model):
     # separted by '/')
     key = models.CharField(null=False, max_length=128, db_index=True)
     
-#     #TODO How to link to parent/children?
-#     ref_containing_resource = models.CharField(null=False, max_length=105)
-#     containing_key = models.CharField(null=False, max_length=128)
-#     contained_keys = models.ListField(...)
-        
     # the full uri of the resource instance being logged, so a combination of 
     # [base api uri]/[resource_name]/[key]
     uri = models.TextField(null=False)
@@ -162,8 +157,7 @@ class ApiLog(models.Model):
     
     parent_log = models.ForeignKey('self', related_name='child_logs', null=True)
     
-    # This is the "meta" field, it contains "virtual" json fields, defined in 
-    # the metahash
+    # Nested fields are defined in the json_field
     json_field = models.TextField(null=True)
     
     class Meta:

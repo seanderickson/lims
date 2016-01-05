@@ -3,6 +3,7 @@ l,field.visibility,/reports/api/v1/vocabularies/field.visibility/l/,1,,"Allow vi
 d,field.visibility,/reports/api/v1/vocabularies/field.visibility/d/,2,,"Allow visibility in detail views","Visible in detail views"
 e,field.visibility,/reports/api/v1/vocabularies/field.visibility/e/,3,,"Visible in edit views","Visible in edit views"
 summary,field.visibility,/reports/api/v1/vocabularies/field.visibility/summary/,4,,"Visible in summary views (if available)","Visible in summary views"
+billing,field.visibility,/reports/api/v1/vocabularies/field.visibility/billing/,5,,"Visible in billing views","Visible in billing views"
 c,field.editability,/reports/api/v1/vocabularies/field.editability/c/,1,,"Visible on creation","Visible on creation"
 u,field.editability,/reports/api/v1/vocabularies/field.editability/u/,2,,"Visible on update","Visible on update"
 l,field.editability,/reports/api/v1/vocabularies/field.editability/l/,3,,"Allow visibility in the lists in edit mode","Visible in edit list view"

@@ -106,6 +106,8 @@ function gitpull {
 
   #  git checkout -- $SCRIPTPATH >>"$LOGFILE" 2>&1 || error "git-checkout $SCRIPTPATH failed: $?"
 
+  mv db/static/api_init/vocabularies_data_generated.csv db/static/api_init/vocabularies_data_generated.old.csv
+  
   git pull --ff-only $REMOTE $BRANCH >>"$LOGFILE" 2>&1 || error "git-pull failed: $?"
 
   #  mv -f $SAVEPATH $SCRIPTPATH

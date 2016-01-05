@@ -1,6 +1,5 @@
 /**
  * Screen form/view
- * 
  */
 define([
   'jquery', 
@@ -11,11 +10,12 @@ define([
   'layoutmanager',
   'models/app_state',
   'views/generic_detail_layout', 
+  'views/generic_detail_stickit', 
   'views/list2', 
   'views/collectionColumns',
   'text!templates/generic-tabbed.html'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, DetailLayout, 
-            ListView, CollectionColumnView, tabbedTemplate){
+            DetailView, ListView, CollectionColumnView, tabbedTemplate){
 
   var ScreenView = Backbone.Layout.extend({
 
@@ -46,6 +46,11 @@ define([
         title : 'Screening Summary',
         invoke : 'setSummary'
       },
+      billingItems: {
+        description : 'Billing information',
+        title : 'Billing',
+        invoke : 'setBilling'
+      },
       datacolumns : {
         description : 'Data Columns',
         title : 'Data Columns',
@@ -55,6 +60,16 @@ define([
         description : 'Screen Results',
         title : 'Screen Results',
         invoke : 'setResults'
+      },
+      cherryPicks: {
+        description : 'Cherry Pick Requests',
+        title : 'Cherry Picks',
+        invoke : 'setCherryPicks'
+      },
+      activities: {
+        description : 'Activities',
+        title : 'Activities',
+        invoke : 'setActivities'
       },
     },
 
@@ -77,7 +92,9 @@ define([
      * Layoutmanager hook
      */
     serialize: function() {
+      var self = this;
       return {
+        'base_url': self.model.resource.key + '/' + self.model.key,
         'tab_resources': this.tabbed_resources
       }      
     }, 
@@ -96,7 +113,20 @@ define([
         }else if (viewId == 'edit'){
           this.uriStack.unshift(viewId); 
           viewId = 'detail';
+        }else if (_.contains(['libraries'],viewId)){
+          this.consumedStack = [viewId];
+          this.showLibraries(this.uriStack);
+          return;
+        }else if (_.contains(['copyplates'],viewId)){
+          this.consumedStack = [viewId];
+          this.showCopyPlates(this.uriStack);
+          return;
+        }else if (_.contains(['copyplatesloaded'],viewId)){
+          this.consumedStack = [viewId];
+          this.showCopyPlatesLoaded(this.uriStack);
+          return;
         }
+        
 
         if (!_.has(this.tabbed_resources, viewId)){
           var msg = 'could not find the tabbed resource: ' + viewId;
@@ -107,6 +137,87 @@ define([
       this.change_to_tab(viewId);
     },
 
+    /**
+     * Libraries view is a sub-view of Summary
+     */
+    showLibraries: function(delegateStack){
+      var self = this;
+      var url = [self.model.resource.apiUri,self.model.key,'libraries'].join('/');
+      var resource = appModel.getResource('library');
+      var view = new ListView({ options: {
+        uriStack: _.clone(delegateStack),
+        schemaResult: resource.schema,
+        resource: resource,
+        url: url,
+        extraControls: []
+      }});
+      Backbone.Layout.setupView(view);
+      self.reportUriStack([]);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView("#tab_container", view ).render();
+      self.listenTo(view, 'afterRender', function(event){
+        view.$el.find('#list-title').show().append(
+          '<H4 id="title">Libraries for screen: ' + self.model.key + '</H4>');
+      });
+      this.$('li').removeClass('active');
+      this.$('#summary').addClass('active');
+
+    },
+    
+    /**
+     * Library Copy Plates view is a sub-view of Summary
+     */
+    showCopyPlates: function(delegateStack){
+      var self = this;
+      var url = [self.model.resource.apiUri,self.model.key,'copyplates'].join('/');
+      var resource = appModel.getResource('librarycopyplate');
+      var view = new ListView({ options: {
+        uriStack: _.clone(delegateStack),
+        schemaResult: resource.schema,
+        resource: resource,
+        url: url,
+        extraControls: []
+      }});
+      Backbone.Layout.setupView(view);
+      self.reportUriStack([]);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView("#tab_container", view ).render();
+      self.listenTo(view, 'afterRender', function(event){
+        view.$el.find('#list-title').show().append(
+          '<H4 id="title">Library Copy Plates for Screen: ' + self.model.key + '</H4>');
+      });
+      this.$('li').removeClass('active');
+      this.$('#summary').addClass('active');
+
+    },
+    
+    /**
+     * Library Copy Plates Loaded view is a sub-view of Summary
+     */
+    showCopyPlatesLoaded: function(delegateStack){
+      var self = this;
+      var url = [self.model.resource.apiUri,self.model.key,'copyplatesloaded'].join('/');
+      var resource = appModel.getResource('librarycopyplate');
+      var view = new ListView({ options: {
+        uriStack: _.clone(delegateStack),
+        schemaResult: resource.schema,
+        resource: resource,
+        url: url,
+        extraControls: []
+      }});
+      Backbone.Layout.setupView(view);
+      self.reportUriStack([]);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView("#tab_container", view ).render();
+      self.listenTo(view, 'afterRender', function(event){
+        view.$el.find('#list-title').show().append(
+          '<H4 id="title">Library Copy Plates loaded for Screen: ' + self.model.key + '</H4>');
+      });
+      this.$('li').removeClass('active');
+      this.$('#summary').addClass('active');
+
+    },    
+    
     click_tab : function(event){
       var self = this;
       event.preventDefault();
@@ -188,7 +299,6 @@ define([
              
               self._addVocabularyButton(
                 editForm, 'species', 'screen.species', 'Screened Species');
-             
               temp.call(editForm,arguments);
             };
           
@@ -209,9 +319,11 @@ define([
       this.tabViews[key] = view;
       
       this.listenTo(view , 'uriStack:change', this.reportUriStack);
-      // Note: since detail_layout reports the tab, the consumedStack is empty here
       this.consumedStack = []; 
       this.setView("#tab_container", view ).render();
+      
+      this.createStatusHistoryTable(view.$el.find('#status'));
+      
       return view;
 
 //      if(!self.screen.get('has_screen_result')){
@@ -221,7 +333,80 @@ define([
 //      }
 
     },
-     
+      
+    /**
+     * Update the screen status with a status history table: populate
+     * using the apilog history of the status attribute
+     **/
+    createStatusHistoryTable: function($target_el){
+      var self = this;
+      var apilogResource = appModel.getResource('apilog');
+      var CollectionClass = Iccbl.CollectionOnClient.extend({
+        url: apilogResource.apiUri 
+      });
+      var status_collection = new CollectionClass();
+      status_collection.fetch({
+        data: { 
+          limit: 0,
+          key: self.model.get('facility_id'),
+          ref_resource_name: self.model.resource.key,
+          diff_keys__icontains: '"status"',
+          order_by: ['date_time']
+        },
+        success: function(collection, response) {
+          collection.each(function(model){
+            var diffs = JSON.parse(model.get('diffs'));
+            console.log('diffs', diffs);
+            model.set('status', diffs.status[1]);
+          });
+          var TextWrapCell = Backgrid.Cell.extend({
+            className: 'text-wrap-cell'
+          });
+          var colTemplate = {
+            'cell' : 'string',
+            'order' : -1,
+            'sortable': false,
+            'searchable': false,
+            'editable' : false,
+            'visible': true,
+            'headerCell': Backgrid.HeaderCell
+          };
+          var columns = [
+              _.extend({},colTemplate,{
+                'name' : 'status',
+                'label' : 'Status',
+                'description' : 'Screen status',
+                'order': 1,
+                'sortable': true,
+                'cell': TextWrapCell
+              }),
+              _.extend({},colTemplate,{
+                'name' : 'date_time',
+                'label' : 'Date',
+                'description' : 'Date',
+                'order': 1,
+                'sortable': true,
+                'cell': 'Date'
+              })];
+          var colModel = new Backgrid.Columns(columns);
+          colModel.comparator = 'order';
+          colModel.sort();
+
+          $target_el.empty();
+          var cell = $('<div>',{ class: 'col-sm-4' });
+          
+          var status_grid = new Backgrid.Grid({
+            columns: colModel,
+            collection: collection,
+            className: 'backgrid table-striped table-condensed table-hover'
+          });
+          cell.html(status_grid.render().$el);
+          $target_el.append(cell);
+        },
+        error: Iccbl.appModel.backboneFetchError, 
+      });
+    },
+    
     _addVocabularyButton: function(
         editForm, fieldKey, vocabulary_scope_ref, vocabulary_name, options){
       var options = options || {};
@@ -247,29 +432,273 @@ define([
       editForm.$el.find('div[key="form-group-' + fieldKey + '"]').append(addButton);
     },
     
+    setCherryPicks: function(delegateStack){
+      var self = this;
+      var key = 'cherryPicks';
+      var view = this.tabViews[key];
+      
+      if (!view){
+        var self = this;
+        var url = [self.model.resource.apiUri,self.model.key,'cherrypicks'].join('/');
+        var resource = appModel.getResource('cherrypickrequest');
+        var view = new ListView({ options: {
+          uriStack: _.clone(delegateStack),
+          schemaResult: resource.schema,
+          resource: resource,
+          url: url,
+          extraControls: []
+        }});
+        Backbone.Layout.setupView(view);
+        self.reportUriStack([]);
+        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        self.setView("#tab_container", view ).render();
+        this.$('li').removeClass('active');
+        this.$('#'+key).addClass('active');
+
+      }else{
+        self.listenTo(view , 'uriStack:change', this.reportUriStack);
+        self.setView("#tab_container", view ).render();
+        self.reportUriStack([]);
+      }
+    },
+      
+    setActivities: function(delegateStack){
+      var self = this;
+      var key = 'activities';
+      var view = this.tabViews[key];
+      
+      if (!view){
+        var self = this;
+        var url = [self.model.resource.apiUri,self.model.key,'activities'].join('/');
+        var resource = appModel.getResource('activity');
+        
+        var sa_vocab = appModel.getVocabulary('serviceactivity.type');
+        var la_vocab = appModel.getVocabulary('labactivity.type');
+        var temp = _.extend({},sa_vocab,la_vocab);
+        resource.schema.fields['type'].vocabulary = 
+          _.map(temp, function(v){
+            return [v.title,v.key];
+          }); // TODO: app model method for this
+        
+        console.log('combined vocab', resource.schema.fields['type'].vocabulary );
+        
+        var view = new ListView({ options: {
+          uriStack: _.clone(delegateStack),
+          schemaResult: resource.schema,
+          resource: resource,
+          url: url,
+          extraControls: []
+        }});
+        Backbone.Layout.setupView(view);
+        self.reportUriStack([]);
+        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        self.setView("#tab_container", view ).render();
+        this.$('li').removeClass('active');
+        this.$('#'+key).addClass('active');
+
+      }else{
+        self.listenTo(view , 'uriStack:change', this.reportUriStack);
+        self.setView("#tab_container", view ).render();
+        self.reportUriStack([]);
+      }
+    },
+      
     setSummary : function(delegateStack){
       var self = this;
       var key = 'summary';
       var view = this.tabViews[key];
-      // if (!view){
-        var summaryKeys = self.model.resource.schema.filterKeys('visibility', 'summary');
+      
+      if (!view){
+      
+          var summaryKeys = self.model.resource.schema.filterKeys('visibility', 'summary');
+          var summaryModel = appModel.getModel(
+            self.model.resource.key, self.model.key, 
+            function(model){
+              view = new DetailView({ 
+                model: model, 
+                uriStack: _.clone(delegateStack),
+                detailKeys: summaryKeys,
+                buttons: ['history'],
+                afterRender: function(){
+                  DetailView.prototype.afterRender.apply(this);
+                  this.$el.find('#libraries_screened_count').click(function(e){
+                    e.preventDefault();
+                    console.log('libraries screened click', e);
+                    self.consumedStack = ['libraries'];
+                    self.showLibraries(delegateStack);
+                  });
+                  this.$el.find('#library_plates_screened').click(function(e){
+                    e.preventDefault();
+                    console.log('library_plates_screend screened click', e);
+                    self.consumedStack = ['copyplates'];
+                    self.showCopyPlates(delegateStack);
+                  });
+                  this.$el.find('#library_plates_data_loaded').click(function(e){
+                    e.preventDefault();
+                    console.log('library_plates_data_loaded click', e);
+                    self.consumedStack = ['copyplates'];
+                    self.showCopyPlatesLoaded(delegateStack);
+                  });
+
+                  self.createPositivesSummary(this.$el.find('#positives_summary'));
+                
+                }
+              });
+              self.tabViews[key] = view;
+              
+              self.setView("#tab_container", view ).render();
+              
+              // TODO: fixup the detaillayout & detail view so that well is on detailview
+              view.$el.addClass('well');
+              self.reportUriStack([]);
+              
+            },{ visibilities: ['summary']}
+          );
+        
+      }else{
+        self.listenTo(view , 'uriStack:change', this.reportUriStack);
+        self.setView("#tab_container", view ).render();
+        self.reportUriStack([]);
+      }
+    },
+    
+    createPositivesSummary: function($target_el){
+      var self = this;
+
+      var experimental_wells_loaded = self.model.get('experimental_well_count');
+      function createPositiveStat(raw_value){
+        var formatter = new Iccbl.DecimalFormatter({ decimals: 2 });
+        if (!raw_value) raw_value = 0;
+        return Iccbl.formatString(
+            '{val} ({percent}%)', {
+              val: raw_value,
+              percent: formatter.fromRaw(
+                100.0*raw_value/experimental_wells_loaded )
+            });
+      }
+      
+      var dcResource = appModel.getResource('datacolumn');
+      var CollectionClass = Iccbl.CollectionOnClient.extend({
+        url: dcResource.apiUri 
+      });
+      var dcCollection = new CollectionClass();
+      dcCollection.fetch({
+        data: { 
+          limit: 0,
+          screen_facility_id: self.model.get('facility_id'),
+          data_type__in: [
+            'partition_positive_indicator','boolean_positive_indicator',
+            'confirmed_positive_indicator'],
+          order_by: ['ordinal']
+        },
+        success: function(collection, response) {
+          collection.each(function(dc){
+            dc.set('total_positives', createPositiveStat(dc.get('positives_count')));
+            dc.set('strong_positives', createPositiveStat(dc.get('strong_positives_count')));
+            dc.set('medium_positives', createPositiveStat(dc.get('medium_positives_count')));
+            dc.set('weak_positives', createPositiveStat(dc.get('weak_positives_count')));
+          });
+          
+          var TextWrapCell = Backgrid.Cell.extend({
+            className: 'text-wrap-cell'
+          });
+          var colTemplate = {
+            'cell' : 'string',
+            'order' : -1,
+            'sortable': false,
+            'searchable': false,
+            'editable' : false,
+            'visible': true,
+            'headerCell': Backgrid.HeaderCell
+          };
+          var columns = [
+              _.extend({},colTemplate,{
+                'name' : 'name',
+                'label' : 'Data Column',
+                'description' : 'Data Column',
+                'order': 1,
+                'sortable': true,
+                'cell': TextWrapCell
+              }),
+              _.extend({},colTemplate,{
+                'name' : 'total_positives',
+                'label' : 'Total Positives',
+                'description' : 'Total Positives',
+                'order': 2,
+                'sortable': true,
+                'cell': TextWrapCell
+              }),
+              _.extend({},colTemplate,{
+                'name' : 'strong_positives',
+                'label' : 'Strong Positives',
+                'description' : 'Strong Positives',
+                'order': 3,
+                'sortable': true,
+                'cell': TextWrapCell
+              }),
+              _.extend({},colTemplate,{
+                'name' : 'medium_positives',
+                'label' : 'Medium Positives',
+                'description' : 'Medium Positives',
+                'order': 4,
+                'sortable': true,
+                'cell': TextWrapCell
+              }),
+              _.extend({},colTemplate,{
+                'name' : 'weak_positives',
+                'label' : 'Weak Positives',
+                'description' : 'Weak Positives',
+                'order': 5,
+                'sortable': true,
+                'cell': TextWrapCell
+              }),
+          ];
+          var colModel = new Backgrid.Columns(columns);
+          colModel.comparator = 'order';
+          colModel.sort();
+          var positives_grid = new Backgrid.Grid({
+            columns: colModel,
+            collection: collection,
+            className: 'backgrid table-striped table-condensed table-hover'
+          });
+          
+          $target_el.empty();
+          var cell = $('<div>',{ class: 'col-sm-4' });
+          cell.html(positives_grid.render().$el);
+          $target_el.append(cell);
+        },
+        error: Iccbl.appModel.backboneFetchError, 
+      });
+      
+    },
+
+    setBilling: function(delegateStack){
+      var self = this;
+      var key = 'billing';
+      var view = this.tabViews[key];
+      if (!view){
+        var billingKeys = self.model.resource.schema.filterKeys('visibility', 'billing');
         var summaryModel = appModel.getModel(
           self.model.resource.key, self.model.key, 
           function(model){
             view = new DetailLayout({ 
               model: model, 
               uriStack: delegateStack,
-              detailKeys: summaryKeys
+              detailKeys: billingKeys,
+              editKeys: billingKeys,
+              editableKeys: billingKeys
             });
             self.tabViews[key] = view;
             
             self.listenTo(view , 'uriStack:change', this.reportUriStack);
             self.setView("#tab_container", view ).render();
             self.reportUriStack([]);
-          },{ visibilities: ['summary']});
-//      }else{
-//        // use the already loaded view, implement cache clearing
-//      }
+          },{ visibilities: ['billing']});
+      }else{
+        self.listenTo(view , 'uriStack:change', this.reportUriStack);
+        self.setView("#tab_container", view ).render();
+        self.reportUriStack([]);
+      }
     },
 
     setDatacolumns: function(delegateStack){
@@ -277,7 +706,7 @@ define([
       
       var self = this;
       var datacolumnResource = appModel.getResource('datacolumn'); 
-      var url = datacolumnResource.apiUri + '?limit=0&screen_facility_id=' + self.model.key;
+      var url = [self.model.resource.apiUri,self.model.key,'datacolumns'].join('/');
       
       // construct a collection-in-columns
       Iccbl.getCollectionOnClient(url, function(collection){
@@ -323,7 +752,7 @@ define([
         orderedFields = _.sortBy(datacolumnResource.schema.fields,'ordinal');
         var pivotCollection = new Backbone.Collection();
         _.each(orderedFields, function(field){
-          if(_.contains(field.visibility, 'list') && field.key != 'name' ){
+          if(_.contains(field.visibility, 'l') && field.key != 'name' ){
             var row = {'key': field.key, 'label': field.title };
             collection.each(function(datacolumn){
               row[datacolumn.get('key')] = datacolumn.get(field.key);
@@ -347,65 +776,6 @@ define([
       
     },
     
-    setDatacolumnsOld : function(){
-      var self = this;
-      
-      if(_.isUndefined(this.datacolumns)){
-        var url = [appModel.dbApiUri,
-                   'screenresult',
-                   self.model.key,
-                   'schema'].join('/');
-
-        var createDataColumns = function(schemaResult){
-          var columns = Iccbl.createBackgridColModel(schemaResult.fields,
-            Iccbl.MyHeaderCell);// , col_options );
-          var ListModel = Backbone.Model.extend({
-            defaults : {
-              rpp : 25,
-              page : 1,
-              order : {},
-              search : {}
-            }
-          });
-          var listModel = new ListModel();
-
-          var collection = new Iccbl.MyCollection({
-            'url' : url,
-            currentPage : parseInt(listModel.get('page')),
-            pageSize : parseInt(listModel.get('rpp')),
-            listModel : listModel
-          });
-
-          collection.fetch({
-            success : function(){
-              console.log('create datacolumns, schemaResult: '
-                + schemaResult);
-              var datacolumnView = new CollectionColumnView({
-                model : self.model
-              }, {
-                schemaResult : schemaResult,
-                router : self.options.router,
-                isEditMode : false,
-                collection : collection
-              });
-              self.datacolumns = datacolumnView;
-              $('#tab_container').html(self.datacolumns.render().el);
-            },
-            error : function(model, response, options){
-              window.alert('Could not get: ' + usr + '\n'
-                + Iccbl.formatResponseError(response));
-            }
-          });
-        };
-
-        Iccbl.getSchema(url, createDataColumns);
-      }else{
-        self.datacolumns.setElement(self.$('#tab_container')).render();
-      }
-      self.$('#datacolumn').addClass('active'); // first time not clicked so
-                                                // set manually
-    },
-
     setResults : function(delegateStack){
       var self = this;
       var screenResultResource = appModel.getResource('screenresult'); 
@@ -491,7 +861,6 @@ define([
       this.tabViews = {};
       this.remove();
     }
-  
 
   });
 

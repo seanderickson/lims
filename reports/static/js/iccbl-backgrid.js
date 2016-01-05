@@ -1140,7 +1140,7 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
   },
   
   /**
-   * Child view bubble up URI stack change event
+   * This method will report URI stack change events from child views.
    */
   reportUriStack: function(reportedUriStack, options) {
     var options = options || {source: this};
@@ -2854,13 +2854,21 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
          '"choices" list: field key: ' + this.column.get('name')].join(''));
       this.fieldinformation.choices = [];
     }
-    try{
-      vocabulary = Iccbl.appModel.getVocabulary(this.fieldinformation.vocabulary_scope_ref);
-        _.each(_.keys(vocabulary),function(choice){
-          choiceHash[choice] = vocabulary[choice].title;
-        });
-    }catch(e){
-      console.log('vocabulary error', this.column.get('name'),e);
+    if(!_.isEmpty(this.fieldinformation.vocabulary)){
+      // TODO: vocabulary is using the titles as the key, 
+      // because of how Backgrid.SelectCell initializes
+      _.each(this.fieldinformation.vocabulary,function(pair){
+        choiceHash[pair[1]] = pair[0];
+      });
+    }else{
+      try{
+        vocabulary = Iccbl.appModel.getVocabulary(this.fieldinformation.vocabulary_scope_ref);
+          _.each(_.keys(vocabulary),function(choice){
+            choiceHash[choice] = vocabulary[choice].title;
+          });
+      }catch(e){
+        console.log('vocabulary error', this.column.get('name'),e);
+      }
     }
     this._serverSideFilter = new SelectorFormFilter({
         choiceHash: choiceHash,
@@ -2968,7 +2976,7 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
 var NumberFormFilter = CriteriumFormFilter.extend({
   
   criterium: {'=':'eq','\u2248':'about','>':'gt', '>=':'gte','<':'lt','<=':'lte',
-    '<>':'ne', '...':'range', 'in': 'in','blank':'is_null','not blank':'not_blank'},
+    '<>':'ne', 'x..y':'range', 'in': 'in','blank':'is_null','not blank':'not_blank'},
 
   // use Bootstrap layout/styling
   template: _.template([
@@ -3036,10 +3044,10 @@ var NumberFormFilter = CriteriumFormFilter.extend({
     var FormFields = Backbone.Model.extend({
       validate: function(attrs) {
         var errs = {};
-        if(attrs.lower_criteria == '...' 
-          && ( attrs.upper_value < 1 ) ){
-          errs['upper_value'] = '!'
-        }
+//        if(attrs.lower_criteria == '...' 
+//          && ( attrs.upper_value < 1 ) ){
+//          errs['upper_value'] = '!'
+//        }
         if(!_.isEmpty(errs)) return errs;
       }
     });
@@ -3050,8 +3058,7 @@ var NumberFormFilter = CriteriumFormFilter.extend({
     
     this.listenTo(this, "change", function(e){
       var criteria = self.getValue('lower_criteria');
-      console.log('change:' + criteria)
-      if(criteria == '...'){
+      if(criteria == 'x..y'){
         self.$el.find('[data-fields="lower_value"]').find('input').prop('disabled', false);
         self.$el.find('[data-fields="form_textarea"]').hide();
         self.$el.find('#range_upper_block').show();
@@ -3962,7 +3969,11 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   if(_.has(prop,'editability') && _.contains(prop['editability'],'l')){
     column['editable'] = true;
   }
-  if(!_.isEmpty(prop.vocabulary_scope_ref)){
+  if(!_.isEmpty(prop.vocabulary)){
+    // TODO: this is probably backwards, since it appears SelectCell wants [title,val], not [val,title]
+    cell_options.optionValues = prop.vocabulary; 
+    column['cell'] = Iccbl.SelectCell.extend(cell_options);
+  }else if(!_.isEmpty(prop.vocabulary_scope_ref)){
     var optionValues = [];
     var vocabulary_scope_ref = prop.vocabulary_scope_ref;
     try{

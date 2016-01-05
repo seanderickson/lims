@@ -96,7 +96,6 @@ class ServiceActivity(models.Model):
 
 class LabActivity(models.Model):
     activity = models.OneToOneField(Activity, primary_key=True)
-    service = models.OneToOneField('Service')
     screen = models.ForeignKey('Screen')
     volume_transferred_per_well_from_library_plates = models.DecimalField(
         null=True, max_digits=10, decimal_places=9, blank=True)

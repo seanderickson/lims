@@ -195,9 +195,9 @@ class SqlAlchemyResource(Resource):
             dependency_fields = set()
             for field in temp.values():
                 dependency_fields.update(field.get('dependencies',[]))
-                logger.info('field: %s, dependencies: %s', field['key'],field.get('dependencies',[]))
-#             if DEBUG_VISIBILITY:
-            logger.info('dependency_fields %s', dependency_fields)
+                logger.debug('field: %s, dependencies: %s', field['key'],field.get('dependencies',[]))
+            if DEBUG_VISIBILITY:
+                logger.info('dependency_fields %s', dependency_fields)
             if dependency_fields:
                 temp.update({ key:field 
                     for key,field in schema_fields.items() if key in dependency_fields })
@@ -221,7 +221,7 @@ class SqlAlchemyResource(Resource):
     def build_sqlalchemy_columns(self, fields, base_query_tables=None, 
             custom_columns=None):
         '''
-        returns an array of sqlalchemy.sql.schema.Column objects, associated 
+        returns an ordered dict of sqlalchemy.sql.schema.Column objects, associated 
         with the sqlalchemy.sql.schema.Table definitions, which are bound to 
         the sqlalchemy.engine.Engine: 
         "Connects a Pool and Dialect together to provide a source of database 
@@ -387,9 +387,11 @@ class SqlAlchemyResource(Resource):
 
         # Split on ',' if not empty string and either an in or range filter.
         if filter_type in ('in', 'range') and len(value):
-            if hasattr(param_hash, 'getlist'):
+            if value and hasattr(value, '__iter__'):
+                # value is already a list
+                pass
+            elif hasattr(param_hash, 'getlist'):
                 value = []
-
                 for part in param_hash.getlist(filter_expr):
                     value.extend(part.split(LIST_DELIMITER_URL_PARAM))
             else:

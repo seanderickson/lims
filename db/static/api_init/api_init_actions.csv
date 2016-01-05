@@ -11,7 +11,6 @@ patch,metahash,metahash_fields_librarycopy.csv
 patch,metahash,metahash_fields_librarycopyplate.csv
 patch,metahash,metahash_fields_platelocation.csv
 patch,metahash,metahash_fields_well.csv
-patch,metahash,metahash_fields_librarycontentsversion.csv
 patch,metahash,metahash_fields_activity.csv
 patch,metahash,metahash_fields_reagent.csv
 patch,metahash,metahash_fields_smallmoleculereagent.csv
@@ -27,3 +26,4 @@ patch,vocabularies,vocabularies_attachedfiletype_data.csv
 patch,vocabularies,vocabularies_checklists_data.csv
 patch,metahash,metahash_fields_serviceactivity.csv
 patch,vocabularies,vocabularies_lab_affiliations_data.csv
+patch,metahash,metahash_fields_cplt.csv

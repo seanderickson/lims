@@ -36,10 +36,33 @@ class AbaseTestset(models.Model):
     class Meta:
         db_table = 'abase_testset'
 
+# class Service(models.Model):
+#     '''
+#     TODO: replaces Activity:ServiceActivty/LabActivity
+#     '''
+#     date_time_created = models.DateTimeField(default=timezone.now)
+#     date_performed = models.DateField()
+# 
+#     created_by = models.ForeignKey(
+#         'ScreensaverUser', null=True, blank=True, related_name='services_created')
+#     performed_by = models.ForeignKey(
+#         'ScreensaverUser',related_name='services_performed')
+# 
+#     type = models.TextField()
+#     comments = models.TextField(null=True,blank=True)
+#     
+#     screen = models.ForeignKey('Screen', null=True)
+#     user = models.ForeignKey('ScreensaverUser', null=True)
+# 
+#     funding_support = models.TextField(null=True)
+#     
+#     date_loaded = models.DateTimeField(null=True, blank=True)
+#     date_publicly_available = models.DateTimeField(null=True, blank=True)
+#     class Meta:
+#         db_table = 'service'
+
 class Activity(models.Model):
-    # activity_id = models.IntegerField(primary_key=True)
     activity_id = models.AutoField(primary_key=True) 
-    # version = models.IntegerField()
     date_created = models.DateTimeField(default=timezone.now)
     comments = models.TextField(blank=True)
     performed_by = models.ForeignKey('ScreensaverUser',related_name='activities_performed')
@@ -50,39 +73,31 @@ class Activity(models.Model):
     class Meta:
         db_table = 'activity'
 
-class ActivityUpdateActivity(models.Model):
-    activity = models.ForeignKey(Activity)
-    update_activity = models.ForeignKey('AdministrativeActivity')
+# DEPRECATED - TODO: REMOVE - replaced by vocabulary
+class FundingSupport(models.Model):
+    funding_support_id = models.IntegerField(primary_key=True)
+    value = models.TextField(unique=True, blank=True)
     class Meta:
-        db_table = 'activity_update_activity'
+        db_table = 'funding_support'
 
-class AdministrativeActivity(models.Model):
+class ServiceActivity(models.Model):
     activity = models.OneToOneField(Activity, primary_key=True)
-    administrative_activity_type = models.TextField()
+    service_activity_type = models.TextField()
+    serviced_screen = models.ForeignKey('Screen', null=True, blank=True)
+    serviced_user = models.ForeignKey('ScreensaverUser')
+    funding_support = models.TextField(null=True)
+    
+    # TODO: remove: replaced by vocabulary
+    funding_support_link = models.ForeignKey(
+        'FundingSupport', null=True, db_column='funding_support_id')
+    
     class Meta:
-        db_table = 'administrative_activity'
-
-class AttachedFileUpdateActivity(models.Model):
-    attached_file = models.ForeignKey('AttachedFile')
-    update_activity = models.ForeignKey(AdministrativeActivity)
-    class Meta:
-        db_table = 'attached_file_update_activity'
-
-class ChecklistItemEventUpdateActivity(models.Model):
-    checklist_item_event = models.ForeignKey('ChecklistItemEvent')
-    update_activity = models.ForeignKey(AdministrativeActivity)
-    class Meta:
-        db_table = 'checklist_item_event_update_activity'
-
-class CopyUpdateActivity(models.Model):
-    copy_id = models.IntegerField()
-    update_activity_id = models.IntegerField(unique=True)
-    class Meta:
-        db_table = 'copy_update_activity'
+        db_table = 'service_activity'
 
 class LabActivity(models.Model):
-    screen = models.ForeignKey('Screen')
     activity = models.OneToOneField(Activity, primary_key=True)
+    service = models.OneToOneField('Service')
+    screen = models.ForeignKey('Screen')
     volume_transferred_per_well_from_library_plates = models.DecimalField(
         null=True, max_digits=10, decimal_places=9, blank=True)
     molar_concentration = models.DecimalField(
@@ -90,38 +105,63 @@ class LabActivity(models.Model):
     class Meta:
         db_table = 'lab_activity'
 
-# TODO consider how can refactor Screening-[libraryscreening, cherrypickscreening] 
-# hierarchy
-class LibraryScreening(models.Model):
-    abase_testset_id = models.TextField(blank=True)
-    is_for_external_library_plates = models.BooleanField()
-    activity = models.OneToOneField('Screening', primary_key=True)
-    screened_experimental_well_count = models.IntegerField()
-    libraries_screened_count = models.IntegerField(null=True, blank=True)
-    library_plates_screened_count = models.IntegerField(null=True, blank=True)
+class CherryPickLiquidTransfer(models.Model):
+    status = models.TextField()
+    activity = models.OneToOneField('LabActivity', primary_key=True)
     class Meta:
-        db_table = 'library_screening'
+        db_table = 'cherry_pick_liquid_transfer'
 
 class Screening(models.Model):
+    activity = models.OneToOneField(LabActivity, primary_key=True)
     assay_protocol = models.TextField(blank=True)
     number_of_replicates = models.IntegerField(null=True, blank=True)
     assay_protocol_type = models.TextField(blank=True)
-    activity = models.OneToOneField(LabActivity, primary_key=True)
     assay_protocol_last_modified_date = models.DateField(null=True, blank=True)
     assay_well_volume = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
     volume_transferred_per_well_to_assay_plates = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
     class Meta:
         db_table = 'screening'
 
-class EquipmentUsed(models.Model):
-    equipment_used_id = models.AutoField(primary_key=True)
-    # version = models.IntegerField()
-    protocol = models.TextField(blank=True)
-    description = models.TextField(blank=True)
-    equipment = models.TextField()
-    lab_activity = models.ForeignKey('LabActivity')
+class LibraryScreening(models.Model):
+    activity = models.OneToOneField('Screening', primary_key=True)
+    abase_testset_id = models.TextField(blank=True)
+    is_for_external_library_plates = models.BooleanField()
+    screened_experimental_well_count = models.IntegerField()
+    libraries_screened_count = models.IntegerField(null=True, blank=True)
+    library_plates_screened_count = models.IntegerField(null=True, blank=True)
     class Meta:
-        db_table = 'equipment_used'
+        db_table = 'library_screening'
+
+class CherryPickScreening(models.Model):
+    activity = models.OneToOneField('Screening', primary_key=True)
+    cherry_pick_request = models.ForeignKey('CherryPickRequest')
+    class Meta:
+        db_table = 'cherry_pick_screening'
+
+#### Administrative Activities - To Be Removed ####
+
+
+class AdministrativeActivity(models.Model):
+    activity = models.OneToOneField(Activity, primary_key=True)
+    administrative_activity_type = models.TextField()
+    class Meta:
+        db_table = 'administrative_activity'
+
+class WellVolumeAdjustment(models.Model):
+    well_volume_adjustment_id = models.AutoField(primary_key=True)
+    # version = models.IntegerField()
+    well = models.ForeignKey('Well')
+    lab_cherry_pick = models.ForeignKey('LabCherryPick', null=True, blank=True)
+    well_volume_correction_activity = models.ForeignKey('WellVolumeCorrectionActivity', null=True, blank=True)
+    volume = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
+    copy = models.ForeignKey('Copy')
+    class Meta:
+        db_table = 'well_volume_adjustment'
+
+class WellVolumeCorrectionActivity(models.Model):
+    activity = models.OneToOneField('AdministrativeActivity', primary_key=True)
+    class Meta:
+        db_table = 'well_volume_correction_activity'
 
 class LibraryUpdateActivity(models.Model):
     library = models.ForeignKey('Library')
@@ -153,21 +193,48 @@ class ScreensaverUserUpdateActivity(models.Model):
     class Meta:
         db_table = 'screensaver_user_update_activity'
 
-class ServiceActivity(models.Model):
-    service_activity_type = models.TextField()
-    activity = models.OneToOneField(Activity, primary_key=True)
-    serviced_screen = models.ForeignKey('Screen', null=True, blank=True)
-    # consider pointing this to the screensaver_user table
-    # serviced_user = models.ForeignKey('ScreeningRoomUser')
-    serviced_user = models.ForeignKey('ScreensaverUser')
-    funding_support = models.TextField(null=True)
-    
-    # TODO: remove
-    funding_support_link = models.ForeignKey(
-        'FundingSupport', null=True, db_column='funding_support_id')
-    
+class ActivityUpdateActivity(models.Model):
+    activity = models.ForeignKey(Activity)
+    update_activity = models.ForeignKey('AdministrativeActivity')
     class Meta:
-        db_table = 'service_activity'
+        db_table = 'activity_update_activity'
+
+class AttachedFileUpdateActivity(models.Model):
+    attached_file = models.ForeignKey('AttachedFile')
+    update_activity = models.ForeignKey(AdministrativeActivity)
+    class Meta:
+        db_table = 'attached_file_update_activity'
+
+class ChecklistItemEventUpdateActivity(models.Model):
+    checklist_item_event = models.ForeignKey('ChecklistItemEvent')
+    update_activity = models.ForeignKey(AdministrativeActivity)
+    class Meta:
+        db_table = 'checklist_item_event_update_activity'
+
+class CopyUpdateActivity(models.Model):
+    copy_id = models.IntegerField()
+    update_activity_id = models.IntegerField(unique=True)
+    class Meta:
+        db_table = 'copy_update_activity'
+
+class CherryPickRequestUpdateActivity(models.Model):
+    cherry_pick_request = models.ForeignKey('CherryPickRequest')
+    update_activity = models.OneToOneField('AdministrativeActivity', unique=True)
+    class Meta:
+        db_table = 'cherry_pick_request_update_activity'
+
+
+
+class EquipmentUsed(models.Model):
+    equipment_used_id = models.AutoField(primary_key=True)
+    # version = models.IntegerField()
+    protocol = models.TextField(blank=True)
+    description = models.TextField(blank=True)
+    equipment = models.TextField()
+    lab_activity = models.ForeignKey('LabActivity')
+    class Meta:
+        db_table = 'equipment_used'
+
 
 class AnnotationType(models.Model):
     annotation_type_id = models.AutoField(primary_key=True)
@@ -380,42 +447,17 @@ class CherryPickAssayPlate(models.Model):
         unique_together = (('cherry_pick_request', 'plate_ordinal','attempt_ordinal'))    
         db_table = 'cherry_pick_assay_plate'
 
-class CherryPickScreening(models.Model):
-    activity = models.OneToOneField('Screening', primary_key=True)
-    cherry_pick_request = models.ForeignKey('CherryPickRequest')
-    class Meta:
-        db_table = 'cherry_pick_screening'
-
 class CherryPickAssayPlateScreeningLink(models.Model):
     cherry_pick_assay_plate = models.ForeignKey(CherryPickAssayPlate)
     cherry_pick_screening = models.ForeignKey('CherryPickScreening')
     class Meta:
         db_table = 'cherry_pick_assay_plate_screening_link'
 
-class CherryPickLiquidTransfer(models.Model):
-    status = models.TextField()
-    activity = models.OneToOneField('LabActivity', primary_key=True)
-    class Meta:
-        db_table = 'cherry_pick_liquid_transfer'
-
-class CherryPickRequestUpdateActivity(models.Model):
-    cherry_pick_request = models.ForeignKey('CherryPickRequest')
-    update_activity = models.OneToOneField('AdministrativeActivity', unique=True)
-    class Meta:
-        db_table = 'cherry_pick_request_update_activity'
-
 # class CollaboratorLink(models.Model):
 #     collaborator = models.ForeignKey('ScreeningRoomUser')
 #     screen = models.ForeignKey('Screen')
 #     class Meta:
 #         db_table = 'collaborator_link'
-
-# DEPRECATED - TODO: REMOVE - replaced by vocabulary
-class FundingSupport(models.Model):
-    funding_support_id = models.IntegerField(primary_key=True)
-    value = models.TextField(unique=True, blank=True)
-    class Meta:
-        db_table = 'funding_support'
 
 class Publication(models.Model):
     publication_id = models.AutoField(primary_key=True)
@@ -496,19 +538,21 @@ class Screen(models.Model):
     abase_protocol_id = models.TextField(blank=True)
     study_type = models.TextField(null=False, blank=False)
     url = models.TextField(blank=True)
-    amount_to_be_charged_for_screen = models.DecimalField(null=True, max_digits=9, decimal_places=2, blank=True)
-    billing_comments = models.TextField(blank=True)
-    is_billing_for_supplies_only = models.BooleanField(default=False) # TODO: obsolete? still used?
-    billing_info_return_date = models.DateField(null=True, blank=True)
-    date_charged = models.DateField(null=True, blank=True)
-    date_completed5kcompounds = models.DateField(null=True, blank=True)
-    date_faxed_to_billing_department = models.DateField(null=True, blank=True)
-    facilities_and_administration_charge = models.DecimalField(null=True, max_digits=9, decimal_places=2, blank=True)
+    
+    to_be_requested = models.BooleanField(default=False) 
+    see_comments = models.BooleanField(default=False)
+    is_billing_for_supplies_only = models.BooleanField(default=False) 
     is_fee_form_on_file = models.BooleanField(null=False, default=False)
+    amount_to_be_charged_for_screen = models.DecimalField(null=True, max_digits=9, decimal_places=2, blank=True)
+    facilities_and_administration_charge = models.DecimalField(null=True, max_digits=9, decimal_places=2, blank=True)
     fee_form_requested_date = models.DateField(null=True, blank=True)
     fee_form_requested_initials = models.TextField(blank=True)
-    see_comments = models.BooleanField(default=False)
-    to_be_requested = models.BooleanField(default=False)  #  TODO: obsolete? still used?
+    billing_info_return_date = models.DateField(null=True, blank=True)
+    date_completed5kcompounds = models.DateField(null=True, blank=True)
+    date_faxed_to_billing_department = models.DateField(null=True, blank=True)
+    date_charged = models.DateField(null=True, blank=True)
+    billing_comments = models.TextField(blank=True)
+    
     created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True)
     
     screened_experimental_well_count = models.IntegerField(null=False, default=0)
@@ -1260,23 +1304,6 @@ class PlateLocation(models.Model):
     shelf = models.TextField()
     class Meta:
         db_table = 'plate_location'
-
-
-class WellVolumeAdjustment(models.Model):
-    well_volume_adjustment_id = models.AutoField(primary_key=True)
-    # version = models.IntegerField()
-    well = models.ForeignKey(Well)
-    lab_cherry_pick = models.ForeignKey('LabCherryPick', null=True, blank=True)
-    well_volume_correction_activity = models.ForeignKey('WellVolumeCorrectionActivity', null=True, blank=True)
-    volume = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
-    copy = models.ForeignKey(Copy)
-    class Meta:
-        db_table = 'well_volume_adjustment'
-
-class WellVolumeCorrectionActivity(models.Model):
-    activity = models.OneToOneField(AdministrativeActivity, primary_key=True)
-    class Meta:
-        db_table = 'well_volume_correction_activity'
 
 
 # this is a LINCS table

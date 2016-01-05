@@ -24,15 +24,12 @@ import django.db.models.sql.constants
 from django.forms.models import model_to_dict
 from django.http import Http404
 from django.http.response import HttpResponse
-from sqlalchemy import select, asc, text, case
-import sqlalchemy
+from sqlalchemy import select, text, case, Numeric
 from sqlalchemy.dialects.postgresql import array
-from sqlalchemy.sql import and_, or_, not_          
-from sqlalchemy.sql import asc, desc, alias, Alias
-from sqlalchemy.sql import func
+from sqlalchemy.sql import and_, or_, not_, asc, desc, alias, Alias, func
 from sqlalchemy.sql.elements import literal_column
 from sqlalchemy.sql.expression import column, join, insert, delete, distinct, \
-    exists
+    exists, _Cast
 from sqlalchemy.sql.expression import nullsfirst, nullslast
 from sqlalchemy.sql.functions import concat
 from tastypie import fields
@@ -57,7 +54,7 @@ from db.models import ScreensaverUser, Screen, \
     NaturalProductReagent, Molfile, Gene, GeneGenbankAccessionNumber, \
     CherryPickRequest, CherryPickAssayPlate, CherryPickLiquidTransfer, \
     CachedQuery, ChecklistItemEvent, UserChecklistItem, AttachedFile, \
-    ServiceActivity
+    ServiceActivity, LabActivity, Screening
 from db.support import lims_utils
 from db.support.data_converter import default_converter
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
@@ -76,6 +73,7 @@ from reports.serializers import CursorSerializer, LimsSerializer, XLSSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource, un_cache
 
 
+# import sqlalchemy
 PLATE_NUMBER_SQL_FORMAT = 'FM9900000'
 
 logger = logging.getLogger(__name__)
@@ -189,7 +187,7 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
 
         return self.build_list_response(request, **kwargs)
 
-        
+    @read_authorization
     def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
@@ -201,6 +199,9 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
         
+        for_screen_id = param_hash.pop('for_screen_id',None)
+        loaded_for_screen_id = param_hash.pop('loaded_for_screen_id',None)
+
         is_for_detail = kwargs.pop('is_for_detail', False)
 
         schema = super(LibraryCopyPlateResource,self).build_schema()
@@ -237,7 +238,8 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
 
-            if filter_expression is None:
+            if ( not filter_expression 
+                    and not for_screen_id and not loaded_for_screen_id):
                 msgs = { 'Library copy plates resource': 'can only service requests with filter expressions' }
                 logger.info(str((msgs)))
                 raise ImmediateHttpResponse(response=self.error_response(request,msgs))
@@ -316,13 +318,6 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
             _c = self.bridge['copy']
             _l = self.bridge['library']
             _ap = self.bridge['assay_plate']
-
-#             # NOTE: precalculated version
-#             plate_screening_statistics = \
-#                 select([text('*')]).\
-#                     select_from(text('plate_screening_statistics')).cte('plate_screening_statistics')
-#         
-#             p1 = plate_screening_statistics.alias('p1')
             p1 = self.bridge['plate_screening_statistics']
             p1 = p1.alias('p1')
             j = join(_p, _c, _p.c.copy_id == _c.c.copy_id )
@@ -330,6 +325,15 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
             j = j.join(_pl, _p.c.plate_location_id == _pl.c.plate_location_id )
             j = j.join(_l, _c.c.library_id == _l.c.library_id )
 
+            if for_screen_id:
+                _subquery = self.get_screen_librarycopyplate_subquery(for_screen_id)
+                _subquery = _subquery.cte('screen_lcps')
+                j = j.join(_subquery,_subquery.c.plate_id==_p.c.plate_id)
+            if loaded_for_screen_id:
+                _subquery = self.get_screen_loaded_librarycopyplate_subquery(loaded_for_screen_id)
+                _subquery = _subquery.cte('screen_loaded_lcps')
+                j = j.join(_subquery,_subquery.c.plate_id==_p.c.plate_id)
+                
             stmt = select(columns.values()).select_from(j)
 
             # general setup
@@ -353,7 +357,31 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
         except Exception, e:
             logger.exception('on get list')
             raise e   
-    
+
+    @classmethod
+    def get_screen_librarycopyplate_subquery(cls, for_screen_id):
+        _screen = cls.bridge['screen']
+        _assay_plate = cls.bridge['assay_plate']
+        _plate = cls.bridge['plate']
+        
+        j = _plate
+        j = j.join(_assay_plate, _plate.c.plate_id==_assay_plate.c.plate_id)
+        j = j.join(_screen, _assay_plate.c.screen_id==_screen.c.screen_id)
+        
+        screen_lcps = (
+            select([
+                distinct(_plate.c.plate_id).label('plate_id')])
+            .select_from(j)
+            .where(_screen.c.facility_id==for_screen_id))
+        return screen_lcps
+
+    @classmethod
+    def get_screen_loaded_librarycopyplate_subquery(cls, for_screen_id):
+        subquery = cls.get_screen_librarycopyplate_subquery(for_screen_id)
+        _assay_plate = cls.bridge['assay_plate']
+        subquery = subquery.where(_assay_plate.c.screen_result_data_loading_id != None)
+        return subquery
+
     def build_schema(self):
         schema = cache.get(self._meta.resource_name + ":schema")
         if not schema:
@@ -407,11 +435,7 @@ class SilencingReagentResource(ManagedLinkedResource):
 
     def build_sqlalchemy_columns(self, fields, bridge):
         '''
-        returns an array of sqlalchemy.sql.schema.Column objects, associated 
-        with the sqlalchemy.sql.schema.Table definitions, which are bound to 
-        the sqlalchemy.engine.Engine which: 
-        "Connects a Pool and Dialect together to provide a source of database 
-        connectivity and behavior."
+        @return an array of sqlalchemy.sql.schema.Column objects
         
         @param fields - field definitions, from the resource schema
         
@@ -652,570 +676,6 @@ class SmallMoleculeReagentResource(ManagedLinkedResource):
         super(SmallMoleculeReagentResource,self).__init__(**kwargs)
 
 
-class ScreenResource(ApiResource):
-    
-    class Meta:
-        queryset = Screen.objects.all() #.order_by('facility_id')
-        authentication = MultiAuthentication(BasicAuthentication(), 
-                                             SessionAuthentication())
-        authorization= UserGroupAuthorization()
-        resource_name = 'screen'
-        
-        ordering = []
-        filtering = {}
-        serializer = LimsSerializer()
-        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
-        always_return_data = True 
-
-        
-    def __init__(self, **kwargs):
-#        self.
-        super(ScreenResource,self).__init__(**kwargs)
-
-    def prepend_urls(self):
-        return [
-            # override the parent "base_urls" so that we don't need to worry about schema again
-            url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('get_schema'), name="api_get_schema"),
-
-            url((r"^(?P<resource_name>%s)/"
-                 r"(?P<facility_id>([\w\d_]+))%s$") 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-        ]    
-
-    def get_detail(self, request, **kwargs):
-        logger.info(str(('get_detail')))
-
-        facility_id = kwargs.get('facility_id', None)
-        if not facility_id:
-            logger.info(str(('no facility_id provided')))
-            raise NotImplementedError('must provide a facility_id parameter')
-        
-        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
-        kwargs['is_for_detail']=True
-        return self.build_list_response(request, **kwargs)
-        
-    @read_authorization
-    def get_list(self,request,**kwargs):
-
-        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-
-        return self.build_list_response(request, **kwargs)
-
-        
-    def build_list_response(self,request, **kwargs):
-        ''' 
-        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns django.http.response.StreamingHttpResponse 
-        '''
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
-
-        param_hash = {}
-        param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
-        
-        is_for_detail = kwargs.pop('is_for_detail', False)
-             
-        schema = super(ScreenResource,self).build_schema()
-
-        filename = self._get_filename(schema, kwargs)
-        
-        facility_id = param_hash.pop('facility_id', None)
-        if facility_id:
-            param_hash['facility_id__eq'] = facility_id
-
-        screen_type = param_hash.get('screen_type__eq', None)
-        screens_for_username = param_hash.get('screens_for_username', None)
-        try:
-            
-            # general setup
-          
-            manual_field_includes = set(param_hash.get('includes', []))
-            
-#             if screen_type:
-#                 if screen_type == 'rnai':
-#                     manual_field_includes.append('fields.silencingreagent')
-#                 elif screen_type == 'natural_products':
-#                     manual_field_includes.append('fields.naturalproductreagent')
-#                 else:
-#                     manual_field_includes.append('fields.smallmoleculereagent')
-            
-            if screens_for_username:
-                screener_role_cte = ScreenResource.get_screener_role_cte()
-                manual_field_includes.add('screensaver_user_role')
-            
-            if DEBUG_GET_LIST: 
-                logger.info(str(('manual_field_includes', manual_field_includes)))
-  
-            (filter_expression, filter_fields) = \
-                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
-                  
-            field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes, 
-                param_hash.get('visibilities'), 
-                exact_fields=set(param_hash.get('exact_fields',[])))
-              
-            order_params = param_hash.get('order_by',[])
-            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
-             
-            rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
- 
-            # specific setup 
-            base_query_tables = ['screen','screen_result']
-            _screen = self.bridge['screen']
-            _screen_result = self.bridge['screen_result']
-            _ap = self.bridge['assay_plate']
-            _library = self.bridge['library']
-            _copy = self.bridge['copy']
-            _plate = self.bridge['plate']
-            _cpr = self.bridge['cherry_pick_request']
-            _lcp = self.bridge['lab_cherry_pick']
-            _cpap = self.bridge['cherry_pick_assay_plate']
-            _cplt = self.bridge['cherry_pick_liquid_transfer']
-            _sfs = self.bridge['screen_funding_supports']
-            _screen_collaborators = self.bridge['screen_collaborators']
-            _user_cte = ScreensaverUserResource.get_user_cte().cte('users')
-            _collaborator = _user_cte.alias('collaborator')
-            _activity = self.bridge['activity']
-            _srua = self.bridge['screen_result_update_activity']
-            _screen_keyword = self.bridge['screen_keyword']
-            _su = self.bridge['screensaver_user']
-            _lhsu = _su.alias('lhsu')
-            _screen_cell_lines = self.bridge['screen_cell_lines']
-            
-            # create CTEs -  Common Table Expressions for the intensive queries:
-            
-            collaborators = ( 
-                select([
-                    _screen_collaborators.c.screen_id,
-                    _collaborator.c.name,
-                    _collaborator.c.username,
-                    _collaborator.c.email,
-                    func.concat(_collaborator.c.name,' <',_collaborator.c.email,'>').label('fullname')])
-                    .select_from(_collaborator.join(
-                        _screen_collaborators,_collaborator.c.screensaver_user_id==_screen_collaborators.c.screensaveruser_id))
-                    .order_by(_collaborator.c.username) )
-            collaborators = collaborators.cte('collaborators')
-
-            screen_result_update_activity = (
-                select([ 
-                    func.max(_activity.c.date_of_activity).label('date_of_activity'),
-                    _screen.c.screen_id
-                    ])
-                    .select_from(
-                        _activity.join(_srua, _srua.c.update_activity_id==_activity.c.activity_id)
-                            .join(_screen_result,_screen_result.c.screen_result_id==_srua.c.screen_result_id)
-                            .join(_screen, _screen.c.screen_id==_screen_result.c.screen_id)
-                        )
-                    .group_by(_screen.c.screen_id)
-                    .order_by(_screen.c.screen_id)
-                ).cte('screen_result_update_activity')
-            
-            # create a cte for the max screened replicates_per_assay_plate
-            # - cross join version:
-            # select ap.screen_id, ap.plate_number, ap.replicate_ordinal,lesser.replicate_ordinal  
-            # from assay_plate ap 
-            # left outer join assay_plate lesser 
-            # on ap.plate_number=lesser.plate_number 
-            # and ap.screen_id=lesser.screen_id 
-            # and lesser.replicate_ordinal > ap.replicate_ordinal  
-            # where lesser.replicate_ordinal is null;
-            # - aggregate version:
-            # select 
-            # ap.screen_id, 
-            # ap.plate_number, 
-            # max(replicate_ordinal) as max_ordinal 
-            # from assay_plate ap 
-            # group by screen_id, plate_number
-            # order by screen_id, plate_number            
-            
-            aps = select([_ap.c.screen_id, func.count(1).label('count')]).\
-                select_from(_ap).\
-                where(_ap.c.library_screening_id != None).\
-                group_by(_ap.c.screen_id).\
-                order_by(_ap.c.screen_id)
-            aps = aps.cte('aps')
-
-            apdl = select([_ap.c.screen_id, func.count(1).label('count')]).\
-                select_from(_ap).\
-                where(_ap.c.screen_result_data_loading_id != None ).\
-                group_by(_ap.c.screen_id).\
-                order_by(_ap.c.screen_id)
-            apdl = apdl.cte('apdl')
-            
-            # create a cte for the max screened replicates_per_assay_plate
-            apsrc = select([
-                _ap.c.screen_id,
-                _ap.c.plate_number,
-                func.max(_ap.c.replicate_ordinal).label('max_per_plate') ]).\
-                    select_from(_ap).\
-                    group_by(_ap.c.screen_id, _ap.c.plate_number).\
-                    order_by(_ap.c.screen_id, _ap.c.plate_number)
-            apsrc = apsrc.cte('apsrc')
-            
-            # similarly, create a cte for the max data loaded replicates per assay_plate
-            apdlrc = select([
-                _ap.c.screen_id,
-                _ap.c.plate_number,
-                func.max(_ap.c.replicate_ordinal).label('max_per_plate') ]).\
-                    select_from(_ap).\
-                    where(_ap.c.screen_result_data_loading_id != None ).\
-                    group_by(_ap.c.screen_id, _ap.c.plate_number).\
-                    order_by(_ap.c.screen_id, _ap.c.plate_number)
-            apdlrc = apdlrc.cte('apdlrc')
-            
-            lps = select([
-                _ap.c.screen_id,
-                func.count(distinct(_ap.c.plate_number)).label('count')]).\
-                    select_from(_ap).\
-                    where(_ap.c.library_screening_id != None).\
-                    group_by(_ap.c.screen_id).cte('lps')
-            lpdl = select([
-                _ap.c.screen_id,
-                func.count(distinct(_ap.c.plate_number)).label('count')]).\
-                    select_from(_ap).\
-                    where(_ap.c.screen_result_data_loading_id != None).\
-                    group_by(_ap.c.screen_id).cte('lpdl')
-
-            libraries_screened = select([
-                func.count(distinct(_library.c.library_id)).label('count'),
-                _ap.c.screen_id]).\
-                    select_from(
-                        _ap.join(_plate,_ap.c.plate_id==_plate.c.plate_id).\
-                        join(_copy, _plate.c.copy_id==_copy.c.copy_id).\
-                        join(_library,_copy.c.library_id==_library.c.library_id)).\
-                    group_by(_ap.c.screen_id).cte('libraries_screened')
-                    
-            tplcps = select([
-                _cpr.c.screen_id,
-                func.count(1).label('count')]).\
-                    select_from(_cpr.join(
-                        _lcp,_cpr.c.cherry_pick_request_id==_lcp.c.cherry_pick_request_id).\
-                        join(_cpap, _lcp.c.cherry_pick_assay_plate_id==_cpap.c.cherry_pick_assay_plate_id).\
-                        join(_cplt,_cplt.c.activity_id==_cpap.c.cherry_pick_liquid_transfer_id)).\
-                    group_by(_cpr.c.screen_id).\
-                    where(_cplt.c.status == 'Successful' ).cte('tplcps')
-            # Create an inner screen-screen_result query to prompt the  
-            # query planner to index join not hash join
-            new_screen_result = ( select([
-                    _screen.c.screen_id,
-                    _screen_result.c.screen_result_id,
-                    _screen_result.c.experimental_well_count])
-                .select_from(_screen.join(_screen_result, _screen.c.screen_id==_screen_result.c.screen_id, isouter=True))
-                .cte('screen_result') )
-                           
-            affiliation_table = ScreensaverUserResource.get_lab_affiliation_cte()
-            affiliation_table = affiliation_table.cte('la')
-
-            custom_columns = {
-                'collaborator_usernames': (
-                    select([func.array_to_string(
-                        func.array_agg(collaborators.c.username), LIST_DELIMITER_SQL_ARRAY)])
-                        .select_from(collaborators)
-                        .where(collaborators.c.screen_id==literal_column('screen.screen_id'))),
-                'collaborator_names': (
-                    select([func.array_to_string(
-                        func.array_agg(collaborators.c.fullname), LIST_DELIMITER_SQL_ARRAY)])
-                        .select_from(collaborators)
-                        .where(collaborators.c.screen_id==literal_column('screen.screen_id'))),
-                'lab_name':
-                    ( select([func.array_to_string(array(
-                            [_lhsu.c.last_name,', ',_lhsu.c.first_name,' - ',
-                             affiliation_table.c.title, 
-                             ' (',affiliation_table.c.category,')']),'')])
-                        .select_from(
-                            _lhsu.join(affiliation_table,
-                                affiliation_table.c.affiliation_name==_lhsu.c.lab_head_affiliation))
-                        .where(_lhsu.c.screensaver_user_id==_screen.c.lab_head_id)),
-                'lab_head_username':
-                    ( select([_lhsu.c.username])
-                        .select_from(_lhsu)
-                        .where(_lhsu.c.screensaver_user_id==_screen.c.lab_head_id)),
-                'lead_screener_name': literal_column(
-                    '( select su.first_name || $$ $$ || su.last_name'
-                    '  from screensaver_user su '
-                    '  where su.screensaver_user_id=screen.lead_screener_id )'
-                    ),
-                'lead_screener_username': literal_column(
-                    '( select su.username '
-                    '  from screensaver_user su '
-                    '  where su.screensaver_user_id=screen.lead_screener_id )'
-                    ),
-                'lab_affiliation': literal_column(
-                    '( select v.title '
-                    '  from reports_vocabularies v '
-                    '  join screensaver_user lh on(lh.lab_head_affiliation=v.key) '
-                    '  where lh.screensaver_user_id=screen.lab_head_id )'
-                    ).label('lab_affiliation'),
-                'has_screen_result': literal_column(
-                    '(select exists(select null from screen_result '
-                    '     where screen_id=screen.screen_id ) ) '
-                    ),
-                'cell_lines': (
-                    select([func.array_to_string(
-                        func.array_agg(_screen_cell_lines.c.cell_line), LIST_DELIMITER_SQL_ARRAY)])
-                        .select_from(_screen_cell_lines)
-                        .where(_screen_cell_lines.c.screen_id==literal_column('screen.screen_id'))),
-                'date_of_first_activity': literal_column(
-                    '( select date_of_activity '
-                    '  from activity '
-                    '  join lab_activity la using(activity_id) '
-                    '  where la.screen_id=screen.screen_id '
-                    '  order by date_of_activity asc LIMIT 1 )'
-                    ),
-                'date_of_last_activity': literal_column(
-                    '( select date_of_activity '
-                    '  from activity '
-                    '  join lab_activity la using(activity_id) '
-                    '  where la.screen_id=screen.screen_id '
-                    '  order by date_of_activity desc LIMIT 1 )'
-                    ),
-                # TODO: rework the update activity
-                'screenresult_last_imported':
-                    select([screen_result_update_activity.c.date_of_activity])
-                        .select_from(screen_result_update_activity)
-                        .where(screen_result_update_activity.c.screen_id==literal_column('screen.screen_id')),
-                'funding_supports':
-                    select([func.array_to_string(
-                        func.array_agg(literal_column('funding_support')
-                        ),LIST_DELIMITER_SQL_ARRAY)])
-                        .select_from(
-                            select([_sfs.c.funding_support])
-                                .select_from(_sfs)
-                                .order_by(_sfs.c.funding_support)
-                                .where(_sfs.c.screen_id==literal_column('screen.screen_id'))
-                                .alias('inner')),
-                # FIXME: use cherry_pick_liquid_transfer status vocabulary 
-                'total_plated_lab_cherry_picks': 
-                    select([tplcps.c.count]).\
-                        select_from(tplcps).\
-                        where(tplcps.c.screen_id==_screen.c.screen_id),
-                
-                # TODO: convert to vocabulary
-                'assay_readout_types': literal_column(
-                    "(select array_to_string(array_agg(f1.assay_readout_type),'%s') "
-                    '    from ( select distinct(assay_readout_type) '
-                    '        from data_column ds '
-                    '        join screen_result using(screen_result_id) '
-                    '        where screen_id=screen.screen_id ) as f1 )' 
-                    % LIST_DELIMITER_SQL_ARRAY ), 
-                'library_plates_screened': 
-                    select([lps.c.count]).\
-                        select_from(lps).where(lps.c.screen_id==_screen.c.screen_id),
-
-                'library_plates_data_loaded': 
-                    select([lpdl.c.count]).\
-                        select_from(lpdl).where(lpdl.c.screen_id==_screen.c.screen_id),
-
-                'assay_plates_screened': 
-                    select([aps.c.count]).\
-                        select_from(aps).where(aps.c.screen_id==_screen.c.screen_id),
-
-                'assay_plates_data_loaded': 
-                    select([apdl.c.count]).\
-                        select_from(apdl).where(apdl.c.screen_id==_screen.c.screen_id),
-
-                'libraries_screened_count': 
-                    select([libraries_screened.c.count]).\
-                        select_from(libraries_screened).\
-                        where(libraries_screened.c.screen_id==_screen.c.screen_id ),
-                    
-                # FIXME: use administrative activity vocabulary
-                'last_data_loading_date': literal_column(
-                    '( select activity.date_created '
-                    '  from activity '
-                    '  join administrative_activity aa using(activity_id) '
-                    '  join screen_update_activity on update_activity_id=activity_id  '
-                    "  where administrative_activity_type = 'Screen Result Data Loading' " 
-                    '  and screen_id=screen.screen_id '
-                    '  order by date_created desc limit 1 )'
-                    ),
-                'min_screened_replicate_count': 
-                    select([func.min(apsrc.c.max_per_plate)+1]).\
-                        select_from(apsrc).where(apsrc.c.screen_id==_screen.c.screen_id),
-                'max_screened_replicate_count': 
-                    select([func.max(apsrc.c.max_per_plate)+1]).\
-                        select_from(apsrc).where(apsrc.c.screen_id==_screen.c.screen_id),
-                'min_data_loaded_replicate_count': 
-                    select([func.min(apdlrc.c.max_per_plate)+1]).\
-                        select_from(apdlrc).where(apdlrc.c.screen_id==_screen.c.screen_id),
-                'max_data_loaded_replicate_count': 
-                    select([func.max(apdlrc.c.max_per_plate)+1]).\
-                        select_from(apdlrc).where(apdlrc.c.screen_id==_screen.c.screen_id),
-                'experimental_well_count': literal_column('screen_result.experimental_well_count'),                
-                'pin_transfer_approved_by_username': literal_column("'tbd'"),
-                'pin_transfer_date_approved': literal_column("'tbd'"),
-                'pin_transfer_comments': literal_column("'tbd'"),
-                'keywords': (
-                    select([func.array_to_string(func.array_agg(
-                            _screen_keyword.c.keyword),LIST_DELIMITER_SQL_ARRAY)])
-                       .select_from(_screen_keyword)
-                       .where(_screen_keyword.c.screen_id==_screen.c.screen_id)),
-            }
-            if screens_for_username:
-                custom_columns['screensaver_user_role'] = screener_role_cte.c.screensaver_user_role
-                
-            columns = self.build_sqlalchemy_columns(
-                field_hash.values(), base_query_tables=base_query_tables,
-                custom_columns=custom_columns )
-
-            # build the query statement
-
-            j = _screen
-            if screens_for_username:
-                j = j.join(
-                    screener_role_cte,
-                    screener_role_cte.c.screen_id==_screen.c.screen_id)
-
-            j = j.join(new_screen_result, 
-                _screen.c.screen_id==new_screen_result.c.screen_id)
-            stmt = select(columns.values()).select_from(j)
-
-            if screens_for_username:
-                stmt = stmt.where(
-                    screener_role_cte.c.username==screens_for_username)
-
-            # general setup
-             
-            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
-            
-            stmt = stmt.order_by('facility_id')
-            
-            title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
-                title_function = lambda key: field_hash[key]['title']
-            
-            return self.stream_response_from_statement(
-                request, stmt, count_stmt, filename, 
-                field_hash=field_hash, 
-                param_hash=param_hash,
-                is_for_detail=is_for_detail,
-                rowproxy_generator=rowproxy_generator,
-                title_function=title_function  )
-             
-        except Exception, e:
-            logger.exception('on get list')
-            raise e  
-
-
-    @classmethod
-    def get_screener_role_cte(cls):
-
-        _su = cls.bridge['screensaver_user']
-        _screen = cls.bridge['screen']
-        _screen_collab = cls.bridge['screen_collaborators']
-        collab = _su.alias('collab')
-        ls = _su.alias('ls')
-        pi = _su.alias('pi')
-        
-        j = _screen
-        j = j.join(_screen_collab, _screen_collab.c.screen_id==_screen.c.screen_id, isouter=True)
-        j = j.join(collab,collab.c.screensaver_user_id==_screen_collab.c.screensaveruser_id, isouter=True)
-        j = j.join(ls,ls.c.screensaver_user_id==_screen.c.lead_screener_id, isouter=True)
-        j = j.join(pi,pi.c.screensaver_user_id==_screen.c.lab_head_id, isouter=True)
-        
-        sa = (
-            select([
-                _screen.c.facility_id,
-                _screen.c.screen_id,
-                ls.c.username.label('lead_screener_username'),
-                pi.c.username.label('pi_username'),
-                func.array_agg(collab.c.username).label('collab_usernames')
-            ]).select_from(j)
-            .group_by(_screen.c.facility_id,_screen.c.screen_id,
-                ls.c.username,pi.c.username)
-            ).cte('screen_associates')
-        screener_roles = (
-            select([
-                _su.c.username,
-                sa.c.facility_id,
-                sa.c.screen_id,
-                case([
-                    (_su.c.username==sa.c.lead_screener_username,
-                        'lead_screener'),
-                    (_su.c.username==sa.c.pi_username,
-                        'principal_investigator')
-                    ],
-                    else_='collaborator').label('screensaver_user_role')
-                ]).select_from(sa)
-                .where(or_(
-                    # TODO: replace with "any_()" from sqlalchemy 1.1 when avail
-                    _su.c.username == text(' any(collab_usernames) '),
-                    _su.c.username == sa.c.lead_screener_username,
-                    _su.c.username == sa.c.pi_username))
-        ).cte('screener_roles')
-        return screener_roles
-    
-    def build_schema(self):
-        schema = super(ScreenResource,self).build_schema()
-
-        if 'fields' in schema and 'facility_id' in schema['fields']:
-            # TODO: cache       
-            max_facility_id_sql = '''
-                select facility_id::text, project_phase from screen 
-                where project_phase='primary_screen' 
-                order by facility_id::integer desc
-                limit 1;
-            '''
-            conn = self.bridge.get_engine().connect()
-            max_facility_id = int(conn.execute(max_facility_id_sql).scalar() or 0)
-            schema['fields']['facility_id']['default'] = max_facility_id + 1
-        
-        temp = [ x.screen_type for x in self.Meta.queryset.distinct('screen_type')]
-        schema['extraSelectorOptions'] = { 
-            'label': 'Type', 'searchColumn': 'screen_type', 'options': temp }
-        return schema
-
-    @transaction.atomic()    
-    def delete_obj(self, deserialized, **kwargs):
-        id_kwargs = self.get_id(deserialized,**kwargs)
-        Screen.objects.get(**id_kwargs).delete()
-    
-    @transaction.atomic()    
-    def patch_obj(self,deserialized, **kwargs):
-        
-        id_kwargs = self.get_id(deserialized,**kwargs)
-        
-        schema = self.build_schema()
-        fields = schema['fields']
-        try:
-            # create/update the screen
-            screen = None
-            try:
-                screen = Screen.objects.get(**id_kwargs)
-            except ObjectDoesNotExist, e:
-                logger.info('Screen %s does not exist, creating', id_kwargs)
-                screen = Screen(**id_kwargs)
-            initializer_dict = {}
-            for key in fields.keys():
-                if key in deserialized:
-                    initializer_dict[key] = parse_val(
-                        deserialized.get(key,None), key,fields[key]['data_type']) 
-            if initializer_dict:
-                logger.info('initializer dict: %s', initializer_dict)
-                for key,val in initializer_dict.items():
-                    if hasattr(screen,key):
-                        setattr(screen,key,val)
-            else:
-                logger.info('no (basic) screen fields to update %s', deserialized)
-            
-            errors = self.validate(screen)
-            if errors:
-                raise ValidationError(errors)
-            
-            screen.save()
-                    
-            logger.info('patch_obj done')
-            return screen
-            
-        except Exception, e:
-            logger.exception('on patch detail')
-            raise e  
-
 class ScreenResultResource(SqlAlchemyResource,ManagedResource):
 
     username = fields.CharField('user__username', null=False, readonly=True)
@@ -1426,6 +886,7 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
         rv_select = rv_select.label(field_name)
         return rv_select
     
+    @read_authorization
     def build_list_response(self,request, **kwargs):
         ''' 
     # store id's in a temp table version
@@ -1866,6 +1327,141 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
             _dict.update(self.data_type_lookup[dc.data_type])
         return (columnName,_dict)
 
+
+class DataColumnResource_sqlalchemy(ApiResource):
+
+    class Meta:
+        queryset = DataColumn.objects.all() #.order_by('facility_id')
+        authentication = MultiAuthentication(
+            BasicAuthentication(), SessionAuthentication())
+        authorization= UserGroupAuthorization()
+        resource_name = 'datacolumn'
+        
+        ordering = []
+        filtering = { 'screen': ALL_WITH_RELATIONS}
+        serializer = LimsSerializer()
+        metahashResource = MetaHashResource()
+
+    def __init__(self, **kwargs):
+        super(DataColumnResource,self).__init__(**kwargs)
+
+    def prepend_urls(self):
+
+        return [
+            # override the parent "base_urls" so that schema is matched first
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+            
+            
+            url((r"^(?P<resource_name>%s)/"
+                 r"(?P<data_column_id>\d+)%s$") 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ]    
+
+    def get_detail(self, request, **kwargs):
+        logger.info(str(('get_detail')))
+
+        data_column_id = kwargs.get('data_column_id', None)
+        if not data_column_id:
+            logger.info(str(('no data_column_id provided')))
+            raise NotImplementedError('must provide a data_column_id parameter')
+        
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+        kwargs['is_for_detail']=True
+        return self.build_list_response(request, **kwargs)
+        
+    @read_authorization
+    def get_list(self,request,**kwargs):
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+
+        return self.build_list_response(request, **kwargs)
+
+    @read_authorization
+    def build_list_response(self,request, **kwargs):
+        ''' 
+        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
+        @returns django.http.response.StreamingHttpResponse 
+        '''
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
+        is_for_detail = kwargs.pop('is_for_detail', False)
+             
+        schema = super(DataColumnResource,self).build_schema()
+
+        filename = self._get_filename(schema, kwargs)
+        
+        try:
+            # general setup
+          
+            manual_field_includes = set(param_hash.get('includes', []))
+            if DEBUG_GET_LIST: 
+                logger.info(str(('manual_field_includes', manual_field_includes)))
+  
+            (filter_expression, filter_fields) = \
+                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+
+            field_hash = self.get_visible_fields(
+                schema['fields'], filter_fields, manual_field_includes, 
+                param_hash.get('visibilities'), 
+                exact_fields=set(param_hash.get('exact_fields',[])))
+              
+            order_params = param_hash.get('order_by',[])
+            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
+             
+            rowproxy_generator = None
+            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
+                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+ 
+            # specific setup 
+            base_query_tables = [
+                'data_column', 'screen']
+            
+            custom_columns = {
+            }
+            
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                custom_columns=custom_columns )
+
+            # build the query statement
+
+            _dc = self.bridge['data_column']
+            _sr = self.bridge['screen_result']
+            _screen = self.bridge['screen']
+            
+            j = _dc
+            j = j.join(_sr, _dc.c.screen_result_id == _sr.c.screen_result_id )
+            j = j.join(_screen, _sr.c.screen_id == _screen.c.screen_id )
+            stmt = select(columns.values()).select_from(j)
+
+            # general setup
+             
+            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+            
+            title_function = None
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                title_function = lambda key: field_hash[key]['title']
+            
+            return self.stream_response_from_statement(
+                request, stmt, count_stmt, filename, 
+                field_hash=field_hash, 
+                param_hash=param_hash,
+                is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function  )
+             
+        except Exception, e:
+            logger.exception('on get list')
+            raise e  
+
+
 class DataColumnResource(ManagedModelResource):
     '''
     A DataColumn is the metadata for a single column in a Screen result set.
@@ -1892,7 +1488,6 @@ class DataColumnResource(ManagedModelResource):
         metahashResource = MetaHashResource()
 
     def __init__(self, **kwargs):
-#        self.
         super(DataColumnResource,self).__init__(**kwargs)
 
     def build_schema(self):
@@ -1945,8 +1540,6 @@ class DataColumnResource(ManagedModelResource):
         _dict = bundle.data
         _dict.update(field_defaults)
         columnName = "dc_%s" % (default_converter(dc.name))
-        #         _dict = field_defaults.copy()
-        #         _dict.update(model_to_dict(dc))
         
         _dict['title'] = dc.name
         _dict['comment'] = dc.comments
@@ -1980,13 +1573,6 @@ class DataColumnResource(ManagedModelResource):
                  r"(?P<data_column_id>\d+)%s$") 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            
-            # TODO: implement a natural key for datacolumns
-            #url((r"^(?P<resource_name>%s)/"
-            #     r"(?P<screen_facility_id>\w+)/"
-            #     r"(?P<key>[\w_]+)%s$") 
-            #        % (self._meta.resource_name, trailing_slash()), 
-            #    self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]    
     
 
@@ -2060,7 +1646,7 @@ class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
 
         return self.build_list_response(request, **kwargs)
 
-        
+    @read_authorization
     def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
@@ -2262,7 +1848,7 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
 
         return self.build_list_response(request, **kwargs)
 
-        
+    @read_authorization
     def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
@@ -2428,7 +2014,7 @@ class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):
 
         return self.build_list_response(request, **kwargs)
 
-        
+    @read_authorization
     def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
@@ -2474,7 +2060,14 @@ class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):
                 rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
-            base_query_tables = ['cherry_pick_request']
+            base_query_tables = ['cherry_pick_request','screen']
+            _cpr = self.bridge['cherry_pick_request']
+            _screen = self.bridge['screen']
+            _su = self.bridge['screensaver_user']
+            _lhsu = _su.alias('lhsu')
+            _user_cte = ScreensaverUserResource.get_user_cte().cte('users_cpr')
+            affiliation_table = ScreensaverUserResource.get_lab_affiliation_cte()
+            affiliation_table = affiliation_table.cte('la')
             
             custom_columns = {
                 'screen_facility_id': literal_column(
@@ -2486,28 +2079,28 @@ class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):
                     '  from screensaver_user su '
                     '  where su.screensaver_user_id=cherry_pick_request.requested_by_id )'
                     ).label('requested_by_name'),
-                'lab_head_name': literal_column(
-                    '( select su.first_name || $$ $$ || su.last_name'
-                    '  from screensaver_user su '
-                    '  join screen s on(lab_head_id=su.screensaver_user_id) '
-                    '  where s.screen_id=cherry_pick_request.screen_id )'
-                    ).label('lab_head_name'),
-                'lab_head_id': literal_column(
-                    '( select s.lab_head_id'
-                    '  from screen s  '
-                    '  where s.screen_id=cherry_pick_request.screen_id )'
-                    ).label('lab_head_id'),
+                'lab_name':
+                    ( select([concat(_lhsu.c.last_name,', ',_lhsu.c.first_name,' - ',
+                             affiliation_table.c.title, 
+                             ' (',affiliation_table.c.category,')')])
+                        .select_from(
+                            _lhsu.join(affiliation_table,
+                                affiliation_table.c.affiliation_name==_lhsu.c.lab_head_affiliation))
+                        .where(_lhsu.c.screensaver_user_id==_screen.c.lab_head_id)),
+                'lab_head_username':
+                    ( select([_lhsu.c.username])
+                        .select_from(_lhsu)
+                        .where(_lhsu.c.screensaver_user_id==_screen.c.lab_head_id)),
                 'lead_screener_name': literal_column(
                     '( select su.first_name || $$ $$ || su.last_name'
                     '  from screensaver_user su '
-                    '  join screen s on(lead_screener_id=su.screensaver_user_id) '
-                    '  where s.screen_id=cherry_pick_request.screen_id )'
-                    ).label('lead_screener_name'),
-                'lead_screener_id': literal_column(
-                    '( select s.lead_screener_id'
-                    '  from screen s '
-                    '  where s.screen_id=cherry_pick_request.screen_id )'
-                    ).label('lead_screener_id'),
+                    '  where su.screensaver_user_id=screen.lead_screener_id )'
+                    ),
+                'lead_screener_username': literal_column(
+                    '( select su.username '
+                    '  from screensaver_user su '
+                    '  where su.screensaver_user_id=screen.lead_screener_id )'
+                    ),
                 'screen_type': literal_column(
                     '( select s.screen_type'
                     '  from screen s  '
@@ -2559,14 +2152,14 @@ class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):
                 custom_columns=custom_columns )
 
             # build the query statement
-            _cpr = self.bridge['cherry_pick_request']
             _count_lcp_stmt = text(
                 '( select cherry_pick_request_id, count(*) '
                 ' from lab_cherry_pick '
                 ' group by cherry_pick_request_id '
                 ' order by cherry_pick_request_id ) as lcp ' )
 #             _count_lcp_stmt = _count_lcp_stmt.alias('lcp') 
-            j = join(_cpr,_count_lcp_stmt, 
+            j = join(_cpr,_screen,_cpr.c.screen_id==_screen.c.screen_id)
+            j = j.join(_count_lcp_stmt, 
                 _cpr.c.cherry_pick_request_id == literal_column('lcp.cherry_pick_request_id'), 
                 isouter=True)
             stmt = select(columns.values()).select_from(j)
@@ -2660,7 +2253,7 @@ class CherryPickPlateResource(SqlAlchemyResource,ManagedModelResource):
 
         return self.build_list_response(request, **kwargs)
 
-        
+    @read_authorization
     def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
@@ -2906,7 +2499,7 @@ class LibraryCopyResource(SqlAlchemyResource, ManagedModelResource):
 
         return self.build_list_response(request, **kwargs)
 
-        
+    @read_authorization
     def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
@@ -3403,7 +2996,7 @@ class AttachedFileResource(ApiResource):
 
         return self.build_list_response(request, **kwargs)
 
-        
+    @read_authorization
     def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
@@ -3506,9 +3099,965 @@ class AttachedFileResource(ApiResource):
             logger.exception('on get_list %s' % self._meta.resource_name)
             raise e  
 
+# 
+# select
+# a.activity_id,
+# (
+# CASE WHEN (select activity_id from library_screening ls where ls.activity_id = a.activity_id) is not null THEN (
+#    CASE WHEN (select is_for_external_library_plates from library_screening ls where ls.activity_id=a.activity_id) is true THEN 'External Library Screening' ELSE 'Library Screening' END )
+#      WHEN (select activity_id from cherry_pick_screening cs where cs.activity_id = a.activity_id ) is not null THEN 'Cherry Pick Screening'
+#      WHEN (select activity_id from cherry_pick_liquid_transfer cplt where cplt.activity_id = a.activity_id ) is not null THEN 'Cherry Pick Liquid Transfer'
+# else 'unknown_activity_type_tell_sean'
+# END 
+# ) activity_type,
+# a.date_of_activity date_performed,
+# a.date_created date_recorded,
+# (select first_name || ' ' || last_name from screensaver_user su where su.screensaver_user_id = a.performed_by_id) performed_by,
+# s.facility_id,
+# screen_type,
+# lab.last_name || ', ' || lab.first_name as lab_head,
+# '' as serviced_user,
+# la.affiliation_name as lab_affiliation,
+# min(fs.value) as funding_support,
+# si.status as status,
+# (select min(date_of_activity) from activity a join lab_activity la using(activity_id) where la.screen_id = s.screen_id) date_of_first_activity,
+# (select max(date_of_activity) from activity a join lab_activity la using(activity_id) where la.screen_id = s.screen_id) date_of_last_activity,
+# regexp_replace(a.comments, E'[\\s]+', ' ','g') as comments
+# from activity a
+# join lab_activity lac using(activity_id)
+# join screen s using(screen_id)
+# left join screensaver_user lab on(s.lab_head_id = lab.screensaver_user_id)
+# left join lab_head lab2 on(lab.screensaver_user_id = lab2.screensaver_user_id)
+# left join lab_affiliation la on(lab2.lab_affiliation_id = la.lab_affiliation_id)
+# left join screen_funding_support_link fsl on(s.screen_id = fsl.screen_id)
+# left join funding_support fs on(fs.funding_support_id = fsl.funding_support_id)
+# left join screen_status_item si on(si.screen_id = s.screen_id)
+# left join screen_result sr on(sr.screen_id = s.screen_id)
+# where (si.status is null or si.status_date = (select max(status_date) from screen_status_item si1 where si1.screen_id = s.screen_id)) /*can result in > 1 row per screen, if 2 statuses have same max date*/
+# group by s.facility_id,s.screen_id, screen_type, lab_head, s.date_created, si.status, si.status_date, sr.date_created, 
+# a.activity_id, a.date_of_activity, a.date_created, a.performed_by_id, la.affiliation_name, a.comments
+#  UNION ALL
+# select
+# a.activity_id,
+# sa.service_activity_type as activity_type,
+# a.date_of_activity date_performed,
+# a.date_created date_recorded,
+# (select first_name || ' ' || last_name from screensaver_user su where su.screensaver_user_id = a.performed_by_id) performed_by,
+# s.facility_id,
+# screen_type,
+# ( CASE WHEN (select screensaver_user_id from lab_head lh where lh.screensaver_user_id = sa.serviced_user_id) is not null  THEN (
+#     ( select lh.last_name || ', ' || lh.first_name
+#         from lab_head lab join screensaver_user lh on lab.screensaver_user_id=lh.screensaver_user_id where lab.screensaver_user_id = sa.serviced_user_id ))
+#     ELSE ( select lh.last_name || ', ' || lh.first_name 
+#         from screening_room_user sru 
+#         join screensaver_user lh on sru.lab_head_id=lh.screensaver_user_id 
+#         where sru.screensaver_user_id = sa.serviced_user_id )
+# END ) as lab_head,
+# serviced.last_name || ', ' || serviced.first_name as serviced_user,
+# ( CASE WHEN (select screensaver_user_id from lab_head lh where lh.screensaver_user_id = sa.serviced_user_id) is not null  THEN (
+#      ( select la.affiliation_name
+#         from lab_head lab join lab_affiliation la using(lab_affiliation_id) where lab.screensaver_user_id = sa.serviced_user_id ))
+#        ELSE ( select la.affiliation_name from screening_room_user sru 
+#         join lab_head lh on sru.lab_head_id=lh.screensaver_user_id
+#         join lab_affiliation la using(lab_affiliation_id) 
+#         where sru.screensaver_user_id = sa.serviced_user_id )
+# END ) as lab_affiliation,
+# min(fs.value) as funding_support,
+# si.status as status,
+# (select min(date_of_activity) from activity a join lab_activity la using(activity_id) where la.screen_id = s.screen_id) date_of_first_activity,
+# (select max(date_of_activity) from activity a join lab_activity la using(activity_id) where la.screen_id = s.screen_id) date_of_last_activity,
+# regexp_replace(a.comments, E'[\\s]+', ' ','g') as comments
+# from activity a
+# join service_activity sa using(activity_id)
+# left join screen s on(serviced_screen_id=screen_id)
+# left join screensaver_user serviced on (serviced.screensaver_user_id=sa.serviced_user_id)
+# left join funding_support fs on(fs.funding_support_id = sa.funding_support_id)
+# left join screen_status_item si on(si.screen_id = s.screen_id)
+# left join screen_result sr on(sr.screen_id = s.screen_id)
+# where (si.status is null or si.status_date = (select max(status_date) from screen_status_item si1 where si1.screen_id = s.screen_id)) /*can result in > 1 row per screen, if 2 statuses have same max date*/
+# group by s.facility_id,s.screen_id, screen_type, lab_head, s.date_created, si.status, si.status_date, sr.date_created, 
+# a.activity_id, a.date_of_activity, a.date_created, a.performed_by_id,serviced_user, sa.serviced_user_id, sa.service_activity_type, a.comments
+# order by facility_id, activity_id
+
+class ActivityResource(ApiResource):
+    '''
+    Activity Resource is a combination of the LabActivity and the ServiceActivity
+    '''
+
+    class Meta:
+
+        queryset = Activity.objects.all() #.order_by('facility_id')
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= UserGroupAuthorization()
+        resource_name = 'activity'
+        serializer = LimsSerializer()
+        ordering = []
+        filtering = {}
+        always_return_data = True 
+        
+    def __init__(self, **kwargs):
+        self.service_activity_resource = None
+        self.screen_resource = None
+        super(ActivityResource,self).__init__(**kwargs)
+
+    def prepend_urls(self):
+        # Note: because this prepends the other list, we have to make sure 
+        # "schema" is matched
+        
+        return [
+            # override the parent "base_urls" so that we don't need to worry about schema again
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+
+            url(r"^(?P<resource_name>%s)"
+                r"/(?P<activity_id>[\d]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ]
+
+    def get_service_activity_resource(self):
+        if not self.service_activity_resource:
+            self.service_activity_resource = ServiceActivityResource()
+        return self.service_activity_resource
+
+    def get_screen_resource(self):
+        if not self.screen_resource:
+            self.screen_resource = ScreenResource()
+        return self.screen_resource
+
+    def build_schema(self):
+         
+        # mix screen fields in
+        # turn off edit/view on all screen fields
+        schema = super(ActivityResource,self).build_schema()
+        screen_schema = self.get_screen_resource().build_schema();
+        # TODO: store screen fields available to activity view in meta data
+        SCREEN_FIELDS_INCLUDED_IN_ACTIVITY = [
+            'screen_type','project_id','project_phase','title',
+            'lab_name','lab_head_username','lab_affiliation',
+            'lead_screener_username','lead_screener_name',
+            'funding_supports','comments','status','status_date',
+            'date_of_first_activity','date_of_last_activity','has_screen_result']
+        _fields = {key:field for key,field in screen_schema['fields'].items()
+            if key in SCREEN_FIELDS_INCLUDED_IN_ACTIVITY }
+        _fields.update(schema['fields'])
+        for key,field in _fields.items():
+            # final *visible* fields are lcd of the subqueries
+            if key not in schema['fields']:
+                field['visibility'] = []
+                 
+        schema['fields'] = _fields
+        logger.info('final activity fields: %r',schema['fields'].keys())
+         
+        return schema
+
+    def get_detail(self, request, **kwargs):
+        logger.info(str(('get_detail')))
+ 
+        activity_id = kwargs.pop('activity_id', None)
+        if not activity_id:
+            logger.info(str(('no activity_id provided', kwargs)))
+            raise NotImplementedError('must provide an activity_id parameter')
+        else:
+            kwargs['activity_id__eq'] = activity_id
+ 
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+        kwargs['is_for_detail']=True
+        return self.build_list_response(request, **kwargs)
+        
+    def get_list(self,request,**kwargs):
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+
+        return self.build_list_response(request, **kwargs)
+
+    def get_custom_columns(self, alias_qualifier):
+        '''
+        Convenience method for subclasses: reusable custom columns
+        @param alias_qualifier a sql compatible string used to name subqueries
+            so that this method may be called multiple times to compose a query
+        '''
+        _user_cte = ScreensaverUserResource.get_user_cte().cte('users_%s' % alias_qualifier)
+        _performed_by = _user_cte.alias('performed_by_%s' % alias_qualifier)
+        _performed_by1 = _user_cte.alias('performed_by1_%s' % alias_qualifier)
+        _activity = self.bridge['activity']
+        
+        return {
+            'performed_by_name': (
+                select([_performed_by1.c.name])
+                    .select_from(_performed_by1)
+                    .where(_performed_by1.c.screensaver_user_id==_activity.c.performed_by_id)
+                ),
+            'performed_by_username': (
+                select([_performed_by.c.username])
+                    .select_from(_performed_by)
+                    .where(_performed_by.c.screensaver_user_id==_activity.c.performed_by_id)
+                ),
+        }
+
+    def get_query(self, param_hash):
+        '''
+        ActivityResource
+        Convenience method for super classes:
+        - create the query used for this resource so that it can be reused
+        '''
+        
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        # general setup
+        schema = self.build_schema()
+        
+        manual_field_includes = set(param_hash.get('includes', []))
+        # for join to screen query (TODO: only include if screen fields rqst'd)
+        manual_field_includes.add('screen_id')
+        
+        if DEBUG_GET_LIST: 
+            logger.info('manual_field_includes: %r', manual_field_includes)
+        
+        (filter_expression, filter_fields) = \
+            SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+              
+        field_hash = self.get_visible_fields(
+            schema['fields'], filter_fields, manual_field_includes, 
+            param_hash.get('visibilities'), 
+            exact_fields=set(param_hash.get('exact_fields',[])))
+          
+        order_params = param_hash.get('order_by',[])
+        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+            order_params, field_hash)
+
+        # specific setup
+
+        # Create a UNION query of each subclass query:
+        (field_hash_sa,columns_sa,stmt_sa,count_stmt_sa) = ( 
+            self.get_service_activity_resource().get_query(param_hash))
+        # if a field is not present in the subquery, create an empty field            
+        sa_columns = []
+        for key in field_hash.keys():
+            if key not in columns_sa:
+                sa_columns.append(literal_column("null").label(key))
+            else:
+                sa_columns.append(literal_column(key))
+        stmt1 = select(sa_columns).select_from(Alias(stmt_sa))
+
+        (field_hash_la,columns_la,stmt_la,count_stmt_la) = (
+            self.get_lab_activity_query(param_hash))
+        # if a field is not present in the subquery, create an empty field            
+        la_columns = []
+        for key in field_hash.keys():
+            if key not in columns_la:
+                logger.info(
+                    'programming error: get_lab_activity_query is missing the col: %r',key)
+                la_columns.append(literal_column("null").label(key))
+            else:
+                la_columns.append(literal_column(key))
+        stmt2 = select(la_columns).select_from(Alias(stmt_la))
+
+        stmt = stmt1.union_all(stmt2)
+        stmt = Alias(stmt,'activity_query')
+        compiled_stmt = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+        logger.info('compiled_stmt %s',compiled_stmt)
+        
+        # if any of the screen fields are visible, then join the screen query
+        temp = [ key for key,val in field_hash.items() if val['scope'] == 'fields.screen']
+        if temp:
+            logger.info('screen fields to include: %r', temp)
+            (field_hash_s,columns_s,stmt_s,count_stmt_s) = (
+                self.get_screen_resource().get_query(param_hash))
+            stmt_s = select(columns_s).select_from(Alias(stmt_s))
+            stmt_s = stmt_s.cte('screen_query1')
+            stmt_s = stmt_s.alias('screen_query')
+            
+            compiled_stmt = str(stmt_s.compile(compile_kwargs={"literal_binds": True}))
+            logger.info('compiled_stmt %s',compiled_stmt)
+            
+            j = stmt.join(stmt_s,
+                _Cast(stmt.c.screen_id,Numeric)==_Cast(stmt_s.c.screen_id,Numeric),
+                isouter=True)
+            stmt = ( select([text('*')]).select_from(j))
+            if DEBUG_GET_LIST: 
+                compiled_stmt = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+                logger.info('compiled_stmt %s',compiled_stmt)
+            
+        
+        (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+
+        columns = { key:literal_column(key) for key in field_hash.keys()}
+        
+        return (field_hash,columns,stmt,count_stmt)
+    
+    def get_custom_lab_activity_columns(self, alias_qualifier):
+        _su = self.bridge['screensaver_user']
+        _lhsu = _su.alias('lhsu_la')
+        affiliation_table = ScreensaverUserResource.get_lab_affiliation_cte()
+        affiliation_table = affiliation_table.cte('affiliation_%s' % alias_qualifier)
+        _library_screening = self.bridge['library_screening']
+        _cps = self.bridge['cherry_pick_screening']
+        _screen = self.bridge['screen']
+        _sfs = self.bridge['screen_funding_supports']
+        activity_type_column = case([
+            (_library_screening.c.activity_id!=None,
+               case([(
+                   _library_screening.c.is_for_external_library_plates,
+                        'library_screening')],
+                        else_='external_library_screening')),
+            (_cps.c.activity_id!=None,
+                'cherry_pick_screening')
+            ],
+            else_='cherry_pick_liquid_transfer')
+
+        return { 
+            'type': activity_type_column,
+            'activity_class': activity_type_column,
+            'lab_name':
+                ( select([func.array_to_string(array(
+                        [_lhsu.c.last_name,', ',_lhsu.c.first_name,' - ',
+                         affiliation_table.c.title, 
+                         ' (',affiliation_table.c.category,')']),'')])
+                    .select_from(
+                        _lhsu.join(affiliation_table,
+                            affiliation_table.c.affiliation_name==_lhsu.c.lab_head_affiliation))
+                    .where(_lhsu.c.screensaver_user_id==_screen.c.lab_head_id)),
+            'lab_head_username':
+                ( select([_lhsu.c.username])
+                    .select_from(_lhsu)
+                    .where(_lhsu.c.screensaver_user_id==_screen.c.lab_head_id)),
+            'funding_supports':
+                select([func.array_to_string(
+                    func.array_agg(literal_column('funding_support')
+                    ),LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(
+                        select([_sfs.c.funding_support])
+                            .select_from(_sfs)
+                            .order_by(_sfs.c.funding_support)
+                            .where(_sfs.c.screen_id==literal_column('screen.screen_id'))
+                            .alias('inner')),
+            'screen_id': _screen.c.screen_id,
+            }
+        
+    def get_lab_activity_query(self, param_hash):
+        ''' 
+        '''
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        # general setup
+        schema = self.build_schema()
+        
+        manual_field_includes = set(param_hash.get('includes', []))
+        # for join to screen query (TODO: only include if screen fields rqst'd)
+        manual_field_includes.add('screen_id')
+        
+        if DEBUG_GET_LIST: 
+            logger.info('manual_field_includes: %r', manual_field_includes)
+        
+        (filter_expression, filter_fields) = \
+            SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+              
+        field_hash = self.get_visible_fields(
+            schema['fields'], filter_fields, manual_field_includes, 
+            param_hash.get('visibilities'), 
+            exact_fields=set(param_hash.get('exact_fields',[])))
+
+        field_hash = { key:val for key,val in field_hash.items() 
+            if val['scope']=='fields.activity'}  
+        
+        order_params = param_hash.get('order_by',[])
+        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+            order_params, field_hash)
+         
+        # specific setup
+        _sfs = self.bridge['screen_funding_supports']
+        _a = self.bridge['activity']
+        _la = self.bridge['lab_activity']
+        _screening = self.bridge['screening']
+        _cplt = self.bridge['cherry_pick_liquid_transfer']
+        _screen = self.bridge['screen']
+
+        j = _a
+        j = j.join(_la, _a.c.activity_id==_la.c.activity_id )
+        j = j.join(_screen, _la.c.screen_id==_screen.c.screen_id)
+
+        # TODO: delegate to sub_classes (when built)
+        _library_screening = self.bridge['library_screening']
+        _cps = self.bridge['cherry_pick_screening']
+#         j = j.join(_screening, _screening.c.activity_id==_la.c.activity_id, isouter=True )
+#         j = j.join(_cplt, _cplt.c.activity_id==_la.c.activity_id, isouter=True )
+        j = j.join(_library_screening, _la.c.activity_id==_library_screening.c.activity_id, isouter=True)
+        j = j.join(_cps, _la.c.activity_id==_cps.c.activity_id, isouter=True)
+                
+        custom_columns = self.get_custom_lab_activity_columns('lab_activity')
+        custom_columns.update(self.get_custom_columns('la'))
+        
+        base_query_tables = ['activity', 'lab_activity', 'screening', 'screen'] 
+        columns = self.build_sqlalchemy_columns(
+            field_hash.values(), base_query_tables=base_query_tables,
+            custom_columns=custom_columns )
+        
+        stmt = select(columns.values()).select_from(j)
+        compiled_stmt = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+        logger.info('compiled_stmt %s',compiled_stmt)
+        # general setup
+         
+        (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+        
+        return (field_hash,columns,stmt,count_stmt)
+
+    @read_authorization
+    def build_list_response(self,request, **kwargs):
+        ''' 
+        NOTE: inherited by sub-classes
+        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
+        @returns django.http.response.StreamingHttpResponse 
+        '''
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
+        is_for_detail = kwargs.pop('is_for_detail', False)
+
+        schema = self.build_schema()
+
+        filename = self._get_filename(schema, kwargs)
+        
+        try:
+            (field_hash,columns,stmt,count_stmt) = self.get_query(param_hash)
+            
+            rowproxy_generator = None
+            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
+                rowproxy_generator = \
+                    IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+
+            title_function = None
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                title_function = lambda key: field_hash[key]['title']
+            
+            return self.stream_response_from_statement(
+                request, stmt, count_stmt, filename, 
+                field_hash=field_hash, 
+                param_hash=param_hash,
+                is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function  )
+             
+        except Exception, e:
+            logger.exception('on get list')
+            raise e  
 
 
-class ServiceActivityResource(ApiResource):    
+# class LabActivityResource(ActivityResource):
+#     '''
+#     Abstract resource to compose the activity resource query
+#     - implement separately - 
+#         types: LibraryScreening, CherryPickScreening, CherryPickLiquidTransfer
+#     '''    
+# 
+#     class Meta:
+#         queryset = LabActivity.objects.all()
+#         authentication = MultiAuthentication(BasicAuthentication(), 
+#                                              SessionAuthentication())
+#         authorization= UserGroupAuthorization()
+#         ordering = []
+#         filtering = {}
+#         serializer = LimsSerializer()
+#         resource_name = 'labactivity'
+#         
+#         max_limit = 10000
+#         always_return_data = True
+# 
+#     def __init__(self, **kwargs):
+#         self.cplt_resource = None
+#         self.screening_resource = None
+#         super(LabActivityResource,self).__init__(**kwargs)
+# 
+#     def get_cplt_resource(self):
+#         if not self.cplt_resource:
+#             self.cplt_resource = CherryPickLiquidTransferResource()
+#         return self.cplt_resource
+# 
+#     def get_screening_resource(self):
+#         if not self.screening_resource:
+#             self.screening_resource = ScreeningResource()
+#         return self.screening_resource
+# 
+#     def prepend_urls(self):
+#         return [
+#             # override the parent "base_urls" so that we don't need to worry 
+#             # about schema again
+#             url(r"^(?P<resource_name>%s)/schema%s$" 
+#                 % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('get_schema'), name="api_get_schema"),
+#             url((r"^(?P<resource_name>%s)/" 
+#                  r"(?P<activity_id>([\d]+))%s$" )
+#                     % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+#         ]    
+# 
+#     def build_schema(self):
+#         
+#         # combine subtype fields into supertype:
+#         # supertype fields overwrite subtype fields
+#         # assign scope as "supertype scope" ("fields.activity")
+#         # turn off edit/view on all subtype fields
+#         schema = super(ActivityResource,self).build_schema()
+#         cplt_schema = self.get_cplt_resource().build_schema();
+#         screening_schema = self.get_screening_resource().build_schema();
+#         _fields = {}
+#         _fields.update(cplt_schema['fields'])        
+#         _fields.update(screening_schema['fields'])
+#         _fields.update(schema['fields'])
+#         for key,field in _fields.items():
+#             # final *visible* fields are lcd of the subqueries
+#             if key not in schema['fields']:
+#                 field['scope'] = 'fields.activity'
+#                 field['visibility'] = []
+#                 
+#         schema['fields'] = _fields
+#         logger.info('final lab activity fields: %r',schema['fields'].keys())
+#         
+#         return schema
+#         
+#     def get_custom_columns(self, alias_qualifier):
+#         '''
+#         LabActivityResource
+#         Convenience method for subclasses: reusable custom columns
+#         @param alias_qualifier a sql compatible string used to name subqueries
+#             so that this method may be called multiple times to compose a query
+#         '''
+#         _su = self.bridge['screensaver_user']
+#         _lhsu = _su.alias('lhsu_la')
+#         affiliation_table = ScreensaverUserResource.get_lab_affiliation_cte()
+#         affiliation_table = affiliation_table.cte('la_%s' % alias_qualifier)
+#         _sfs = self.bridge['screen_funding_supports']
+#         # NOTE: * these custom columns req screen to be joined to the main query *
+#         _screen = self.bridge['screen']
+#         ccs = super(LabActivityResource,self).get_custom_columns(alias_qualifier)
+#         ccs.update({
+#             'lab_name':
+#                 ( select([func.array_to_string(array(
+#                         [_lhsu.c.last_name,', ',_lhsu.c.first_name,' - ',
+#                          affiliation_table.c.title, 
+#                          ' (',affiliation_table.c.category,')']),'')])
+#                     .select_from(
+#                         _lhsu.join(affiliation_table,
+#                             affiliation_table.c.affiliation_name==_lhsu.c.lab_head_affiliation))
+#                     .where(_lhsu.c.screensaver_user_id==_screen.c.lab_head_id)),
+#             'lab_head_username':
+#                 ( select([_lhsu.c.username])
+#                     .select_from(_lhsu)
+#                     .where(_lhsu.c.screensaver_user_id==_screen.c.lab_head_id)),
+#             'funding_supports':
+#                 select([func.array_to_string(
+#                     func.array_agg(literal_column('funding_support')
+#                     ),LIST_DELIMITER_SQL_ARRAY)])
+#                     .select_from(
+#                         select([_sfs.c.funding_support])
+#                             .select_from(_sfs)
+#                             .order_by(_sfs.c.funding_support)
+#                             .where(_sfs.c.screen_id==literal_column('screen.screen_id'))
+#                             .alias('inner')),
+#         })
+#         return ccs
+#     
+#     def get_query(self, param_hash):
+#         '''
+#         LabActivityResource
+#         Convenience method for super classes:
+#         - create the query used for this resource so that it can be reused
+#         '''
+#         
+#         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+# 
+#         # general setup
+#         schema = self.build_schema()
+#         
+#         manual_field_includes = set(param_hash.get('includes', []))
+#         
+#         if DEBUG_GET_LIST: 
+#             logger.info('manual_field_includes: %r', manual_field_includes)
+#         
+#         (filter_expression, filter_fields) = \
+#             SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+#               
+#         field_hash = self.get_visible_fields(
+#             schema['fields'], filter_fields, manual_field_includes, 
+#             param_hash.get('visibilities'), 
+#             exact_fields=set(param_hash.get('exact_fields',[])))
+#           
+#         order_params = param_hash.get('order_by',[])
+#         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+#             order_params, field_hash)
+#          
+#         # specific setup
+# 
+#         # Create a UNION query of each subclass query:
+#         # if a field is not present in the subquery, create an empty field            
+#         (field_hash_cplt,columns_cplt,stmt_cplt,count_stmt_cplt) = ( 
+#             self.get_cplt_resource().get_query(param_hash))
+#         sa_columns = []
+#         for key in field_hash.keys():
+#             if key not in columns_cplt:
+#                 sa_columns.append(literal_column("null"))
+#             else:
+#                 sa_columns.append(literal_column(key))
+#         _alias = Alias(stmt_cplt)
+#         stmt1 = select(sa_columns).select_from(_alias) #.cte('service_activity')
+# 
+#         (field_hash_screening,columns_screening,stmt_screening,count_stmt_screening) = ( 
+#             self.get_screening_resource().get_query(param_hash))
+#         la_columns = []
+#         for key in field_hash.keys():
+#             if key not in columns_screening:
+#                 la_columns.append(literal_column("null"))
+#             else:
+#                 la_columns.append(literal_column(key))
+#         _alias2 = Alias(stmt_screening)
+#         stmt2 = select(la_columns).select_from(_alias2) # .cte('lab_activity')
+#         
+#         stmt = stmt1.union_all(stmt2)
+#         
+#         (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+#         
+#         columns = {key:literal_column(key) for key in field_hash.keys()}
+#         
+#         return (field_hash,columns,stmt,count_stmt)
+# 
+#     @read_authorization
+#     def build_list_response(self,request, **kwargs):
+#         ''' 
+#         LabActivityResource
+#         '''
+#         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+#  
+#         param_hash = {}
+#         param_hash.update(kwargs)
+#         param_hash.update(self._convert_request_to_dict(request))
+#          
+#         is_for_detail = kwargs.pop('is_for_detail', False)
+#  
+#         schema = self.build_schema()
+#  
+#         filename = self._get_filename(schema, kwargs)
+#          
+#         try:
+#             (field_hash,columns,stmt,count_stmt) = self.get_query(param_hash)
+#              
+#             rowproxy_generator = None
+#             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
+#                 rowproxy_generator = IccblBaseResource.\
+#                     create_vocabulary_rowproxy_generator(field_hash)
+#   
+#             title_function = None
+#             if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+#                 title_function = lambda key: field_hash[key]['title']
+#              
+#             return self.stream_response_from_statement(
+#                 request, stmt, count_stmt, filename, 
+#                 field_hash=field_hash, 
+#                 param_hash=param_hash,
+#                 is_for_detail=is_for_detail,
+#                 rowproxy_generator=rowproxy_generator,
+#                 title_function=title_function  )
+#               
+#         except Exception, e:
+#             logger.exception('on get list')
+#             raise e  
+
+
+class CherryPickLiquidTransferResource(ActivityResource):
+
+    class Meta:
+        queryset = Screening.objects.all()
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= UserGroupAuthorization()
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+        resource_name = 'cherrypickliquidtransfer'
+        
+        max_limit = 10000
+        always_return_data = True
+
+    def __init__(self, **kwargs):
+        super(CherryPickLiquidTransferResource,self).__init__(**kwargs)
+
+    def prepend_urls(self):
+        return [
+            # override the parent "base_urls" so that we don't need to worry 
+            # about schema again
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+            url((r"^(?P<resource_name>%s)/" 
+                 r"(?P<activity_id>([\d]+))%s$" )
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ]    
+    
+    def build_schema(self):
+        # option 1: inherit LabActivity/Activity fields manually
+        # - problem: causes circular dependency since superclasses call build_schema
+        # option 2: encode inheritance in object hierarchy, call super.build_schema
+        # - problem: TP is not set up for inheritance and we will have 
+        # to override tastypie signature + circular dependencies
+        # option 3 *chosen: ignore ORM inheritance and use our extended framework 
+        # via ManagedResource.build_schema that looks at the "supertype" property
+        # and constructs the supertype fields recursively
+         
+        return ApiResource.build_schema(self)
+
+    def get_custom_columns(self, alias_qualifier):
+        '''
+        Convenience method for subclasses: reusable custom columns
+        @param alias_qualifier a sql compatible string used to name subqueries
+            so that this method may be called multiple times to compose a query
+        '''
+        ccs = super(CherryPickLiquidTransferResource,self).get_custom_columns(alias_qualifier)
+        ccs.update({
+        })
+        return ccs
+
+    def get_query(self, param_hash):
+        ''' CPLT
+        Convenience method for super classes:
+        - create the query used for this resource so that it can be reused
+        '''
+        
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        # general setup
+        schema = self.build_schema()
+        
+        manual_field_includes = set(param_hash.get('includes', []))
+        
+        if DEBUG_GET_LIST: 
+            logger.info('manual_field_includes: %r', manual_field_includes)
+        
+        (filter_expression, filter_fields) = \
+            SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+              
+        field_hash = self.get_visible_fields(
+            schema['fields'], filter_fields, manual_field_includes, 
+            param_hash.get('visibilities'), 
+            exact_fields=set(param_hash.get('exact_fields',[])))
+          
+        order_params = param_hash.get('order_by',[])
+        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+            order_params, field_hash)
+         
+        # specific setup
+        _a = self.bridge['activity']
+        _la = self.bridge['lab_activity']
+        _cplt = self.bridge['cherry_pick_liquid_transfer']
+        _screen = self.bridge['screen']
+        _cpap  = self.bridge['cherry_pick_assay_plate']
+        _cherry_pick = self.bridge['cherry_pick_request']
+        j = _a
+        j = j.join(_la, _a.c.activity_id==_la.c.activity_id )
+        j = j.join(_cplt, _cplt.c.activity_id==_la.c.activity_id )        
+        j = j.join(_screen, _la.c.screen_id==_screen.c.screen_id)
+
+        custom_columns = {
+            'type': literal_column("'cherry_pick_liquid_transfer'"), 
+            'activity_class': literal_column("'cherry_pick_liquid_transfer'"), 
+            'cherry_pick_request_id': (
+                select([_cpap.c.cherry_pick_request_id])
+                    .select_from(_cpap)
+                    .where(_cpap.c.cherry_pick_liquid_transfer_id==_a.c.activity_id)
+                    .limit(1))
+            }
+        custom_columns.update(self.get_custom_columns('cplt'))
+        
+        base_query_tables = ['activity', 'lab_activity', 
+            'cherry_pick_liquid_transfer', 'screen','cherry_pick'] 
+        columns = self.build_sqlalchemy_columns(
+            field_hash.values(), base_query_tables=base_query_tables,
+            custom_columns=custom_columns )
+        
+        stmt = select(columns.values()).select_from(j)
+        compiled_stmt = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+        logger.info('compiled_stmt %s',compiled_stmt)
+        # general setup
+         
+        (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+        
+        return (field_hash,columns,stmt,count_stmt)
+
+
+class ScreeningResource(ActivityResource):    
+
+    class Meta:
+        queryset = Screening.objects.all()
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= UserGroupAuthorization()
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+        resource_name = 'screening'
+        
+        max_limit = 10000
+        always_return_data = True
+
+    def __init__(self, **kwargs):
+        super(ScreeningResource,self).__init__(**kwargs)
+
+    def prepend_urls(self):
+        return [
+            # override the parent "base_urls" so that we don't need to worry 
+            # about schema again
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+            url((r"^(?P<resource_name>%s)/" 
+                 r"(?P<activity_id>([\d]+))%s$" )
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ]    
+
+    def build_schema(self):
+        # option 1: inherit LabActivity/Activity fields manually
+        # - problem: causes circular dependency since superclasses call build_schema
+        # option 2: encode inheritance in object hierarchy, call super.build_schema
+        # - problem: TP is not set up for inheritance and we will have 
+        # to override tastypie signature + circular dependencies
+        # option 3 *chosen: ignore ORM inheritance and use our extended framework 
+        # via ManagedResource.build_schema that looks at the "supertype" property
+        # and constructs the supertype fields recursively
+         
+        return ApiResource.build_schema(self)
+            
+    def get_custom_columns(self, alias_qualifier):
+        '''
+        Convenience method for subclasses: reusable custom columns
+        @param alias_qualifier a sql compatible string used to name subqueries
+            so that this method may be called multiple times to compose a query
+        '''
+        ccs = super(ScreeningResource,self).get_custom_columns(alias_qualifier)
+        ccs.update({
+        })
+        return ccs
+
+    def get_query(self, param_hash):
+        ''' ScreeningResource
+        Convenience method for super classes:
+        - create the query used for this resource so that it can be reused
+        '''
+        
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        # general setup
+        schema = self.build_schema()
+        
+        manual_field_includes = set(param_hash.get('includes', []))
+        
+        if DEBUG_GET_LIST: 
+            logger.info('manual_field_includes: %r', manual_field_includes)
+        
+        (filter_expression, filter_fields) = \
+            SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+              
+        field_hash = self.get_visible_fields(
+            schema['fields'], filter_fields, manual_field_includes, 
+            param_hash.get('visibilities'), 
+            exact_fields=set(param_hash.get('exact_fields',[])))
+          
+        order_params = param_hash.get('order_by',[])
+        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+            order_params, field_hash)
+         
+        # specific setup
+        _a = self.bridge['activity']
+        _la = self.bridge['lab_activity']
+        _screening = self.bridge['screening']
+        _screen = self.bridge['screen']
+        j = _a
+        j = j.join(_la, _a.c.activity_id==_la.c.activity_id )
+        j = j.join(_screening, _screening.c.activity_id==_la.c.activity_id )
+        j = j.join(_screen, _la.c.screen_id==_screen.c.screen_id)
+
+        # TODO: delegate to sub_classes (when built)
+        _library_screening = self.bridge['library_screening']
+        _cps = self.bridge['cherry_pick_screening']
+        j = j.join(_library_screening, _la.c.activity_id==_library_screening.c.activity_id, isouter=True)
+        j = j.join(_cps, _la.c.activity_id==_cps.c.activity_id, isouter=True)
+                
+        custom_columns = {
+            'type': literal_column("'screening'"), 
+            'activity_type': (
+                case([
+                    (_library_screening.c.activity_id!=None,
+                        'library_screening'),
+                    (_cps.c.activity_id!=None,
+                        'cherry_pick_screening')
+                    ],
+                    else_='unknown_type')
+                ),
+            }
+        custom_columns.update(self.get_custom_columns('screening'))
+        
+        base_query_tables = ['activity', 'lab_activity', 'screening', 'screen'] 
+        columns = self.build_sqlalchemy_columns(
+            field_hash.values(), base_query_tables=base_query_tables,
+            custom_columns=custom_columns )
+        
+        stmt = select(columns.values()).select_from(j)
+        compiled_stmt = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+        logger.info('compiled_stmt %s',compiled_stmt)
+        # general setup
+         
+        (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+        
+        return (field_hash,columns,stmt,count_stmt)
+        
+    @read_authorization
+    def build_list_response(self,request, **kwargs):
+        ''' 
+        ScreeningResource
+        '''
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+ 
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+         
+        is_for_detail = kwargs.pop('is_for_detail', False)
+ 
+        schema = self.build_schema()
+ 
+        filename = self._get_filename(schema, kwargs)
+ 
+        try:
+             
+            (field_hash,columns,stmt,count_stmt) = self.get_query(param_hash)
+             
+            rowproxy_generator = None
+            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
+                rowproxy_generator = IccblBaseResource.\
+                    create_vocabulary_rowproxy_generator(field_hash)
+  
+            title_function = None
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                title_function = lambda key: field_hash[key]['title']
+             
+            return self.stream_response_from_statement(
+                request, stmt, count_stmt, filename, 
+                field_hash=field_hash, 
+                param_hash=param_hash,
+                is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function  )
+              
+        except Exception, e:
+            logger.exception('on get list')
+            raise e  
+
+
+class ServiceActivityResource(ActivityResource):    
 
     class Meta:
         queryset = ServiceActivity.objects.all()
@@ -3525,7 +4074,6 @@ class ServiceActivityResource(ApiResource):
         always_return_data = True
 
     def __init__(self, **kwargs):
-        self.activity_resource = None
         super(ServiceActivityResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
@@ -3546,30 +4094,19 @@ class ServiceActivityResource(ApiResource):
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
         ]    
-    def build_schema(self):
-        
-        schema = super(ServiceActivityResource,self).build_schema()
-        logger.debug('=== service activity fields: %r' % schema['fields'])
-        
-        sub_schema = self.get_activity_resource().build_schema();
-        fields = {}
-        fields.update(sub_schema['fields'])
-        for key,val in schema['fields'].items():
-#             if key in fields:
-#                 fields[key].update(val)
-#             else:
-                fields[key] = val
-        
-        schema['fields'] = fields;
-        logger.debug('finalservice activity fields: %r' % schema['fields'])
-        
-        return schema
 
-    def get_activity_resource(self):
-        if not self.activity_resource:
-            self.activity_resource = ActivityResource()
-        return self.activity_resource
-    
+    def build_schema(self):
+        # option 1: inherit LabActivity/Activity fields manually
+        # - problem: causes circular dependency since superclasses call build_schema
+        # option 2: encode inheritance in object hierarchy, call super.build_schema
+        # - problem: TP is not set up for inheritance and we will have 
+        # to override tastypie signature + circular dependencies
+        # option 3 *chosen: ignore ORM inheritance and use our extended framework 
+        # via ManagedResource.build_schema that looks at the "supertype" property
+        # and constructs the supertype fields recursively
+         
+        return ApiResource.build_schema(self)
+
     def patch_obj(self,deserialized, **kwargs):
 
         logger.info('patch_obj %s' % deserialized)
@@ -3586,9 +4123,9 @@ class ServiceActivityResource(ApiResource):
         serviced_username = deserialized.get('serviced_username', None)
         if not serviced_username:
             raise Exception('serviced_username not specified %s' % deserialized)
-        activity_type = deserialized.get('activity_type', None)
+        activity_type = deserialized.get('type', None)
         if not activity_type:
-            raise Exception('activity_type not specified %s' % deserialized)
+            raise Exception('activity type not specified %s' % deserialized)
         # TODO: drive this from the metadata "field" property
         initializer_dict['service_activity_type'] = activity_type
         performed_by_username = deserialized.get('performed_by_username', None)
@@ -3662,16 +4199,170 @@ class ServiceActivityResource(ApiResource):
         else:
             raise Exception('ServiceActivity delete action requires an activity_id %s' % kwargs)
         
+    def get_query(self,param_hash):
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+        schema = self.build_schema()
+        logger.info('sa fields: %r', schema['fields'].keys())
+        # general setup
+        
+        manual_field_includes = set(param_hash.get('includes', []))
+        # for join to screen query (TODO: only include if screen fields rqst'd)
+        manual_field_includes.add('screen_id')
+        
+        if DEBUG_GET_LIST: 
+            logger.info('manual_field_includes: %r', manual_field_includes)
+        
+        (filter_expression, filter_fields) = \
+            SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+              
+        field_hash = self.get_visible_fields(
+            schema['fields'], filter_fields, manual_field_includes, 
+            param_hash.get('visibilities'), 
+            exact_fields=set(param_hash.get('exact_fields',[])))
+        field_hash = { key:val for key,val in field_hash.items() 
+            if val['scope']=='fields.serviceactivity'}  
+          
+        order_params = param_hash.get('order_by',[])
+        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+            order_params, field_hash)
+         
+        # specific setup
+        _a = self.bridge['activity']
+        _sa = self.bridge['service_activity']
+        _screen = self.bridge['screen']
+        _user_cte = ScreensaverUserResource.get_user_cte().cte('users_sa')
+        _serviced = _user_cte.alias('serviced_user')
+        _performed_by = _user_cte.alias('performed_by')
+        _vocab = self.bridge['reports_vocabularies']
+        j = _a
+        j = j.join(_sa, _a.c.activity_id==_sa.c.activity_id )
+        j = j.join(_serviced, _sa.c.serviced_user_id==_serviced.c.screensaver_user_id)
+        j = j.join(_performed_by,_a.c.performed_by_id==_performed_by.c.screensaver_user_id)
+        j = j.join(_screen, _sa.c.serviced_screen_id==_screen.c.screen_id, isouter=True)
+        custom_columns = {
+            'activity_type': literal_column("'serviceactivity'"),
+            'serviced_user': _serviced.c.name,
+            'serviced_username': _serviced.c.username,
+            'performed_by_name': _performed_by.c.name,
+            'performed_by_username': _performed_by.c.username,
+            'screen_facility_id': _screen.c.facility_id,
+            'screen_id': _screen.c.screen_id,
+            }
+        
+        base_query_tables = ['activity', 'service_activity'] 
+        columns = self.build_sqlalchemy_columns(
+            field_hash.values(), base_query_tables=base_query_tables,
+            custom_columns=custom_columns )
+        
+        stmt = select(columns.values()).select_from(j)
+        # general setup
+         
+        (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+        
+        return (field_hash, columns, stmt, count_stmt)
+
+
+class ScreenResource(ApiResource):
+    
+    class Meta:
+        queryset = Screen.objects.all() #.order_by('facility_id')
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= UserGroupAuthorization()
+        resource_name = 'screen'
+        
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+        always_return_data = True 
+
+        
+    def __init__(self, **kwargs):
+        super(ScreenResource,self).__init__(**kwargs)
+
+    def prepend_urls(self):
+        return [
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+
+            url((r"^(?P<resource_name>%s)/"
+                 r"(?P<facility_id>([\w\d_]+))%s$") 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url((r"^(?P<resource_name>%s)/"
+                 r"(?P<facility_id>([\w\d_]+))/libraries%s$") 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_screen_libraryview'), 
+                name="api_dispatch_screen_libraryview"),
+            url((r"^(?P<resource_name>%s)/"
+                 r"(?P<facility_id>([\w\d_]+))/cherrypicks%s$") 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_screen_cherrypickview'), 
+                name="api_dispatch_screen_cherrypickview"),
+            url((r"^(?P<resource_name>%s)/"
+                 r"(?P<facility_id>([\w\d_]+))/copyplates%s$") 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_screen_librarycopyplateview'), 
+                name="api_dispatch_screen_librarycopyplateview"),
+            url((r"^(?P<resource_name>%s)/"
+                 r"(?P<facility_id>([\w\d_]+))/copyplatesloaded%s$") 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_screen_lcp_loadedview'), 
+                name="api_dispatch_screen_lcp_loadedview"),
+            url((r"^(?P<resource_name>%s)/"
+                 r"(?P<facility_id>([\w\d_]+))/billing%s$") 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_screen_billingview'), 
+                name="api_dispatch_screen_billingview"),
+            url((r"^(?P<resource_name>%s)/"
+                 r"(?P<facility_id>([\w\d_]+))/datacolumns%s$") 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_screen_datacolumnview'), 
+                name="api_dispatch_screen_datacolumnview"),
+            url((r"^(?P<resource_name>%s)/"
+                 r"(?P<facility_id>([\w\d_]+))/activities%s$") 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_screen_activityview'), 
+                name="api_dispatch_screen_activityview"),
+        ]    
+        
+    def dispatch_screen_activityview(self,request, **kwargs):
+        kwargs['screen_facility_id__eq'] = kwargs.pop('facility_id')
+        return ActivityResource().dispatch('list', request, **kwargs)    
+    
+    def dispatch_screen_datacolumnview(self, request, **kwargs):
+        kwargs['screen_facility_id'] = kwargs.pop('facility_id')
+        return DataColumnResource().dispatch('list', request, **kwargs)    
+        
+    def dispatch_screen_cherrypickview(self, request, **kwargs):
+        kwargs['screen_facility_id__eq'] = kwargs.pop('facility_id')
+        return CherryPickRequestResource().dispatch('list', request, **kwargs)    
+        
+    def dispatch_screen_libraryview(self, request, **kwargs):
+        kwargs['for_screen_id'] = kwargs.pop('facility_id')
+        return LibraryResource().dispatch('list', request, **kwargs)    
+
+    def dispatch_screen_librarycopyplateview(self, request, **kwargs):
+        kwargs['for_screen_id'] = kwargs.pop('facility_id')
+        return LibraryCopyPlateResource().dispatch('list', request, **kwargs)    
+
+    def dispatch_screen_lcp_loadedview(self, request, **kwargs):
+        kwargs['loaded_for_screen_id'] = kwargs.pop('facility_id')
+        return LibraryCopyPlateResource().dispatch('list', request, **kwargs)    
+
+    def dispatch_screen_billingview(self, request, **kwargs):
+        kwargs['visibilities'] = 'billing'
+        return self.dispatch('detail', request, **kwargs)    
+
     def get_detail(self, request, **kwargs):
         logger.info(str(('get_detail')))
 
-        activity_id = kwargs.pop('activity_id', None)
-        if not activity_id:
-            logger.info(str(('no activity_id provided', kwargs)))
-            raise NotImplementedError('must provide an activity_id parameter')
-        else:
-            kwargs['activity_id__eq'] = activity_id
-
+        facility_id = kwargs.get('facility_id', None)
+        if not facility_id:
+            logger.info(str(('no facility_id provided')))
+            raise NotImplementedError('must provide a facility_id parameter')
+        
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
@@ -3683,83 +4374,389 @@ class ServiceActivityResource(ApiResource):
 
         return self.build_list_response(request, **kwargs)
 
+    def get_query(self,param_hash):
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+        schema = self.build_schema()
+        screens_for_username = param_hash.get('screens_for_username', None)
+        # general setup
+
+        facility_id = param_hash.pop('facility_id', None)
+        if facility_id:
+            param_hash['facility_id__eq'] = facility_id
         
+        manual_field_includes = set(param_hash.get('includes', []))
+        # for joins
+        manual_field_includes.add('screen_id')
+        
+        if screens_for_username:
+            screener_role_cte = ScreenResource.get_screener_role_cte().cte('screener_roles1')
+            manual_field_includes.add('screensaver_user_role')
+        
+        if DEBUG_GET_LIST: 
+            logger.info('manual_field_includes: %r', manual_field_includes)
+        
+        (filter_expression, filter_fields) = \
+            SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+              
+        field_hash = self.get_visible_fields(
+            schema['fields'], filter_fields, manual_field_includes, 
+            param_hash.get('visibilities'), 
+            exact_fields=set(param_hash.get('exact_fields',[])))
+          
+        order_params = param_hash.get('order_by',[])
+        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+            order_params, field_hash)
+         
+        # specific setup
+        base_query_tables = ['screen','screen_result']
+        _screen = self.bridge['screen']
+        _screen_result = self.bridge['screen_result']
+        _ap = self.bridge['assay_plate']
+        _library = self.bridge['library']
+        _copy = self.bridge['copy']
+        _plate = self.bridge['plate']
+        _cpr = self.bridge['cherry_pick_request']
+        _lcp = self.bridge['lab_cherry_pick']
+        _cpap = self.bridge['cherry_pick_assay_plate']
+        _cplt = self.bridge['cherry_pick_liquid_transfer']
+        _sfs = self.bridge['screen_funding_supports']
+        _screen_collaborators = self.bridge['screen_collaborators']
+        _su = self.bridge['screensaver_user']
+        _lhsu = _su.alias('lhsu')
+        _user_cte = ScreensaverUserResource.get_user_cte().cte('users_s1')
+        _collaborator = _user_cte.alias('collaborator')
+        _activity = self.bridge['activity']
+        _srua = self.bridge['screen_result_update_activity']
+        _screen_keyword = self.bridge['screen_keyword']
+        _screen_cell_lines = self.bridge['screen_cell_lines']
+        
+        # create CTEs -  Common Table Expressions for the intensive queries:
+        
+        collaborators = ( 
+            select([
+                _screen_collaborators.c.screen_id,
+                _collaborator.c.name,
+                _collaborator.c.username,
+                _collaborator.c.email,
+                concat(_collaborator.c.name,' <',_collaborator.c.email,'>').label('fullname')])
+                .select_from(_collaborator.join(
+                    _screen_collaborators,_collaborator.c.screensaver_user_id==_screen_collaborators.c.screensaveruser_id))
+                .order_by(_collaborator.c.username) )
+        collaborators = collaborators.cte('collaborators')
+
+        screen_result_update_activity = (
+            select([ 
+                func.max(_activity.c.date_of_activity).label('date_of_activity'),
+                _screen.c.screen_id
+                ])
+                .select_from(
+                    _activity.join(_srua, _srua.c.update_activity_id==_activity.c.activity_id)
+                        .join(_screen_result,_screen_result.c.screen_result_id==_srua.c.screen_result_id)
+                        .join(_screen, _screen.c.screen_id==_screen_result.c.screen_id)
+                    )
+                .group_by(_screen.c.screen_id)
+                .order_by(_screen.c.screen_id)
+            ).cte('screen_result_update_activity')
+        
+        # create a cte for the max screened replicates_per_assay_plate
+        # - cross join version:
+        # select ap.screen_id, ap.plate_number, ap.replicate_ordinal,lesser.replicate_ordinal  
+        # from assay_plate ap 
+        # left outer join assay_plate lesser 
+        # on ap.plate_number=lesser.plate_number 
+        # and ap.screen_id=lesser.screen_id 
+        # and lesser.replicate_ordinal > ap.replicate_ordinal  
+        # where lesser.replicate_ordinal is null;
+        # - aggregate version:
+        # select 
+        # ap.screen_id, 
+        # ap.plate_number, 
+        # max(replicate_ordinal) as max_ordinal 
+        # from assay_plate ap 
+        # group by screen_id, plate_number
+        # order by screen_id, plate_number            
+        
+        aps = select([_ap.c.screen_id, func.count(1).label('count')]).\
+            select_from(_ap).\
+            where(_ap.c.library_screening_id != None).\
+            group_by(_ap.c.screen_id).\
+            order_by(_ap.c.screen_id)
+        aps = aps.cte('aps')
+
+        apdl = select([_ap.c.screen_id, func.count(1).label('count')]).\
+            select_from(_ap).\
+            where(_ap.c.screen_result_data_loading_id != None ).\
+            group_by(_ap.c.screen_id).\
+            order_by(_ap.c.screen_id)
+        apdl = apdl.cte('apdl')
+        
+        # create a cte for the max screened replicates_per_assay_plate
+        apsrc = select([
+            _ap.c.screen_id,
+            _ap.c.plate_number,
+            func.max(_ap.c.replicate_ordinal).label('max_per_plate') ]).\
+                select_from(_ap).\
+                group_by(_ap.c.screen_id, _ap.c.plate_number).\
+                order_by(_ap.c.screen_id, _ap.c.plate_number)
+        apsrc = apsrc.cte('apsrc')
+        
+        # similarly, create a cte for the max data loaded replicates per assay_plate
+        apdlrc = select([
+            _ap.c.screen_id,
+            _ap.c.plate_number,
+            func.max(_ap.c.replicate_ordinal).label('max_per_plate') ]).\
+                select_from(_ap).\
+                where(_ap.c.screen_result_data_loading_id != None ).\
+                group_by(_ap.c.screen_id, _ap.c.plate_number).\
+                order_by(_ap.c.screen_id, _ap.c.plate_number)
+        apdlrc = apdlrc.cte('apdlrc')
+        
+        lps = select([
+            _ap.c.screen_id,
+            func.count(distinct(_ap.c.plate_number)).label('count')]).\
+                select_from(_ap).\
+                where(_ap.c.library_screening_id != None).\
+                group_by(_ap.c.screen_id).cte('lps')
+        lpdl = select([
+            _ap.c.screen_id,
+            func.count(distinct(_ap.c.plate_number)).label('count')]).\
+                select_from(_ap).\
+                where(_ap.c.screen_result_data_loading_id != None).\
+                group_by(_ap.c.screen_id).cte('lpdl')
+
+        libraries_screened = select([
+            func.count(distinct(_library.c.library_id)).label('count'),
+            _ap.c.screen_id]).\
+                select_from(
+                    _ap.join(_plate,_ap.c.plate_id==_plate.c.plate_id).\
+                    join(_copy, _plate.c.copy_id==_copy.c.copy_id).\
+                    join(_library,_copy.c.library_id==_library.c.library_id)).\
+                group_by(_ap.c.screen_id).cte('libraries_screened')
+                
+        tplcps = select([
+            _cpr.c.screen_id,
+            func.count(1).label('count')]).\
+                select_from(_cpr.join(
+                    _lcp,_cpr.c.cherry_pick_request_id==_lcp.c.cherry_pick_request_id).\
+                    join(_cpap, _lcp.c.cherry_pick_assay_plate_id==_cpap.c.cherry_pick_assay_plate_id).\
+                    join(_cplt,_cplt.c.activity_id==_cpap.c.cherry_pick_liquid_transfer_id)).\
+                group_by(_cpr.c.screen_id).\
+                where(_cplt.c.status == 'Successful' ).cte('tplcps')
+        # Create an inner screen-screen_result query to prompt the  
+        # query planner to index join not hash join
+        new_screen_result = ( select([
+                _screen.c.screen_id,
+                _screen_result.c.screen_result_id,
+                _screen_result.c.experimental_well_count])
+            .select_from(_screen.join(_screen_result, _screen.c.screen_id==_screen_result.c.screen_id, isouter=True))
+            .cte('screen_result') )
+                       
+        affiliation_table = ScreensaverUserResource.get_lab_affiliation_cte()
+        affiliation_table = affiliation_table.cte('la')
+
+        custom_columns = {
+            'collaborator_usernames': (
+                select([func.array_to_string(
+                    func.array_agg(collaborators.c.username), LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(collaborators)
+                    .where(collaborators.c.screen_id==literal_column('screen.screen_id'))),
+            'collaborator_names': (
+                select([func.array_to_string(
+                    func.array_agg(collaborators.c.fullname), LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(collaborators)
+                    .where(collaborators.c.screen_id==literal_column('screen.screen_id'))),
+            'lab_affiliation': 
+                ( select([concat(affiliation_table.c.title,' (',affiliation_table.c.category,')')])
+                    .select_from(
+                        _lhsu.join(affiliation_table,
+                            affiliation_table.c.affiliation_name==_lhsu.c.lab_head_affiliation))
+                    .where(_lhsu.c.screensaver_user_id==_screen.c.lab_head_id)),
+            'lab_name':
+                ( select([concat(
+                    _lhsu.c.last_name,', ',_lhsu.c.first_name,' - ',
+                    affiliation_table.c.title,' (',affiliation_table.c.category,')')])
+                    .select_from(
+                        _lhsu.join(affiliation_table,
+                            affiliation_table.c.affiliation_name==_lhsu.c.lab_head_affiliation))
+                    .where(_lhsu.c.screensaver_user_id==_screen.c.lab_head_id)),
+            'lab_head_username':
+                ( select([_lhsu.c.username])
+                    .select_from(_lhsu)
+                    .where(_lhsu.c.screensaver_user_id==_screen.c.lab_head_id)),
+            'lead_screener_name': (
+                select([concat(_su.c.first_name,' ',_su.c.last_name)])
+                    .select_from(_su)
+                    .where(_su.c.screensaver_user_id==_screen.c.lead_screener_id)),
+            'lead_screener_username': (
+                select([_su.c.username])
+                    .select_from(_su)
+                    .where(_su.c.screensaver_user_id==_screen.c.lead_screener_id)),
+            'has_screen_result': literal_column(
+                '(select exists(select null from screen_result '
+                '     where screen_id=screen.screen_id ) ) '
+                ),
+            'cell_lines': (
+                select([func.array_to_string(
+                    func.array_agg(_screen_cell_lines.c.cell_line), LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(_screen_cell_lines)
+                    .where(_screen_cell_lines.c.screen_id==literal_column('screen.screen_id'))),
+            'date_of_first_activity': literal_column(
+                '( select date_of_activity '
+                '  from activity '
+                '  join lab_activity la using(activity_id) '
+                '  where la.screen_id=screen.screen_id '
+                '  order by date_of_activity asc LIMIT 1 )'
+                ),
+            'date_of_last_activity': literal_column(
+                '( select date_of_activity '
+                '  from activity '
+                '  join lab_activity la using(activity_id) '
+                '  where la.screen_id=screen.screen_id '
+                '  order by date_of_activity desc LIMIT 1 )'
+                ),
+            # TODO: rework the update activity
+            'screenresult_last_imported':
+                select([screen_result_update_activity.c.date_of_activity])
+                    .select_from(screen_result_update_activity)
+                    .where(screen_result_update_activity.c.screen_id==literal_column('screen.screen_id')),
+            'funding_supports':
+                select([func.array_to_string(
+                    func.array_agg(literal_column('funding_support')
+                    ),LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(
+                        select([_sfs.c.funding_support])
+                            .select_from(_sfs)
+                            .order_by(_sfs.c.funding_support)
+                            .where(_sfs.c.screen_id==literal_column('screen.screen_id'))
+                            .alias('inner')),
+            # FIXME: use cherry_pick_liquid_transfer status vocabulary 
+            'total_plated_lab_cherry_picks': 
+                select([tplcps.c.count]).\
+                    select_from(tplcps).\
+                    where(tplcps.c.screen_id==_screen.c.screen_id),
+            
+            # TODO: convert to vocabulary
+            'assay_readout_types': literal_column(
+                "(select array_to_string(array_agg(f1.assay_readout_type),'%s') "
+                '    from ( select distinct(assay_readout_type) '
+                '        from data_column ds '
+                '        join screen_result using(screen_result_id) '
+                '        where screen_id=screen.screen_id ) as f1 )' 
+                % LIST_DELIMITER_SQL_ARRAY ), 
+            'library_plates_screened': 
+                select([lps.c.count]).\
+                    select_from(lps).where(lps.c.screen_id==_screen.c.screen_id),
+
+            'library_plates_data_loaded': 
+                select([lpdl.c.count]).\
+                    select_from(lpdl).where(lpdl.c.screen_id==_screen.c.screen_id),
+
+            'assay_plates_screened': 
+                select([aps.c.count]).\
+                    select_from(aps).where(aps.c.screen_id==_screen.c.screen_id),
+
+            'assay_plates_data_loaded': 
+                select([apdl.c.count]).\
+                    select_from(apdl).where(apdl.c.screen_id==_screen.c.screen_id),
+
+            'libraries_screened_count': 
+                select([libraries_screened.c.count]).\
+                    select_from(libraries_screened).\
+                    where(libraries_screened.c.screen_id==_screen.c.screen_id ),
+                
+            # FIXME: use administrative activity vocabulary
+            'last_data_loading_date': literal_column(
+                '( select activity.date_created '
+                '  from activity '
+                '  join administrative_activity aa using(activity_id) '
+                '  join screen_update_activity on update_activity_id=activity_id  '
+                "  where administrative_activity_type = 'Screen Result Data Loading' " 
+                '  and screen_id=screen.screen_id '
+                '  order by date_created desc limit 1 )'
+                ),
+            'min_screened_replicate_count': 
+                select([func.min(apsrc.c.max_per_plate)+1]).\
+                    select_from(apsrc).where(apsrc.c.screen_id==_screen.c.screen_id),
+            'max_screened_replicate_count': 
+                select([func.max(apsrc.c.max_per_plate)+1]).\
+                    select_from(apsrc).where(apsrc.c.screen_id==_screen.c.screen_id),
+            'min_data_loaded_replicate_count': 
+                select([func.min(apdlrc.c.max_per_plate)+1]).\
+                    select_from(apdlrc).where(apdlrc.c.screen_id==_screen.c.screen_id),
+            'max_data_loaded_replicate_count': 
+                select([func.max(apdlrc.c.max_per_plate)+1]).\
+                    select_from(apdlrc).where(apdlrc.c.screen_id==_screen.c.screen_id),
+            'experimental_well_count': literal_column('screen_result.experimental_well_count'),                
+            'pin_transfer_approved_by_username': literal_column("'tbd'"),
+            'pin_transfer_date_approved': literal_column("'tbd'"),
+            'pin_transfer_comments': literal_column("'tbd'"),
+            'keywords': (
+                select([func.array_to_string(func.array_agg(
+                        _screen_keyword.c.keyword),LIST_DELIMITER_SQL_ARRAY)])
+                   .select_from(_screen_keyword)
+                   .where(_screen_keyword.c.screen_id==_screen.c.screen_id)),
+            'screen_id': _screen.c.screen_id,
+        }
+        if screens_for_username:
+            custom_columns['screensaver_user_role'] = screener_role_cte.c.screensaver_user_role
+            
+        columns = self.build_sqlalchemy_columns(
+            field_hash.values(), base_query_tables=base_query_tables,
+            custom_columns=custom_columns )
+
+        # build the query statement
+
+        j = _screen
+        if screens_for_username:
+            j = j.join(
+                screener_role_cte,
+                screener_role_cte.c.screen_id==_screen.c.screen_id)
+
+        j = j.join(new_screen_result, 
+            _screen.c.screen_id==new_screen_result.c.screen_id)
+        stmt = select(columns.values()).select_from(j)
+
+        if screens_for_username:
+            stmt = stmt.where(
+                screener_role_cte.c.username==screens_for_username)
+
+        # general setup
+         
+        (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+        stmt = stmt.order_by('facility_id')
+        
+        return (field_hash, columns, stmt, count_stmt)
+
+    @read_authorization
     def build_list_response(self,request, **kwargs):
         ''' 
-        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns django.http.response.StreamingHttpResponse 
+        ScreenResource
         '''
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
-
+ 
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
-        
+         
         is_for_detail = kwargs.pop('is_for_detail', False)
-
+ 
         schema = self.build_schema()
-
+ 
         filename = self._get_filename(schema, kwargs)
-
+ 
         try:
-            
-            # general setup
-          
-            manual_field_includes = set(param_hash.get('includes', []))
-            
-            if DEBUG_GET_LIST: 
-                logger.info(str(('manual_field_includes', manual_field_includes)))
-  
-            (filter_expression, filter_fields) = \
-                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
-                  
-            field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes, 
-                param_hash.get('visibilities'), 
-                exact_fields=set(param_hash.get('exact_fields',[])))
-              
-            order_params = param_hash.get('order_by',[])
-            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
-                order_params, field_hash)
+             
+            (field_hash,columns,stmt,count_stmt) = self.get_query(param_hash)
              
             rowproxy_generator = None
             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
                 rowproxy_generator = IccblBaseResource.\
                     create_vocabulary_rowproxy_generator(field_hash)
- 
-            # specific setup
-            _a = self.bridge['activity']
-            _sa = self.bridge['service_activity']
-            _user_cte = ScreensaverUserResource.get_user_cte().cte('users')
-            _serviced = _user_cte.alias('serviced_user')
-            _performed_by = _user_cte.alias('performed_by')
-            _vocab = self.bridge['reports_vocabularies']
-            j = _a
-            j = j.join(_sa, _a.c.activity_id==_sa.c.activity_id )
-            j = j.join(_serviced, _sa.c.serviced_user_id==_serviced.c.screensaver_user_id)
-            j = j.join(_performed_by,_a.c.performed_by_id==_performed_by.c.screensaver_user_id)
-
-            custom_columns = {
-                'serviced_user': _serviced.c.name,
-                'serviced_username': _serviced.c.username,
-                'performed_by_name': _performed_by.c.name,
-                'performed_by_username': _performed_by.c.username,
-                }
-
-            base_query_tables = ['activity', 'service_activity'] 
-            columns = self.build_sqlalchemy_columns(
-                field_hash.values(), base_query_tables=base_query_tables,
-                custom_columns=custom_columns )
-            
-            stmt = select(columns.values()).select_from(j)
-            # general setup
-             
-            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
-            
+  
             title_function = None
             if param_hash.get(HTTP_PARAM_USE_TITLES, False):
                 title_function = lambda key: field_hash[key]['title']
-            
+             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 
                 field_hash=field_hash, 
@@ -3767,10 +4764,125 @@ class ServiceActivityResource(ApiResource):
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
                 title_function=title_function  )
-             
+              
         except Exception, e:
             logger.exception('on get list')
             raise e  
+
+    @classmethod
+    def get_screener_role_cte(cls):
+
+        _su = cls.bridge['screensaver_user']
+        _screen = cls.bridge['screen']
+        _screen_collab = cls.bridge['screen_collaborators']
+        collab = _su.alias('collab')
+        ls = _su.alias('ls')
+        pi = _su.alias('pi')
+        
+        j = _screen
+        j = j.join(_screen_collab, _screen_collab.c.screen_id==_screen.c.screen_id, isouter=True)
+        j = j.join(collab,collab.c.screensaver_user_id==_screen_collab.c.screensaveruser_id, isouter=True)
+        j = j.join(ls,ls.c.screensaver_user_id==_screen.c.lead_screener_id, isouter=True)
+        j = j.join(pi,pi.c.screensaver_user_id==_screen.c.lab_head_id, isouter=True)
+        
+        sa = (
+            select([
+                _screen.c.facility_id,
+                _screen.c.screen_id,
+                ls.c.username.label('lead_screener_username'),
+                pi.c.username.label('pi_username'),
+                func.array_agg(collab.c.username).label('collab_usernames')
+            ]).select_from(j)
+            .group_by(_screen.c.facility_id,_screen.c.screen_id,
+                ls.c.username,pi.c.username)
+            ).cte('screen_associates')
+        screener_roles = (
+            select([
+                _su.c.username,
+                sa.c.facility_id,
+                sa.c.screen_id,
+                case([
+                    (_su.c.username==sa.c.lead_screener_username,
+                        'lead_screener'),
+                    (_su.c.username==sa.c.pi_username,
+                        'principal_investigator')
+                    ],
+                    else_='collaborator').label('screensaver_user_role')
+                ]).select_from(sa)
+                .where(or_(
+                    # TODO: replace with "any_()" from sqlalchemy 1.1 when avail
+                    _su.c.username == text(' any(collab_usernames) '),
+                    _su.c.username == sa.c.lead_screener_username,
+                    _su.c.username == sa.c.pi_username))
+        )
+        return screener_roles
+    
+    def build_schema(self):
+        schema = super(ScreenResource,self).build_schema()
+
+        if 'fields' in schema and 'facility_id' in schema['fields']:
+            # TODO: cache       
+            max_facility_id_sql = '''
+                select facility_id::text, project_phase from screen 
+                where project_phase='primary_screen' 
+                order by facility_id::integer desc
+                limit 1;
+            '''
+            conn = self.bridge.get_engine().connect()
+            max_facility_id = int(conn.execute(max_facility_id_sql).scalar() or 0)
+            schema['fields']['facility_id']['default'] = max_facility_id + 1
+        
+        temp = [ x.screen_type for x in self.Meta.queryset.distinct('screen_type')]
+        schema['extraSelectorOptions'] = { 
+            'label': 'Type', 'searchColumn': 'screen_type', 'options': temp }
+        return schema
+
+    @transaction.atomic()    
+    def delete_obj(self, deserialized, **kwargs):
+        id_kwargs = self.get_id(deserialized,**kwargs)
+        Screen.objects.get(**id_kwargs).delete()
+    
+    @transaction.atomic()    
+    def patch_obj(self,deserialized, **kwargs):
+        
+        id_kwargs = self.get_id(deserialized,**kwargs)
+        
+        schema = self.build_schema()
+        fields = schema['fields']
+        try:
+            # create/update the screen
+            screen = None
+            try:
+                screen = Screen.objects.get(**id_kwargs)
+            except ObjectDoesNotExist, e:
+                logger.info('Screen %s does not exist, creating', id_kwargs)
+                screen = Screen(**id_kwargs)
+            initializer_dict = {}
+            for key in fields.keys():
+                if key in deserialized:
+                    initializer_dict[key] = parse_val(
+                        deserialized.get(key,None), key,fields[key]['data_type']) 
+            if initializer_dict:
+                logger.info('initializer dict: %s', initializer_dict)
+                for key,val in initializer_dict.items():
+                    if hasattr(screen,key):
+                        setattr(screen,key,val)
+            else:
+                logger.info('no (basic) screen fields to update %s', deserialized)
+            
+            errors = self.validate(screen)
+            if errors:
+                raise ValidationError(errors)
+            
+            screen.save()
+                    
+            logger.info('patch_obj done')
+            return screen
+            
+        except Exception, e:
+            logger.exception('on patch detail')
+            raise e  
+
 
 
 class UserChecklistItemResource(ApiResource):    
@@ -3838,7 +4950,7 @@ class UserChecklistItemResource(ApiResource):
 
         return self.build_list_response(request, **kwargs)
 
-        
+    @read_authorization
     def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
@@ -4215,12 +5327,12 @@ class ScreensaverUserResource(ApiResource):
         return self.user_resource
         
     def get_detail(self, request, **kwargs):
-        logger.info(str(('get_detail')))
+        logger.info('get_detail')
 
         screensaver_user_id = kwargs.get('screensaver_user_id', None)
         username = kwargs.get('username', None)
         if not (screensaver_user_id or username):
-            logger.info(str(('no screensaver_user_id or username provided',kwargs)))
+            logger.info('no screensaver_user_id or username provided: %r',kwargs)
             raise NotImplementedError('must provide a screensaver_user_id or username parameter')
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
@@ -4234,7 +5346,7 @@ class ScreensaverUserResource(ApiResource):
 
         return self.build_list_response(request, **kwargs)
 
-        
+    @read_authorization
     def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
@@ -4337,7 +5449,7 @@ class ScreensaverUserResource(ApiResource):
                         select_from(_fur).\
                         where(_fur.c.screensaver_user_id==_su.c.screensaver_user_id),
                 # TODO: remove: replace with usergroups
-                'data_access_roles': literal_column("''"),
+                'data_access_roles': literal_column("null"),
 #                     select([func.array_to_string(
 #                             func.array_agg(_su_r.c.screensaver_user_role),
 #                                 LIST_DELIMITER_SQL_ARRAY)]).\
@@ -4575,18 +5687,18 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
  
     
     def get_list(self, request, param_hash={}, **kwargs):
-        ''' 
-        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns django.http.response.StreamingHttpResponse 
-        '''
-        param_hash = self._convert_request_to_dict(request)
-        param_hash.update(kwargs)
-
-        return self.build_list_response(request,param_hash=param_hash, **kwargs)
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         
-    def build_list_response(self,request, param_hash={}, **kwargs):
+        return self.build_list_response(request,**kwargs)
+        
+    @read_authorization
+    def build_list_response(self,request,**kwargs):
         
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
         
         is_for_detail = kwargs.pop('is_for_detail', False)
         logger.info(str(('kwargs', kwargs)))
@@ -4648,10 +5760,9 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
                 schema['fields'], filter_fields, manual_field_includes, 
                 param_hash.get('visibilities'), 
                 exact_fields=set(param_hash.get('exact_fields',[])))
-            
-            logger.info(str(('field hash scopes', 
+            logger.debug('field hash scopes: %r', 
                 set([field.get('scope', None) 
-                    for field in field_hash.values()]) )) )
+                    for field in field_hash.values()]))
             if library:
                 default_fields = ['fields.well','fields.reagent']
                 if library.screen_type == 'rnai':
@@ -4660,11 +5771,11 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
                     default_fields.append('fields.naturalproductreagent')
                 else:
                     default_fields.append('fields.smallmoleculereagent')
-                    
+                
                 _temp = { key:field for key,field in field_hash.items() 
                     if field.get('scope', None) in default_fields }
                 field_hash = _temp
-                logger.info(str(('final field hash: ', field_hash.keys())))
+                logger.info('final field hash: %r', field_hash.keys())
             else:
                 # consider limiting fields available
                 pass
@@ -4838,27 +5949,31 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
             raise Http404(unicode(( 'cannot build schema - library def needed'
                 'no library found for short_name', library_short_name)))
                 
+#     def build_schema1(self, library=None):
+#         
+#         schema = super(ReagentResource,self).build_schema()
+#         logger.info('schema fields: %r', schema['fields'].keys())
+#         logger.warn('fields: %r', [(key,val['scope']) for key,val in schema['fields'].items()])
+# 
+#         # grab all of the subtypes
+#         
+#         sub_schema = self.get_npr_resource().build_schema();
+#         schema['fields'].update(sub_schema['fields']);
+#         
+#         sub_schema = self.get_sr_resource().build_schema();
+#         schema['fields'].update(sub_schema['fields']);
+#         
+#         sub_schema = self.get_smr_resource().build_schema();
+#         schema['fields'].update(sub_schema['fields']);
+#         
+#         well_schema = WellResource().build_schema()
+#         schema['fields'].update(well_schema['fields'])
+# 
+#         logger.info('schema fields: %r', schema['fields'].keys())
+#         logger.warn('fields: %r', [(key,val['scope']) for key,val in schema['fields'].items()])
+#         return schema
+
     def build_schema(self, library=None):
-        
-        schema = super(ReagentResource,self).build_schema()
-
-        # grab all of the subtypes
-        
-        sub_schema = self.get_npr_resource().build_schema();
-        schema['fields'].update(sub_schema['fields']);
-        
-        sub_schema = self.get_sr_resource().build_schema();
-        schema['fields'].update(sub_schema['fields']);
-        
-        sub_schema = self.get_smr_resource().build_schema();
-        schema['fields'].update(sub_schema['fields']);
-        
-        well_schema = WellResource().build_schema()
-        schema['fields'].update(well_schema['fields'])
-
-        return schema
-
-    def build_schema_old(self, library=None):
         
         schema = deepcopy(super(ReagentResource,self).build_schema())
         
@@ -5212,163 +6327,6 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
         return well_bundle
 
 
-# TODO: refactor/divide
-# Activity types: Admin, Lab, Service
-class ActivityResource(SqlAlchemyResource,ManagedModelResource):
-
-    performed_by = fields.ToOneField(
-        'db.api.ScreensaverUserResource', 
-        attribute='performed_by', 
-        full=True, full_detail=True, full_list=True,
-        null=True)
-    performed_by_id = fields.IntegerField(attribute='performed_by_id');
-
-    class Meta:
-        queryset = AdministrativeActivity.objects.all() #.order_by('facility_id')
-        authentication = MultiAuthentication(BasicAuthentication(), 
-                                             SessionAuthentication())
-        authorization= UserGroupAuthorization()
-        resource_name = 'activity'
-        
-        ordering = []
-        filtering = {}
-        serializer = LimsSerializer()
-
-        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
-        always_return_data = True 
-
-        
-    def __init__(self, **kwargs):
-        super(ActivityResource,self).__init__(**kwargs)
-
-    def prepend_urls(self):
-        # Note: because this prepends the other list, we have to make sure 
-        # "schema" is matched
-        
-        return [
-            # override the parent "base_urls" so that we don't need to worry about schema again
-            url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('get_schema'), name="api_get_schema"),
-
-            url(r"^(?P<resource_name>%s)"
-                r"/(?P<cherry_pick_request_id>[\d]+)"
-                r"/(?P<plate_ordinal>[\d]+)"
-                r"/(?P<attempt_ordinal>[\d]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-        ]
-
-    def get_detail(self, request, **kwargs):
-        logger.info(str(('get_detail')))
-
-        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
-        kwargs['is_for_detail']=True
-        return self.build_list_response(request, **kwargs)
-        
-    @read_authorization
-    def get_list(self,request,**kwargs):
-
-        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-
-        return self.build_list_response(request, **kwargs)
-
-        
-    def build_list_response(self,request, **kwargs):
-        ''' 
-        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns django.http.response.StreamingHttpResponse 
-        '''
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
-
-        param_hash = {}
-        param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
-        
-        is_for_detail = kwargs.pop('is_for_detail', False)
-
-        schema = super(ActivityResource,self).build_schema()
-
-        filename = self._get_filename(schema, kwargs)
-        
-        try:
-            
-            # general setup
-          
-            manual_field_includes = set(param_hash.get('includes', []))
-            if DEBUG_GET_LIST: 
-                logger.info(str(('manual_field_includes', manual_field_includes)))
-  
-            (filter_expression, filter_fields) = \
-                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
-                                  
-            field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes, 
-                param_hash.get('visibilities'), 
-                exact_fields=set(param_hash.get('exact_fields',[])))
-              
-            order_params = param_hash.get('order_by',[])
-            order_clauses = \
-                SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
-             
-            rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-                rowproxy_generator = \
-                    IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
- 
-            # specific setup 
-            base_query_tables = ['activity']
-        
-            custom_columns = {
-                'screen_id': literal_column(
-                    '( select facility_id '
-                    '  from screen where screen.screen_id=cherry_pick_request.screen_id )'
-                    ).label('screen_id'),
-                'performed_by_name': literal_column(
-                    "(select su.first_name || ' ' || su.last_name "
-                    ' from activity a'
-                    ' join screensaver_user su on(a.performed_by_id=su.screensaver_user_id) '
-                    ' where a.activity_id=activity.id )').label('performed_by_name'),
-                'activity_type': literal_column(
-                    '()'
-                    ).label('activity_type')
-                    
-            }
-            
-            columns = self.build_sqlalchemy_columns(
-                field_hash.values(), base_query_tables=base_query_tables,
-                custom_columns=custom_columns )
-
-            # build the query statement
-            _a = self.bridge['activity']
-            _u = self.bridge['screensaver_user']
-            
-            
-            j = join(_a,_u,
-                _a.c.performed_by_id==_u.c.screensaver_user_id)
-            stmt = select(columns.values()).select_from(j)
-            # general setup
-             
-            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
-            
-            if not order_clauses:
-                stmt = stmt.order_by(nullslast(desc(column('date_performed'))))
-            
-            title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
-                title_function = lambda key: field_hash[key]['title']
-            
-            return self.stream_response_from_statement(
-                request, stmt, count_stmt, filename, 
-                field_hash=field_hash, 
-                param_hash=param_hash,
-                is_for_detail=is_for_detail,
-                rowproxy_generator=rowproxy_generator,
-                title_function=title_function  )
-             
-        except Exception, e:
-            logger.exception('on get list')
-            raise e  
 
 
 class LibraryResource(SqlAlchemyResource, ManagedModelResource):
@@ -5429,7 +6387,7 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
 
         return self.build_list_response(request, **kwargs)
 
-        
+    @read_authorization
     def build_list_response(self,request, **kwargs):
         ''' 
         Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
@@ -5442,6 +6400,8 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         param_hash.update(self._convert_request_to_dict(request))
         
         is_for_detail = kwargs.pop('is_for_detail', False)
+        
+        for_screen_id = param_hash.pop('for_screen_id',None)
         
         schema = super(LibraryResource,self).build_schema()
 
@@ -5502,7 +6462,11 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
 
             # build the query statement
             _l = self.bridge['library']
+
             j = _l
+            if for_screen_id:
+                _subquery = self.get_screen_library_subquery(for_screen_id)
+                j = j.join(_subquery,_subquery.c.library_id==_l.c.library_id)
             stmt = select(columns.values()).select_from(j)
 
             # general setup
@@ -5524,6 +6488,32 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         except Exception, e:
             logger.exception('on get list')
             raise e  
+
+    @classmethod
+    def get_screen_library_subquery(cls, for_screen_id):
+        
+        _screen = cls.bridge['screen']
+        _lab_activity = cls.bridge['lab_activity']
+        _library_screening = cls.bridge['library_screening']
+        _assay_plate = cls.bridge['assay_plate']
+        _plate = cls.bridge['plate']
+        _copy = cls.bridge['copy']
+        
+        j = _screen
+        j = j.join(_lab_activity, _lab_activity.c.screen_id==_screen.c.screen_id)
+        j = j.join(_library_screening,_library_screening.c.activity_id
+            ==_lab_activity.c.activity_id)
+        j = j.join(_assay_plate, _library_screening.c.activity_id
+            ==_assay_plate.c.library_screening_id)
+        j = j.join(_plate,_assay_plate.c.plate_id==_plate.c.plate_id)
+        j = j.join(_copy,_copy.c.copy_id==_plate.c.copy_id)
+        screen_libraries = (
+            select([
+                distinct(_copy.c.library_id).label('library_id')])
+            .select_from(j)
+            .where(_screen.c.facility_id==for_screen_id)
+            .cte('screen_libraries'))
+        return screen_libraries
 
     def prepend_urls(self):
 
@@ -5666,9 +6656,9 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         kwargs['library_short_name'] = kwargs.pop('short_name')
         return self.get_reagent_resource().dispatch('list', request, **kwargs)    
                     
-    def dispatch_libraryversionview(self, request, **kwargs):
-        kwargs['library_short_name'] = kwargs.pop('short_name')
-        return LibraryContentsVersionResource().dispatch('list', request, **kwargs)    
+#     def dispatch_libraryversionview(self, request, **kwargs):
+#         kwargs['library_short_name'] = kwargs.pop('short_name')
+#         return LibraryContentsVersionResource().dispatch('list', request, **kwargs)    
         
     def build_schema(self, librarytype=None):
         schema = cache.get(self._meta.resource_name + ":schema")
@@ -5747,87 +6737,87 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
             logger.exception('on library create')
             raise e
 
-class LibraryContentsVersionResource(ManagedModelResource):
-
-    library_short_name = fields.CharField('library__short_name',  null=True)
-    loading_activity = fields.ToOneField(
-        'db.api.ActivityResource', 
-        attribute='library_contents_loading_activity__activity', 
-        full=True, full_detail=True, full_list=True,
-        null=True)
-    release_activity = fields.ToOneField(
-        'db.api.ActivityResource', 
-        attribute='library_contents_release_activity__activity', 
-        full=True, full_detail=True, full_list=True,
-        null=True)
-     
-    date_loaded = fields.DateField(
-        'library_contents_loading_activity__activity__date_of_activity', null=True)
-    date_released = fields.DateField(
-        'library_contents_release_activity__activity__date_of_activity', null=True)
-    load_commments = fields.CharField(
-        'library_contents_loading_activity__activity__comments', null=True)
-    loaded_by_id = fields.IntegerField(
-        'library_contents_loading_activity__activity__performed_by__screensaver_user_id',
-        null=True)
-        
-    class Meta:
-        queryset = LibraryContentsVersion.objects.all() #.order_by('facility_id')
-        authentication = MultiAuthentication(BasicAuthentication(), 
-                                             SessionAuthentication())
-        authorization= UserGroupAuthorization()
-        resource_name = 'librarycontentsversion'
-        
-        ordering = []
-        filtering = {}
-        serializer = LimsSerializer()
-        
-    def __init__(self, **kwargs):
-        super(LibraryContentsVersionResource,self).__init__(**kwargs)
-
-    def prepend_urls(self):
-        # NOTE: this match "((?=(schema))__|(?!(schema))[^/]+)" 
-        # allows us to match any word (any char except forward slash), 
-        # except "schema", and use it as the key value to search for.
-        # also note the double underscore "__" is because we also don't want to 
-        # match in the first clause.
-        # We don't want "schema" since that reserved word is used by tastypie 
-        # for the schema definition for the resource (used by the UI)
-        return [
-            url((r"^(?P<resource_name>%s)"
-                 r"/(?P<library__short_name>((?=(schema))__|(?!(schema))[^/]+))"
-                 r"/(?P<version_number>[^/]+)%s$")  
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),]    
-    
-    def get_object_list(self, request, library_short_name=None):
-        ''' 
-        Note: any extra kwargs are there because we are injecting them into the 
-        global tastypie kwargs in one of the various "dispatch_" handlers assigned 
-        through prepend_urls.  Here we can explicitly add them to the query. 
-        
-        '''
-        query = super(LibraryContentsVersionResource, self).get_object_list(request);
-        if library_short_name:
-            query = query.filter(library__short_name=library_short_name)
-        return query
-
-    def dehydrate(self, bundle):
-        if bundle.obj.library_contents_loading_activity:
-            sru = bundle.obj.library_contents_loading_activity.activity.performed_by
-            bundle.data['loaded_by'] =  sru.first_name + ' ' + sru.last_name
-        if bundle.obj.library_contents_loading_activity:
-            sru = bundle.obj.library_contents_release_activity.activity.performed_by
-            bundle.data['released_by'] =  sru.first_name + ' ' + sru.last_name
-        return bundle
-        
-    def build_schema(self):
-        schema = super(LibraryContentsVersionResource,self).build_schema()
-        return schema
-    
-    def obj_create(self, bundle, **kwargs):
-        bundle.data['date_created'] = timezone.now()
-        super(LibraryContentsVersionResource, self).obj_create(bundle, **kwargs)
+# class LibraryContentsVersionResource(ManagedModelResource):
+# 
+#     library_short_name = fields.CharField('library__short_name',  null=True)
+#     loading_activity = fields.ToOneField(
+#         'db.api.ActivityResource', 
+#         attribute='library_contents_loading_activity__activity', 
+#         full=True, full_detail=True, full_list=True,
+#         null=True)
+#     release_activity = fields.ToOneField(
+#         'db.api.ActivityResource', 
+#         attribute='library_contents_release_activity__activity', 
+#         full=True, full_detail=True, full_list=True,
+#         null=True)
+#      
+#     date_loaded = fields.DateField(
+#         'library_contents_loading_activity__activity__date_of_activity', null=True)
+#     date_released = fields.DateField(
+#         'library_contents_release_activity__activity__date_of_activity', null=True)
+#     load_commments = fields.CharField(
+#         'library_contents_loading_activity__activity__comments', null=True)
+#     loaded_by_id = fields.IntegerField(
+#         'library_contents_loading_activity__activity__performed_by__screensaver_user_id',
+#         null=True)
+#         
+#     class Meta:
+#         queryset = LibraryContentsVersion.objects.all() #.order_by('facility_id')
+#         authentication = MultiAuthentication(BasicAuthentication(), 
+#                                              SessionAuthentication())
+#         authorization= UserGroupAuthorization()
+#         resource_name = 'librarycontentsversion'
+#         
+#         ordering = []
+#         filtering = {}
+#         serializer = LimsSerializer()
+#         
+#     def __init__(self, **kwargs):
+#         super(LibraryContentsVersionResource,self).__init__(**kwargs)
+# 
+#     def prepend_urls(self):
+#         # NOTE: this match "((?=(schema))__|(?!(schema))[^/]+)" 
+#         # allows us to match any word (any char except forward slash), 
+#         # except "schema", and use it as the key value to search for.
+#         # also note the double underscore "__" is because we also don't want to 
+#         # match in the first clause.
+#         # We don't want "schema" since that reserved word is used by tastypie 
+#         # for the schema definition for the resource (used by the UI)
+#         return [
+#             url((r"^(?P<resource_name>%s)"
+#                  r"/(?P<library__short_name>((?=(schema))__|(?!(schema))[^/]+))"
+#                  r"/(?P<version_number>[^/]+)%s$")  
+#                     % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),]    
+#     
+#     def get_object_list(self, request, library_short_name=None):
+#         ''' 
+#         Note: any extra kwargs are there because we are injecting them into the 
+#         global tastypie kwargs in one of the various "dispatch_" handlers assigned 
+#         through prepend_urls.  Here we can explicitly add them to the query. 
+#         
+#         '''
+#         query = super(LibraryContentsVersionResource, self).get_object_list(request);
+#         if library_short_name:
+#             query = query.filter(library__short_name=library_short_name)
+#         return query
+# 
+#     def dehydrate(self, bundle):
+#         if bundle.obj.library_contents_loading_activity:
+#             sru = bundle.obj.library_contents_loading_activity.activity.performed_by
+#             bundle.data['loaded_by'] =  sru.first_name + ' ' + sru.last_name
+#         if bundle.obj.library_contents_loading_activity:
+#             sru = bundle.obj.library_contents_release_activity.activity.performed_by
+#             bundle.data['released_by'] =  sru.first_name + ' ' + sru.last_name
+#         return bundle
+#         
+#     def build_schema(self):
+#         schema = super(LibraryContentsVersionResource,self).build_schema()
+#         return schema
+#     
+#     def obj_create(self, bundle, **kwargs):
+#         bundle.data['date_created'] = timezone.now()
+#         super(LibraryContentsVersionResource, self).obj_create(bundle, **kwargs)
     
 
 # class BasicAuthenticationAjaxBrowsers(BasicAuthentication):

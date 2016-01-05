@@ -1087,7 +1087,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         test_username = 'screeningroomuser1'
         service_activity_post = {
             'serviced_username': test_username,
-            'activity_type': "image_analysis",
+            'type': "image_analysis",
             'comments': "test",
             'date_of_activity': "2015-10-27",
             'funding_support': "clardy_grants",

@@ -69,6 +69,8 @@ def create_simple_vocabularies(apps):
                     apps.get_model('db', 'CellLine').objects.all()],
                 ['value', 'transfection_agent',
                     apps.get_model('db', 'TransfectionAgent').objects.all()],
+                ['assay_protocol_type', 'assayprotocol.type',
+                    apps.get_model('db', 'Screening').objects.all()],
             ]            
         for arg_list in input_args:
             create_vocab(vocab_writer, *arg_list)

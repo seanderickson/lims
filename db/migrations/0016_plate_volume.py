@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-from datetime import datetime, time, date,timedelta
-from pytz import timezone
+from datetime import datetime, time, date, timedelta
 import json
 import logging
 
 from django.db import migrations, models
+from pytz import timezone
+import pytz
 
 from db.support.data_converter import default_converter
 from reports.models import ApiLog
-import pytz
 
 
 logger = logging.getLogger(__name__)
@@ -24,24 +24,25 @@ plate_resource_name = 'plate'
 plate_uri = '/db/api/v1/' + plate_resource_name
 
 # this is a workaround, because some activities have identical date_of_activity
+
+
 times_seen = set()
+def create_log_time(input_date):
+    date_time = pytz.timezone('US/Eastern').localize(
+        datetime.combine(input_date, datetime.min.time()))
+    i = 0
+    while date_time in times_seen:
+        i += 1
+        date_time += timedelta(0,i)
+    times_seen.add(date_time)
+    return date_time
 
 def _create_generic_log(activity):
     
     log = ApiLog()
 
     log.comment = activity.comments
-    log.date_time = pytz.timezone('US/Eastern').localize(
-        datetime.combine(activity.date_of_activity, time()))
-    if log.date_time not in times_seen:
-        times_seen.add(log.date_time)
-    else:
-        i = 0
-        while log.date_time in times_seen:
-            i += 1
-            log.date_time += timedelta(0,i)
-        times_seen.add(log.date_time)
-    
+    log.date_time = create_log_time(activity.date_of_activity)
     log.username = activity.performed_by.ecommons_id
     if not log.username:
         log.username = '%s: %s' % (

@@ -485,12 +485,12 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0004_screen_status'),
+        ('db', '0003_db_migration_prep'),
         ('auth', '0001_initial')
     ]
 
     operations = [
-        # Note: for users migration 0005;
+        # Note: for users migration;
         # - the fields last_notified_smua_checklist_item_event, (also rnai)
         # will be moved to the userchecklistitem status_notified_date;
         # And nightly batch scripts will have to be modified accordingly

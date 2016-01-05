@@ -1,17 +1,33 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-    
 from __future__ import unicode_literals
 
 import json
 import logging
 
-from django.db import migrations, models
+from django.db import migrations, models, transaction
 from django.utils import timezone
+from django.db.utils import IntegrityError
 
 from db.support.data_converter import default_converter
 from reports.models import ApiLog
 
+from datetime import datetime, time, date, timedelta
+from pytz import timezone
+import pytz
 
 logger = logging.getLogger(__name__)
+
+times_seen = set()
+def create_log_time(input_date):
+    date_time = pytz.timezone('US/Eastern').localize(
+        datetime.combine(input_date, datetime.min.time()))
+    i = 0
+    while date_time in times_seen:
+        i += 1
+        date_time += timedelta(0,i)
+        logger.info('adjust time: %s', date_time.isoformat())
+    times_seen.add(date_time)
+    return date_time
 
 def migrate_screen_status(apps,schema_editor):
     '''
@@ -40,34 +56,48 @@ def migrate_screen_status(apps,schema_editor):
     j=0
     ScreenStatusItem = apps.get_model('db','ScreenStatusItem')
     for screen in apps.get_model('db','Screen').objects.all():
+        logger.info('process screen: %s', screen.facility_id)
         i=0
         if screen.status:
             screen.status = default_converter(screen.status)
             screen.save()
-        # no scan the screen_status_items to recreate logs
+        # now scan the screen_status_items to recreate logs
         prev_item = None
-        for status in ScreenStatusItem.objects.filter(screen=screen):
+        for status in ( ScreenStatusItem.objects.filter(screen=screen)
+                .order_by('status_date')):
             log = ApiLog()
-            log.date_time = timezone.now() 
-            #status.status_date + datetime.timedelta(0,i) 
-            # hack add 1 sec to avoid duplicate key error #timezone.now() 
+            log.date_time = create_log_time(status.status_date) 
             log.user_id = 1
-            log.username = 'sde4'
+            log.username = ''
             log.ref_resource_name = 'screen'
             log.key = screen.facility_id
             log.uri = '/db/api/v1/screen/' + screen.facility_id
-            log.diff_keys = '["status","status_date"]'
+            log.diff_keys = '["status"]'
             diffs = {}
             if prev_item:
                 diffs['status'] = [prev_item.status, status.status]
-                diffs['status_date'] = [unicode(prev_item.status_date), unicode(status.status_date)]
             else:
                 diffs['status'] = [None, status.status]
-                diffs['status_date'] = [None, unicode(status.status_date)]
             log.diffs = json.dumps(diffs)
-            logger.debug(str(( 'create log: ' , j, log)))
-            log.save()
-             
+            logger.info('create log: %s: %r' , j, log)
+            try:
+                # use a nested atomic block to delimit rollback (the entire
+                # migration is is the outer atomic block)
+                with transaction.atomic():
+                    log.save()
+            except IntegrityError as e:
+                apilog_model = apps.get_model('reports','apilog')
+                max_datetime = ( 
+                    apilog_model.objects.filter(
+                        ref_resource_name='screen',
+                        key = log.key)
+                    .order_by('-date_time')
+                    .values_list('date_time', flat=True))[0]
+                max_datetime += timedelta(0,i)
+                times_seen.add(max_datetime)
+                logger.info('new log time: %s', max_datetime.isoformat())
+                log.date_time = max_datetime
+
             prev_item = status
             i = i + 1
             j = j + 1
@@ -78,7 +108,7 @@ def migrate_screen_status(apps,schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0003_db_migration_prep'),
+        ('db', '0004_users'),
     ]
 
     operations = [

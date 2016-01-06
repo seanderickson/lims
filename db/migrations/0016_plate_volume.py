@@ -11,6 +11,7 @@ import pytz
 
 from db.support.data_converter import default_converter
 from reports.models import ApiLog
+from django.db.utils import IntegrityError
 
 
 logger = logging.getLogger(__name__)
@@ -27,10 +28,13 @@ plate_uri = '/db/api/v1/' + plate_resource_name
 
 
 times_seen = set()
+# unique offset for the logs in this migration to avoid collisions
+plate_vol_time_offset = 1111
 def create_log_time(input_date):
     date_time = pytz.timezone('US/Eastern').localize(
         datetime.combine(input_date, datetime.min.time()))
     i = 0
+    date_time += timedelta(0,plate_vol_time_offset)
     while date_time in times_seen:
         i += 1
         date_time += timedelta(0,i)

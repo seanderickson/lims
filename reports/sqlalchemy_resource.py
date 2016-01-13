@@ -1,11 +1,12 @@
 from __future__ import unicode_literals
+
 from collections import OrderedDict
+from functools import wraps
 import hashlib
 import logging
 import os.path
 import sys
 import urllib
-from functools import wraps
 
 from django.core.cache import cache
 import django.db.models.constants
@@ -14,12 +15,15 @@ from django.http.response import StreamingHttpResponse, HttpResponse
 from sqlalchemy import select, asc, text
 import sqlalchemy
 from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.sql import and_, or_, not_          
 from sqlalchemy.sql import asc, desc, alias, Alias
 from sqlalchemy.sql import func
 from sqlalchemy.sql.elements import literal_column
 from sqlalchemy.sql.expression import column, join, cast
 from sqlalchemy.sql.expression import nullsfirst, nullslast
+from sqlalchemy.sql.functions import func
+from sqlalchemy.sql.sqltypes import Numeric, Text
 from tastypie.exceptions import BadRequest, ImmediateHttpResponse
 from tastypie.http import HttpNotFound
 from tastypie.resources import Resource
@@ -28,14 +32,22 @@ from tastypie.utils.mime import build_content_type
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     LIST_BRACKETS, MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE, \
     LIST_DELIMITER_XLS, LIST_DELIMITER_CSV, HTTP_PARAM_RAW_LISTS
+from reports.serializers import LimsSerializer
 from reports.utils.sqlalchemy_bridge import Bridge
 from reports.utils.streaming_serializers import sdf_generator, json_generator, \
     get_xls_response, csv_generator, ChunkIterWrapper
-from sqlalchemy.sql.sqltypes import Numeric
 
 
 logger = logging.getLogger(__name__)
 
+
+def _concat(*args):
+    '''
+    Use as a replacement for sqlalchemy.sql.functions.concat
+    - "concat" is not available in postgresql 8.4
+    '''
+    return func.array_to_string(array([x for x in args]),'')
+        
 def un_cache(_func):
     '''
     Wrapper function to disable caching for 
@@ -547,7 +559,7 @@ class SqlAlchemyResource(Resource):
                     expression = col >= value
                 elif filter_type == 'is_blank':
                     if field['data_type'] == 'string':
-                        col = func.trim(col)
+                        col = func.trim(cast(col,Text))
                     if value and str(value).lower() == 'true':
                         expression = col == None 
                         if field['data_type'] == 'string':
@@ -559,7 +571,7 @@ class SqlAlchemyResource(Resource):
                             expression = col != ''
                 elif filter_type == 'is_null':
                     if field['data_type'] == 'string':
-                        col = func.trim(col)
+                        col = func.trim(cast(col,Text))
                     if value and str(value).lower() == 'true':
                         expression = col == None 
                     else:
@@ -660,6 +672,35 @@ class SqlAlchemyResource(Resource):
             logger.info(str(('no downloadID')))
         
         return response
+
+    def _get_list_response(self,request,**kwargs):
+        '''
+        Return a deserialized list of dicts
+        '''
+        response = self.get_list(
+            request,
+            desired_format='application/json',
+            includes='*',
+            **kwargs)
+        _data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        _data = _data[self._meta.collection_name]
+        logger.debug(' data: %s'% _data)
+        return _data
+
+    def _get_detail_response(self,request,**kwargs):
+        '''
+        Return the detail response as a dict
+        '''
+        response = self.get_detail(
+            request,
+            desired_format='application/json',
+            includes='*',
+            **kwargs)
+        _data = self._meta.serializer.deserialize(
+            LimsSerializer.get_content(response), format='application/json')
+        logger.debug(' data: %s'% _data)
+        return _data
 
     def get_list(self, request, **kwargs):
         '''

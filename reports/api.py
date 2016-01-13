@@ -1,16 +1,18 @@
 from __future__ import unicode_literals
+
+import cStringIO
 from collections import defaultdict, OrderedDict
 from copy import deepcopy
 import csv
 import datetime
 from functools import wraps
+import importlib
 import json
 import logging
 import os
 import re
 import sys
 import traceback
-import importlib
 
 import dateutil
 from django.conf import settings
@@ -18,8 +20,10 @@ from django.conf.global_settings import AUTH_USER_MODEL
 from django.conf.urls import url
 from django.contrib.auth.models import User as DjangoUser
 from django.contrib.auth.models import UserManager
+from django.contrib.sessions.models import Session
 from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from django.db.models import Q
 from django.db.models.aggregates import Max
@@ -28,20 +32,18 @@ from django.http.request import HttpRequest
 from django.http.response import HttpResponse
 from django.http.response import HttpResponseBase
 from django.utils import timezone
-
 from django.utils.encoding import smart_text
 import six
 from sqlalchemy import select, asc, text
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import Any
+from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.sql import and_, or_, not_          , operators
 from sqlalchemy.sql import asc, desc, alias, Alias
 from sqlalchemy.sql import func
 from sqlalchemy.sql.elements import literal_column
 from sqlalchemy.sql.expression import column, join, distinct
 from sqlalchemy.sql.expression import nullsfirst, nullslast
-from sqlalchemy.dialects.postgresql import array
-from sqlalchemy.dialects.postgresql import Any
-from sqlalchemy.dialects.postgresql import ARRAY
-
 from tastypie import fields 
 from tastypie.authentication import BasicAuthentication, SessionAuthentication, \
     MultiAuthentication
@@ -50,7 +52,7 @@ from tastypie.bundle import Bundle
 from tastypie.constants import ALL, ALL_WITH_RELATIONS
 from tastypie.exceptions import NotFound, ImmediateHttpResponse, Unauthorized, \
     BadRequest
-from tastypie.http import HttpForbidden, HttpNotFound, HttpNotImplemented,\
+from tastypie.http import HttpForbidden, HttpNotFound, HttpNotImplemented, \
     HttpNoContent
 from tastypie.resources import Resource, ModelResource
 from tastypie.resources import convert_post_to_put
@@ -61,7 +63,6 @@ from tastypie.utils.timezone import make_naive
 from tastypie.utils.urls import trailing_slash
 from tastypie.validation import Validation
 
-# from db.models import ScreensaverUser
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT
 from reports import ValidationError
@@ -72,10 +73,9 @@ from reports.models import MetaHash, Vocabularies, ApiLog, ListLog, Permission, 
 from reports.serializers import LimsSerializer, CsvBooleanField, CSVSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource, un_cache
 from reports.utils.profile_decorator import profile
-import cStringIO
-from django.core.serializers.json import DjangoJSONEncoder
 
 
+# from db.models import ScreensaverUser
 logger = logging.getLogger(__name__)
 
 def parse_val(value, key, data_type):
@@ -327,15 +327,15 @@ class IccblBaseResource(Resource):
         "Return the mime-type with the highest quality ('q') from list of candidates."
         - uses Resource.content_types
         '''
-        format = request.GET.get('format', None)
+        format = request.GET.get('format', 'json')
         logger.debug('format %s', format)
         if format:
             if format in self.content_types:
                 format = self.content_types[format]
                 logger.debug('format', format)
             else:
-                logger.error(str(('unknown format', desired_format)))
-                raise ImmediateHttpResponse("unknown format: %s" % desired_format)
+                logger.error('unknown format: %r, options: %r', format, self.content_types)
+                raise ImmediateHttpResponse("unknown format: %s" % format)
         else:
             # Try to fallback on the Accepts header.
             if request.META.get('HTTP_ACCEPT', '*/*') != '*/*':
@@ -422,7 +422,7 @@ class IccblBaseResource(Resource):
         for key, field in field_hash.iteritems():
             if field.get('vocabulary_scope_ref', None):
                 scope = field.get('vocabulary_scope_ref')
-                vocabularies[key] = VocabulariesResource.get_vocabularies_by_scope(scope)
+                vocabularies[key] = VocabulariesResource()._get_vocabularies_by_scope(scope)
         def vocabulary_rowproxy_generator(cursor):
             class Row:
                 def __init__(self, row):
@@ -2125,14 +2125,6 @@ class VocabulariesResource(ManagedModelResource, SqlAlchemyResource):
             'label': 'Vocabulary', 'searchColumn': 'scope', 'options': temp }
         return schema
     
-#     def dehydrate(self, bundle):
-#         # add in a convenience element for viewing
-#         logger.info('dehydrate: %r, %r', bundle.data['scope'], bundle.data['key'])
-#         bundle = super(VocabulariesResource,self).dehydrate(bundle)
-#         bundle.data['1'] = bundle.data['scope']
-#         bundle.data['2'] = bundle.data['key']
-#         return bundle
-    
     def get_detail(self, request, **kwargs):
         logger.info(str(('get_detail')))
 
@@ -2243,7 +2235,8 @@ class VocabulariesResource(ManagedModelResource, SqlAlchemyResource):
             order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
                 order_params, field_hash)
-             
+            
+            # PROTOTYPE: to be refactored for other json_field resources
             def json_field_rowproxy_generator(cursor):
                 '''
                 Wrap connection cursor to fetch fields embedded in the 'json_field'
@@ -2310,43 +2303,79 @@ class VocabulariesResource(ManagedModelResource, SqlAlchemyResource):
             logger.exception('on get list')
             raise e  
     
-    
-    @staticmethod
-    def get_vocabularies_by_scope(scope):
+    def _get_vocabularies_by_scope(self, scope):
         ''' Utility method
+        Retrieve and cache all of the vocabularies in a two level dict
+        - keyed by [scope][key]
         '''
-        try:
-            vocabularies = cache.get('vocabularies');
-            if not vocabularies:
-                vocabularies = {}
-                res = VocabulariesResource()
-                request_bundle = res.build_bundle(request=HttpRequest())
-                class User:
-                    @staticmethod
-                    def is_superuser():
-                        return true
-                request_bundle.request.user = User
-                queryset = res.obj_get_list(request_bundle)
-        
-                for obj in queryset:
-                    request_bundle.obj = obj
-                    request_bundle.data = {}
-                    vocabulary_instance = res.full_dehydrate(request_bundle).data
-                    ## add in a convenience key
-                    vocabulary_instance['1key'] = vocabulary_instance['key']
-                    _scope = vocabulary_instance['scope']
-                    if _scope not in vocabularies:
-                         vocabularies[_scope] = {}
-                    vocabularies[_scope][vocabulary_instance['key']] = vocabulary_instance
-                cache.set('vocabularies', vocabularies);
-            if scope in vocabularies:
-                return deepcopy(vocabularies[scope])
-            else:
-                logger.warn(str(('---unknown vocabulary scope:', scope)))
-                return {}
-        except Exception, e:
-            logger.exception('on get_vocabularies_by_scope')
-            raise e  
+        vocabularies = cache.get('vocabularies');
+        if not vocabularies:
+            vocabularies = {}
+            kwargs = {
+                'limit': '0'
+            }
+            request=HttpRequest()
+            request.session = Session()
+            class User:
+                @staticmethod
+                def is_superuser():
+                    return true
+            request.user = User
+            _data = self._get_list_response(request=request,**kwargs)
+            for v in _data:
+                _scope = v['scope']
+                if _scope not in vocabularies:
+                     vocabularies[_scope] = {}
+                     logger.info('created vocab scope: %r', _scope)
+                vocabularies[_scope][v['key']] = v
+                
+            # Hack: activity.type is serviceactivity.type + activity.class
+            vocabularies['activity.type'] = deepcopy(vocabularies['serviceactivity.type'])
+            vocabularies['activity.type'].update(deepcopy(vocabularies['activity.class']))
+            
+            cache.set('vocabularies', vocabularies);
+        if scope in vocabularies:
+            return deepcopy(vocabularies[scope])
+        else:
+            logger.warn(str(('---unknown vocabulary scope:', scope)))
+            return {}
+    
+#     @staticmethod
+#     def get_vocabularies_by_scope_old(scope):
+#         ''' Utility method
+#         '''
+#         try:
+#             vocabularies = cache.get('vocabularies');
+#             if not vocabularies:
+#                 vocabularies = {}
+#                 res = VocabulariesResource()
+#                 request_bundle = res.build_bundle(request=HttpRequest())
+#                 class User:
+#                     @staticmethod
+#                     def is_superuser():
+#                         return true
+#                 request_bundle.request.user = User
+#                 queryset = res.obj_get_list(request_bundle)
+#         
+#                 for obj in queryset:
+#                     request_bundle.obj = obj
+#                     request_bundle.data = {}
+#                     vocabulary_instance = res.full_dehydrate(request_bundle).data
+#                     ## add in a convenience key
+#                     vocabulary_instance['1key'] = vocabulary_instance['key']
+#                     _scope = vocabulary_instance['scope']
+#                     if _scope not in vocabularies:
+#                          vocabularies[_scope] = {}
+#                     vocabularies[_scope][vocabulary_instance['key']] = vocabulary_instance
+#                 cache.set('vocabularies', vocabularies);
+#             if scope in vocabularies:
+#                 return deepcopy(vocabularies[scope])
+#             else:
+#                 logger.warn(str(('---unknown vocabulary scope:', scope)))
+#                 return {}
+#         except Exception, e:
+#             logger.exception('on get_vocabularies_by_scope')
+#             raise e  
     
     def clear_cache(self):
         super(VocabulariesResource,self).clear_cache()
@@ -2884,29 +2913,6 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
     - prepend_urls must direct to the detail/list methods
     '''
     
-    def _get_list_response(self,request,**kwargs_for_log):
-        response = self.get_list(
-            request,
-            desired_format='application/json',
-            includes='*',
-            **kwargs_for_log)
-        _data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        _data = _data[self._meta.collection_name]
-        logger.debug(' data: %s'% _data)
-        return _data
-
-    def _get_detail_response(self,request,**kwargs_for_log):
-        response = self.get_detail(
-            request,
-            desired_format='application/json',
-            includes='*',
-            **kwargs_for_log)
-        _data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        logger.debug(' data: %s'% _data)
-        return _data
-
     @write_authorization
     @un_cache        
     def patch_list(self, request, **kwargs):

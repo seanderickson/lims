@@ -60,7 +60,7 @@ def create_simple_vocabularies(apps):
                     apps.get_model('db', 'DataColumn').objects.all()],
                 ['value', 'funding_support',
                     apps.get_model('db', 'FundingSupport').objects.all()],
-                ['service_activity_type', 'serviceactivity.type',
+                ['service_activity_type', 'activity.type',
                     apps.get_model('db', 'ServiceActivity').objects.all()],
                 # dep: 0020(provisional) -> moves to 0002: move classification column
                 ['classification', 'user.classification',

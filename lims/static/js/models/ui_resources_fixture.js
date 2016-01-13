@@ -186,10 +186,6 @@
       "options": { 
         "order": []  }
     },
-    "activities": {
-      "options": { 
-        "order": []  }
-    },
     "userchecklistitem": {
       "options": {
         "rpp": 200,

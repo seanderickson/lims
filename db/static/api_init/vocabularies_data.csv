@@ -132,7 +132,12 @@ postdoc,user.classification,vocabularies/user.classification/postdoc/,5,,Postdoc
 iccb_l_nsrb_staff,user.classification,vocabularies/user.classification/iccb_l_nsrb_staff/,6,,"ICCB-L/NSRB staff","ICCB-L/NSRB staff",
 other,user.classification,vocabularies/user.classification/other/,7,,Other,Other,
 unassigned,user.classification,vocabularies/user.classification/unassigned/,8,,Unassigned,Unassigned,
-cherry_pick_screening,labactivity.type,vocabularies/labactivity.type/cherry_pick_screening/,3,,"Cherry Pick Screening","Cherry Pick Screening",
-library_screening,labactivity.type,vocabularies/labactivity.type/library_screening/,1,,"Library Screening","Library Screening",
-external_library_screening,labactivity.type,vocabularies/labactivity.type/external_library_screening/,2,,"External Library Screening","External Library Screening",
-cherry_pick_liquid_transfer,labactivity.type,vocabularies/labactivity.type/cherry_pick_liquid_transfer/,4,,"Cherry Pick Liquid Transfer","Cherry Pick Liquid Transfer",
+cherry_pick_screening,activity.class,vocabularies/activity.class/cherry_pick_screening/,3,,"Cherry Pick Screening","Cherry Pick Screening",
+library_screening,activity.class,vocabularies/activity.class/library_screening/,1,,"Library Screening","Library Screening",
+external_library_screening,activity.class,vocabularies/activity.class/external_library_screening/,2,,"External Library Screening","External Library Screening",
+cherry_pick_liquid_transfer,activity.class,vocabularies/activity.class/cherry_pick_liquid_transfer/,4,,"Cherry Pick Liquid Transfer","Cherry Pick Liquid Transfer",
+serviceactivity,activity.class,vocabularies/activity.class/serviceactivity/,5,,"Service Activity","Service Activity",
+cherry_pick_screening,activity.type,vocabularies/activity.class/cherry_pick_screening/,3,"listed as 'retired' because this is only used in read, not create functions","Cherry Pick Screening","Cherry Pick Screening",TRUE
+library_screening,activity.type,vocabularies/activity.class/library_screening/,1,"listed as 'retired' because this is only used in read, not create functions","Library Screening","Library Screening",TRUE
+external_library_screening,activity.type,vocabularies/activity.class/external_library_screening/,2,"listed as 'retired' because this is only used in read, not create functions","External Library Screening","External Library Screening",TRUE
+cherry_pick_liquid_transfer,activity.type,vocabularies/activity.class/cherry_pick_liquid_transfer/,4,"listed as 'retired' because this is only used in read, not create functions","Cherry Pick Liquid Transfer","Cherry Pick Liquid Transfer",TRUE

@@ -4028,7 +4028,11 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     }
 
     if( edit_type == 'select' 
-      || edit_type == 'multiselect' ){
+      || edit_type == 'multiselect' 
+      || edit_type == 'multiselect2' 
+      || edit_type == 'multiselect3' 
+        
+    ){
       column['headerCell'] = SelectorHeaderCell;
     }
     

@@ -277,6 +277,8 @@ define([
       // onEditCallBack: wraps the edit display function
       // - lazy fetch of the expensive principal investigators hash
       // - perform post-render enhancement of the display
+      // TODO: improve this by extending the EditView.afterRender function,
+      // as with the detailView, shown below
       var onEditCallBack = function(displayFunction){
         console.log('on edit callback...');
         appModel.getPrincipalInvestigatorOptions(function(piOptions){
@@ -310,10 +312,18 @@ define([
       if (view) {
         this.removeView(this.tabViews[key]);
       }
+      
+      var detailView = DetailView.extend({
+        afterRender: function(){
+          DetailView.prototype.afterRender.call(this,arguments);
+          self.createStatusHistoryTable(this.$el.find('#status'));
+        }
+      })
       view = new DetailLayout({ 
         model: this.model, 
         uriStack: delegateStack,
-        onEditCallBack: onEditCallBack 
+        onEditCallBack: onEditCallBack,
+        DetailView: detailView
       });
 
       this.tabViews[key] = view;
@@ -322,7 +332,6 @@ define([
       this.consumedStack = []; 
       this.setView("#tab_container", view ).render();
       
-      this.createStatusHistoryTable(view.$el.find('#status'));
       
       return view;
 
@@ -541,7 +550,8 @@ define([
                   });
 
                   self.createPositivesSummary(this.$el.find('#positives_summary'));
-                
+                  
+                  this.$el.prepend('<button>Add Library Screening</button>');
                 }
               });
               self.tabViews[key] = view;

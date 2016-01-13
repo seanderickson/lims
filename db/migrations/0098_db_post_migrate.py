@@ -27,8 +27,8 @@ class Migration(migrations.Migration):
         migrations.RemoveField(
             model_name='attachedfile',name='attached_file_type_id'),
         
-        migrations.RunSQL('ALTER TABLE screen DROP COLUMN cell_line_id ; '),
-        migrations.RunSQL('DROP TABLE screen_cell_line; '),
+#         migrations.RunSQL('ALTER TABLE screen DROP COLUMN cell_line_id ; '),
+#         migrations.RunSQL('DROP TABLE screen_cell_line; '),
         migrations.RunSQL('ALTER TABLE screen DROP COLUMN transfection_agent_id ; '),
         migrations.RunSQL('DROP TABLE transfection_agent; '),
         migrations.RunSQL('DROP TABLE funding_support; '),

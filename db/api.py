@@ -29,9 +29,9 @@ from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.sql import and_, or_, not_, asc, desc, alias, Alias, func
 from sqlalchemy.sql.elements import literal_column
 from sqlalchemy.sql.expression import column, join, insert, delete, distinct, \
-    exists, _Cast
+    exists, _Cast, cast
 from sqlalchemy.sql.expression import nullsfirst, nullslast
-from sqlalchemy.sql.functions import concat
+from sqlalchemy.sql.sqltypes import TEXT
 from tastypie import fields
 from tastypie import http
 from tastypie.authentication import BasicAuthentication, SessionAuthentication, \
@@ -71,9 +71,9 @@ from reports.models import MetaHash, Vocabularies, ApiLog, UserProfile, \
     API_ACTION_DELETE, API_ACTION_PUT
 from reports.serializers import CursorSerializer, LimsSerializer, XLSSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource, un_cache
+from reports.sqlalchemy_resource import _concat
 
 
-# import sqlalchemy
 PLATE_NUMBER_SQL_FORMAT = 'FM9900000'
 
 logger = logging.getLogger(__name__)
@@ -2080,7 +2080,7 @@ class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):
                     '  where su.screensaver_user_id=cherry_pick_request.requested_by_id )'
                     ).label('requested_by_name'),
                 'lab_name':
-                    ( select([concat(_lhsu.c.last_name,', ',_lhsu.c.first_name,' - ',
+                    ( select([_concat(_lhsu.c.last_name,', ',_lhsu.c.first_name,' - ',
                              affiliation_table.c.title, 
                              ' (',affiliation_table.c.category,')')])
                         .select_from(
@@ -3178,6 +3178,12 @@ class AttachedFileResource(ApiResource):
 # group by s.facility_id,s.screen_id, screen_type, lab_head, s.date_created, si.status, si.status_date, sr.date_created, 
 # a.activity_id, a.date_of_activity, a.date_created, a.performed_by_id,serviced_user, sa.serviced_user_id, sa.service_activity_type, a.comments
 # order by facility_id, activity_id
+SCREEN_FIELDS_INCLUDED_IN_ACTIVITY = [
+    'screen_id', 'facility_id', 'screen_type','project_id','project_phase','title',
+    'lab_name','lab_head_username','lab_affiliation',
+    'lead_screener_username','lead_screener_name',
+    'funding_supports','comments','status','status_date',
+    'date_of_first_activity','date_of_last_activity','has_screen_result']
 
 class ActivityResource(ApiResource):
     '''
@@ -3229,17 +3235,12 @@ class ActivityResource(ApiResource):
 
     def build_schema(self):
          
-        # mix screen fields in
-        # turn off edit/view on all screen fields
+        # Mix screen fields in:
+        # Turn off edit/view on all screen fields
+        # Note: these fields cannot be used for labactivity part of the query
         schema = super(ActivityResource,self).build_schema()
         screen_schema = self.get_screen_resource().build_schema();
         # TODO: store screen fields available to activity view in meta data
-        SCREEN_FIELDS_INCLUDED_IN_ACTIVITY = [
-            'screen_type','project_id','project_phase','title',
-            'lab_name','lab_head_username','lab_affiliation',
-            'lead_screener_username','lead_screener_name',
-            'funding_supports','comments','status','status_date',
-            'date_of_first_activity','date_of_last_activity','has_screen_result']
         _fields = {key:field for key,field in screen_schema['fields'].items()
             if key in SCREEN_FIELDS_INCLUDED_IN_ACTIVITY }
         _fields.update(schema['fields'])
@@ -3295,13 +3296,11 @@ class ActivityResource(ApiResource):
                     .select_from(_performed_by)
                     .where(_performed_by.c.screensaver_user_id==_activity.c.performed_by_id)
                 ),
+            'funding_support': cast(literal_column("null"),TEXT),
         }
 
     def get_query(self, param_hash):
         '''
-        ActivityResource
-        Convenience method for super classes:
-        - create the query used for this resource so that it can be reused
         '''
         
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
@@ -3312,6 +3311,8 @@ class ActivityResource(ApiResource):
         manual_field_includes = set(param_hash.get('includes', []))
         # for join to screen query (TODO: only include if screen fields rqst'd)
         manual_field_includes.add('screen_id')
+        manual_field_includes.add('activity_class')
+        param_hash['includes'] = list(manual_field_includes)
         
         if DEBUG_GET_LIST: 
             logger.info('manual_field_includes: %r', manual_field_includes)
@@ -3335,46 +3336,56 @@ class ActivityResource(ApiResource):
             self.get_service_activity_resource().get_query(param_hash))
         # if a field is not present in the subquery, create an empty field            
         sa_columns = []
-        for key in field_hash.keys():
+        for key in [key for key,field in field_hash.items() 
+            if field['scope']=='fields.activity'] :
             if key not in columns_sa:
-                sa_columns.append(literal_column("null").label(key))
+                sa_columns.append(cast(literal_column("null"),TEXT).label(key))
             else:
                 sa_columns.append(literal_column(key))
-        stmt1 = select(sa_columns).select_from(Alias(stmt_sa))
+        stmt_sa = stmt_sa.cte('serviceactivities')
+        stmt1 = select(sa_columns).select_from(stmt_sa)
 
         (field_hash_la,columns_la,stmt_la,count_stmt_la) = (
             self.get_lab_activity_query(param_hash))
         # if a field is not present in the subquery, create an empty field            
         la_columns = []
-        for key in field_hash.keys():
+        for key in [key for key,field in field_hash.items() 
+            if field['scope']=='fields.activity'] :
             if key not in columns_la:
                 logger.info(
                     'programming error: get_lab_activity_query is missing the col: %r',key)
-                la_columns.append(literal_column("null").label(key))
+                la_columns.append(cast(literal_column("null"),TEXT).label(key))
             else:
                 la_columns.append(literal_column(key))
-        stmt2 = select(la_columns).select_from(Alias(stmt_la))
+        stmt_la = stmt_la.cte('labactivities')
+        stmt2 = select(la_columns).select_from(stmt_la)
+        compiled_stmt = str(stmt2.compile(compile_kwargs={"literal_binds": True}))
+        logger.info('compiled_stmt %s',compiled_stmt)
 
         stmt = stmt1.union_all(stmt2)
-        stmt = Alias(stmt,'activity_query')
-        compiled_stmt = str(stmt.compile(compile_kwargs={"literal_binds": True}))
-        logger.info('compiled_stmt %s',compiled_stmt)
         
         # if any of the screen fields are visible, then join the screen query
         temp = [ key for key,val in field_hash.items() if val['scope'] == 'fields.screen']
         if temp:
             logger.info('screen fields to include: %r', temp)
+            
+            param_hash_sc = deepcopy(param_hash)
+            param_hash_sc['exact_fields'] = SCREEN_FIELDS_INCLUDED_IN_ACTIVITY
+            
+            if 'screen_facility_id__eq' in param_hash:
+                param_hash_sc['facility_id'] = param_hash['screen_facility_id__eq']
+            
             (field_hash_s,columns_s,stmt_s,count_stmt_s) = (
-                self.get_screen_resource().get_query(param_hash))
-            stmt_s = select(columns_s).select_from(Alias(stmt_s))
+                self.get_screen_resource().get_query(param_hash_sc))
             stmt_s = stmt_s.cte('screen_query1')
-            stmt_s = stmt_s.alias('screen_query')
+#             stmt3 = select(columns_s).select_from(stmt_s)
             
             compiled_stmt = str(stmt_s.compile(compile_kwargs={"literal_binds": True}))
             logger.info('compiled_stmt %s',compiled_stmt)
             
+            stmt = stmt.cte('activity_query1')
             j = stmt.join(stmt_s,
-                _Cast(stmt.c.screen_id,Numeric)==_Cast(stmt_s.c.screen_id,Numeric),
+                _Cast(stmt.c.screen_id,Numeric)==text('screen_query1.screen_id'), #_Cast(stmt_s.c.screen_id,Numeric),
                 isouter=True)
             stmt = ( select([text('*')]).select_from(j))
             if DEBUG_GET_LIST: 
@@ -3397,7 +3408,7 @@ class ActivityResource(ApiResource):
         _cps = self.bridge['cherry_pick_screening']
         _screen = self.bridge['screen']
         _sfs = self.bridge['screen_funding_supports']
-        activity_type_column = case([
+        activity_type_column = cast(case([
             (_library_screening.c.activity_id!=None,
                case([(
                    _library_screening.c.is_for_external_library_plates,
@@ -3406,7 +3417,7 @@ class ActivityResource(ApiResource):
             (_cps.c.activity_id!=None,
                 'cherry_pick_screening')
             ],
-            else_='cherry_pick_liquid_transfer')
+            else_='cherry_pick_liquid_transfer'),TEXT)
 
         return { 
             'type': activity_type_column,
@@ -3443,7 +3454,13 @@ class ActivityResource(ApiResource):
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         # general setup
-        schema = self.build_schema()
+        # schema for labactivity part of the query should only be the activity fields
+        # (exclude the screen.fields)
+        schema = deepcopy(self.build_schema())
+        field_hash = schema['fields']
+        field_hash = { key:val for key,val in field_hash.items() 
+            if val['scope']=='fields.activity'}  
+        schema['fields'] = field_hash
         
         manual_field_includes = set(param_hash.get('includes', []))
         # for join to screen query (TODO: only include if screen fields rqst'd)
@@ -3460,8 +3477,6 @@ class ActivityResource(ApiResource):
             param_hash.get('visibilities'), 
             exact_fields=set(param_hash.get('exact_fields',[])))
 
-        field_hash = { key:val for key,val in field_hash.items() 
-            if val['scope']=='fields.activity'}  
         
         order_params = param_hash.get('order_by',[])
         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
@@ -3489,6 +3504,11 @@ class ActivityResource(ApiResource):
                 
         custom_columns = self.get_custom_lab_activity_columns('lab_activity')
         custom_columns.update(self.get_custom_columns('la'))
+#         for key in field_hash.keys():
+#             if key not in custom_columns:
+#                 logger.info(
+#                     'programming error: get_lab_activity_query is missing the col: %r',key)
+#                 custom_columns[key] = (literal_column("null").label(key))
         
         base_query_tables = ['activity', 'lab_activity', 'screening', 'screen'] 
         columns = self.build_sqlalchemy_columns(
@@ -3496,11 +3516,11 @@ class ActivityResource(ApiResource):
             custom_columns=custom_columns )
         
         stmt = select(columns.values()).select_from(j)
-        compiled_stmt = str(stmt.compile(compile_kwargs={"literal_binds": True}))
-        logger.info('compiled_stmt %s',compiled_stmt)
         # general setup
          
         (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+        compiled_stmt = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+        logger.info('compiled_stmt %s',compiled_stmt)
         
         return (field_hash,columns,stmt,count_stmt)
 
@@ -4240,7 +4260,7 @@ class ServiceActivityResource(ActivityResource):
         j = j.join(_performed_by,_a.c.performed_by_id==_performed_by.c.screensaver_user_id)
         j = j.join(_screen, _sa.c.serviced_screen_id==_screen.c.screen_id, isouter=True)
         custom_columns = {
-            'activity_type': literal_column("'serviceactivity'"),
+            'activity_class': cast(literal_column("'serviceactivity'"),TEXT),
             'serviced_user': _serviced.c.name,
             'serviced_username': _serviced.c.username,
             'performed_by_name': _performed_by.c.name,
@@ -4275,7 +4295,6 @@ class ScreenResource(ApiResource):
         filtering = {}
         serializer = LimsSerializer()
         always_return_data = True 
-
         
     def __init__(self, **kwargs):
         super(ScreenResource,self).__init__(**kwargs)
@@ -4438,7 +4457,7 @@ class ScreenResource(ApiResource):
                 _collaborator.c.name,
                 _collaborator.c.username,
                 _collaborator.c.email,
-                concat(_collaborator.c.name,' <',_collaborator.c.email,'>').label('fullname')])
+                _concat(_collaborator.c.name,' <',_collaborator.c.email,'>').label('fullname')])
                 .select_from(_collaborator.join(
                     _screen_collaborators,_collaborator.c.screensaver_user_id==_screen_collaborators.c.screensaveruser_id))
                 .order_by(_collaborator.c.username) )
@@ -4533,6 +4552,7 @@ class ScreenResource(ApiResource):
                     join(_library,_copy.c.library_id==_library.c.library_id)).\
                 group_by(_ap.c.screen_id).cte('libraries_screened')
                 
+        # FIXME: use cherry_pick_liquid_transfer status vocabulary 
         tplcps = select([
             _cpr.c.screen_id,
             func.count(1).label('count')]).\
@@ -4542,17 +4562,24 @@ class ScreenResource(ApiResource):
                     join(_cplt,_cplt.c.activity_id==_cpap.c.cherry_pick_liquid_transfer_id)).\
                 group_by(_cpr.c.screen_id).\
                 where(_cplt.c.status == 'Successful' ).cte('tplcps')
+        
         # Create an inner screen-screen_result query to prompt the  
         # query planner to index join not hash join
         new_screen_result = ( select([
                 _screen.c.screen_id,
                 _screen_result.c.screen_result_id,
                 _screen_result.c.experimental_well_count])
-            .select_from(_screen.join(_screen_result, _screen.c.screen_id==_screen_result.c.screen_id, isouter=True))
-            .cte('screen_result') )
-                       
+            .select_from(_screen.join(
+                _screen_result, _screen.c.screen_id==_screen_result.c.screen_id, isouter=True)))
+        if facility_id:
+            new_screen_result = new_screen_result.where(_screen.c.facility_id==facility_id)
+        new_screen_result = new_screen_result.cte('screen_result')
+            
         affiliation_table = ScreensaverUserResource.get_lab_affiliation_cte()
         affiliation_table = affiliation_table.cte('la')
+# TODO:  
+#         activities = ( 
+#             select([]))
 
         custom_columns = {
             'collaborator_usernames': (
@@ -4566,13 +4593,21 @@ class ScreenResource(ApiResource):
                     .select_from(collaborators)
                     .where(collaborators.c.screen_id==literal_column('screen.screen_id'))),
             'lab_affiliation': 
-                ( select([concat(affiliation_table.c.title,' (',affiliation_table.c.category,')')])
+                ( select([_concat(affiliation_table.c.title,' (',affiliation_table.c.category,')')])
                     .select_from(
                         _lhsu.join(affiliation_table,
                             affiliation_table.c.affiliation_name==_lhsu.c.lab_head_affiliation))
                     .where(_lhsu.c.screensaver_user_id==_screen.c.lab_head_id)),
+#             'lab_name':
+#                 ( select([_concat(
+#                     _lhsu.c.last_name,', ',_lhsu.c.first_name,' - ',
+#                     affiliation_table.c.title,' (',affiliation_table.c.category,')')])
+#                     .select_from(
+#                         _lhsu.join(affiliation_table,
+#                             affiliation_table.c.affiliation_name==_lhsu.c.lab_head_affiliation))
+#                     .where(_lhsu.c.screensaver_user_id==_screen.c.lab_head_id)),
             'lab_name':
-                ( select([concat(
+                ( select([_concat(
                     _lhsu.c.last_name,', ',_lhsu.c.first_name,' - ',
                     affiliation_table.c.title,' (',affiliation_table.c.category,')')])
                     .select_from(
@@ -4584,7 +4619,7 @@ class ScreenResource(ApiResource):
                     .select_from(_lhsu)
                     .where(_lhsu.c.screensaver_user_id==_screen.c.lab_head_id)),
             'lead_screener_name': (
-                select([concat(_su.c.first_name,' ',_su.c.last_name)])
+                select([_concat(_su.c.first_name,' ',_su.c.last_name)])
                     .select_from(_su)
                     .where(_su.c.screensaver_user_id==_screen.c.lead_screener_id)),
             'lead_screener_username': (
@@ -4608,10 +4643,15 @@ class ScreenResource(ApiResource):
                 '  order by date_of_activity asc LIMIT 1 )'
                 ),
             'date_of_last_activity': literal_column(
-                '( select date_of_activity '
+                '( (select date_of_activity '
                 '  from activity '
                 '  join lab_activity la using(activity_id) '
                 '  where la.screen_id=screen.screen_id '
+                '  UNION ALL'
+                '  select date_of_activity '
+                '  from activity '
+                '  join service_activity sa using(activity_id) '
+                '  where sa.serviced_screen_id=screen.screen_id )'
                 '  order by date_of_activity desc LIMIT 1 )'
                 ),
             # TODO: rework the update activity
@@ -4629,7 +4669,6 @@ class ScreenResource(ApiResource):
                             .order_by(_sfs.c.funding_support)
                             .where(_sfs.c.screen_id==literal_column('screen.screen_id'))
                             .alias('inner')),
-            # FIXME: use cherry_pick_liquid_transfer status vocabulary 
             'total_plated_lab_cherry_picks': 
                 select([tplcps.c.count]).\
                     select_from(tplcps).\
@@ -5315,7 +5354,7 @@ class ScreensaverUserResource(ApiResource):
             select([
                 _su.c.screensaver_user_id,
                 _au.c.username,
-                concat(_au.c.first_name,' ',_au.c.last_name).label('name'),
+                _concat(_au.c.first_name,' ',_au.c.last_name).label('name'),
                 _au.c.email
                 ])
             .select_from(j))

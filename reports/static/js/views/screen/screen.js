@@ -481,11 +481,9 @@ define([
         var url = [self.model.resource.apiUri,self.model.key,'activities'].join('/');
         var resource = appModel.getResource('activity');
         
-        var sa_vocab = appModel.getVocabulary('serviceactivity.type');
-        var la_vocab = appModel.getVocabulary('labactivity.type');
-        var temp = _.extend({},sa_vocab,la_vocab);
+        var sa_vocab = appModel.getVocabulary('activity.type');
         resource.schema.fields['type'].vocabulary = 
-          _.map(temp, function(v){
+          _.map(sa_vocab, function(v){
             return [v.title,v.key];
           }); // TODO: app model method for this
         

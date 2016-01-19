@@ -727,6 +727,7 @@ define([
       }
     },
      
+    
     /** Build the select columns dialog **/
     select_columns: function(event){
       
@@ -737,21 +738,20 @@ define([
         "<div class='btn btn-default btn-sm ' id='clear-all' >clear all</div>"
       ];
       var field_template = '<div data-fields="<%= name %>" ></div>';
-      var sub_field_template = '<div data-fields="<%= name %>" >   </div>';
-      var header_template = [
+      var optgroupSelectionTemplate = [
         '<div class="form-group" >',
         '<input class="selection-group" type="checkbox" id="<%= id %>-checkbox"> </input>',
         '<label class="selection-group .h5 " id="<%= id %>" title="<%= help %>" ><%= name %> columns</label>',
         '</div>'
         ].join('');
-      var altCheckboxTemplate =  _.template('\
+      var fieldCheckboxTemplate =  _.template('\
           <div class="form-group" style="margin-bottom: 0px;" > \
             <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
               <label title="<%= help %>" for="<%= editorId %>"><span data-editor\><%= title %></label>\
             </div>\
           </div>\
         ');      
-      var altSubCheckboxTemplate =  _.template('\
+      var optgroupFieldCheckboxTemplate =  _.template('\
           <div class="form-group sub-resource-field" style="margin-bottom: 0px;" > \
             <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
             <label for="<%= editorId %>" > - </label>\
@@ -762,75 +762,101 @@ define([
       
       var includes = self.listModel.get('includes') || [];
       var _fields = this._options.schemaResult.fields;
-      var _extra_scopes = [];
-      var formSchema= {};
       
-      // Create the schema fields:
+      // Create the (two level) tree of fields:
       // - fields for the current resource are shown as normal
-      // - if the scope is not the resource scope, create an extra_scope entry,
-      // these items are indented.
-      _.each(_.pairs(_fields), function(pair){
-
-        var prop = pair[1];
-        var key = prop['key'];
-        var scope = prop['scope'];
-        var fieldType = scope.split('.')[0]
-        var fieldResource = scope.split('.')[1];
-        
-        if(fieldResource != self._options.resource.key){
-          console.log('sub resource: ' + fieldResource + ',' + key);
-          if(!_.has(_extra_scopes, scope)){
-            _extra_scopes[scope] = [];
-          }
-          _extra_scopes[scope].push(key);
-          formSchema[key] = {
-            title: prop['title'],
-            key: key,
-            type: 'Checkbox',
-            help: prop['description'],
-            template: altSubCheckboxTemplate
-          }
-        }else{
-          formSchema[key] = { 
-            title: prop['title'], 
-            key:  key, 
-            type: 'Checkbox',
-            help: prop['description'],
-            template: altCheckboxTemplate };
-        }
-      });
-      
-      // default checkbox states
+      // - if the field information specifies an optgroup
+      // - or if the field scope is not the current resource scope, create an optGroup entry,
+      // these items are indented and nested in an optgroup form-group.
+      var _optGroups = {};
       var already_visible = {};
       var default_visible = {};
-
-      // Build the form model
-      var FormFields = Backbone.Model.extend({
-        schema: formSchema
+      var _optgroups_shown = [];
+      var defaultScope = 'fields.' + self._options.resource.key;
+      var orderedKeys = _.sortBy(_.keys(_fields), function(key){
+        return _fields[key]['ordinal'];
       });
-      var formFields = new FormFields();
-      _.each(_.pairs(_fields), function(pair){
-        var key = pair[1]['key'];
-        var prop = pair[1];
+      _optGroups[defaultScope] = {
+        title: defaultScope,
+        keys: []
+      }
+      
+      _.each(orderedKeys, function(key){
+
+        var prop = _fields[key];
+        var optGroup = defaultScope;
+        var title, fieldType, fieldResource, subResource;
+        
+        if (prop.display_options && prop.display_options.optgroup ){
+          optGroup = prop.display_options.optgroup;
+          title = optGroup.charAt(0).toUpperCase() + optGroup.slice(1);
+          if(!_.has(_optGroups, optGroup)){
+            _optGroups[optGroup] = 
+              {
+                title: title,
+                help: title,
+                keys: []
+              };
+          }
+        }
+        else if (prop['scope'] != defaultScope ){
+          optGroup = prop['scope'];
+          fieldType = optGroup.split('.')[0]
+          fieldResource = optGroup.split('.')[1];
+          if(fieldType == 'datacolumn'){
+            title = fieldResource.charAt(0).toUpperCase() + fieldResource.slice(1);
+            if(!_.has(_optGroups, optGroup)){
+              _optGroups[optGroup] = 
+                {
+                  title: title,
+                  help: 'Screen result data column field',
+                  keys: []
+                }
+            }
+          }else{
+            if(!_.has(_optGroups, optGroup)){
+              subResource = appModel.getResource(fieldResource);
+              _optGroups[optGroup] = 
+                {
+                  title: subResource.title,
+                  help: subResource.description,
+                  keys: []
+                }
+            }
+          }
+        }
+        _optGroups[optGroup].keys.push(key);
+
         var _visible = (_.has(prop, 'visibility') && 
             _.contains(prop['visibility'], 'l'));
         default_visible[key] = _visible;
         _visible = _visible || _.contains(includes, key);
         _visible = _visible && !_.contains(includes, '-'+key);
         already_visible[key] = _visible;
-        formFields.set( key, _visible);
+        
+        if(_visible){
+          _optgroups_shown[optGroup] = true;
+        }
       });
+
+      // Build the form model
+      // Build the form template; manually lay out the fields/optgroups
+      var formSchema= {};
+      var FormFields = Backbone.Model.extend({
+        schema: formSchema
+      });
+      var formFields = new FormFields();
       
-      // Build the form template: build and append a field template for each field
-      // "main scope" first - the fields for this resource
-      var main_scope = 'fields.' + self._options.resource.key;
-      var main_keys = _.filter(_.keys(_fields), function(key) {
-        return _fields[key]['scope'] == main_scope;
-      });
-      main_keys = _.sortBy(main_keys, function(key){
-        return _fields[key]['ordinal'];
-      });
-      _.each(main_keys, function(key){
+      // first, the fields not in an optGroup
+      _.each(_optGroups[defaultScope].keys,function(key){
+        formSchema[key] = formFieldSchema = { 
+          title: _fields[key]['title'], 
+          key:  key, 
+          type: 'Checkbox',
+          help: _fields[key]['description'],
+          template: fieldCheckboxTemplate 
+        };
+
         form_template.push( 
           _.template(field_template)({ 
               editorId: key+'-id', 
@@ -838,47 +864,46 @@ define([
               name: key 
             })
         );
-      });
-      // second, any fields from other scopes/resources
-      var _extra_scopes_shown = [];
-      _.each(_.keys(_extra_scopes), function(scope){
-        console.log('scope',scope)
-        var fieldType = scope.split('.')[0]
-        var fieldResource = scope.split('.')[1];
-        var sub_resource;
-        if(fieldType == 'datacolumn'){
-          sub_resource = {
-            title: fieldResource,
-            help: 'Screen result data column field'
-          }
-        }else{
-          sub_resource = appModel.getResource(fieldResource);
+        if(already_visible[key]){
+          formFields.set( key, true);
         }
-        form_template.push(
-          _.template(header_template)( 
-            {
-              id: scope,
-              name: sub_resource.title,
-              help: sub_resource.description
-            }));
+      });
+      _.each(_.keys(_optGroups),function(optGroup){
+        if (optGroup == defaultScope ) return;
         
-        _.each(_extra_scopes[scope], function(sub_key){
+        form_template.push(
+          _.template(optgroupSelectionTemplate)( 
+            {
+              id: optGroup,
+              name: _optGroups[optGroup].title,
+              help: _optGroups[optGroup].description
+            })
+        );
+        _.each(_optGroups[optGroup].keys,function(key){
+          formSchema[key] = formFieldSchema = { 
+            title: _fields[key]['title'], 
+            key:  key, 
+            type: 'Checkbox',
+            help: _fields[key]['description'],
+            template: optgroupFieldCheckboxTemplate 
+          };
+        
           form_template.push( 
-            _.template(field_template)({ name: sub_key }) );
-          if(formFields.get(sub_key)){
-            _extra_scopes_shown.push(scope);
+            _.template(field_template)({ name: key }) );
+          if(already_visible[key]){
+            _optgroups_shown.push(optGroup);
+            formFields.set( key, true);
           }
         });
-        
       });
+        
       form_template.push('</form>');
-      
-      console.log('extra_scopes_shown: ' + _extra_scopes_shown);
+
       var form = new Backbone.Form({
         model: formFields,
         template: _.template(form_template.join(''))
       });
-      
+
       form.events = {
         'click .btn#select-all': function(){
           $("form input:checkbox").each(function(){
@@ -890,47 +915,39 @@ define([
             $(this).prop("checked",false);
           });
         },
+        // click on the optgroup text expands
         'click label.selection-group': function(e){
-          //e.preventDefault();
-          //e.stopPropagation();
-          var debug_el = form.$el.find('input').each(function(){
-            var key = $(this).attr('name');
-            if(_.has(_fields, key) && _fields[key]['scope'] == e.target.id){
-              $(this).closest('.form-group').toggle();
-            }
-          })
+          _.each(_optGroups[e.target.id].keys, function(key){
+            form.$el.find('[name='+key+']').closest('.form-group').toggle();
+          });
         },
+        // click on the optgroup checkbox checks all sub boxes
         'click input.selection-group': function(e){
-          e.preventDefault();
-          //e.stopPropagation();
-          var id = e.target.id;
-          var scope = id.split('-')[0];
-          console.log('id: ' + id + ', ' + scope + ', ' + e.target.checked );
-          var debug_el = form.$el.find('input').each(function(){
-            var key = $(this).attr('name');
-            if(_.has(_fields, key) && _fields[key]['scope'] == scope ){
-              $(this).closest('.form-group').show();
-              form.setValue(key, e.target.checked );
-            }
+          var optGroup = e.target.id.split('-')[0];
+          console.log('id: ' + e.target.id + ', ' + optGroup + ', ' + e.target.checked );
+          _.each(_optGroups[optGroup].keys, function(key){
+            form.$el.find('[name='+key+']').closest('.form-group').show();
+            form.setValue(key, e.target.checked );
           });
         },
       };
       
       var _form_el = form.render().el;
       
-      $(_form_el).find('.sub-resource-field').find('input').each(function(){
-        var key = $(this).attr('name');
-        var shown = !_.isUndefined(_.find(_extra_scopes_shown, function(scope){
-          return scope == _fields[key]['scope']; }));
-        $(this).closest('.form-group').toggle(shown);
+      // if any fields in the optGroup are shown, toggle the optGroup
+      _.each(_optgroups_shown,function(optGroup){
+        _.each(_optGroups[optGroup].keys,function(key){
+          form.$el.find('[name='+key+']').closest('.form-group').toggle();
+        });
       });
-
-      _.each(_extra_scopes_shown, function(scope){
-        if(_.every(_extra_scopes[scope], function(sub_key){
+      
+      // if all fields in the optGroup are shown, check the optGroup
+      _.each(_optgroups_shown, function(optGroup){
+        if(_.every(_optGroups[optGroup].keys, function(sub_key){
           return formFields.get(sub_key);
         })){
           $(_form_el).find(
-              '#' + scope.split('.').join('\\.') + '-checkbox').prop("checked", true);
+              '#' + optGroup + '-checkbox').prop("checked", true);
         }
       });
       

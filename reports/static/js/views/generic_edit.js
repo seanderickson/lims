@@ -736,7 +736,7 @@ define([
       _.each(this.editKeys, function(key){
 
         var fi = self.modelFields[key];
-        var cell_options;
+        var cell_options = fi.display_options;
 
         var fieldSchema = editSchema[key] = _.extend({}, defaultFieldSchema);
         
@@ -758,20 +758,6 @@ define([
           
           console.log('build edit schema for key: ',key);
           self.finalEditableKeys.push(key);
-
-          if(!_.isEmpty(fi['display_options'])){
-            cell_options = fi['display_options'];
-            cell_options = cell_options.replace(/'/g,'"');
-            try{
-              cell_options = JSON.parse(cell_options);
-              _.extend(fieldSchema,cell_options);
-            }catch(e){
-              console.log('warn: display_options is not JSON parseable, column: ',
-                  key,', options: ',cell_options);
-              appModel.error(
-                'Configuration error: display_options is not JSON parseable, field: ' + key);
-            }
-          }
           if(_.has(typeMap, fi.data_type)){
             _.extend(fieldSchema, typeMap[fi.data_type]);
           }

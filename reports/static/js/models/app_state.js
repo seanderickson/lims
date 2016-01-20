@@ -433,6 +433,20 @@ define([
       var self = this;
       // Retrieve the resource definitions from the server
       var resourceUrl = self.reportsApiUri + '/resource'
+      
+      function parseField(rawField) {
+        if(_.has(rawField,'display_options') && ! _.isEmpty(rawField.display_options)){
+          var options= rawField['display_options'];
+          options = options.replace(/'/g,'"');
+          try{
+            rawField['display_options'] = JSON.parse(options);
+          }catch(e){
+            console.log('warn: display_options is not JSON parseable, column: ' +
+                rawField['key'] + ', options: ' + options,e);      
+          }
+        } 
+      };
+      
       Iccbl.getCollectionOnClient(resourceUrl, function(collection){
         
         // Store the URI for each resource.
@@ -451,6 +465,12 @@ define([
         var resources = {};
         _.each(resourcesCollection, function(resource){
           resources[resource.key] = resource;
+          if(! resource.schema ){
+            self.error('resource mis-configured: ' + resource.key + ', no schema');
+            return;
+          }
+          _.each(_.values(resource.schema.fields), parseField );
+          
           if (_.has(ui_resources, resource.key)) {
             ui_resources[resource.key] = _.extend(
                 {}, ui_resources[resource.key], resource);

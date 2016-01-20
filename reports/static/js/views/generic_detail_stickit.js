@@ -28,7 +28,6 @@ define([
       this.detailKeys = args.detailKeys || schema.detailKeys(); 
       var nestedModels = this.nestedModels = {};
       var nestedLists = this.nestedLists = {};
-      
       var buttons = this.buttons = args.buttons || ['download','history','back','edit','delete'];
       if(! appModel.hasPermission(self.model.resource.key, 'edit')){
         this.buttons = _.without(this.buttons,'edit');
@@ -67,11 +66,11 @@ define([
 	  createBinding: function(key, fi){
 	    var self = this;
 	    var vocabulary;
-      var cell_options;
       var binding;
       var data_type = _.isEmpty(fi.data_type) ? 'string' : fi.data_type.toLowerCase();
       var display_type = _.isEmpty(fi.display_type) ? data_type : fi.display_type.toLowerCase();
       var data_type_formatters,display_type_formatters;
+      var cell_options = fi.display_options;
       
       function baseGetter(value) {
         if (_.isUndefined(value) || _.isNull(value)) return '-';
@@ -125,18 +124,7 @@ define([
         }
         return value;
       };      
-
-      if(!_.isEmpty(fi['display_options'])){
-        cell_options = fi['display_options'];
-        cell_options = cell_options.replace(/'/g,'"');
-        try{
-          cell_options = JSON.parse(cell_options);
-        }catch(e){
-          console.log('warn: display_options is not JSON parseable, column: ',
-              key,', options: ',cell_options);
-        }
-      }
-  
+      
       // define "data_type" getters
       function defaultGetter(value){
         if(value && vocabulary){

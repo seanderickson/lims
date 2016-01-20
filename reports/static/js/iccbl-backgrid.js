@@ -452,8 +452,6 @@ var getModel = Iccbl.getModel = function(schemaResult, url, callback) {
         callback(schemaResult, model);
       },
       error : function(model, response, options) {
-          // console.log('error fetching the model: '+ model + ', response:
-          // ' + JSON.stringify(response));
           var msg = 'Error locating resource: ' + url;
           var sep = '\n';
           if (!_.isUndefined(response.status))
@@ -487,8 +485,6 @@ var getModel2 = Iccbl.getModel2 = function(schemaResult, urlRoot, id, callback) 
             callback(schemaResult, model);
         },
         error : function(model, response, options) {
-            // console.log('error fetching the model: '+ model + ', response:
-            // ' + JSON.stringify(response));
             var msg = 'Error locating resource: ' + urlRoot + ', ' + id;
             var sep = '\n';
             if (!_.isUndefined(response.status))
@@ -557,8 +553,6 @@ var getCollection = Iccbl.getCollection = function(schemaResult, url, callback) 
             callback(schemaResult, collection);
         },
         error : function(model, response, options) {
-            // console.log('error fetching the model: '+ model + ', response:
-            // ' + JSON.stringify(response));
             var msg = 'Error locating resource: ' + url;
             var sep = '\n';
             if (!_.isUndefined(response.status))
@@ -584,8 +578,6 @@ var getCollection2 = Iccbl.getCollection2 = function(schemaResult, url, callback
             callback(schemaResult, collection);
         },
         error : function(model, response, options) {
-            // console.log('error fetching the model: '+ model + ', response:
-            // ' + JSON.stringify(response));
             var msg = 'Error locating resource: ' + url;
             var sep = '\n';
             if (!_.isUndefined(response.status))
@@ -2519,9 +2511,8 @@ var BooleanFormFilter = CriteriumFormFilter.extend({
       if(_.has(searchHash,term)) searchTerm = term;
     });
     var searchVal = searchHash[searchTerm];
-    var found = searchTerm;
     var name = this.columnName;
-    if(found){
+    if(searchTerm){
       if(searchTerm ==  name + '__is_null'){
         if(searchVal == 'true'){
           self.setValue('lower_criteria','blank');
@@ -2536,7 +2527,7 @@ var BooleanFormFilter = CriteriumFormFilter.extend({
         }
       }
     }
-    return found;
+    return searchTerm;
   },  
   
   /**
@@ -2789,14 +2780,15 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
     var self = this;
     var searchHash = _.clone(hash);
     var searchTerm = null;
-    var found = searchTerm;
     var name = this.columnName;
 
     _.each(self.getPossibleSearches(), function(term){
-      if(_.has(searchHash,term)) searchTerm = term;
+      if(_.has(searchHash,term)){
+        searchTerm = term;
+      }
     });
     
-    if(found){
+    if(searchTerm){
       if(searchTerm.charAt(0) == '-'){
         self.setValue('invert_field', true);
         name = '-' + name;
@@ -2814,7 +2806,7 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
         });
       }
     }
-    return found;
+    return searchTerm;
   },  
   
   /**
@@ -3504,19 +3496,9 @@ var SIUnitHeaderCell = MultiSortHeaderCell.extend({
     var name = this.column.get('name');
     // FIXME: cannot pass initialization params, so sending them on the column
     var fi = this.fieldinformation = _.clone(this.column.get('fieldinformation'));
-    var cell_options = fi['display_options'];
-    
-    cell_options = cell_options.replace(/'/g,'"');
-    try{
-      cell_options = JSON.parse(cell_options);
-    }catch(e){
-      throw new Error('SIUnitHeaderCell: Could not parse display_options for header: ' 
-          + name + ',' + cell_options);
-    }
     this.options = options;
-
-    
-    if(!cell_options.symbol)
+    var cell_options = fi['display_options'];
+    if(!cell_options || !cell_options.symbol)
     {
       throw new Error('SIUnitHeaderCell: field information requires the '+
           '"symbol" option');
@@ -3921,17 +3903,19 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   var data_type = _.isEmpty(prop.data_type)?'string':prop.data_type.toLowerCase();
   var display_type = _.isEmpty(prop.display_type)?data_type:prop.display_type.toLowerCase();
   console.log(key, 'data_type', data_type, 'display_type', display_type, prop);
-  var cell_options = {};
-  if(_.has(prop,'display_options') && ! _.isEmpty(prop.display_options)){
-    cell_options = prop['display_options'];
-    cell_options = cell_options.replace(/'/g,'"');
-    try{
-      cell_options = JSON.parse(cell_options);
-    }catch(e){
-      console.log('warn: display_options is not JSON parseable, column: ' +
-          key + ', options: ' + cell_options,e);      
-    }
-  } 
+  
+  var cell_options = prop.display_options || {};
+//  var cell_options = {};
+//  if(_.has(prop,'display_options') && ! _.isEmpty(prop.display_options)){
+//    cell_options = prop['display_options'];
+//    cell_options = cell_options.replace(/'/g,'"');
+//    try{
+//      cell_options = JSON.parse(cell_options);
+//    }catch(e){
+//      console.log('warn: display_options is not JSON parseable, column: ' +
+//          key + ', options: ' + cell_options,e);      
+//    }
+//  } 
   var edit_type = _.isEmpty(prop.edit_type)?display_type:prop.edit_type.toLowerCase();
 
   var backgridCellType = 'string';
@@ -3947,7 +3931,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   if(_.has(typeMap,display_type)){
     console.log('field', key, display_type, 'typemap',typeMap[display_type])
     var backgridCellType = typeMap[display_type];
-    if(!_.isUndefined(cell_options)){
+    if(!_.isEmpty(cell_options)){
       backgridCellType = backgridCellType.extend(cell_options);
     }
   }else{
@@ -3970,7 +3954,8 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     column['editable'] = true;
   }
   if(!_.isEmpty(prop.vocabulary)){
-    // TODO: this is probably backwards, since it appears SelectCell wants [title,val], not [val,title]
+    // TODO: this is probably backwards, since it appears SelectCell
+    // wants [title,val], not [val,title]
     cell_options.optionValues = prop.vocabulary; 
     column['cell'] = Iccbl.SelectCell.extend(cell_options);
   }else if(!_.isEmpty(prop.vocabulary_scope_ref)){

@@ -204,22 +204,9 @@ update plate as p
   where p.plate_id=psc.plate_id;
 
 /** TODO: copy screening statistics - may wish to store on copy 
+
 **/
 select 'copy screening statistics ' as action;
-
-create table copy_screening_statistics ( 
-    copy_id integer, 
-    name text,
-    short_name text,
-    screening_count integer,
-    ap_count integer,
-    dl_count integer,
-    first_date_data_loaded date,
-    last_date_data_loaded date,
-    first_date_screened date,
-    last_date_screened date,
-    primary key (copy_id)
-);
 
 insert into copy_screening_statistics
 ( SELECT c.copy_id,
@@ -244,23 +231,6 @@ insert into copy_screening_statistics
       join administrative_activity using(activity_id) ) srdl 
           on(screen_result_data_loading_id=srdl.activity_id)  
     group by c.copy_id, c.name, l.short_name);
-
-create table plate_screening_statistics ( 
-    plate_id integer,
-    plate_number integer,
-    copy_id integer,
-    copy_name text,
-    library_short_name text,
-    library_id integer,
-    screening_count integer,
-    ap_count integer,
-    dl_count integer,
-    first_date_data_loaded date,
-    last_date_data_loaded date,
-    first_date_screened date,
-    last_date_screened date,
-    primary key (plate_id)
-);
 
 insert into plate_screening_statistics
 ( SELECT

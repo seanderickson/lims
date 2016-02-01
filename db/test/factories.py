@@ -6,14 +6,22 @@ from factory.fuzzy import FuzzyChoice, FuzzyInteger
 class ScreenFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = db.models.Screen
-    
+    species = 'bacteria' 
     data_sharing_level = 1
     facility_id = factory.Sequence(lambda n: str(n))
     project_phase = "primary_screen"
     screen_type = "small_molecule"
     title = "Test screen %s" % facility_id
 
+class ScreensaverUserFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = db.models.ScreensaverUser
 
+    username = factory.Sequence(lambda n: 'username_'+ str(n) )
+    first_name = factory.Sequence(lambda n: 'first_'+ str(n) )
+    last_name = factory.Sequence(lambda n: 'last_'+ str(n) )
+    email = factory.Sequence(lambda n: 'testemail_%d@testemail.com' % n )
+    
 class LibraryFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = db.models.Library

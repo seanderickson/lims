@@ -141,7 +141,6 @@ def json_generator(cursor,meta,request, is_for_detail=False,field_hash=None):
                             row.has_key(key))))
                     value = None
                     if row.has_key(key):
-                        # logger.info(str(('val:',str(row[key]))))
                         value = row[key]
                     if value and ( field.get('json_field_type',None) == 'fields.ListField' 
                          or field.get('linked_field_type',None) == 'fields.ListField'
@@ -172,7 +171,7 @@ def json_generator(cursor,meta,request, is_for_detail=False,field_hash=None):
                                 view(*args, **kwargs)
                                 _dict[key] = newval
                             except Exception:
-                                logger.warn('no image found at %s',newval)
+                                logger.info('no image found at %s',newval)
                         else:
                             _dict[key]=newval
 

@@ -1001,15 +1001,6 @@ class IResourceTestCase(SimpleTestCase):
     def __init__(self,*args,**kwargs):
     
         super(IResourceTestCase, self).__init__(*args,**kwargs)
-        # Create a user.
-        self.username = 'testsuper'
-        self.password = 'pass'
-        try:
-            self.user = User.objects.get(username=self.username)
-        except ObjectDoesNotExist:
-            logger.warn('creating superuser: %s', self.username)
-            self.user = User.objects.create_superuser(
-                self.username, 'testsuperuser@example.com', self.password)
         
         self.resource_uri = BASE_URI + '/metahash'
         self.directory = os.path.join(APP_ROOT_DIR, 'reports/static/api_init')
@@ -1020,6 +1011,18 @@ class IResourceTestCase(SimpleTestCase):
     
     def setUp(self):
         super(IResourceTestCase, self).setUp()
+
+        logger.info('create a superuser...')
+        self.username = 'testsuper'
+        self.password = 'pass'
+        try:
+            self.user = User.objects.get(username=self.username)
+            logger.warn('superuser found: %r', self.user)
+            logger.warn('users: %r', [str(u) for u in User.objects.all()])
+        except ObjectDoesNotExist:
+            logger.warn('creating superuser: %s', self.username)
+            self.user = User.objects.create_superuser(
+                self.username, '1testsuperuser@example.com', self.password)
  
     def _bootstrap_init_files(self):
 
@@ -1279,7 +1282,6 @@ def tearDownModule():
 class TestApiInit(IResourceTestCase):
     
     def setUp(self):
-        # Create a user.
         self.resource_uri = BASE_URI + '/metahash'
         self.directory = os.path.join(APP_ROOT_DIR, 'reports/static/api_init')
         self.csv_serializer=CSVSerializer() 

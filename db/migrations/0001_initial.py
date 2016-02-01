@@ -1036,7 +1036,9 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='LabActivity',
             fields=[
-                ('activity', models.OneToOneField(primary_key=True, serialize=False, to='db.Activity')),
+                ('activitylink', models.OneToOneField(
+                    primary_key=True, parent_link=True, db_column='activity_id', 
+                    serialize=False, to='db.Activity')),
                 ('volume_transferred_per_well_from_library_plates', models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)),
                 ('molar_concentration', models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)),
             ],
@@ -1436,7 +1438,9 @@ class Migration(migrations.Migration):
             name='CherryPickLiquidTransfer',
             fields=[
                 ('status', models.TextField()),
-                ('activity', models.OneToOneField(primary_key=True, serialize=False, to='db.LabActivity')),
+                ('labactivitylink', models.OneToOneField(
+                    primary_key=True, parent_link=True,db_column='activity_id',
+                    serialize=False, to='db.LabActivity')),
             ],
             options={
                 'db_table': 'cherry_pick_liquid_transfer',
@@ -1456,10 +1460,12 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='Screening',
             fields=[
+                ('labactivitylink', models.OneToOneField(
+                    primary_key=True, serialize=False, parent_link=True,
+                    db_column='activity_id', to='db.LabActivity')),
                 ('assay_protocol', models.TextField(blank=True)),
                 ('number_of_replicates', models.IntegerField(null=True, blank=True)),
                 ('assay_protocol_type', models.TextField(blank=True)),
-                ('activity', models.OneToOneField(primary_key=True, serialize=False, to='db.LabActivity')),
                 ('assay_protocol_last_modified_date', models.DateField(null=True, blank=True)),
                 ('assay_well_volume', models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)),
                 ('volume_transferred_per_well_to_assay_plates', models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)),
@@ -1663,7 +1669,9 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='CherryPickScreening',
             fields=[
-                ('activity', models.OneToOneField(primary_key=True, serialize=False, to='db.Screening')),
+                ('screeninglink', models.OneToOneField(
+                    primary_key=True, parent_link=True, db_column='activity_id', 
+                    serialize=False, to='db.Screening')),
                 ('cherry_pick_request', models.ForeignKey(to='db.CherryPickRequest')),
             ],
             options={
@@ -1673,10 +1681,12 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='LibraryScreening',
             fields=[
+                ('screeninglink', models.OneToOneField(
+                    primary_key=True, parent_link=True, db_column='activity_id',
+                    serialize=False, to='db.Screening')),
                 ('abase_testset_id', models.TextField(blank=True)),
                 ('is_for_external_library_plates', models.BooleanField()),
-                ('activity', models.OneToOneField(primary_key=True, serialize=False, to='db.Screening')),
-                ('screened_experimental_well_count', models.IntegerField()),
+                ('screened_experimental_well_count', models.IntegerField(default=0)),
                 ('libraries_screened_count', models.IntegerField(null=True, blank=True)),
                 ('library_plates_screened_count', models.IntegerField(null=True, blank=True)),
             ],

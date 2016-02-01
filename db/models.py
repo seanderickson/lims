@@ -94,8 +94,9 @@ class ServiceActivity(models.Model):
     class Meta:
         db_table = 'service_activity'
 
-class LabActivity(models.Model):
-    activity = models.OneToOneField(Activity, primary_key=True)
+class LabActivity(Activity):
+    activitylink = models.OneToOneField(
+        Activity, primary_key=True, parent_link=True,db_column='activity_id')
     screen = models.ForeignKey('Screen')
     volume_transferred_per_well_from_library_plates = models.DecimalField(
         null=True, max_digits=10, decimal_places=9, blank=True)
@@ -104,14 +105,18 @@ class LabActivity(models.Model):
     class Meta:
         db_table = 'lab_activity'
 
-class CherryPickLiquidTransfer(models.Model):
+class CherryPickLiquidTransfer(LabActivity):
+    labactivitylink = models.OneToOneField(
+        'LabActivity', primary_key=True, parent_link=True, 
+        db_column='activity_id')
     status = models.TextField()
-    activity = models.OneToOneField('LabActivity', primary_key=True)
     class Meta:
         db_table = 'cherry_pick_liquid_transfer'
 
-class Screening(models.Model):
-    activity = models.OneToOneField(LabActivity, primary_key=True)
+class Screening(LabActivity):
+    labactivitylink = models.OneToOneField(
+        LabActivity, primary_key=True, parent_link=True,
+        db_column='activity_id')
     assay_protocol = models.TextField(blank=True)
     number_of_replicates = models.IntegerField(null=True, blank=True)
     assay_protocol_type = models.TextField(blank=True)
@@ -121,18 +126,20 @@ class Screening(models.Model):
     class Meta:
         db_table = 'screening'
 
-class LibraryScreening(models.Model):
-    activity = models.OneToOneField('Screening', primary_key=True)
+class LibraryScreening(Screening):
+    screeninglink = models.OneToOneField(
+        'Screening', primary_key=True, parent_link=True,db_column='activity_id')
     abase_testset_id = models.TextField(blank=True)
     is_for_external_library_plates = models.BooleanField()
-    screened_experimental_well_count = models.IntegerField()
+    screened_experimental_well_count = models.IntegerField(default=0)
     libraries_screened_count = models.IntegerField(null=True, blank=True)
     library_plates_screened_count = models.IntegerField(null=True, blank=True)
     class Meta:
         db_table = 'library_screening'
 
-class CherryPickScreening(models.Model):
-    activity = models.OneToOneField('Screening', primary_key=True)
+class CherryPickScreening(Screening):
+    screeninglink = models.OneToOneField(
+        'Screening', primary_key=True, parent_link=True, db_column='activity_id')
     cherry_pick_request = models.ForeignKey('CherryPickRequest')
     class Meta:
         db_table = 'cherry_pick_screening'
@@ -1236,6 +1243,39 @@ class Copy(models.Model):
     date_publicly_available = models.DateTimeField(null=True, blank=True)
     class Meta:
         db_table = 'copy'
+
+class CopyScreeningStatistics(models.Model):
+    # Added 20160127 - todo test
+    copy = models.OneToOneField('Copy', primary_key=True) 
+    name = models.TextField()
+    short_name = models.TextField()
+    screening_count = models.IntegerField(null=True)
+    ap_count = models.IntegerField(null=True)
+    dl_count = models.IntegerField(null=True)
+    first_date_data_loaded = models.DateField(null=True)
+    last_date_data_loaded = models.DateField(null=True)
+    first_date_screened = models.DateField(null=True)
+    last_date_screened = models.DateField(null=True)
+    class Meta:
+        db_table = 'copy_screening_statistics'
+
+class PlateScreeningStatistics(models.Model):
+    # Added 20160127 - todo test
+    plate = models.OneToOneField('Plate', primary_key=True)
+    plate_number = models.IntegerField(null=True)
+    copy = models.ForeignKey('Copy')
+    copy_name = models.TextField()
+    library_short_name= models.TextField()
+    library = models.ForeignKey('Library')
+    screening_count = models.IntegerField(null=True)
+    ap_count = models.IntegerField(null=True)
+    dl_count = models.IntegerField(null=True)
+    first_date_data_loaded = models.DateField(null=True)
+    last_date_data_loaded = models.DateField(null=True)
+    first_date_screened = models.DateField(null=True)
+    last_date_screened = models.DateField(null=True)
+    class Meta:
+        db_table = 'plate_screening_statistics'
 
 class Plate(models.Model):
     plate_id = models.AutoField(primary_key=True)

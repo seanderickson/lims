@@ -1013,6 +1013,25 @@ def download_tmp_file(path, filename):
         logger.error(str(('could not find attached file object for id', id, e)))
         raise e
 
+def get_supertype_fields(resource_definition):
+    supertype = resource_definition.get('supertype', None)
+    if supertype:
+        temp = MetaHash.objects.get(
+            scope='resource', key=supertype)
+        super_resource_def = temp.model_to_dict(scope='fields.resource')
+        fields = get_supertype_fields(super_resource_def)
+        
+        fields.update(deepcopy(
+            MetaHash.objects.get_and_parse(
+                scope='fields.' + supertype, 
+                field_definition_scope='fields.metahash')))
+        for field in fields.values():
+            if not field['table']:
+                field['table'] = super_resource_def['table']
+        return fields
+    else:
+        return {}    
+
 
 # NOTE if using this class, must implement the "not implemented error" methods
 # on Resource (these are implemented with ModelResource):
@@ -1120,21 +1139,6 @@ class ManagedResource(LoggingMixin):
                 scope='resource', key=self._meta.resource_name)
             resource_definition = resource_def.model_to_dict(scope='fields.resource')
             
-            def get_supertype_fields(resource_definition):
-                supertype = resource_definition.get('supertype', None)
-                if supertype:
-                    temp = MetaHash.objects.get(
-                        scope='resource', key=supertype)
-                    super_resource_def = temp.model_to_dict(scope='fields.resource')
-                    fields = get_supertype_fields(super_resource_def)
-                    
-                    fields.update(deepcopy(
-                        MetaHash.objects.get_and_parse(
-                            scope='fields.' + supertype, 
-                            field_definition_scope='fields.metahash')))
-                    return fields
-                else:
-                    return {}    
             supertype_fields = get_supertype_fields(resource_definition)
             if supertype_fields: 
                 logger.debug('resource: %s, supertype fields: %r', 
@@ -1250,6 +1254,7 @@ class ManagedResource(LoggingMixin):
         _temp.add('csv')
         _def['content_types'] = list(_temp)
         return _def
+
  
     def build_schema(self):
         '''
@@ -1315,24 +1320,6 @@ class ManagedResource(LoggingMixin):
                 logger.info(str(('content_types1', self._meta.resource_name, 
                     schema['resource_definition']['content_types'])))
             
-            def get_supertype_fields(resource_definition):
-                supertype = resource_definition.get('supertype', None)
-                if supertype:
-                    temp = MetaHash.objects.get(
-                        scope='resource', key=supertype)
-                    super_resource_def = temp.model_to_dict(scope='fields.resource')
-                    fields = get_supertype_fields(super_resource_def)
-                    
-                    fields.update(deepcopy(
-                        MetaHash.objects.get_and_parse(
-                            scope='fields.' + supertype, 
-                            field_definition_scope='fields.metahash')))
-                    for field in fields.values():
-                        if not field['table']:
-                            field['table'] = super_resource_def['table']
-                    return fields
-                else:
-                    return {}    
             _fields = schema['fields']
             supertype_fields = get_supertype_fields(schema['resource_definition'])
             logger.debug('resource: %s, supertype fields: %r', 
@@ -1438,13 +1425,13 @@ class ManagedResource(LoggingMixin):
             if field.get('required', False):
                 logger.debug(str(('check required: ', name, value)))
                 
-                if not value:
+                if value is None:
                      keyerrors.append('required')
                 if isinstance(value, basestring):
                     if len(value.strip()) == 0:
                         keyerrors.append('required')
                         
-            if not value:
+            if value is None:
                 if keyerrors:
                     errors[name] = keyerrors            
                 continue
@@ -1607,19 +1594,22 @@ class ManagedResource(LoggingMixin):
     def get_id(self,deserialized,**kwargs):
         schema = self.build_schema()
         id_attribute = schema['resource_definition']['id_attribute']
+        fields = schema['fields']
         kwargs_for_id = {}
         for id_field in id_attribute:
             if deserialized and deserialized.get(id_field,None):
-                kwargs_for_id[id_field] = deserialized[id_field]
+                kwargs_for_id[id_field] = parse_val(
+                    deserialized.get(id_field,None), id_field,fields[id_field]['data_type']) 
             elif kwargs and kwargs.get(id_field,None):
-                kwargs_for_id[id_field] = kwargs[id_field]
+                kwargs_for_id[id_field] = parse_val(
+                    kwargs.get(id_field,None), id_field,fields[id_field  ]['data_type']) 
             elif 'resource_uri' in deserialized:
                 return self.find_key_from_resource_uri(deserialized['resource_uri'])
-            else:
-                raise ValueError((
-                    'id attributes: %r not found in deserialized: %r, nor in kwargs: %r'
-                    % (id_attribute, deserialized, kwargs)))
-                
+#             else:
+#                 raise ValueError((
+#                     'id attributes: %r not found in deserialized: %r, nor in kwargs: %r'
+#                     % (id_attribute, deserialized, kwargs)))
+        logger.info('id kwargs found: %r', kwargs_for_id)
         return kwargs_for_id
 
 
@@ -2799,7 +2789,7 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
         - dicts have the same identity if the id_attribute keys have the same
         value.
         '''
-        DEBUG_PATCH_LOG = False or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_PATCH_LOG = True or logger.isEnabledFor(logging.DEBUG)
         if DEBUG_PATCH_LOG:
             logger.info('log patches: %s' %kwargs)
         log_comment = None
@@ -2816,6 +2806,7 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
             logger.info('===id_attribute: %s', id_attribute)
         deleted_items = list(original_data)        
         for new_dict in new_data:
+            logger.info('new_dict: %r', new_dict)
             log = ApiLog()
             log.username = request.user.username 
             log.user_id = request.user.id 
@@ -2835,15 +2826,16 @@ class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
             
             prev_dict = None
             for c_dict in original_data:
-                if DEBUG_PATCH_LOG:
-                    logger.info('consider prev dict: %s', c_dict)
-                prev_dict = c_dict
-                for key in id_attribute:
-                    if new_dict[key] != c_dict[key]:
-                        prev_dict = None
-                        break
-                if prev_dict:
-                    break # found
+                if c_dict:
+                    if DEBUG_PATCH_LOG:
+                        logger.info('consider prev dict: %s', c_dict)
+                    prev_dict = c_dict
+                    for key in id_attribute:
+                        if new_dict[key] != c_dict[key]:
+                            prev_dict = None
+                            break
+                    if prev_dict:
+                        break # found
             if DEBUG_PATCH_LOG:
                 logger.info('prev_dict: %s, ======new_dict====: %s', prev_dict, new_dict)
             if prev_dict:
@@ -3025,7 +3017,6 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
             % (len(new_data)))
         self.log_patches(request, original_data,new_data,**kwargs)
 
-    
         if not self._meta.always_return_data:
             return http.HttpAccepted()
         else:
@@ -3119,8 +3110,11 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
             # then this is a create
             original_data = []
         else:
+            original_data = []
             try:
-                original_data = [self._get_detail_response(request,**kwargs_for_log)]
+                item = self._get_detail_response(request,**kwargs_for_log)
+                if item:
+                    original_data = [item]
             except Exception, e: 
                 logger.exception('exception when querying for existing obj: %s', kwargs_for_log)
                 original_data = []
@@ -3130,18 +3124,18 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
 
             for id_field in id_attribute:
                 val = getattr(obj, id_field,None)
-                kwargs_for_log['%s' % id_field] = val
+                if val:
+                    kwargs_for_log['%s' % id_field] = val
 
         # get new state, for logging
         new_data = [self._get_detail_response(request,**kwargs_for_log)]
         self.log_patches(request, original_data,new_data,**kwargs)
 
-        
         if not self._meta.always_return_data:
             return http.HttpAccepted()
         else:
             response = self.get_detail(request,**kwargs_for_log)
-            response.status_code = 200
+            response.status_code = 201
             return response
 
     @write_authorization
@@ -3228,8 +3222,19 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
     def patch_obj(self,deserialized, **kwargs):
         raise NotImplementedError('patch obj must be implemented')
 
-    def validate(self, obj):
+    def validate(self, _dict, full=False):
+        '''
+        Perform validation according the the field schema:
+        @param full if True then check all fields (for required); not just the 
+        patched fields (use if object is being created). When patching, only 
+        need to check the fields that are present in the _dict
         
+        @return a dict of field_key->[erors] where errors are string messages
+        
+        #TODO: create vs update validations: validate that create-only
+        fields are not updated
+        '''
+        DEBUG_VALIDATION = True or logger.isEnabledFor(logging.DEBUG)
         schema = self.build_schema()
         fields = schema['fields']
         
@@ -3238,12 +3243,15 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
         
         for name, field in fields.items():
             keyerrors = []
-            value = getattr(obj, name, None)
-            
-            if field.get('required', False):
-                logger.debug(str(('check required: ', name, value)))
+            if not full and name not in _dict:
+                continue
+            value = _dict.get(name,None)
                 
-                if not value:
+            if DEBUG_VALIDATION:
+                logger.info('validate: %r:%r',name,value)
+                
+            if field.get('required', False):
+                if value is None:
                      keyerrors.append('required')
                 if isinstance(value, basestring):
                     if len(value.strip()) == 0:
@@ -3256,7 +3264,6 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
             
             ##FIXME: some vocab fields are not choices fields
             if 'choices' in field and field['choices']:
-                logger.debug(str(('check choices: ', name, value, field['choices'])))
                 if field['data_type'] != 'list':
                     if str(value) not in field['choices']: # note: comparing as string
                         keyerrors.append(
@@ -3279,7 +3286,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
                 errors[name] = keyerrors
                 
         if errors:
-            logger.warn('errors in submitted obj: %s, errs: %s', obj, errors)
+            logger.warn('errors in submitted data: %r, errs: %s', _dict, errors)
         return errors
 
 
@@ -3570,16 +3577,16 @@ class UserResource(ApiResource):
             fields,base_query_tables=base_query_tables,custom_columns=custom_columns)
         
     def get_id(self, deserialized, **kwargs):
-        try:
-            return ApiResource.get_id(self, deserialized, **kwargs)
-        except ValueError as e:
+        id_kwargs = ApiResource.get_id(self, deserialized, **kwargs)
+        if not id_kwargs:
             if deserialized and deserialized.get('ecommons_id', None):
-                return { 'ecommons_id': deserialized['ecommons_id']}
+                id_kwargs = { 'ecommons_id': deserialized['ecommons_id']}
             elif kwargs and kwargs.get('ecommons_id', None):
-                return { 'ecommons_id': kwargs['ecommons_id']}
+                id_kwargs = { 'ecommons_id': kwargs['ecommons_id']}
             else:
                 raise ValueError, '%s, nor was an ecommons_id specified' % e
-
+        return id_kwargs
+    
 #     # reworked 20150706   
 #     @un_cache        
 #     @transaction.atomic()
@@ -3787,7 +3794,6 @@ class UserResource(ApiResource):
     
     @transaction.atomic()    
     def delete_obj(self, deserialized, **kwargs):
-#         username = self.find_username(deserialized,**kwargs)
         id_kwargs = self.get_id(deserialized,**kwargs)
         UserProfile.objects.get(**id_kwargs).delete()
     
@@ -3796,7 +3802,6 @@ class UserResource(ApiResource):
 
         logger.info('patch_obj: %r, %r', deserialized,kwargs)
         
-#         username = self.find_username(deserialized,**kwargs)
         id_kwargs = self.get_id(deserialized,**kwargs)
         username = id_kwargs.get('username', None)
         ecommons_id = id_kwargs.get('ecommons_id', None)

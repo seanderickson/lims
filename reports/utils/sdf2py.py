@@ -65,8 +65,9 @@ def parse_mol(data, _delimre=re.compile(ur'(>\s+<[^>]+>[^\r^\n]*[\r\n]*)')):
         yield key, v
 
     assert not last_comment
-
-    yield (COMMENTTAG, comments if comments else None)
+    
+    if comments:
+        yield (COMMENTTAG, comments if comments else None)
 
 def first_nonempty_line(preamble):
     for txt in [line.strip() for line in preamble.splitlines()]:

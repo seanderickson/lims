@@ -72,8 +72,10 @@ class BackboneSerializer(Serializer):
         Override to quote attributes from the client.
         """
         content = content.replace(r'(\w+):', r'"\1" :')
-        return json.loads(content)
-
+        if content:
+            return json.loads(content)
+        else:
+            return None
 
 class PrettyJSONSerializer(Serializer):
     json_indent = 2

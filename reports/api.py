@@ -129,8 +129,8 @@ class UserGroupAuthorization(Authorization):
         DEBUG_AUTHORIZATION = False or logger.isEnabledFor(logging.DEBUG)
         
         if DEBUG_AUTHORIZATION:
-            logger.info("_is_resource_authorized: %s, user: %s, type: %s"
-                % (resource_name, user, permission_type))
+            logger.info("_is_resource_authorized: %s, user: %s, type: %s",
+                resource_name, user, permission_type)
         scope = 'resource'
         prefix = 'permission'
         uri_separator = '/'
@@ -184,7 +184,7 @@ class UserGroupAuthorization(Authorization):
         # translates this into the (incorrect) HttpUnauthorized (401) response
         # Instead, raise an immediate exception with the correct 403 error code
         raise ImmediateHttpResponse(response=HttpForbidden(
-            str(('user',user ,'permission not found', permission_str))))
+            'user: %s, permission: %r not found' % (user,permission_str)))
     
     def read_list(self, object_list, bundle):
         if self._is_resource_authorized(
@@ -264,8 +264,10 @@ class SuperUserAuthorization(ReadOnlyAuthorization):
         # Instead, raise an immediate exception with the correct 403 error code
         # https://tools.ietf.org/html/rfc7231#section-6.5.3
         
+        uri_separator = '/'
+        permission_str =  uri_separator.join([resource_name,permission_type])       
         raise ImmediateHttpResponse(response=HttpForbidden(
-            str(('user',user ,'permission not found', permission_str))))
+            'user: %s, permission: %r not found' % (user,permission_str)))
         
     def delete_list(self, object_list, bundle):
         if bundle.request.user.is_superuser:
@@ -300,7 +302,6 @@ class SuperUserAuthorization(ReadOnlyAuthorization):
 
 
 class IccblBaseResource(Resource):
-#  class StreamingResource(Resource):
     """
     Override tastypie.resources.Resource to replace check:
      if not isinstance(response, HttpResponse):
@@ -412,7 +413,8 @@ class IccblBaseResource(Resource):
     @staticmethod    
     def create_vocabulary_rowproxy_generator(field_hash):
         '''
-        Create a generator that iterates over the sqlalchemy.engine.ResultProxy
+        Create cursor row generator:
+        - generator wraps a sqlalchemy.engine.ResultProxy (cursor)
         - yields a wrapper for sqlalchemy.engine.RowProxy on each iteration
         - the wrapper will return vocabulary titles for valid vocabulary values
         in each row[key] for the key columns that are vocabulary columns.
@@ -551,19 +553,6 @@ def log_obj_create(obj_create_func):
                             
     return _inner
 
-# TODO: make class decorator as follows
-# http://stackoverflow.com/questions/666216/decorator-classes-in-python
-# class NullDecl (object):
-#     def __init__ (self, func):
-#         self.func = func
-#         for n in set(dir(func)) - set(dir(self)):
-#             setattr(self, n, getattr(func, n))
-# 
-#     def __call__ (self, * args):
-#         return self.func (*args)
-#     def __repr__(self):
-#         return self.func
-
 def is_empty_diff(difflog):
     if not difflog:
      return True
@@ -625,7 +614,6 @@ def compare_dicts(dict1, dict2, excludes=['resource_uri'], full=False):
         log['diff_keys'] = diff_keys
         log['diffs'].update(
             dict(zip(diff_keys,([dict1[key],dict2[key]] for key in diff_keys ) )))
-#             dict(zip(diff_keys,([dict1[key],dict2[key]] for key in diff_keys if (full or dict1[key]) ) )))
     
     return log
 
@@ -756,8 +744,6 @@ def log_patch_list(patch_list_func):
             kwargs['parent_log'] = listlog
                   
         response = patch_list_func(self, request, **kwargs) 
-        
-#         self.listlog = None
          
         return response        
     return _inner
@@ -767,9 +753,8 @@ class LoggingMixin(IccblBaseResource):
     '''
     Intercepts obj_create, obj_update and creates an ApiLog entry for the action
     
-    Note: whatever is being extended with the LoggingMixin must also define a
-    "detail_uri_kwargs" method that returns an _ordered_dict_, since we log the 
-    kwargs as ordered args.
+    Note: Extending classes must also define a "detail_uri_kwargs" method 
+    that returns an _ordered_dict_, since we log the kwargs as ordered args.
     ** note: "detail_uri_kwargs" returns the set of lookup keys for the resource 
     URI construction.
     '''
@@ -828,170 +813,6 @@ class LoggingMixin(IccblBaseResource):
     def patch_list(self, request, **kwargs):
         return Resource.patch_list(self,request, **kwargs) 
          
-#     @transaction.atomic()
-#     def patch_list(self, request, **kwargs):
-#         ''' Override
-#         '''
-#         # create an apilog for the patch list
-# #         listlog = self.listlog = ApiLog()
-#         listlog = ApiLog()
-#         listlog.username = request.user.username 
-#         listlog.user_id = request.user.id 
-#         listlog.date_time = timezone.now()
-#         listlog.ref_resource_name = self._meta.resource_name
-#         listlog.api_action = 'PATCH_LIST'
-#         listlog.uri = self.get_resource_uri()
-#         # TODO: how do we feel about passing form data in the headers?
-#         # TODO: abstract the form field name
-#         if HEADER_APILOG_COMMENT in request.META:
-#             listlog.comment = request.META[HEADER_APILOG_COMMENT]
-#             
-#         response =  Resource.patch_list(self, request, **kwargs) 
-#          
-#         returned_objects = self._meta.serializer.deserialize(response.content, response['Content-Type'])
-#  
-#         uris = [ obj['resource_uri'] for obj in returned_objects['objects']]
-#         listlog.save();
-#  
-#         logger.debug(str(('adding created obj to list', uris)))
-# #         # TODO: this should be a linked to many field?
-# #         listlog.added_keys = json.dumps(uris)
-#         for uri in uris:
-#              
-#             ## Convert uri to ref_resource_name, key
-#             ref_resource_name = listlog.ref_resource_name
-#             key = None
-#             if ref_resource_name in uri:
-#                 index = uri.find(ref_resource_name)+len(ref_resource_name)+1
-#                 if len(uri) >= index:
-#                     key = uri[index:]
-#              
-#             if not key:
-#                 logger.warn(str((
-#                     "returned patch_list uris don't contain the resource name/key",
-#                     ref_resource_name, uri)))
-#             sub = ListLog(uri=uri, ref_resource_name=ref_resource_name, key=key, apilog=listlog)
-#             sub.save()
-#          
-#         listlog.key = listlog.id
-#         listlog.save()
-# #         self.listlog = None
-#     
-#         return response        
-    
-
-class UnlimitedDownloadResource(IccblBaseResource):
-    ''' 
-    Resource that will stream the entire endpoint (with params):
-    - instead of paginating it
-    - instead of doing it in memory
-    - will set a filename to the response header if specified
-    '''
-    #     @profile("unlimited_get_list.prof")
-    def get_list(self, request, **kwargs):
-        from reports.serializers import csv_convert
-        from django.utils.encoding import smart_str
-        
-        try:
-            limit = request.GET.get('limit', None)
-            if limit == '0':
-                logger.error(str(('using download specific get_list')))
-                base_bundle = self.build_bundle(request=request)
-                objects = self.obj_get_list(bundle=base_bundle, **self.remove_api_resource_names(kwargs))
-                sorted_objects = self.apply_sorting(objects, options=request.GET)
-            
-                desired_format = self.determine_format(request)
-                content_type=build_content_type(desired_format)
-    
-                response = HttpResponse(content_type=content_type)
-                name = self._meta.resource_name
-                response['Content-Disposition'] = \
-                    'attachment; filename=%s.csv' % unicode(name).replace('.', '_')
-                
-                if desired_format == 'application/json':
-                    pass;
-                elif desired_format == 'application/xls':
-                    pass;
-                elif desired_format == 'text/csv':
-                    csvwriter = csv.writer(response)
-                    i = 0
-                    keys = None
-                    for obj in sorted_objects.iterator():
-                        bundle = self.build_bundle(obj=obj, request=request)
-                        bundle = self.full_dehydrate(bundle, for_list=True)
-                        item = bundle.data
-                        if i == 0:
-                            keys = item.keys()
-                            logger.info(str(('create the header row', [smart_str(key) for key in keys])))
-                            csvwriter.writerow([smart_str(key) for key in keys])
-                        i += 1
-                        _list = []
-                        for key in keys:
-                            if key in item:
-                                _list.append(csv_convert(item[key]))
-                        csvwriter.writerow(_list)
-                        if i % 1000 == 0:
-                            logger.info(str(('logged', i)))
-                    logger.error(str(('return response')))
-                else:
-                    raise Exception(str(('unknown format', desired_format)))
-    #             serialized = self.serialize(request, data, desired_format)
-    
-                return response
-            
-            else:
-                logger.info('using superclass get_list')
-                return super(UnlimitedDownloadResource, self).get_list(request, **kwargs)
-
-        except Exception, e:
-            logger.exception('on get list')
-            raise e
-
-
-    def get_list2(self, request, **kwargs):
-        """
-        Returns the entire collection specified by the URI & params
-        """
-        from reports.serializers import csv_convert
-        from django.utils.encoding import smart_str
-        
-        limit = request.GET.get('limit', None)
-        if limit == '0':
-            logger.error(str(('using download specific get_list')))
-            base_bundle = self.build_bundle(request=request)
-            objects = self.obj_get_list(bundle=base_bundle, **self.remove_api_resource_names(kwargs))
-            sorted_objects = self.apply_sorting(objects, options=request.GET)
-            
-            response = HttpResponse(mimetype='text/csv')
-            name = self._meta.resource_name
-            response['Content-Disposition'] = \
-                'attachment; filename=%s.csv' % unicode(name).replace('.', '_')
-    
-            csvwriter = csv.writer(response)
-            
-            i = 0
-            keys = None
-            for obj in sorted_objects.iterator():
-                bundle = self.build_bundle(obj=obj, request=request)
-                bundle = self.full_dehydrate(bundle, for_list=True)
-                item = bundle.data
-                if i == 0:
-                    keys = item.keys()
-                    logger.info(str(('create the header row', [smart_str(key) for key in keys])))
-                    csvwriter.writerow([smart_str(key) for key in keys])
-                i += 1
-                _list = []
-                for key in item:
-                    _list.append(csv_convert(item[key]))
-                csvwriter.writerow(_list)
-                if i % 1000 == 0:
-                    logger.info(str(('logged', i)))
-            logger.error(str(('return response')))
-            
-            return response
-        else:
-            logger.info('using superclass get_list')
-            return super(UnlimitedDownloadResource, self).get_list(request, **kwargs)
         
 def download_tmp_file(path, filename):
     """                                                                         
@@ -1033,20 +854,21 @@ def get_supertype_fields(resource_definition):
         return {}    
 
 
-# NOTE if using this class, must implement the "not implemented error" methods
-# on Resource (these are implemented with ModelResource):
-# detail_uri_kwargs
-# get_obj_list
-# apply_filters
-# obj_get_list
-# obj_get
-# obj_create
-# obj_update
-# obj_delete
 class ManagedResource(LoggingMixin):
     '''
     Uses the field and resource definitions in the Metahash store to determine 
     the fields to expose for a Resource
+
+    # NOTE if using this class, must implement the "not implemented error" methods
+    # on Resource (these are implemented with ModelResource):
+    # detail_uri_kwargs
+    # get_obj_list
+    # apply_filters
+    # obj_get_list
+    # obj_get
+    # obj_create
+    # obj_update
+    # obj_delete
     '''
     resource_registry = {}
     
@@ -1095,8 +917,6 @@ class ManagedResource(LoggingMixin):
 
         resource.clear_cache();
                 
-        logger.debug('----------reset_field_defs, resource_name %s, scope: %s'
-            % (resource._meta.resource_name, scope))
         resource.create_fields();
         resource.reset_filtering_and_ordering();
     
@@ -1149,17 +969,6 @@ class ManagedResource(LoggingMixin):
             for item in _fields.values():
                 item['scope'] = 'fields.%s' % self._meta.resource_name
             
-#             ## Get the supertype fields
-#             # TODO: -could- get the schema from the supertype resource
-#             supertype = resource_definition.get('supertype', '')
-#             if supertype:
-#                 supertype_fields = deepcopy(
-#                     MetaHash.objects.get_and_parse(
-#                         scope='fields.' + supertype, field_definition_scope='fields.metahash'))
-#                 supertype_fields.update(_fields)
-#                 _fields = supertype_fields
-#                 for item in _fields.values():
-#                     item['scope'] = 'fields.%s' % self._meta.resource_name
         except Exception, e:
             if not getattr(self, 'suppress_errors_on_bootstrap', False):
                 logger.exception('in create_fields: resource information not available: %r',
@@ -1234,13 +1043,6 @@ class ManagedResource(LoggingMixin):
             return data 
 
     def _get_resource_def(self, resource_name=None):
-        # TODO: delegate this to the ResourceResource
-        #         res = self._get_resource_resource()
-        #         r = res.obj_get(scope='resource', key=self._meta.resource_name)
-        #         r_bundle = res.build_bundle(obj=r, request=request)
-        #         r_bundle = res.full_dehydrate(r_bundle)
-        #         logger.info(str(('r_bundle.data', r_bundle.data)))
-        #         return r_bundle.data
         resource_name = resource_name or self._meta.resource_name;
         resource_def = MetaHash.objects.get(
             scope='resource', key=resource_name)
@@ -1257,10 +1059,8 @@ class ManagedResource(LoggingMixin):
 
  
     def build_schema(self):
-        '''
-        Override
-        '''
         DEBUG_BUILD_SCHEMA = False or logger.isEnabledFor(logging.DEBUG)
+
         # FIXME: consider using the cache decorator or a custom memoize decorator?
         schema = cache.get(self._meta.resource_name + ":schema")
         if schema:
@@ -1329,30 +1129,13 @@ class ManagedResource(LoggingMixin):
             for item in _fields.values():
                 item['scope'] = 'fields.%s' % self._meta.resource_name
             schema['fields'] =  _fields
-#             supertype = schema['resource_definition'].get('supertype', '')
-#             if supertype:
-#                 # TODO: supertypes form a graph, so this should traverse *all* the
-#                 # way up, but only looks at immediate parent.
-#                 # TODO: better encapsulation for supertype field definitions
-#                 supertype_resource = self._get_resource_def(resource_name=supertype);
-#                 supertype_fields = deepcopy(
-#                     MetaHash.objects.get_and_parse(
-#                         scope='fields.' + supertype, field_definition_scope='fields.metahash'))
-#                 for field in supertype_fields.values():
-#                     if not field['table']:
-#                         field['table'] = supertype_resource['table']
-#                 supertype_fields.update(schema['fields'])
-#                 for item in supertype_fields.values():
-#                     item['scope'] = 'fields.%s' % self._meta.resource_name
-#                 logger.info(str(('fields + supertype_fields',supertype_fields.keys())))
-#                 schema['fields'] = supertype_fields
             
             # Set:
             # - Default field table
             # - Field dependencies
             logger.debug('== debugging: schema resource definition so far: %s', 
                 schema['resource_definition'])
-            default_table = schema['resource_definition']['table']
+            default_table = schema['resource_definition'].get('table',None)
             if DEBUG_BUILD_SCHEMA: 
                 logger.info(str(('default_table', default_table)))
             for key,field in schema['fields'].items():
@@ -1372,7 +1155,7 @@ class ManagedResource(LoggingMixin):
                 field['dependencies'] = dep_fields
         except Exception, e:
             if not getattr(self, 'suppress_errors_on_bootstrap', False):
-                logger.exception('on build schema')
+                logger.exception('on build schema: %r',self._meta.resource_name)
             else:
                 logger.info('build_schema: resource %r, ex: %r',
                     self._meta.resource_name, e)
@@ -1431,7 +1214,7 @@ class ManagedResource(LoggingMixin):
                     if len(value.strip()) == 0:
                         keyerrors.append('required')
                         
-            if value is None:
+            if not value or isinstance(value, (list, tuple)) and not value[0]:
                 if keyerrors:
                     errors[name] = keyerrors            
                 continue
@@ -1465,28 +1248,9 @@ class ManagedResource(LoggingMixin):
             logger.warn(str((
                 'bundle errors', bundle.errors, len(bundle.errors.keys()),
                 'bundle_data', data)))
-#             return ImmediateHttpResponse(bundle.errors)
             return False
         return True
         
-#     def deserialize(self, *args, **kwargs):
-#         '''
-#         Because field alias mapping is specific to each resource, override the 
-#         deserialize method here to patch in an iterator that will use the alias
-#         map to convert posted fields to mapped fields.
-#          
-#         ## TODO: implement tests for this
-#         '''
-#         deserialized = super(ManagedResource, self).deserialize(*args, **kwargs)
-#         
-#         if self._meta.collection_name in deserialized: 
-#             # this is a list of data
-#             deserialized[self._meta.collection_name] = \
-#                 self.create_aliasmapping_iterator(deserialized[self._meta.collection_name])
-#         else:   
-#             # this is a single item of data
-#             deserialized = self.alias_item(deserialized)
-#         return deserialized
         
     def dehydrate(self, bundle):
         ''' 
@@ -1495,8 +1259,6 @@ class ManagedResource(LoggingMixin):
         '''
         if len(bundle.data) == 0 : return bundle
         
-#         schema = self.build_schema()
-#         _fields = schema['fields']
         _fields = MetaHash.objects.get_and_parse(
             scope=self.scope, field_definition_scope='fields.metahash')
         for key in [ 
@@ -1506,14 +1268,9 @@ class ManagedResource(LoggingMixin):
         bundle.data['json_field'] = ''
         # json_field will not be part of the public API, it is for internal use
         bundle.data.pop('json_field') 
-        # override the resource_uri, since we want to export the permanent composite key
-#        bundle.data['resource_uri'] = 
-#             self.build_resource_uri(self.resource, bundle.data) or 
-#             bundle.data['resource_uri']
         
         return bundle
     
-    # implementation hook, to deserialize the embedded json fields
     def hydrate_json_field(self, bundle):
         '''
         hydrate bundle data values that will be stuffed into the json_field
@@ -1558,8 +1315,6 @@ class ManagedResource(LoggingMixin):
         logger.debug(str(('--- hydrated:', bundle.data['json_field'])))
         return bundle;
 
-
-    # override
     def obj_get(self, bundle, **kwargs):
         try:
             bundle = super(ManagedResource, self).obj_get(bundle, **kwargs);
@@ -1605,13 +1360,7 @@ class ManagedResource(LoggingMixin):
                     kwargs.get(id_field,None), id_field,fields[id_field  ]['data_type']) 
             elif 'resource_uri' in deserialized:
                 return self.find_key_from_resource_uri(deserialized['resource_uri'])
-#             else:
-#                 raise ValueError((
-#                     'id attributes: %r not found in deserialized: %r, nor in kwargs: %r'
-#                     % (id_attribute, deserialized, kwargs)))
-        logger.info('id kwargs found: %r', kwargs_for_id)
         return kwargs_for_id
-
 
     def _get_attribute(self, obj, attribute):
         '''
@@ -1666,34 +1415,7 @@ class ManagedResource(LoggingMixin):
                 schema = self.build_schema()
             if 'resource_definition' in schema:
                 resource = schema['resource_definition']
-                
-                # TODO: memoize
-                # note use an ordered dict here so that the args can be returned as
-                # a positional array for 
                 kwargs = OrderedDict() 
-
-#                 id_attribute = resource['id_attribute']
-#                 for x in id_attribute:
-#                     val = ''
-#                     if isinstance(bundle_or_obj, Bundle):
-#                         val = self._get_attribute(bundle_or_obj.obj, x)
-#                     else:
-#                         if hasattr(bundle_or_obj, x):
-#                             val = self._get_attribute(bundle_or_obj,x)  
-#                         elif isinstance(bundle_or_obj, dict):
-#                             val = self._get_hashvalue(bundle_or_obj, x) # allows simple dicts
-#                         else:
-#                             raise Exception(str(('obj', type(obj), obj, 'does not contain', x)))
-#                     if isinstance(val, datetime.datetime):
-#                         val = val.isoformat()
-#                     else:
-#                         val = str(val)
-#                     
-#                     kwargs[x] = val
-#                 
-#                 return kwargs
-                
-                
                 if 'id_attribute' in resource:
                     id_attribute = resource['id_attribute']
                     for x in id_attribute:
@@ -1704,9 +1426,11 @@ class ManagedResource(LoggingMixin):
                             if hasattr(bundle_or_obj, x):
                                 val = self._get_attribute(bundle_or_obj,x)  
                             elif isinstance(bundle_or_obj, dict):
-                                val = self._get_hashvalue(bundle_or_obj, x) # allows simple dicts
+                                val = self._get_hashvalue(bundle_or_obj, x) 
                             else:
-                                raise Exception(str(('obj', type(obj), obj, 'does not contain', x)))
+                                raise Exception(
+                                    'obj %r, %r does not contain %r' 
+                                    % (type(obj), obj, x))
                         if isinstance(val, datetime.datetime):
                             val = val.isoformat()
                         else:
@@ -1736,7 +1460,6 @@ class ManagedResource(LoggingMixin):
             % resource_name)))
         return super(ManagedResource,self).detail_uri_kwargs(bundle_or_obj)
 
-    
     def get_via_uri(self, uri, request=None):
         """
         Override TP so that the resource name is optional, and is searched for 
@@ -1777,14 +1500,7 @@ class ManagedResource(LoggingMixin):
             bundle_or_obj=bundle_or_obj, url_name=url_name)
         return uri
 
-    # implementation hook - URLS to match _before_ the default URLS
-    # used here to allow the natural keys [scope, key] to be used
     def prepend_urls(self):
-        # NOTE: this match "((?=(schema))__|(?!(schema))[\w\d_.-]+)" 
-        # [ any word, except "schema" ]
-        # also note the double underscore "__" is because we also don't want to
-        # match in the first clause. Don't want "schema" since that reserved
-        # word is used by tastypie for the schema definition for the resource
         return [
             url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
@@ -1792,8 +1508,6 @@ class ManagedResource(LoggingMixin):
             url(r"^(?P<resource_name>%s)/(?P<scope>[\w\d_.-:]+)/(?P<key>[^/]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            # TODO: is this needed here on metahash? we aren't using just "key" 
-            # as a key, which is what causes the conflict with "schema", so probably not
             url(r"^(?P<resource_name>%s)/(?P<key>((?=(schema))__|(?!(schema))[^/]+))%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
@@ -1844,7 +1558,6 @@ class ManagedResource(LoggingMixin):
         return filename
 
  
-# FIXME: unused with refactor to remove Tastypie
 class ExtensibleModelResourceMixin(ModelResource):
     '''
     Tastypie ModelResource mixin that passes the full request/url parsing kwargs
@@ -1885,7 +1598,7 @@ class ExtensibleModelResourceMixin(ModelResource):
         applicable_filters = self.build_filters(filters=filters)
 
         try:
-            # MODIFICATION: adding kwargs to the apply_filters call - sde
+            # MODIFICATION: adding kwargs to the apply_filters call
             # logger.debug(str(('kwargs', kwargs)))
             _kwargs = kwargs
             if 'request' in _kwargs: 
@@ -1901,14 +1614,12 @@ class ExtensibleModelResourceMixin(ModelResource):
             logger.warn(str(('on obj_get_list', e)))
             raise BadRequest(str(("Invalid resource lookup data provided (mismatched type).", e)))
         
-        
     def apply_filters(self, request, applicable_filters, **kwargs): 
         '''
         Delegates to the parent ModelResource.apply_filters method.
         '''       
         query = self.get_object_list(request, **kwargs)
         return query.apply_filters(request, applicable_filters);
-
 
     def get_object_list(self, request, **kwargs):
         '''
@@ -1986,7 +1697,7 @@ class ManagedModelResource(FilterModelResourceMixin,
 
 class MetaHashResource(ManagedModelResource):
     '''
-    This table serves as a relatively low volume triple/quad store;
+    This table serves as a triple/quad store;
     Predefined fields:
     - key field
     - scope: secondary key, for quad store usage patterns
@@ -2062,11 +1773,27 @@ class MetaHashResource(ManagedModelResource):
         '''
         We need to override this to bypass when initializing
         '''
-        if getattr(bundle.obj,'scope').find('fields') == 0: #'fields.metahash':
-            return True
+        result = super(MetaHashResource, self).is_valid(bundle, request=request)
         
-        return super(MetaHashResource, self).is_valid(bundle, request=request)
+        data = {}
+        if bundle.obj.pk:
+            data = model_to_dict(bundle.obj)
+        if data is None:
+            data = {}
+        data.update(bundle.data)
 
+        name = 'regex'
+        if data.get(name, None):
+            try:
+                re.compile(data[name])
+            except Exception, e:
+                msg = 'invalid %r: %r, ex: %r' % (name,data[name],e)
+                logger.warn('validation error: %s', msg)
+                bundle.errors[self._meta.resource_name] = { name: [msg]}
+                return False
+        
+        return result
+    
     def hydrate(self, bundle):
         bundle = super(MetaHashResource, self).hydrate(bundle);
         return bundle
@@ -2116,8 +1843,6 @@ class VocabulariesResource(ManagedModelResource, SqlAlchemyResource):
         return schema
     
     def get_detail(self, request, **kwargs):
-        logger.info(str(('get_detail')))
-
         key = kwargs.get('key', None)
         if not key:
             logger.info(str(('no key provided')))
@@ -2330,43 +2055,6 @@ class VocabulariesResource(ManagedModelResource, SqlAlchemyResource):
             logger.warn(str(('---unknown vocabulary scope:', scope)))
             return {}
     
-#     @staticmethod
-#     def get_vocabularies_by_scope_old(scope):
-#         ''' Utility method
-#         '''
-#         try:
-#             vocabularies = cache.get('vocabularies');
-#             if not vocabularies:
-#                 vocabularies = {}
-#                 res = VocabulariesResource()
-#                 request_bundle = res.build_bundle(request=HttpRequest())
-#                 class User:
-#                     @staticmethod
-#                     def is_superuser():
-#                         return true
-#                 request_bundle.request.user = User
-#                 queryset = res.obj_get_list(request_bundle)
-#         
-#                 for obj in queryset:
-#                     request_bundle.obj = obj
-#                     request_bundle.data = {}
-#                     vocabulary_instance = res.full_dehydrate(request_bundle).data
-#                     ## add in a convenience key
-#                     vocabulary_instance['1key'] = vocabulary_instance['key']
-#                     _scope = vocabulary_instance['scope']
-#                     if _scope not in vocabularies:
-#                          vocabularies[_scope] = {}
-#                     vocabularies[_scope][vocabulary_instance['key']] = vocabulary_instance
-#                 cache.set('vocabularies', vocabularies);
-#             if scope in vocabularies:
-#                 return deepcopy(vocabularies[scope])
-#             else:
-#                 logger.warn(str(('---unknown vocabulary scope:', scope)))
-#                 return {}
-#         except Exception, e:
-#             logger.exception('on get_vocabularies_by_scope')
-#             raise e  
-    
     def clear_cache(self):
         super(VocabulariesResource,self).clear_cache()
         cache.delete('vocabularies');
@@ -2446,8 +2134,6 @@ class ResourceResource(ManagedModelResource):
             _temp.add('json')
             _temp.add('csv')
             bundle.data['content_types'] = list(_temp)
-            
-            
         else:
             logger.error('no API resource found in the registry for ' + 
                          'fields.'+bundle.obj.key + 
@@ -2706,7 +2392,6 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
             _log2 = self.bridge['reports_apilog']
             _log2 = _log2.alias('parent_log')
             
-#             j = join(_cw, _c, _c.c.copy_id == _cw.c.copy_id )
             j = join(_log, _log2, _log.c.parent_log_id == _log2.c.id, isouter=True )
             
             stmt = select(columns.values()).select_from(j)
@@ -2717,8 +2402,6 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
             # general setup
              
             (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
-            
-#             logger.info(str(('stmt', stmt.compile())))
             
             if not order_clauses:
                 stmt = stmt.order_by('ref_resource_name','key', 'date_time')
@@ -2960,9 +2643,9 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
     @un_cache        
     def put_list(self,request, **kwargs):
 
-#         # TODO: enforce a policy that either objects are patched or deleted
-#         raise NotImplementedError('put_list must be implemented')
-    
+        # TODO: enforce a policy that either objects are patched or deleted
+        #         raise NotImplementedError('put_list must be implemented')
+            
         # but keep this as an example
         deserialized = self._meta.serializer.deserialize(
             request.body, 
@@ -3066,10 +2749,13 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
         else:
             original_data = self._get_list_response(request,**kwargs_for_log)
         
-        with transaction.atomic():
-            logger.info('call put_obj')
-            obj = self.put_obj(deserialized, **kwargs)
-
+        try:
+            with transaction.atomic():
+                logger.info('call put_obj')
+                obj = self.put_obj(deserialized, **kwargs)
+        except ValidationError as e:
+            raise ImmediateHttpResponse(response=self.error_response(request, e.errors))
+                
         if not kwargs_for_log:
             for id_field in id_attribute:
                 val = getattr(obj, id_field,None)
@@ -3090,10 +2776,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
         deserialized = self._meta.serializer.deserialize(
             request.body, 
             format=request.META.get('CONTENT_TYPE', 'application/json'))
-        logger.debug('patch detail %s, %s' % (deserialized,kwargs))
-
-        logger.info('patch detail, resource: %r, object: %s' 
-            % (self._meta.resource_name, deserialized))
+        logger.debug('patch detail %s, %s', deserialized,kwargs)
 
         # cache state, for logging
         # Look for id's kwargs, to limit the potential candidates for logging
@@ -3118,14 +2801,15 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
             except Exception, e: 
                 logger.exception('exception when querying for existing obj: %s', kwargs_for_log)
                 original_data = []
-        with transaction.atomic():
-            
-            obj = self.patch_obj(deserialized, **kwargs)
-
-            for id_field in id_attribute:
-                val = getattr(obj, id_field,None)
-                if val:
-                    kwargs_for_log['%s' % id_field] = val
+        try:
+            with transaction.atomic():
+                obj = self.patch_obj(deserialized, **kwargs)
+                for id_field in id_attribute:
+                    val = getattr(obj, id_field,None)
+                    if val:
+                        kwargs_for_log['%s' % id_field] = val
+        except ValidationError as e:
+            raise ImmediateHttpResponse(response=self.error_response(request, e.errors))
 
         # get new state, for logging
         new_data = [self._get_detail_response(request,**kwargs_for_log)]
@@ -3222,10 +2906,10 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
     def patch_obj(self,deserialized, **kwargs):
         raise NotImplementedError('patch obj must be implemented')
 
-    def validate(self, _dict, full=False):
+    def validate(self, _dict, patch=False):
         '''
         Perform validation according the the field schema:
-        @param full if True then check all fields (for required); not just the 
+        @param patch if False then check all fields (for required); not just the 
         patched fields (use if object is being created). When patching, only 
         need to check the fields that are present in the _dict
         
@@ -3237,16 +2921,30 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
         DEBUG_VALIDATION = True or logger.isEnabledFor(logging.DEBUG)
         schema = self.build_schema()
         fields = schema['fields']
+        id_attribute = schema['resource_definition']['id_attribute']
         
         # do validations
         errors = {}
         
         for name, field in fields.items():
-            keyerrors = []
-            if not full and name not in _dict:
+            if name == 'resource_uri':
                 continue
-            value = _dict.get(name,None)
+            
+            keyerrors = []
+            if patch:
+                if name not in _dict:
+                    continue
+                else: 
+                    if name in id_attribute:
+                        continue
+                    editability = field.get('editability',None)
+                    if not editability or 'u' not in editability:
+                        errors[name] = 'cannot be changed'
+                        continue
                 
+            value = _dict.get(name,None)
+            
+            
             if DEBUG_VALIDATION:
                 logger.info('validate: %r:%r',name,value)
                 
@@ -3257,7 +2955,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
                     if len(value.strip()) == 0:
                         keyerrors.append('required')
                         
-            if not value:
+            if not value or isinstance(value, (list, tuple)) and not value[0]:
                 if keyerrors:
                     errors[name] = keyerrors            
                 continue
@@ -3276,14 +2974,27 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
 
             if 'regex' in field and field['regex']:
                 logger.debug('name: %s, value: %s check regex: %s', name, value, field['regex'] )
-                if not re.match(field['regex'], value):
-                    msg = field.get('validation_message', None)
-                    if not msg:
-                        msg = "'%s' does not match pattern: '%s'" % (value, field['regex'])
-                    keyerrors.append(msg)
+                # FIXME validate regex on input
+                matcher = re.compile(field['regex'])
+                if field['data_type'] != 'list':
+                    if not matcher.match(value):
+                        msg = field.get('validation_message', None)
+                        if not msg:
+                            msg = "'%s' does not match pattern: '%s'" % (value, field['regex'])
+                        keyerrors.append(msg)
+                else:
+                    for x in value:
+                        if not matcher.match(x):
+                            msg = field.get('validation_message', None)
+                            if not msg:
+                                msg = "'%s' does not match pattern: '%s'" % (x, field['regex'])
+                            keyerrors.append(msg)
 
             if keyerrors:
                 errors[name] = keyerrors
+
+            if DEBUG_VALIDATION:
+                logger.info('validate: %r:%r - %r',name,value,keyerrors)
                 
         if errors:
             logger.warn('errors in submitted data: %r, errs: %s', _dict, errors)
@@ -3306,7 +3017,6 @@ class UserResource(ApiResource):
         # FIXME: should override UserGroupAuthorization, and should allow user to view
         # (1) record by default: their own.
         authorization = SuperUserAuthorization()
-#         authorization= UserGroupAuthorization() #SuperUserAuthorization()        
         ordering = []
         filtering = {'scope':ALL, 'key': ALL, 'alias':ALL}
         serializer = LimsSerializer()
@@ -3584,213 +3294,8 @@ class UserResource(ApiResource):
             elif kwargs and kwargs.get('ecommons_id', None):
                 id_kwargs = { 'ecommons_id': kwargs['ecommons_id']}
             else:
-                raise ValueError, '%s, nor was an ecommons_id specified' % e
+                raise ValueError, 'neither username or ecommons_id not specified: %r, %r' %(deserialized,kwargs)
         return id_kwargs
-    
-#     # reworked 20150706   
-#     @un_cache        
-#     @transaction.atomic()
-#     def put_list(self,request, **kwargs):
-#         # TODO: refactor
-#         self._meta.authorization._is_resource_authorized(
-#             self._meta.resource_name, request.user, 'write')
-# 
-#         deserialized = self._meta.serializer.deserialize(
-#             request.body, 
-#             format=request.META.get('CONTENT_TYPE', 'application/json'))
-#         if not self._meta.collection_name in deserialized:
-#             raise BadRequest("Invalid data sent, must be nested in '%s'" 
-#                 % self._meta.collection_name)
-#         deserialized = deserialized[self._meta.collection_name]
-#         
-#         # cache state, for logging
-#         response = self.get_list(
-#             request,
-#             desired_format='application/json',
-#             includes='*',
-#             **kwargs)
-#         original_data = self._meta.serializer.deserialize(
-#             LimsSerializer.get_content(response), format='application/json')
-#         original_data = original_data[self._meta.collection_name]
-#         logger.debug('original data==: %s' % original_data)
-# 
-#         with transaction.atomic():
-#             
-#             # TODO: review REST actions:
-#             # PUT deletes the endpoint
-#             
-#             UserProfile.objects.all().delete()
-#             
-#             for _dict in deserialized:
-#                 self.put_obj(_dict)
-# 
-#         # get new state, for logging
-#         response = self.get_list(
-#             request,
-#             desired_format='application/json',
-#             includes='*',
-#             **kwargs)
-#         new_data = self._meta.serializer.deserialize(
-#             LimsSerializer.get_content(response), format='application/json')
-#         new_data = new_data[self._meta.collection_name]
-#         
-#         logger.debug('new data==: %s' % new_data)
-#         self.log_patches(request, original_data,new_data,**kwargs)
-# 
-#     
-#         if not self._meta.always_return_data:
-#             return http.HttpAccepted()
-#         else:
-#             response = self.get_list(request, **kwargs)             
-#             response.status_code = 200
-#             return response
-
-#     @un_cache        
-#     def patch_list(self, request, **kwargs):
-#         # TODO: refactor
-#         self._meta.authorization._is_resource_authorized(
-#             self._meta.resource_name, request.user, 'write')
-# 
-#         deserialized = self._meta.serializer.deserialize(
-#             request.body, 
-#             format=request.META.get('CONTENT_TYPE', 'application/json'))
-#         if not self._meta.collection_name in deserialized:
-#             raise BadRequest("Invalid data sent, must be nested in '%s'" 
-#                 % self._meta.collection_name)
-#         deserialized = deserialized[self._meta.collection_name]
-# 
-#         # cache state, for logging
-#         response = self.get_list(
-#             request,
-#             desired_format='application/json',
-#             includes='*',
-#             **kwargs)
-#         original_data = self._meta.serializer.deserialize(
-#             LimsSerializer.get_content(response), format='application/json')
-#         original_data = original_data[self._meta.collection_name]
-#         logger.debug('original data==: %s' % original_data)
-# 
-#         with transaction.atomic():
-#             
-#             for _dict in deserialized:
-#                 self.patch_obj(_dict)
-#                 
-#         # get new state, for logging
-#         response = self.get_list(
-#             request,
-#             desired_format='application/json',
-#             includes='*',
-#             **kwargs)
-#         new_data = self._meta.serializer.deserialize(
-#             LimsSerializer.get_content(response), format='application/json')
-#         new_data = new_data[self._meta.collection_name]
-#         
-#         logger.debug('new data==: %s' % new_data)
-#         self.log_patches(request, original_data,new_data,**kwargs)
-#         
-#         if not self._meta.always_return_data:
-#             return http.HttpAccepted()
-#         else:
-#             response = self.get_list(request, **kwargs)             
-#             response.status_code = 200
-#             return response
-
-#     @un_cache        
-#     @transaction.atomic()
-#     def patch_detail(self, request, **kwargs):
-#         logger.info(str(('patch detail', kwargs)))
-#         # TODO: refactor
-#         self._meta.authorization._is_resource_authorized(
-#             self._meta.resource_name, request.user, 'write')
-# 
-#         deserialized = self._meta.serializer.deserialize(
-#             request.body, 
-#             format=request.META.get('CONTENT_TYPE', 'application/json'))
-# 
-#         # cache state, for logging
-# #         username = self.find_username(deserialized, **kwargs)
-#         response = self.get_list(
-#             request,
-#             desired_format='application/json',
-#             includes='*',
-#             **kwargs)
-#         original_data = self._meta.serializer.deserialize(
-#             LimsSerializer.get_content(response), format='application/json')
-#         original_data = original_data[self._meta.collection_name]
-#         logger.debug('original data==: %s' % original_data)
-# 
-#         with transaction.atomic():
-#             logger.info(str(('patch_detail:', kwargs)))
-#             
-#             self.patch_obj(deserialized, **kwargs)
-# 
-#         # get new state, for logging
-#         response = self.get_list(
-#             request,
-#             desired_format='application/json',
-#             includes='*',
-#             **kwargs)
-#         new_data = self._meta.serializer.deserialize(
-#             LimsSerializer.get_content(response), format='application/json')
-#         new_data = new_data[self._meta.collection_name]
-#         
-#         logger.debug('new data==: %s' % new_data)
-#         self.log_patches(request, original_data,new_data,**kwargs)
-# 
-#         
-#         if not self._meta.always_return_data:
-#             return http.HttpAccepted()
-#         else:
-#             response = self.get_detail(request, **kwargs) 
-#             response.status_code = 200
-#             return response
-
-#     @un_cache        
-#     @transaction.atomic()
-#     def put_detail(self, request, **kwargs):
-#         # TODO: refactor
-#         self._meta.authorization._is_resource_authorized(
-#             self._meta.resource_name, request.user, 'write')
-#                 
-#         deserialized = self._meta.serializer.deserialize(
-#             request.body, 
-#             format=request.META.get('CONTENT_TYPE', 'application/json'))
-#         
-#         with transaction.atomic():
-#             logger.info(str(('put_detail:', kwargs)))
-#             
-#             self.put_obj(deserialized, **kwargs)
-#         
-#         if not self._meta.always_return_data:
-#             return http.HttpAccepted()
-#         else:
-#             response = self.get_detail(request, **kwargs) 
-#             response.status_code = 200
-#             return response
-        
-#     @transaction.atomic()    
-#     def put_obj(self,deserialized, **kwargs):
-#         
-#         try:
-#             self.delete_obj(deserialized, **kwargs)
-#         except ObjectDoesNotExist,e:
-#             pass 
-#         
-#         return self.patch_obj(deserialized, **kwargs)
-    
-#     def delete_detail(self,deserialized, **kwargs):
-#         # TODO: refactor
-#         self._meta.authorization._is_resource_authorized(
-#             self._meta.resource_name, request.user, 'write')
-# 
-#         deserialized = self._meta.serializer.deserialize(
-#             request.body, 
-#             format=request.META.get('CONTENT_TYPE', 'application/json'))
-#         try:
-#             self.delete_obj(deserialized, **kwargs)
-#             return HttpResponse(status=204)
-#         except ObjectDoesNotExist,e:
-#             return HttpResponse(status=404)
     
     @transaction.atomic()    
     def delete_obj(self, deserialized, **kwargs):
@@ -3800,7 +3305,7 @@ class UserResource(ApiResource):
     @transaction.atomic()    
     def patch_obj(self,deserialized, **kwargs):
 
-        logger.info('patch_obj: %r, %r', deserialized,kwargs)
+        logger.debug('patch_obj: %r, %r', deserialized,kwargs)
         
         id_kwargs = self.get_id(deserialized,**kwargs)
         username = id_kwargs.get('username', None)
@@ -3823,8 +3328,14 @@ class UserResource(ApiResource):
                 
             try:
                 user = DjangoUser.objects.get(username=username)
+                errors = self.validate(deserialized, patch=True)
+                if errors:
+                    raise ValidationError(errors)
             except ObjectDoesNotExist, e:
                 logger.info('User %s does not exist, creating', id_kwargs)
+                errors = self.validate(deserialized, patch=False)
+                if errors:
+                    raise ValidationError(errors)
                 user = DjangoUser.objects.create_user(username=username)
                 logger.info('created Auth.User: %s', user)
 
@@ -3839,7 +3350,7 @@ class UserResource(ApiResource):
                     if hasattr(user,key):
                         setattr(user,key,val)
                 user.save()
-                logger.info(str(('== created/updated auth user', user, user.username, user.first_name)))
+                logger.info('== created/updated auth user: %r', user.username)
             else:
                 logger.info('no auth_user fields to update %s', deserialized)
                 
@@ -3918,55 +3429,9 @@ class UserResource(ApiResource):
 
             return userprofile
             
-        except Exception, e:
+        except Exception:
             logger.exception('on put_detail')
-            raise e  
-            
-#     
-#     def is_valid(self, bundle):
-#         """
-#         Should return a dictionary of error messages. If the dictionary has
-#         zero items, the data is considered valid. If there are errors, keys
-#         in the dictionary should be field names and the values should be a list
-#         of errors, even if there is only one.
-#         """
-#         
-#         # cribbed from tastypie.validation.py:
-#         # - mesh data and obj values, then validate
-#         data = {}
-#         if bundle.obj.pk:
-#             data = model_to_dict(bundle.obj)
-#         if data is None:
-#             data = {}
-#         data.update(bundle.data)
-#         
-#         # do validations
-#         errors = defaultdict(list)
-#         
-#         # TODO: rework this to be driven by the metahash
-#         
-#         if not data.get('first_name'):
-#             errors['first_name'] = ['first_name must be specified']
-#         
-#         if not data.get('last_name'):
-#             errors['last_name'] = ['last_name must be specified']
-#         
-#         if not data.get('email'):
-#             errors['email'] = ['email must be specified']
-#         
-# #         ecommons = data.get('ecommons_id')
-# #         username = data.get('username')
-# #         
-# #         if ecommons and username and (ecommons != username) :
-# #             errors['specify either username or ecommons, not both']
-# #         elif ecommons:
-# #             bundle.obj.username = ecommons;
-#             
-#         if errors:
-#             bundle.errors[self._meta.resource_name] = errors
-#             logger.warn(str(('bundle errors', bundle.errors, len(bundle.errors.keys()))))
-#             return False
-#         return True
+            raise  
 
        
 class UserGroupResource(ManagedSqlAlchemyResourceMixin):
@@ -4014,11 +3479,10 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
                 kwargs, deserialized)) )
         return name
     
-    # reworked 20150706   
     @un_cache        
     def put_list(self,request, **kwargs):
 
-        # TODO: refactor
+        # TODO: refactor use decorator
         self._meta.authorization._is_resource_authorized(
             self._meta.resource_name, request.user, 'write')
 
@@ -4136,7 +3600,6 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
             format=request.META.get('CONTENT_TYPE', 'application/json'))
         
         # cache state, for logging
-#         name = self.find_name(deserialized, **kwargs)
         response = self.get_list(
             request,
             desired_format='application/json',
@@ -4555,14 +4018,10 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
             # Create a recursive CTE to enumerate all groups/supergroups/subgroups
             group_all_supergroups = \
                 UserGroupResource.recursive_supergroup_query(self.bridge)
-#             group_all_supergroups1 = group_all_supergroups.alias('gasg1')
-
             group_all_permissions = \
                 UserGroupResource.recursive_permissions_query(self.bridge,group_all_supergroups)
-            
             group_all_subgroups = \
                 UserGroupResource.recursive_subgroups_query(self.bridge,group_all_supergroups)
-                
             group_all_users = \
                 UserGroupResource.recursive_group_all_users(self.bridge,group_all_subgroups)
                 
@@ -4777,29 +4236,6 @@ class PermissionResource(ManagedModelResource):
     class Meta:
         # note: the queryset for this resource is actually the permissions
         queryset = Permission.objects.all().order_by('scope', 'key')
-
-        # FIXME: creating a "groups" field that can be used to sort
-        #         key = 'groups'
-        #         if 'postgres' in lims.settings.DATABASES['default']['ENGINE'].lower():
-        #             queryset = queryset.extra( select = {
-        #               key: ( "( select array_to_string(array_agg(ug.name), ', ') " 
-        #                      "  from reports_usergroup ug "
-        #                      "  join reports_usergroup_permissions ugp "
-        #                         " on(ug.id=ugp.usergroup_id) "
-        #                      "  where ugp.permission_id=reports_permission.id)" )
-        #             } ) 
-        #         else:
-        #             logger.warn(str((
-        #                 '=========using the special sqllite lims.settings.DATABASES', 
-        #                 lims.settings.DATABASES)))
-        #         queryset = queryset.extra( select = {
-        #           key: ( "( select group_concat(ug.name, ', ') " 
-        #                  "  from reports_usergroup ug "
-        #                  "  join reports_usergroup_permissions ugp "
-        #                     " on(ug.id=ugp.usergroup_id) "
-        #                  "  where ugp.permission_id=reports_permission.id)" )
-        #         } ) 
-
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
         authorization= UserGroupAuthorization() #SuperUserAuthorization()        
@@ -4809,7 +4245,6 @@ class PermissionResource(ManagedModelResource):
         filtering = {}
         serializer = LimsSerializer()
         excludes = [] #['json_field']
-        # note, use this so that the queryset fields are not all added by default
         includes = [] 
         always_return_data = True # this makes Backbone happy
         resource_name='permission' 
@@ -5047,7 +4482,6 @@ class ManagedLinkedResource(ManagedModelResource):
     @log_obj_create
     @transaction.atomic()
     def obj_create(self, bundle, **kwargs):
-#         logger.info(str(('=== obj_create', self._meta.resource_name, bundle.data)))
         
         bundle.obj = self._meta.object_class()
 
@@ -5070,7 +4504,6 @@ class ManagedLinkedResource(ManagedModelResource):
         simple_linked_fields = {
             k:v for (k,v) in self.get_linked_fields().items() if v.get('linked_field_module',None)}
         for key,item in simple_linked_fields.items():
-#             logger.debug(str(('populating simple linked field', item)))
             linkedModel = item.get('linked_field_model')
             val = bundle.data.get(key,None)
             field = self.fields[key]
@@ -5123,7 +4556,6 @@ class ManagedLinkedResource(ManagedModelResource):
     def _set_value_field(self, linkedObj, parent, item, val):
         ## TODO: updates should be able to set fields to None
         
-#         logger.debug(str(('_set_value_field', linkedObj, parent, item['key'], val)))
         setattr( linkedObj, item['linked_field_parent'], parent)
         
         if item.get('linked_field_meta_field', None):
@@ -5165,7 +4597,6 @@ class ManagedLinkedResource(ManagedModelResource):
         simple_linked_fields = {
             k:v for (k,v) in self.get_linked_fields().items() if v.get('linked_field_module',None)}
         for key,item in simple_linked_fields.items():
-#             logger.debug(str(('populating simple linked field', item)))
             val = bundle.data.get(key,None)
             field = self.fields[key]
             
@@ -5218,7 +4649,6 @@ class ManagedLinkedResource(ManagedModelResource):
                 setattr( linkedObj, item['linked_field_parent'], bundle.obj)
             
             for key,item in complex_linked_fields.items():
-#                 logger.debug(str(('populating complex linked field', item)))
                 val = bundle.data.get(key,None)
                 field = self.fields[key]
                 if val:
@@ -5238,7 +4668,7 @@ class ManagedLinkedResource(ManagedModelResource):
 
         self.authorized_delete_detail(self.get_object_list(bundle.request), bundle)
 
-        # TODO: TEST!
+        # TODO: TEST
         logger.info(str(('==== delete_linked_fields', self.get_linked_fields().keys() )))
         linkedModel = item.get('linked_field_model')
         linkedModel.objects.filter(**{
@@ -5291,13 +4721,6 @@ class ManagedLinkedResource(ManagedModelResource):
                     meta_field_id = getattr(item['meta_field_instance'], 'pk')
                     where += ' and {field_table}.{meta_field}_id=%s '
                     extra_params.append(meta_field_id)
-#                 else:
-#                     extra_select[key_query_alias] = \
-#                         '%s.%s' % (field_table, item['linked_field_value_field'])
-#                     extra_tables.add(field_table)
-#                     extra_where.append(
-#                         '{field_table}.{linked_field_parent}_id'
-#                             '={parent_table}.{parent_table_key}'.format(**format_dict))
                 format_dict['where'] = where.format(**format_dict)
                 sql = sql.format(**format_dict)
                 extra_select[key_query_alias] = sql
@@ -5377,7 +4800,6 @@ class ManagedLinkedResource(ManagedModelResource):
                         query = query.order_by('ordinal')
                     values = query.values_list(
                             item['linked_field_value_field'], flat=True)
-    #                 logger.debug(str((key,'multifield values', values)))
                     if values and len(values)>0:
                         bundle.data[key] = list(values)
             return bundle

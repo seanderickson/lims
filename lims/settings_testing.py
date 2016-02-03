@@ -68,6 +68,11 @@ LOGGING = {
             'propagate': False,
             'level': 'INFO',
         },        
+        'db.api': {  # set a default handler
+            'handlers': ['logfile'],
+            'propagate': False,
+            'level': 'INFO',
+        },        
         'lims': {  # set a default handler
             'handlers': ['logfile'],
             'propagate': False,
@@ -78,6 +83,22 @@ LOGGING = {
             'propagate': False,
             'level': 'INFO',
         },
+        'reports.api': {  # set a default handler
+            'handlers': ['logfile'],
+            'propagate': False,
+            'level': 'INFO',
+        },
+        # suppress streaming errors (i.e. image not found)
+        'reports.utils.streaming_serializers': {  
+            'handlers': ['logfile'],
+            'propagate': True,
+            'level': 'WARN',
+        },        
+        'db.views': {  
+            'handlers': ['logfile'],
+            'propagate': True,
+            'level': 'WARN',
+        },        
         'db.tests': {  # set a default handler
             'handlers': ['logfile'],
             'propagate': False,

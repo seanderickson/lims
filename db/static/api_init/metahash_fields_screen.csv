@@ -77,5 +77,5 @@ billing_info_return_date,fields.screen,,,/reports/api/v1/metahash/fields.screen/
 date_completed5kcompounds,fields.screen,,,/reports/api/v1/metahash/fields.screen/date_completed5kcompounds/,209,,TRUE,"Date Completed 5k Compounds","Date Completed 5k Compounds",TRUE,,,[billing],,date,,,,,,
 date_faxed_to_billing_department,fields.screen,,,/reports/api/v1/metahash/fields.screen/date_faxed_to_billing_department/,210,,TRUE,"Date Faxed to Billing Department","Date Faxed to Billing Department",TRUE,,,[billing],,date,,,,,,
 date_charged,fields.screen,,,/reports/api/v1/metahash/fields.screen/date_charged/,211,,TRUE,"Date Charged","Date Charged",TRUE,,,[billing],,date,,,,,,
-billing_comments,fields.screen,,,/reports/api/v1/metahash/fields.screen/billing_comments/,212,,TRUE,Comments,Comments,TRUE,,,[billing],,string,textarea,,,,,
+billing_comments,fields.screen,,,/reports/api/v1/metahash/fields.screen/billing_comments/,212,,TRUE,Comments,Comments,TRUE,,,[billing],,string,,,textarea,,,
 screen_id,fields.screen,custom,,/reports/api/v1/metahash/fields.screen/screen_id/,999,,TRUE,"Internal Screen ID","Internal Screen ID",TRUE,,,,,integer,,,,,,

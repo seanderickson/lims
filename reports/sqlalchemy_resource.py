@@ -339,8 +339,8 @@ class SqlAlchemyResource(Resource):
                         columns[key] = stmt2
                 else:
                     logger.warn(
-                        'field is not in the base tables nor in a linked field, '
-                        'and is not custom: %s', key)
+                        'field is not in the base tables %r, nor in a linked field, '
+                        'and is not custom: %s', base_query_tables, key)
             if DEBUG_BUILD_COLUMNS: logger.info(str(('columns', columns.keys())))
             return columns
         except Exception, e:
@@ -692,6 +692,7 @@ class SqlAlchemyResource(Resource):
         '''
         Return the detail response as a dict
         '''
+        logger.info('_get_detail_response: %r', kwargs)
         response = self.get_detail(
             request,
             desired_format='application/json',

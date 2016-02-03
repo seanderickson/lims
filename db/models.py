@@ -120,9 +120,12 @@ class Screening(LabActivity):
     assay_protocol = models.TextField(blank=True)
     number_of_replicates = models.IntegerField(null=True, blank=True)
     assay_protocol_type = models.TextField(blank=True)
-    assay_protocol_last_modified_date = models.DateField(null=True, blank=True)
     assay_well_volume = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
     volume_transferred_per_well_to_assay_plates = models.DecimalField(null=True, max_digits=10, decimal_places=9, blank=True)
+
+    # deprecate: convert to api_log
+    assay_protocol_last_modified_date = models.DateField(null=True, blank=True)
+    
     class Meta:
         db_table = 'screening'
 

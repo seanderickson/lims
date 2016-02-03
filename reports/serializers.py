@@ -367,14 +367,6 @@ class XLSSerializer(Serializer):
         # TODO: if root is specified, then get the sheet by name
         sheet = wb.sheet_by_index(0)
 
-        # convert sheet to a flat array
-#         rows = []
-#         for row in range(sheet.nrows):
-#             values = []
-#             for col in range(sheet.ncols):
-#                 values.append(sheet.cell(row,col).value)
-#             rows.append(values)
-
         def read_sheet(sheet):
             def read_row(row):
                 for col in range(sheet.ncols):

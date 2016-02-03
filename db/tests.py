@@ -8,28 +8,28 @@ import sys
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
+from django.core.urlresolvers import resolve
 from django.http.response import StreamingHttpResponse
 from django.test import TestCase
 from django.test.client import encode_multipart, BOUNDARY, MULTIPART_CONTENT
 from django.utils.timezone import now
 from tastypie.test import ResourceTestCase, TestApiClient
 
-from db.models import Reagent, Substance, Library, ScreensaverUser,\
-    UserChecklistItem,AttachedFile, ServiceActivity, Screen
+from db.models import Reagent, Substance, Library, ScreensaverUser, \
+    UserChecklistItem, AttachedFile, ServiceActivity, Screen
 import db.models
 from db.support import lims_utils
+from db.support import lims_utils
 from db.test.factories import LibraryFactory, ScreenFactory, ScreensaverUserFactory
+from reports import ValidationError
 from reports.dump_obj import dumpObj
+from reports.models import ApiLog, UserProfile, UserGroup
 from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.tests import IResourceTestCase, equivocal
 from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, find_obj_in_list
 import reports.tests
 import reports.utils.log_utils
-from django.core.urlresolvers import resolve
-from reports.models import ApiLog, UserProfile, UserGroup
-from db.support import lims_utils
-from reports import ValidationError
 
 
 _ = reports.utils.log_utils.LogMessageFormatter
@@ -58,7 +58,6 @@ class DBResourceTestCase(IResourceTestCase):
     def _bootstrap_init_files(self):
         
         super(DBResourceTestCase, self)._bootstrap_init_files()
-
         self.directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
         serializer=CSVSerializer() 
         testApiClient = TestApiClient(serializer=serializer) 
@@ -67,7 +66,9 @@ class DBResourceTestCase(IResourceTestCase):
         self._run_api_init_actions(input_actions_file)
     
     def _create_resource(
-            self,input_data,resource_uri,resource_test_uri, data_for_get= None):
+            self,input_data,resource_uri,resource_test_uri, 
+            data_for_get= None, expect_fail=False
+            ):
         
         _data_for_get = { 
             'limit': 0,
@@ -81,16 +82,17 @@ class DBResourceTestCase(IResourceTestCase):
             resource_uri,resource_test_uri)
 
         logger.info('post to %r...', resource_uri)
-        try:
-            resp = self.api_client.post(
-                resource_uri, format='json', data=input_data, 
-                authentication=self.get_credentials())
-            # FIXME: tp uses status code 200 instead of 201
-            self.assertTrue(resp.status_code in [200,201], (resp.status_code, resp))
-            logger.info('resp: %r', resp)
-        except ValidationError,e:
-            logger.exception('validation errors: %r',e)
-            raise 
+        resp = self.api_client.post(
+            resource_uri, format='json', data=input_data, 
+            authentication=self.get_credentials())
+        # FIXME: tp uses status code 200 instead of 201
+        new_obj = self.deserialize(resp)
+        logger.info('resp: %r', new_obj)
+        if expect_fail:
+            self.assertFalse(resp.status_code in [200,201], (resp.status_code, new_obj))
+            return (new_obj,resp)
+        else:
+            self.assertTrue(resp.status_code in [200,201], (resp.status_code, new_obj))
         
         logger.info('get from %r... %r', resource_test_uri, data_for_get)
         resp = self.api_client.get(
@@ -142,15 +144,10 @@ class DBResourceTestCase(IResourceTestCase):
         return self._create_resource(input_data,resource_uri,test_uri)
         
         
-        
 def setUpModule():
 
-    logger.info(_('=== setup Module'))
+    logger.info('=== setup Module')
     
-    # FIXME: running the bootstrap method as a test suite setup:
-    # TODO: create a local TestRunner,TestSuite,
-    # so that this can be run before the suite
-
     keepdb = False
     reinit_metahash = False
     if len(sys.argv) > 1:
@@ -184,58 +181,17 @@ def tearDownModule():
 class LibraryResource(DBResourceTestCase):
 
     def setUp(self):
+
         logger.debug('============== LibraryResource setup ============')
-        
         super(LibraryResource, self).setUp()
 
     def tearDown(self):
+
         DBResourceTestCase.tearDown(self)
-        
         logger.info('delete resources')
         Library.objects.all().delete()
         ApiLog.objects.all().delete()
 
-    def test10_create_library_copy(self):
-        
-        logger.info('create library...')
-        library = self.create_library({
-            'start_plate': 1000, 
-            'end_plate': 1005})
-
-        logger.info('create library copy...')
-        input_data = {
-            'library_short_name': library['short_name'],
-            'name': "A",
-            'usage_type': "library_screening_plates"
-        }        
-        resource_uri = BASE_URI_DB + '/librarycopy'
-        resource_test_uri = '/'.join([
-            resource_uri,input_data['library_short_name'],input_data['name']])
-        library_copy = self._create_resource(
-            input_data, resource_uri, resource_test_uri)
-        
-        logger.info('verify plates created...')
-        uri = '/'.join([resource_test_uri,'plate'])
-        data_for_get={ 'limit': 0 }        
-        data_for_get.setdefault('includes', ['*'])
-        resp = self.api_client.get(
-            uri, format='json', authentication=self.get_credentials(), 
-            data=data_for_get)
-        self.assertTrue(resp.status_code in [200], (resp.status_code))
-        new_obj = self.deserialize(resp)
-        start_plate = int(library['start_plate'])
-        end_plate = int(library['end_plate'])
-        number_of_plates = end_plate-start_plate+1
-        self.assertEqual(len(new_obj['objects']),number_of_plates)
-
-        for obj in new_obj['objects']:
-            self.assertEqual(library_copy['name'],obj['copy_name'])
-            plate_number = int(obj['plate_number'])
-            self.assertTrue(plate_number>=start_plate and plate_number<=end_plate,
-                'wrong plate_number: %r' % obj)
-        
-        logger.info('test create library copy done...')
-        
     def test1_create_library(self):
         
         logger.debug(_('==== test1_create_library ====='))
@@ -281,11 +237,50 @@ class LibraryResource(DBResourceTestCase):
                 
         logger.info('==== done: test1_create_library =====')
 
+    def test10_create_library_copy(self):
+        
+        logger.info('create library...')
+        library = self.create_library({
+            'start_plate': 1000, 
+            'end_plate': 1005})
+
+        logger.info('create library copy...')
+        input_data = {
+            'library_short_name': library['short_name'],
+            'name': "A",
+            'usage_type': "library_screening_plates"
+        }        
+        resource_uri = BASE_URI_DB + '/librarycopy'
+        resource_test_uri = '/'.join([
+            resource_uri,input_data['library_short_name'],input_data['name']])
+        library_copy = self._create_resource(
+            input_data, resource_uri, resource_test_uri)
+        
+        logger.info('verify plates created...')
+        uri = '/'.join([resource_test_uri,'plate'])
+        data_for_get={ 'limit': 0 }        
+        data_for_get.setdefault('includes', ['*'])
+        resp = self.api_client.get(
+            uri, format='json', authentication=self.get_credentials(), 
+            data=data_for_get)
+        self.assertTrue(resp.status_code in [200], (resp.status_code))
+        new_obj = self.deserialize(resp)
+        start_plate = int(library['start_plate'])
+        end_plate = int(library['end_plate'])
+        number_of_plates = end_plate-start_plate+1
+        self.assertEqual(len(new_obj['objects']),number_of_plates)
+
+        for obj in new_obj['objects']:
+            self.assertEqual(library_copy['name'],obj['copy_name'])
+            plate_number = int(obj['plate_number'])
+            self.assertTrue(plate_number>=start_plate and plate_number<=end_plate,
+                'wrong plate_number: %r' % obj)
+        
+        logger.info('test create library copy done...')
+
     def test4_create_library_invalids(self):
         '''
         Test the schema "required" validations 
-        
-        - todo: this can be a template for other endpoints
         ''' 
         logger.debug('==== test4_create_library_invalids =====')
 
@@ -584,8 +579,8 @@ class LibraryResource(DBResourceTestCase):
         
         self._load_xls_reagent_file(filename,library_item, 352, 384 )
 
-    def _load_xls_reagent_file(self,
-            filename,library_item, expected_in, expected_count):
+    def _load_xls_reagent_file(
+            self,filename,library_item, expected_in, expected_count):
 
         logger.debug(_('==== test_load_xls_reagent_file ====='))
         
@@ -705,7 +700,7 @@ class ScreenResource(DBResourceTestCase):
 
         library2 = self.create_library({
             'start_plate': 2000, 
-            'end_plate': 2005,
+            'end_plate': 2040,
             'screen_type': 'small_molecule' })
 
         logger.info('create library copy...')
@@ -735,7 +730,9 @@ class ScreenResource(DBResourceTestCase):
         lps_format = '{library_short_name}:{name}:{{start_plate}}-{{end_plate}}'
         library_plates_screened = [
             lps_format.format(**library_copy1).format(**library1),
-            lps_format.format(**library_copy2).format(**library2)
+            lps_format.format(**library_copy2).format(
+                start_plate=library2['start_plate'],
+                end_plate=int(library2['start_plate']+10))
         ]
         
         library_screening_input = {
@@ -755,19 +752,17 @@ class ScreenResource(DBResourceTestCase):
         data_for_get = {
             'screen_facility_id__eq': screen['facility_id']
         }
+
         # test validations
         key = 'screen_facility_id' 
         msg = 'input missing a %r should fail' % key
         logger.info('test %r', msg)
         input = library_screening_input.copy()
         del input['screen_facility_id'] 
-        try:
-            library_screening = self._create_resource(
-                input, resource_uri, resource_test_uri)
-            self.fail(msg)
-        except ValidationError,e:
-            self.assertTrue(key in e.errors, msg ) 
-            logger.info('test %r succeeded, %r', msg, e)
+        errors, resp = self._create_resource(
+            input, resource_uri, resource_test_uri, expect_fail=True)
+        self.assertTrue(resp.status_code==400, msg)
+        self.assertTrue(key in errors, 'test: %s, not in errors: %r' %(msg,errors))
         
         key = 'library_plates_screened' 
         value = [ 'short_name_good:copy_name_good:1000-a3000' ]
@@ -775,13 +770,11 @@ class ScreenResource(DBResourceTestCase):
         logger.info('test %r', msg)
         input = library_screening_input.copy()
         input[key] =  value
-        try:
-            library_screening = self._create_resource(
-                input, resource_uri, resource_test_uri)
-            self.fail(msg)
-        except ValidationError,e:
-            self.assertTrue(key in e.errors, msg ) 
-            logger.info('test success: test %r, %r', msg, e)
+        errors, resp = self._create_resource(
+            input, resource_uri, resource_test_uri, expect_fail=True)
+        self.assertTrue(resp.status_code==400, msg)
+        self.assertTrue(key in errors, 'test: %s, not in errors: %r' %(msg,errors))
+
         key = 'library_plates_screened' 
         value = [ lps_format.format(**library_copy1).format(**{
             'start_plate': library1['start_plate'],
@@ -790,23 +783,56 @@ class ScreenResource(DBResourceTestCase):
         logger.info('test %r', msg)
         input = library_screening_input.copy()
         input[key] =  value
-        try:
-            library_screening = self._create_resource(
-                input, resource_uri, resource_test_uri)
-            self.fail(msg)
-        except ValidationError,e:
-            self.assertTrue(key in e.errors, msg ) 
-            logger.info('test %r succeeded, %r', msg, e)
+        errors, resp = self._create_resource(
+            input, resource_uri, resource_test_uri, expect_fail=True)
+        self.assertTrue(resp.status_code==400, msg)
+        self.assertTrue(key in errors, 'test: %s, not in errors: %r' %(msg,errors))
 
-        #TODO: create vs update validations: validate that create-only
-        # fields are not updated:
-        # - such as the screen_facility_id not updateable
-
+        key = 'library_plates_screened' 
+        value = [ 
+            lps_format.format(**library_copy1).format(**{
+                'start_plate': library2['start_plate'],
+                'end_plate': int(library2['start_plate'])+2 }),
+            lps_format.format(**library_copy1).format(**{
+                'start_plate': library2['start_plate']+1,
+                'end_plate': int(library2['start_plate'])+4 }),
+        ]
+        msg = 'overlapping plate ranges in %r for  %r should fail' % (value,key)
+        logger.info('test %r', msg)
+        input = library_screening_input.copy()
+        input[key] =  value
+        errors, resp = self._create_resource(
+            input, resource_uri, resource_test_uri, expect_fail=True)
+        self.assertTrue(resp.status_code==400, msg)
+        self.assertTrue(key in errors, 'test: %s, not in errors: %r' %(msg,errors))
 
         logger.info('test valid input...')
         library_screening = self._create_resource(
             library_screening_input, resource_uri, resource_test_uri)
 
+        # test update
+        # add a plate_range
+        input = { 
+            'activity_id': library_screening['activity_id'],
+            'library_plates_screened': library_screening['library_plates_screened'] 
+            }
+        input['library_plates_screened'].append(
+            lps_format.format(**library_copy2).format(
+                start_plate=library2['start_plate']+15,
+                end_plate=int(library2['start_plate']+20)))
+        library_screening = self._create_resource(
+            input, resource_uri, resource_test_uri)
+
+        # test update
+        # delete a plate_range
+        input = { 
+            'activity_id': library_screening['activity_id'],
+            'library_plates_screened': library_screening['library_plates_screened'][:-1] 
+            }
+        logger.info('input: %r', input)
+        library_screening = self._create_resource(
+            input, resource_uri, resource_test_uri)
+        
     
     def test1_create_screen(self):
         logger.info('==== test1_create_screen =====')

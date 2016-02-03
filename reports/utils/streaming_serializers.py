@@ -1,7 +1,8 @@
-from __future__ import unicode_literals
 '''
 Utilities for streaming sql connection cursors in different serialization formats
 '''
+
+from __future__ import unicode_literals
 
 import cStringIO
 from collections import OrderedDict
@@ -13,6 +14,7 @@ import os.path
 import re
 import shutil
 import sys
+from tempfile import SpooledTemporaryFile
 import time
 from wsgiref.util import FileWrapper
 from zipfile import ZipFile
@@ -30,7 +32,6 @@ from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     LIST_DELIMITER_XLS, CSV_DELIMITER, HTTP_PARAM_RAW_LISTS
 from reports.serializers import csv_convert
 import reports.utils.sdf2py
-from tempfile import SpooledTemporaryFile
 
 
 logger = logging.getLogger(__name__)

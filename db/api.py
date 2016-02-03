@@ -62,7 +62,7 @@ from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
 from reports import ValidationError
 from reports.api import ManagedModelResource, ManagedResource, ApiLogResource, \
     UserGroupAuthorization, ManagedLinkedResource, log_obj_update, \
-    UnlimitedDownloadResource, IccblBaseResource, VocabulariesResource, \
+    IccblBaseResource, VocabulariesResource, \
     MetaHashResource, UserResource, compare_dicts, parse_val, ManagedSqlAlchemyResourceMixin, \
     UserGroupResource, ApiLogResource, ApiResource, \
     write_authorization, read_authorization
@@ -86,16 +86,15 @@ def _get_raw_time_string():
 class PlateLocationResource(ManagedModelResource):
 
     class Meta:
+
         queryset = PlateLocation.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
         authorization= UserGroupAuthorization()
         resource_name = 'platelocation'
-        
         ordering = []
         filtering = {}
         serializer = LimsSerializer()
-        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
         always_return_data = True 
 
         
@@ -103,18 +102,12 @@ class PlateLocationResource(ManagedModelResource):
         super(PlateLocationResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
-        # NOTE: this match "((?=(schema))__|(?!(schema))[^/]+)" 
-        # allows us to match any word (any char except forward slash), 
-        # except "schema", and use it as the key value to search for.
-        # also note the double underscore "__" is because we also don't want to 
-        # match in the first clause.
-        # We don't want "schema" since that reserved word is used by tastypie 
-        # for the schema definition for the resource (used by the UI)
         return [
             url((r"^(?P<resource_name>%s)"
                  r"/(?P<plate_id>((?=(schema))__|(?!(schema))[^/]+))%s$")  
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),]    
+
         
 class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
 
@@ -137,21 +130,17 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
     def prepend_urls(self):
 
         return [
-            # override the parent "base_urls" so that we don't need to worry about schema again
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
-
             url(r"^(?P<resource_name>%s)/search/(?P<search_ID>[\d]+)%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('search'), name="api_search"),
-
             url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w\d_.\-\+: ]+)"
                 r"/(?P<copy_name>[\w\d_.\-\+: ]+)"
                 r"/(?P<plate_number>[\d]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<copy_name>[\w\d_.\-\+: ]+)"
                 r"/(?P<plate_number>[\d]+)%s$" 
@@ -160,22 +149,16 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
         ]
 
     def get_detail(self, request, **kwargs):
-        logger.info(str(('get_detail')))
 
         library_short_name = kwargs.get('library_short_name', None)
         if not library_short_name:
             logger.info(str(('no library_short_name provided')))
-        
         copy_name = kwargs.get('copy_name', None)
         if not copy_name:
-            logger.info(str(('no copy_name provided')))
-            raise NotImplementedError('must provide a copy_name parameter')
-        
+            raise Http404('must provide a copy_name parameter')
         plate_number = kwargs.get('plate_number', None)
         if not copy_name:
-            logger.info(str(('no plate_number provided')))
-            raise NotImplementedError('must provide a plate_number parameter')
-
+            raise Http404('must provide a plate_number parameter')
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
@@ -184,30 +167,20 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
     def get_list(self,request,**kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-
         return self.build_list_response(request, **kwargs)
 
     @read_authorization
     def build_list_response(self,request, **kwargs):
-        ''' 
-        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns django.http.response.StreamingHttpResponse 
-        '''
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
+        schema = super(LibraryCopyPlateResource,self).build_schema()
         
         for_screen_id = param_hash.pop('for_screen_id',None)
         loaded_for_screen_id = param_hash.pop('loaded_for_screen_id',None)
-
         is_for_detail = kwargs.pop('is_for_detail', False)
-
-        schema = super(LibraryCopyPlateResource,self).build_schema()
-
         filename = self._get_filename(schema, kwargs)
-
         library_short_name = param_hash.pop('library_short_name', 
             param_hash.get('library_short_name__eq',None))
         if not library_short_name:
@@ -225,16 +198,12 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
         if plate_number:
             param_hash['plate_number__eq'] = plate_number
             
-        logger.info(str(('get_list', filename, param_hash)))
- 
         try:
             
             # general setup
           
             manual_field_includes = set(param_hash.get('includes', []))
-            if DEBUG_GET_LIST: 
-                logger.info(str(('manual_field_includes', manual_field_includes)))
-  
+
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
             logger.info('filter_expression: %r, loaded_for_screen_id: %r, for_screen_id: %r',
@@ -361,6 +330,7 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
 
     @classmethod
     def get_screen_librarycopyplate_subquery(cls, for_screen_id):
+
         _screen = cls.bridge['screen']
         _assay_plate = cls.bridge['assay_plate']
         _plate = cls.bridge['plate']
@@ -378,12 +348,14 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
 
     @classmethod
     def get_screen_loaded_librarycopyplate_subquery(cls, for_screen_id):
+        
         subquery = cls.get_screen_librarycopyplate_subquery(for_screen_id)
         _assay_plate = cls.bridge['assay_plate']
         subquery = subquery.where(_assay_plate.c.screen_result_data_loading_id != None)
         return subquery
 
     def build_schema(self):
+        
         schema = cache.get(self._meta.resource_name + ":schema")
         if not schema:
             # FIXME: these options should be defined automatically from a vocabulary in build_schema
@@ -393,10 +365,11 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
                 'label': 'Type', 'searchColumn': 'status', 'options': temp }
         return schema
     
-    def obj_create(self, bundle, **kwargs):
-        bundle.data['date_created'] = timezone.now()
-        logger.info(str(('===creating library copy plate', bundle.data)))
-        return super(LibraryCopyPlateResource, self).obj_create(bundle, **kwargs)
+#     def obj_create(self, bundle, **kwargs):
+#         
+#         bundle.data['date_created'] = timezone.now()
+#         logger.info(str(('===creating library copy plate', bundle.data)))
+#         return super(LibraryCopyPlateResource, self).obj_create(bundle, **kwargs)
 
  
 class NaturalProductReagentResource(ManagedLinkedResource):
@@ -419,14 +392,16 @@ class NaturalProductReagentResource(ManagedLinkedResource):
 
 
 class SilencingReagentResource(ManagedLinkedResource):
+    
     reagent_id = fields.IntegerField(default=None)
+    
     class Meta:
+    
         queryset = Reagent.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
         authorization= UserGroupAuthorization()
         resource_name = 'silencingreagent'
-        
         ordering = []
         filtering = {}
         serializer = LimsSerializer()
@@ -437,7 +412,6 @@ class SilencingReagentResource(ManagedLinkedResource):
     def build_sqlalchemy_columns(self, fields, bridge):
         '''
         @return an array of sqlalchemy.sql.schema.Column objects
-        
         @param fields - field definitions, from the resource schema
         
         '''
@@ -542,16 +516,12 @@ class SilencingReagentResource(ManagedLinkedResource):
             
             if field['key'] == duplex_wells:
                 duplex_wells = bridge['silencing_reagent_duplex_wells']
-                
-#                 join_stmt = duplex_wells.join(sirna_table, 
-#                     duplex_wells.c['silencingreagent_id'] == sirna_table.c['reagent_id'])
                 select_inner = select([duplex_wells.c['well_id']]).\
                     select_from(duplex_wells)
                 select_inner = select_inner.where(
                     text('silencingreagent_id=reagent.reagent_id'))
                 select_inner = select_inner.order_by(duplex_wells.c['well_id'])
                 select_inner = select_inner.alias('a')
-
                 select_stmt = select([func.array_to_string(
                                 func.array_agg(column(field_name)),
                                                LIST_DELIMITER_SQL_ARRAY)])
@@ -561,7 +531,6 @@ class SilencingReagentResource(ManagedLinkedResource):
                 
                 if DEBUG_BUILD_COLS:
                     logger.info(str((select_stmt)))
-                
                 
         if DEBUG_BUILD_COLS: 
             logger.info(str(('sirna columns', columns.keys())))
@@ -644,10 +613,8 @@ class SilencingReagentResource(ManagedLinkedResource):
     def _dehydrate_gene(self, gene, type, bundle):
         
         gene_keys = ['entrezgene_id', 'gene_name', 'species_name']
-
         for key in gene_keys:
             bundle.data['%s_%s' %(type,key)] = getattr(gene, key)
-        
         _key = 'entrezgene_symbols'
         if gene.genesymbol_set.exists():
             bundle.data['%s_%s'%(type,_key)] = ';'.join(
@@ -661,11 +628,11 @@ class SilencingReagentResource(ManagedLinkedResource):
 class SmallMoleculeReagentResource(ManagedLinkedResource):
         
     class Meta:
+
         queryset = Reagent.objects.all() 
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
         authorization= UserGroupAuthorization()
-
         ordering = []
         filtering = {}
         serializer = LimsSerializer()
@@ -680,22 +647,23 @@ class SmallMoleculeReagentResource(ManagedLinkedResource):
 class ScreenResultResource(SqlAlchemyResource,ManagedResource):
 
     username = fields.CharField('user__username', null=False, readonly=True)
+
     class Meta:
+    
         queryset = ScreenResult.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
         authorization= UserGroupAuthorization()
         resource_name = 'screenresult'
-        
         ordering = []
         filtering = {}
         serializer = LimsSerializer()
         allowed_methods = ['get']
-
         object_class = dict
         max_limit = 10000
         
     def __init__(self, **kwargs):
+
         self.scope = 'fields.screenresult'
         super(ScreenResultResource,self).__init__(**kwargs)
         
@@ -724,13 +692,13 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
             ));
             logger.info(str(('the well_query_index table has been created')))
         except Exception, e:
-            logger.warn(str(('on trying to create the well_query_index table', 
+            logger.info(str(('on trying to create the well_query_index table', 
                 str(e), e, 'note that this exception is normal if the table already exists',
                 '(PostgreSQL <9.1 has no "CREATE TABLE IF NOT EXISTS" clause')))
 
     def _create_well_data_column_positive_index_table(self,conn):
+        
         try:
-            # create the well_data_column_positive_index table if it does not exist
             conn.execute(text(
                 'CREATE TABLE well_data_column_positive_index ('
                 ' "well_id" text NOT NULL REFERENCES "well" ("well_id") DEFERRABLE INITIALLY DEFERRED,'
@@ -740,12 +708,13 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
             ));
             logger.info(str(('the well_data_column_positive_index table has been created')))
         except Exception, e:
-            logger.warn(str(('on trying to create the well_data_column_positive_index table', 
+            logger.info(str(('on trying to create the well_data_column_positive_index table', 
                 str(e), e, 'note that this exception is normal if the table already exists',
                 '(PostgreSQL <9.1 has no "CREATE TABLE IF NOT EXISTS" clause')))
             
     # FIXME: need test cases for this
     def clear_cache(self, all=False, by_date=None, by_uri=None, by_size=False):
+
         ManagedResource.clear_cache(self)
 
         max_indexes_to_cache = getattr(settings, 'MAX_WELL_INDEXES_TO_CACHE',2e+07)
@@ -818,28 +787,23 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
     def prepend_urls(self):
 
         return [
-            
             url(r"^(?P<resource_name>%s)/"
                 r"(?P<screen_facility_id>\w+)/" 
                 r"(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            
             url(r"^(?P<resource_name>%s)/"
                 r"(?P<screen_facility_id>\w+)/"
                 r"schema%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
-
             url(r"^(?P<resource_name>%s)/"
                 r"(?P<screen_facility_id>\w+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-            
         ]
 
     def get_detail(self, request, **kwargs):
-        logger.info(str(('get_detail')))
 
         facility_id = kwargs.get('screen_facility_id', None)
         if not facility_id:
@@ -857,11 +821,9 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
         
     @read_authorization
     def get_list(self,request,**kwargs):
-
+        
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-
         return self.build_list_response(request, **kwargs)
-
         
     def _build_result_value_column(self,field_information):
         '''
@@ -890,9 +852,8 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
     @read_authorization
     def build_list_response(self,request, **kwargs):
         ''' 
-    # store id's in a temp table version
+        # store id's in a temp table version
         '''
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         param_hash = {}
         param_hash.update(kwargs)
@@ -945,8 +906,6 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
             filename = self._get_filename(schema, kwargs)
         
             logger.info(str(('fields',schema['fields'].keys())))
-            if DEBUG_GET_LIST: 
-                logger.info(str(('manual_field_includes', manual_field_includes)))
   
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
@@ -1215,10 +1174,11 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
             raise e  
 
     def get_schema(self, request, **kwargs):
+
         if not 'screen_facility_id' in kwargs:
-            raise Http404(unicode((
+            raise Http404(
                 'The screenresult schema requires a screen facility ID'
-                ' in the URI, as in /screenresult/[facility_id]/schema/')))
+                ' in the URI, as in /screenresult/[facility_id]/schema/')
         facility_id = kwargs.pop('screen_facility_id')
         try:
             logger.info(str(('find: ' , facility_id)))
@@ -1247,7 +1207,7 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
     }
             
     def build_schema(self, screenresult=None,show_mutual_positives=False):
-        logger.debug(str(('==========build schema for screen result', screenresult)))
+        
         try:
             data = super(ScreenResultResource,self).build_schema()
             
@@ -1308,6 +1268,7 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
             raise e  
     
     def create_datacolumn(self,dc,field_defaults={}):
+
         screen_facility_id = dc.screen_result.screen.facility_id
         columnName = "dc_%s_%s" % (screen_facility_id, default_converter(dc.name))
         _dict = field_defaults.copy()
@@ -1332,12 +1293,12 @@ class ScreenResultResource(SqlAlchemyResource,ManagedResource):
 class DataColumnResource_sqlalchemy(ApiResource):
 
     class Meta:
+
         queryset = DataColumn.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
         authorization= UserGroupAuthorization()
         resource_name = 'datacolumn'
-        
         ordering = []
         filtering = { 'screen': ALL_WITH_RELATIONS}
         serializer = LimsSerializer()
@@ -1349,12 +1310,9 @@ class DataColumnResource_sqlalchemy(ApiResource):
     def prepend_urls(self):
 
         return [
-            # override the parent "base_urls" so that schema is matched first
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
-            
-            
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<data_column_id>\d+)%s$") 
                     % (self._meta.resource_name, trailing_slash()), 
@@ -1362,13 +1320,11 @@ class DataColumnResource_sqlalchemy(ApiResource):
         ]    
 
     def get_detail(self, request, **kwargs):
-        logger.info(str(('get_detail')))
 
         data_column_id = kwargs.get('data_column_id', None)
         if not data_column_id:
             logger.info(str(('no data_column_id provided')))
             raise NotImplementedError('must provide a data_column_id parameter')
-        
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
@@ -1377,33 +1333,23 @@ class DataColumnResource_sqlalchemy(ApiResource):
     def get_list(self,request,**kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-
         return self.build_list_response(request, **kwargs)
 
     @read_authorization
     def build_list_response(self,request, **kwargs):
-        ''' 
-        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns django.http.response.StreamingHttpResponse 
-        '''
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
+        schema = super(DataColumnResource,self).build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
-             
-        schema = super(DataColumnResource,self).build_schema()
-
         filename = self._get_filename(schema, kwargs)
         
         try:
             # general setup
           
             manual_field_includes = set(param_hash.get('includes', []))
-            if DEBUG_GET_LIST: 
-                logger.info(str(('manual_field_includes', manual_field_includes)))
   
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
@@ -1477,12 +1423,12 @@ class DataColumnResource(ManagedModelResource):
     screen_facility_id = fields.CharField('screen_result__screen__facility_id')
     
     class Meta:
+
         queryset = DataColumn.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
         authorization= UserGroupAuthorization()
         resource_name = 'datacolumn'
-        
         ordering = []
         filtering = { 'screen': ALL_WITH_RELATIONS}
         serializer = LimsSerializer()
@@ -1492,8 +1438,8 @@ class DataColumnResource(ManagedModelResource):
         super(DataColumnResource,self).__init__(**kwargs)
 
     def build_schema(self):
+
         schema = ManagedModelResource.build_schema(self)
-        
         meta_field_schema = self._meta.metahashResource.build_schema()
         
         # mix in metahash field definitions: datacolum extends the metahash field
@@ -1504,7 +1450,6 @@ class DataColumnResource(ManagedModelResource):
             fi['visibility'] = ['d'] 
         new_fields_schema.update(schema['fields'])
         schema['fields'] = new_fields_schema
-        
         return schema
     
     def dehydrate(self, bundle):
@@ -1564,12 +1509,9 @@ class DataColumnResource(ManagedModelResource):
     def prepend_urls(self):
 
         return [
-            # override the parent "base_urls" so that schema is matched first
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
-            
-            
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<data_column_id>\d+)%s$") 
                     % (self._meta.resource_name, trailing_slash()), 
@@ -1579,44 +1521,36 @@ class DataColumnResource(ManagedModelResource):
 
 # Deprecate - use apilog viewer
 class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
+
     class Meta:
+    
         queryset = CopyWell.objects.all().order_by('well_id')
-        
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
         authorization= UserGroupAuthorization()
         resource_name = 'copywellhistory'
-        
         ordering = []
         filtering = {}
         serializer = LimsSerializer()
-        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
         always_return_data = True 
-
         
     def __init__(self, **kwargs):
         super(CopyWellHistoryResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
-        # Note: because this prepends the other list, we have to make sure 
-        # "schema" is matched
         
         return [
-            # override the parent "base_urls" so that we don't need to worry about schema again
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
-
             url(r"^(?P<resource_name>%s)/search/(?P<search_ID>[\d]+)%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('search'), name="api_search"),
-
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<copy_name>[\w\d_.\-\+ ]+)" 
                 r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<copy_name>[\w\d_.\-\+: ]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
@@ -1624,7 +1558,6 @@ class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
         ]
 
     def get_detail(self, request, **kwargs):
-        logger.info(str(('get_detail')))
 
         copy_name = kwargs.get('copy_name', None)
         if not copy_name:
@@ -1644,31 +1577,21 @@ class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
     def get_list(self,request,**kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-
         return self.build_list_response(request, **kwargs)
 
     @read_authorization
     def build_list_response(self,request, **kwargs):
-        ''' 
-        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns django.http.response.StreamingHttpResponse 
-        '''
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
+        schema = super(CopyWellHistoryResource,self).build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
-
-        schema = super(CopyWellHistoryResource,self).build_schema()
-
         filename = self._get_filename(schema, kwargs)
-        
         well_id = param_hash.pop('well_id', None)
         if well_id:
             param_hash['well_id__eq'] = well_id
-
         copy_name = param_hash.pop('copy_name', None)
         if copy_name:
             param_hash['copy_name__eq'] = copy_name
@@ -1678,8 +1601,6 @@ class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
             # general setup
           
             manual_field_includes = set(param_hash.get('includes', []))
-            if DEBUG_GET_LIST: 
-                logger.info(str(('manual_field_includes', manual_field_includes)))
   
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
@@ -1745,13 +1666,14 @@ class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
             j = j.join(_wva,onclause=(and_(
                 _cw.c.copy_id == _wva.c.copy_id,_cw.c.well_id == _wva.c.well_id)),
                 isouter=True)
-#             j = j.join(_wva,_cw.c.well_id == _wva.c.well_id)
-            j = j.join(_a, _wva.c.well_volume_correction_activity_id == _a.c.activity_id, isouter=True )
+            j = j.join(_a, _wva.c.well_volume_correction_activity_id 
+                == _a.c.activity_id, isouter=True )
             stmt = select(columns.values()).select_from(j)
 
             # general setup
              
-            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+            (stmt,count_stmt) = self.wrap_statement(
+                stmt,order_clauses,filter_expression )
             
             title_function = None
             if param_hash.get(HTTP_PARAM_USE_TITLES, False):
@@ -1773,13 +1695,12 @@ class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
 class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
     
     class Meta:
-        queryset = CopyWell.objects.all().order_by('well_id')
         
+        queryset = CopyWell.objects.all().order_by('well_id')
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
         authorization= UserGroupAuthorization()
         resource_name = 'copywell'
-        
         ordering = []
         filtering = {}
         serializer = LimsSerializer()
@@ -1787,34 +1708,28 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
         always_return_data = True 
 
     def __init__(self, **kwargs):
+
         super(CopyWellResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
-        # Note: because this prepends the other list, we have to make sure 
-        # "schema" is matched
         
         return [
-            # override the parent "base_urls" so that we don't need to worry about schema again
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
-
             url(r"^(?P<resource_name>%s)/search/(?P<search_ID>[\d]+)%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('search'), name="api_search"),
-
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<copy_name>[\w\d_.\-\+ ]+)" 
                 r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-
             url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w\d_.\-\+: ]+)"
                 r"/(?P<copy_name>[\w\d_.\-\+ ]+)" 
                 r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-
             url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w\d_.\-\+: ]+)"
                 r"/(?P<copy_name>[\w\d_.\-\+: ]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
@@ -1822,7 +1737,6 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
         ]
 
     def get_detail(self, request, **kwargs):
-        logger.info(str(('get_detail')))
 
         library_short_name = kwargs.get('library_short_name', None)
         if not library_short_name:
@@ -1846,35 +1760,24 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
     def get_list(self,request,**kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-
         return self.build_list_response(request, **kwargs)
 
     @read_authorization
     def build_list_response(self,request, **kwargs):
-        ''' 
-        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns django.http.response.StreamingHttpResponse 
-        '''
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
-        
+
         is_for_detail = kwargs.pop('is_for_detail', False)
-
         schema = super(CopyWellResource,self).build_schema()
-
         filename = self._get_filename(schema, kwargs)
-        
         well_id = param_hash.pop('well_id', None)
         if well_id:
             param_hash['well_id__eq'] = well_id
-
         copy_name = param_hash.pop('copy_name', None)
         if copy_name:
             param_hash['copy_name__eq'] = copy_name
-
         library_short_name = param_hash.pop('library_short_name', None)
         if library_short_name:
             param_hash['library_short_name__eq'] = library_short_name
@@ -1884,8 +1787,6 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
             # general setup
           
             manual_field_includes = set(param_hash.get('includes', []))
-            if DEBUG_GET_LIST: 
-                logger.info(str(('manual_field_includes', manual_field_includes)))
   
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
@@ -1911,11 +1812,12 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
             base_query_tables = ['copy_well', 'copy', 'plate', 'well','library']
             
             custom_columns = {
-                'consumed_volume': literal_column('initial_volume-volume').label('consumed_volume'),
+                'consumed_volume': literal_column(
+                    'initial_volume-volume').label('consumed_volume'),
                 # query plan makes this faster than the hash join of copy-copy_well
-#                 'copy_name': literal_column(
-#                     '( select copy.name from copy where copy.copy_id=copy_well.copy_id )'
-#                     ).label('copy_name')
+                #'copy_name': literal_column(
+                #    '( select copy.name from copy where copy.copy_id=copy_well.copy_id )'
+                #    ).label('copy_name')
             }
             
             columns = self.build_sqlalchemy_columns(
@@ -1930,7 +1832,6 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
             _p = self.bridge['plate']
             _w = self.bridge['well']
             
-#             j = join(_cw, _c, _c.c.copy_id == _cw.c.copy_id )
             j = join(_cw, _w, _cw.c.well_id == _w.c.well_id )
             j = j.join(_p, _cw.c.plate_id == _p.c.plate_id )
             j = j.join(_c, _cw.c.copy_id == _c.c.copy_id )
@@ -1963,33 +1864,29 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
   
 
 class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):        
+
     class Meta:
+    
         queryset = CherryPickRequest.objects.all().order_by('well_id')
-        
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
         authorization= UserGroupAuthorization()
         resource_name = 'cherrypickrequest'
-        
         ordering = []
         filtering = {}
         serializer = LimsSerializer()
-        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
         always_return_data = True 
 
     def __init__(self, **kwargs):
+
         super(CherryPickRequestResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
-        # Note: because this prepends the other list, we have to make sure 
-        # "schema" is matched
         
         return [
-            # override the parent "base_urls" so that we don't need to worry about schema again
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
-
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<cherry_pick_request_id>[\d]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
@@ -1997,42 +1894,29 @@ class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):
         ]
 
     def get_detail(self, request, **kwargs):
-        logger.info(str(('get_detail')))
 
         cherry_pick_request_id = kwargs.get('cherry_pick_request_id', None)
         if not cherry_pick_request_id:
-            logger.info(str(('no cherry_pick_request_id provided')))
-            raise NotImplementedError('must provide a cherry_pick_request_id parameter')
-
+            raise Http404('must provide a cherry_pick_request_id parameter')
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
         
-    @read_authorization
     def get_list(self,request,**kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-
         return self.build_list_response(request, **kwargs)
 
     @read_authorization
     def build_list_response(self,request, **kwargs):
-        ''' 
-        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns django.http.response.StreamingHttpResponse 
-        '''
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
         
         is_for_detail = kwargs.pop('is_for_detail', False)
-
         schema = super(CherryPickRequestResource,self).build_schema()
-
         filename = self._get_filename(schema, kwargs)
-        
         cherry_pick_request_id = param_hash.pop('cherry_pick_request_id', None)
         if cherry_pick_request_id:
             param_hash['cherry_pick_request_id__eq'] = cherry_pick_request_id
@@ -2042,8 +1926,6 @@ class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):
             # general setup
           
             manual_field_includes = set(param_hash.get('includes', []))
-            if DEBUG_GET_LIST: 
-                logger.info(str(('manual_field_includes', manual_field_includes)))
   
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
@@ -2116,7 +1998,6 @@ class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):
                     '    on( cpap.cherry_pick_liquid_transfer_id=cplt.activity_id ) ',
                     '  where cpap.cherry_pick_request_id=cherry_pick_request.cherry_pick_request_id ',
                     '  AND cplt.status is not null )'])).label('is_completed'), 
-                # 
                 'number_plates': literal_column('\n'.join([
                     '( select count(distinct(plate_ordinal)) ',
                     '  from cherry_pick_assay_plate cpap ',
@@ -2158,7 +2039,7 @@ class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):
                 ' from lab_cherry_pick '
                 ' group by cherry_pick_request_id '
                 ' order by cherry_pick_request_id ) as lcp ' )
-#             _count_lcp_stmt = _count_lcp_stmt.alias('lcp') 
+            # _count_lcp_stmt = _count_lcp_stmt.alias('lcp') 
             j = join(_cpr,_screen,_cpr.c.screen_id==_screen.c.screen_id)
             j = j.join(_count_lcp_stmt, 
                 _cpr.c.cherry_pick_request_id == literal_column('lcp.cherry_pick_request_id'), 
@@ -2191,8 +2072,8 @@ class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):
 class CherryPickPlateResource(SqlAlchemyResource,ManagedModelResource):        
 
     class Meta:
+
         queryset = CherryPickAssayPlate.objects.all().order_by('cherry_pick_request_id')
-        
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
         authorization= UserGroupAuthorization()
@@ -2205,14 +2086,12 @@ class CherryPickPlateResource(SqlAlchemyResource,ManagedModelResource):
         always_return_data = True 
 
     def __init__(self, **kwargs):
+
         super(CherryPickPlateResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
-        # Note: because this prepends the other list, we have to make sure 
-        # "schema" is matched
         
         return [
-            # override the parent "base_urls" so that we don't need to worry about schema again
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
@@ -2226,18 +2105,15 @@ class CherryPickPlateResource(SqlAlchemyResource,ManagedModelResource):
         ]
 
     def get_detail(self, request, **kwargs):
-        logger.info(str(('get_detail')))
 
         cherry_pick_request_id = kwargs.get('cherry_pick_request_id', None)
         if not cherry_pick_request_id:
             logger.info(str(('no cherry_pick_request_id provided')))
             raise NotImplementedError('must provide a cherry_pick_request_id parameter')
-
         plate_ordinal = kwargs.get('plate_ordinal', None)
         if not plate_ordinal:
             logger.info(str(('no plate_ordinal provided')))
             raise NotImplementedError('must provide a plate_ordinal parameter')
-
         attempt_ordinal = kwargs.get('attempt_ordinal', None)
         if not attempt_ordinal:
             logger.info(str(('no attempt_ordinal provided')))
@@ -2247,39 +2123,27 @@ class CherryPickPlateResource(SqlAlchemyResource,ManagedModelResource):
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
         
-    @read_authorization
     def get_list(self,request,**kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-
         return self.build_list_response(request, **kwargs)
 
     @read_authorization
     def build_list_response(self,request, **kwargs):
-        ''' 
-        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns django.http.response.StreamingHttpResponse 
-        '''
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
-        
-        is_for_detail = kwargs.pop('is_for_detail', False)
-
         schema = super(CherryPickPlateResource,self).build_schema()
 
+        is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._get_filename(schema, kwargs)
-        
         cherry_pick_request_id = param_hash.pop('cherry_pick_request_id', None)
         if cherry_pick_request_id:
             param_hash['cherry_pick_request_id__eq'] = cherry_pick_request_id
-
         plate_ordinal = param_hash.pop('plate_ordinal', None)
         if plate_ordinal:
             param_hash['plate_ordinal__eq'] = plate_ordinal
-
         attempt_ordinal = param_hash.pop('attempt_ordinal', None)
         if attempt_ordinal:
             param_hash['attempt_ordinal__eq'] = attempt_ordinal
@@ -2289,8 +2153,6 @@ class CherryPickPlateResource(SqlAlchemyResource,ManagedModelResource):
             # general setup
           
             manual_field_includes = set(param_hash.get('includes', []))
-            if DEBUG_GET_LIST: 
-                logger.info(str(('manual_field_includes', manual_field_includes)))
   
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
@@ -2427,30 +2289,28 @@ class CherryPickPlateResource(SqlAlchemyResource,ManagedModelResource):
 class LibraryCopyResource(ApiResource):
 
     class Meta:
+
         queryset = Copy.objects.all().order_by('name')
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
         authorization= UserGroupAuthorization()
         resource_name = 'librarycopy'
-        
         ordering = []
         filtering = {}
         serializer = LimsSerializer()
-        # this makes Backbone/JQuery happy because it likes to JSON.parse the returned data
         always_return_data = True 
 
     def __init__(self, **kwargs):
+
         super(LibraryCopyResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
+        
         return [
-            # override the parent "base_urls" so that we don't need to worry 
-            # about schema again
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
-
-            url((r"^(?P<resource_name>%s)"
+           url((r"^(?P<resource_name>%s)"
                  r"/(?P<library_short_name>[\w\d_.\-\+: ]+)"
                  r"/(?P<name>[^/]+)%s$")  
                     % (self._meta.resource_name, trailing_slash()), 
@@ -2458,7 +2318,6 @@ class LibraryCopyResource(ApiResource):
             url(r"^(?P<resource_name>%s)/search/(?P<search_ID>[\d]+)%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('search'), name="api_search"),
-
             url((r"^(?P<resource_name>%s)"
                  r"/(?P<library_short_name>[\w\d_.\-\+: ]+)"
                  r"/(?P<name>[^/]+)"
@@ -2469,72 +2328,54 @@ class LibraryCopyResource(ApiResource):
         ]    
 
     def dispatch_librarycopyplateview(self, request, **kwargs):
-        logger.info(str(('dispatch_librarycopyplateview', kwargs)))
+
         kwargs['copy_name'] = kwargs.pop('name')
         return LibraryCopyPlateResource().dispatch('list', request, **kwargs)    
         
     def get_detail(self, request, **kwargs):
-        logger.info('get_detail: %r', kwargs)
 
         library_short_name = kwargs.get(u'library_short_name', None)
         if not library_short_name:
             logger.info(str(('no library_short_name provided')))
             raise NotImplementedError('must provide a library_short_name parameter')
-        
         copy_name = kwargs.get('name', None)
         if not copy_name:
             logger.info(str(('no copy "name" provided')))
             raise NotImplementedError('must provide a copy "name" parameter')
-
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
         
-    @read_authorization
     def get_list(self,request,**kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-
         return self.build_list_response(request, **kwargs)
 
     @read_authorization
     def build_list_response(self,request, **kwargs):
-        ''' 
-        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns django.http.response.StreamingHttpResponse 
-        '''
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
+        schema = super(LibraryCopyResource,self).build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
-             
-        schema = super(LibraryCopyResource,self).build_schema()
-
         filename = self._get_filename(schema, kwargs)
-        
         library_short_name = param_hash.pop('library_short_name',
             param_hash.get('library_short_name__eq',None))
-        
         if not library_short_name:
             logger.info(str(('no library_short_name provided')))
         else:
             param_hash['library_short_name__eq'] = library_short_name
-        
         name = param_hash.pop('name', param_hash.get('name',None))
         if name:
             param_hash['name__eq'] = name
             
-        logger.info(str(('get_list', filename, kwargs)))
         try:
             
             # general setup
           
             manual_field_includes = set(param_hash.get('includes', []))
-            if DEBUG_GET_LIST: 
-                logger.info(str(('manual_field_includes', manual_field_includes)))
   
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
@@ -2719,16 +2560,19 @@ class LibraryCopyResource(ApiResource):
                 
     @transaction.atomic()    
     def delete_obj(self, deserialized, **kwargs):
+
         id_kwargs = self.get_id(deserialized,**kwargs)
         ScreensaverUser.objects.get(**id_kwargs).delete()
     
     @transaction.atomic()    
     def patch_obj(self,deserialized, **kwargs):
-        logger.info('patch_obj %s' % deserialized)
+
+        logger.debug('patch_obj %s', deserialized)
 
         schema = self.build_schema()
         fields = schema['fields']
         initializer_dict = {}
+
         # TODO: wrapper for parsing
         logger.info('fields: %r, deserialized: %r', fields.keys(),deserialized)
         for key in fields.keys():
@@ -2737,10 +2581,6 @@ class LibraryCopyResource(ApiResource):
                     deserialized.get(key,None), key,fields[key]['data_type']) 
 
         id_kwargs = self.get_id(deserialized,**kwargs)
-        parse_full = not id_kwargs
-        errors = self.validate(deserialized, full=parse_full)
-        if errors:
-            raise ValidationError(errors)
         
         try:
             short_name=id_kwargs['library_short_name']
@@ -2755,9 +2595,15 @@ class LibraryCopyResource(ApiResource):
             try:
                 librarycopy = Copy.objects.get(
                     name=id_kwargs['name'],library=library)
+                errors = self.validate(deserialized, patch=True)
+                if errors:
+                    raise ValidationError(errors)
             except ObjectDoesNotExist:
                 librarycopy  = Copy.objects.create(
                     name=id_kwargs['name'],library=library)
+                errors = self.validate(deserialized, patch=False)
+                if errors:
+                    raise ValidationError(errors)
                 librarycopy.save()
             initializer_dict = {}
             for key in fields.keys():
@@ -2791,12 +2637,11 @@ class LibraryCopyResource(ApiResource):
             logger.exception('on patch detail')
             raise e  
 
-    
-    
 
 class AttachedFileResource(ApiResource):
 
     class Meta:
+
         queryset = AttachedFile.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
@@ -2810,13 +2655,13 @@ class AttachedFileResource(ApiResource):
         always_return_data = True
 
     def __init__(self, **kwargs):
+        
         self.user_resource = None
         super(AttachedFileResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
+        
         return [
-            # override the parent "base_urls" so that we don't need to worry 
-            # about schema again
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
@@ -2957,9 +2802,7 @@ class AttachedFileResource(ApiResource):
         #     response.status_code = 202
         #     return response
         
-        
-        
-    
+
     @write_authorization
     @un_cache        
     @transaction.atomic
@@ -2973,7 +2816,6 @@ class AttachedFileResource(ApiResource):
             _dict = model_to_dict(af)
             af.delete()
     
-            # Log
             logger.info('deleted: %s' %kwargs)
             log_comment = None
             if HEADER_APILOG_COMMENT in request.META:
@@ -3011,13 +2853,11 @@ class AttachedFileResource(ApiResource):
             return http.HttpNotFound()
 
     def get_detail(self, request, **kwargs):
-        logger.info(str(('get_detail')))
 
         attached_file_id = kwargs.get('attached_file_id', None)
         if not attached_file_id:
             logger.info(str(('no attached_file_id provided', kwargs)))
             raise NotImplementedError('must provide a attached_file_id parameter')
-
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
@@ -3026,27 +2866,18 @@ class AttachedFileResource(ApiResource):
     def get_list(self,request,**kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-
         return self.build_list_response(request, **kwargs)
 
     @read_authorization
     def build_list_response(self,request, **kwargs):
-        ''' 
-        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns django.http.response.StreamingHttpResponse 
-        '''
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
+        schema = self.build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
-
-        schema = self.build_schema()
-
         filename = self._get_filename(schema, kwargs)
-
         username = param_hash.pop('username', None)
         if username:
             param_hash['username__eq'] = username
@@ -3060,9 +2891,6 @@ class AttachedFileResource(ApiResource):
           
             manual_field_includes = set(param_hash.get('includes', []))
             
-            if DEBUG_GET_LIST: 
-                logger.info(str(('manual_field_includes', manual_field_includes)))
-  
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
                   
@@ -3230,20 +3058,17 @@ class ActivityResource(ApiResource):
         always_return_data = True 
         
     def __init__(self, **kwargs):
+
         self.service_activity_resource = None
         self.screen_resource = None
         super(ActivityResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
-        # Note: because this prepends the other list, we have to make sure 
-        # "schema" is matched
         
         return [
-            # override the parent "base_urls" so that we don't need to worry about schema again
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
-
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<activity_id>[\d]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
@@ -3266,12 +3091,10 @@ class ActivityResource(ApiResource):
         return schema
 
     def get_detail(self, request, **kwargs):
-        logger.info(str(('get_detail')))
  
         activity_id = kwargs.pop('activity_id', None)
         if not activity_id:
-            logger.info(str(('no activity_id provided', kwargs)))
-            raise NotImplementedError('must provide an activity_id parameter')
+            raise Http404('must provide an activity_id parameter')
         else:
             kwargs['activity_id__eq'] = activity_id
  
@@ -3282,7 +3105,6 @@ class ActivityResource(ApiResource):
     def get_list(self,request,**kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-
         return self.build_list_response(request, **kwargs)
 
     def get_custom_columns(self, alias_qualifier):
@@ -3364,11 +3186,7 @@ class ActivityResource(ApiResource):
         }
 
     def get_query(self, param_hash):
-        '''
-        '''
         
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
-
         # general setup
         schema = self.build_schema()
         
@@ -3377,9 +3195,6 @@ class ActivityResource(ApiResource):
         manual_field_includes.add('screen_id')
         manual_field_includes.add('activity_class')
         param_hash['includes'] = list(manual_field_includes)
-        
-        if DEBUG_GET_LIST: 
-            logger.info('manual_field_includes: %r', manual_field_includes)
         
         (filter_expression, filter_fields) = \
             SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
@@ -3390,7 +3205,7 @@ class ActivityResource(ApiResource):
             exact_fields=set(param_hash.get('exact_fields',[])))
           
         order_params = param_hash.get('order_by',[])
-        order_params.insert(0,'date_of_activity')
+        order_params.append('date_of_activity')
         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
             order_params, field_hash)
 
@@ -3432,10 +3247,10 @@ class ActivityResource(ApiResource):
         (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
 
         columns = { key:literal_column(key) for key in field_hash.keys()}
-        
         return (field_hash,columns,stmt,count_stmt)
     
     def get_custom_lab_activity_columns(self, alias_qualifier):
+
         _library_screening = self.bridge['library_screening']
         _cps = self.bridge['cherry_pick_screening']
         _screen = self.bridge['screen']
@@ -3443,8 +3258,8 @@ class ActivityResource(ApiResource):
             (_library_screening.c.activity_id!=None,
                case([(
                    _library_screening.c.is_for_external_library_plates,
-                        'libraryscreening')],
-                        else_='externallibraryscreening')),
+                        'externallibraryscreening')],
+                        else_='libraryscreening')),
             (_cps.c.activity_id!=None,
                 'cherrypickscreening')
             ],
@@ -3456,9 +3271,6 @@ class ActivityResource(ApiResource):
             }
         
     def get_lab_activity_query(self, param_hash):
-        ''' 
-        '''
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         # general setup
         # schema for labactivity part of the query should only be the activity fields
@@ -3470,11 +3282,7 @@ class ActivityResource(ApiResource):
         schema['fields'] = field_hash
         
         manual_field_includes = set(param_hash.get('includes', []))
-        # for join to screen query (TODO: only include if screen fields rqst'd)
         manual_field_includes.add('screen_id')
-        
-        if DEBUG_GET_LIST: 
-            logger.info('manual_field_includes: %r', manual_field_includes)
         
         (filter_expression, filter_fields) = \
             SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
@@ -3525,18 +3333,13 @@ class ActivityResource(ApiResource):
 
     @read_authorization
     def build_list_response(self,request, **kwargs):
-        ''' 
-        '''
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
+        schema = self.build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
-
-        schema = self.build_schema()
-
         filename = self._get_filename(schema, kwargs)
         
         try:
@@ -3564,10 +3367,10 @@ class ActivityResource(ApiResource):
             raise e  
 
 
-
 class CherryPickLiquidTransferResource(ActivityResource):
 
     class Meta:
+
         queryset = Screening.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
@@ -3576,7 +3379,6 @@ class CherryPickLiquidTransferResource(ActivityResource):
         filtering = {}
         serializer = LimsSerializer()
         resource_name = 'cplt'
-        
         max_limit = 10000
         always_return_data = True
 
@@ -3584,9 +3386,8 @@ class CherryPickLiquidTransferResource(ActivityResource):
         super(CherryPickLiquidTransferResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
+
         return [
-            # override the parent "base_urls" so that we don't need to worry 
-            # about schema again
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
@@ -3597,15 +3398,6 @@ class CherryPickLiquidTransferResource(ActivityResource):
         ]    
     
     def build_schema(self):
-        # option 1: inherit LabActivity/Activity fields manually
-        # - problem: causes circular dependency since superclasses call build_schema
-        # option 2: encode inheritance in object hierarchy, call super.build_schema
-        # - problem: TP is not set up for inheritance and we will have 
-        # to override tastypie signature + circular dependencies
-        # option 3 *chosen: ignore ORM inheritance and use our extended framework 
-        # via ManagedResource.build_schema that looks at the "supertype" property
-        # and constructs the supertype fields recursively
-         
         return ApiResource.build_schema(self)
 
     def get_custom_columns(self, alias_qualifier):
@@ -3620,20 +3412,11 @@ class CherryPickLiquidTransferResource(ActivityResource):
         return ccs
 
     def get_query(self, param_hash):
-        ''' CPLT
-        Convenience method for super classes:
-        - create the query used for this resource so that it can be reused
-        '''
-        
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         # general setup
         schema = self.build_schema()
         
         manual_field_includes = set(param_hash.get('includes', []))
-        
-        if DEBUG_GET_LIST: 
-            logger.info('manual_field_includes: %r', manual_field_includes)
         
         (filter_expression, filter_fields) = \
             SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
@@ -3689,6 +3472,7 @@ class CherryPickLiquidTransferResource(ActivityResource):
 class CherryPickScreeningResource(ActivityResource):    
 
     class Meta:
+
         queryset = Screening.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
@@ -3697,7 +3481,6 @@ class CherryPickScreeningResource(ActivityResource):
         filtering = {}
         serializer = LimsSerializer()
         resource_name = 'cherrypickscreening'
-        
         max_limit = 10000
         always_return_data = True
 
@@ -3705,9 +3488,8 @@ class CherryPickScreeningResource(ActivityResource):
         super( CherryPickScreeningResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
+
         return [
-            # override the parent "base_urls" so that we don't need to worry 
-            # about schema again
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
@@ -3718,35 +3500,14 @@ class CherryPickScreeningResource(ActivityResource):
         ]    
 
     def build_schema(self):
-        # option 1: inherit LabActivity/Activity fields manually
-        # - problem: causes circular dependency since superclasses call build_schema
-        # option 2: encode inheritance in object hierarchy, call super.build_schema
-        # - problem: TP is not set up for inheritance and we will have 
-        # to override tastypie signature + circular dependencies
-        # option 3 *chosen: ignore ORM inheritance and use our extended framework 
-        # via ManagedResource.build_schema that looks at the "supertype" property
-        # and constructs the supertype fields recursively
-         
         return ApiResource.build_schema(self)
-            
 
     def get_query(self, param_hash):
-        '''  CherryPickScreeningResource
-        Convenience method for super classes:
-        - create the query used for this resource so that it can be reused
-        '''
         
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
-
         # general setup
         schema = self.build_schema()
         
-        logger.info('schema fields: %r', schema['fields'].keys())
-        
         manual_field_includes = set(param_hash.get('includes', []))
-        
-        if DEBUG_GET_LIST: 
-            logger.info('manual_field_includes: %r', manual_field_includes)
         
         (filter_expression, filter_fields) = \
             SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
@@ -3756,8 +3517,6 @@ class CherryPickScreeningResource(ActivityResource):
             param_hash.get('visibilities'), 
             exact_fields=set(param_hash.get('exact_fields',[])))
 
-        logger.info('visible fields: %r', {key:val.get('field','--not-avail') for key,val in field_hash.items()})
-          
         order_params = param_hash.get('order_by',[])
         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
             order_params, field_hash)
@@ -3791,7 +3550,6 @@ class CherryPickScreeningResource(ActivityResource):
         stmt = select(columns.values()).select_from(j)
         compiled_stmt = str(stmt.compile(compile_kwargs={"literal_binds": True}))
         logger.info('compiled_stmt %s',compiled_stmt)
-        # general setup
          
         (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
         
@@ -3799,19 +3557,13 @@ class CherryPickScreeningResource(ActivityResource):
         
     @read_authorization
     def build_list_response(self,request, **kwargs):
-        ''' 
-         
-        '''
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
  
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
+        schema = self.build_schema()
          
         is_for_detail = kwargs.pop('is_for_detail', False)
- 
-        schema = self.build_schema()
- 
         filename = self._get_filename(schema, kwargs)
  
         try:
@@ -3842,6 +3594,7 @@ class CherryPickScreeningResource(ActivityResource):
 class LibraryScreeningResource(ActivityResource):    
 
     class Meta:
+
         queryset = LibraryScreening.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
@@ -3851,10 +3604,6 @@ class LibraryScreeningResource(ActivityResource):
         serializer = LimsSerializer()
         resource_name = 'libraryscreening'
         alt_resource_name = 'externallibraryscreening'
-        
-        plates_screened_format = (
-            '{library_short_name}:{copy_name}:{start_plate}-{end_plate}')
-        plates_screened_matcher = re.compile(r'(\w+):(\w+):(\d+)-(\d+)')
         max_limit = 10000
         always_return_data = True
 
@@ -3862,9 +3611,8 @@ class LibraryScreeningResource(ActivityResource):
         super( LibraryScreeningResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
+
         return [
-            # override the parent "base_urls" so that we don't need to worry 
-            # about schema again
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
@@ -3882,35 +3630,16 @@ class LibraryScreeningResource(ActivityResource):
         ]    
 
     def build_schema(self):
-        # option 1: inherit LabActivity/Activity fields manually
-        # - problem: causes circular dependency since superclasses call build_schema
-        # option 2: encode inheritance in object hierarchy, call super.build_schema
-        # - problem: TP is not set up for inheritance and we will have 
-        # to override tastypie signature + circular dependencies
-        # option 3 *chosen: ignore ORM inheritance and use our extended framework 
-        # via ManagedResource.build_schema that looks at the "supertype" property
-        # and constructs the supertype fields recursively
-         
         return ApiResource.build_schema(self)
-            
 
     def get_query(self, param_hash):
         '''  LibraryScreeningResource
-        Convenience method for super classes:
-        - create the query used for this resource so that it can be reused
         '''
-        
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         # general setup
         schema = self.build_schema()
         
-        logger.info('schema fields: %r', schema['fields'].keys())
-        
         manual_field_includes = set(param_hash.get('includes', []))
-        
-        if DEBUG_GET_LIST: 
-            logger.info('manual_field_includes: %r', manual_field_includes)
         
         (filter_expression, filter_fields) = \
             SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
@@ -3920,8 +3649,6 @@ class LibraryScreeningResource(ActivityResource):
             param_hash.get('visibilities'), 
             exact_fields=set(param_hash.get('exact_fields',[])))
 
-        logger.info('visible fields: %r', {key:val.get('field','--not-avail') for key,val in field_hash.items()})
-          
         order_params = param_hash.get('order_by',[])
         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
             order_params, field_hash)
@@ -3955,24 +3682,20 @@ class LibraryScreeningResource(ActivityResource):
         # general setup
          
         (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+        logger.info('order_clauses: %r', order_clauses)
+        stmt = stmt.order_by('activity_id')
         
         return (field_hash,columns,stmt,count_stmt)
         
     @read_authorization
     def build_list_response(self,request, **kwargs):
-        ''' 
-         LibraryScreeningResource
-        '''
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
  
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
+        schema = self.build_schema()
          
         is_for_detail = kwargs.pop('is_for_detail', False)
- 
-        schema = self.build_schema()
- 
         filename = self._get_filename(schema, kwargs)
  
         try:
@@ -3994,28 +3717,49 @@ class LibraryScreeningResource(ActivityResource):
                     select([ 
                         _library.c.short_name,
                         _cp.c.name,
-                        func.min(_lcp.c.plate_number).label('start_plate'),
-                        func.max(_lcp.c.plate_number).label('end_plate') 
+                        _ap.c.plate_number
                      ])
                     .select_from(
                         _ap.join(_lcp,_ap.c.plate_id==_lcp.c.plate_id)
                             .join(_cp,_cp.c.copy_id==_lcp.c.copy_id)
                             .join(_library,_library.c.library_id==_cp.c.library_id))
                     .where(_ap.c.library_screening_id==text(':activity_id'))
-                    .group_by(_library.c.short_name,_cp.c.name)
-                    .order_by(_library.c.short_name,_cp.c.name))
-                logger.info('lcp_query: %r', str(lcp_query.compile()))
+                    .group_by(_library.c.short_name,_cp.c.name,_ap.c.plate_number)
+                    .order_by(_library.c.short_name,_cp.c.name,_ap.c.plate_number))
+                logger.debug('lcp_query: %r', str(lcp_query.compile()))
                 conn = self.bridge.get_engine().connect()
                 
-                plates_screened_format =self._meta.plates_screened_format
                 def library_copy_plates_screened_generator(cursor):
                     if generator:
                         cursor = generator(cursor)
                     class Row:
                         def __init__(self, row):
                             self.row = row
+                            self.entries = []
                             activity_id = row['activity_id']
-                            self.plate_result = conn.execute(lcp_query,activity_id=activity_id)
+                            query = conn.execute(lcp_query,activity_id=activity_id)
+                            copy = None
+                            start_plate = None
+                            end_plate = None
+                            for x in query:
+                                if not copy:
+                                    copy = x[1]
+                                    library = x[0]
+                                if not start_plate:
+                                    start_plate = end_plate = x[2]
+                                if x[0] != library or x[1] != copy or x[2] > end_plate+1:
+                                    # start a new range, save old range
+                                    self.entries.append('%s:%s:%s-%s'
+                                        % (library,copy,start_plate,end_plate))
+                                    start_plate = end_plate = x[2]
+                                    copy = x[1]
+                                    library = x[0]
+                                else:
+                                    end_plate = x[2]
+                            if copy: 
+                                self.entries.append('%s:%s:%s-%s'
+                                    % (library,copy,start_plate,end_plate))
+                                    
                         def has_key(self, key):
                             if key == 'library_plates_screened': 
                                 return True
@@ -4024,13 +3768,7 @@ class LibraryScreeningResource(ActivityResource):
                             return self.row.keys();
                         def __getitem__(self, key):
                             if key == 'library_plates_screened':
-                                return [
-                                    plates_screened_format.format(**{
-                                         'library_short_name':x[0],
-                                         'copy_name': x[1],
-                                         'start_plate': x[2],
-                                         'end_plate': x[3] })
-                                         for x in self.plate_result]
+                                return self.entries
                             else:
                                 return self.row[key]
                     for row in cursor:
@@ -4061,55 +3799,112 @@ class LibraryScreeningResource(ActivityResource):
     def put_detail(self, request, **kwargs):
         raise NotImplementedError('put_list must be implemented')
     
-    def validate(self, _dict, full=False):
-        errors = ActivityResource.validate(self, _dict, full=full)
+    def validate(self, _dict, patch=False):
+
+        errors = ActivityResource.validate(self, _dict, patch=patch)
+        if _dict.get('library_plates_screened',None):
+            if bool(_dict.get('is_for_external_library_plates', False)):
+                errors['library_plates_screened'] = (
+                    'cannot specifiy library plates if is_for_external_library_plates')
         
-        if 'library_plates_screened' not in errors:
-            library_plates_screened = _dict.get('library_plates_screened', None)
-            if library_plates_screened:
-                new_library_plates_screened = []
-                for lps in library_plates_screened:
-                    match = self._meta.plates_screened_matcher.match(lps)
-                    if not match:
-                        errors['library_plates_screened'] = (
-                            '%r does not match pattern: %s' 
-                            % (lps, self._meta.plates_screened_matcher ))
-                        break
-                    else:
-                        new_library_plates_screened.append({
-                            'library_short_name': match.group(1),
-                            'copy_name': match.group(2),
-                            'start_plate': int(match.group(3)),
-                            'end_plate': int(match.group(4)) })
-                _dict['library_plates_screened'] = new_library_plates_screened
         return errors
         
     def patch_obj(self,deserialized, **kwargs):
 
-        logger.info('patch_obj %s' % deserialized)
-
         schema = self.build_schema()
         fields = schema['fields']
         initializer_dict = {}
+
         # TODO: wrapper for parsing
-        logger.info('fields: %r, deserialized: %r', fields.keys(),deserialized)
         for key in fields.keys():
             if deserialized.get(key,None) is not None:
                 initializer_dict[key] = parse_val(
                     deserialized.get(key,None), key,fields[key]['data_type']) 
 
         id_kwargs = self.get_id(deserialized,**kwargs)
-        if id_kwargs:
-            raise NotImplementedError('cannot modify library_screening')
-        parse_full = not id_kwargs
-        errors = self.validate(deserialized, full=parse_full)
+        patch = bool(id_kwargs)
+        # NOTE: can determine patch because the activity_id key is only available on patch
+        errors = self.validate(deserialized, patch=patch)
         if errors:
             raise ValidationError(errors)
         
-        library_plates_screened = deserialized.get('library_plates_screened', None)
+        if not patch:
+            _key = 'screen_facility_id'
+            _val = deserialized[_key]
+            try:
+                screen = Screen.objects.get(facility_id=_val)
+                initializer_dict['screen'] = screen
+            except ObjectDoesNotExist:
+                raise ValidationError(
+                    key=_key, 
+                    msg='does not exist: {val}'.format(val=_val))
+
+        _key = 'performed_by_username'
+        _val = deserialized.get(_key,None)
+        if _val:
+            try:
+                performed_by_user = ScreensaverUser.objects.get(username=_val)
+                initializer_dict['performed_by'] = performed_by_user
+            except ObjectDoesNotExist:
+                raise ValidationError(
+                    key=_key, 
+                    msg='does not exist: {val}'.format(val=_val))
+        logger.info('initializer_dict: %r', initializer_dict)
+        try:
+            library_screening = None
+            if patch:
+                try:
+                    library_screening = LibraryScreening.objects.get(**id_kwargs)
+                except ObjectDoesNotExist:
+                    raise Http404('library_screening does not exist for: %r', id_kwargs)
+            else:
+                library_screening = LibraryScreening()
+
+            model_field_names = [x.name for x in library_screening._meta.get_fields()]
+            for key,val in initializer_dict.items():
+                if key in model_field_names:
+                    setattr(library_screening,key,val)
+
+            library_screening.save()
+            
+            library_plates_screened = deserialized.get('library_plates_screened', [])
+            if library_plates_screened:
+                self._set_assay_plates(library_screening,library_plates_screened)
+                        
+            return library_screening
+        except Exception, e:
+            logger.exception('on patch_obj')
+            raise e
+    
+    def _set_assay_plates(self,library_screening,library_plates_screened):
+
+        # parse library_plate_ranges
+        schema = self.build_schema()
+        regex_string = schema['fields']['library_plates_screened']['regex']
+        matcher = re.compile(regex_string)
         
-        logger.info('get the referenced plates...')
+        new_library_plates_screened = []
+        for lps in library_plates_screened:
+            match = matcher.match(lps)
+            if not match:
+                raise ValidationError(
+                    key = 'library_plates_screened',
+                    msg = ('%r does not match pattern: %s' 
+                        % (lps, regex_string )))
+                break
+            else:
+                new_library_plates_screened.append({
+                    'library_short_name': match.group(1),
+                    'copy_name': match.group(2),
+                    'start_plate': int(match.group(3)),
+                    'end_plate': int(match.group(4)) })
+        library_plates_screened = new_library_plates_screened
+        
+        # validate the plate ranges
+        logger.info('get the referenced plates for: %r', library_plates_screened)
         plate_ranges = []
+        plate_keys = set()
+        plate_numbers = set()
         for _data in library_plates_screened:
             try:
                 copy_name = _data['copy_name']
@@ -4120,9 +3915,9 @@ class LibraryScreeningResource(ActivityResource):
             except ObjectDoesNotExist:
                 raise ValidationError(
                     key='library_plates_screened', 
-                    msg='{key} does not exist: {val}'.format({
-                        key:'copy',
-                        val: str(_data) }))
+                    msg='{copy} does not exist: {val}'.format(
+                        copy=copy_name,
+                        val=str(_data)))
             try:
                 start_plate = Plate.objects.get(
                     copy=copy,
@@ -4136,6 +3931,20 @@ class LibraryScreeningResource(ActivityResource):
                         key='library_plates_screened',
                         msg=('plate range must be for a single library: '
                              '{start_plate}-{end_plate}').format(**_data))
+                if start_plate.copy.library.screen_type != library_screening.screen.screen_type:
+                    raise ValidationError(
+                        key='library_plates_screened',
+                        msg=('library.screen_type!=screen.screen_type: '
+                             '{library_short_name},{screen_facility_id}').format(**range))
+                plate_range = range(start_plate.plate_number,end_plate.plate_number+1)
+                if plate_numbers & set(plate_range):
+                    raise ValidationError(
+                        key='library_plates_screened',
+                        msg=('A plate number can only be screened once per '
+                            'Library Screening: {start_plate}-{end_plate}').format(**_data))
+                plate_numbers.update(plate_range)
+                plate_keys.update([ '%s/%d' % (copy.name,plate_number) 
+                    for plate_number in plate_range] )
                 plate_ranges.append(Plate.objects.all().filter(
                     copy=copy,
                     plate_number__range=(
@@ -4144,79 +3953,58 @@ class LibraryScreeningResource(ActivityResource):
                 raise ValidationError(
                     key='library_plates_screened', 
                     msg='plate range not found: {start_plate}-{end_plate}'.format(**_data))
+        logger.info('plate keys: %r', plate_keys)
+        logger.info('plate_numbers: %r', plate_numbers)
 
-        _key = 'screen_facility_id'
-        _val = deserialized[_key]
-        try:
-            screen = Screen.objects.get(facility_id=_val)
-            # TODO: validate that the screen type matches the library types
-            for plate_range in plate_ranges:
-                start_plate = plate_range[0]
-                if start_plate.copy.library.screen_type != screen.screen_type:
-                    raise ValidationError(
-                        key='library_plates_screened',
-                        msg=('library.screen_type!=screen.screen_type: '
-                             '{library_short_name},{screen_facility_id}').format(**range))
-            initializer_dict['screen'] = screen
-        except ObjectDoesNotExist:
-            raise ValidationError(
-                key=_key, 
-                msg='does not exist: {val}'.format(val=_val))
+        # find extant/deleted plates        
+        extant_plates = set()
+        deleted_plates = set()
+        if library_screening.assayplate_set.exists():
+            for ap in library_screening.assayplate_set.all():
+                found = False
+                plate_key = '%s/%d' % (ap.plate.copy.name, ap.plate.plate_number)
+                if ap.plate_number in plate_numbers:
+                    if plate_key in plate_keys:
+                        found = True
+                        extant_plates.add(plate_key)
+                    else:
+                        # if not found, then it is a different copy, same number,
+                        # should be caught by validation
+                        raise Exception('programming error: overlapping plate range')
+                if not found:
+                    if ap.screen_result_data_loading:
+                        raise ValidationError(
+                            key='library_plates_screened',
+                            msg='Assay plate has data and cannot be removed: %d' % ap.plate_number)
+                    ap.delete()
+                    deleted_plates.add(plate_key)
+        logger.info('deleted plates: %r', deleted_plates)
 
-        _key = 'performed_by_username'
-        _val = deserialized[_key]
-        try:
-            performed_by_user = ScreensaverUser.objects.get(username=_val)
-            initializer_dict['performed_by'] = performed_by_user
-        except ObjectDoesNotExist:
-            raise ValidationError(
-                key=_key, 
-                msg='does not exist: {val}'.format(val=_val))
-        logger.info('initializer_dict: %r', initializer_dict)
-        try:
-            library_screening = None
-            if 'activity_id' in initializer_dict:
-                try:
-                    activity_id = initializer_dict['activity_id']
-                    library_screening = LibraryScreening.objects.get(pk=activity_id)
-                except ObjectDoesNotExist:
-                    raise Http404('library_screening does not exist: %s' % activity_id)
-            else:
-                library_screening = LibraryScreening()
-            logger.info(str(('initializer dict', initializer_dict)))
-            model_field_names = [x.name for x in library_screening._meta.get_fields()]
-            for key,val in initializer_dict.items():
-                if key in model_field_names:
-                    setattr(library_screening,key,val)
-
-            library_screening.save()
-            
-            
-            # TODO: create assay_plates
-            # TODO: review SS1 policy on screening plates
-            for plate_range in plate_ranges:
-                for replicate in range(library_screening.number_of_replicates):
-                    for plate in plate_range:
-                        ap = AssayPlate.objects.create(**{
+        # create plates
+        # TODO: review SS1 policy on screening plates
+        created_plates = set()
+        for plate_range in plate_ranges:
+            for replicate in range(library_screening.number_of_replicates):
+                for plate in plate_range:
+                    plate_key = '%s/%d' % (plate.copy.name, plate.plate_number)
+                    if plate_key not in extant_plates:
+                        ap = AssayPlate.objects.create(**{  
                             'plate': plate,
                             'plate_number': plate.plate_number,
-                            'screen': screen,
+                            'screen': library_screening.screen,
                             'library_screening': library_screening,
                             'replicate_ordinal': replicate
                             })
                         ap.save()
-                        
-            return library_screening
-        except Exception, e:
-            logger.exception('on patch_obj')
-            raise e
+                        created_plates.add(plate_key)
+        logger.info('plates_created: %r', created_plates)
     
     def delete_obj(self, deserialized, **kwargs):
+
         activity_id = kwargs.get('activity_id', None)
         if activity_id:
             try:
                 LibraryScreening.objects.get(activity_id=activity_id).delete()
-                
                 # TODO: delete assay_plates, if possible (unless data loaded)
             except ObjectDoesNotExist:
                 logger.warn('no such library_screening: %s' % activity_id)
@@ -4228,6 +4016,7 @@ class LibraryScreeningResource(ActivityResource):
 class ServiceActivityResource(ActivityResource):    
 
     class Meta:
+
         queryset = ServiceActivity.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
@@ -4237,7 +4026,6 @@ class ServiceActivityResource(ActivityResource):
         serializer = LimsSerializer()
         excludes = ['digested_password']
         resource_name = 'serviceactivity'
-        
         max_limit = 10000
         always_return_data = True
 
@@ -4245,9 +4033,8 @@ class ServiceActivityResource(ActivityResource):
         super(ServiceActivityResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
+
         return [
-            # override the parent "base_urls" so that we don't need to worry 
-            # about schema again
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
@@ -4264,20 +4051,9 @@ class ServiceActivityResource(ActivityResource):
         ]    
 
     def build_schema(self):
-        # option 1: inherit LabActivity/Activity fields manually
-        # - problem: causes circular dependency since superclasses call build_schema
-        # option 2: encode inheritance in object hierarchy, call super.build_schema
-        # - problem: TP is not set up for inheritance and we will have 
-        # to override tastypie signature + circular dependencies
-        # option 3 *chosen: ignore ORM inheritance and use our extended framework 
-        # via ManagedResource.build_schema that looks at the "supertype" property
-        # and constructs the supertype fields recursively
-          
         return ApiResource.build_schema(self)
 
     def patch_obj(self,deserialized, **kwargs):
-
-        logger.info('patch_obj %s' % deserialized)
 
         schema = self.build_schema()
         fields = schema['fields']
@@ -4357,6 +4133,7 @@ class ServiceActivityResource(ActivityResource):
             raise e
     
     def delete_obj(self, deserialized, **kwargs):
+
         activity_id = kwargs.get('activity_id', None)
         if activity_id:
             try:
@@ -4368,17 +4145,15 @@ class ServiceActivityResource(ActivityResource):
             raise Exception('ServiceActivity delete action requires an activity_id %s' % kwargs)
         
     def get_query(self,param_hash):
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
         schema = self.build_schema()
         logger.info('sa fields: %r', schema['fields'].keys())
+        
         # general setup
         alias_qualifier = 'sa'
         manual_field_includes = set(param_hash.get('includes', []))
         # for join to screen query (TODO: only include if screen fields rqst'd)
         manual_field_includes.add('screen_id')
-        
-        if DEBUG_GET_LIST: 
-            logger.info('manual_field_includes: %r', manual_field_includes)
         
         (filter_expression, filter_fields) = \
             SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
@@ -4400,7 +4175,6 @@ class ServiceActivityResource(ActivityResource):
         _screen = self.bridge['screen']
         _user_cte = ScreensaverUserResource.get_user_cte().cte('users_serviced')
         _serviced = _user_cte.alias('serviced_user')
-
         
         j = _a
         j = j.join(_sa, _a.c.activity_id==_sa.c.activity_id )
@@ -4430,12 +4204,12 @@ class ServiceActivityResource(ActivityResource):
 class ScreenResource(ApiResource):
     
     class Meta:
+
         queryset = Screen.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
         authorization= UserGroupAuthorization()
         resource_name = 'screen'
-        
         ordering = []
         filtering = {}
         serializer = LimsSerializer()
@@ -4445,11 +4219,11 @@ class ScreenResource(ApiResource):
         super(ScreenResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
+
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
-
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<facility_id>([\w\d_]+))%s$") 
                     % (self._meta.resource_name, trailing_slash()), 
@@ -4520,7 +4294,6 @@ class ScreenResource(ApiResource):
         return self.dispatch('detail', request, **kwargs)    
 
     def get_detail(self, request, **kwargs):
-        logger.info(str(('get_detail')))
 
         facility_id = kwargs.get('facility_id', None)
         if not facility_id:
@@ -4531,7 +4304,6 @@ class ScreenResource(ApiResource):
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
         
-    @read_authorization
     def get_list(self,request,**kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
@@ -4539,7 +4311,7 @@ class ScreenResource(ApiResource):
         return self.build_list_response(request, **kwargs)
 
     def get_query(self,param_hash):
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
         schema = self.build_schema()
         screens_for_username = param_hash.get('screens_for_username', None)
         # general setup
@@ -4555,9 +4327,6 @@ class ScreenResource(ApiResource):
         if screens_for_username:
             screener_role_cte = ScreenResource.get_screener_role_cte().cte('screener_roles1')
             manual_field_includes.add('screensaver_user_role')
-        
-        if DEBUG_GET_LIST: 
-            logger.info('manual_field_includes: %r', manual_field_includes)
         
         (filter_expression, filter_fields) = \
             SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
@@ -4593,7 +4362,6 @@ class ScreenResource(ApiResource):
         _srua = self.bridge['screen_result_update_activity']
         _screen_keyword = self.bridge['screen_keyword']
         _screen_cell_lines = self.bridge['screen_cell_lines']
-        
         _library_screening = self.bridge['library_screening']
         _cp_screening = self.bridge['cherry_pick_screening']
         _lab_activity = self.bridge['lab_activity']
@@ -4929,16 +4697,13 @@ class ScreenResource(ApiResource):
         ''' 
         ScreenResource
         '''
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
  
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
+        schema = self.build_schema()
          
         is_for_detail = kwargs.pop('is_for_detail', False)
- 
-        schema = self.build_schema()
- 
         filename = self._get_filename(schema, kwargs)
  
         try:
@@ -5015,6 +4780,7 @@ class ScreenResource(ApiResource):
         return screener_roles
     
     def build_schema(self):
+
         schema = super(ScreenResource,self).build_schema()
 
         if 'fields' in schema and 'facility_id' in schema['fields']:
@@ -5036,6 +4802,7 @@ class ScreenResource(ApiResource):
 
     @transaction.atomic()    
     def delete_obj(self, deserialized, **kwargs):
+        
         id_kwargs = self.get_id(deserialized,**kwargs)
         Screen.objects.get(**id_kwargs).delete()
     
@@ -5052,19 +4819,20 @@ class ScreenResource(ApiResource):
         
         id_kwargs = self.get_id(deserialized,**kwargs)
         
-        parse_full = not id_kwargs
-        errors = self.validate(deserialized, full=parse_full)
-        if errors:
-            raise ValidationError(errors)
-        
         # create/update the screen
         try:
             screen = None
             try:
                 screen = Screen.objects.get(**id_kwargs)
+                errors = self.validate(deserialized, patch=True)
+                if errors:
+                    raise ValidationError(errors)
             except ObjectDoesNotExist, e:
                 logger.info('Screen %s does not exist, creating', id_kwargs)
                 screen = Screen(**id_kwargs)
+                errors = self.validate(deserialized, patch=False)
+                if errors:
+                    raise ValidationError(errors)
 
             for key,val in initializer_dict.items():
                 if hasattr(screen,key):
@@ -5080,10 +4848,10 @@ class ScreenResource(ApiResource):
             raise e  
 
 
-
 class UserChecklistItemResource(ApiResource):    
 
     class Meta:
+
         queryset = UserChecklistItem.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
@@ -5097,13 +4865,13 @@ class UserChecklistItemResource(ApiResource):
         always_return_data = True
 
     def __init__(self, **kwargs):
+        
         self.user_resource = None
         super(UserChecklistItemResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
+        
         return [
-            # override the parent "base_urls" so that we don't need to worry 
-            # about schema again
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
@@ -5118,23 +4886,19 @@ class UserChecklistItemResource(ApiResource):
         ]    
 
     def get_detail(self, request, **kwargs):
-        logger.info(str(('get_detail')))
 
         username = kwargs.get('username', None)
         if not username:
             logger.info(str(('no username provided')))
             raise NotImplementedError('must provide a username parameter')
-        
         item_group = kwargs.get('item_group', None)
         if not item_group:
             logger.info(str(('no item_group provided')))
             raise NotImplementedError('must provide a item_group parameter')
-        
         item_name = kwargs.get('item_name', None)
         if not item_name:
             logger.info(str(('no item_name provided')))
             raise NotImplementedError('must provide a item_name parameter')
-
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
@@ -5143,31 +4907,21 @@ class UserChecklistItemResource(ApiResource):
     def get_list(self,request,**kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-
         return self.build_list_response(request, **kwargs)
 
     @read_authorization
     def build_list_response(self,request, **kwargs):
-        ''' 
-        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns django.http.response.StreamingHttpResponse 
-        '''
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
+        schema = self.build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
-
-        schema = self.build_schema()
-
         filename = self._get_filename(schema, kwargs)
-
         item_group = param_hash.pop('item_group', None)
         if item_group:
             param_hash['item_group__eq'] = item_group
-
         item_name = param_hash.pop('item_name', None)
         if item_name:
             param_hash['item_name__eq'] = item_name
@@ -5178,9 +4932,6 @@ class UserChecklistItemResource(ApiResource):
           
             manual_field_includes = set(param_hash.get('includes', []))
             
-            if DEBUG_GET_LIST: 
-                logger.info(str(('manual_field_includes', manual_field_includes)))
-  
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
                   
@@ -5201,10 +4952,8 @@ class UserChecklistItemResource(ApiResource):
             # specific setup
             _su = self.bridge['screensaver_user']
             _admin = _su.alias('admin')
-#             _sru = self.bridge['screening_room_user']
             _up = self.bridge['reports_userprofile']
             _uci = self.bridge['user_checklist_item']
-            
             _vocab = self.bridge['reports_vocabularies']
             
             # get the checklist items & groups
@@ -5304,8 +5053,6 @@ class UserChecklistItemResource(ApiResource):
     
     def patch_obj(self,deserialized, **kwargs):
 
-        logger.info('patch_obj %s' % deserialized)
-
         schema = self.build_schema()
         fields = schema['fields']
         initializer_dict = {}
@@ -5367,6 +5114,7 @@ class UserChecklistItemResource(ApiResource):
 class ScreensaverUserResource(ApiResource):    
 
     class Meta:
+
         queryset = ScreensaverUser.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(), 
                                              SessionAuthentication())
@@ -5380,13 +5128,13 @@ class ScreensaverUserResource(ApiResource):
         always_return_data = True
 
     def __init__(self, **kwargs):
+        
         self.user_resource = None
         super(ScreensaverUserResource,self).__init__(**kwargs)
 
     def prepend_urls(self):
+        
         return [
-            # override the parent "base_urls" so that we don't need to worry 
-            # about schema again
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
@@ -5453,9 +5201,7 @@ class ScreensaverUserResource(ApiResource):
     
     def build_schema(self):
         
-        logger.debug('=== screensaver_user build_schema')
         schema = super(ScreensaverUserResource,self).build_schema()
-        
         sub_schema = self.get_user_resource().build_schema();
         fields = {}
         fields.update(sub_schema['fields'])
@@ -5464,10 +5210,8 @@ class ScreensaverUserResource(ApiResource):
                 fields[key].update(val)
             else:
                 fields[key] = val
-        
-        schema['fields'] = fields;
-        logger.debug(str(('=== final screensaver_user fields', fields)))
-        
+        schema['fields'] = fields
+        logger.debug('=== final screensaver_user fields: %r', fields)
         return schema
     
     @classmethod
@@ -5518,12 +5262,12 @@ class ScreensaverUserResource(ApiResource):
         return user_table
         
     def get_user_resource(self):
+
         if not self.user_resource:
             self.user_resource = UserResource()
         return self.user_resource
         
     def get_detail(self, request, **kwargs):
-        logger.info('get_detail')
 
         screensaver_user_id = kwargs.get('screensaver_user_id', None)
         username = kwargs.get('username', None)
@@ -5539,31 +5283,21 @@ class ScreensaverUserResource(ApiResource):
     def get_list(self,request,**kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-
         return self.build_list_response(request, **kwargs)
 
     @read_authorization
     def build_list_response(self,request, **kwargs):
-        ''' 
-        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns django.http.response.StreamingHttpResponse 
-        '''
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
+        schema = self.build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
-
-        schema = self.build_schema()
-
         filename = self._get_filename(schema, kwargs)
-        
         screensaver_user_id = param_hash.pop('screensaver_user_id', None)
         if screensaver_user_id:
             param_hash['screensaver_user_id__eq'] = screensaver_user_id
-
         username = param_hash.pop('username', None)
         if username:
             param_hash['username__eq'] = username
@@ -5575,10 +5309,6 @@ class ScreensaverUserResource(ApiResource):
             manual_field_includes = set(param_hash.get('includes', []))
             exact_fields = set(param_hash.get('exact_fields',[]))
         
-            if DEBUG_GET_LIST: 
-                logger.info(str(('manual_field_includes', manual_field_includes)))
-                logger.info(str(('exact_fields', exact_fields)))
-  
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
                   
@@ -5706,10 +5436,12 @@ class ScreensaverUserResource(ApiResource):
                 
     @transaction.atomic()    
     def delete_obj(self, deserialized, **kwargs):
+        
         id_kwargs = self.get_id(deserialized,**kwargs)
         ScreensaverUser.objects.get(**id_kwargs).delete()
 
     def get_id(self, deserialized, **kwargs):
+
         # FIXME: this mirrors UserResource.get_id
         # - update the inheritance so that ScreensaveruserResource extends UserResource
         id_kwargs = ApiResource.get_id(self, deserialized, **kwargs)
@@ -5724,7 +5456,6 @@ class ScreensaverUserResource(ApiResource):
                 
     @transaction.atomic()    
     def patch_obj(self,deserialized, **kwargs):
-        logger.info('patch_obj: screensaveruser: %r, %r',deserialized, kwargs)
 
         schema = self.build_schema()
         fields = schema['fields']
@@ -5737,10 +5468,6 @@ class ScreensaverUserResource(ApiResource):
                     deserialized.get(key,None), key,fields[key]['data_type']) 
 
         id_kwargs = self.get_id(deserialized,**kwargs)
-        parse_full = not id_kwargs
-        errors = self.validate(deserialized, full=parse_full)
-        if errors:
-            raise ValidationError(errors)
 
         username = id_kwargs.get('username', None)
         ecommons_id = id_kwargs.get('ecommons_id', None)
@@ -5756,7 +5483,13 @@ class ScreensaverUserResource(ApiResource):
             screensaver_user = None
             try:
                 screensaver_user = ScreensaverUser.objects.get(user=user)
+                errors = self.validate(deserialized, patch=True)
+                if errors:
+                    raise ValidationError(errors)
             except ObjectDoesNotExist:
+                errors = self.validate(deserialized, patch=False)
+                if errors:
+                    raise ValidationError(errors)
                 try:
                     if username:
                         screensaver_user = ScreensaverUser.objects.get(user__username=username)
@@ -5874,7 +5607,6 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
     def prepend_urls(self):
         
         return [
-            # override the parent "base_urls" so that we don't need to worry about schema again
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
@@ -5892,15 +5624,13 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
  
     
     def get_list(self, request, param_hash={}, **kwargs):
+
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-        
         return self.build_list_response(request,**kwargs)
         
     @read_authorization
     def build_list_response(self,request,**kwargs):
         
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
-
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
@@ -5939,8 +5669,6 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
           
         filename = self._get_filename(schema, kwargs)
 
-        logger.info(str(('get_list', filename, param_hash)))
-
         try:
             
             # general setup
@@ -5949,8 +5677,6 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
             desired_format = self.get_format(request)
             if desired_format == 'chemical/x-mdl-sdfile':
                 manual_field_includes.add('molfile')
-            if DEBUG_GET_LIST: 
-                logger.info(str(('manual_field_includes', manual_field_includes)))
   
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
@@ -6003,8 +5729,6 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
                 "to_char(well.plate_number,'%s')" % PLATE_NUMBER_SQL_FORMAT)
                 .label('plate_number') )
             
-            if DEBUG_GET_LIST: 
-                logger.info(str(('sub_columns', sub_columns.keys())))
             columns = self.build_sqlalchemy_columns(
                 field_hash.values(), base_query_tables=base_query_tables,
                 custom_columns=sub_columns)
@@ -6038,9 +5762,6 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
 #                 logger.info(str(('build generic resource columns')))
 #                 columns = self.build_sqlalchemy_columns(
 #                     field_hash.values(), base_query_tables=base_query_tables)
-            
-            if DEBUG_GET_LIST: 
-                logger.info(str(('columns', [str(col) for col in columns])))
             
             # Start building a query; use the sqlalchemy.sql.schema.Table API:
             _well = self.bridge['well']
@@ -6154,34 +5875,9 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
             raise Http404(str(( 'cannot build schema - library def needed'
                 'no library found for short_name', library_short_name)))
                 
-#     def build_schema1(self, library=None):
-#         
-#         schema = super(ReagentResource,self).build_schema()
-#         logger.info('schema fields: %r', schema['fields'].keys())
-#         logger.warn('fields: %r', [(key,val['scope']) for key,val in schema['fields'].items()])
-# 
-#         # grab all of the subtypes
-#         
-#         sub_schema = self.get_npr_resource().build_schema();
-#         schema['fields'].update(sub_schema['fields']);
-#         
-#         sub_schema = self.get_sr_resource().build_schema();
-#         schema['fields'].update(sub_schema['fields']);
-#         
-#         sub_schema = self.get_smr_resource().build_schema();
-#         schema['fields'].update(sub_schema['fields']);
-#         
-#         well_schema = WellResource().build_schema()
-#         schema['fields'].update(well_schema['fields'])
-# 
-#         logger.info('schema fields: %r', schema['fields'].keys())
-#         logger.warn('fields: %r', [(key,val['scope']) for key,val in schema['fields'].items()])
-#         return schema
-
     def build_schema(self, library=None):
         
         schema = deepcopy(super(ReagentResource,self).build_schema())
-        
         if library:
             sub_data = self.get_reagent_resource(library_screen_type=library.screen_type).build_schema()
             
@@ -6215,9 +5911,7 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
         ordering = []
         filtering = {}
         serializer = LimsSerializer()   
-
         xls_serializer = XLSSerializer()
-        # Backbone/JQuery likes to JSON.parse the returned data
         always_return_data = True 
         max_limit = 10000
 
@@ -6394,9 +6088,6 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
         if 'library_short_name' not in kwargs:
             raise BadRequest('library_short_name is required')
         
-#         deserialized = self.deserialize(
-#             request, 
-#             format=request.META.get('CONTENT_TYPE', 'application/json'))
         deserialized = self._meta.serializer.deserialize(
             request.body, 
             format=request.META.get('CONTENT_TYPE', 'application/json'))
@@ -6497,7 +6188,6 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
                     response=self.error_response(request, {
                         'duplex_wells': str(('library is not a pool libary', library))}))
             well_ids = well_data['duplex_wells'] #.split(';')
-#             logger.info(str(('well_ids', well_ids, well_data['duplex_wells'])))
             for well_id in well_ids:
                 try:
                     duplex_wells.append(Well.objects.get(well_id=well_id))
@@ -6506,8 +6196,6 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
                         response=self.error_response(well_bundle.request, {
                             'duplex_well not found': str(('pool well', well_bundle.obj, well_id))}))
                     
-        logger.debug(str(('updated well', well_bundle.obj)))
-
         # lookup/create the reagent
         sub_resource = self.get_reagent_resource(library_screen_type=library.screen_type)
         
@@ -6532,11 +6220,10 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
         return well_bundle
 
 
-
-
 class LibraryResource(SqlAlchemyResource, ManagedModelResource):
     
     class Meta:
+
         queryset = Library.objects.all() #.order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(), SessionAuthentication())
         authorization= UserGroupAuthorization()
@@ -6553,7 +6240,6 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         self.well_resource = None
         self.apilog_resource = None
         self.reagent_resource = None
-        
         super(LibraryResource,self).__init__(**kwargs)
         
     def get_apilog_resource(self):
@@ -6572,7 +6258,6 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         return self.reagent_resource
 
     def get_detail(self, request, **kwargs):
-        logger.info(str(('get_detail')))
 
         library_short_name = kwargs.pop('short_name', None)
         if not library_short_name:
@@ -6589,35 +6274,24 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
     def get_list(self,request,**kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-
         return self.build_list_response(request, **kwargs)
 
     @read_authorization
     def build_list_response(self,request, **kwargs):
-        ''' 
-        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns django.http.response.StreamingHttpResponse 
-        '''
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
+        schema = super(LibraryResource,self).build_schema()
         
         is_for_detail = kwargs.pop('is_for_detail', False)
-        
         for_screen_id = param_hash.pop('for_screen_id',None)
-        
-        schema = super(LibraryResource,self).build_schema()
-
         filename = self._get_filename(schema, kwargs)
 
         try:
             # general setup
             
             manual_field_includes = set(param_hash.get('includes', []))
-            if DEBUG_GET_LIST: 
-                logger.info(str(('manual_field_includes', manual_field_includes)))
  
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
@@ -6723,94 +6397,73 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
     def prepend_urls(self):
 
         return [
-            # override the parent "base_urls" so that we don't need to worry 
-            # about schema again
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
-                
-#             url((r"^(?P<resource_name>%s)"
-#                  r"/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))/schema%s$") 
-#                     % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('get_schema'), name="api_get_schema"),
-
-            # TODO: rework the "((?=(schema))__|(?!(schema))[^/]+)" to "[\w\d_.\-\+: ]+" used below
-            # or even "[\/]+"
             url(r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
                  r"/copy/(?P<copy_name>[^/]+)"
-                 r"/plate/(?P<plate_number>[^/]+)%s$") % (self._meta.resource_name, trailing_slash()), 
+                 r"/plate/(?P<plate_number>[^/]+)%s$") 
+                    % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_library_copyplateview'), 
                 name="api_dispatch_library_copyplateview"),
-
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
                  r"/copy/(?P<copy_name>[^/]+)"
                  r"/plate%s$") % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_library_copyplateview'), 
                 name="api_dispatch_library_copyplateview"),
-
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
                  r"/copy/(?P<copy_name>[^/]+)"
-                 r"/copywell/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$") % (self._meta.resource_name, trailing_slash()), 
+                 r"/copywell/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$") 
+                    % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_library_copywellview'), 
                 name="api_dispatch_library_copywellview"),
-
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
                  r"/copy/(?P<copy_name>[^/]+)"
-                 r"/copywellhistory/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$") % (self._meta.resource_name, trailing_slash()), 
+                 r"/copywellhistory/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$") 
+                    % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_library_copywellhistoryview'), 
                 name="api_dispatch_library_copywellhistoryview"),
-
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
                  r"/copy/(?P<copy_name>[^/]+)"
                  r"/copywell%s$") % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_library_copywellview'), 
                 name="api_dispatch_library_copywellview"),
-
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
                  r"/copy/(?P<name>[^/]+)%s$") % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_library_copyview'), 
                 name="api_dispatch_library_copyview"),
-
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
                  r"/copy%s$" ) % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_library_copyview'), 
-#                 self.wrap_view('dispatch_librarycopyview'), 
                 name="api_dispatch_library_copyview"),
-
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
                  r"/plate%s$" ) % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_library_copyplateview'), 
                 name="api_dispatch_library_copyplateview"),
-            
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
-                 r"/plate/(?P<plate_number>[^/]+)%s$" ) % (self._meta.resource_name, trailing_slash()), 
+                 r"/plate/(?P<plate_number>[^/]+)%s$" ) 
+                    % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_library_copyplateview'), 
                 name="api_dispatch_library_copyplateview"),
-            
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
                  r"/well%s$" ) % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_library_wellview'), 
                 name="api_dispatch_library_wellview"),
-            
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
                  r"/reagent%s$" ) % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_library_reagentview'), 
                 name="api_dispatch_library_reagentview"),
-            
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
                  r"/reagent/schema%s$") 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_reagent_schema'), name="api_get_reagent_schema"),
-            
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
                  r"/well/schema%s$") 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_well_schema'), name="api_get_well_schema"),
-                
             url((r"^(?P<resource_name>%s)/(?P<short_name>((?=(schema))__|(?!(schema))[^/]+))"
                  r"/version%s$" ) % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_libraryversionview'), 
@@ -6818,6 +6471,7 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         ]    
     
     def get_well_schema(self, request, **kwargs):
+
         if not 'short_name' in kwargs:
             raise Http404(str((
                 'The well schema requires a library short name'
@@ -6826,10 +6480,11 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         return self.get_well_resource().get_schema(request, **kwargs)    
   
     def get_reagent_schema(self, request, **kwargs):
+        
         if not 'short_name' in kwargs:
-            raise Http404(str((
+            raise Http404(
                 'The reagent schema requires a library short name'
-                ' in the URI, as in /library/[short_name]/well/schema/')))
+                ' in the URI, as in /library/[short_name]/well/schema/')
         kwargs['library_short_name'] = kwargs.pop('short_name')
         return self.get_reagent_resource().get_schema(request, **kwargs)    
   
@@ -6861,11 +6516,8 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
         kwargs['library_short_name'] = kwargs.pop('short_name')
         return self.get_reagent_resource().dispatch('list', request, **kwargs)    
                     
-#     def dispatch_libraryversionview(self, request, **kwargs):
-#         kwargs['library_short_name'] = kwargs.pop('short_name')
-#         return LibraryContentsVersionResource().dispatch('list', request, **kwargs)    
-        
     def build_schema(self, librarytype=None):
+
         schema = cache.get(self._meta.resource_name + ":schema")
         if not schema:
             # FIXME: these options should be defined automatically from a vocabulary in build_schema
@@ -6905,9 +6557,10 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
     ## "Starting with Django 1.6, atomic() is the only supported API for 
     ##  defining a transaction. Unlike the deprecated APIs, it'snestable and
     ##  always guarantees atomicity.
-    ##
+    
     @transaction.atomic()
     def obj_create(self, bundle, **kwargs):
+   
         bundle.data['date_created'] = timezone.now()
         logger.debug(str(('===creating library', bundle.data)))
         bundle = super(LibraryResource, self).obj_create(bundle, **kwargs)
@@ -6926,8 +6579,6 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
             for plate in range(int(library.start_plate), int(library.end_plate)+1):
                 for index in range(0,plate_size):
                     well = Well()
-                    # FIXME: get rid of version
-#                     well.version = 1
                     well.well_name = lims_utils.well_name_from_index(index,plate_size)
                     well.well_id = lims_utils.well_id(plate,well.well_name)
                     well.library = library
@@ -6936,94 +6587,14 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
                     well.library_well_type = 'undefined'
                     well.save()
                     i += 1
+                    if i % 38400 == 0:
+                        logger.info('created %d wells', i)
             logger.info(str(('created', i, 'wells for library', library.short_name, library.library_id )))
             return bundle
         except Exception, e:
             logger.exception('on library create')
             raise e
 
-# class LibraryContentsVersionResource(ManagedModelResource):
-# 
-#     library_short_name = fields.CharField('library__short_name',  null=True)
-#     loading_activity = fields.ToOneField(
-#         'db.api.ActivityResource', 
-#         attribute='library_contents_loading_activity__activity', 
-#         full=True, full_detail=True, full_list=True,
-#         null=True)
-#     release_activity = fields.ToOneField(
-#         'db.api.ActivityResource', 
-#         attribute='library_contents_release_activity__activity', 
-#         full=True, full_detail=True, full_list=True,
-#         null=True)
-#      
-#     date_loaded = fields.DateField(
-#         'library_contents_loading_activity__activity__date_of_activity', null=True)
-#     date_released = fields.DateField(
-#         'library_contents_release_activity__activity__date_of_activity', null=True)
-#     load_commments = fields.CharField(
-#         'library_contents_loading_activity__activity__comments', null=True)
-#     loaded_by_id = fields.IntegerField(
-#         'library_contents_loading_activity__activity__performed_by__screensaver_user_id',
-#         null=True)
-#         
-#     class Meta:
-#         queryset = LibraryContentsVersion.objects.all() #.order_by('facility_id')
-#         authentication = MultiAuthentication(BasicAuthentication(), 
-#                                              SessionAuthentication())
-#         authorization= UserGroupAuthorization()
-#         resource_name = 'librarycontentsversion'
-#         
-#         ordering = []
-#         filtering = {}
-#         serializer = LimsSerializer()
-#         
-#     def __init__(self, **kwargs):
-#         super(LibraryContentsVersionResource,self).__init__(**kwargs)
-# 
-#     def prepend_urls(self):
-#         # NOTE: this match "((?=(schema))__|(?!(schema))[^/]+)" 
-#         # allows us to match any word (any char except forward slash), 
-#         # except "schema", and use it as the key value to search for.
-#         # also note the double underscore "__" is because we also don't want to 
-#         # match in the first clause.
-#         # We don't want "schema" since that reserved word is used by tastypie 
-#         # for the schema definition for the resource (used by the UI)
-#         return [
-#             url((r"^(?P<resource_name>%s)"
-#                  r"/(?P<library__short_name>((?=(schema))__|(?!(schema))[^/]+))"
-#                  r"/(?P<version_number>[^/]+)%s$")  
-#                     % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),]    
-#     
-#     def get_object_list(self, request, library_short_name=None):
-#         ''' 
-#         Note: any extra kwargs are there because we are injecting them into the 
-#         global tastypie kwargs in one of the various "dispatch_" handlers assigned 
-#         through prepend_urls.  Here we can explicitly add them to the query. 
-#         
-#         '''
-#         query = super(LibraryContentsVersionResource, self).get_object_list(request);
-#         if library_short_name:
-#             query = query.filter(library__short_name=library_short_name)
-#         return query
-# 
-#     def dehydrate(self, bundle):
-#         if bundle.obj.library_contents_loading_activity:
-#             sru = bundle.obj.library_contents_loading_activity.activity.performed_by
-#             bundle.data['loaded_by'] =  sru.first_name + ' ' + sru.last_name
-#         if bundle.obj.library_contents_loading_activity:
-#             sru = bundle.obj.library_contents_release_activity.activity.performed_by
-#             bundle.data['released_by'] =  sru.first_name + ' ' + sru.last_name
-#         return bundle
-#         
-#     def build_schema(self):
-#         schema = super(LibraryContentsVersionResource,self).build_schema()
-#         return schema
-#     
-#     def obj_create(self, bundle, **kwargs):
-#         bundle.data['date_created'] = timezone.now()
-#         super(LibraryContentsVersionResource, self).obj_create(bundle, **kwargs)
-    
 
 # class BasicAuthenticationAjaxBrowsers(BasicAuthentication):
 #     '''

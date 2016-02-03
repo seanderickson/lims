@@ -16,14 +16,16 @@ define([
   var DetailLayout = Backbone.Layout.extend({
 
     initialize: function(args) {
-      console.log('---- initialize detail layout');
+      console.log('---- initialize detail layout', args);
       this.uriStack = args.uriStack;
       this.consumedStack = [];
       this.subviews = {};
       this.args = args;
       this.DetailView = args.DetailView || DetailView;
-      _.bindAll(this, 'showDetail');
-      _.bindAll(this, 'showEdit');
+      this.EditView = args.EditView || EditView;
+      this.modelSchema = args.modelSchema || this.model.resource.schema;
+      this.modelFields = args.modelFields || this.modelSchema.fields;
+      _.bindAll(this, 'showDetail', 'showEdit');
     },
 
     events: {
@@ -62,48 +64,33 @@ define([
       this.reportUriStack(['edit']);
       this.showEdit('edit');
     },
-    
-    showEdit: function(viewId) {
-      console.log('showEdit: viewId: ' + viewId);
-      var self = this;
-      var showEditFunction = function(editOptions){
-        var editOptions = editOptions || {};
-        var view = self.subviews['edit'];
-        if (!view) {
-          view = new EditView(
-            _.extend({}, self.args, { 
-              model: self.model, 
-              uriStack: [viewId] 
-            }, editOptions));
-          Backbone.Layout.setupView(view);
-          self.subviews['edit'] = view;
-        }
-        self.listenTo(view,'remove',function(){
-          self.removeView(view);
-          self.showDetail();
-        });
-        self.listenTo(view , 'uriStack:change', self.reportUriStack);
-        view = self.setView("#detail_content", view ).render();
-        return view;
-      };
-      
-      // onEditCallBack: used by owning resource to specify actions to take 
-      // before editing (i.e. build option choiceHashes )
-      if(this.args.onEditCallBack){
-        this.args.onEditCallBack(showEditFunction);
-      }else{
-        showEditFunction();
-      }
-      
-    },    
 
+    showEdit: function() {
+      console.log('showEdit: editView: ',EditView);
+      var self = this;
+      view = new this.EditView(_.extend({}, self.args, 
+        { 
+          model: self.model, 
+          uriStack: self.uriStack 
+        }));
+      Backbone.Layout.setupView(view);
+      self.listenTo(view,'remove',function(){
+        self.removeView(view);
+        self.showDetail();
+      });
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView("#detail_content", view ).render();
+    },
+    
     afterRender: function(){
       if (!_.isEmpty(this.uriStack)){
         viewId = this.uriStack.shift();
         if (viewId == 'edit') {
+          this.uriStack.push(viewId);
           this.showEdit(viewId);
           return;
         }else if (viewId == '+add') {
+          this.uriStack.push(viewId);
           this.showEdit(viewId);
           return;
         }

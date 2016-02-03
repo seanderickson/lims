@@ -201,7 +201,6 @@ define([
 
       function siUnitGetter(value){
         var formatter = new Iccbl.SIUnitsFormatter(cell_options)
-        console.log('get siunit value', value && !_.isEmpty(value), formatter.fromRaw(value));
         if(value){
           console.log('get siunit value', value, formatter.fromRaw(value));
           return formatter.fromRaw(value);

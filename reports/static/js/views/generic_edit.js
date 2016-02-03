@@ -3,6 +3,7 @@ define([
     'underscore',
     'backbone',
     'backbone_forms',
+    'backbone_forms_list',
     'multiselect',
     'quicksearch',
     'iccbl_backgrid',
@@ -13,15 +14,15 @@ define([
     'bootstrap',
     'bootstrap-datepicker',
     'chosen'
-], function( $, _, Backbone, backbone_forms, multiselect, quicksearch, Iccbl, appModel,
+], function( $, _, Backbone, backbone_forms, backbone_forms_list, 
+            multiselect, quicksearch, Iccbl, appModel,
             DetailView, editTemplate, modalOkCancel ) {
-  
   var SIunitEditor = Backbone.Form.editors.Base.extend({
     
     tagname: 'siuniteditor',
     
     fieldTemplate: _.template([
-      '<div data-editor class="form-control" title="<%= help %>"  >',
+      '<div data-editor class="form-control col-sm-10" title="<%= help %>"  >',
       ].join('')),
     unitFieldTemplate: _.template([
       '<div data-editor title="<%= help %>"  >',
@@ -516,7 +517,14 @@ define([
       
       this.setOptions(this.schema.options);
       
-      if(this.schema.placeholder){
+      // if the current value is not in the options, then display it as the placeholder
+      var currVal = this.model.get(this.key);
+      console.log('currval', currVal);
+      if(!_.find(this.schema.options,function(option){
+        return option.val == currVal;
+      })){
+        this.$el.attr('data-placeholder', currVal);
+      }else if(this.schema.placeholder){
         this.$el.attr('data-placeholder', this.schema.placeholder);
       }
       return this;
@@ -525,7 +533,6 @@ define([
   
   
   var EditView = Backbone.Form.extend({
-    
     initialize: function(args) {
 
       console.log('Editview initialize: ', args);
@@ -556,6 +563,19 @@ define([
       }
       this.finalEditableKeys = [];
       
+      // look in the uriStack for preset values
+      console.log('Editview; uriStack', this.uriStack);
+      if(this.uriStack){
+        for(var i=0; i<this.uriStack.length; ){
+          var key = this.uriStack[i++];
+          if (i<this.uriStack.length){
+            var val = this.uriStack[i++];
+            console.log('key', key, 'val', val);
+            this.model.set(key,val);
+          }
+        }
+      }
+      
       // The delegateModel/View is used to display visible, but not editable fields
       var delegateModel = new Backbone.Model(_.clone(this.model.attributes ));
       delegateModel.resource = this.model.resource;
@@ -563,6 +583,7 @@ define([
 
       // NOTE: due to a phantomjs js bug, must convert arguments to a real array
       Backbone.Form.prototype.initialize.apply(this,Array.prototype.slice.apply(arguments));
+      
     },
 
     events: {
@@ -630,6 +651,11 @@ define([
       var editSchema = {};
       
       var typeMap = {
+        'custom': 
+          {
+            type: DisabledField, // presumably, the custom view will replace this 
+            editorAttrs: { widthClass: 'col-sm-6' }
+          },
         'boolean': 
           {
             type: Backbone.Form.editors.Checkbox,
@@ -667,7 +693,8 @@ define([
         'list': 
           {
             // NOTE: list will only be a multi-select if the edit type is set 
-            type: Backbone.Form.editors.Text,
+            // TODO:test 20160202, added as a test with the plate ranges, but useful for other list fields
+            type: Backbone.Form.editors.List, 
             editorAttrs: { widthClass: 'col-sm-6' }
           },
         'date': 
@@ -761,11 +788,17 @@ define([
           if(_.has(typeMap, fi.data_type)){
             _.extend(fieldSchema, typeMap[fi.data_type]);
           }
+          if(_.has(typeMap, fi.display_type)){
+            _.extend(fieldSchema, typeMap[fi.display_type]);
+          }
           if(_.has(typeMap, fi.edit_type)){
             _.extend(fieldSchema, typeMap[fi.edit_type]);
           }
+          
           if (cell_options){
+            _.extend(fieldSchema,cell_options);
             // editorAttrs are available as data for the template compilation
+            // TODO: create editorAttrs nested property on cell_options to clean up html
             fieldSchema.editorAttrs = _.extend({},fieldSchema.editorAttrs,cell_options)
           }
           if(_.contains(['select','multiselect','multiselect2','multiselect3'],fi.edit_type)){
@@ -911,6 +944,7 @@ define([
      * Backbone Forms
      */
     renderTemplate: function() {
+      console.log('renderTemplate');
       return Backbone.Form.prototype.render.apply(this);
     },
 
@@ -977,9 +1011,12 @@ define([
       // see: http://stackoverflow.com/questions/20457902/how-to-automatically-focus-first-backbone-forms-input-field
       this.$el.find('input').first().attr('autofocus','autofocus');
       
+      // cache initial values to detect changes later:
+      this.initialValues = this.getValue();
+      console.log('Editview initialized, initial values:', this.initialValues);
+      
       console.log('afterRender finished');
     },
-    
     
     template: _.template(editTemplate),
     
@@ -996,29 +1033,44 @@ define([
       if(changedAttributes){
         changedAttributes = _.pick(changedAttributes, this.finalEditableKeys);
       }
-      // finally, equate null to empty string
       changedAttributes = _.omit(changedAttributes, function(value,key,object){
-        if(_.isEmpty(value) || _.isNull(value)){
-          return (_.isEmpty(model.previous(key)) || _.isNull(model.previous(key)));
+
+        if( _.has(self.initialValues,key)){
+          // test if the editor conversion is equivalent
+          if (self.initialValues[key]== value){
+            return true;
+          }
         }
         
-        //        if(_.isArray(value)){
-        //          // TODO: Invalid if the attribute is an ordered array
-        //          if(!_.isEmpty(model.previous(key))){
-        //            // find additions & deletions
-        //            return (_.isEmpty(_.without(value,model.previous(key)));
-        //                && _.isEmpty(_.without(model.previous(key),value)));
-        //          }
-        //        }
-
+        // equate null to empty string, object, or array
+        if(_.isNull(value)){
+          var prev = model.previous(key);
+          if(_.isNull(prev)) return true;
+          if(_.isObject(prev) || _.isString(prev) || _.isArray(prev)){
+            return _.isEmpty(prev);
+          }
+        }
+        if(_.isObject(value) || _.isString(value) || _.isArray(value)){
+          if(_.isEmpty(value)){
+            var prev = model.previous(key);
+            if(_.isNull(prev)) return true;
+            if(_.isObject(prev) || _.isString(prev) || _.isArray(prev)){
+              return _.isEmpty(prev);
+            }
+          }
+        }
+        
         // Cleanup strings containing newlines: 
         // carriage-return,line-feed (0x13,0x10) may be converted to line feed only (0x10)
         // NOTE: JSON does not officially support control-characters, so 
         // newlines should be escaped/unescaped on send/receive in the API (TODO)
         if(_.isString(value) && model.previous(key)){
-          return ( value.replace(/(\r\n|\n|\r)/gm,"\n") 
-              == model.previous(key).replace(/(\r\n|\n|\r)/gm,"\n") );
+          if( value.replace(/(\r\n|\n|\r)/gm,"\n") 
+              == model.previous(key).replace(/(\r\n|\n|\r)/gm,"\n") ){
+            return true;
+          }
         }
+        return false;
       });
       
       return changedAttributes;
@@ -1078,7 +1130,7 @@ define([
       headers[appModel.HEADER_APILOG_COMMENT] = self.model.get('apilog_comment');
       
       if(!_.isUndefined(this.saveCallBack) && _.isFunction(this.saveCallBack)){
-        this.saveCallBack(this.model,headers,_patch,url);
+        this.saveCallBack(this.model,headers,options, url);
       }else{
         // Note:
         // You have to send { dataType: 'text' } to have the success function 
@@ -1102,7 +1154,10 @@ define([
             // TODO: done replaces success as of jq 1.8
             console.log('model saved');
           })
-          .error(appModel.jqXHRError)
+          .fail(function(){ 
+            self.model.fetch();
+            Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+          })
           .always(function() {
             // always replaces complete as of jquery 1.8
             console.log('trigger remove');
@@ -1121,8 +1176,8 @@ define([
       this.trigger('uriStack:change', actualStack );
     }
     
-
 	});
+  EditView.ChosenSelect = ChosenSelect;
   EditView.DatePicker = DatePicker;
   
 	return EditView;

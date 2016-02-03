@@ -145,8 +145,10 @@ define([
         }
         var fetched = false;
         if ( !fetched ) {
-          var fetchOptions = { reset: false, error: appModel.backboneFetchError };
-          self.collection.fetch(fetchOptions);
+          var fetchOptions = { reset: false };
+          self.collection.fetch(
+            fetchOptions
+          ).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
         }
         this.delegateEvents();
         return this;

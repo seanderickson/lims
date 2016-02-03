@@ -222,12 +222,13 @@ todo: these selectors should be redone
 
 .iccbl-nested-form input{
   padding-left: 12px !important;
-  border: 0px;
+  border-top: 0px;
 }
 
 .iccbl-nested-form-unit select{
 /*   padding: 0 0 0 0 !important; */
   width: 4eM !important;
+  border-left: 0px;
 }
 
 .form-horizontal .form-control{

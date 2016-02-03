@@ -525,21 +525,23 @@ var CollectionOnClient = Iccbl.CollectionOnClient = Backbone.Collection.extend({
   }
 });
 
-var getCollectionOnClient = Iccbl.getCollectionOnClient = function(url, callback){
+var getCollectionOnClient = Iccbl.getCollectionOnClient = function(url, callback, options){
+  var options = options || {};
+  var data_for_get = options.data_for_get || {};
+  data_for_get = _.extend({ limit: 0 },data_for_get);
   var CollectionClass = Iccbl.CollectionOnClient.extend({
     url: url 
   });
   var instance = new CollectionClass();
   instance.fetch({
-    data: { limit: 0 },
+    data: data_for_get,
     success: function(collection, response) {
       callback(collection);
     },
-    error: Iccbl.appModel.backboneFetchError, 
     always: function(){
       console.log('done: ');
     }
-  });
+  }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
 };
 
 var getCollection = Iccbl.getCollection = function(schemaResult, url, callback) {
@@ -909,8 +911,6 @@ _.extend(SIUnitsFormatter.prototype, {
    * @return {string}
    */
   fromRaw: function (number, model) {
-    // console.log('process: ' + number + ', ' +this.multiplier
-    // + ', ' + this.symbol + ', ' + this.decimals );
     return this.getUnit(number, this.multiplier, this.symbol, this.decimals);
   },
 
@@ -1200,9 +1200,9 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
       success: function () {
         console.log('fetch success, direction: ' + direction);
         collection.trigger("backgrid:sorted", column, direction, collection);
-      },
-      error: Iccbl.appModel.backboneFetchError
-    });
+      }
+//      error: Iccbl.appModel.backboneFetchError
+    }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
     
     column.set("direction", direction);
 
@@ -1333,9 +1333,9 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     });
 
     if(!_.isEmpty(_data)){
-      self.fetch({
-        error: Iccbl.appModel.backboneFetchError
-      });
+      self.fetch().fail(
+        function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
+      );      
       // TODO: 2014-04-11: not sure why removing this works:
       // removed to fix sort not working when custom searches
       // are used. Custom searches seem to still work: further testing of search
@@ -1348,9 +1348,9 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     }else{
       // TODO: test further, part of the double network hit on search - REMOVED
       // 20150113
-      self.fetch({
-        error: Iccbl.appModel.backboneFetchError
-      });
+      self.fetch().fail(
+        function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
+      );      
     }
   },
 
@@ -2891,9 +2891,10 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
           JSON.stringify(searchHash));
       this.collection.addSearch(searchHash);
     }else{
-      self.collection.fetch({
-        error: Iccbl.appModel.backboneFetchError
-      });
+      self.collection.fetch().fail(
+        function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments);}
+      );      
+      
     }
   },
   

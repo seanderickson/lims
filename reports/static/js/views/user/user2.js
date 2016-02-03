@@ -64,6 +64,7 @@ define([
      * Layoutmanager hook
      */
     serialize: function() {
+      var self = this;
       return {
         'base_url': self.model.resource.key + '/' + self.model.key,
         'tab_resources': this.tabbed_resources
@@ -165,27 +166,12 @@ define([
  
       this.model.resource.schema.fields['permissions']['choices'] = appModel.get('permissionOptions');
       
-//      var onEditCallBack = function(displayFunction){
-//        appModel.getUserGroupOptions(function(options){
-//          self.model.resource.schema.fields['super_groups']['choices'] = options;
-//          self.model.resource.schema.fields['sub_groups']['choices'] = options;
-//          appModel.getUserOptions(function(options){
-//            self.model.resource.schema.fields['users']['choices'] = options;
-//            
-//            displayFunction();
-//          });
-//        });
-//      };
       console.log('setDetail: delegateStack: ', delegateStack);
-//      var view = this.tabViews[key];
-//      if ( !view ) {
         var view = new DetailLayout({ 
           model: this.model, 
           uriStack: delegateStack
-//          onEditCallBack: onEditCallBack 
         });
         this.tabViews[key] = view;
-//      }
       // NOTE: have to re-listen after removing a view
       this.listenTo(view , 'uriStack:change', this.reportUriStack);
       // Note: since detail_layout reports the tab, the consumedStack is empty here

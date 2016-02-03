@@ -105,9 +105,8 @@ define([
         done: function(model, resp){
           // TODO: done replaces success as of jq 1.8
           console.log('done');
-        },
-        error: appModel.jqXHRError
-      });
+        }
+      }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });
     },
 
     /**
@@ -309,10 +308,6 @@ define([
       // 1. show List view for copies query,
       // 2. or employ the the LibraryCopy (detail) view in the content space:
       var copyResource = appModel.getResource('librarycopy'); 
-      
-      // List or detail?
-      // List: check for list args, or empty
-      
       // TODO: allow LibraryCopy model to be provided, with an empty uriStack?
       // (this facilitates in-memory model sharing)
       // (prefer: not to do this, rather, implement model caching on the app-state,

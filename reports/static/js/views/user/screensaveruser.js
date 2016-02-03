@@ -60,7 +60,7 @@ define([
 
     setDetail: function(delegateStack){
       var key = 'detail';
-      var self = this;
+      var self,outerSelf = self = this;
       console.log('setDetail: ', delegateStack);
         
       // Create model validation rules based on classification
@@ -79,19 +79,67 @@ define([
         if (!_.isEmpty(errs)) return errs;
       };
       
-      // onEditCallBack: wraps the edit display function
-      // - lazy fetch of the expensive principal investigators hash
-      // - perform post-render enhancement of the display
-      var onEditCallBack = function(displayFunction){
+      var editView = EditView.extend({
         
+        afterRender: function(){
+          var self = this;
+          console.log('override afterRender');
+          
+          var addLabAffiliationButton = $([
+            '<a class="btn btn-default btn-sm" ',
+              'role="button" id="add_button" href="#">',
+              'Add</a>'
+            ].join(''));
+          
+          addLabAffiliationButton.click(function(event){
+            event.preventDefault();
+            outerSelf.addLabAffiliation(self);
+          });
+
+          // Render the editForm; then add the add lab affiliation button
+          self.$el.find('div[key="lab_head_affiliation"]').append(addLabAffiliationButton);
+          
+          // Set up lab_head_affiliation availability based on classification
+          if(self.getValue('classification') != 'principal_investigator'){
+              self.$el.find('[key="form-group-lab_head_affiliation"]').hide();
+          }
+          // attach classification change listener
+          self.listenTo(this, "classification:change", function(e){
+            var classification = self.getValue('classification');
+            console.log('classification:' + classification)
+            if(classification == 'principal_investigator'){
+              self.$el.find('[key="form-group-lab_head_affiliation"]').show();
+              self.setValue('lab_head_username',self.model.get('username'));
+              self.$el.find('[key="lab_head_username"]').find('.chosen-select').trigger("chosen:updated");
+            } else {
+              self.setValue('lab_head_affiliation','');
+              //editForm.setValue('lab_head_username','');
+              self.$el.find('[key="lab_head_username"]').find('.chosen-select').trigger("chosen:updated");
+              self.$el.find('[key="form-group-lab_head_affiliation"]').hide();
+            }
+          });
+        
+          EditView.prototype.afterRender.call(this,arguments);
+        }
+      });
+
+      var view = this.tabViews[key];
+      if (view) {
+        // remove the view to refresh the page form
+        this.removeView(this.tabViews[key]);
+      }
+      view = new DetailLayout({ 
+        model: this.model, 
+        uriStack: delegateStack,
+        EditView: editView
+      });
+      view.showEdit = function(){
         this.model.resource.schema.fields['permissions']['choices'] = (
             appModel.get('permissionOptions'));
         
         appModel.getPrincipalInvestigatorOptions(function(options){
 
           self.model.resource.schema.fields['lab_head_username']['choices'] = options;
-          
-          var editForm = displayFunction();
           
           // Set up the dynamic add lab_affiliation form
           // with the edit view available, set up the lab_head_affiliation rules
@@ -107,57 +155,9 @@ define([
               appModel.unset('principal_investigators');
             }
           });
-    
-          var addLabAffiliationButton = $([
-            '<a class="btn btn-default btn-sm" ',
-              'role="button" id="add_button" href="#">',
-              'Add</a>'
-            ].join(''));
-          
-          addLabAffiliationButton.click(function(event){
-            event.preventDefault();
-            self.addLabAffiliation(editForm);
-          });
-
-          // Render the editForm; then add the add lab affiliation button
-          var temp = editForm.afterRender;
-          editForm.afterRender = function(){
-            editForm.$el.find('div[key="lab_head_affiliation"]').append(addLabAffiliationButton);
-            temp.call(editForm,arguments);
-            
-            // Set up lab_head_affiliation availability based on classification
-            if(editForm.getValue('classification') != 'principal_investigator'){
-                editForm.$el.find('[key="form-group-lab_head_affiliation"]').hide();
-            }
-            // attach classification change listener
-            editForm.listenTo(this, "classification:change", function(e){
-              var classification = editForm.getValue('classification');
-              console.log('classification:' + classification)
-              if(classification == 'principal_investigator'){
-                editForm.$el.find('[key="form-group-lab_head_affiliation"]').show();
-                editForm.setValue('lab_head_username',self.model.get('username'));
-                editForm.$el.find('[key="lab_head_username"]').find('.chosen-select').trigger("chosen:updated");
-              } else {
-                editForm.setValue('lab_head_affiliation','');
-                //editForm.setValue('lab_head_username','');
-                editForm.$el.find('[key="lab_head_username"]').find('.chosen-select').trigger("chosen:updated");
-                editForm.$el.find('[key="form-group-lab_head_affiliation"]').hide();
-              }
-            });
-          }; // after render
-        });
+          DetailLayout.prototype.showEdit.call(view,arguments);
+        });  
       };
-
-      var view = this.tabViews[key];
-      if (view) {
-        // remove the view to refresh the page form
-        this.removeView(this.tabViews[key]);
-      }
-      view = new DetailLayout({ 
-        model: this.model, 
-        uriStack: delegateStack,
-        onEditCallBack: onEditCallBack 
-      });
 
       this.tabViews[key] = view;
       
@@ -317,7 +317,7 @@ define([
                           }
                         });
                         
-                        editForm.fields['lab_head_username'].setOptions(choiceHash);
+                        editForm.fields['lab_head_username'].editor.setOptions(choiceHash);
                         editForm.$el.find('[key="lab_head_username"]')
                           .find('.chosen-select').trigger("chosen:updated");
                       });
@@ -328,9 +328,8 @@ define([
               done: function(model, resp){
                 // TODO: done replaces success as of jq 1.8
                 console.log('done');
-              },
-              error: appModel.jqXHRError
-            });
+              }
+            }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });
           
             return true;
           }
@@ -497,8 +496,8 @@ define([
       
       var resource = Iccbl.appModel.getResource('serviceactivity');
       var defaults = {};
-      appModel.getAdminUserOptions(function(options){
-        resource.schema.fields['performed_by_username']['choices'] = options;
+      appModel.initializeAdminMode(function(){
+        resource.schema.fields['performed_by_username']['choices'] = appModel.getAdminUserOptions();
 
         _.each(resource.fields, function(value, key){
             if (key == 'resource_uri') {
@@ -736,9 +735,8 @@ define([
                 done: function(model, resp){
                   // TODO: done replaces success as of jq 1.8
                   console.log('done');
-                },
-                error: appModel.jqXHRError
-              });
+                }
+              }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });
             
               return true;
             }
@@ -862,7 +860,7 @@ define([
                 {
                   headers: headers,
                   error: function(){
-                    appModel.jqXHRError.apply(this,arguments);
+                    appModel.jqXHRfail.apply(this,arguments);
                     console.log('error, refetch', arguments);
                     changedCollection.reset();
                     collection.fetch({ reset: true });

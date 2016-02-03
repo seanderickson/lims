@@ -59,7 +59,9 @@ define([
         var vocabulary_scope_ref = fi['vocabulary_scope_ref'];
         var displayedVal,vocabulary,cell_options;
         var input = self.view.$('#'+key);
-
+        cell_options = fi.display_options;
+        
+        // TODO: use the app_state method to get the resource/parse the display_options
         if (!_.isEmpty(fi.display_options)){
           cell_options = fi['display_options'];
           cell_options = cell_options.replace(/'/g,'"');
@@ -178,12 +180,12 @@ define([
       this.$fixture.empty().appendTo($("#fixtures"));
       this.model = new Backbone.Model(JSON.parse(test_model_raw));
       this.model.resource = this.resource;
-      var onEditCallBack = function(displayFunction){
-        appModel.getUserOptions(function(options){
-          self.model.resource.schema.fields['users']['choices'] = options;
-          displayFunction();
-        });
-      };
+//      var onEditCallBack = function(displayFunction){
+//        appModel.getUserOptions(function(options){
+//          self.model.resource.schema.fields['users']['choices'] = options;
+//          displayFunction();
+//        });
+//      };
     
       this.view = new EditView({ 
 

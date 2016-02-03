@@ -10,6 +10,7 @@ define([
   'views/generic_edit',
   'views/library/library',
   'views/screen/screen',
+  'views/screen/libraryScreening',
   'views/user/user2',
   'views/user/screensaveruser',
   'views/usergroup/usergroup2',
@@ -19,8 +20,8 @@ define([
   'text!templates/about.html'
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
-         EditView, LibraryView, ScreenView, UserAdminView, UserView, UserGroupAdminView, 
-         DetailTestView, layout, welcomeLayout, 
+         EditView, LibraryView, ScreenView, LibraryScreeningView, UserAdminView, 
+         UserView, UserGroupAdminView, DetailTestView, layout, welcomeLayout, 
          aboutLayout) {
   
   var VIEWS = {
@@ -28,6 +29,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     'DetailView': DetailLayout, 
     'LibraryView': LibraryView,
     'ScreenView': ScreenView,
+    'LibraryScreeningView': LibraryScreeningView,
     'UserView': UserView,
     'UserAdminView': UserAdminView,
     'UserGroupAdminView': UserGroupAdminView,
@@ -49,45 +51,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         
     showAdd: function(resource, uriStack){
       var self = this;
-
-      // Note: have to fill up the default fields so that the edit form will
-      // show those fields
-      var defaults = {};
-      _.each(resource.schema.allEditVisibleKeys(), function(key){
-        
-        var field = resource.schema.fields[key];
-        console.log('add field: ' + field.key );
-      
-        if (key == 'resource_uri') {
-            defaults[key] = self.options.url;
-        } else if (key == 'id'){
-          // nop 
-          // always exclude the id field to signal create case to the server
-        } else {
-          if(field.default && !_.isNull(field.default)){
-            try {
-              defaults[key] = JSON.parse(field.default);
-            }catch(e){
-              if (field.data_type == 'date' && field.default == 'now'){
-                defaults[key] = Iccbl.getISODateString(new Date());
-              }else{
-                appModel.error('Warning, unparseable default for field: ' 
-                  + field.key + ', value: ' + field.default );
-                defaults[key] = '';
-              }
-            }
-          }else{
-            defaults[key] = ''; // fill the rest of the fields with blanks
-          }
-        }
-      });
-
-      var NewModel = Backbone.Model.extend({
-        urlRoot: resource.apiUri , defaults: defaults 
-      });
-      var newModel = new NewModel();
-      newModel.resource = resource;
-      console.log('new model', newModel);
+      var newModel = appModel.createNewModel(resource.key);
       this.$('#content_title').html(resource.title + ': Add' );
       var viewClass = DetailLayout;
       if (_.has(resource, 'detailView')){

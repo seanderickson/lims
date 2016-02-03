@@ -361,7 +361,7 @@
         "data_type": "decimal", 
         "description": "Test SIUnit field", 
         "display_format": null, 
-        "display_options": "{ 'decimals': 3, 'multiplier': 1, 'symbol': 'L', 'defaultUnit': -3, 'maxunit': 0.001, 'minunit': 1e-9 }", 
+        "display_options": "{ 'widthClass': 'col-sm-2', 'decimals': 3, 'multiplier': 1, 'symbol': 'L', 'defaultUnit': -3, 'maxunit': 0.001, 'minunit': 1e-9 }", 
         "display_type": "siunit", 
         "edit_type": null, 
         "filtering": true, 

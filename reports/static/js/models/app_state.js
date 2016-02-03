@@ -23,10 +23,12 @@ define([
   };  
   SchemaClass.prototype.allEditVisibleKeys = function()
   {
-    return _.union(
+    var keys =  _.union(
       this.editVisibleKeys(),
       this.createKeys(),
       this.updateKeys());
+    
+    return Iccbl.sortOnOrdinal(keys,this.fields);
   };  
   SchemaClass.prototype.createKeys = function()
   {
@@ -38,7 +40,6 @@ define([
   };  
   SchemaClass.prototype.filterKeys = function(select_field, visibility_term)
   {
-    console.log('filter keys for: ' + visibility_term );
     var self = this;
     var keys = Iccbl.sortOnOrdinal(
       _.keys(self.fields), self.fields)
@@ -73,7 +74,6 @@ define([
       current_details: {},
       login_information: {},
 
-
       list_defaults: {
           page: 1,
           rpp: 25,
@@ -86,7 +86,10 @@ define([
     },
 
     initialize : function() {
-      _.bindAll(this,'backboneFetchError', 'jqXHRError', 'error');
+      _.bindAll(this,'error',
+        'setCurrentUser','getResources','getVocabularies',
+        'getAdminUserOptions','getUserOptions','getUserGroupOptions',
+        'getPrincipalInvestigatorOptions','getLibraries','getLibraryOptions');
     },
         
     start: function(callBack) {
@@ -100,22 +103,38 @@ define([
       });
     },
     
-//    setUrlOption: function(target, val){
-//      this.set('urlOption:' + target, val);
-//    },
-//    
-//    getUrlOption: function(target){
-//      this.get('urlOption:' + target);
-//    },
+    /**
+     * perform lazy fetch for Admin data
+     */
+    initializeAdminMode: function(callback) {
+      var self = this;
+      console.log('start app_state.js');
+      // TODO: use jquery.queue() as in libraryscreening.js
+      self.getAdminUserOptions(function(options){
+        self.getUserOptions(function(options){
+          self.getPrincipalInvestigatorOptions(function(options){
+            self.getUserGroupOptions(function(options){
+              callback();
+            });
+          });
+        });
+      });
+    },
     
     setCurrentUser: function(callBack) {
       var self = this;
-      this.getModel('user', window.user, function(model){
-        self.currentUser = model.toJSON();
-        console.log('Current user: ' + JSON.stringify(self.currentUser));
-        
-        if(callBack) callBack(); 
-      });
+      this.getModel('user', window.user, 
+        function(model){
+          self.currentUser = model.toJSON();
+          console.log('Current user: ' + JSON.stringify(self.currentUser));
+          
+          if(callBack) callBack(); 
+        },{
+          failCallback: function(){
+            window.alert('Error: cannot retrieve the user: ' + window.user );
+          }
+        }
+      );
     },
     
     getCurrentUser: function(){
@@ -134,91 +153,26 @@ define([
       console.log('getSearch', searchId, obj);
       return obj;
     },
-    
-    /**
-     * Generate a list of "options" suitable for use in a user multiselect.
-     * [ { val: username, label: name:username }, ... ]
-     */
-    getUserOptions: function(callBack){
-      this.getUsers(function(users){
-        var options = [];
-        users.each(function(user){
-          var username = user.get('username');
-          var name = user.get('name');
-          options.unshift({ val: username, label: name + ':' + username });
-        });
-        callBack(options);
-      });
-    },
-    getPrincipalInvestigatorOptions: function(callBack){
-      this.getPrincipalInvestigators(function(users){
-        var options = [{ val:'',label:'' }];
-        users.each(function(user){
-          var username = user.get('username');
-          var lab_name = user.get('lab_name');
-          options.push({ val: username, label: lab_name });
-        });
-        callBack(options);
-      });
-    },
-    
-    getPrincipalInvestigators: function(callBack){
-      
+
+    getLibraryOptions: function(callBack){
       var self = this;
-      var pis = this.get('principal_investigators');
-      var url = self.dbApiUri + '/screensaveruser';
-      if(_.isEmpty(pis)){
-        
-        var CollectionClass = Iccbl.CollectionOnClient.extend({
-          url: url 
+      var prop = 'libraryOptions';
+      var options = this.get(prop);
+      if(!options){
+        this.getLibraries(function(libraries){
+          options = [];
+          libraries.each(function(library){
+            var short_name = library.get('short_name');
+            var library_name = library.get('library_name');
+            options.push({ val: short_name, label: library_name });
+          });
+          self.set(prop,options);
+          if (callBack) callBack(options);
         });
-        var instance = new CollectionClass();
-        instance.fetch({
-          data: { 
-            limit: 0,
-            exact_fields: ['lab_name','username','name'], 
-            lab_head_affiliation__is_blank: false,
-            classification__eq: 'principal_investigator',
-            order_by: ['lab_name']
-          },
-          success: function(collection, response) {
-            self.set('principal_investigators', collection);
-            callBack(collection);
-          },
-          error: Iccbl.appModel.backboneFetchError, 
-        });
+      }else{
+        if (callBack) callBack(options);
       }
-      else{
-        callBack(pis);
-      }
-    },
-    
-    getUsers: function(callBack) {
-      var self = this;
-      var users = this.get('users');
-      if(_.isEmpty(users)){
-        console.log('get all users (for option hash) from the server...');
-        var url = self.dbApiUri + '/screensaveruser'
-        var CollectionClass = Iccbl.CollectionOnClient.extend({
-          url: url 
-        });
-        var instance = new CollectionClass();
-        instance.fetch({
-          data: { 
-            limit: 0,
-            exact_fields: ['username','name','email'], 
-            order_by: ['name']
-          },
-          success: function(collection, response) {
-            self.set('users', collection);
-            callBack(collection);
-          },
-          error: Iccbl.appModel.backboneFetchError, 
-        });
-      }
-      else{
-        callBack(users);
-      }
+      return options;
     },
 
     /**
@@ -226,60 +180,181 @@ define([
      * [ { val: username, label: name:username }, ... ]
      */
     getAdminUserOptions: function(callBack){
-      this.getAdminUsers(function(users){
-        var options = [];
-        users.each(function(user){
-          var username = user.get('username');
-          var name = user.get('name');
-          options.unshift({ val: username, label: name + ':' + username });
-        });
-        callBack(options);
-      });
-    },
-    
-    getAdminUsers: function(callBack) {
       var self = this;
-      var users = this.get('adminUsers');
-      if(_.isEmpty(users)){
-        console.log('get all admin users from the server...');
-        var resourceUrl = self.dbApiUri + '/screensaveruser?is_staff__eq=true'
-        Iccbl.getCollectionOnClient(resourceUrl, function(collection){
-          self.set('adminUsers', collection);
-          callBack(collection);
+      var prop = 'adminUserOptions';
+      var options = this.get(prop);
+      if(!options){
+        this.getAdminUsers(function(users){
+          var options = [];
+          users.each(function(user){
+            var username = user.get('username');
+            var name = user.get('name');
+            options.push({ val: username, label: name + ':' + username });
+          });
+          self.set(prop,options);
+          if (callBack) callBack(options);
         });
+      }else{
+        if (callBack) callBack(options);
       }
-      else{
-        callBack(users);
-      }
+      return options;
     },
-        
     
+    getUserOptions: function(callBack){
+      var self = this;
+      var prop = 'userOptions';
+      var options = this.get(prop);
+      if(!options){
+        self.getUsers(function(users){
+          var options = [];
+          users.each(function(user){
+            var username = user.get('username');
+            var name = user.get('name');
+            options.unshift({ val: username, label: name + ':' + username });
+          });
+          self.set(prop,options);
+          if (callBack) callBack(options);
+        });
+      }else{
+        if (callBack) callBack(options);
+      }
+      return options;
+    },
+    getPrincipalInvestigatorOptions: function(callBack){
+      var self = this;
+      var prop = 'piOptions';
+      var options = this.get(prop);
+      if(!options){
+        this.getPrincipalInvestigators(function(users){
+          var options = [{ val:'',label:'' }];
+          users.each(function(user){
+            var username = user.get('username');
+            var lab_name = user.get('lab_name');
+            options.push({ val: username, label: lab_name });
+          });
+          self.set(prop,options);
+          if (callBack) callBack(options);
+        });
+      }else{
+        if (callBack) callBack(options);
+      }
+      return options;
+    },
+
     getUserGroupOptions: function(callBack){
-      this.getUserGroups(function(usergroups){
-        var options = [];
-        usergroups.each(function(usergroup){
-          var name = usergroup.get('name');
-          options.unshift({ val: name, label: name });
+      var self = this;
+      var prop = 'userGroupOptions';
+      var options = this.get(prop);
+      if(!options){
+        this.getUserGroups(function(usergroups){
+          var options = [];
+          usergroups.each(function(usergroup){
+            var name = usergroup.get('name');
+            options.unshift({ val: name, label: name });
+          });
+          self.set(prop,options);
+          if (callBack) callBack(options);
         });
-        callBack(options);
-      });
+      }else{
+        if (callBack) callBack(options);
+      }
+      return options;
     },
     
-    getUserGroups: function(callBack) {
+    getLibraries: function(callback){
+      data_for_get = { 
+        exact_fields: ['short_name','library_name','start_plate','end_plate','copies'], 
+        order_by: ['short_name']
+      };
+      return this.getCachedResourceCollection(
+        'libraries', this.dbApiUri + '/library', data_for_get, callback );
+    },
+
+    getCachedResourceCollection: function(
+        prop,
+        url,
+        data_for_fetch,
+        callback,
+        options
+        ){
       var self = this;
-      usergroups = this.get('usergroups');
-      if(_.isEmpty(usergroups)){
-        console.log('get all UserGroups from the server...');
-        var resourceUrl = self.reportsApiUri + '/usergroup'
-        Iccbl.getCollectionOnClient(resourceUrl, function(collection){
-          self.set('usergroups', collection);
-          callBack(collection);
+      options = options || {};
+      data_for_fetch = _.extend({ limit: 0 }, data_for_fetch);
+      var flush = options.flush || false;
+      var failCallback = options.failCallback;
+      //, timeout - TODO
+
+      var collection = this.get(prop);
+      if(flush || _.isEmpty(collection)){
+        console.log('get all '+prop+' from the server...');
+        var CollectionClass = Iccbl.CollectionOnClient.extend({
+          url: url 
+        });
+        var instance = new CollectionClass();
+        instance.fetch({
+          data: data_for_fetch,
+          success: function(collection, response) {
+            self.set(prop, collection);
+            if (callback) callback(collection);
+          }
+        }).fail(function(){ 
+          if (failCallback){
+            failCallback.apply(this,arguments);
+          }else{
+            Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+          }
         });
       }
       else{
-        callBack(usergroups);
+        if (callback) callback(collection);
       }
-      
+      return this.get(prop);
+    },
+    
+    getPrincipalInvestigators: function(callback) {
+      return this.getCachedResourceCollection(
+        'principal_investigators', 
+        this.dbApiUri + '/screensaveruser', 
+        { 
+          lab_head_affiliation__is_blank: false,
+          classification__eq: 'principal_investigator',
+          exact_fields: ['username','lab_name','name','email'], 
+          order_by: ['name']
+        }, 
+        callback );
+    },
+    
+    getUsers: function(callback) {
+      return this.getCachedResourceCollection(
+        'users', 
+        this.dbApiUri + '/screensaveruser', 
+        { 
+          exact_fields: ['username','name','email'], 
+          order_by: ['name']
+        }, 
+        callback );
+    },
+    
+    getAdminUsers: function(callback) {
+      return this.getCachedResourceCollection(
+        'adminUsers', 
+        this.dbApiUri + '/screensaveruser', 
+        { 
+          is_staff__eq: true,
+          exact_fields: ['username','name','email'], 
+          order_by: ['name']
+        }, 
+        callback );
+    },
+
+    getUserGroups: function(callback) {
+      return this.getCachedResourceCollection(
+        'usergroups', 
+        this.reportsApiUri + '/usergroup', 
+        { 
+          order_by: ['name']
+        }, 
+        callback );
     },
     
     /**
@@ -428,24 +503,26 @@ define([
       return val;
     },
 
+    parseSchemaField: function(rawField) {
+      if(_.has(rawField,'display_options') && ! _.isEmpty(rawField.display_options)){
+        var options= rawField['display_options'];
+        options = options.replace(/'/g,'"');
+        try{
+          rawField['display_options'] = JSON.parse(options);
+        }catch(e){
+          console.log('warn: display_options is not JSON parseable, column: ' +
+              rawField['key'] + ', options: ' + options,e);      
+        }
+      } 
+    },
+    
+    
     getResources: function(callBack){
       console.log('- getResources from the server...')
       var self = this;
       // Retrieve the resource definitions from the server
       var resourceUrl = self.reportsApiUri + '/resource'
       
-      function parseField(rawField) {
-        if(_.has(rawField,'display_options') && ! _.isEmpty(rawField.display_options)){
-          var options= rawField['display_options'];
-          options = options.replace(/'/g,'"');
-          try{
-            rawField['display_options'] = JSON.parse(options);
-          }catch(e){
-            console.log('warn: display_options is not JSON parseable, column: ' +
-                rawField['key'] + ', options: ' + options,e);      
-          }
-        } 
-      };
       
       Iccbl.getCollectionOnClient(resourceUrl, function(collection){
         
@@ -469,7 +546,7 @@ define([
             self.error('resource mis-configured: ' + resource.key + ', no schema');
             return;
           }
-          _.each(_.values(resource.schema.fields), parseField );
+          _.each(_.values(resource.schema.fields), self.parseSchemaField );
           
           if (_.has(ui_resources, resource.key)) {
             ui_resources[resource.key] = _.extend(
@@ -530,12 +607,58 @@ define([
       return this.getResource(resourceId).schema;
     },
     
+    createNewModel: function(resourceId, defaults) {
+      console.log('create new model for: ',resourceId, defaults );
+      var self = this;
+      var resource = self.getResource(resourceId);
+      var defaults = defaults || {};
+      _.each(resource.schema.allEditVisibleKeys(), function(key){
+        var field = resource.schema.fields[key];
+        if (key == 'resource_uri') {
+          // TODO: not used
+          defaults[key] = resource.apiUri; 
+        } else if (key == 'id'){
+          // nop always exclude the id field to signal create case to the server
+        } else {
+          if(! _.has(defaults, key)){
+            if(field.default && !_.isNull(field.default)){
+              try {
+                defaults[key] = JSON.parse(field.default);
+              }catch(e){
+                if (field.data_type == 'date' && field.default == 'now'){
+                  defaults[key] = Iccbl.getISODateString(new Date());
+                }else{
+                  self.error('Warning, unparseable default for field: ' 
+                    + field.key + ', value: ' + field.default );
+                  defaults[key] = '';
+                }
+              }
+            }else{
+              defaults[key] = ''; // placeholders for the edit form
+            }
+          }
+        }
+      });
+
+      var NewModel = Backbone.Model.extend({
+        urlRoot: resource.apiUri , defaults: defaults 
+      });
+      var newModel = new NewModel();
+      newModel.resource = resource;
+      console.log('new model', newModel);
+      
+      return newModel;
+    },
+    
     /**
      * Get a model from the server
      */
     getModel: function(resourceId, key, callBack, options) {
       var self = this;
       var options = options || {};
+      var failCallback = options.failCallback;
+      var data_for_get = _.extend({ includes: '*' }, options.data_for_get );
+      
       var resource = this.getResource(resourceId);
       if(_.isArray(key)){
         key = key.join('/');
@@ -555,22 +678,24 @@ define([
         }
       });
       var instance = new ModelClass();
-      var data = _.extend({ includes: '*' }, options);
       instance.fetch({
-          data: data,
-          // to force inclusion of all columns: data: { includes: '*' },
-          success : function(model) {
-            model.resource = resource;
-            model.key = key;
-            try{
-              callBack(model);
-            } catch (e) {
-              console.log('uncaught error: ' + e);
-              self.error('error displaying model: ' + model + ', '+ e);
-            }
-          },
-          error: self.backboneFetchError
-
+        data: data_for_get,
+        success : function(model) {
+          model.resource = resource;
+          model.key = key;
+          try{
+            callBack(model);
+          } catch (e) {
+            console.log('uncaught error: ' + e);
+            self.error('error displaying model: ' + model + ', '+ e);
+          }
+        }
+      }).fail(function(){ 
+        if (failCallback){
+          failCallback.apply(this,arguments);
+        }else{
+          Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+        }
       });
     },
     
@@ -654,7 +779,8 @@ define([
     getResource: function(resourceId){
       var uiResources = this.get('ui_resources');
       if(!_.has(uiResources, resourceId)) {
-          throw "Unknown resource: " + resourceId;
+        var msg = "Unknown resource: " + resourceId;
+        Iccbl.appModel.error(msg);
       }
       return uiResources[resourceId];
     },
@@ -681,82 +807,38 @@ define([
             ui_resource.schema = _.extend(schema, schemaClass);
             
             callback(ui_resource)
-          },
-          error: self.backboneFetchError
-      });      
-      
-    },
-    
-    /**
-     * Backbone model fetch error handler
-     */
-    backboneFetchError: function(modelOrCollection, response, options) {
-      this.jqXHRError(response, response.statusText, response.status );
-      
-//      var msg = '';
-//      var sep = '\n';
-//      if (!_.isUndefined(response.responseJSON)){
-//        _.each(_.keys(response.responseJSON), function(key){
-//          msg += sep + key + ': ' + response.responseJSON[key];
-//        });
-//      }
-//      else if (!_.isEmpty(response.responseText)){
-//        msg += sep + response.responseText;
-//      }
-//      else if (!_.isUndefined(response.statusText)){
-//        msg += 'Server Error: '
-//        if (!_.isUndefined(response.status)){
-//          msg += response.status + ':';
-//        }
-//        msg += response.statusText;
-//      }
-//
-//      this.error(msg);
-//      console.log(msg);
-    },
-    
-    /**
-     * TODO: a jquery ajax error function should handle the args:
-     * Type: Function( jqXHR jqXHR, String textStatus, String errorThrown )
-     */
-    jqXHRError: function(xhr, text, message){
-      var self = this;
-      
-      var msg = message;
-      if ( _.has(xhr,'responseJSON') && !_.isEmpty(xhr.responseJSON) ) {
-        
-        if ( _.has( xhr.responseJSON, 'error_message') ) {
-          msg += ': ' + xhr.responseJSON.error_message;
-        }
-        else if ( _.has( xhr.responseJSON, 'error') ) {
-          msg += ': ' + xhr.responseJSON.error;
-        }else{
-          msg += xhr.responseText;
-        }
-        
-      } else {
-        
-        var re = /([\s\S]*)Request Method/;
-        var match = re.exec(xhr.responseText);
-        
-        if (match) {
-          msg += ': ' + match[1] + ': ' + xhr.status + ':' + xhr.statusText;
-        } else {
-        
-          try{
-            var rtext = JSON.parse(xhr.responseText);
-            msg += ':' + rtext.error_message;
-          } catch (e) {
-            console.log('couldnt parse responseText: ' + xhr.responseText)
-            msg += ': ' +  xhr.status + ':' + xhr.statusText + ', ' + xhr.responseText;
           }
-        }              
-        
+      }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
+      
+    },
+    
+    /**
+     * Process a jQuery.jqXHR.fail callback for the ajax() call.
+     */
+    jqXHRfail: function(jqXHR, textStatus, errorThrown){
+    
+      var msg = textStatus || 'Error';
+      if (errorThrown){
+        msg += ': ' + errorThrown; 
+      }
+      if (this.url){
+        // * url will be set for most backbone objects doing the fetching
+        msg += ':\n ' + this.url;
+      }
+      if (jqXHR){
+        if (jqXHR.status){
+          msg += ':\n status:' + jqXHR.status;
+        }
+        if ( _.has(jqXHR,'responseJSON') && !_.isEmpty(jqXHR.responseJSON) ) {
+          _.each(_.keys(jqXHR.responseJSON), function(key){
+            Iccbl.appModel.error(key + ": " + jqXHR.responseJSON[key]);
+          });
+        }
       }
       $(document).trigger('ajaxComplete');
-      self.error(msg);
+      Iccbl.appModel.error(msg);
     },
-    
+   
     error: function(msg){
       console.log('error: ', msg);
       var msgs = this.get('messages');
@@ -872,14 +954,14 @@ define([
         editorAttrs: { placeholder: description },
         type: 'Text',
         validators: ['required'],
-        template: self.vocabulary_field_template 
+        template: self._field_template 
       };
       formSchema['comments'] = {
         title: 'Comments',
         key: 'comments',
         validators: ['required'],
         type: 'TextArea',
-        template: self.vocabulary_field_template
+        template: self._field_template
       };
 
       var FormFields = Backbone.Model.extend({
@@ -899,7 +981,7 @@ define([
       var formFields = new FormFields();
       var form = new Backbone.Form({
         model: formFields,
-        template: self.vocabulary_form_template
+        template: self._form_template
       });
       var _form_el = form.render().el;
 
@@ -954,10 +1036,9 @@ define([
                 });
               },
               done: function(model, resp){
-                console.log('done');
+                // FIXME: success is deprecated for done, but it must be chained
               },
-              error: self.jqXHRError
-            });
+            }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });
           
             return true;
           }
@@ -1241,12 +1322,12 @@ define([
 
   var appState = new AppState();
   
-  appState.vocabulary_form_template = _.template([
+  appState._form_template = _.template([
      "<div class='form-horizontal container' id='add_value_field' >",
      "<form data-fieldsets class='form-horizontal container' >",
      "</form>",
      "</div>"].join(''));      
-  appState.vocabulary_field_template = _.template([
+  appState._field_template = _.template([
     '<div class="form-group" >',
     '    <label class="control-label " for="<%= editorId %>"><%= title %></label>',
     '    <div class="" >',

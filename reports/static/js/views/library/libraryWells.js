@@ -97,7 +97,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       // prevent normal display of structure image value
       var si_field = model.resource.schema.fields['structure_image']
       if(si_field){
-        si_field['visibility'] = ['api'];
+        si_field['visibility'] = [];
       }
       
       var view = new viewClass({ schema: specific_schema, model: model, uriStack: uriStack });

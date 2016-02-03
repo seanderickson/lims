@@ -413,9 +413,9 @@ define([
                   headers: headers,
                   success: function(model,response){
                     console.log('model removed successfully', model, response);
-                  },
-                  error: appModel.backboneFetchError
-                });
+                  }
+//                  error: appModel.backboneFetchError
+                }).fail(function(){ appModel.jqXHRfail.apply(this,arguments); });      
               }
             },
             view: _form_el,
@@ -682,8 +682,11 @@ define([
       });
       
       if ( !fetched ) {
-        var fetchOptions = { reset: false, error: appModel.backboneFetchError };
-        self.collection.fetch(fetchOptions);
+        var fetchOptions = { 
+          reset: false };
+        self.collection.fetch(
+          fetchOptions
+        ).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
       }
       
       // Note: replace: true - to suppress router history:

@@ -6,6 +6,7 @@ define([
     'layoutmanager',
     'models/app_state',
     'views/generic_detail_layout',
+    'views/generic_edit',
     'views/list2',
     'text!templates/generic-tabbed.html',
     'text!test/models/detail_test_resource.json', 
@@ -14,7 +15,7 @@ define([
     'text!test/models/detail_test_users.json'    
     
 ], function($, _, Backbone, Iccbl, layoutmanager, 
-            appModel, DetailLayout, 
+            appModel, DetailLayout,EditView, 
             ListView, layout, 
             resource_raw, test_model_raw, test_vocabularies_raw, test_users_raw ) {
 
@@ -28,12 +29,14 @@ define([
       this.consumedStack = [];
       try{
         this.resource = JSON.parse(resource_raw);
+        _.each(_.values(this.resource.schema.fields), appModel.parseSchemaField );
       }catch(e){
         console.log('error reading resource,',e);
         throw e;
       }
       if(_.isUndefined(this.model)){
         try{
+          
           this.model = new Backbone.Model(JSON.parse(test_model_raw));
         }catch(e){
           console.log('error reading model,',e);
@@ -93,6 +96,7 @@ define([
      */
     serialize: function() {
       return {
+        'base_url': this.model.resource.key + '/' + this.model.key,
         'tab_resources': this.tabbed_resources
       }      
     }, 
@@ -190,18 +194,15 @@ define([
       var key = 'detail';
  
       var view = this.tabViews[key];
-      var onEditCallBack = function(displayFunction){
-        function saveCallBack(model){
-          alert('save model: ' + JSON.stringify(model.toJSON()));
-        };
-        displayFunction({ saveCallBack: saveCallBack });
-      };      
+      var saveCallBack = function(model){
+        alert('save model: ' + JSON.stringify(model.toJSON()));
+      };
       
       if ( !view ) {
         view = new DetailLayout({ 
           model: this.model, 
           uriStack: delegateStack,
-          onEditCallBack: onEditCallBack 
+          saveCallBack: saveCallBack
         });
         this.tabViews[key] = view;
       }

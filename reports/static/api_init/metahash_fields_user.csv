@@ -4,10 +4,10 @@ last_name,fields.user,/reports/api/v1/metahash/fields.user/last_name/,auth_user,
 ecommons_id,fields.user,/reports/api/v1/metahash/fields.user/ecommons_id/,,,102,,string,,,,TRUE,Ecommons,Ecommons,TRUE,,,[l;d],[c;u],,,,
 email,fields.user,/reports/api/v1/metahash/fields.user/email/,auth_user,,103,,string,,"{ 'maxlength': '100' }",,TRUE,Email,Email,TRUE,,,[l;d],[c;u],,,"^[\w\-]{1,}([\w\-\+.]{1,1}[\w\-]{1,}){0,}[@][\w\-]{1,}([.]([\w\-]{1,})){1,3}$",
 username,fields.user,/reports/api/v1/metahash/fields.user/username/,,,100,,string,link,"{ 'hrefTemplate': '#screensaveruser/{username}' }",,TRUE,Username,Username,TRUE,,,[l;d],[c],,,,
-is_staff,fields.user,/reports/api/v1/metahash/fields.user/is_staff/,auth_user,,106,,boolean,,,,TRUE,"Staff users may upload data","Is Staff",TRUE,,,[l;d],[c;u],,,,false
-permissions,fields.user,/reports/api/v1/metahash/fields.user/permissions/,,,155,,list,,,multiselect2,TRUE,"Permissions assigned directly to the user","User Permissions",TRUE,,,[d],,,,,
-usergroups,fields.user,/reports/api/v1/metahash/fields.user/usergroups/,,,150,,list,link,"{ 'hrefTemplate': '#usergroup/{value}' }",multiselect2,TRUE,"Groups that the user belongs to","User Groups",TRUE,,,[d],[c],,,,
-is_superuser,fields.user,/reports/api/v1/metahash/fields.user/is_superuser/,auth_user,,159,,boolean,,,,TRUE,"User has all permissions on the system","Is Superuser",TRUE,,,[l;d],,,,,"""false"""
+is_staff,fields.user,/reports/api/v1/metahash/fields.user/is_staff/,auth_user,,106,,boolean,,,,TRUE,"Staff users may upload data","Is Staff",TRUE,,,[l;d],[c;u],,,,FALSE
+permissions,fields.user,/reports/api/v1/metahash/fields.user/permissions/,,,155,,list,,,multiselect2,TRUE,"Permissions assigned directly to the user","User Permissions",TRUE,,,[d],[c;u],,,,
+usergroups,fields.user,/reports/api/v1/metahash/fields.user/usergroups/,,,150,,list,link,"{ 'hrefTemplate': '#usergroup/{value}' }",multiselect2,TRUE,"Groups that the user belongs to","User Groups",TRUE,,,[d],[c;u],,,,
+is_superuser,fields.user,/reports/api/v1/metahash/fields.user/is_superuser/,auth_user,,159,,boolean,,,,TRUE,"User has all permissions on the system","Is Superuser",TRUE,,,[l;d],[c;u],,,,"""false"""
 all_permissions,fields.user,/reports/api/v1/metahash/fields.user/all_permissions/,,,156,,list,link,,,TRUE,"combined user/group permissions","All Permissions",TRUE,,,[d],,,,,
 gender,fields.user,/reports/api/v1/metahash/fields.user/gender/,,,115,,string,,,select,TRUE,"The gender of the user",Gender,TRUE,,user.gender,[l;d],[c;u],,,,
 phone,fields.user,/reports/api/v1/metahash/fields.user/phone/,,,116,,string,,,,TRUE,"The phone number for this user",Phone,TRUE,,,[l;d],[c;u],,,,

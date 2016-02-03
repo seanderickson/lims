@@ -21,3 +21,5 @@ alias,fields.metahash,99,
 default,fields.metahash,25,fields.CharField
 is_restricted,fields.metahash,26,CsvBooleanField
 nested_resource,fields.metahash,27,fields.CharField
+required,fields.metahash,28,CsvBooleanField
+regex,fields.metahash,29,fields.CharField

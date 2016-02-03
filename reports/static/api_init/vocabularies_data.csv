@@ -19,12 +19,14 @@ float,field.data_type,/reports/api/v1/vocabularies/field.data_type/float/,6,,"Fl
 decimal,field.data_type,/reports/api/v1/vocabularies/field.data_type/decimal/,7,,"Decimal - float value with precision specified",Decimal
 integer,field.data_type,/reports/api/v1/vocabularies/field.data_type/integer/,8,,Integer,Integer
 link,field.display_type,/reports/api/v1/vocabularies/field.display_type/link/,1,,"Hyperlink field - see display options",link
+image,field.display_type,/reports/api/v1/vocabularies/field.display_type/image/,9,"This value will actually be the URI that serves the image.","Image URI",Image
 siunit,field.display_type,/reports/api/v1/vocabularies/field.display_type/siunit/,2,,"A numeric value that is displayed with SI units and prefix","SI Unit"
 select,field.edit_type,/reports/api/v1/vocabularies/field.edit_type/select/,1,,"Select a single value from a controlled vocabulary",Select
 multiselect,field.edit_type,/reports/api/v1/vocabularies/field.edit_type/multiselect/,2,,"Checkbox select multiple values from a controlled vocabulary",Multi-select
 multiselect2,field.edit_type,/reports/api/v1/vocabularies/field.edit_type/multiselect2/,3,,"Dual column multi-select",Multi-select2
 multiselect3,field.edit_type,/reports/api/v1/vocabularies/field.edit_type/multiselect3/,4,,"Chosen Multiselect",Multi-select3
 textarea,field.edit_type,/reports/api/v1/vocabularies/field.edit_type/textarea/,4,,TextArea,TextArea
+custom,field.edit_type,/reports/api/v1/vocabularies/field.edit_type/custom/,5,"A custom UI element will be used to edit this field","Custom implementation",Custom
 fields.CharField,field.json_field_type,/reports/api/v1/vocabularies/field.json_field_type/fields.CharField/,0,,"A tastypie fields.CharField type",CharField
 fields.ListField,field.json_field_type,/reports/api/v1/vocabularies/field.json_field_type/fields.ListField/,5,,"A tastypie fields.ListField type",ListField
 fields.BooleanField,field.json_field_type,/reports/api/v1/vocabularies/field.json_field_type/fields.BooleanField/,2,,"A tastypie fields.BooleanField type",BooleanField
@@ -32,6 +34,7 @@ fields.DateField,field.json_field_type,/reports/api/v1/vocabularies/field.json_f
 fields.DecimalField,field.json_field_type,/reports/api/v1/vocabularies/field.json_field_type/fields.DecimalField/,7,,"A tastypie fields.DecimalField",DecimalField
 fields.FloatField,field.json_field_type,/reports/api/v1/vocabularies/field.json_field_type/fields.FloatField/,6,,"A tastypie fields.FloatField",FloatField
 fields.IntegerField,field.json_field_type,/reports/api/v1/vocabularies/field.json_field_type/fields.IntegerField/,4,,"A tastypie fields.IntegerField",IntegerField
+CsvBooleanField,field.json_field_type,/reports/api/v1/vocabularies/field.json_field_type/CsvBooleanField/,10,,"A boolean field","A boolean field"
 read,permission.type,/reports/api/v1/vocabularies/permission.type/read/,1,,"permission to read the resource",Read
 write,permission.type,/reports/api/v1/vocabularies/permission.type/write/,2,,"permission to write the resource",Write
 json,resource.content_type,/reports/api/v1/vocabularies/resource.content_type/json/,0,,application/json,JSON

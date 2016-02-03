@@ -1,5 +1,5 @@
 key,scope,resource_uri,table,field,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,data_type,display_type,edit_type,alias,is_restricted,display_options
-name,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/name/,,,0,,TRUE,"The group name",Name,TRUE,,,[l;d],,string,link,,,,"{ 'hrefTemplate': '#usergroup/{name}' }"
+name,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/name/,,,0,,TRUE,"The group name",Name,TRUE,,,[l;d],[c],string,link,,,,"{ 'hrefTemplate': '#usergroup/{name}' }"
 users,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/users/,custom,,1,,TRUE,"Usernames of users in the group",Users,TRUE,,,[l;d],[c;u],list,link,multiselect2,,,"{ 'hrefTemplate': '#screensaveruser/{__val__}' }"
 super_groups,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/super_groups/,custom,,2,,TRUE,"Usergroups this group is a member of (inherits permissions from)","Super Groups",TRUE,,,[l;d],[c;u],list,link,multiselect2,,,"{ 'hrefTemplate': '#usergroup/{__val__}' }"
 sub_groups,fields.usergroup,/reports/api/v1/metahash/fields.usergroup/sub_groups/,custom,,3,,TRUE,"Usergroups that are members of this group (inherits users from)","Sub Groups",TRUE,,,[l;d],[c;u],list,link,multiselect2,,,"{ 'hrefTemplate': '#usergroup/{__val__}' }"

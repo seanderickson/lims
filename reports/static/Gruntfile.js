@@ -58,6 +58,7 @@ module.exports = function (grunt) {
           'backbone.stickit.js' : 'backbone.stickit/backbone.stickit.js',
           'Backbone.ModelBinder.js' : 'Backbone.ModelBinder/Backbone.ModelBinder.js',
           'backbone-forms.js' : 'backbone-forms/distribution/backbone-forms.js',
+          'backbone-forms-list.js' : 'backbone-forms/distribution/editors/list.js',
           'backbone.layoutmanager.js' : 'layoutmanager/backbone.layoutmanager.js',
           'lunr.js' : 'lunr.js/lunr.js',
           'text.js' : 'text/text.js', 

@@ -58,6 +58,14 @@
         "options": { 
           "search": {"administratoruser__isnull": "False"} }
     },
+    "libraryscreening": {
+      "detailView": "LibraryScreeningView",
+      "list_view": "ListView",
+      "api_resource": "libraryscreening"
+    },
+    "externallibraryscreening": {
+      "api_resource": "libraryscreening"
+    },
     "screen": {
         "header_message": "All screens (Small Molecule and RNAi)",
         "title": "Screens",

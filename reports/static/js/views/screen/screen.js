@@ -9,13 +9,16 @@ define([
   'iccbl_backgrid',
   'layoutmanager',
   'models/app_state',
+  'views/screen/libraryScreening', 
   'views/generic_detail_layout', 
   'views/generic_detail_stickit', 
+  'views/generic_edit',
   'views/list2', 
   'views/collectionColumns',
   'text!templates/generic-tabbed.html'
-], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, DetailLayout, 
-            DetailView, ListView, CollectionColumnView, tabbedTemplate){
+], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, 
+            LibraryScreening, DetailLayout, DetailView, EditView, ListView, 
+            CollectionColumnView, tabbedTemplate){
 
   var ScreenView = Backbone.Layout.extend({
 
@@ -125,10 +128,18 @@ define([
           this.consumedStack = [viewId];
           this.showCopyPlatesLoaded(this.uriStack);
           return;
+        }else if (viewId == 'libraryscreening'){
+          if(_.contains(this.uriStack, '+add') ){
+            this.addLibraryScreening();
+            return;
+          }else{
+            this.consumedStack = [viewId];
+            this.showLibraryScreenings(this.uriStack); 
+            return;
+          }
         }
         
-
-        if (!_.has(this.tabbed_resources, viewId)){
+       if (!_.has(this.tabbed_resources, viewId)){
           var msg = 'could not find the tabbed resource: ' + viewId;
           appModel.error(msg);
           throw msg;
@@ -266,48 +277,31 @@ define([
     },
 
     setDetail: function(delegateStack){
-      var self = this;
+      var self,outerSelf = self = this;
       var key = 'detail';
+      var fields = self.model.resource.schema.fields;
       // set up a custom vocabulary that joins username to name; will be 
       // used as the text of the linklist
-      this.model.resource.schema.fields['collaborator_usernames'].vocabulary = (
+      fields['collaborator_usernames'].vocabulary = (
           _.object(this.model.get('collaborator_usernames'),
             this.model.get('collaborator_names')));
+
+      var editView = EditView.extend({
+        
+        afterRender: function(){
+          console.log('override afterRender');
+          outerSelf._addVocabularyButton(
+            this, 'cell_lines', 'cell_line', 'Cell Line', { description: 'ATCC Designation' });
+         
+          outerSelf._addVocabularyButton(
+            this, 'transfection_agent', 'transfection_agent', 'Transfection Agent');
+         
+          outerSelf._addVocabularyButton(
+            this, 'species', 'screen.species', 'Screened Species');
+          EditView.prototype.afterRender.apply(this,arguments);
+        }
+      });
       
-      // onEditCallBack: wraps the edit display function
-      // - lazy fetch of the expensive principal investigators hash
-      // - perform post-render enhancement of the display
-      // TODO: improve this by extending the EditView.afterRender function,
-      // as with the detailView, shown below
-      var onEditCallBack = function(displayFunction){
-        console.log('on edit callback...');
-        appModel.getPrincipalInvestigatorOptions(function(piOptions){
-          appModel.getUserOptions(function(userOptions){
-            self.model.resource.schema.fields['collaborator_usernames']['choices'] = userOptions;
-            self.model.resource.schema.fields['lead_screener_username']['choices'] = (
-                [{ val: '', label: ''}].concat(userOptions));
-            self.model.resource.schema.fields['lab_head_username']['choices'] = piOptions;
-            var editForm = displayFunction();
-
-            // Render the editForm; then add the add cell line
-            var temp = editForm.afterRender;
-            editForm.afterRender = function(){
-              
-              self._addVocabularyButton(
-                editForm, 'cell_lines', 'cell_line', 'Cell Line', { description: 'ATCC Designation' });
-             
-              self._addVocabularyButton(
-                editForm, 'transfection_agent', 'transfection_agent', 'Transfection Agent');
-             
-              self._addVocabularyButton(
-                editForm, 'species', 'screen.species', 'Screened Species');
-              temp.call(editForm,arguments);
-            };
-          
-          });
-        });
-      };
-
       var view = this.tabViews[key];
       if (view) {
         this.removeView(this.tabViews[key]);
@@ -315,16 +309,27 @@ define([
       
       var detailView = DetailView.extend({
         afterRender: function(){
-          DetailView.prototype.afterRender.call(this,arguments);
+          DetailView.prototype.afterRender.apply(this,arguments);
           self.createStatusHistoryTable(this.$el.find('#status'));
         }
-      })
+      });
       view = new DetailLayout({ 
         model: this.model, 
         uriStack: delegateStack,
-        onEditCallBack: onEditCallBack,
+        EditView: editView,
         DetailView: detailView
       });
+      view.showEdit = function(){
+        appModel.initializeAdminMode(function(){
+          var userOptions = appModel.getUserOptions();
+          fields['collaborator_usernames']['choices'] = userOptions;
+          fields['lead_screener_username']['choices'] = (
+              [{ val: '', label: ''}].concat(userOptions));
+          fields['lab_head_username']['choices'] = (
+                appModel.getPrincipalInvestigatorOptions );
+          DetailLayout.prototype.showEdit.apply(view,arguments);
+        });  
+      };
 
       this.tabViews[key] = view;
       
@@ -411,9 +416,8 @@ define([
           });
           cell.html(status_grid.render().$el);
           $target_el.append(cell);
-        },
-        error: Iccbl.appModel.backboneFetchError, 
-      });
+        }
+      }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
     },
     
     _addVocabularyButton: function(
@@ -510,11 +514,77 @@ define([
       }
     },
       
+    addLibraryScreening: function(){
+      console.log('add library screening');
+      var self = this;
+      var defaults = {
+        screen_facility_id: self.model.get('facility_id')
+      };
+      var newModel = appModel.createNewModel('libraryscreening', defaults);
+
+      var view = new LibraryScreening({ 
+        model: newModel, 
+        uriStack: ['+add']
+      });
+      
+      Backbone.Layout.setupView(view);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView("#tab_container", view ).render();
+
+      
+      this.consumedStack = ['libraryscreening','+add'];
+      self.reportUriStack([]);
+    },
+    
+    showLibraryScreenings: function(delegateStack){
+      var self = this;
+      var lsResource = appModel.getResource('libraryscreening'); 
+
+      if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
+          !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
+        var activityId = delegateStack.shift();
+        self.consumedStack.push(activityId);
+        var _key = [self.model.key,'libraryscreening',activityId ].join('/');
+        appModel.getModel(lsResource.key, activityId, function(model){
+
+          var view = new LibraryScreening({ 
+            model: model, 
+            uriStack: _.clone(delegateStack),
+          });
+          
+          Backbone.Layout.setupView(view);
+          self.listenTo(view , 'uriStack:change', self.reportUriStack);
+          self.setView("#tab_container", view ).render();
+        });        
+        return;
+      }else{
+        // List view
+        // special url because list is a child view for library
+        var url = [self.model.resource.apiUri, 
+                   self.model.key,
+                   'libraryscreening'].join('/');
+        view = new ListView({ options: {
+          uriStack: _.clone(delegateStack),
+          schemaResult: lsResource.schema,
+          resource: lsResource,
+          url: url
+        }});
+        Backbone.Layout.setupView(view);
+        self.reportUriStack([]);
+        self.listenTo(view , 'uriStack:change', self.reportUriStack);
+        this.setView("#tab_container", view ).render();
+      }
+    },
+    
     setSummary : function(delegateStack){
       var self = this;
       var key = 'summary';
       var view = this.tabViews[key];
+      var $addLibraryScreeningButton = $('<button>Add Library Screening</button>');
       
+      $addLibraryScreeningButton.click(function(e){
+        self.addLibraryScreening();
+      });
       if (!view){
       
           var summaryKeys = self.model.resource.schema.filterKeys('visibility', 'summary');
@@ -547,9 +617,9 @@ define([
                     self.showCopyPlatesLoaded(delegateStack);
                   });
 
-                  self.createPositivesSummary(this.$el.find('#positives_summary'));
+                  self._createPositivesSummary(this.$el.find('#positives_summary'));
                   
-                  this.$el.prepend('<button>Add Library Screening</button>');
+                  this.$el.prepend($addLibraryScreeningButton);
                 }
               });
               self.tabViews[key] = view;
@@ -560,7 +630,7 @@ define([
               view.$el.addClass('well');
               self.reportUriStack([]);
               
-            },{ visibilities: ['summary']}
+            },{ data_for_get: { visibilities: ['summary']} }
           );
         
       }else{
@@ -570,7 +640,7 @@ define([
       }
     },
     
-    createPositivesSummary: function($target_el){
+    _createPositivesSummary: function($target_el){
       var self = this;
 
       var experimental_wells_loaded = self.model.get('experimental_well_count');
@@ -674,9 +744,9 @@ define([
           var cell = $('<div>',{ class: 'col-sm-4' });
           cell.html(positives_grid.render().$el);
           $target_el.append(cell);
-        },
-        error: Iccbl.appModel.backboneFetchError, 
-      });
+        }
+//        error: Iccbl.appModel.backboneFetchError, 
+      }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
       
     },
 
@@ -701,7 +771,7 @@ define([
             self.listenTo(view , 'uriStack:change', this.reportUriStack);
             self.setView("#tab_container", view ).render();
             self.reportUriStack([]);
-          },{ visibilities: ['billing']});
+          },{ data_for_get: { visibilities: ['billing']}});
       }else{
         self.listenTo(view , 'uriStack:change', this.reportUriStack);
         self.setView("#tab_container", view ).render();

@@ -7,11 +7,11 @@ from db import views
 from db.api import ScreensaverUserResource, ScreenResource, \
     ScreenResultResource,  \
     DataColumnResource, LibraryResource, \
-    LibraryCopyResource, LibraryCopyPlateResource, PlateLocationResource, \
+    LibraryCopyResource, LibraryCopyPlateResource, \
     WellResource, ActivityResource, ReagentResource, \
     SmallMoleculeReagentResource, SilencingReagentResource, NaturalProductReagentResource, \
     CopyWellResource, UserChecklistItemResource, \
-    CopyWellHistoryResource, CherryPickRequestResource, CherryPickPlateResource, \
+    CherryPickRequestResource, CherryPickPlateResource, \
     AttachedFileResource, ServiceActivityResource, LibraryScreeningResource,\
     CherryPickLiquidTransferResource, CherryPickScreeningResource
 
@@ -24,13 +24,13 @@ v1_api.register(DataColumnResource())
 v1_api.register(LibraryResource())
 v1_api.register(LibraryCopyResource())
 v1_api.register(LibraryCopyPlateResource())
-v1_api.register(PlateLocationResource())
+# v1_api.register(PlateLocationResource())
 v1_api.register(WellResource())
 v1_api.register(ActivityResource())
 v1_api.register(ServiceActivityResource())
 # v1_api.register(LibraryContentsVersionResource())
 v1_api.register(ReagentResource())
-v1_api.register(CopyWellHistoryResource())
+# v1_api.register(CopyWellHistoryResource())
 v1_api.register(CherryPickRequestResource())
 v1_api.register(CherryPickPlateResource())
 v1_api.register(UserChecklistItemResource())

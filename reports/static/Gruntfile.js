@@ -49,7 +49,7 @@ module.exports = function (grunt) {
           'require.js' : 'requirejs/require.js',
           'jquery.js' : 'jquery/dist/jquery.js',
           'underscore.js' : 'underscore/underscore.js', 
-          'backbone.js' : 'backbone-amd/backbone.js', 
+          'backbone.js' : 'backbone/backbone.js', 
           'backbone.paginator.js': 'backbone.paginator/lib/backbone.paginator.js',
           'backgrid.js' : 'backgrid/lib/backgrid.js',
           'backgrid-filter.js' : 'backgrid-filter/backgrid-filter.js',

@@ -16,8 +16,8 @@
   ],
   "dependencies": {
     "underscore": "^1.8.0",
+    "backbone": ">=1.2.3",
     "Backbone.ModelBinder": "~1.0.5",
-    "backbone-amd": "~1.1.0",
     "backbone-forms": ">=0.14.0",
     "backbone.paginator": "~2.0.2",
     "backbone.stickit": "~0.7.0",
@@ -39,7 +39,8 @@
   },
   "resolutions": {
     "underscore": "^1.8.0",
-    "jquery": "~2.1.0"
+    "jquery": "~2.1.0",
+    "backbone": ">=1.2.3"
   },
   "devDependencies": {
     "mocha": "~2.1.0",

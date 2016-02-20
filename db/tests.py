@@ -21,7 +21,6 @@ import db.models
 from db.support import lims_utils
 from db.support import lims_utils
 from db.test.factories import LibraryFactory, ScreenFactory, ScreensaverUserFactory
-from reports import ValidationError
 from reports.dump_obj import dumpObj
 from reports.models import ApiLog, UserProfile, UserGroup
 from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer
@@ -31,8 +30,6 @@ from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, find_obj_in
 import reports.tests
 import reports.utils.log_utils
 
-
-_ = reports.utils.log_utils.LogMessageFormatter
 logger = logging.getLogger(__name__)
 
 
@@ -62,56 +59,8 @@ class DBResourceTestCase(IResourceTestCase):
         serializer=CSVSerializer() 
         testApiClient = TestApiClient(serializer=serializer) 
         input_actions_file = os.path.join(self.directory, 'api_init_actions.csv')
-        logger.info(_('open input_actions file', input_actions_file))
+        logger.info('open input_actions file: %r', input_actions_file)
         self._run_api_init_actions(input_actions_file)
-    
-    def _create_resource(
-            self,input_data,resource_uri,resource_test_uri, 
-            data_for_get= None, expect_fail=False
-            ):
-        
-        _data_for_get = { 
-            'limit': 0,
-            'includes': '*'
-        }
-        if data_for_get:
-            _data_for_get.update(data_for_get)
-            
-        logger.info('input_data to create: %r', input_data)
-        logger.debug('resource: %r, resource_test_uri: %r', 
-            resource_uri,resource_test_uri)
-
-        logger.info('post to %r...', resource_uri)
-        resp = self.api_client.post(
-            resource_uri, format='json', data=input_data, 
-            authentication=self.get_credentials())
-        # FIXME: tp uses status code 200 instead of 201
-        new_obj = self.deserialize(resp)
-        logger.info('resp: %r', new_obj)
-        if expect_fail:
-            self.assertFalse(resp.status_code in [200,201], (resp.status_code, new_obj))
-            return (new_obj,resp)
-        else:
-            self.assertTrue(resp.status_code in [200,201], (resp.status_code, new_obj))
-        
-        logger.info('get from %r... %r', resource_test_uri, data_for_get)
-        resp = self.api_client.get(
-            resource_test_uri, format='json', 
-            authentication=self.get_credentials(), data=_data_for_get)
-        logger.debug('resp to get: %r', resp.status_code)
-        
-        self.assertTrue(resp.status_code in [200,201], (resp.status_code))
-        new_obj = self.deserialize(resp)
-        if 'objects' in new_obj:
-            self.assertEqual(len(new_obj['objects']),1,
-                'created resource test_uri: %r, returns multiple objects: %r'
-                % (resource_test_uri,new_obj))
-            new_obj = new_obj['objects'][0]
-        logger.debug('created obj: %r', new_obj)
-        result,msg = assert_obj1_to_obj2(input_data,new_obj)
-        self.assertTrue(result, msg)
-        logger.debug('item created: %r', new_obj)
-        return new_obj
     
     def create_library(self, data=None):
 
@@ -164,11 +113,11 @@ def setUpModule():
     else:
         print 'skip database metahash initialization when using keepdb'
 
-    logger.info(_('=== setup Module done'))
+    logger.info('=== setup Module done')
 
 def tearDownModule():
 
-    logger.info(_('=== teardown Module'))
+    logger.info('=== teardown Module')
     
     # FIXME: close the sqlalchemy bridge connection on tearDown
     # - the right solution probably requires a custom TestRunner
@@ -176,25 +125,22 @@ def tearDownModule():
     # bridge.get_engine().connect().close()
     # bridge.get_engine().dispose()
     # bridge = None
-    logger.info(_('=== teardown Module done'))
+    logger.info('=== teardown Module done')
 
 class LibraryResource(DBResourceTestCase):
 
     def setUp(self):
 
-        logger.debug('============== LibraryResource setup ============')
         super(LibraryResource, self).setUp()
 
     def tearDown(self):
 
         DBResourceTestCase.tearDown(self)
-        logger.info('delete resources')
+        logger.info('delete library resources')
         Library.objects.all().delete()
         ApiLog.objects.all().delete()
 
     def test1_create_library(self):
-        
-        logger.debug(_('==== test1_create_library ====='))
         
         resource_uri = BASE_URI_DB + '/library'
         
@@ -213,13 +159,14 @@ class LibraryResource(DBResourceTestCase):
         resp = self.api_client.get(
             resource_uri, format='json', authentication=self.get_credentials(), 
             data=data_for_get)
-        logger.debug(_('--------resp to get:', 
-            resp.status_code, resp['Content-Type'], resp))
-        self.assertTrue(resp.status_code in [200], (resp.status_code))
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code,self.get_content(resp)))
         self.assertTrue(resp['Content-Type'].startswith('application/json'))
         new_obj = self.deserialize(resp)
         expected_count = 384*3
-        self.assertEqual(len(new_obj['objects']), expected_count, 
+        self.assertEqual(
+            len(new_obj['objects']), expected_count, 
             str(('wrong number of wells',len(new_obj['objects']), expected_count)))
         
         logger.info('examine the wells created...')
@@ -235,11 +182,8 @@ class LibraryResource(DBResourceTestCase):
             result, well = find_obj_in_list(well_search, new_obj['objects'])
             self.assertTrue(result, well)
                 
-        logger.info('==== done: test1_create_library =====')
-
     def test10_create_library_copy(self):
         
-        logger.info('create library...')
         library = self.create_library({
             'start_plate': 1000, 
             'end_plate': 1005})
@@ -263,7 +207,9 @@ class LibraryResource(DBResourceTestCase):
         resp = self.api_client.get(
             uri, format='json', authentication=self.get_credentials(), 
             data=data_for_get)
-        self.assertTrue(resp.status_code in [200], (resp.status_code))
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code,self.get_content(resp)))
         new_obj = self.deserialize(resp)
         start_plate = int(library['start_plate'])
         end_plate = int(library['end_plate'])
@@ -273,19 +219,17 @@ class LibraryResource(DBResourceTestCase):
         for obj in new_obj['objects']:
             self.assertEqual(library_copy['name'],obj['copy_name'])
             plate_number = int(obj['plate_number'])
-            self.assertTrue(plate_number>=start_plate and plate_number<=end_plate,
+            self.assertTrue(
+                plate_number>=start_plate and plate_number<=end_plate,
                 'wrong plate_number: %r' % obj)
-        
-        logger.info('test create library copy done...')
 
     def test4_create_library_invalids(self):
         '''
         Test the schema "required" validations 
         ''' 
-        logger.debug('==== test4_create_library_invalids =====')
 
         library_resource = self.get_resource_from_server('library')
-        fields = library_resource['schema']['fields']
+        fields = library_resource['fields']
         resource_uri = BASE_URI_DB + '/library'
         for key,field in fields.items():
             if field.get('required', False):
@@ -296,13 +240,13 @@ class LibraryResource(DBResourceTestCase):
                 resp = self.api_client.post(
                     resource_uri, format='json', data=library_item, 
                     authentication=self.get_credentials())
-                self.assertTrue(resp.status_code in [400], (resp.status_code, resp))
-                logger.debug('response.content.library message %r',
-                    getattr(resp, 'content'))
+                self.assertTrue(
+                    resp.status_code in [400], 
+                    (resp.status_code, self.get_content(resp)))
         
-                obj = json.loads(getattr(resp, 'content'))
-                logger.debug('==========content: %r', obj)
-                self.assertTrue(key in obj['library'], 
+                obj = self.deserialize(resp)
+                self.assertTrue(
+                    key in obj, 
                     'Error: response error not found: %r, obj: %r' %(key, obj))
 
         # test 2                
@@ -314,43 +258,46 @@ class LibraryResource(DBResourceTestCase):
             resource_uri, format='json', data=library_item, 
             authentication=self.get_credentials())
         
-        self.assertTrue(resp.status_code in [400], (resp.status_code, resp))
+        self.assertTrue(
+            resp.status_code in [400], 
+            (resp.status_code, self.get_content(resp)))
         
         logger.debug('response.content.library message: %r', 
                          getattr(resp, 'content'))
         
-        obj = json.loads(getattr(resp, 'content'))
-        self.assertTrue('library_name' in obj['library'], 
+        obj = self.deserialize(resp)
+        self.assertTrue(
+            'library_name' in obj, 
             'content should have an entry for the faulty "name": %r' % obj)
 
         # test 3
         library_item = LibraryFactory.attributes()
         library_item['library_type'] = 'invalid_type'
         
-        logger.debug(_('try to create an invalid library_type:', library_item))
         resp = self.api_client.post(
             resource_uri, format='json', data=library_item, 
             authentication=self.get_credentials())
-        self.assertTrue(resp.status_code in [400], (resp.status_code, resp))
-        logger.debug('response.content-library %r',getattr(resp, 'content'))
-        obj = json.loads(getattr(resp, 'content'))
-        self.assertTrue('library_type' in obj['library'], 
+        self.assertTrue(
+            resp.status_code in [400], 
+            (resp.status_code, self.get_content(resp)))
+        obj = self.deserialize(resp)
+        self.assertTrue(
+            'library_type' in obj, 
             'content should have an entry for the faulty "name": %r' % obj)
 
         # TODO: test regex and number: min/max, vocabularies
-
-        logger.debug('==== done: test4_create_library_invalids =====')
         
+    def test61_small_molecule_delete_compound_name(self):
+        # TODO: test that sm.compound names can be removed
+        pass
+    
     def test6_load_small_molecule_file(self):
-        
-        logger.debug(_('==== test6_load_small_molecule_file ====='))
         
         library_item = self.create_library({ 
             'start_plate': '1536', 
             'end_plate': '1536', 
             'plate_size': '384',
             'screen_type': 'small_molecule' })
-        logger.debug(_('==== start: test6_load_small_molecule_file ====='))
 
         resource_name = 'well'
         resource_uri = '/'.join([BASE_URI_DB,'library', library_item['short_name'],resource_name])
@@ -368,7 +315,8 @@ class LibraryResource(DBResourceTestCase):
             input_data = self.serializer.from_sdf(input_file.read())
             input_data = input_data['objects']
             expected_count = 8
-            self.assertEqual(len(input_data), expected_count, 
+            self.assertEqual(
+                len(input_data), expected_count, 
                 str(('initial serialization of ',filename,'found',
                     len(input_data), 'expected',expected_count,
                     'input_data',input_data)))
@@ -378,8 +326,9 @@ class LibraryResource(DBResourceTestCase):
             resp = self.api_client.put(
                 resource_uri, format='sdf', data=input_data, 
                 authentication=self.get_credentials(), **data_for_get )
-            self.assertTrue(resp.status_code in [200, 204], 
-                'status: %r, resp: %r' % (resp.status_code, self.deserialize(resp)))
+            self.assertTrue(
+                resp.status_code in [200, 204], 
+                (resp.status_code, self.get_content(resp)))
         
         # NOTE: get the library "reagents" instead of the wells: reagents have a 
         # one-to-many reln to wells, so the well endpoint returns only first;
@@ -391,19 +340,21 @@ class LibraryResource(DBResourceTestCase):
         resp = self.api_client.get(
             reagent_resource_uri, format='sdf', authentication=self.get_credentials(), 
             data=data_for_get)
-        self.assertTrue(resp.status_code in [200], (resp.status_code, resp))
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
         returned_data = new_obj['objects']
         expected_count = 384
-        self.assertEqual(len(returned_data), expected_count, 
-            _('returned_data of ',filename,'found',
+        self.assertEqual(
+            len(returned_data), expected_count, 
+            ('returned_data of ',filename,'found',
                 len(returned_data), 'expected',expected_count,
                 'returned_data',returned_data))
         
         # test 1: test well keys
         specific_schema = self.get_from_server(resource_uri + '/schema')
         fields = specific_schema['fields']
-        logger.debug(_('=== well fields', fields.keys()))
         
         substance_ids = set()
         for inputobj in input_data:
@@ -413,20 +364,21 @@ class LibraryResource(DBResourceTestCase):
                     inputobj['plate_number'],inputobj['well_name']) }
             result, outputobj = find_obj_in_list(
                 search,returned_data) #, excludes=excludes )
-            self.assertTrue(result, 
-                _('not found', search,outputobj,'=== objects returned ===', 
+            self.assertTrue(
+                result, 
+                ('not found', search,outputobj,'=== objects returned ===', 
                       returned_data ) ) 
-            logger.debug(_('found', search))
             # second look at the found item
             expected_data = { 
                 key: inputobj[key] for key in fields.keys() if key in inputobj }
             result, msgs = assert_obj1_to_obj2(expected_data, outputobj)
-            logger.debug(_(result, msgs))
-            self.assertTrue(result, (msgs, 'input', expected_data, 'output', outputobj))
+            self.assertTrue(
+                result, (msgs, 'input', expected_data, 'output', outputobj))
 
             substance_id = outputobj['substance_id']
-            self.assertTrue(substance_id not in substance_ids, 
-                _('substance_id not unique', substance_id, substance_ids))
+            self.assertTrue(
+                substance_id not in substance_ids, 
+                ('substance_id not unique', substance_id, substance_ids))
             substance_ids.add(substance_id)
                     
         logger.debug('==== done: test6_load_small_molecule_file =====')
@@ -445,30 +397,33 @@ class LibraryResource(DBResourceTestCase):
             input_data = self.serializer.from_sdf(input_file.read())
             input_data = input_data['objects']
             expected_count = 4
-            self.assertEqual(len(input_data), expected_count, 
+            self.assertEqual(
+                len(input_data), expected_count, 
                 str(('initial serialization of ',filename,'found',
                     len(input_data), 'expected',expected_count,
                     'input_data',input_data)))
             
-            resp = self.api_client.put(
+            resp = self.api_client.patch(
                 resource_uri, format='sdf', data=input_data, 
                 authentication=self.get_credentials(), **data_for_get )
-            self.assertTrue(resp.status_code in [200, 204], 
-                _(resp.status_code, self.deserialize(resp)))
+            self.assertTrue(
+                resp.status_code in [200, 204], 
+                (resp.status_code, self.get_content(resp)))
         
-            logger.debug(_('check updated/patched data for',resource_name,
-                'execute get on:',resource_uri))
             resource_name = 'well'
             resource_uri = '/'.join([BASE_URI_DB,'library', library_item['short_name'],resource_name])
             resp = self.api_client.get(
                 reagent_resource_uri, format='sdf', authentication=self.get_credentials(), 
                 data=data_for_get)
-            self.assertTrue(resp.status_code in [200], (resp.status_code, resp))
+            self.assertTrue(
+                resp.status_code in [200], 
+                (resp.status_code, self.get_content(resp)))
             new_obj = self.deserialize(resp)
             returned_data = new_obj['objects']
             expected_count = 384
-            self.assertEqual(len(returned_data), expected_count, 
-                _('returned_data of ',filename,'found',
+            self.assertEqual(
+                len(returned_data), expected_count, 
+                ('returned_data of ',filename,'found',
                     len(returned_data), 'expected',expected_count,
                     'returned_data',returned_data))
         
@@ -482,12 +437,11 @@ class LibraryResource(DBResourceTestCase):
                     'plate_number': update_well['plate_number']}
                 result, outputobj = find_obj_in_list(
                     search,returned_data) #, excludes=excludes )
-                self.assertTrue(result, 
-                    _('not found', search,outputobj,'=== objects returned ===', 
+                self.assertTrue(
+                    result, 
+                    ('not found', search,outputobj,'=== objects returned ===', 
                           returned_data ) ) 
-                logger.info(_('found', search))
                 result, msgs = assert_obj1_to_obj2(update_well, outputobj)
-                logger.debug(_(result, msgs))
                 self.assertTrue(result, (msgs, update_well, outputobj))
 
             # 2. check the apilogs - library
@@ -499,11 +453,13 @@ class LibraryResource(DBResourceTestCase):
                     'limit': 0, 
                     'ref_resource_name': 'library', 
                     'key': library_item['short_name'] })
-            self.assertTrue(resp.status_code in [200], (resp.status_code, resp))
+            self.assertTrue(
+                resp.status_code in [200], 
+                (resp.status_code, self.get_content(resp)))
             new_obj = self.deserialize(resp)
-            logger.debug(_('===library apilogs:', json.dumps(new_obj)))
             expected_count = 3 # create, post, update
-            self.assertEqual( len(new_obj['objects']), expected_count , 
+            self.assertEqual( 
+                len(new_obj['objects']), expected_count , 
                 str((len(new_obj['objects']), expected_count, new_obj)))
 
             # 2. check the apilogs - wells
@@ -512,15 +468,30 @@ class LibraryResource(DBResourceTestCase):
                 resource_uri, format='json', 
                 authentication=self.get_credentials(), 
                 data={ 'limit': 0, 'ref_resource_name': 'well' })
-            self.assertTrue(resp.status_code in [200], (resp.status_code, resp))
+            self.assertTrue(
+                resp.status_code in [200], 
+                (resp.status_code, self.get_content(resp)))
             new_obj = self.deserialize(resp)
-            logger.debug(_('===apilogs:', json.dumps(new_obj)))
-            
+            logger.debug('===apilogs: %s', json.dumps(new_obj))
+            logs = new_obj['objects']
             # look for 12 logs; 8 for create, 4 for update
             expected_count = 12
-            self.assertEqual( len(new_obj['objects']), expected_count , 
-                str((len(new_obj['objects']), expected_count)))
-        
+            self.assertEqual( 
+                len(logs), expected_count , 
+                str((len(logs), expected_count)))
+            
+            create_logs = [log for log in logs if log['api_action'] == 'CREATE']
+            patch_logs = [log for log in logs if log['api_action'] == 'PATCH']
+            
+            self.assertEqual(
+                len(create_logs), 8, 
+                ('expected %d create logs, found: %d' %(8,len(create_logs)), create_logs))
+            self.assertEqual(
+                len(patch_logs), 4, 
+                ('expected %d patch logs, found: %d' %(4,len(create_logs)), create_logs))
+            
+            # TODO: check logged values
+            # TODO: check parent_log - library log/ version
     def test7_load_sirnai(self):
 
         filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_rnai.xlsx'
@@ -582,12 +553,8 @@ class LibraryResource(DBResourceTestCase):
     def _load_xls_reagent_file(
             self,filename,library_item, expected_in, expected_count):
 
-        logger.debug(_('==== test_load_xls_reagent_file ====='))
-        
         start_plate = library_item['start_plate']
         end_plate = library_item['end_plate']
-
-        logger.debug(_('==== start: _load_xls_reagent_file ====='))
 
         resource_name = 'well'
         resource_uri = '/'.join([
@@ -606,40 +573,37 @@ class LibraryResource(DBResourceTestCase):
             input_data = self.serializer.from_xlsx(input_file.read())
             input_data = input_data['objects']
         
-            self.assertEqual(len(input_data), expected_in, 
+            self.assertEqual(
+                len(input_data), expected_in, 
                 str(('initial serialization of ',filename,'found',
                     len(input_data), 'expected',expected_in)))
             
-            logger.debug(_('======Submitting patch...', filename, resource_uri))
-        
             resp = self.api_client.put(
                 resource_uri, format='xlsx', data=input_data, 
                 authentication=self.get_credentials(), **data_for_get )
-            self.assertTrue(resp.status_code in [200, 204], 
-                _(resp.status_code, xls_serializer.from_xlsx(resp.content)))
+            self.assertTrue(
+                resp.status_code in [200, 204], 
+                (resp.status_code, xls_serializer.from_xlsx(resp.content)))
         
-        logger.debug(_('check patched data for',resource_name,
-            'execute get on:',resource_uri))
-
         resource_name = 'reagent'
         reagent_resource_uri = '/'.join([
             BASE_URI_DB,'library', library_item['short_name'],resource_name])
         resp = self.api_client.get(
             reagent_resource_uri, format='xlsx', authentication=self.get_credentials(), 
             data=data_for_get)
-
-        logger.debug(_('--------resp to get:', resp.status_code))
-        self.assertTrue(resp.status_code in [200], (resp.status_code, resp))
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
         returned_data = new_obj['objects']
-        self.assertEqual(len(returned_data), expected_count, 
+        self.assertEqual(
+            len(returned_data), expected_count, 
             str(('returned_data of ',filename,'found',
                 len(returned_data), 'expected',expected_count )))
 
         # 1. test well keys
         specific_schema = self.get_from_server(resource_uri + '/schema')
         fields = specific_schema['fields']
-        logger.debug(_('=== well fields', fields.keys()))
         
         substance_ids = set()
         for inputobj in input_data:
@@ -648,21 +612,21 @@ class LibraryResource(DBResourceTestCase):
                 'well_id': lims_utils.well_id(
                     inputobj['plate_number'],inputobj['well_name']) }
             result, outputobj = find_obj_in_list(search,returned_data)
-            self.assertTrue(result, 
-                _('not found', search,outputobj,'=== objects returned ===', 
-                      returned_data ) ) 
-            logger.debug(_('found', search))
+            self.assertTrue(
+                result, 
+                ('not found', search,outputobj,'=== objects returned ===', 
+                      returned_data )) 
+
             # second look at the found item
-            
             expected_data = { key: inputobj[key] for key in fields.keys() 
                 if key in inputobj }
             result, msgs = assert_obj1_to_obj2(expected_data, outputobj)
-            logger.debug(_(result, msgs))
             self.assertTrue(result, (msgs, expected_data, outputobj))
             
             substance_id = outputobj['substance_id']
-            self.assertTrue(substance_id not in substance_ids, 
-                _('substance_id not unique', substance_id, substance_ids))
+            self.assertTrue(
+                substance_id not in substance_ids, 
+                ('substance_id not unique', substance_id, substance_ids))
             substance_ids.add(substance_id)
                     
 
@@ -690,7 +654,6 @@ class ScreenResource(DBResourceTestCase):
             'username': 'adminuser',
             'is_superuser': True
         })
-
         
         logger.info('create library...')
         library1 = self.create_library({
@@ -762,10 +725,15 @@ class ScreenResource(DBResourceTestCase):
         errors, resp = self._create_resource(
             input, resource_uri, resource_test_uri, expect_fail=True)
         self.assertTrue(resp.status_code==400, msg)
-        self.assertTrue(key in errors, 'test: %s, not in errors: %r' %(msg,errors))
+        self.assertTrue(
+            key in errors, 'test: %s, not in errors: %r' %(msg,errors))
         
         key = 'library_plates_screened' 
-        value = [ 'short_name_good:copy_name_good:1000-a3000' ]
+#         value = [ 'short_name_good:copy_name_good:1000-a3000' ]
+        # create a library_plate_range with invalid library name:
+        # even though the plate range is correct, this should fail,
+        # and the transaction should cancel the creation of the libraryscreening
+        value = [lps_format.format(library_short_name='**',name='A').format(**library1)]
         msg = 'invalid format for %r should fail' % key
         logger.info('test %r', msg)
         input = library_screening_input.copy()
@@ -773,7 +741,8 @@ class ScreenResource(DBResourceTestCase):
         errors, resp = self._create_resource(
             input, resource_uri, resource_test_uri, expect_fail=True)
         self.assertTrue(resp.status_code==400, msg)
-        self.assertTrue(key in errors, 'test: %s, not in errors: %r' %(msg,errors))
+        self.assertTrue(
+            key in errors, 'test: %s, not in errors: %r' %(msg,errors))
 
         key = 'library_plates_screened' 
         value = [ lps_format.format(**library_copy1).format(**{
@@ -786,7 +755,8 @@ class ScreenResource(DBResourceTestCase):
         errors, resp = self._create_resource(
             input, resource_uri, resource_test_uri, expect_fail=True)
         self.assertTrue(resp.status_code==400, msg)
-        self.assertTrue(key in errors, 'test: %s, not in errors: %r' %(msg,errors))
+        self.assertTrue(
+            key in errors, 'test: %s, not in errors: %r' %(msg,errors))
 
         key = 'library_plates_screened' 
         value = [ 
@@ -804,7 +774,8 @@ class ScreenResource(DBResourceTestCase):
         errors, resp = self._create_resource(
             input, resource_uri, resource_test_uri, expect_fail=True)
         self.assertTrue(resp.status_code==400, msg)
-        self.assertTrue(key in errors, 'test: %s, not in errors: %r' %(msg,errors))
+        self.assertTrue(
+            key in errors, 'test: %s, not in errors: %r' %(msg,errors))
 
         logger.info('test valid input...')
         library_screening = self._create_resource(
@@ -839,8 +810,9 @@ class ScreenResource(DBResourceTestCase):
         
         screen_item = self.create_screen()
         
-        self.assertTrue('facility_id' in screen_item, 'the facility_id was not created')
-        logger.debug(_('item found', screen_item))
+        self.assertTrue(
+            'facility_id' in screen_item, 
+            'the facility_id was not created')
         
 
 class MutualScreensTest(DBResourceTestCase,ResourceTestCase):
@@ -889,12 +861,12 @@ class ScreensaverUserResource(DBResourceTestCase):
         resource_test_uri = '/'.join([resource_uri,simple_user_input['ecommons_id']])
         created_user = self._create_resource(
             simple_user_input, resource_uri, resource_test_uri)
-        self.assertTrue(simple_user_input['ecommons_id']==created_user['username'],
+        self.assertTrue(
+            simple_user_input['ecommons_id']==created_user['username'],
             'username should equal the ecommons id if only ecommons is provided: %r, %r' 
-            % (simple_user_input,created_user))
+                % (simple_user_input,created_user))
         
     def test0_create_user(self):
-        logger.debug(_('==== test_create_user ====='))
         
         self.user1 = self.create_screensaveruser({ 'username': 'st1'})
         self.screening_user = self.create_screensaveruser({ 'username': 'screening1'})
@@ -914,13 +886,12 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp = self.api_client.patch(resource_uri, 
                 format='json', data=patch_obj, 
                 authentication=self.get_credentials())
-            self.assertTrue(resp.status_code in [200,201,202], 
-                _(resp.status_code, self.deserialize(resp)))
+            self.assertTrue(
+                resp.status_code in [200,201,202], 
+                (resp.status_code, self.get_content(resp)))
         except Exception, e:
             logger.exception('on patching adminuser %s' % patch_obj)
             raise
-
-        logger.debug(_('==== test_create_user done ====='))
 
     def test1_patch_usergroups(self):
         
@@ -941,22 +912,27 @@ class ScreensaverUserResource(DBResourceTestCase):
             resource_uri = BASE_REPORTS_URI + '/usergroup/'
             resp = self.api_client.put(resource_uri, 
                 format='json', data=group_patch, authentication=self.get_credentials())
-            self.assertTrue(resp.status_code in [200,201,202], 
-                _(resp.status_code, self.deserialize(resp)))
+            self.assertTrue(
+                resp.status_code in [200,201,202], 
+                (resp.status_code, self.get_content(resp)))
 
             resp = self.api_client.get(resource_uri, format='json', 
                 authentication=self.get_credentials(), data={ 'limit': 999 })
+            self.assertTrue(
+                resp.status_code in [200,201,202], 
+                (resp.status_code, self.get_content(resp)))
             new_obj = self.deserialize(resp)
-            self.assertTrue(resp.status_code in [200,201,202], (resp.status_code, resp))
-            self.assertEqual(len(new_obj['objects']), len(group_patch['objects']), new_obj)
+            self.assertEqual(
+                len(new_obj['objects']), len(group_patch['objects']), new_obj)
             
             for i,item in enumerate(group_patch['objects']):
                 result, obj = find_obj_in_list(item, new_obj['objects'])
-                self.assertTrue(result, 
-                    _('bootstrap item not found', item, new_obj['objects']))
-                logger.info(_('item found', obj))        
+                self.assertTrue(
+                    result, 
+                    ('bootstrap item not found', item, new_obj['objects']))
+                logger.info('item found: %r', obj)        
         except Exception, e:
-            logger.exception(_('on group_patch', group_patch), e)
+            logger.exception('on group_patch: %r', group_patch)
             raise
 
         userpatch = { 'objects': [   
@@ -977,22 +953,26 @@ class ScreensaverUserResource(DBResourceTestCase):
             resource_uri = BASE_URI_DB + '/screensaveruser'
             resp = self.api_client.patch(resource_uri, 
                 format='json', data=userpatch, authentication=self.get_credentials())
-            self.assertTrue(resp.status_code in [200,201,202], 
-                _(resp.status_code, self.deserialize(resp)))
+            self.assertTrue(
+                resp.status_code in [200,201,202], 
+                (resp.status_code, self.get_content(resp)))
 
             data_for_get={ 'limit': 0 }        
             data_for_get.setdefault('includes', ['*'])
             resp = self.api_client.get(resource_uri, format='json', 
                 authentication=self.get_credentials(), data=data_for_get )
             new_obj = self.deserialize(resp)
-            self.assertTrue(resp.status_code in [200], (resp.status_code, resp))
+            self.assertTrue(
+                resp.status_code in [200], 
+                (resp.status_code, self.get_content(resp)))
             self.assertEqual(len(new_obj['objects']), 3, (new_obj))
             
             for i,item in enumerate(userpatch['objects']):
                 result, obj = find_obj_in_list(item, new_obj['objects'])
                 self.assertTrue(
-                    result, _('bootstrap item not found', item, new_obj['objects']))
-                logger.debug(_('item found', obj))        
+                    result, 
+                    ('bootstrap item not found', item, new_obj['objects']))
+                logger.debug('item found: %r', obj)        
         
         except Exception, e:
             logger.exception('on userpatch %r, %e', userpatch, e)
@@ -1019,24 +999,23 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp = self.api_client.patch(resource_uri, 
                 format='json', 
                 data=checklist_item_patch, authentication=self.get_credentials())
-            self.assertTrue(resp.status_code in [200,201,202], 
-                _(resp.status_code, self.deserialize(resp)))
-            logger.info('checklistitem patch, resp: %s' % self.deserialize(resp))
+            self.assertTrue(
+                resp.status_code in [200,201,202], 
+                (resp.status_code, self.get_content(resp)))
+
             data_for_get={ 'limit': 0 }        
             data_for_get.setdefault('includes', ['*'])
             resp = self.api_client.get(
                 resource_uri + '/mailing_lists_wikis/added_to_iccb_l_nsrb_email_list',
                 format='json', 
                 authentication=self.get_credentials(), data=data_for_get )
-            logger.warn(str(('resp',self.serializer.get_content(resp))))
+            self.assertTrue(
+                resp.status_code in [200], 
+                (resp.status_code, self.get_content(resp)))
             new_obj = self.deserialize(resp)
-            self.assertTrue(resp.status_code in [200], (resp.status_code, resp))
-            logger.info(str(('new_obj', new_obj)))
             result,msgs = assert_obj1_to_obj2(
                 checklist_item_patch['objects'][0], new_obj)
             self.assertTrue(result,msgs)
-#             result,obj = equivocal(new_obj, checklist_item_patch['objects'][0])
-#             self.assertTrue(result,obj)
         
         except Exception, e:
             logger.exception('on userchecklist')
@@ -1059,53 +1038,52 @@ class ScreensaverUserResource(DBResourceTestCase):
             'contents': "This is a test of pasted text\n1\n2\n3\n\n end\n",
             'file_date': '2015-10-10'
             }
-        try:       
-            
-            content_type = MULTIPART_CONTENT
 
-            resource_uri = BASE_URI_DB + '/screensaveruser/%s/attachedfiles/' % test_username
-            
-            authentication=self.get_credentials()
-            kwargs = {}
-            kwargs['HTTP_AUTHORIZATION'] = authentication
-            
-            django_test_client = self.api_client.client
-            resp = django_test_client.post(resource_uri, 
-                content_type=content_type, 
-                data=attachedfile_item_post, **kwargs)
-            self.assertTrue(resp.status_code in [200,201,202,204], 
-                _('attached file put returns code: %s' % resp.status_code))
-            
-            data_for_get={ 'limit': 0 }        
-            data_for_get.setdefault('includes', ['*'])
-            resp = self.api_client.get(
-                resource_uri,
-                authentication=self.get_credentials(), data=data_for_get )
-            self.assertTrue(resp.status_code in [200], (resp.status_code, resp))
-            new_obj = self.deserialize(resp)
-            logger.info('new obj: %s ' % new_obj)
-            result,msgs = assert_obj1_to_obj2(
-                attachedfile_item_post, new_obj['objects'][0], 
-                excludes=['contents'])
-            self.assertTrue(result,msgs)
-            af = new_obj['objects'][0]
-            uri = '/db/attachedfile/content/%s' % af['attached_file_id']
-            try:
-                admin_user = User.objects.get(username=admin_username)
-                view, args, kwargs = resolve(uri)
-                kwargs['request'] = self.api_client.client.request()
-                kwargs['request'].user=admin_user
-                result = view(*args, **kwargs)
-                logger.info('attached_file request view result: %r' % result)
-                self.assertEqual(result.content, attachedfile_item_post['contents'], 
-                    'download file view returns wrong contents: %r' % result.content)
-            except Exception, e:
-                logger.info(str(('no file found at', uri,e)))
-                raise
+        content_type = MULTIPART_CONTENT
+        resource_uri = BASE_URI_DB + '/screensaveruser/%s/attachedfiles/' % test_username
         
+        authentication=self.get_credentials()
+        kwargs = {}
+        kwargs['HTTP_AUTHORIZATION'] = authentication
+        
+        django_test_client = self.api_client.client
+        resp = django_test_client.post(resource_uri, 
+            content_type=content_type, 
+            data=attachedfile_item_post, **kwargs)
+        self.assertTrue(
+            resp.status_code in [201, 202], 
+            (resp.status_code,self.get_content(resp)))
+        
+        data_for_get={ 'limit': 0 }        
+        data_for_get.setdefault('includes', ['*'])
+        resp = self.api_client.get(
+            resource_uri,
+            authentication=self.get_credentials(), data=data_for_get )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        logger.info('new obj: %s ' % new_obj)
+        result,msgs = assert_obj1_to_obj2(
+            attachedfile_item_post, new_obj['objects'][0], 
+            excludes=['contents'])
+        self.assertTrue(result,msgs)
+        af = new_obj['objects'][0]
+        uri = '/db/attachedfile/content/%s' % af['attached_file_id']
+        try:
+            admin_user = User.objects.get(username=admin_username)
+            view, args, kwargs = resolve(uri)
+            kwargs['request'] = self.api_client.client.request()
+            kwargs['request'].user=admin_user
+            result = view(*args, **kwargs)
+            logger.info('attached_file request view result: %r',result)
+            self.assertEqual(
+                result.content, attachedfile_item_post['contents'], 
+                'download file view returns wrong contents: %r' % result.content)
         except Exception, e:
-            logger.exception('on test3_attached_files')
-            raise e
+            logger.info('no file found at: %r', uri)
+            raise
+    
 
         # TODO: 2. test attached file from file system
         # TODO: delete attached file
@@ -1132,8 +1110,9 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp = self.api_client.post(resource_uri, 
                 format='json', 
                 data=service_activity_post, authentication=self.get_credentials())
-            self.assertTrue(resp.status_code in [200,201,202], 
-                _(resp.status_code, self.deserialize(resp)))
+            self.assertTrue(
+                resp.status_code in [200,201,202], 
+                (resp.status_code, self.get_content(resp)))
 
             data_for_get={ 'limit': 0 }        
             data_for_get.setdefault('includes', ['*'])
@@ -1141,10 +1120,10 @@ class ScreensaverUserResource(DBResourceTestCase):
                 resource_uri,
                 format='json', 
                 authentication=self.get_credentials(), data=data_for_get )
-            logger.warn(str(('resp',self.serializer.get_content(resp))))
+            self.assertTrue(
+                resp.status_code in [200], 
+                (resp.status_code, self.get_content(resp)))
             new_obj = self.deserialize(resp)
-            self.assertTrue(resp.status_code in [200,201,202], (resp.status_code, resp))
-            logger.info(str(('new_obj', new_obj)))
             result,msgs = assert_obj1_to_obj2(
                 service_activity_post, new_obj['objects'][0])
             self.assertTrue(result,msgs)

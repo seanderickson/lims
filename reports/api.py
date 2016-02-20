@@ -29,7 +29,7 @@ from django.db.models import Q
 from django.db.models.aggregates import Max
 from django.forms.models import model_to_dict
 from django.http.request import HttpRequest
-from django.http.response import HttpResponse
+from django.http.response import HttpResponse, Http404
 from django.http.response import HttpResponseBase
 from django.utils import timezone
 from django.utils.encoding import smart_text
@@ -113,13 +113,14 @@ def parse_val(value, key, data_type):
             return float(value)
         elif data_type == 'list':
             if isinstance(value, six.string_types):
-               return (value) # convert string to list
-            return value # otherwise, better be a string
+               return (value,) # convert string to list
+            return value # otherwise, better be a list
         else:
             raise Exception('unknown data type: %s: "%s"' % (key,data_type))
     except Exception, e:
-        logger.exception('value not parsed %r' % value)
-        raise            
+        raise ValidationError(key=key,msg='parse error: %r' % str(e))
+#         logger.exception('value not parsed %r' % value)
+#         raise            
 
     
 class UserGroupAuthorization(Authorization):
@@ -232,7 +233,6 @@ def write_authorization(_func):
     ''' 
     @wraps(_func)
     def _inner(self, *args, **kwargs):
-        logger.info('write authorization wrapper')
         request = args[0]
         self._meta.authorization._is_resource_authorized(
             self._meta.resource_name,request.user,'write')
@@ -1120,6 +1120,8 @@ class ManagedResource(LoggingMixin):
                 logger.info(str(('content_types1', self._meta.resource_name, 
                     schema['resource_definition']['content_types'])))
             
+            # supertype
+            # TODO: not-recursive: json fields are not populated
             _fields = schema['fields']
             supertype_fields = get_supertype_fields(schema['resource_definition'])
             logger.debug('resource: %s, supertype fields: %r', 
@@ -1287,8 +1289,7 @@ class ManagedResource(LoggingMixin):
         local_field_defs = MetaHash.objects.get_and_parse(
             scope=self.scope, field_definition_scope='fields.metahash', clear=True)
         
-        # Use the tastypie field type that has been designated to convert each
-        # field in the json stuffed field just like it were a real db field
+        # Use the tastypie field type to serialize into the json_field
         for key in [ 
             str(x) for x,y in local_field_defs.items() 
                 if 'json_field_type' in y and y['json_field_type'] ]:
@@ -1357,7 +1358,7 @@ class ManagedResource(LoggingMixin):
                     deserialized.get(id_field,None), id_field,fields[id_field]['data_type']) 
             elif kwargs and kwargs.get(id_field,None):
                 kwargs_for_id[id_field] = parse_val(
-                    kwargs.get(id_field,None), id_field,fields[id_field  ]['data_type']) 
+                    kwargs.get(id_field,None), id_field,fields[id_field]['data_type']) 
             elif 'resource_uri' in deserialized:
                 return self.find_key_from_resource_uri(deserialized['resource_uri'])
         return kwargs_for_id
@@ -1534,10 +1535,9 @@ class ManagedResource(LoggingMixin):
         return response
  
     def _get_filename(self,schema, kwargs):
-        logger.info('kwargs for filename: %r ', kwargs)
         filekeys = []
         if 'id_attribute' in schema:
-            filekeys.extend([ str(kwarg[key]) for 
+            filekeys.extend([ str(kwargs[key]) for 
                 key in schema['id_attribute'] if key in kwargs ])
         else:
             _dict = {key:val for key,val in kwargs.items() 
@@ -1813,273 +1813,14 @@ class MetaHashResource(ManagedModelResource):
         return data['scope'] + '/' + data['key']
 
 
-class VocabulariesResource(ManagedModelResource, SqlAlchemyResource):
-    '''
-    This resource extends the ManagedModelResource using a new table 
-    (vocabularies) but has fields defined in the Metahash table.
-    '''
-    def __init__(self, **kwargs):
-        super(VocabulariesResource,self).__init__(**kwargs)
 
-    class Meta:
-        bootstrap_fields = ['scope', 'key', 'ordinal', 'json_field']
-        queryset = Vocabularies.objects.all().order_by('scope', 'ordinal', 'key')
-        authentication = MultiAuthentication(
-            BasicAuthentication(), SessionAuthentication())
-        authorization= UserGroupAuthorization() #SuperUserAuthorization()        
-        ordering = []
-        filtering = {'scope':ALL, 'key': ALL, 'alias':ALL}
-        serializer = LimsSerializer()
-        excludes = [] #['json_field']
-        always_return_data = True # this makes Backbone happy
-        resource_name = 'vocabularies'
-        max_limit = 10000
-    
-    def build_schema(self):
-        schema = super(VocabulariesResource,self).build_schema()
-        temp = [ x.scope for x in self.Meta.queryset.distinct('scope')]
-        schema['extraSelectorOptions'] = { 
-            'label': 'Vocabulary', 'searchColumn': 'scope', 'options': temp }
-        return schema
-    
-    def get_detail(self, request, **kwargs):
-        key = kwargs.get('key', None)
-        if not key:
-            logger.info(str(('no key provided')))
-            raise NotImplementedError('must provide a key parameter')
-        
-        scope = kwargs.get('scope', None)
-        if not item_group:
-            logger.info(str(('no scope provided')))
-            raise NotImplementedError('must provide a scope parameter')
-        
-        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
-        kwargs['is_for_detail']=True
-        return self.build_list_response(request, **kwargs)
-        
-    @read_authorization
-    def get_list(self,request,**kwargs):
-
-        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-
-        return self.build_list_response(request, **kwargs)
-
-        
-    def build_list_response(self,request, **kwargs):
-        ''' 
-        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns django.http.response.StreamingHttpResponse 
-        '''
-        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
-
-        param_hash = {}
-        param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
-        
-        is_for_detail = kwargs.pop('is_for_detail', False)
-
-        schema = self.build_schema()
-
-        filename = self._get_filename(schema, kwargs)
-
-        key = param_hash.pop('key', None)
-        if key:
-            param_hash['key__eq'] = key
-
-        scope = param_hash.pop('scope', None)
-        if scope:
-            param_hash['scope__eq'] = scope
-        
-        try:
-            
-            # general setup
-          
-            manual_field_includes = set(param_hash.get('includes', []))
-            
-            if DEBUG_GET_LIST: 
-                logger.info(str(('manual_field_includes', manual_field_includes)))
-  
-            (filter_expression, filter_fields) = \
-                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
-            
-            original_field_hash = schema['fields']
-            # Add convenience fields "1" and "2", which aid in viewing with json viewers
-            original_field_hash['1'] = {
-                'key': '1',
-                'scope': 'fields.vocabularies',
-                'data_type': 'string',
-                'json_field_type': 'convenience_field',
-                'ordering': 'false',
-                'visibilities': []
-                }
-            original_field_hash['2'] = {
-                'key': '2',
-                'scope': 'fields.vocabularies',
-                'data_type': 'string',
-                'json_field_type': 'convenience_field',
-                'ordering': 'false',
-                'visibilities': []
-                }
-            original_field_hash['resource_uri'] = {
-                'key': 'resource_uri',
-                'scope': 'fields.vocabularies',
-                'data_type': 'string',
-                'json_field_type': 'convenience_field',
-                'ordering': 'false',
-                'visibilities': []
-                }
-            fields_for_sql = { key:field for key, field in original_field_hash.items() 
-                if not field.get('json_field_type',None) }
-            fields_for_json = { key:field for key, field in original_field_hash.items() 
-                if field.get('json_field_type',None) }
-            
-            field_hash = self.get_visible_fields(
-                fields_for_sql, filter_fields, manual_field_includes, 
-                param_hash.get('visibilities'), 
-                exact_fields=set(param_hash.get('exact_fields',[])))
-            field_hash['json_field'] = {
-                'key': 'json_field',
-                'scope': 'fields.vocabularies',
-                'data_type': 'string',
-                'table': 'reports_vocabularies',
-                'field': 'json_field',
-                'ordering': 'false',
-                'visibilities': ['l','d']
-                }
-              
-            order_params = param_hash.get('order_by',[])
-            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
-                order_params, field_hash)
-            
-            # PROTOTYPE: to be refactored for other json_field resources
-            def json_field_rowproxy_generator(cursor):
-                '''
-                Wrap connection cursor to fetch fields embedded in the 'json_field'
-                '''
-                class Row:
-                    def __init__(self, row):
-                        self.row = row
-                        self.json_content = json.loads(row['json_field'])
-                    def has_key(self, key):
-                        return (key in fields_for_json or self.row.has_key(key))
-                    def keys(self):
-                        return self.row.keys() + fields_for_json.keys();
-                    def __getitem__(self, key):
-                        if key == '1':
-                            return row['scope']
-                        elif key == '2':
-                            return row['key']
-                        elif key == 'resource_uri':
-                            return '/'.join(['vocabularies', row['scope'], row['key']])
-                        elif key not in row:
-                            if key in fields_for_json:
-                                if key not in self.json_content:
-                                    logger.debug(
-                                        'key %r not found in json content %r', 
-                                        key, self.json_content)
-                                    return None
-                                else:
-                                    return self.json_content[key]
-                            else:
-                                return None
-                        else:
-                            return self.row[key]
-                for row in cursor:
-                    yield Row(row)
-                    
-            # specific setup
-            _vocab = self.bridge['reports_vocabularies']
-            custom_columns = {
-                'json_field' : literal_column('json_field')
-                }
-            base_query_tables = ['reports_vocabularies'] 
-            columns = self.build_sqlalchemy_columns(
-                field_hash.values(), base_query_tables=base_query_tables,
-                custom_columns=custom_columns )
-            j = _vocab
-            stmt = select(columns.values()).select_from(j)
-
-            # general setup
-            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
-            
-            title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
-                title_function = lambda key: field_hash[key]['title']
-            
-            return self.stream_response_from_statement(
-                request, stmt, count_stmt, filename, 
-                field_hash=original_field_hash, 
-                param_hash=param_hash,
-                is_for_detail=is_for_detail,
-                rowproxy_generator=json_field_rowproxy_generator,
-                title_function=title_function  )
-             
-        except Exception, e:
-            logger.exception('on get list')
-            raise e  
-    
-    def _get_vocabularies_by_scope(self, scope):
-        ''' Utility method
-        Retrieve and cache all of the vocabularies in a two level dict
-        - keyed by [scope][key]
-        '''
-        vocabularies = cache.get('vocabularies');
-        if not vocabularies:
-            vocabularies = {}
-            kwargs = {
-                'limit': '0'
-            }
-            request=HttpRequest()
-            request.session = Session()
-            class User:
-                @staticmethod
-                def is_superuser():
-                    return true
-            request.user = User
-            _data = self._get_list_response(request=request,**kwargs)
-            for v in _data:
-                _scope = v['scope']
-                if _scope not in vocabularies:
-                     vocabularies[_scope] = {}
-                     logger.info('created vocab scope: %r', _scope)
-                vocabularies[_scope][v['key']] = v
-                
-            # Hack: activity.type is serviceactivity.type + activity.class
-            vocabularies['activity.type'] = deepcopy(vocabularies['serviceactivity.type'])
-            vocabularies['activity.type'].update(deepcopy(vocabularies['activity.class']))
-            
-            cache.set('vocabularies', vocabularies);
-        if scope in vocabularies:
-            return deepcopy(vocabularies[scope])
-        else:
-            logger.warn(str(('---unknown vocabulary scope:', scope)))
-            return {}
-    
-    def clear_cache(self):
-        super(VocabulariesResource,self).clear_cache()
-        cache.delete('vocabularies');
-
-    @un_cache
-    def put_list(self, request, **kwargs):
-        self.suppress_errors_on_bootstrap = True
-        result = super(VocabulariesResource, self).put_list(request, **kwargs)
-        self.suppress_errors_on_bootstrap = False
-        return result
-    
-    @un_cache
-    def patch_list(self, request, **kwargs):
-        self.suppress_errors_on_bootstrap = True
-        result = super(VocabulariesResource, self).patch_list(request, **kwargs)
-        self.suppress_errors_on_bootstrap = False
-        return result
-
-class ResourceResource(ManagedModelResource):
+class ResourceResourceBak(ManagedModelResource):
     '''
     This resource extends the ManagedModelResource, uses the metahash table
     internally, and has fields defined in the Metahash table.
     '''
     def __init__(self, **kwargs):
-        super(ResourceResource,self).__init__(
+        super(ResourceResourceBak,self).__init__(
             field_definition_scope='fields.resource', **kwargs)
 
     class Meta:
@@ -2093,7 +1834,6 @@ class ResourceResource(ManagedModelResource):
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
         authorization= SuperUserAuthorization()        
-        # TODO: drive this from data
         ordering = []
         filtering = {'scope':ALL, 'key': ALL, 'alias':ALL}
         serializer = LimsSerializer()
@@ -2102,7 +1842,7 @@ class ResourceResource(ManagedModelResource):
         resource_name='resource' 
     
     def build_schema(self):
-        schema = super(ResourceResource,self).build_schema()
+        schema = super(ResourceResourceBak,self).build_schema()
         temp = [ x.scope for x in self.Meta.queryset.distinct('key')]
         schema['extraSelectorOptions'] = { 
             'label': 'Resource', 'searchColumn': 'key', 'options': temp }
@@ -2114,7 +1854,7 @@ class ResourceResource(ManagedModelResource):
         TODO: re-examine dehydrate, same issue there.
         '''
         try:
-            return super(ResourceResource, self).is_valid(bundle, request=request)
+            return super(ResourceResourceBak, self).is_valid(bundle, request=request)
         except ObjectDoesNotExist, e:
             # notify and bypass
             logger.warn(str(('Resources not defined', e, self._meta.resource_name)))
@@ -2122,7 +1862,7 @@ class ResourceResource(ManagedModelResource):
             return True;
 
     def dehydrate(self, bundle):
-        bundle = super(ResourceResource,self).dehydrate(bundle)
+        bundle = super(ResourceResourceBak,self).dehydrate(bundle)
         # Get the fields schema for each resource
         if ManagedResource.resource_registry.get('fields.'+bundle.obj.key, None):
             resource = ManagedResource.resource_registry['fields.'+bundle.obj.key]
@@ -2146,13 +1886,13 @@ class ResourceResource(ManagedModelResource):
 
     def put_list(self, request, **kwargs):
         self.suppress_errors_on_bootstrap = True
-        result = super(ResourceResource, self).put_list(request, **kwargs)
+        result = super(ResourceResourceBak, self).put_list(request, **kwargs)
         self.suppress_errors_on_bootstrap = False
         return result
     
     def patch_list(self, request, **kwargs):
         self.suppress_errors_on_bootstrap = True
-        result = super(ResourceResource, self).patch_list(request, **kwargs)
+        result = super(ResourceResourceBak, self).patch_list(request, **kwargs)
         self.suppress_errors_on_bootstrap = False
         return result
         
@@ -2164,7 +1904,7 @@ class ResourceResource(ManagedModelResource):
         groups are updated
         '''
         try:
-            bundle = super(ResourceResource, self).obj_create(bundle, **kwargs);
+            bundle = super(ResourceResourceBak, self).obj_create(bundle, **kwargs);
             if getattr(bundle.obj,'scope').find('fields') == 0: #'fields.metahash':
                 self.reset_field_defs(getattr(bundle.obj,'scope'))
             return bundle
@@ -2173,7 +1913,7 @@ class ResourceResource(ManagedModelResource):
             raise e
         
     def obj_update(self, bundle, **kwargs):
-        bundle = super(ResourceResource, self).obj_update(bundle, **kwargs);
+        bundle = super(ResourceResourceBak, self).obj_update(bundle, **kwargs);
         self.reset_field_defs(getattr(bundle.obj,'scope'))
         return bundle
 
@@ -2199,7 +1939,586 @@ class ApiLogAuthorization(UserGroupAuthorization):
             return True
 
 
-class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
+
+class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
+    '''
+    '''
+    # FIXME: put this here temporarily until class hierarchy is refactored
+    def log_patches(self,request, original_data, new_data, **kwargs):
+        '''
+        log differences between dicts having the same identity in the arrays:
+        @param original_data - data from before the API action
+        @param new_data - data from after the API action
+        - dicts have the same identity if the id_attribute keys have the same
+        value.
+        '''
+        DEBUG_PATCH_LOG = False or logger.isEnabledFor(logging.DEBUG)
+        if DEBUG_PATCH_LOG:
+            logger.info('log patches: %s' %kwargs)
+        log_comment = None
+        if HEADER_APILOG_COMMENT in request.META:
+            log_comment = request.META[HEADER_APILOG_COMMENT]
+            logger.debug(str(('log comment', log_comment)))
+        
+        if DEBUG_PATCH_LOG:
+            logger.info('log patches original: %s, =====new data===== %s',
+                original_data,new_data)
+        schema = self.build_schema()
+        id_attribute = resource = schema['resource_definition']['id_attribute']
+        if DEBUG_PATCH_LOG:
+            logger.info('===id_attribute: %s', id_attribute)
+        deleted_items = list(original_data)        
+        for new_dict in new_data:
+            log = ApiLog()
+            log.username = request.user.username 
+            log.user_id = request.user.id 
+            log.date_time = timezone.now()
+            log.ref_resource_name = self._meta.resource_name
+            log.key = '/'.join([str(new_dict[x]) for x in id_attribute])
+            log.uri = '/'.join([self._meta.resource_name,log.key])
+            
+            # user can specify any valid, escaped json for this field
+            # if 'apilog_json_field' in bundle.data:
+            #     log.json_field = bundle.data['apilog_json_field']
+            
+            log.comment = log_comment
+    
+            if 'parent_log' in kwargs:
+                log.parent_log = kwargs.get('parent_log', None)
+            
+            prev_dict = None
+            for c_dict in original_data:
+                if c_dict:
+                    if DEBUG_PATCH_LOG:
+                        logger.info('consider prev dict: %s', c_dict)
+                    prev_dict = c_dict
+                    for key in id_attribute:
+                        if new_dict[key] != c_dict[key]:
+                            prev_dict = None
+                            break
+                    if prev_dict:
+                        break # found
+            if DEBUG_PATCH_LOG:
+                logger.info('prev_dict: %s, ======new_dict====: %s', prev_dict, new_dict)
+            if prev_dict:
+                # if found, then it is modified, not deleted
+                logger.debug('remove from deleted dict %r, %r',
+                    prev_dict, deleted_items)
+                deleted_items.remove(prev_dict)
+                
+                difflog = compare_dicts(prev_dict,new_dict)
+                if 'diff_keys' in difflog:
+                    # log = ApiLog.objects.create()
+                    log.api_action = str((request.method)).upper()
+                    log.diff_dict_to_api_log(difflog)
+                    log.save()
+                    if DEBUG_PATCH_LOG:
+                        logger.info('update, api log: %r' % log)
+                else:
+                    # don't save the log
+                    if DEBUG_PATCH_LOG:
+                        logger.info('no diffs found: %r, %r, %r' 
+                            % (prev_dict,new_dict,difflog))
+            else: # creating
+                log.api_action = API_ACTION_CREATE
+                log.added_keys = json.dumps(new_dict.keys())
+                log.diffs = json.dumps(new_dict)
+                log.save()
+                if DEBUG_PATCH_LOG:
+                    logger.info('create, api log: %s', log)
+                
+        for deleted_dict in deleted_items:
+            log = ApiLog()
+            log.comment = log_comment
+            log.username = request.user.username 
+            log.user_id = request.user.id 
+            log.date_time = timezone.now()
+            log.ref_resource_name = self._meta.resource_name
+            log.key = '/'.join([str(deleted_dict[x]) for x in id_attribute])
+            log.uri = '/'.join([self._meta.resource_name,log.key])
+        
+            # user can specify any valid, escaped json for this field
+            # if 'apilog_json_field' in bundle.data:
+            #     log.json_field = bundle.data['apilog_json_field']
+            
+            log.comment = log_comment
+    
+            if 'parent_log' in kwargs:
+                log.parent_log = kwargs.get('parent_log', None)
+
+            log.api_action = API_ACTION_DELETE
+            log.diff_keys = json.dumps(deleted_dict.keys())
+            log.diffs = json.dumps(deleted_dict)
+            log.save()
+            if DEBUG_PATCH_LOG:
+                logger.info('delete, api log: %r',log)
+            
+
+class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
+    '''
+    Provides framework for "Patch" and "Put" methods
+    - patch_list, put_list, put_detail; with logging
+    - patch_detail must be implemented
+    - patch/put methods call "patch_obj"
+    - "patch_obj" must be implemented
+    - "put" methods call "delete_obj" 
+    - "delete_obj" must be implemented
+    - wrap mutating methods in "un_cache"
+    - prepend_urls must direct to the detail/list methods
+    '''
+    
+    def __init__(self, **kwargs):
+        super(ApiResource,self).__init__(**kwargs)
+        self.resource_resource = None
+
+    def get_resource_resource(self):
+        if not self.resource_resource:
+            self.resource_resource = ResourceResource()
+        return self.resource_resource
+    
+    def build_schema(self):
+        logger.debug('build schema for: %r', self._meta.resource_name)
+        return self.get_resource_resource().get_resource_schema(self._meta.resource_name)
+
+    def deserialize(self, request, data, format='application/json'):
+        return self._meta.serializer.deserialize(
+            data, 
+            format=request.META.get('CONTENT_TYPE', 'application/json'))
+
+# TODO: latest 20150218
+    def parse(self,deserialized):
+        schema = self.build_schema()
+        fields = schema['fields']
+        mutable_fields = [ field for field in fields.values() 
+            if field.get('editability', None) and (
+                'u' in field['editability'] or 'c' in field['editability'])]
+        logger.debug('r: %r, mutable fields: %r', self._meta.resource_name, 
+            [field['key'] for field in mutable_fields])
+        initializer_dict = {}
+        for field in mutable_fields:
+            key = field['key']
+            if key in deserialized:
+                initializer_dict[key] = parse_val(
+                    deserialized.get(key,None), key,field['data_type']) 
+        return initializer_dict
+    
+    @write_authorization
+    @un_cache        
+    def patch_list(self, request, **kwargs):
+
+        logger.info('patch list, resource: %r' % self._meta.resource_name)
+        logger.debug('patch list: %r' % kwargs)
+
+        deserialized = self.deserialize(request,request.body)
+        
+        if not self._meta.collection_name in deserialized:
+            raise BadRequest("Invalid data sent, must be nested in '%s'" 
+                % self._meta.collection_name)
+        deserialized = deserialized[self._meta.collection_name]
+        logger.debug('-----deserialized: %r', deserialized)
+        # Look for id's kwargs, to limit the potential candidates for logging
+        schema = self.build_schema()
+        id_attribute = resource = schema['resource_definition']['id_attribute']
+        kwargs_for_log = kwargs.copy()
+        logger.debug('id_attribute: %r', id_attribute)
+        for id_field in id_attribute:
+            ids = set()
+            # Test for each id key; it's ok on create for ids to be None
+            for _dict in [x for x in deserialized if x.get(id_field, None)]:
+                ids.add(_dict.get(id_field))
+            if ids:
+                kwargs_for_log['%s__in'%id_field] = LIST_DELIMITER_URL_PARAM.join(ids)
+        # get original state, for logging
+        logger.debug('kwargs_for_log: %r', kwargs_for_log)
+        original_data = self._get_list_response(request,**kwargs_for_log)
+        try:
+            with transaction.atomic():
+                
+                for _dict in deserialized:
+                    self.patch_obj(_dict)
+        except ValidationError as e:
+            logger.exception('Validation error: %r', e)
+            raise ImmediateHttpResponse(response=self.error_response(request, e.errors))
+            
+        # get new state, for logging
+        new_data = self._get_list_response(request,**kwargs_for_log)
+        logger.debug('new data: %s'% new_data)
+        logger.debug('patch list done, new data: %d' 
+            % (len(new_data)))
+        self.log_patches(request, original_data,new_data,**kwargs)
+        
+        if not self._meta.always_return_data:
+            return http.HttpAccepted()
+        else:
+            response = self.get_list(request, **kwargs)             
+            response.status_code = 201
+            return response
+ 
+    @write_authorization
+    @un_cache        
+    def put_list(self,request, **kwargs):
+
+        # TODO: enforce a policy that either objects are patched or deleted
+        #         raise NotImplementedError('put_list must be implemented')
+            
+        deserialized = self.deserialize(request,request.body)
+        if not self._meta.collection_name in deserialized:
+            raise BadRequest("Invalid data sent, must be nested in '%s'" 
+                % self._meta.collection_name)
+        deserialized = deserialized[self._meta.collection_name]
+        
+        # Look for id's kwargs, to limit the potential candidates for logging
+        schema = self.build_schema()
+        id_attribute = resource = schema['id_attribute']
+        kwargs_for_log = kwargs.copy()
+        for id_field in id_attribute:
+            ids = set()
+            # Test for each id key; it's ok on create for ids to be None
+            for _dict in [x for x in deserialized if x.get(id_field, None)]:
+                ids.add(_dict.get(id_field))
+            if ids:
+                kwargs_for_log['%s__in'%id_field] = LIST_DELIMITER_URL_PARAM.join(ids)
+        # get original state, for logging
+        original_data = self._get_list_response(request,**kwargs_for_log)
+
+        logger.debug('put list %s, %s',deserialized,kwargs)
+        try:
+            with transaction.atomic():
+                
+                # TODO: review REST actions:
+                # PUT deletes the endpoint
+                
+                self._meta.queryset.delete()
+                
+                for _dict in deserialized:
+                    self.put_obj(_dict)
+        except ValidationError as e:
+            logger.exception('Validation error: %r', e)
+            raise ImmediateHttpResponse(response=self.error_response(request, e.errors))
+
+        # get new state, for logging
+        kwargs_for_log = kwargs.copy()
+        for id_field in id_attribute:
+            ids = set()
+            # After patch, the id keys must be present
+            for _dict in [x for x in deserialized]:
+                ids.add(_dict.get(id_field))
+            if ids:
+                kwargs_for_log['%s__in'%id_field] = LIST_DELIMITER_URL_PARAM.join(ids)
+        new_data = self._get_list_response(request,**kwargs_for_log)
+        
+        logger.debug('new data: %s'% new_data)
+        logger.debug('patch list done, new data: %d' 
+            % (len(new_data)))
+        self.log_patches(request, original_data,new_data,**kwargs)
+
+        if not self._meta.always_return_data:
+            return http.HttpAccepted()
+        else:
+            response = self.get_list(request, **kwargs)             
+            response.status_code = 200
+            return response 
+
+    @write_authorization
+    @un_cache        
+    def post_list(self, request, **kwargs):
+        # NOTE: POST-ing will always be for single items
+        # - this is because tastypie interprets url's with no pk as "list" urls
+        return self.post_detail(request,**kwargs)
+        
+    @write_authorization
+    @un_cache        
+    def post_detail(self, request, **kwargs):
+        return self.patch_detail(request,**kwargs)
+        
+    @write_authorization
+    @un_cache        
+    def put_detail(self, request, **kwargs):
+                
+        # TODO: enforce a policy that either objects are patched or deleted
+        raise NotImplementedError('put_detail must be implemented')
+
+#         deserialized = self._meta.serializer.deserialize(
+#             request.body, 
+#             format=request.META.get('CONTENT_TYPE', 'application/json'))
+        deserialized = self.deserialize(request,request.body)
+
+        logger.debug('put detail: %r, %r' % (deserialized,kwargs))
+        
+        # cache state, for logging
+        # Look for id's kwargs, to limit the potential candidates for logging
+        schema = self.build_schema()
+        id_attribute = schema['resource_definition']['id_attribute']
+        kwargs_for_log = {}
+        for id_field in id_attribute:
+            if deserialized.get(id_field,None):
+                kwargs_for_log[id_field] = deserialized[id_field]
+            elif kwargs.get(id_field,None):
+                kwargs_for_log[id_field] = kwargs[id_field]
+        logger.debug('put detail: %s, %s' %(deserialized,kwargs_for_log))
+        if not kwargs_for_log:
+            # then this is a create
+            original_data = []
+        else:
+            original_data = self._get_list_response(request,**kwargs_for_log)
+        
+        try:
+            with transaction.atomic():
+                logger.debug('call put_obj')
+                obj = self.put_obj(deserialized, **kwargs)
+        except ValidationError as e:
+            logger.exception('Validation error: %r', e)
+            raise ImmediateHttpResponse(response=self.error_response(request, e.errors))
+                
+        if not kwargs_for_log:
+            for id_field in id_attribute:
+                val = getattr(obj, id_field,None)
+                kwargs_for_log['%s' % id_field] = val
+        # get new state, for logging
+        new_data = self._get_list_response(request,**kwargs_for_log)
+        self.log_patches(request, original_data,new_data,**kwargs)
+        
+        if not self._meta.always_return_data:
+            return http.HttpAccepted()
+        else:
+            response.status_code = 200
+            return response
+
+    @write_authorization
+    @un_cache        
+    def patch_detail(self, request, **kwargs):
+#         deserialized = self._meta.serializer.deserialize(
+#             request.body, 
+#             format=request.META.get('CONTENT_TYPE', 'application/json'))
+        deserialized = self.deserialize(request,request.body)
+
+        logger.debug('patch detail %s, %s', deserialized,kwargs)
+
+        # cache state, for logging
+        # Look for id's kwargs, to limit the potential candidates for logging
+        schema = self.build_schema()
+        id_attribute = schema['resource_definition']['id_attribute']
+        kwargs_for_log = {}
+        try:
+            kwargs_for_log = self.get_id(deserialized,**kwargs)
+            logger.debug('patch detail: %s, %s' %(deserialized,kwargs_for_log))
+        except Exception:
+            # this can be ok, if the ID is generated
+            logger.info('object id not posted')
+        if not kwargs_for_log:
+            # then this is a create
+            original_data = []
+        else:
+            original_data = []
+            try:
+                item = self._get_detail_response(request,**kwargs_for_log)
+                if item:
+                    original_data = [item]
+            except Exception, e: 
+                logger.exception('exception when querying for existing obj: %s', kwargs_for_log)
+                original_data = []
+        try:
+            with transaction.atomic():
+                obj = self.patch_obj(deserialized, **kwargs)
+                for id_field in id_attribute:
+                    val = getattr(obj, id_field,None)
+                    if val:
+                        kwargs_for_log['%s' % id_field] = val
+        except ValidationError as e:
+            logger.exception('Validation error: %r', e)
+            raise ImmediateHttpResponse(response=self.error_response(request, e.errors))
+
+        # get new state, for logging
+        new_data = [self._get_detail_response(request,**kwargs_for_log)]
+        self.log_patches(request, original_data,new_data,**kwargs)
+
+        if not self._meta.always_return_data:
+            return http.HttpAccepted()
+        else:
+            response = self.get_detail(request,**kwargs_for_log)
+            response.status_code = 201
+            return response
+
+    @write_authorization
+    @un_cache        
+    def delete_list(self, request, **kwargs):
+        raise NotImplementedError('delete_list is not implemented for %s'
+            % self._meta.resource_name )
+
+    @write_authorization
+    @un_cache        
+    def delete_detail(self, request, **kwargs):
+
+        logger.debug('delete_detail: %s,  %s' 
+            % (self._meta.resource_name, kwargs))
+
+        # cache state, for logging
+        # Look for id's kwargs, to limit the potential candidates for logging
+        schema = self.build_schema()
+        id_attribute = schema['resource_definition']['id_attribute']
+        kwargs_for_log = {}
+        for id_field in id_attribute:
+            if kwargs.get(id_field,None):
+                kwargs_for_log[id_field] = kwargs[id_field]
+        logger.debug('delete detail: %s' %(kwargs_for_log))
+        if not kwargs_for_log:
+            raise Exception('required id keys %s' % id_attribute)
+        else:
+            original_data = self._get_detail_response(request,**kwargs_for_log)
+
+        with transaction.atomic():
+            
+            self.delete_obj(**kwargs_for_log)
+
+        # Log
+        # TODO: consider log_patches
+        
+        logger.info('deleted: %s' %kwargs_for_log)
+        log_comment = None
+        if HEADER_APILOG_COMMENT in request.META:
+            log_comment = request.META[HEADER_APILOG_COMMENT]
+            logger.debug(str(('log comment', log_comment)))
+        
+        schema = self.build_schema()
+        id_attribute = resource = schema['resource_definition']['id_attribute']
+
+        log = ApiLog()
+        log.username = request.user.username 
+        log.user_id = request.user.id 
+        log.date_time = timezone.now()
+        log.ref_resource_name = self._meta.resource_name
+        log.key = '/'.join([str(original_data[x]) for x in id_attribute])
+        log.uri = '/'.join([self._meta.resource_name,log.key])
+    
+        # user can specify any valid, escaped json for this field
+        # if 'apilog_json_field' in bundle.data:
+        #     log.json_field = bundle.data['apilog_json_field']
+        
+        log.comment = log_comment
+
+        if 'parent_log' in kwargs:
+            log.parent_log = kwargs.get('parent_log', None)
+    
+        log.api_action = API_ACTION_DELETE
+        log.added_keys = json.dumps(original_data.keys(),cls=DjangoJSONEncoder)
+        log.diffs = json.dumps(original_data,cls=DjangoJSONEncoder)
+        log.save()
+        logger.info(str(('delete, api log', log)) )
+
+        return HttpNoContent()
+
+    @un_cache        
+    @transaction.atomic()    
+    def put_obj(self,deserialized, **kwargs):
+        try:
+            self.delete_obj(deserialized, **kwargs)
+        except ObjectDoesNotExist,e:
+            pass 
+        
+        return self.patch_obj(deserialized, **kwargs)            
+
+    def delete_obj(self, deserialized, **kwargs):
+        raise NotImplementedError('delete obj must be implemented')
+    
+    def patch_obj(self,deserialized, **kwargs):
+        raise NotImplementedError('patch obj must be implemented')
+
+    def validate(self, _dict, patch=False):
+        '''
+        Perform validation according the the field schema:
+        @param patch if False then check all fields (for required); not just the 
+        patched fields (use if object is being created). When patching, only 
+        need to check the fields that are present in the _dict
+        
+        @return a dict of field_key->[erors] where errors are string messages
+        
+        #TODO: create vs update validations: validate that create-only
+        fields are not updated
+        '''
+        DEBUG_VALIDATION = False or logger.isEnabledFor(logging.DEBUG)
+        schema = self.build_schema()
+        fields = schema['fields']
+        id_attribute = schema['resource_definition']['id_attribute']
+        
+        # do validations
+        errors = {}
+        
+        for name, field in fields.items():
+            if name == 'resource_uri':
+                continue
+            
+            keyerrors = []
+            if patch:
+                if name not in _dict:
+                    continue
+                else: 
+                    if name in id_attribute:
+                        continue
+                    editability = field.get('editability',None)
+                    if not editability or 'u' not in editability:
+                        errors[name] = 'cannot be changed'
+                        continue
+                
+            value = _dict.get(name,None)
+            
+            
+            if DEBUG_VALIDATION:
+                logger.info('validate: %r:%r',name,value)
+                
+            if field.get('required', False):
+                if value is None:
+                     keyerrors.append('required')
+                if isinstance(value, basestring):
+                    if len(value.strip()) == 0:
+                        keyerrors.append('required')
+                        
+            if not value or isinstance(value, (list, tuple)) and not value[0]:
+                if keyerrors:
+                    errors[name] = keyerrors            
+                continue
+            
+            ##FIXME: some vocab fields are not choices fields
+            if 'choices' in field and field['choices']:
+                if field['data_type'] != 'list':
+                    if str(value) not in field['choices']: # note: comparing as string
+                        keyerrors.append(
+                            "'%s' is not one of %r" % (value, field['choices']))
+                else:
+                    for x in value:
+                        if str(x) not in field['choices']: # note: comparing as string
+                            keyerrors.append(
+                                '%r are not members of %r' % (value, field['choices']))
+
+            if 'regex' in field and field['regex']:
+                logger.debug('name: %s, value: %s check regex: %s', name, value, field['regex'] )
+                # FIXME validate regex on input
+                matcher = re.compile(field['regex'])
+                if field['data_type'] != 'list':
+                    if not matcher.match(value):
+                        msg = field.get('validation_message', None)
+                        if not msg:
+                            msg = "'%s' does not match pattern: '%s'" % (value, field['regex'])
+                        keyerrors.append(msg)
+                else:
+                    for x in value:
+                        if not matcher.match(x):
+                            msg = field.get('validation_message', None)
+                            if not msg:
+                                msg = "'%s' does not match pattern: '%s'" % (x, field['regex'])
+                            keyerrors.append(msg)
+
+            if keyerrors:
+                errors[name] = keyerrors
+
+            if DEBUG_VALIDATION:
+                logger.info('validate: %r:%r - %r',name,value,keyerrors)
+                
+        if errors:
+            logger.warn('errors in submitted data: %r, errs: %s', _dict, errors)
+        return errors
+
+
+class ApiLogResource(ApiResource):
     
     class Meta:
         queryset = ApiLog.objects.all().order_by(
@@ -2460,545 +2779,1201 @@ class ApiLogResource(SqlAlchemyResource, ManagedModelResource):
         return ApiLogResource().dispatch('list', request, **kwargs)    
 
 
-class ManagedSqlAlchemyResourceMixin(ManagedModelResource,SqlAlchemyResource):
-    '''
-    '''
-    # FIXME: put this here temporarily until class hierarchy is refactored
-    def log_patches(self,request, original_data, new_data, **kwargs):
-        '''
-        log differences between dicts having the same identity in the arrays:
-        @param original_data - data from before the API action
-        @param new_data - data from after the API action
-        - dicts have the same identity if the id_attribute keys have the same
-        value.
-        '''
-        DEBUG_PATCH_LOG = True or logger.isEnabledFor(logging.DEBUG)
-        if DEBUG_PATCH_LOG:
-            logger.info('log patches: %s' %kwargs)
-        log_comment = None
-        if HEADER_APILOG_COMMENT in request.META:
-            log_comment = request.META[HEADER_APILOG_COMMENT]
-            logger.debug(str(('log comment', log_comment)))
-        
-        if DEBUG_PATCH_LOG:
-            logger.info('log patches original: %s, =====new data===== %s',
-                original_data,new_data)
-        schema = self.build_schema()
-        id_attribute = resource = schema['resource_definition']['id_attribute']
-        if DEBUG_PATCH_LOG:
-            logger.info('===id_attribute: %s', id_attribute)
-        deleted_items = list(original_data)        
-        for new_dict in new_data:
-            logger.info('new_dict: %r', new_dict)
-            log = ApiLog()
-            log.username = request.user.username 
-            log.user_id = request.user.id 
-            log.date_time = timezone.now()
-            log.ref_resource_name = self._meta.resource_name
-            log.key = '/'.join([str(new_dict[x]) for x in id_attribute])
-            log.uri = '/'.join([self._meta.resource_name,log.key])
-            
-            # user can specify any valid, escaped json for this field
-            # if 'apilog_json_field' in bundle.data:
-            #     log.json_field = bundle.data['apilog_json_field']
-            
-            log.comment = log_comment
+class FieldResource(ApiResource):
     
-            if 'parent_log' in kwargs:
-                log.parent_log = kwargs.get('parent_log', None)
-            
-            prev_dict = None
-            for c_dict in original_data:
-                if c_dict:
-                    if DEBUG_PATCH_LOG:
-                        logger.info('consider prev dict: %s', c_dict)
-                    prev_dict = c_dict
-                    for key in id_attribute:
-                        if new_dict[key] != c_dict[key]:
-                            prev_dict = None
-                            break
-                    if prev_dict:
-                        break # found
-            if DEBUG_PATCH_LOG:
-                logger.info('prev_dict: %s, ======new_dict====: %s', prev_dict, new_dict)
-            if prev_dict:
-                # if found, then it is modified, not deleted
-                logger.debug('remove from deleted dict %r, %r',
-                    prev_dict, deleted_items)
-                deleted_items.remove(prev_dict)
-                
-                difflog = compare_dicts(prev_dict,new_dict)
-                if 'diff_keys' in difflog:
-                    # log = ApiLog.objects.create()
-                    log.api_action = str((request.method)).upper()
-                    log.diff_dict_to_api_log(difflog)
-                    log.save()
-                    if DEBUG_PATCH_LOG:
-                        logger.info('update, api log: %r' % log)
-                else:
-                    # don't save the log
-                    if DEBUG_PATCH_LOG:
-                        logger.info('no diffs found: %r, %r, %r' 
-                            % (prev_dict,new_dict,difflog))
-            else: # creating
-                log.api_action = API_ACTION_CREATE
-                log.added_keys = json.dumps(new_dict.keys())
-                log.diffs = json.dumps(new_dict)
-                log.save()
-                if DEBUG_PATCH_LOG:
-                    logger.info('create, api log: %s', log)
-                
-        for deleted_dict in deleted_items:
-            log = ApiLog()
-            log.comment = log_comment
-            log.username = request.user.username 
-            log.user_id = request.user.id 
-            log.date_time = timezone.now()
-            log.ref_resource_name = self._meta.resource_name
-            log.key = '/'.join([str(deleted_dict[x]) for x in id_attribute])
-            log.uri = '/'.join([self._meta.resource_name,log.key])
+    class Meta:
         
-            # user can specify any valid, escaped json for this field
-            # if 'apilog_json_field' in bundle.data:
-            #     log.json_field = bundle.data['apilog_json_field']
-            
-            log.comment = log_comment
+        queryset = MetaHash.objects.filter(
+            scope__startswith="fields.").order_by('scope','ordinal','key')
+        authentication = MultiAuthentication(
+            BasicAuthentication(), SessionAuthentication())
+        authorization= UserGroupAuthorization()        
+        ordering = []
+        filtering = {} 
+        serializer = LimsSerializer()
+        excludes = [] 
+        always_return_data = True 
+        resource_name = 'field'
+
+    def __init__(self, **kwargs):
+        super(FieldResource,self).__init__(**kwargs)
+
+    def prepend_urls(self):
+
+        return [
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+            url(r"^(?P<resource_name>%s)/(?P<scope>[\w\d_]+)/(?P<key>[\w\d_]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ]
     
-            if 'parent_log' in kwargs:
-                log.parent_log = kwargs.get('parent_log', None)
-
-            log.api_action = API_ACTION_DELETE
-            log.diff_keys = json.dumps(deleted_dict.keys())
-            log.diffs = json.dumps(deleted_dict)
-            log.save()
-            if DEBUG_PATCH_LOG:
-                logger.info('delete, api log: %r',log)
-            
-
-class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
-    '''
-    Provides framework for "Patch" and "Put" methods
-    - patch_list, put_list, put_detail; with logging
-    - patch_detail must be implemented
-    - patch/put methods call "patch_obj"
-    - "patch_obj" must be implemented
-    - "put" methods call "delete_obj" 
-    - "delete_obj" must be implemented
-    - wrap mutating methods in "un_cache"
-    - prepend_urls must direct to the detail/list methods
-    '''
+    def create_fields(self):
+        pass
     
-    @write_authorization
-    @un_cache        
-    def patch_list(self, request, **kwargs):
+    def get_schema(self, request, **kwargs):
+    
+        desired_format = self.determine_format(request)
+        serialized = self.serialize(request, self.build_schema(), desired_format)
+        return HttpResponse(
+            content=serialized, 
+            content_type=build_content_type(desired_format))
 
-        logger.info('patch list, resource: %r' % self._meta.resource_name)
-        logger.debug('patch list: %r' % kwargs)
-
-        deserialized = self._meta.serializer.deserialize(
-            request.body, 
-            format=request.META.get('CONTENT_TYPE', 'application/json'))
-        if not self._meta.collection_name in deserialized:
-            raise BadRequest("Invalid data sent, must be nested in '%s'" 
-                % self._meta.collection_name)
-        deserialized = deserialized[self._meta.collection_name]
-        logger.debug('-----deserialized: %r' % deserialized)
-        # Look for id's kwargs, to limit the potential candidates for logging
-        schema = self.build_schema()
-        id_attribute = resource = schema['resource_definition']['id_attribute']
-        kwargs_for_log = kwargs.copy()
-        for id_field in id_attribute:
-            ids = []
-            # Test for each id key; it's ok on create for ids to be None
-            for _dict in [x for x in deserialized if x.get(id_field, None)]:
-                ids.append(_dict.get(id_field))
-            if ids:
-                kwargs_for_log['%s__in'%id_field] = LIST_DELIMITER_URL_PARAM.join(ids)
-        # get original state, for logging
-        original_data = self._get_list_response(request,**kwargs_for_log)
-        try:
-            with transaction.atomic():
+    def build_schema(self):
+        
+        # start with the default schema for bootstrapping
+        default_field = {
+            'data_type': 'string',
+            'editability': ['c','u'],
+            'table': 'reports_metahash',
+        }
+        
+        default_schema = {
+            'key':  {
+                'key': 'key',
+                'scope': 'fields.metahash',
+                'ordinal': 1,
+                'json_field_type': '',
+                'data_type': 'string',
+            },
+            'scope':  {
+                'key': 'scope',
+                'scope': 'fields.metahash',
+                'ordinal': 2,
+                'json_field_type': '',
+                'data_type': 'string',
                 
-                for _dict in deserialized:
-                    self.patch_obj(_dict)
-        except ValidationError as e:
-            logger.info('validation error %s ', e)
-            raise ImmediateHttpResponse(response=self.error_response(request, e.errors))
-            
-        # get new state, for logging
-        new_data = self._get_list_response(request,**kwargs_for_log)
-        logger.debug('new data: %s'% new_data)
-        logger.info('patch list done, new data: %d' 
-            % (len(new_data)))
-        self.log_patches(request, original_data,new_data,**kwargs)
-        
-        if not self._meta.always_return_data:
-            return http.HttpAccepted()
-        else:
-            response = self.get_list(request, **kwargs)             
-            response.status_code = 200
-            return response
- 
-    @write_authorization
-    @un_cache        
-    def put_list(self,request, **kwargs):
-
-        # TODO: enforce a policy that either objects are patched or deleted
-        #         raise NotImplementedError('put_list must be implemented')
-            
-        # but keep this as an example
-        deserialized = self._meta.serializer.deserialize(
-            request.body, 
-            format=request.META.get('CONTENT_TYPE', 'application/json'))
-        if not self._meta.collection_name in deserialized:
-            raise BadRequest("Invalid data sent, must be nested in '%s'" 
-                % self._meta.collection_name)
-        deserialized = deserialized[self._meta.collection_name]
-        
-        # Look for id's kwargs, to limit the potential candidates for logging
-        schema = self.build_schema()
-        id_attribute = resource = schema['resource_definition']['id_attribute']
-        kwargs_for_log = kwargs.copy()
-        for id_field in id_attribute:
-            ids = []
-            # Test for each id key; it's ok on create for ids to be None
-            for _dict in [x for x in deserialized if x.get(id_field, None)]:
-                ids.append(_dict.get(id_field))
-            if ids:
-                kwargs_for_log['%s__in'%id_field] = LIST_DELIMITER_URL_PARAM.join(ids)
-        # get original state, for logging
-        original_data = self._get_list_response(request,**kwargs_for_log)
-
-        logger.info('put_list')
-        logger.debug('put list %s, %s' % (deserialized,kwargs))
-        try:
-            with transaction.atomic():
+            },
+            'ordinal':  {
+                'key': 'ordinal',
+                'scope': 'fields.metahash',
+                'ordinal': 3,
+                'json_field_type': '',
+                'data_type': 'integer',
                 
-                # TODO: review REST actions:
-                # PUT deletes the endpoint
+            },
+            'json_field_type':  {
+                'key': 'json_field_type',
+                'scope': 'fields.metahash',
+                'ordinal': 4,
+                'json_field_type': '',
+                'data_type': 'string',
                 
-                self._meta.queryset.delete()
-                
-                for _dict in deserialized:
-                    self.put_obj(_dict)
-        except ValidationError as e:
-            raise ImmediateHttpResponse(response=self.error_response(request, e.errors))
-
-        # get new state, for logging
-        new_data = self._get_list_response(request,**kwargs_for_log)
-        kwargs_for_log = kwargs.copy()
-        for id_field in id_attribute:
-            ids = []
-            # After patch, the id keys must be present
-            for _dict in [x for x in deserialized]:
-                ids.append(_dict.get(id_field))
-            if ids:
-                kwargs_for_log['%s__in'%id_field] = LIST_DELIMITER_URL_PARAM.join(ids)
+            },
+        }
         
-        logger.debug('new data: %s'% new_data)
-        logger.info('patch list done, new data: %d' 
-            % (len(new_data)))
-        self.log_patches(request, original_data,new_data,**kwargs)
+        field_schema = deepcopy(
+            MetaHash.objects.get_and_parse(
+                scope='fields.metahash', field_definition_scope='fields.metahash',clear=True))
+        for key,val in field_schema.items():
+            for k,v in default_field.items():
+                if k not in val or val.get(k)==None:
+                    val[k] = v
+        # do not allow the default values to be changed
+        for key, val in default_schema.items():
+            if key in field_schema:
+                field_schema[key].update(default_schema[key])
+            else:
+                field_schema[key] = default_schema[key]
+        
+        field_schema['resource_uri'] = { 
+                'key': 'resource_uri',
+                'scope': 'fields.%s' % self._meta.resource_name,
+                'title': 'URI',
+                'description': 'URI for the record',
+                'data_type': 'string',
+                'table': 'None', 
+                'visibility':[] 
+        }
+        
+        # TODO: the ResourceResource should create the schema; 
+        # provide one here for the bootstrap case
+        schema = {
+            'content_types': ['json'],
+            'description': 'The fields resource',
+            'id_attribute': ['scope','key'],
+            'key': 'field',
+            'scope': 'resource',
+            'table': 'metahash',
+            'title_attribute': ['scope','key'],
+            'ordinal': 0,
+            'resource_uri':'/reports/api/v1/resource/field',
+            'api_name': 'reports',
+            'supertype': '',
+            'fields': field_schema,
+        }
+        
+        # TODO: recursive nested for legacy reasons
+        schema['resource_definition'] = { }
+        schema['resource_definition'].update(schema)
+        
+        return schema
+    
+    def get_detail(self, request, **kwargs):
 
-        if not self._meta.always_return_data:
-            return http.HttpAccepted()
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+        kwargs['is_for_detail']=True
+        return self.build_list_response(request, **kwargs)
+        
+    @read_authorization
+    def get_list(self,request,**kwargs):
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+        return self.build_list_response(request, **kwargs)
+
+    @read_authorization
+    def build_list_response(self,request, **kwargs):
+
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
+        logger.debug('param_hash: %r', param_hash)
+        
+        scope = param_hash.get('scope', None)
+        key = param_hash.get('key', None)
+        if not scope:
+            scopes = MetaHash.objects.all().filter(
+                scope__icontains='fields.').values_list('scope').distinct()
+            if not scopes.exists():
+                # bootstrap case
+                scopes = [('fields.metahash',)]
         else:
-            response = self.get_list(request, **kwargs)             
-            response.status_code = 200
-            return response 
-
-    @write_authorization
-    @un_cache        
-    def post_list(self, request, **kwargs):
-        # NOTE: POST-ing will always be for single items
-        # - this is because tastypie interprets url's with no pk as "list" urls
-        return self.post_detail(request,**kwargs)
+            scopes = [(scope,)]
+        fields = []
+        for (scope,) in scopes:
+            field_hash = deepcopy(
+                MetaHash.objects.get_and_parse(
+                    scope=scope, field_definition_scope='fields.metahash', clear=True))
+            fields.extend(field_hash.values())
+        for field in fields:
+            field['1'] = field['scope']
+            field['2'] = field['key']
         
-    @write_authorization
-    @un_cache        
-    def post_detail(self, request, **kwargs):
-        return self.patch_detail(request,**kwargs)
-        
-    @write_authorization
-    @un_cache        
-    def put_detail(self, request, **kwargs):
-                
-        # TODO: enforce a policy that either objects are patched or deleted
-        raise NotImplementedError('put_detail must be implemented')
-
-        deserialized = self._meta.serializer.deserialize(
-            request.body, 
-            format=request.META.get('CONTENT_TYPE', 'application/json'))
-
-        logger.info('put detail: %r, %r' % (deserialized,kwargs))
-        
-        # cache state, for logging
-        # Look for id's kwargs, to limit the potential candidates for logging
-        schema = self.build_schema()
-        id_attribute = schema['resource_definition']['id_attribute']
-        kwargs_for_log = {}
-        for id_field in id_attribute:
-            if deserialized.get(id_field,None):
-                kwargs_for_log[id_field] = deserialized[id_field]
-            elif kwargs.get(id_field,None):
-                kwargs_for_log[id_field] = kwargs[id_field]
-        logger.info('put detail: %s, %s' %(deserialized,kwargs_for_log))
-        if not kwargs_for_log:
-            # then this is a create
-            original_data = []
-        else:
-            original_data = self._get_list_response(request,**kwargs_for_log)
-        
-        try:
-            with transaction.atomic():
-                logger.info('call put_obj')
-                obj = self.put_obj(deserialized, **kwargs)
-        except ValidationError as e:
-            raise ImmediateHttpResponse(response=self.error_response(request, e.errors))
-                
-        if not kwargs_for_log:
-            for id_field in id_attribute:
-                val = getattr(obj, id_field,None)
-                kwargs_for_log['%s' % id_field] = val
-        # get new state, for logging
-        new_data = self._get_list_response(request,**kwargs_for_log)
-        self.log_patches(request, original_data,new_data,**kwargs)
-        
-        if not self._meta.always_return_data:
-            return http.HttpAccepted()
-        else:
-            response.status_code = 200
-            return response
-
-    @write_authorization
-    @un_cache        
-    def patch_detail(self, request, **kwargs):
-        deserialized = self._meta.serializer.deserialize(
-            request.body, 
-            format=request.META.get('CONTENT_TYPE', 'application/json'))
-        logger.debug('patch detail %s, %s', deserialized,kwargs)
-
-        # cache state, for logging
-        # Look for id's kwargs, to limit the potential candidates for logging
-        schema = self.build_schema()
-        id_attribute = schema['resource_definition']['id_attribute']
-        kwargs_for_log = {}
-        try:
-            kwargs_for_log = self.get_id(deserialized,**kwargs)
-            logger.info('patch detail: %s, %s' %(deserialized,kwargs_for_log))
-        except Exception:
-            # this can be ok, if the ID is generated
-            logger.info('object id not posted')
-        if not kwargs_for_log:
-            # then this is a create
-            original_data = []
-        else:
-            original_data = []
-            try:
-                item = self._get_detail_response(request,**kwargs_for_log)
-                if item:
-                    original_data = [item]
-            except Exception, e: 
-                logger.exception('exception when querying for existing obj: %s', kwargs_for_log)
-                original_data = []
-        try:
-            with transaction.atomic():
-                obj = self.patch_obj(deserialized, **kwargs)
-                for id_field in id_attribute:
-                    val = getattr(obj, id_field,None)
-                    if val:
-                        kwargs_for_log['%s' % id_field] = val
-        except ValidationError as e:
-            raise ImmediateHttpResponse(response=self.error_response(request, e.errors))
-
-        # get new state, for logging
-        new_data = [self._get_detail_response(request,**kwargs_for_log)]
-        self.log_patches(request, original_data,new_data,**kwargs)
-
-        if not self._meta.always_return_data:
-            return http.HttpAccepted()
-        else:
-            response = self.get_detail(request,**kwargs_for_log)
-            response.status_code = 201
-            return response
+        response_hash = None
+        if scope and key:
+            for field in fields:
+                if field['key'] == key:
+                    response_hash = field
+                    break
+            if not response_hash:
+                logger.info('Field %s/%s not found' % (scope,key))
+                raise Http404('Field %s/%s not found' % (scope,key))
+        else:    
+            fields.sort(key=lambda field: '%s:%s' % (field['key'],field['scope']))
+            # TODO: pagination, sort, filter
+            response_hash = { 
+                'meta': { 'limit': 0, 'offset': 0, 'total_count': len(fields) }, 
+                self._meta.collection_name: fields 
+            }
+        desired_format = self.determine_format(request)
+        serialized = self.serialize(request, response_hash, desired_format)
+        return HttpResponse(
+            content=serialized, 
+            content_type=build_content_type(desired_format))
 
     @write_authorization
     @un_cache        
     def delete_list(self, request, **kwargs):
-        raise NotImplementedError('delete_list is not implemented for %s'
-            % self._meta.resource_name )
+        MetaHash.objects.all().filter(scope__icontains='fields.').delete()
+
+    @transaction.atomic()    
+    @un_cache        
+    def delete_obj(self, deserialized, **kwargs):
+        
+        id_kwargs = self.get_id(deserialized,**kwargs)
+        logger.info('delete: %r', id_kwargs)
+        MetaHash.objects.get(**id_kwargs).delete()
+    
+    @transaction.atomic()    
+    def patch_obj(self,deserialized, **kwargs):
+        
+        logger.debug('deserialized: %r', deserialized)
+        schema = self.build_schema()
+        fields = schema['fields']
+        initializer_dict = {}
+        for key in fields.keys():
+            if key in deserialized:
+                initializer_dict[key] = parse_val(
+                    deserialized.get(key,None), key,fields[key].get('data_type','string')) 
+        
+        id_kwargs = self.get_id(deserialized,**kwargs)
+        
+        try:
+            field = None
+            try:
+                field = MetaHash.objects.get(**id_kwargs)
+                errors = self.validate(deserialized, patch=True)
+                if errors:
+                    raise ValidationError(errors)
+            except ObjectDoesNotExist, e:
+                logger.debug('Metahash field %s does not exist, creating', id_kwargs)
+                field = MetaHash(**id_kwargs)
+                errors = self.validate(deserialized, patch=False)
+                if errors:
+                    raise ValidationError(errors)
+
+            for key,val in initializer_dict.items():
+                if hasattr(field,key):
+                    setattr(field,key,val)
+            
+            if field.json_field:
+                json_obj = json.loads(field.json_field)
+            else:
+                json_obj = {}
+            
+            for key,val in initializer_dict.items():
+                fieldinformation = fields[key]
+                # FIXME: now that tastypie is removed, json_field_type should equal data_type
+                if fieldinformation.get('json_field_type', None):
+                    json_field_type = fieldinformation.get('json_field_type', None)
+                    if json_field_type == 'fields.CharField':
+                        json_obj[key] = parse_val(val, key, 'string')
+                    elif json_field_type == 'fields.ListField':
+                        json_obj[key] = parse_val(val, key, 'list')
+                    elif json_field_type == 'CsvBooleanField':                    
+                        json_obj[key] = parse_val(val, key, 'boolean')
+                    elif json_field_type == 'fields.BooleanField':
+                        json_obj[key] = parse_val(val, key, 'boolean')
+                    elif json_field_type == 'fields.IntegerField':
+                        json_obj[key] = parse_val(val, key, 'integer')
+                    elif json_field_type == 'fields.DateField':
+                        raise NotImplementedError
+                    elif json_field_type == 'fields.DecimalField':
+                        raise NotImplementedError
+                    elif json_field_type == 'fields.FloatField':
+                        raise NotImplementedError
+                    else:
+                        raise NotImplementedError('unknown json_field_type: %s' % json_field_type)
+                    
+            field.json_field = json.dumps(json_obj)
+            
+            logger.debug('save: %r, as %r', deserialized, field)
+            field.save()
+                    
+            logger.debug('patch_obj done')
+            return field
+            
+        except Exception, e:
+            logger.exception('on patch detail')
+            raise e  
+
+
+class ResourceResource(ApiResource):
+    
+    class Meta:
+        queryset = MetaHash.objects.filter(
+            scope="resource").order_by('scope','ordinal','key')
+        authentication = MultiAuthentication(
+            BasicAuthentication(), SessionAuthentication())
+        authorization= UserGroupAuthorization()        
+        ordering = []
+        filtering = {} 
+        serializer = LimsSerializer()
+        excludes = [] 
+        always_return_data = True 
+        resource_name = 'resource'
+
+    def __init__(self, **kwargs):
+        super(ResourceResource,self).__init__(**kwargs)
+        self.field_resource = None
+        
+    def get_field_resource(self):
+        if not self.field_resource:
+            self.field_resource = FieldResource()
+        return self.field_resource
+    
+    def prepend_urls(self):
+
+        return [
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),
+            url(r"^(?P<resource_name>%s)/(?P<key>[\w\d_.\-\+: ]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ]
+        
+    def create_fields(self):
+        pass
+    
+    def get_schema(self, request, **kwargs):
+    
+        desired_format = self.determine_format(request)
+        serialized = self.serialize(request, self.build_schema(), desired_format)
+        return HttpResponse(
+            content=serialized, 
+            content_type=build_content_type(desired_format))
+
+    def clear_cache(self):
+        ApiResource.clear_cache(self)
+        cache.delete('resources');
+        
+    def _get_list_response(self, request, key=None, **kwargs):
+        resources = cache.get('resources')
+        if not resources:
+            resources =  ApiResource._get_list_response(self, request)
+            cache.set('resources', resources)
+        
+        if key:
+            return [resource for resource in resources if resource['key']==key]
+        else:
+            return resources
+        
+    def get_resource_schema(self,key):
+        # get the resource fields
+        request = HttpRequest()
+        class User:
+            @staticmethod
+            def is_superuser():
+                return true
+        request.user = User
+        
+        temp = self._get_list_response(request=request, key=key)
+        assert len(temp) < 2, 'ResourceResource returns multiple objects for key: %r, %r' %(key,temp)
+        assert len(temp)==1, 'ResourceResource returns no objects for key: %r' %key
+        return temp[0]
+    
+    def build_schema(self):
+
+        # get the resource fields
+        request = HttpRequest()
+        class User:
+            @staticmethod
+            def is_superuser():
+                return true
+        request.user = User
+        resource_fields = self.get_field_resource()._get_list_response(
+            request=request, scope='fields.resource')
+        # build a hash out of the fields
+        field_hash = {}
+        for field in resource_fields:
+            field_hash[field['key']]=field
+        # default schema for bootstrap
+        resource_schema = {
+            'content_types': ['json'],
+            'description': 'The fields resource',
+            'id_attribute': ['scope','key'],
+            'key': 'resource',
+            'scope': 'resource',
+            'table': 'metahash',
+            'title_attribute': ['key'],
+            'ordinal': 0,
+            'resource_uri':'/reports/api/v1/resource/field',
+            'api_name': 'reports',
+            'supertype': '',
+            'fields': field_hash
+        }
+        # TODO: resource_definition is recursive nested for legacy reasons
+        resource_schema['resource_definition'] = { }
+        resource_schema['resource_definition'].update(resource_schema)
+        
+        return resource_schema
+    
+    def get_detail(self, request, **kwargs):
+
+#         key = kwargs.pop('key', None)
+#         if not key:
+#             raise NotImplementedError('must provide a key parameter')
+#         else:
+#             kwargs['key__eq'] = key
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+        kwargs['is_for_detail']=True
+        return self.build_list_response(request, **kwargs)
+        
+    @read_authorization
+    def get_list(self,request,**kwargs):
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+        return self.build_list_response(request, **kwargs)
+
+
+    @read_authorization
+    def build_list_response(self,request, **kwargs):
+
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
+        # TODO: CACHE
+        
+        resources = deepcopy(
+            MetaHash.objects.get_and_parse(
+                scope='resource', field_definition_scope='fields.resource', clear=True))
+        # if there are no resources, use self to bootstrap
+        if not resources:
+            resource = self.build_schema()
+            resources = { resource['key']: resource }
+            
+        # get all of the fields
+        all_fields = self.get_field_resource()._get_list_response(request=request)
+        field_hash = {}
+        # build a hash out of the fields
+        for field in all_fields:
+            _fields = field_hash.get(field['scope'],{})
+            _fields[field['key']]=field
+            field_hash[field['scope']] = _fields
+        
+        # for each resource, pull in the fields of the supertype resource
+        # todo recursion
+        
+        for key,resource in resources.items():
+            resource['1'] = resource['key']
+            resource['fields'] = field_hash.get('fields.%s'%key, {})
+            resource['resource_uri'] = '/'.join([
+                self._meta.resource_name,resource['key']
+            ])
+            
+            # set the field['table'] 
+            for field in resource['fields'].values():
+                if not field.get('table',None):
+                    field['table'] = resource.get('table', None)
+            
+            supertype = resource.get('supertype', None)
+            if supertype:
+                if supertype in resources:
+                    logger.debug('find the supertype fields: %r for %r', supertype, key)
+                    supertype_fields = field_hash.get('fields.%s'%supertype,None)
+                    if not supertype_fields:
+                        # ok, if the supertype is not built yet
+                        logger.warning('no fields for supertype: %r, %r', supertype, field_hash.keys())
+                    else:
+                        # explicitly copy out all supertype fields, then update 
+                        # with fields from the current resource
+                        inherited_fields = {}
+                        for field in supertype_fields.values():
+                            inherited_field = deepcopy(field)
+                            inherited_field['scope'] = 'fields.%s' % resource['key']
+                            if not inherited_field.get('table',None):
+                                inherited_field['table'] = resources[supertype].get('table', None)
+                            
+                            inherited_fields[inherited_field['key']] = inherited_field
+                        inherited_fields.update(resource['fields'])
+                        resource['fields'] = inherited_fields
+                else:
+                    logger.error('supertype: %r, not found in resources: %r', supertype, resources.keys())
+            
+            # TODO: resource_definition is recursive nested for legacy reasons
+            resource['resource_definition'] = { 'id_attribute': resource['id_attribute'] }
+            
+        # TODO: pagination, sort, filter
+        # only filter by key and scope at this point
+        
+        key = param_hash.get('key', None)
+        if key:
+            if key not in resources:
+                raise Http404('Resource not found: %r' % key)
+            response_hash = resources[key]
+        else:
+            values = resources.values()
+            values.sort(key=lambda resource: resource['key'])
+            response_hash = { 
+                'meta': { 'limit': 0, 'offset': 0, 'total_count': len(values) }, 
+                self._meta.collection_name: values
+            }
+        
+        desired_format = self.determine_format(request)
+        serialized = self.serialize(request, response_hash, desired_format)
+        return HttpResponse(
+            content=serialized, 
+            content_type=build_content_type(desired_format))
 
     @write_authorization
     @un_cache        
-    def delete_detail(self, request, **kwargs):
+    def delete_list(self, request, **kwargs):
+        MetaHash.objects.all().filter(scope='resource').delete()
 
-        logger.debug('delete_detail: %s,  %s' 
-            % (self._meta.resource_name, kwargs))
-
-        # cache state, for logging
-        # Look for id's kwargs, to limit the potential candidates for logging
-        schema = self.build_schema()
-        id_attribute = schema['resource_definition']['id_attribute']
-        kwargs_for_log = {}
-        for id_field in id_attribute:
-            if kwargs.get(id_field,None):
-                kwargs_for_log[id_field] = kwargs[id_field]
-        logger.info('delete detail: %s' %(kwargs_for_log))
-        if not kwargs_for_log:
-            raise Exception('required id keys %s' % id_attribute)
-        else:
-            original_data = self._get_detail_response(request,**kwargs_for_log)
-
-        with transaction.atomic():
-            
-            self.delete_obj(**kwargs_for_log)
-
-        # Log
-        # TODO: consider log_patches
-        
-        logger.info('deleted: %s' %kwargs_for_log)
-        log_comment = None
-        if HEADER_APILOG_COMMENT in request.META:
-            log_comment = request.META[HEADER_APILOG_COMMENT]
-            logger.debug(str(('log comment', log_comment)))
-        
-        schema = self.build_schema()
-        id_attribute = resource = schema['resource_definition']['id_attribute']
-
-        log = ApiLog()
-        log.username = request.user.username 
-        log.user_id = request.user.id 
-        log.date_time = timezone.now()
-        log.ref_resource_name = self._meta.resource_name
-        log.key = '/'.join([str(original_data[x]) for x in id_attribute])
-        log.uri = '/'.join([self._meta.resource_name,log.key])
-    
-        # user can specify any valid, escaped json for this field
-        # if 'apilog_json_field' in bundle.data:
-        #     log.json_field = bundle.data['apilog_json_field']
-        
-        log.comment = log_comment
-
-        if 'parent_log' in kwargs:
-            log.parent_log = kwargs.get('parent_log', None)
-    
-        log.api_action = API_ACTION_DELETE
-        log.added_keys = json.dumps(original_data.keys(),cls=DjangoJSONEncoder)
-        log.diffs = json.dumps(original_data,cls=DjangoJSONEncoder)
-        log.save()
-        logger.info(str(('delete, api log', log)) )
-
-        return HttpNoContent()
-
-    @un_cache        
     @transaction.atomic()    
-    def put_obj(self,deserialized, **kwargs):
-        try:
-            self.delete_obj(deserialized, **kwargs)
-        except ObjectDoesNotExist,e:
-            pass 
-        
-        return self.patch_obj(deserialized, **kwargs)            
-
+    @un_cache        
     def delete_obj(self, deserialized, **kwargs):
-        raise NotImplementedError('delete obj must be implemented')
+        
+        id_kwargs = self.get_id(deserialized,**kwargs)
+        logger.info('delete: %r', id_kwargs)
+        MetaHash.objects.get(**id_kwargs).delete()
     
+    @transaction.atomic()    
+    @un_cache        
     def patch_obj(self,deserialized, **kwargs):
-        raise NotImplementedError('patch obj must be implemented')
-
-    def validate(self, _dict, patch=False):
-        '''
-        Perform validation according the the field schema:
-        @param patch if False then check all fields (for required); not just the 
-        patched fields (use if object is being created). When patching, only 
-        need to check the fields that are present in the _dict
         
-        @return a dict of field_key->[erors] where errors are string messages
-        
-        #TODO: create vs update validations: validate that create-only
-        fields are not updated
-        '''
-        DEBUG_VALIDATION = True or logger.isEnabledFor(logging.DEBUG)
         schema = self.build_schema()
         fields = schema['fields']
-        id_attribute = schema['resource_definition']['id_attribute']
+        initializer_dict = {}
+        for key in fields.keys():
+            if key in deserialized:
+                initializer_dict[key] = parse_val(
+                    deserialized.get(key,None), key,fields[key].get('data_type','string')) 
         
-        # do validations
-        errors = {}
+        id_kwargs = self.get_id(deserialized,**kwargs)
+        logger.info('id_kwargs: %r', id_kwargs)
+        try:
+            field = None
+            try:
+                field = MetaHash.objects.get(**id_kwargs)
+                errors = self.validate(deserialized, patch=True)
+                if errors:
+                    raise ValidationError(errors)
+            except ObjectDoesNotExist, e:
+                logger.info('Metahash resource %s does not exist, creating', id_kwargs)
+                field = MetaHash(**id_kwargs)
+                errors = self.validate(deserialized, patch=False)
+                if errors:
+                    raise ValidationError(errors)
+
+            for key,val in initializer_dict.items():
+                if hasattr(field,key):
+                    setattr(field,key,val)
+            
+            if field.json_field:
+                json_obj = json.loads(field.json_field)
+            else:
+                json_obj = {}
+            
+            for key,val in initializer_dict.items():
+                fieldinformation = fields[key]
+                if fieldinformation.get('json_field_type', None):
+                    json_field_type = fieldinformation.get('json_field_type', None)
+                    if json_field_type == 'fields.CharField':
+                        json_obj[key] = parse_val(val, key, 'string')
+                    elif json_field_type == 'fields.ListField':
+                        json_obj[key] = parse_val(val, key, 'list')
+                    elif json_field_type == 'CsvBooleanField':                    
+                        json_obj[key] = parse_val(val, key, 'boolean')
+                    elif json_field_type == 'fields.BooleanField':
+                        json_obj[key] = parse_val(val, key, 'boolean')
+                    elif json_field_type == 'fields.IntegerField':
+                        json_obj[key] = parse_val(val, key, 'integer')
+                    elif json_field_type == 'fields.DateField':
+                        raise NotImplementedError
+                    elif json_field_type == 'fields.DecimalField':
+                        raise NotImplementedError
+                    elif json_field_type == 'fields.FloatField':
+                        raise NotImplementedError
+                    else:
+                        raise NotImplementedError('unknown json_field_type: %s' % json_field_type)
+                    
+            field.json_field = json.dumps(json_obj)
+            
+            logger.debug('save: %r, as %r', deserialized, field)
+            field.save()
+                    
+            logger.info('patch_obj done')
+            return field
+            
+        except Exception, e:
+            logger.exception('on patch detail')
+            raise e  
+
+
+class VocabulariesResource(ApiResource):
+    '''
+    This resource extends the ManagedModelResource using a new table 
+    (vocabularies) but has fields defined in the Metahash table.
+    '''
+    def __init__(self, **kwargs):
+        super(VocabulariesResource,self).__init__(**kwargs)
+
+    class Meta:
+        bootstrap_fields = ['scope', 'key', 'ordinal', 'json_field']
+        queryset = Vocabularies.objects.all().order_by('scope', 'ordinal', 'key')
+        authentication = MultiAuthentication(
+            BasicAuthentication(), SessionAuthentication())
+        authorization= UserGroupAuthorization() #SuperUserAuthorization()        
+        ordering = []
+        filtering = {'scope':ALL, 'key': ALL, 'alias':ALL}
+        serializer = LimsSerializer()
+        excludes = [] #['json_field']
+        always_return_data = True 
+        resource_name = 'vocabularies'
+        max_limit = 10000
+    
+    def build_schema(self):
+        schema = super(VocabulariesResource,self).build_schema()
+        temp = [ x.scope for x in self.Meta.queryset.distinct('scope')]
+        schema['extraSelectorOptions'] = { 
+            'label': 'Vocabulary', 'searchColumn': 'scope', 'options': temp }
+        return schema
+    
+    def get_detail(self, request, **kwargs):
+        key = kwargs.get('key', None)
+        if not key:
+            logger.info(str(('no key provided')))
+            raise NotImplementedError('must provide a key parameter')
         
-        for name, field in fields.items():
-            if name == 'resource_uri':
-                continue
-            
-            keyerrors = []
-            if patch:
-                if name not in _dict:
-                    continue
-                else: 
-                    if name in id_attribute:
-                        continue
-                    editability = field.get('editability',None)
-                    if not editability or 'u' not in editability:
-                        errors[name] = 'cannot be changed'
-                        continue
-                
-            value = _dict.get(name,None)
-            
-            
-            if DEBUG_VALIDATION:
-                logger.info('validate: %r:%r',name,value)
-                
-            if field.get('required', False):
-                if value is None:
-                     keyerrors.append('required')
-                if isinstance(value, basestring):
-                    if len(value.strip()) == 0:
-                        keyerrors.append('required')
-                        
-            if not value or isinstance(value, (list, tuple)) and not value[0]:
-                if keyerrors:
-                    errors[name] = keyerrors            
-                continue
-            
-            ##FIXME: some vocab fields are not choices fields
-            if 'choices' in field and field['choices']:
-                if field['data_type'] != 'list':
-                    if str(value) not in field['choices']: # note: comparing as string
-                        keyerrors.append(
-                            "'%s' is not one of %r" % (value, field['choices']))
-                else:
-                    for x in value:
-                        if str(x) not in field['choices']: # note: comparing as string
-                            keyerrors.append(
-                                '%r are not members of %r' % (value, field['choices']))
+        scope = kwargs.get('scope', None)
+        if not item_group:
+            logger.info(str(('no scope provided')))
+            raise NotImplementedError('must provide a scope parameter')
+        
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+        kwargs['is_for_detail']=True
+        return self.build_list_response(request, **kwargs)
+        
+    @read_authorization
+    def get_list(self,request,**kwargs):
 
-            if 'regex' in field and field['regex']:
-                logger.debug('name: %s, value: %s check regex: %s', name, value, field['regex'] )
-                # FIXME validate regex on input
-                matcher = re.compile(field['regex'])
-                if field['data_type'] != 'list':
-                    if not matcher.match(value):
-                        msg = field.get('validation_message', None)
-                        if not msg:
-                            msg = "'%s' does not match pattern: '%s'" % (value, field['regex'])
-                        keyerrors.append(msg)
-                else:
-                    for x in value:
-                        if not matcher.match(x):
-                            msg = field.get('validation_message', None)
-                            if not msg:
-                                msg = "'%s' does not match pattern: '%s'" % (x, field['regex'])
-                            keyerrors.append(msg)
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
 
-            if keyerrors:
-                errors[name] = keyerrors
+        return self.build_list_response(request, **kwargs)
 
-            if DEBUG_VALIDATION:
-                logger.info('validate: %r:%r - %r',name,value,keyerrors)
+        
+    def build_list_response(self,request, **kwargs):
+        ''' 
+        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
+        @returns django.http.response.StreamingHttpResponse 
+        '''
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
+        
+        logger.info('kwargs: %r', kwargs)
+        logger.info('param_hash: %r', param_hash)
+        
+        is_for_detail = kwargs.pop('is_for_detail', False)
+
+        schema = self.build_schema()
+
+        filename = self._get_filename(schema, kwargs)
+
+        key = param_hash.pop('key', None)
+        if key:
+            param_hash['key__eq'] = key
+
+        scope = param_hash.pop('scope', None)
+        if scope:
+            param_hash['scope__eq'] = scope
+        
+        try:
+            
+            # general setup
+          
+            manual_field_includes = set(param_hash.get('includes', []))
+            
+            if DEBUG_GET_LIST: 
+                logger.info(str(('manual_field_includes', manual_field_includes)))
+  
+            (filter_expression, filter_fields) = \
+                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+            
+            logger.info('filter_fields: %r, kwargs: %r', filter_fields,kwargs)
+            
+            
+            original_field_hash = schema['fields']
+            # Add convenience fields "1" and "2", which aid in viewing with json viewers
+            original_field_hash['1'] = {
+                'key': '1',
+                'scope': 'fields.vocabularies',
+                'data_type': 'string',
+                'json_field_type': 'convenience_field',
+                'ordering': 'false',
+                'visibilities': []
+                }
+            original_field_hash['2'] = {
+                'key': '2',
+                'scope': 'fields.vocabularies',
+                'data_type': 'string',
+                'json_field_type': 'convenience_field',
+                'ordering': 'false',
+                'visibilities': []
+                }
+            original_field_hash['resource_uri'] = {
+                'key': 'resource_uri',
+                'scope': 'fields.vocabularies',
+                'data_type': 'string',
+                'json_field_type': 'convenience_field',
+                'ordering': 'false',
+                'visibilities': []
+                }
+            fields_for_sql = { key:field for key, field in original_field_hash.items() 
+                if not field.get('json_field_type',None) }
+            fields_for_json = { key:field for key, field in original_field_hash.items() 
+                if field.get('json_field_type',None) }
+            
+            field_hash = self.get_visible_fields(
+                fields_for_sql, filter_fields, manual_field_includes, 
+                param_hash.get('visibilities',[]), 
+                exact_fields=set(param_hash.get('exact_fields',[])))
+            field_hash['json_field'] = {
+                'key': 'json_field',
+                'scope': 'fields.vocabularies',
+                'data_type': 'string',
+                'table': 'reports_vocabularies',
+                'field': 'json_field',
+                'ordering': 'false',
+                'visibilities': ['l','d']
+                }
+              
+            order_params = param_hash.get('order_by',[])
+            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+                order_params, field_hash)
+            
+            # PROTOTYPE: to be refactored for other json_field resources
+            def json_field_rowproxy_generator(cursor):
+                '''
+                Wrap connection cursor to fetch fields embedded in the 'json_field'
+                '''
+                class Row:
+                    def __init__(self, row):
+                        self.row = row
+                        self.json_content = json.loads(row['json_field'])
+                    def has_key(self, key):
+                        return (key in fields_for_json or self.row.has_key(key))
+                    def keys(self):
+                        return self.row.keys() + fields_for_json.keys();
+                    def __getitem__(self, key):
+                        if key == '1':
+                            return row['scope']
+                        elif key == '2':
+                            return row['key']
+                        elif key == 'resource_uri':
+                            return '/'.join(['vocabularies', row['scope'], row['key']])
+                        elif key not in row:
+                            if key in fields_for_json:
+                                if key not in self.json_content:
+                                    logger.debug(
+                                        'key %r not found in json content %r', 
+                                        key, self.json_content)
+                                    return None
+                                else:
+                                    return self.json_content[key]
+                            else:
+                                return None
+                        else:
+                            return self.row[key]
+                for row in cursor:
+                    yield Row(row)
+                    
+            # specific setup
+            _vocab = self.bridge['reports_vocabularies']
+            custom_columns = {
+                'json_field' : literal_column('json_field')
+                }
+            base_query_tables = ['reports_vocabularies'] 
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                custom_columns=custom_columns )
+            j = _vocab
+            stmt = select(columns.values()).select_from(j)
+
+            # general setup
+            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+            
+            title_function = None
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                title_function = lambda key: field_hash[key]['title']
+            
+            return self.stream_response_from_statement(
+                request, stmt, count_stmt, filename, 
+                field_hash=original_field_hash, 
+                param_hash=param_hash,
+                is_for_detail=is_for_detail,
+                rowproxy_generator=json_field_rowproxy_generator,
+                title_function=title_function  )
+             
+        except Exception, e:
+            logger.exception('on get list')
+            raise e  
+    
+    def _get_vocabularies_by_scope(self, scope):
+        ''' Utility method
+        Retrieve and cache all of the vocabularies in a two level dict
+        - keyed by [scope][key]
+        '''
+        vocabularies = cache.get('vocabularies');
+        if not vocabularies:
+            vocabularies = {}
+            kwargs = {
+                'limit': '0'
+            }
+            request=HttpRequest()
+            request.session = Session()
+            class User:
+                @staticmethod
+                def is_superuser():
+                    return true
+            request.user = User
+            _data = self._get_list_response(request=request,**kwargs)
+            for v in _data:
+                _scope = v['scope']
+                if _scope not in vocabularies:
+                     vocabularies[_scope] = {}
+                     logger.info('created vocab scope: %r', _scope)
+                vocabularies[_scope][v['key']] = v
                 
-        if errors:
-            logger.warn('errors in submitted data: %r, errs: %s', _dict, errors)
-        return errors
+            # Hack: activity.type is serviceactivity.type + activity.class
+            vocabularies['activity.type'] = deepcopy(vocabularies['serviceactivity.type'])
+            vocabularies['activity.type'].update(deepcopy(vocabularies['activity.class']))
+            
+            cache.set('vocabularies', vocabularies);
+        if scope in vocabularies:
+            return deepcopy(vocabularies[scope])
+        else:
+            logger.warn(str(('---unknown vocabulary scope:', scope)))
+            return {}
+    
+    def clear_cache(self):
+        super(VocabulariesResource,self).clear_cache()
+        cache.delete('vocabularies');
+
+    @write_authorization
+    @un_cache        
+    def delete_list(self, request, **kwargs):
+        Vocabularies.objects.all().delete()
+
+    @un_cache
+    def put_list(self, request, **kwargs):
+        self.suppress_errors_on_bootstrap = True
+        result = super(VocabulariesResource, self).put_list(request, **kwargs)
+        self.suppress_errors_on_bootstrap = False
+        return result
+    
+#     @un_cache
+#     def patch_list(self, request, **kwargs):
+#         self.suppress_errors_on_bootstrap = True
+#         result = super(VocabulariesResource, self).patch_list(request, **kwargs)
+#         self.suppress_errors_on_bootstrap = False
+#         return result
+
+    @transaction.atomic()    
+    def delete_obj(self, deserialized, **kwargs):
+        
+        id_kwargs = self.get_id(deserialized,**kwargs)
+        logger.info('delete: %r', id_kwargs)
+        MetaHash.objects.get(**id_kwargs).delete()
+    
+    @transaction.atomic()    
+    def patch_obj(self,deserialized, **kwargs):
+        
+        schema = self.build_schema()
+        fields = schema['fields']
+        initializer_dict = {}
+        for key in fields.keys():
+            if key in deserialized:
+                initializer_dict[key] = parse_val(
+                    deserialized.get(key,None), key,fields[key].get('data_type','string')) 
+        
+        id_kwargs = self.get_id(deserialized,**kwargs)
+        
+        try:
+            vocab = None
+            try:
+                vocab = Vocabularies.objects.get(**id_kwargs)
+                errors = self.validate(deserialized, patch=True)
+                if errors:
+                    raise ValidationError(errors)
+            except ObjectDoesNotExist, e:
+                logger.debug('Vocab %s does not exist, creating', id_kwargs)
+                vocab = Vocabularies(**id_kwargs)
+                errors = self.validate(deserialized, patch=False)
+                if errors:
+                    raise ValidationError(errors)
+
+            for key,val in initializer_dict.items():
+                if hasattr(vocab,key):
+                    setattr(vocab,key,val)
+            
+            if vocab.json_field:
+                json_obj = json.loads(vocab.json_field)
+            else:
+                json_obj = {}
+            
+            for key,val in initializer_dict.items():
+                fieldinformation = fields[key]
+                if fieldinformation.get('json_field_type', None):
+                    json_field_type = fieldinformation.get('json_field_type', None)
+                    if json_field_type == 'fields.CharField':
+                        json_obj[key] = parse_val(val, key, 'string')
+                    elif json_field_type == 'fields.ListField':
+                        json_obj[key] = parse_val(val, key, 'list')
+                    elif json_field_type == 'CsvBooleanField':                    
+                        json_obj[key] = parse_val(val, key, 'boolean')
+                    elif json_field_type == 'fields.BooleanField':
+                        json_obj[key] = parse_val(val, key, 'boolean')
+                    elif json_field_type == 'fields.IntegerField':
+                        json_obj[key] = parse_val(val, key, 'integer')
+                    elif json_field_type == 'fields.DateField':
+                        raise NotImplementedError
+                    elif json_field_type == 'fields.DecimalField':
+                        raise NotImplementedError
+                    elif json_field_type == 'fields.FloatField':
+                        raise NotImplementedError
+                    else:
+                        raise NotImplementedError('unknown json_field_type: %s' % json_field_type)
+                    
+            vocab.json_field = json.dumps(json_obj)
+            
+            logger.debug('save: %r, as %r', deserialized, vocab)
+            vocab.save()
+                    
+            return vocab
+            
+        except Exception, e:
+            logger.exception('on patch detail')
+            raise e  
+
+class VocabulariesResourceBak(ApiResource):
+    '''
+    This resource extends the ManagedModelResource using a new table 
+    (vocabularies) but has fields defined in the Metahash table.
+    '''
+    def __init__(self, **kwargs):
+        super(VocabulariesResourceBak,self).__init__(**kwargs)
+
+    class Meta:
+        bootstrap_fields = ['scope', 'key', 'ordinal', 'json_field']
+        queryset = Vocabularies.objects.all().order_by('scope', 'ordinal', 'key')
+        authentication = MultiAuthentication(
+            BasicAuthentication(), SessionAuthentication())
+        authorization= UserGroupAuthorization() #SuperUserAuthorization()        
+        ordering = []
+        filtering = {'scope':ALL, 'key': ALL, 'alias':ALL}
+        serializer = LimsSerializer()
+        excludes = [] #['json_field']
+        always_return_data = True # this makes Backbone happy
+        resource_name = 'vocabularies'
+        max_limit = 10000
+    
+    def build_schema(self):
+        schema = super(VocabulariesResourceBak,self).build_schema()
+        temp = [ x.scope for x in self.Meta.queryset.distinct('scope')]
+        schema['extraSelectorOptions'] = { 
+            'label': 'Vocabulary', 'searchColumn': 'scope', 'options': temp }
+        return schema
+    
+    def get_detail(self, request, **kwargs):
+        key = kwargs.get('key', None)
+        if not key:
+            logger.info(str(('no key provided')))
+            raise NotImplementedError('must provide a key parameter')
+        
+        scope = kwargs.get('scope', None)
+        if not item_group:
+            logger.info(str(('no scope provided')))
+            raise NotImplementedError('must provide a scope parameter')
+        
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+        kwargs['is_for_detail']=True
+        return self.build_list_response(request, **kwargs)
+        
+    @read_authorization
+    def get_list(self,request,**kwargs):
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+
+        return self.build_list_response(request, **kwargs)
+
+        
+    def build_list_response(self,request, **kwargs):
+        ''' 
+        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
+        @returns django.http.response.StreamingHttpResponse 
+        '''
+        DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
+
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
+        is_for_detail = kwargs.pop('is_for_detail', False)
+
+        schema = self.build_schema()
+
+        filename = self._get_filename(schema, kwargs)
+
+        key = param_hash.pop('key', None)
+        if key:
+            param_hash['key__eq'] = key
+
+        scope = param_hash.pop('scope', None)
+        if scope:
+            param_hash['scope__eq'] = scope
+        
+        try:
+            
+            # general setup
+          
+            manual_field_includes = set(param_hash.get('includes', []))
+            
+            if DEBUG_GET_LIST: 
+                logger.info(str(('manual_field_includes', manual_field_includes)))
+  
+            (filter_expression, filter_fields) = \
+                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+            
+            original_field_hash = schema['fields']
+            # Add convenience fields "1" and "2", which aid in viewing with json viewers
+            original_field_hash['1'] = {
+                'key': '1',
+                'scope': 'fields.vocabularies',
+                'data_type': 'string',
+                'json_field_type': 'convenience_field',
+                'ordering': 'false',
+                'visibilities': []
+                }
+            original_field_hash['2'] = {
+                'key': '2',
+                'scope': 'fields.vocabularies',
+                'data_type': 'string',
+                'json_field_type': 'convenience_field',
+                'ordering': 'false',
+                'visibilities': []
+                }
+            original_field_hash['resource_uri'] = {
+                'key': 'resource_uri',
+                'scope': 'fields.vocabularies',
+                'data_type': 'string',
+                'json_field_type': 'convenience_field',
+                'ordering': 'false',
+                'visibilities': []
+                }
+            fields_for_sql = { key:field for key, field in original_field_hash.items() 
+                if not field.get('json_field_type',None) }
+            fields_for_json = { key:field for key, field in original_field_hash.items() 
+                if field.get('json_field_type',None) }
+            
+            field_hash = self.get_visible_fields(
+                fields_for_sql, filter_fields, manual_field_includes, 
+                param_hash.get('visibilities',[]), 
+                exact_fields=set(param_hash.get('exact_fields',[])))
+            field_hash['json_field'] = {
+                'key': 'json_field',
+                'scope': 'fields.vocabularies',
+                'data_type': 'string',
+                'table': 'reports_vocabularies',
+                'field': 'json_field',
+                'ordering': 'false',
+                'visibilities': ['l','d']
+                }
+              
+            order_params = param_hash.get('order_by',[])
+            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+                order_params, field_hash)
+            
+            # PROTOTYPE: to be refactored for other json_field resources
+            def json_field_rowproxy_generator(cursor):
+                '''
+                Wrap connection cursor to fetch fields embedded in the 'json_field'
+                '''
+                class Row:
+                    def __init__(self, row):
+                        self.row = row
+                        self.json_content = json.loads(row['json_field'])
+                    def has_key(self, key):
+                        return (key in fields_for_json or self.row.has_key(key))
+                    def keys(self):
+                        return self.row.keys() + fields_for_json.keys();
+                    def __getitem__(self, key):
+                        if key == '1':
+                            return row['scope']
+                        elif key == '2':
+                            return row['key']
+                        elif key == 'resource_uri':
+                            return '/'.join(['vocabularies', row['scope'], row['key']])
+                        elif key not in row:
+                            if key in fields_for_json:
+                                if key not in self.json_content:
+                                    logger.debug(
+                                        'key %r not found in json content %r', 
+                                        key, self.json_content)
+                                    return None
+                                else:
+                                    return self.json_content[key]
+                            else:
+                                return None
+                        else:
+                            return self.row[key]
+                for row in cursor:
+                    yield Row(row)
+                    
+            # specific setup
+            _vocab = self.bridge['reports_vocabularies']
+            custom_columns = {
+                'json_field' : literal_column('json_field')
+                }
+            base_query_tables = ['reports_vocabularies'] 
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                custom_columns=custom_columns )
+            j = _vocab
+            stmt = select(columns.values()).select_from(j)
+
+            # general setup
+            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+            
+            title_function = None
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                title_function = lambda key: field_hash[key]['title']
+            
+            return self.stream_response_from_statement(
+                request, stmt, count_stmt, filename, 
+                field_hash=original_field_hash, 
+                param_hash=param_hash,
+                is_for_detail=is_for_detail,
+                rowproxy_generator=json_field_rowproxy_generator,
+                title_function=title_function  )
+             
+        except Exception, e:
+            logger.exception('on get list')
+            raise e  
+    
+    def _get_vocabularies_by_scope(self, scope):
+        ''' Utility method
+        Retrieve and cache all of the vocabularies in a two level dict
+        - keyed by [scope][key]
+        '''
+        vocabularies = cache.get('vocabularies');
+        if not vocabularies:
+            vocabularies = {}
+            kwargs = {
+                'limit': '0'
+            }
+            request=HttpRequest()
+            request.session = Session()
+            class User:
+                @staticmethod
+                def is_superuser():
+                    return true
+            request.user = User
+            _data = self._get_list_response(request=request,**kwargs)
+            for v in _data:
+                _scope = v['scope']
+                if _scope not in vocabularies:
+                     vocabularies[_scope] = {}
+                     logger.info('created vocab scope: %r', _scope)
+                vocabularies[_scope][v['key']] = v
+                
+            # Hack: activity.type is serviceactivity.type + activity.class
+            vocabularies['activity.type'] = deepcopy(vocabularies['serviceactivity.type'])
+            vocabularies['activity.type'].update(deepcopy(vocabularies['activity.class']))
+            
+            cache.set('vocabularies', vocabularies);
+        if scope in vocabularies:
+            return deepcopy(vocabularies[scope])
+        else:
+            logger.warn(str(('---unknown vocabulary scope:', scope)))
+            return {}
+    
+    def clear_cache(self):
+        super(VocabulariesResourceBak,self).clear_cache()
+        cache.delete('vocabularies');
+
+    @un_cache
+    def put_list(self, request, **kwargs):
+        self.suppress_errors_on_bootstrap = True
+        result = super(VocabulariesResourceBak, self).put_list(request, **kwargs)
+        self.suppress_errors_on_bootstrap = False
+        return result
+    
+    @un_cache
+    def patch_list(self, request, **kwargs):
+        self.suppress_errors_on_bootstrap = True
+        result = super(VocabulariesResourceBak, self).patch_list(request, **kwargs)
+        self.suppress_errors_on_bootstrap = False
+        return result
 
 
 class UserResource(ApiResource):
@@ -3023,7 +3998,7 @@ class UserResource(ApiResource):
         excludes = [] #['json_field']
         always_return_data = True # this makes Backbone happy
         resource_name = 'user'
-
+    
     def get_permission_resource(self):
         if not self.permission_resource:
             self.permission_resource = PermissionResource()
@@ -3059,6 +4034,7 @@ class UserResource(ApiResource):
     def dispatch_user_permissionview(self, request, **kwargs):
         # signal to include extra column
         return PermissionResource().dispatch('list', request, **kwargs)    
+
 
     def build_schema(self):
         
@@ -3234,8 +4210,11 @@ class UserResource(ApiResource):
                     IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup
-
-            columns = self.build_sqlalchemy_columns(field_hash.values() )
+            custom_columns = {
+                'resource_uri': func.array_to_string(array([
+                    '/reports/api/v1/user',text('auth_user.username')]),'/'),
+            }
+            columns = self.build_sqlalchemy_columns(field_hash.values(),custom_columns=custom_columns )
 
             # build the query statement
             _au = self.bridge['auth_user']
@@ -3486,9 +4465,10 @@ class UserGroupResource(ManagedSqlAlchemyResourceMixin):
         self._meta.authorization._is_resource_authorized(
             self._meta.resource_name, request.user, 'write')
 
-        deserialized = self._meta.serializer.deserialize(
-            request.body, 
-            format=request.META.get('CONTENT_TYPE', 'application/json'))
+#         deserialized = self._meta.serializer.deserialize(
+#             request.body, 
+#             format=request.META.get('CONTENT_TYPE', 'application/json'))
+        deserialized = self.deserialize(request,request.body)
         if not self._meta.collection_name in deserialized:
             raise BadRequest("Invalid data sent, must be nested in '%s'" 
                 % self._meta.collection_name)

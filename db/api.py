@@ -54,7 +54,9 @@ from db.models import ScreensaverUser, Screen, \
     NaturalProductReagent, Molfile, Gene, GeneGenbankAccessionNumber, \
     CherryPickRequest, CherryPickAssayPlate, CherryPickLiquidTransfer, \
     CachedQuery, ChecklistItemEvent, UserChecklistItem, AttachedFile, \
-    ServiceActivity, LabActivity, Screening, LibraryScreening, AssayPlate
+    ServiceActivity, LabActivity, Screening, LibraryScreening, AssayPlate,\
+    SmallMoleculeChembankId, SmallMoleculePubchemCid, SmallMoleculeChemblId,\
+    SmallMoleculeCompoundName
 from db.support import lims_utils
 from db.support.data_converter import default_converter
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
@@ -83,33 +85,33 @@ def _get_raw_time_string():
     
     
 
-class PlateLocationResource(ManagedModelResource):
-
-    class Meta:
-
-        queryset = PlateLocation.objects.all() #.order_by('facility_id')
-        authentication = MultiAuthentication(BasicAuthentication(), 
-                                             SessionAuthentication())
-        authorization= UserGroupAuthorization()
-        resource_name = 'platelocation'
-        ordering = []
-        filtering = {}
-        serializer = LimsSerializer()
-        always_return_data = True 
+# class PlateLocationResource(ManagedModelResource):
+# 
+#     class Meta:
+# 
+#         queryset = PlateLocation.objects.all() #.order_by('facility_id')
+#         authentication = MultiAuthentication(BasicAuthentication(), 
+#                                              SessionAuthentication())
+#         authorization= UserGroupAuthorization()
+#         resource_name = 'platelocation'
+#         ordering = []
+#         filtering = {}
+#         serializer = LimsSerializer()
+#         always_return_data = True 
+# 
+#         
+#     def __init__(self, **kwargs):
+#         super(PlateLocationResource,self).__init__(**kwargs)
+# 
+#     def prepend_urls(self):
+#         return [
+#             url((r"^(?P<resource_name>%s)"
+#                  r"/(?P<plate_id>((?=(schema))__|(?!(schema))[^/]+))%s$")  
+#                     % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),]    
 
         
-    def __init__(self, **kwargs):
-        super(PlateLocationResource,self).__init__(**kwargs)
-
-    def prepend_urls(self):
-        return [
-            url((r"^(?P<resource_name>%s)"
-                 r"/(?P<plate_id>((?=(schema))__|(?!(schema))[^/]+))%s$")  
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),]    
-
-        
-class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
+class LibraryCopyPlateResource(ApiResource):
 
     class Meta:
         queryset = Plate.objects.all() #.order_by('facility_id')
@@ -371,280 +373,8 @@ class LibraryCopyPlateResource(SqlAlchemyResource,ManagedModelResource):
 #         logger.info(str(('===creating library copy plate', bundle.data)))
 #         return super(LibraryCopyPlateResource, self).obj_create(bundle, **kwargs)
 
- 
-class NaturalProductReagentResource(ManagedLinkedResource):
-    
-    class Meta:
 
-        queryset = Reagent.objects.all()
-        
-        authentication = MultiAuthentication(BasicAuthentication(), 
-                                             SessionAuthentication())
-        authorization= UserGroupAuthorization()
-        resource_name = 'naturalproductreagent'
-        
-        ordering = []
-        filtering = {}
-        serializer = LimsSerializer()
-        
-    def __init__(self, **kwargs):
-        super(NaturalProductReagentResource,self).__init__(**kwargs)
-
-
-class SilencingReagentResource(ManagedLinkedResource):
-    
-    reagent_id = fields.IntegerField(default=None)
-    
-    class Meta:
-    
-        queryset = Reagent.objects.all()
-        authentication = MultiAuthentication(BasicAuthentication(), 
-                                             SessionAuthentication())
-        authorization= UserGroupAuthorization()
-        resource_name = 'silencingreagent'
-        ordering = []
-        filtering = {}
-        serializer = LimsSerializer()
-        
-    def __init__(self, **kwargs):
-        super(SilencingReagentResource,self).__init__(**kwargs)
-
-    def build_sqlalchemy_columns(self, fields, bridge):
-        '''
-        @return an array of sqlalchemy.sql.schema.Column objects
-        @param fields - field definitions, from the resource schema
-        
-        '''
-        DEBUG_BUILD_COLS = False or logger.isEnabledFor(logging.DEBUG)
-        
-        columns = {}
-        vendor_gene_columns=['vendor_entrezgene_id',
-            'vendor_gene_name','vendor_gene_species']
-        vendor_gene_symbols = 'vendor_entrezgene_symbols'
-        vendor_genebank_accession_numbers = 'vendor_genbank_accession_numbers'
-        facility_gene_columns=['facility_entrezgene_id',
-            'facility_gene_name','facility_gene_species']
-        facility_gene_symbols = 'facility_entrezgene_symbols'
-        facility_genebank_accession_numbers = 'facility_genbank_accession_numbers'
-        
-        duplex_wells = 'duplex_wells'
-        
-        vendor_columns = set(vendor_gene_columns)
-        vendor_columns.add(vendor_gene_symbols)
-        vendor_columns.add(vendor_genebank_accession_numbers)
-        
-        facility_columns = set(facility_gene_columns)
-        facility_columns.add(facility_gene_symbols)
-        facility_columns.add(facility_genebank_accession_numbers)
-        
-        gene_table = bridge['gene']
-        sirna_table = bridge['silencing_reagent']
-        gene_symbol = bridge['gene_symbol']
-        genbank_acc = bridge['gene_genbank_accession_number']
-        well_table = bridge['well']
-        
-        # Example:
-        # (select gene_name from gene 
-        #     join silencing_reagent on(gene_id=vendor_gene_id) 
-        #     where silencing_reagent.reagent_id = reagent.reagent_id ) as vendor_gene_name
-        
-        for field in fields:
-            field_name = field.get('field', None)
-            if not field_name:
-                field_name = field['key']
-            label = field['key']
-            if DEBUG_BUILD_COLS: 
-                logger.info(str(('field[key]', field['key'])))
-            join_stmt = None
-            join_column = None
-            if field['key'] in vendor_columns:
-                join_column = 'vendor_gene_id'
-            if field['key'] in facility_columns:
-                join_column = 'facility_gene_id'
-
-            if field['key'] in vendor_gene_columns or \
-                    field['key'] in facility_gene_columns:
-                join_stmt = gene_table.join(sirna_table, 
-                    gene_table.c['gene_id'] == sirna_table.c[join_column])
-                select_stmt = select([gene_table.c[field_name]]).\
-                    select_from(join_stmt)
-                select_stmt = select_stmt.where(
-                    text('silencing_reagent.reagent_id=reagent.reagent_id'))
-                select_stmt = select_stmt.label(label)
-                columns[label] = select_stmt
-
-            if field['key'] == vendor_gene_symbols or \
-                    field['key'] == facility_gene_symbols:
-                join_stmt = gene_symbol.join(gene_table, 
-                    gene_symbol.c['gene_id'] == gene_table.c['gene_id'])
-                join_stmt = join_stmt.join(sirna_table, 
-                    gene_table.c['gene_id'] == sirna_table.c[join_column])
-                
-                select_inner = select([gene_symbol.c[field_name]]).\
-                    select_from(join_stmt)
-                ordinal_field = field.get('ordinal_field', None)
-                if ordinal_field:
-                    select_inner = select_inner.order_by(gene_symbol.c[ordinal_field])
-                select_inner = select_inner.where(
-                    text('silencing_reagent.reagent_id=reagent.reagent_id'))
-                select_inner = select_inner.alias('a')
-                select_stmt = select([func.array_to_string(
-                                func.array_agg(column(field_name)),
-                                               LIST_DELIMITER_SQL_ARRAY)])
-                select_stmt = select_stmt.select_from(select_inner)
-                select_stmt = select_stmt.label(label)
-                columns[label] = select_stmt
-
-            if field['key'] == vendor_genebank_accession_numbers or \
-                    field['key'] == facility_genebank_accession_numbers:
-                join_stmt = genbank_acc.join(gene_table, 
-                    genbank_acc.c['gene_id'] == gene_table.c['gene_id'])
-                join_stmt = join_stmt.join(sirna_table, 
-                    gene_table.c['gene_id'] == sirna_table.c[join_column])
-                
-                select_inner = select([genbank_acc.c[field_name]]).\
-                    select_from(join_stmt)
-                select_inner = select_inner.where(
-                    text('silencing_reagent.reagent_id=reagent.reagent_id'))
-                select_inner = select_inner.alias('a')
-                select_stmt = select([func.array_to_string(
-                                func.array_agg(column(field_name)),
-                                               LIST_DELIMITER_SQL_ARRAY)])
-                select_stmt = select_stmt.select_from(select_inner)
-                select_stmt = select_stmt.label(label)
-                columns[label] = select_stmt
-            
-            if field['key'] == duplex_wells:
-                duplex_wells = bridge['silencing_reagent_duplex_wells']
-                select_inner = select([duplex_wells.c['well_id']]).\
-                    select_from(duplex_wells)
-                select_inner = select_inner.where(
-                    text('silencingreagent_id=reagent.reagent_id'))
-                select_inner = select_inner.order_by(duplex_wells.c['well_id'])
-                select_inner = select_inner.alias('a')
-                select_stmt = select([func.array_to_string(
-                                func.array_agg(column(field_name)),
-                                               LIST_DELIMITER_SQL_ARRAY)])
-                select_stmt = select_stmt.select_from(select_inner)
-                select_stmt = select_stmt.label(label)
-                columns[label] = select_stmt
-                
-                if DEBUG_BUILD_COLS:
-                    logger.info(str((select_stmt)))
-                
-        if DEBUG_BUILD_COLS: 
-            logger.info(str(('sirna columns', columns.keys())))
-        
-        return columns 
-
-    def obj_create(self, bundle, **kwargs):
-        
-        bundle = super(SilencingReagentResource, self).obj_create(bundle, **kwargs)
-        
-        if 'duplex_wells' in kwargs:
-            bundle.obj.silencingreagent.duplex_wells = kwargs['duplex_wells']
-        
-        # Now do the gene tables
-        ## nastiness ensues!
-        
-        gene_key = 'entrezgene_id'
-        if bundle.data.get('vendor_%s'%gene_key, None):
-            bundle.obj.silencingreagent.vendor_gene = \
-                self._create_gene(bundle.data, 'vendor')
-        if bundle.data.get('facility_%s'%gene_key, None):
-            bundle.obj.silencingreagent.facility_gene = \
-                self._create_gene(bundle.data, 'facility')
-        bundle.obj.silencingreagent.save()
-        
-        return bundle
-    
-    def _create_gene(self, data, source_type):
-        
-        gene_keys = ['entrezgene_id', 'gene_name', 'species_name']
-        gene = Gene()
-        for key in gene_keys:
-            api_key = '%s_%s' % (source_type,key)
-            val = data.get(api_key, None)
-            if val:
-                setattr(gene,key,val)
-        gene.save()
-        
-        _key = 'entrezgene_symbols'
-        if data.get('%s_%s' % (source_type,_key), None):
-            symbol_list = data['%s_%s' % (source_type,_key)] #.split(';')
-            for i,symbol in enumerate(symbol_list):
-                gene_symbol = GeneSymbol()
-                setattr(gene_symbol, 'entrezgene_symbol', symbol)
-                setattr(gene_symbol, 'ordinal', i)
-                setattr(gene_symbol, 'gene', gene)
-                gene_symbol.save()
-    
-        _key = 'genbank_accession_numbers'
-        if data.get('%s_%s' % (source_type,_key), None):
-            _list = data['%s_%s' % (source_type,_key)] #.split(';')
-            for i,num in enumerate(_list):
-                accession_number = GeneGenbankAccessionNumber()
-                setattr(accession_number, 'genbank_accession_number', num)
-                setattr(accession_number, 'gene', gene)
-                accession_number.save()
-        
-        return gene
-    
-    def dehydrate(self, bundle):
-        
-        bundle = super(SilencingReagentResource, self).dehydrate(bundle)
-        
-        if bundle.obj and hasattr(bundle.obj,'silencingreagent'):
-            if bundle.obj.silencingreagent.vendor_gene:
-                gene = bundle.obj.silencingreagent.vendor_gene
-                type = 'vendor'
-                self._dehydrate_gene(gene, type, bundle)
-            
-            if bundle.obj.silencingreagent.facility_gene:
-                gene = bundle.obj.silencingreagent.facility_gene
-                type = 'facility'
-                self._dehydrate_gene(gene, type, bundle)
-            
-            if bundle.obj.silencingreagent.duplex_wells.exists():
-                bundle.data['duplex_wells'] = ';'.join(
-                    [x.well_id for x in bundle.obj.silencingreagent.duplex_wells.all().order_by('well_id') ])
-        return bundle
-        
-    def _dehydrate_gene(self, gene, type, bundle):
-        
-        gene_keys = ['entrezgene_id', 'gene_name', 'species_name']
-        for key in gene_keys:
-            bundle.data['%s_%s' %(type,key)] = getattr(gene, key)
-        _key = 'entrezgene_symbols'
-        if gene.genesymbol_set.exists():
-            bundle.data['%s_%s'%(type,_key)] = ';'.join(
-                [x.entrezgene_symbol for x in gene.genesymbol_set.all().order_by('ordinal')])
-        _key = 'genbank_accession_numbers'
-        if gene.genegenbankaccessionnumber_set.exists():
-            bundle.data['%s_%s'%(type,_key)] = ';'.join(
-                [x.genbank_accession_number for x in gene.genegenbankaccessionnumber_set.all()])
-        
-
-class SmallMoleculeReagentResource(ManagedLinkedResource):
-        
-    class Meta:
-
-        queryset = Reagent.objects.all() 
-        authentication = MultiAuthentication(
-            BasicAuthentication(), SessionAuthentication())
-        authorization= UserGroupAuthorization()
-        ordering = []
-        filtering = {}
-        serializer = LimsSerializer()
-        excludes = [] #['json_field']
-        always_return_data = True # this makes Backbone happy
-        resource_name='smallmoleculereagent' 
-
-    def __init__(self, **kwargs):
-        super(SmallMoleculeReagentResource,self).__init__(**kwargs)
-
-
-class ScreenResultResource(SqlAlchemyResource,ManagedResource):
+class ScreenResultResource(ApiResource):
 
     username = fields.CharField('user__username', null=False, readonly=True)
 
@@ -1519,180 +1249,180 @@ class DataColumnResource(ManagedModelResource):
         ]    
     
 
-# Deprecate - use apilog viewer
-class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
-
-    class Meta:
-    
-        queryset = CopyWell.objects.all().order_by('well_id')
-        authentication = MultiAuthentication(BasicAuthentication(), 
-                                             SessionAuthentication())
-        authorization= UserGroupAuthorization()
-        resource_name = 'copywellhistory'
-        ordering = []
-        filtering = {}
-        serializer = LimsSerializer()
-        always_return_data = True 
-        
-    def __init__(self, **kwargs):
-        super(CopyWellHistoryResource,self).__init__(**kwargs)
-
-    def prepend_urls(self):
-        
-        return [
-            url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('get_schema'), name="api_get_schema"),
-            url(r"^(?P<resource_name>%s)/search/(?P<search_ID>[\d]+)%s$" 
-                % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('search'), name="api_search"),
-            url(r"^(?P<resource_name>%s)"
-                r"/(?P<copy_name>[\w\d_.\-\+ ]+)" 
-                r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-            url(r"^(?P<resource_name>%s)"
-                r"/(?P<copy_name>[\w\d_.\-\+: ]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-        ]
-
-    def get_detail(self, request, **kwargs):
-
-        copy_name = kwargs.get('copy_name', None)
-        if not copy_name:
-            logger.info(str(('no copy_name provided')))
-            raise NotImplementedError('must provide a copy_name parameter')
-        
-        well_id = kwargs.get('well_id', None)
-        if not well_id:
-            logger.info(str(('no well_id provided')))
-            raise NotImplementedError('must provide a well_id parameter')
-
-        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
-        kwargs['is_for_detail']=True
-        return self.build_list_response(request, **kwargs)
-        
-    @read_authorization
-    def get_list(self,request,**kwargs):
-
-        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-        return self.build_list_response(request, **kwargs)
-
-    @read_authorization
-    def build_list_response(self,request, **kwargs):
-
-        param_hash = {}
-        param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
-        schema = super(CopyWellHistoryResource,self).build_schema()
-        
-        is_for_detail = kwargs.pop('is_for_detail', False)
-        filename = self._get_filename(schema, kwargs)
-        well_id = param_hash.pop('well_id', None)
-        if well_id:
-            param_hash['well_id__eq'] = well_id
-        copy_name = param_hash.pop('copy_name', None)
-        if copy_name:
-            param_hash['copy_name__eq'] = copy_name
-
-        try:
-            
-            # general setup
-          
-            manual_field_includes = set(param_hash.get('includes', []))
-  
-            (filter_expression, filter_fields) = \
-                SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
-
-            if filter_expression is None:
-                msgs = { 'Copy well resource': 'can only service requests with filter expressions' }
-                logger.info(str((msgs)))
-                raise ImmediateHttpResponse(response=self.error_response(request,msgs))
-                                  
-            field_hash = self.get_visible_fields(
-                schema['fields'], filter_fields, manual_field_includes, 
-                param_hash.get('visibilities'), 
-                exact_fields=set(param_hash.get('exact_fields',[])))
-              
-            order_params = param_hash.get('order_by',[])
-            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
-             
-            rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
- 
-            # specific setup 
-            base_query_tables = [
-                'copy_well', 'copy', 'plate', 'well','library',
-                'well_volume_adjustment','activity']
-            
-            # NOTE: date_time is included here as an exercise:
-            # why db table structure needs to be redone
-            custom_columns = {
-                'consumed_volume': literal_column(
-                    'initial_volume-copy_well.volume').label('consumed_volume'),
-                'date_time': literal_column('\n'.join([
-                    'case when wva.well_volume_correction_activity_id is not null then (', 
-                    'select a1.date_created from activity a1', 
-                    'where a1.activity_id = wva.well_volume_correction_activity_id )',  
-                    'else ( select a2.date_created from activity a2', 
-                    'join cherry_pick_assay_plate cpap on(cpap.cherry_pick_liquid_transfer_id=a2.activity_id)',
-                    'join lab_cherry_pick lcp on(lcp.cherry_pick_assay_plate_id=cpap.cherry_pick_assay_plate_id)',
-                    'where lcp.lab_cherry_pick_id = wva.lab_cherry_pick_id ) ',
-                    'end',
-                    ])).label('date_time'),
-            }
-            
-            columns = self.build_sqlalchemy_columns(
-                field_hash.values(), base_query_tables=base_query_tables,
-                custom_columns=custom_columns )
-
-            # build the query statement
-
-            _cw = self.bridge['copy_well']
-            _c = self.bridge['copy']
-            _l = self.bridge['library']
-            _p = self.bridge['plate']
-            _w = self.bridge['well']
-            _wva = self.bridge['well_volume_adjustment']
-            _a = self.bridge['activity']
-            
-            _wva = _wva.alias('wva')
-            j = join(_cw, _c, _c.c.copy_id == _cw.c.copy_id )
-            j = j.join(_p, _cw.c.plate_id == _p.c.plate_id )
-            j = j.join(_w, _cw.c.well_id == _w.c.well_id )
-            j = j.join(_l, _w.c.library_id == _l.c.library_id )
-            j = j.join(_wva,onclause=(and_(
-                _cw.c.copy_id == _wva.c.copy_id,_cw.c.well_id == _wva.c.well_id)),
-                isouter=True)
-            j = j.join(_a, _wva.c.well_volume_correction_activity_id 
-                == _a.c.activity_id, isouter=True )
-            stmt = select(columns.values()).select_from(j)
-
-            # general setup
-             
-            (stmt,count_stmt) = self.wrap_statement(
-                stmt,order_clauses,filter_expression )
-            
-            title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
-                title_function = lambda key: field_hash[key]['title']
-            
-            return self.stream_response_from_statement(
-                request, stmt, count_stmt, filename, 
-                field_hash=field_hash, 
-                param_hash=param_hash,
-                is_for_detail=is_for_detail,
-                rowproxy_generator=rowproxy_generator,
-                title_function=title_function  )
-             
-        except Exception, e:
-            logger.exception('on get list')
-            raise e  
+# # Deprecate - use apilog viewer
+# class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
+# 
+#     class Meta:
+#     
+#         queryset = CopyWell.objects.all().order_by('well_id')
+#         authentication = MultiAuthentication(BasicAuthentication(), 
+#                                              SessionAuthentication())
+#         authorization= UserGroupAuthorization()
+#         resource_name = 'copywellhistory'
+#         ordering = []
+#         filtering = {}
+#         serializer = LimsSerializer()
+#         always_return_data = True 
+#         
+#     def __init__(self, **kwargs):
+#         super(CopyWellHistoryResource,self).__init__(**kwargs)
+# 
+#     def prepend_urls(self):
+#         
+#         return [
+#             url(r"^(?P<resource_name>%s)/schema%s$" 
+#                 % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('get_schema'), name="api_get_schema"),
+#             url(r"^(?P<resource_name>%s)/search/(?P<search_ID>[\d]+)%s$" 
+#                 % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('search'), name="api_search"),
+#             url(r"^(?P<resource_name>%s)"
+#                 r"/(?P<copy_name>[\w\d_.\-\+ ]+)" 
+#                 r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$" 
+#                     % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+#             url(r"^(?P<resource_name>%s)"
+#                 r"/(?P<copy_name>[\w\d_.\-\+: ]+)%s$" 
+#                     % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+#         ]
+# 
+#     def get_detail(self, request, **kwargs):
+# 
+#         copy_name = kwargs.get('copy_name', None)
+#         if not copy_name:
+#             logger.info(str(('no copy_name provided')))
+#             raise NotImplementedError('must provide a copy_name parameter')
+#         
+#         well_id = kwargs.get('well_id', None)
+#         if not well_id:
+#             logger.info(str(('no well_id provided')))
+#             raise NotImplementedError('must provide a well_id parameter')
+# 
+#         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+#         kwargs['is_for_detail']=True
+#         return self.build_list_response(request, **kwargs)
+#         
+#     @read_authorization
+#     def get_list(self,request,**kwargs):
+# 
+#         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+#         return self.build_list_response(request, **kwargs)
+# 
+#     @read_authorization
+#     def build_list_response(self,request, **kwargs):
+# 
+#         param_hash = {}
+#         param_hash.update(kwargs)
+#         param_hash.update(self._convert_request_to_dict(request))
+#         schema = super(CopyWellHistoryResource,self).build_schema()
+#         
+#         is_for_detail = kwargs.pop('is_for_detail', False)
+#         filename = self._get_filename(schema, kwargs)
+#         well_id = param_hash.pop('well_id', None)
+#         if well_id:
+#             param_hash['well_id__eq'] = well_id
+#         copy_name = param_hash.pop('copy_name', None)
+#         if copy_name:
+#             param_hash['copy_name__eq'] = copy_name
+# 
+#         try:
+#             
+#             # general setup
+#           
+#             manual_field_includes = set(param_hash.get('includes', []))
+#   
+#             (filter_expression, filter_fields) = \
+#                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+# 
+#             if filter_expression is None:
+#                 msgs = { 'Copy well resource': 'can only service requests with filter expressions' }
+#                 logger.info(str((msgs)))
+#                 raise ImmediateHttpResponse(response=self.error_response(request,msgs))
+#                                   
+#             field_hash = self.get_visible_fields(
+#                 schema['fields'], filter_fields, manual_field_includes, 
+#                 param_hash.get('visibilities'), 
+#                 exact_fields=set(param_hash.get('exact_fields',[])))
+#               
+#             order_params = param_hash.get('order_by',[])
+#             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
+#              
+#             rowproxy_generator = None
+#             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
+#                 rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+#  
+#             # specific setup 
+#             base_query_tables = [
+#                 'copy_well', 'copy', 'plate', 'well','library',
+#                 'well_volume_adjustment','activity']
+#             
+#             # NOTE: date_time is included here as an exercise:
+#             # why db table structure needs to be redone
+#             custom_columns = {
+#                 'consumed_volume': literal_column(
+#                     'initial_volume-copy_well.volume').label('consumed_volume'),
+#                 'date_time': literal_column('\n'.join([
+#                     'case when wva.well_volume_correction_activity_id is not null then (', 
+#                     'select a1.date_created from activity a1', 
+#                     'where a1.activity_id = wva.well_volume_correction_activity_id )',  
+#                     'else ( select a2.date_created from activity a2', 
+#                     'join cherry_pick_assay_plate cpap on(cpap.cherry_pick_liquid_transfer_id=a2.activity_id)',
+#                     'join lab_cherry_pick lcp on(lcp.cherry_pick_assay_plate_id=cpap.cherry_pick_assay_plate_id)',
+#                     'where lcp.lab_cherry_pick_id = wva.lab_cherry_pick_id ) ',
+#                     'end',
+#                     ])).label('date_time'),
+#             }
+#             
+#             columns = self.build_sqlalchemy_columns(
+#                 field_hash.values(), base_query_tables=base_query_tables,
+#                 custom_columns=custom_columns )
+# 
+#             # build the query statement
+# 
+#             _cw = self.bridge['copy_well']
+#             _c = self.bridge['copy']
+#             _l = self.bridge['library']
+#             _p = self.bridge['plate']
+#             _w = self.bridge['well']
+#             _wva = self.bridge['well_volume_adjustment']
+#             _a = self.bridge['activity']
+#             
+#             _wva = _wva.alias('wva')
+#             j = join(_cw, _c, _c.c.copy_id == _cw.c.copy_id )
+#             j = j.join(_p, _cw.c.plate_id == _p.c.plate_id )
+#             j = j.join(_w, _cw.c.well_id == _w.c.well_id )
+#             j = j.join(_l, _w.c.library_id == _l.c.library_id )
+#             j = j.join(_wva,onclause=(and_(
+#                 _cw.c.copy_id == _wva.c.copy_id,_cw.c.well_id == _wva.c.well_id)),
+#                 isouter=True)
+#             j = j.join(_a, _wva.c.well_volume_correction_activity_id 
+#                 == _a.c.activity_id, isouter=True )
+#             stmt = select(columns.values()).select_from(j)
+# 
+#             # general setup
+#              
+#             (stmt,count_stmt) = self.wrap_statement(
+#                 stmt,order_clauses,filter_expression )
+#             
+#             title_function = None
+#             if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+#                 title_function = lambda key: field_hash[key]['title']
+#             
+#             return self.stream_response_from_statement(
+#                 request, stmt, count_stmt, filename, 
+#                 field_hash=field_hash, 
+#                 param_hash=param_hash,
+#                 is_for_detail=is_for_detail,
+#                 rowproxy_generator=rowproxy_generator,
+#                 title_function=title_function  )
+#              
+#         except Exception, e:
+#             logger.exception('on get list')
+#             raise e  
    
 
-class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
+class CopyWellResource(ApiResource):
     
     class Meta:
         
@@ -1863,7 +1593,7 @@ class CopyWellResource(SqlAlchemyResource, ManagedModelResource):
             raise e  
   
 
-class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):        
+class CherryPickRequestResource(ApiResource):        
 
     class Meta:
     
@@ -2069,7 +1799,7 @@ class CherryPickRequestResource(SqlAlchemyResource,ManagedModelResource):
             raise e  
 
 
-class CherryPickPlateResource(SqlAlchemyResource,ManagedModelResource):        
+class CherryPickPlateResource(ApiResource):        
 
     class Meta:
 
@@ -3797,7 +3527,7 @@ class LibraryScreeningResource(ActivityResource):
 
     @un_cache        
     def put_detail(self, request, **kwargs):
-        raise NotImplementedError('put_list must be implemented')
+        raise NotImplementedError('put_detail must be implemented')
     
     def validate(self, _dict, patch=False):
 
@@ -3816,6 +3546,10 @@ class LibraryScreeningResource(ActivityResource):
         initializer_dict = {}
 
         # TODO: wrapper for parsing
+        # FIXME: move parsing until after validation
+#         -------
+#         ------- FIXME: parse and validate only editable fields
+        
         for key in fields.keys():
             if deserialized.get(key,None) is not None:
                 initializer_dict[key] = parse_val(
@@ -5581,8 +5315,367 @@ class ScreensaverUserResource(ApiResource):
             logger.exception('on patch detail')
             raise e  
 
+
+class NaturalProductReagentResource(ApiResource):
+    
+    class Meta:
+
+        queryset = Reagent.objects.all()
         
-class ReagentResource(SqlAlchemyResource, ManagedModelResource):
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= UserGroupAuthorization()
+        resource_name = 'naturalproductreagent'
+        
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+        
+    def __init__(self, **kwargs):
+        super(NaturalProductReagentResource,self).__init__(**kwargs)
+
+
+class SilencingReagentResource(ApiResource):
+    
+    reagent_id = fields.IntegerField(default=None)
+    
+    class Meta:
+    
+        queryset = Reagent.objects.all()
+        authentication = MultiAuthentication(BasicAuthentication(), 
+                                             SessionAuthentication())
+        authorization= UserGroupAuthorization()
+        resource_name = 'silencingreagent'
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+        
+    def __init__(self, **kwargs):
+        super(SilencingReagentResource,self).__init__(**kwargs)
+
+    def build_sqlalchemy_columns(self, fields, bridge):
+        '''
+        @return an array of sqlalchemy.sql.schema.Column objects
+        @param fields - field definitions, from the resource schema
+        
+        '''
+        DEBUG_BUILD_COLS = False or logger.isEnabledFor(logging.DEBUG)
+        
+        columns = {}
+        vendor_gene_columns=['vendor_entrezgene_id',
+            'vendor_gene_name','vendor_gene_species']
+        vendor_gene_symbols = 'vendor_entrezgene_symbols'
+        vendor_genebank_accession_numbers = 'vendor_genbank_accession_numbers'
+        facility_gene_columns=['facility_entrezgene_id',
+            'facility_gene_name','facility_gene_species']
+        facility_gene_symbols = 'facility_entrezgene_symbols'
+        facility_genebank_accession_numbers = 'facility_genbank_accession_numbers'
+        
+        duplex_wells = 'duplex_wells'
+        
+        vendor_columns = set(vendor_gene_columns)
+        vendor_columns.add(vendor_gene_symbols)
+        vendor_columns.add(vendor_genebank_accession_numbers)
+        
+        facility_columns = set(facility_gene_columns)
+        facility_columns.add(facility_gene_symbols)
+        facility_columns.add(facility_genebank_accession_numbers)
+        
+        gene_table = bridge['gene']
+        sirna_table = bridge['silencing_reagent']
+        gene_symbol = bridge['gene_symbol']
+        genbank_acc = bridge['gene_genbank_accession_number']
+        well_table = bridge['well']
+        
+        # Example:
+        # (select gene_name from gene 
+        #     join silencing_reagent on(gene_id=vendor_gene_id) 
+        #     where silencing_reagent.reagent_id = reagent.reagent_id ) as vendor_gene_name
+        
+        for field in fields:
+            field_name = field.get('field', None)
+            if not field_name:
+                field_name = field['key']
+            label = field['key']
+            if DEBUG_BUILD_COLS: 
+                logger.info(str(('field[key]', field['key'])))
+            join_stmt = None
+            join_column = None
+            if field['key'] in vendor_columns:
+                join_column = 'vendor_gene_id'
+            if field['key'] in facility_columns:
+                join_column = 'facility_gene_id'
+
+            if field['key'] in vendor_gene_columns or \
+                    field['key'] in facility_gene_columns:
+                join_stmt = gene_table.join(sirna_table, 
+                    gene_table.c['gene_id'] == sirna_table.c[join_column])
+                select_stmt = select([gene_table.c[field_name]]).\
+                    select_from(join_stmt)
+                select_stmt = select_stmt.where(
+                    text('silencing_reagent.reagent_id=reagent.reagent_id'))
+                select_stmt = select_stmt.label(label)
+                columns[label] = select_stmt
+
+            if field['key'] == vendor_gene_symbols or \
+                    field['key'] == facility_gene_symbols:
+                join_stmt = gene_symbol.join(gene_table, 
+                    gene_symbol.c['gene_id'] == gene_table.c['gene_id'])
+                join_stmt = join_stmt.join(sirna_table, 
+                    gene_table.c['gene_id'] == sirna_table.c[join_column])
+                
+                select_inner = select([gene_symbol.c[field_name]]).\
+                    select_from(join_stmt)
+                ordinal_field = field.get('ordinal_field', None)
+                if ordinal_field:
+                    select_inner = select_inner.order_by(gene_symbol.c[ordinal_field])
+                select_inner = select_inner.where(
+                    text('silencing_reagent.reagent_id=reagent.reagent_id'))
+                select_inner = select_inner.alias('a')
+                select_stmt = select([func.array_to_string(
+                                func.array_agg(column(field_name)),
+                                               LIST_DELIMITER_SQL_ARRAY)])
+                select_stmt = select_stmt.select_from(select_inner)
+                select_stmt = select_stmt.label(label)
+                columns[label] = select_stmt
+
+            if field['key'] == vendor_genebank_accession_numbers or \
+                    field['key'] == facility_genebank_accession_numbers:
+                join_stmt = genbank_acc.join(gene_table, 
+                    genbank_acc.c['gene_id'] == gene_table.c['gene_id'])
+                join_stmt = join_stmt.join(sirna_table, 
+                    gene_table.c['gene_id'] == sirna_table.c[join_column])
+                
+                select_inner = select([genbank_acc.c[field_name]]).\
+                    select_from(join_stmt)
+                select_inner = select_inner.where(
+                    text('silencing_reagent.reagent_id=reagent.reagent_id'))
+                select_inner = select_inner.alias('a')
+                select_stmt = select([func.array_to_string(
+                                func.array_agg(column(field_name)),
+                                               LIST_DELIMITER_SQL_ARRAY)])
+                select_stmt = select_stmt.select_from(select_inner)
+                select_stmt = select_stmt.label(label)
+                columns[label] = select_stmt
+            
+            if field['key'] == duplex_wells:
+                duplex_wells = bridge['silencing_reagent_duplex_wells']
+                select_inner = select([duplex_wells.c['well_id']]).\
+                    select_from(duplex_wells)
+                select_inner = select_inner.where(
+                    text('silencingreagent_id=reagent.reagent_id'))
+                select_inner = select_inner.order_by(duplex_wells.c['well_id'])
+                select_inner = select_inner.alias('a')
+                select_stmt = select([func.array_to_string(
+                                func.array_agg(column(field_name)),
+                                               LIST_DELIMITER_SQL_ARRAY)])
+                select_stmt = select_stmt.select_from(select_inner)
+                select_stmt = select_stmt.label(label)
+                columns[label] = select_stmt
+                
+                if DEBUG_BUILD_COLS:
+                    logger.info(str((select_stmt)))
+                
+        if DEBUG_BUILD_COLS: 
+            logger.info(str(('sirna columns', columns.keys())))
+        
+        return columns 
+
+    @transaction.atomic()    
+    def patch_obj(self,deserialized, **kwargs):
+
+        well = kwargs.get('well', None)
+        if not well:
+            raise ValidationError(key='well', msg='required')
+
+        initializer_dict = self.parse(deserialized)
+        
+        id_kwargs = self.get_id(deserialized,**kwargs)
+        
+        raise NotImplementedError('TODO: 20160218: continue ApiResource refactor'
+            ', follow SmallMoleculeReagent work')
+
+    def obj_create_old(self, bundle, **kwargs):
+        
+        bundle = super(SilencingReagentResource, self).obj_create(bundle, **kwargs)
+        
+        if 'duplex_wells' in kwargs:
+            bundle.obj.silencingreagent.duplex_wells = kwargs['duplex_wells']
+        
+        # Now do the gene tables
+        ## nastiness ensues!
+        
+        gene_key = 'entrezgene_id'
+        if bundle.data.get('vendor_%s'%gene_key, None):
+            bundle.obj.silencingreagent.vendor_gene = \
+                self._create_gene(bundle.data, 'vendor')
+        if bundle.data.get('facility_%s'%gene_key, None):
+            bundle.obj.silencingreagent.facility_gene = \
+                self._create_gene(bundle.data, 'facility')
+        bundle.obj.silencingreagent.save()
+        
+        return bundle
+    
+    def _create_gene_old(self, data, source_type):
+        
+        gene_keys = ['entrezgene_id', 'gene_name', 'species_name']
+        gene = Gene()
+        for key in gene_keys:
+            api_key = '%s_%s' % (source_type,key)
+            val = data.get(api_key, None)
+            if val:
+                setattr(gene,key,val)
+        gene.save()
+        
+        _key = 'entrezgene_symbols'
+        if data.get('%s_%s' % (source_type,_key), None):
+            symbol_list = data['%s_%s' % (source_type,_key)] #.split(';')
+            for i,symbol in enumerate(symbol_list):
+                gene_symbol = GeneSymbol()
+                setattr(gene_symbol, 'entrezgene_symbol', symbol)
+                setattr(gene_symbol, 'ordinal', i)
+                setattr(gene_symbol, 'gene', gene)
+                gene_symbol.save()
+    
+        _key = 'genbank_accession_numbers'
+        if data.get('%s_%s' % (source_type,_key), None):
+            _list = data['%s_%s' % (source_type,_key)] #.split(';')
+            for i,num in enumerate(_list):
+                accession_number = GeneGenbankAccessionNumber()
+                setattr(accession_number, 'genbank_accession_number', num)
+                setattr(accession_number, 'gene', gene)
+                accession_number.save()
+        
+        return gene
+    
+    def dehydrate_old(self, bundle):
+        
+        bundle = super(SilencingReagentResource, self).dehydrate(bundle)
+        
+        if bundle.obj and hasattr(bundle.obj,'silencingreagent'):
+            if bundle.obj.silencingreagent.vendor_gene:
+                gene = bundle.obj.silencingreagent.vendor_gene
+                type = 'vendor'
+                self._dehydrate_gene(gene, type, bundle)
+            
+            if bundle.obj.silencingreagent.facility_gene:
+                gene = bundle.obj.silencingreagent.facility_gene
+                type = 'facility'
+                self._dehydrate_gene(gene, type, bundle)
+            
+            if bundle.obj.silencingreagent.duplex_wells.exists():
+                bundle.data['duplex_wells'] = ';'.join(
+                    [x.well_id for x in bundle.obj.silencingreagent.duplex_wells.all().order_by('well_id') ])
+        return bundle
+        
+    def _dehydrate_gene_old(self, gene, type, bundle):
+        
+        gene_keys = ['entrezgene_id', 'gene_name', 'species_name']
+        for key in gene_keys:
+            bundle.data['%s_%s' %(type,key)] = getattr(gene, key)
+        _key = 'entrezgene_symbols'
+        if gene.genesymbol_set.exists():
+            bundle.data['%s_%s'%(type,_key)] = ';'.join(
+                [x.entrezgene_symbol for x in gene.genesymbol_set.all().order_by('ordinal')])
+        _key = 'genbank_accession_numbers'
+        if gene.genegenbankaccessionnumber_set.exists():
+            bundle.data['%s_%s'%(type,_key)] = ';'.join(
+                [x.genbank_accession_number for x in gene.genegenbankaccessionnumber_set.all()])
+        
+
+class SmallMoleculeReagentResource(ApiResource):
+        
+    class Meta:
+
+        queryset = Reagent.objects.all() 
+        authentication = MultiAuthentication(
+            BasicAuthentication(), SessionAuthentication())
+        authorization= UserGroupAuthorization()
+        ordering = []
+        filtering = {}
+        serializer = LimsSerializer()
+        excludes = [] #['json_field']
+        always_return_data = True # this makes Backbone happy
+        resource_name='smallmoleculereagent' 
+
+    def __init__(self, **kwargs):
+        super(SmallMoleculeReagentResource,self).__init__(**kwargs)
+
+    @transaction.atomic()    
+    def patch_obj(self,deserialized, **kwargs):
+
+        well = kwargs.get('well', None)
+        if not well:
+            raise ValidationError(key='well', msg='required')
+
+        initializer_dict = self.parse(deserialized)
+        
+        id_kwargs = self.get_id(deserialized,**kwargs)
+        
+        if not well.reagent_set.exists():
+            reagent = SmallMoleculeReagent(well=well)
+            errors = self.validate(initializer_dict, patch=False)
+            if errors:
+                raise ValidationError(errors)
+        else:
+            # TODO: only works for a single reagent
+            # can search for the reagent using id_kwargs
+            # reagent = well.reagent_set.all().filter(**id_kwargs)
+            # TODO: update reagent
+            reagent = well.reagent_set.all()[0]
+            reagent = reagent.smallmoleculereagent
+            errors = self.validate(initializer_dict, patch=True)
+            if errors:
+                raise ValidationError(errors)
+            logger.info('found reagent: %r, %r', reagent.well_id, reagent )
+        for key,val in initializer_dict.items():
+            if hasattr(reagent,key):
+                setattr(reagent,key,val)
+        reagent.save()
+        logger.info('xxx r: %r, smiles: %r', reagent.well_id, reagent.smiles)
+        
+        if 'compound_name' in initializer_dict:
+            reagent.smallmoleculecompoundname_set.all().delete()
+            # TODO: does this delete the old name entries?
+            values = initializer_dict['compound_name'] or []
+            for ordinal,val in enumerate(values):
+                cn = SmallMoleculeCompoundName.objects.create(
+                    reagent=reagent, compound_name=val, ordinal=ordinal)
+                cn.save()
+        if 'chembank_id' in initializer_dict:
+            reagent.smallmoleculechembankid_set.all().delete()
+            values = initializer_dict['chembank_id'] or []
+            for id in values:
+                cid = SmallMoleculeChembankId.objects.create(
+                    reagent=reagent, chembank_id=id)
+                cid.save()
+        if 'pubchem_cid' in initializer_dict:
+            reagent.smallmoleculepubchemcid_set.all().delete()
+            values = initializer_dict['pubchem_cid'] or []
+            for id in values:
+                cid = SmallMoleculePubchemCid.objects.create(
+                    reagent=reagent, pubchem_cid=id)
+                cid.save()
+        if 'chembl_id' in initializer_dict:
+            reagent.smallmoleculechemblid_set.all().delete()
+            values = initializer_dict['chembl_id'] or []
+            for id in values:
+                cid = SmallMoleculeChemblId.objects.create(
+                    reagent=reagent, chembl_id=id)
+                cid.save()
+        if deserialized.get('molfile',None):
+            Molfile.objects.all().filter(reagent=reagent).delete()
+            
+            molfile = Molfile.objects.create(
+                reagent=reagent, molfile=deserialized['molfile'])
+            molfile.save()
+        reagent.save()
+                
+        logger.info('patch_obj done')
+        return reagent
+
+
+class ReagentResource(ApiResource):
     
     class Meta:
 
@@ -5613,7 +5706,6 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
             url(r"^(?P<resource_name>%s)/search/(?P<search_ID>[\d]+)%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('search'), name="api_search"),
-
             url(r"^(?P<resource_name>%s)/(?P<substance_id>[^:]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
@@ -5621,7 +5713,6 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
         ]
- 
     
     def get_list(self, request, param_hash={}, **kwargs):
 
@@ -5636,7 +5727,6 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
         param_hash.update(self._convert_request_to_dict(request))
         
         is_for_detail = kwargs.pop('is_for_detail', False)
-        logger.info(str(('kwargs', kwargs)))
 
         # TODO: eliminate dependency on library (for schema determination)
         library = None
@@ -5666,7 +5756,6 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
                 library = Reagent.objects.get(substance_id=substance_id).well.library
 
         schema = self.build_schema(library=library)
-          
         filename = self._get_filename(schema, kwargs)
 
         try:
@@ -5831,36 +5920,36 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
             self.library_resource = LibraryResource()
         return self.library_resource
 
-    def get_object_list(self, request, library_short_name=None):
-        ''' 
-        Note: any extra kwargs are there because we are injecting them into the 
-        global tastypie kwargs in one of the various "dispatch_" handlers assigned 
-        through prepend_urls.  Here we can explicitly add them to the query. 
-        
-        '''
-        library = Library.objects.get(short_name=library_short_name)
-        sub_resource = self.get_reagent_resource(library_screen_type=library.screen_type)
-        query = sub_resource.get_object_list(request)
-        logger.info(str(('==== query', query.query.sql_with_params())))
-        
-        ## also add in the "supertype" fields:
-        query.select_related('well')
-    
-        if library_short_name:
-            query = query.filter(well__library=library)
-        return query
-
-    def full_dehydrate(self, bundle, for_list=False):
-        
-        well_bundle = self.build_bundle(bundle.obj.well, request=bundle.request)
-        well_bundle = self.get_well_resource().full_dehydrate(well_bundle)
-        bundle.data.update(well_bundle.data)
-        
-        library = bundle.obj.well.library
-        sub_resource = self.get_reagent_resource(library_screen_type=library.screen_type)
-        bundle = sub_resource.full_dehydrate(bundle, for_list=for_list)
-        
-        return bundle
+#     def get_object_list(self, request, library_short_name=None):
+#         ''' 
+#         Note: any extra kwargs are there because we are injecting them into the 
+#         global tastypie kwargs in one of the various "dispatch_" handlers assigned 
+#         through prepend_urls.  Here we can explicitly add them to the query. 
+#         
+#         '''
+#         library = Library.objects.get(short_name=library_short_name)
+#         sub_resource = self.get_reagent_resource(library_screen_type=library.screen_type)
+#         query = sub_resource.get_object_list(request)
+#         logger.info(str(('==== query', query.query.sql_with_params())))
+#         
+#         ## also add in the "supertype" fields:
+#         query.select_related('well')
+#     
+#         if library_short_name:
+#             query = query.filter(well__library=library)
+#         return query
+# 
+#     def full_dehydrate(self, bundle, for_list=False):
+#         
+#         well_bundle = self.build_bundle(bundle.obj.well, request=bundle.request)
+#         well_bundle = self.get_well_resource().full_dehydrate(well_bundle)
+#         bundle.data.update(well_bundle.data)
+#         
+#         library = bundle.obj.well.library
+#         sub_resource = self.get_reagent_resource(library_screen_type=library.screen_type)
+#         bundle = sub_resource.full_dehydrate(bundle, for_list=for_list)
+#         
+#         return bundle
                 
     def get_schema(self, request, **kwargs):
         if not 'library_short_name' in kwargs:
@@ -5876,10 +5965,11 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
                 'no library found for short_name', library_short_name)))
                 
     def build_schema(self, library=None):
-        
+        logger.info('build schema for library: %r', library.short_name)
         schema = deepcopy(super(ReagentResource,self).build_schema())
         if library:
-            sub_data = self.get_reagent_resource(library_screen_type=library.screen_type).build_schema()
+            sub_data = self.get_reagent_resource(
+                library_screen_type=library.screen_type).build_schema()
             
             newfields = {}
             newfields.update(sub_data['fields'])
@@ -5893,13 +5983,29 @@ class ReagentResource(SqlAlchemyResource, ManagedModelResource):
         well_schema = WellResource().build_schema()
         schema['fields'].update(well_schema['fields'])
 
+        logger.debug('schema: %r', schema)
         return schema
 
+    @transaction.atomic()    
+    def patch_obj(self,deserialized, **kwargs):
 
-class WellResource(SqlAlchemyResource, ManagedModelResource):
+        well = kwargs.get('well', None)
+        if not well:
+            raise ValidationError(key='well', msg='required')
+        
+        library_screen_type = well.library.screen_type
+        reagent_resource = self.get_reagent_resource(
+            library_screen_type=library_screen_type)
+        reagent = reagent_resource.patch_obj(deserialized,**kwargs)
+        
+        reagent.well = well
+        reagent.save()
+        return well
 
-    library_short_name = fields.CharField('library__short_name',  null=True)
-    library = fields.CharField(null=True)
+class WellResource(ApiResource):
+
+#     library_short_name = fields.CharField('library__short_name',  null=True)
+#     library = fields.CharField(null=True)
     
     class Meta:
 
@@ -5923,59 +6029,59 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
         self.reagent_resource = None
         super(WellResource,self).__init__(**kwargs)
 
-    def deserialize(self, request, data=None, format=None):
-        '''
-        Override deserialize so we can pull apart the multipart form and get the 
-        uploaded content.
-        Note: native TP doesn't support multipart uploads, this will support
-        standard multipart form uploads in modern browsers
-        '''
-        logger.info(str(('deserialize', format)))
-        if not format:
-            format = request.META.get('CONTENT_TYPE', 'application/json')
-
-        if format.startswith('multipart'):
-            if len(request.FILES.keys()) != 1:
-                raise ImmediateHttpResponse(
-                    response=self.error_response(request, 
-                        { 'FILES', 'File upload supports only one file at a time'}))
-            
-            if 'sdf' in request.FILES:  
-                # process *only* the first file
-                file = request.FILES['sdf']
-                format = 'chemical/x-mdl-sdfile'
-                
-                # NOTE: have to override super, because it ignores the format and 
-                # grabs it again from the Request headers (which is "multipart...")
-                #  return super(ReagentResource, self).deserialize(request, file, format) 
-                deserialized = self._meta.serializer.deserialize(file.read(), format=format)
-
-            elif 'xls' in request.FILES:
-                # TP cannot handle binary file formats - it is calling 
-                # django.utils.encoding.force_text on all input
-                file = request.FILES['sdf']
-                deserialized = self._meta.xls_serializer.from_xls(file.read())
-            else:
-                logger.error(str(('UnsupportedFormat', request.FILES.keys() )))
-                raise UnsupportedFormat(str(('Unknown file type: ', request.FILES.keys()) ) )
-        
-        elif format == 'application/xls':
-            # TP cannot handle binary file formats - it is calling 
-            # django.utils.encoding.force_text on all input
-            deserialized = self._meta.xls_serializer.from_xls(request.body)
-            
-        else:
-            deserialized = super(WellResource, self).deserialize(request, request.body, format)    
-        
-        if self._meta.collection_name in deserialized: 
-            # this is a list of data
-            deserialized[self._meta.collection_name] = \
-                self.create_aliasmapping_iterator(deserialized[self._meta.collection_name])
-        else:   
-            # this is a single item of data
-            deserialized = self.alias_item(deserialized)
-            
-        return deserialized
+#     def deserialize(self, request, data=None, format=None):
+#         '''
+#         Override deserialize so we can pull apart the multipart form and get the 
+#         uploaded content.
+#         Note: native TP doesn't support multipart uploads, this will support
+#         standard multipart form uploads in modern browsers
+#         '''
+#         logger.info(str(('deserialize', format)))
+#         if not format:
+#             format = request.META.get('CONTENT_TYPE', 'application/json')
+# 
+#         if format.startswith('multipart'):
+#             if len(request.FILES.keys()) != 1:
+#                 raise ImmediateHttpResponse(
+#                     response=self.error_response(request, 
+#                         { 'FILES', 'File upload supports only one file at a time'}))
+#             
+#             if 'sdf' in request.FILES:  
+#                 # process *only* the first file
+#                 file = request.FILES['sdf']
+#                 format = 'chemical/x-mdl-sdfile'
+#                 
+#                 # NOTE: have to override super, because it ignores the format and 
+#                 # grabs it again from the Request headers (which is "multipart...")
+#                 #  return super(ReagentResource, self).deserialize(request, file, format) 
+#                 deserialized = self._meta.serializer.deserialize(file.read(), format=format)
+# 
+#             elif 'xls' in request.FILES:
+#                 # TP cannot handle binary file formats - it is calling 
+#                 # django.utils.encoding.force_text on all input
+#                 file = request.FILES['sdf']
+#                 deserialized = self._meta.xls_serializer.from_xls(file.read())
+#             else:
+#                 logger.error(str(('UnsupportedFormat', request.FILES.keys() )))
+#                 raise UnsupportedFormat(str(('Unknown file type: ', request.FILES.keys()) ) )
+#         
+#         elif format == 'application/xls':
+#             # TP cannot handle binary file formats - it is calling 
+#             # django.utils.encoding.force_text on all input
+#             deserialized = self._meta.xls_serializer.from_xls(request.body)
+#             
+#         else:
+#             deserialized = super(WellResource, self).deserialize(request, request.body, format)    
+#         
+#         if self._meta.collection_name in deserialized: 
+#             # this is a list of data
+#             deserialized[self._meta.collection_name] = \
+#                 self.create_aliasmapping_iterator(deserialized[self._meta.collection_name])
+#         else:   
+#             # this is a single item of data
+#             deserialized = self.alias_item(deserialized)
+#             
+#         return deserialized
     
     def get_sr_resource(self):
         if not self.sr_resource:
@@ -5992,18 +6098,18 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
             self.npr_resource = NaturalProductReagentResource()
         return self.npr_resource
     
-    def get_reagent_resource(self, library_screen_type=None):
-        # FIXME: we should store the "type" on the entity
-        
-        if library_screen_type == 'rnai':
-            return self.get_sr_resource()
-        else:
-            if library_screen_type == 'natural_products':
-                return self.get_npr_resource()
-            else:
-                return self.get_smr_resource()
+#     def get_reagent_resource(self, library_screen_type=None):
+#         # FIXME: we should store the "type" on the entity
+#         
+#         if library_screen_type == 'rnai':
+#             return self.get_sr_resource()
+#         else:
+#             if library_screen_type == 'natural_products':
+#                 return self.get_npr_resource()
+#             else:
+#                 return self.get_smr_resource()
     
-    def get_full_reagent_resource(self):
+    def get_reagent_resource(self):
         if not self.reagent_resource:
             self.reagent_resource = ReagentResource()
         return self.reagent_resource
@@ -6040,7 +6146,8 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
         data = super(WellResource,self).build_schema()
         
         if library:
-            sub_data = self.get_reagent_resource(library_screen_type=library.screen_type).build_schema()
+            sub_data = self.get_reagent_resource().build_schema(
+                library=library)
             data = deepcopy(data)
             
             newfields = {}
@@ -6055,7 +6162,7 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
             'label': 'Type', 'searchColumn': 'library_well_type', 'options': temp }
 
         return data
-
+    
     def get_detail(self, request, **kwargs):
         logger.info(str(('get_detail')))
 
@@ -6070,33 +6177,257 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
         
     @read_authorization
     def get_list(self, request, **kwargs):
-        return self.get_full_reagent_resource().get_list(request, **kwargs)
+        return self.get_reagent_resource().get_list(request, **kwargs)
 
     def post_list(self, request, **kwargs):
         raise NotImplementedError("Post is not implemented for ReagentResource, use patch instead")
     
     @write_authorization
     def patch_list(self, request, **kwargs):
-        # TODO: NOT TESTED
+        # TODO: 20160219 workflow for well/reagent patching: 
+        # SS1:
+        # if a reagent changes, then create a new reagent entry and update the 
+        # "latest_released_reagent"
+        # SS2:
+        # version 1: Ok to update reagent in place and use well id to find it, 
+        # because only one reagent is associated with a well
+        # FUTURE: use update of reagent by well id as special case, only allow if 
+        # only one well is attached to the reagent
+        # Future: reagents are created first, then well is assoc with reagent
+        # so put is allowed to create, but patch must reference extant reagent 
+        # (changes reagent assoc with well)
+
+        
+        
+        
+        
+        # TODO: use patch routine from ApiResource
         return self.put_list(request, **kwargs)
     
-    # REWORK, follow ApiLogResource, also, remove transaction.atomic 20150831
+
+
+###################################
+# TODO: use ApiResource.put_list
     @write_authorization
-    @transaction.atomic()
-    def put_list(self, request, **kwargs):
+    @un_cache        
+    def put_list(self,request, **kwargs):
 
         if 'library_short_name' not in kwargs:
             raise BadRequest('library_short_name is required')
         
-        deserialized = self._meta.serializer.deserialize(
-            request.body, 
-            format=request.META.get('CONTENT_TYPE', 'application/json'))
+        deserialized = self.deserialize(request,request.body)
+        if not self._meta.collection_name in deserialized:
+            raise BadRequest("Invalid data sent, must be nested in '%s'" 
+                % self._meta.collection_name)
+        deserialized = deserialized[self._meta.collection_name]
+
+        schema = self.build_schema()
+        id_attribute = resource = schema['id_attribute']
+        kwargs_for_log = kwargs.copy()
+        for id_field in id_attribute:
+            ids = set()
+            # Test for each id key; it's ok on create for ids to be None
+            for _dict in [x for x in deserialized if x.get(id_field, None)]:
+                ids.add(_dict.get(id_field))
+            if ids:
+                kwargs_for_log['%s__in'%id_field] = LIST_DELIMITER_URL_PARAM.join(ids)
+        # get original state, for logging
+        kwargs_for_log['includes'] = ['*', '-molfile']
+        # NOTE: consider 'undefined' to be created
+        kwargs_for_log['library_well_type__ne'] = 'undefined'
+        original_data = self._get_list_response(request,**kwargs_for_log)
+        
+#         # Look for id's kwargs, to limit the potential candidates for logging
+#         schema = self.build_schema()
+#         id_attribute = resource = schema['resource_definition']['id_attribute']
+#         kwargs_for_log = kwargs.copy()
+#         for id_field in id_attribute:
+#             ids = set()
+#             # Test for each id key; it's ok on create for ids to be None
+#             for _dict in [x for x in deserialized if x.get(id_field, None)]:
+#                 ids.add(_dict.get(id_field))
+#             if ids:
+#                 kwargs_for_log['%s__in'%id_field] = LIST_DELIMITER_URL_PARAM.join(ids)
+#         # get original state, for logging
+#         original_data = self._get_list_response(request,**kwargs_for_log)
+        with transaction.atomic():
+                
+
+            library = Library.objects.get(short_name=kwargs['library_short_name'])
+            logger.info('put_list: WellResource: library: %r...', library.short_name)
+    
+            prev_version = library.version_number
+            if library.version_number:
+                library.version_number += 1
+            else:
+                library.version_number = 1
+            library.save()
+            
+            library_log = self.make_log(request)
+            library_log.diff_keys = ['version_number']
+            library_log.diffs = {
+                'version_number': [prev_version, library.version_number]}
+            library_log.ref_resource_name = 'library'
+            library_log.uri = self.get_library_resource().get_resource_uri(library)
+            library_log.key = '/'.join(
+                [str(x) for x in self.get_library_resource().detail_uri_kwargs(library).values()])
+            library_log.save()
+    
+    #         # cache the schema
+    #         schema = self.build_schema(library=library)
+    #         kwargs['schema'] = schema 
+            
+            # Cache all the wells on the library for use with this process 
+            wellMap = dict( (well.well_id, well) for well in library.well_set.all())
+            if len(wellMap)==0:
+                errors = { 'library': 'Library wells have not been created'}
+                raise ImmediateHttpResponse(response=self.error_response(request, errors))
+    
+            for well_data in deserialized:
+                
+                well_data['library_short_name']=kwargs['library_short_name']
+                
+                well_id = well_data.get('well_id', None)
+                if not well_id:
+                    well_name = well_data.get('well_name', None)
+                    plate_number = well_data.get('plate_number',None)
+                    if well_name and plate_number:                
+                        well_id = '%s:%s' %(str(plate_number).zfill(5), well_name)
+    
+                if not well_id:
+                    raise ImmediateHttpResponse(
+                        response=self.error_response(request, {'well_id': 'required'}))
+                
+                well = wellMap.get(well_id, None)
+                if not well:
+                    raise ImmediateHttpResponse(response=self.error_response(
+                        request, {
+                            'well_id': 'well %r not found for this library %r'
+                            % (well_id, well_data['library_short_name'])
+                        }))
+                    
+                kwargs.update({ 'library': library })
+                kwargs.update({ 'well': well })
+                kwargs.update({ 'parent_log': library_log })
+                try:
+                    self.patch_obj(well_data, **kwargs)
+                except ValidationError, e:
+                    logger.exception('Validation error: %r', e)
+                    raise ImmediateHttpResponse(
+                        response=self.error_response(request, e.errors))
+
+
+        # get new state, for logging
+        new_data = self._get_list_response(request,**kwargs_for_log)
+        
+        logger.debug('new data: %s'% new_data)
+        logger.debug('patch list done, new data: %d' 
+            % (len(new_data)))
+        self.log_patches(request, original_data,new_data,**kwargs)
+
+        
+
+
+
+        if not self._meta.always_return_data:
+            return http.HttpAccepted()
+        else:
+            response = self.get_list(request, **kwargs)             
+            response.status_code = 200
+            return response 
+    
+    
+    
+    
+    @transaction.atomic()    
+    def patch_obj(self,deserialized, **kwargs):
+        
+        
+        library = kwargs.get('library', None)
+        if not library:
+            library_short_name = kwargs.get('library_short_name', None)
+            if not library_short_name:
+                raise ValidationError(key='library_short_name',msg='required')
+            try:
+                library = Library.objects.get(short_name=library_short_name)
+                kwargs['library'] = library
+            except ObjectDoesNotExist:
+                raise Http404('library not found: %r' % library_short_name)
+
+#         schema = kwargs.get('schema', None)
+#         if not schema:
+#             schema = self.build_schema(library=library)
+#         fields = schema['fields']
+#         
+#         initializer_dict = {}
+#         for key in fields.keys():
+#             if key in deserialized:
+#                 initializer_dict[key] = parse_val(
+#                     deserialized.get(key,None), key,fields[key]['data_type']) 
+        initializer_dict = self.parse(deserialized)
+        
+        id_kwargs = self.get_id(deserialized,**kwargs)
+        
+        well = kwargs.get('well', None)
+        if not well:
+            # find the well, to allow for patching
+            try:
+                well = Well.obj.get(**id_kwargs)
+                kwargs['well'] = well
+            except ObjectDoesNotExist:
+                raise Http404('well not found: %r' % id_kwargs)
+
+        errors = self.validate(initializer_dict, patch=True)
+        if errors:
+            raise ValidationError(errors)
+        
+        for key,val in initializer_dict.items():
+            if hasattr(well,key):
+                setattr(well,key,val)
+        
+        well.save()
+    
+        duplex_wells = []
+        if deserialized.get('duplex_wells', None):
+            if not library.is_pool:
+                raise ValidationError(
+                    key='duplex_wells',
+                    msg='library is not a pool libary: %r' % library.short_name )
+            well_ids = well_data['duplex_wells'] #.split(';')
+            for well_id in well_ids:
+                try:
+                    duplex_wells.append(Well.objects.get(well_id=well_id))
+                except:
+                    raise ValidationError(
+                        key='duplex_well not found',
+                        msg='well: %r, pool well: %r' % (well.well_id,well_id))
+            kwargs['duplex_wells'] = duplex_wells
+        # lookup/create the reagent
+        # TODO: delegate this to the ReagentResource
+        self.get_reagent_resource().patch_obj(deserialized,**kwargs)
+        
+        return well
+    
+    
+    
+    # REWORK, follow ApiLogResource, also, remove transaction.atomic 20150831
+    @write_authorization
+    @un_cache        
+    @transaction.atomic()
+    def put_list_old(self, request, **kwargs):
+        
+        if 'library_short_name' not in kwargs:
+            raise BadRequest('library_short_name is required')
+        
+        deserialized = self.deserialize(request,request.body)
         if not self._meta.collection_name in deserialized:
             raise BadRequest(str(("Invalid data sent. missing: " , self._meta.collection_name)))
         
         basic_bundle = self.build_bundle(request=request)
  
         library = Library.objects.get(short_name=kwargs['library_short_name'])
+        logger.info('put_list: WellResource: library: %r...', library.short_name)
+
         prev_version = library.version_number
         if library.version_number:
             library.version_number += 1
@@ -6114,7 +6445,6 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
             [str(x) for x in self.get_library_resource().detail_uri_kwargs(library).values()])
         library_log.save()
         
-                               
         # Cache all the wells on the library for use with this process 
         wellMap = dict( (well.well_id, well) for well in library.well_set.all())
         if len(wellMap)==0:
@@ -6168,7 +6498,7 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
 
     @log_obj_update      
     @transaction.atomic()
-    def obj_update(self, well_bundle, **kwargs):
+    def obj_update_old(self, well_bundle, **kwargs):
         # called only from local put_list  
             
         library = kwargs.pop('library')
@@ -6220,7 +6550,7 @@ class WellResource(SqlAlchemyResource, ManagedModelResource):
         return well_bundle
 
 
-class LibraryResource(SqlAlchemyResource, ManagedModelResource):
+class LibraryResource(ApiResource):
     
     class Meta:
 
@@ -6319,6 +6649,12 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
                     "(select array_to_string(array_agg(c1.name),'%s') "
                     '    from ( select c.name from copy c '
                     '    where c.library_id=library.library_id '
+                    '    order by c.name) as c1 )' % LIST_DELIMITER_SQL_ARRAY ).label('copies'), 
+                'screening_copies': literal_column(
+                    "(select array_to_string(array_agg(c1.name),'%s') "
+                    '    from ( select c.name from copy c '
+                    '    where c.library_id=library.library_id '
+                    "    and c.usage_type='library_screening_plates' "
                     '    order by c.name) as c1 )' % LIST_DELIMITER_SQL_ARRAY ).label('copies'), 
                 # TODO: copies2 is the same in all respects, except that it is 
                 # used differently in the UI
@@ -6551,49 +6887,113 @@ class LibraryResource(SqlAlchemyResource, ManagedModelResource):
                 'label': 'Type', 'searchColumn': 'library_type', 'options': temp }
         return schema
     
-    ##
-    ## Note: @transaction.atomic() cannot be nested in commit_on_success, because
-    ## of version compatability issues in django:
-    ## "Starting with Django 1.6, atomic() is the only supported API for 
-    ##  defining a transaction. Unlike the deprecated APIs, it'snestable and
-    ##  always guarantees atomicity.
-    
-    @transaction.atomic()
-    def obj_create(self, bundle, **kwargs):
-   
-        bundle.data['date_created'] = timezone.now()
-        logger.debug(str(('===creating library', bundle.data)))
-        bundle = super(LibraryResource, self).obj_create(bundle, **kwargs)
 
-        # clear the cached schema because plate range have updated
-        cache.delete(self._meta.resource_name + ':schema')
+    @transaction.atomic()    
+    def delete_obj(self, deserialized, **kwargs):
         
-        # now create the wells
-        library = bundle.obj
-        logger.debug(str((
-            'created library', library, library.start_plate, type(library.start_plate))))
-        plate_size = int(library.plate_size)
-
+        id_kwargs = self.get_id(deserialized,**kwargs)
+        Library.objects.get(**id_kwargs).delete()
+    
+    @transaction.atomic()    
+    def patch_obj(self,deserialized, **kwargs):
+        
+        initializer_dict = self.parse(deserialized)
+        id_kwargs = self.get_id(deserialized,**kwargs)
+        
+        # create/update the library
+        creating = False
         try:
-            i =0
-            for plate in range(int(library.start_plate), int(library.end_plate)+1):
-                for index in range(0,plate_size):
-                    well = Well()
-                    well.well_name = lims_utils.well_name_from_index(index,plate_size)
-                    well.well_id = lims_utils.well_id(plate,well.well_name)
-                    well.library = library
-                    well.plate_number = plate
-                    # FIXME: use vocabularies for well type
-                    well.library_well_type = 'undefined'
-                    well.save()
-                    i += 1
-                    if i % 38400 == 0:
-                        logger.info('created %d wells', i)
-            logger.info(str(('created', i, 'wells for library', library.short_name, library.library_id )))
-            return bundle
+            library = None
+            try:
+                library = Library.objects.get(**id_kwargs)
+                errors = self.validate(initializer_dict, patch=True)
+                if errors:
+                    raise ValidationError(errors)
+            except ObjectDoesNotExist, e:
+                creating = True
+                logger.info('Library %s does not exist, creating', id_kwargs)
+                library = Library(**id_kwargs)
+                errors = self.validate(initializer_dict, patch=False)
+                if errors:
+                    raise ValidationError(errors)
+
+            for key,val in initializer_dict.items():
+                if hasattr(library,key):
+                    setattr(library,key,val)
+            
+            library.save()
+
+            # now create the wells
+            plate_size = int(library.plate_size)
+    
+            try:
+                i =0
+                for plate in range(int(library.start_plate), int(library.end_plate)+1):
+                    for index in range(0,plate_size):
+                        well = Well()
+                        well.well_name = lims_utils.well_name_from_index(index,plate_size)
+                        well.well_id = lims_utils.well_id(plate,well.well_name)
+                        well.library = library
+                        well.plate_number = plate
+                        # FIXME: use vocabularies for well type
+                        well.library_well_type = 'undefined'
+                        well.save()
+                        i += 1
+                        if i % 38400 == 0:
+                            logger.info('created %d wells', i)
+                logger.info(str(('created', i, 'wells for library', library.short_name, library.library_id )))
+            except Exception, e:
+                logger.exception('on library wells create')
+                raise e
+
+            logger.info('patch_obj done')
+
+            # clear the cached schema because plate range have updated
+            cache.delete(self._meta.resource_name + ':schema')
+            
+            return library
+            
         except Exception, e:
-            logger.exception('on library create')
-            raise e
+            logger.exception('on patch detail')
+            raise e  
+    
+    
+#     @transaction.atomic()
+#     def obj_create(self, bundle, **kwargs):
+#    
+#         bundle.data['date_created'] = timezone.now()
+#         logger.debug(str(('===creating library', bundle.data)))
+#         bundle = super(LibraryResource, self).obj_create(bundle, **kwargs)
+# 
+#         # clear the cached schema because plate range have updated
+#         cache.delete(self._meta.resource_name + ':schema')
+#         
+#         # now create the wells
+#         library = bundle.obj
+#         logger.debug(str((
+#             'created library', library, library.start_plate, type(library.start_plate))))
+#         plate_size = int(library.plate_size)
+# 
+#         try:
+#             i =0
+#             for plate in range(int(library.start_plate), int(library.end_plate)+1):
+#                 for index in range(0,plate_size):
+#                     well = Well()
+#                     well.well_name = lims_utils.well_name_from_index(index,plate_size)
+#                     well.well_id = lims_utils.well_id(plate,well.well_name)
+#                     well.library = library
+#                     well.plate_number = plate
+#                     # FIXME: use vocabularies for well type
+#                     well.library_well_type = 'undefined'
+#                     well.save()
+#                     i += 1
+#                     if i % 38400 == 0:
+#                         logger.info('created %d wells', i)
+#             logger.info(str(('created', i, 'wells for library', library.short_name, library.library_id )))
+#             return bundle
+#         except Exception, e:
+#             logger.exception('on library create')
+#             raise e
 
 
 # class BasicAuthenticationAjaxBrowsers(BasicAuthentication):

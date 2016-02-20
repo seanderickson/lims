@@ -11,7 +11,7 @@ import urllib
 from django.core.cache import cache
 import django.db.models.constants
 import django.db.models.sql.constants
-from django.http.response import StreamingHttpResponse, HttpResponse
+from django.http.response import StreamingHttpResponse, HttpResponse, Http404
 from sqlalchemy import select, asc, text
 import sqlalchemy
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -36,6 +36,7 @@ from reports.serializers import LimsSerializer
 from reports.utils.sqlalchemy_bridge import Bridge
 from reports.utils.streaming_serializers import sdf_generator, json_generator, \
     get_xls_response, csv_generator, ChunkIterWrapper
+import re
 
 
 logger = logging.getLogger(__name__)
@@ -55,12 +56,12 @@ def un_cache(_func):
     ''' 
     @wraps(_func)
     def _inner(self, *args, **kwargs):
-        logger.info('decorator un_cache: %s, %s', self, _func )
+        logger.debug('decorator un_cache: %s, %s', self, _func )
         SqlAlchemyResource.clear_cache(self)
         SqlAlchemyResource.set_caching(self,False)
         result = _func(self, *args, **kwargs)
         SqlAlchemyResource.set_caching(self,True)
-        logger.info('decorator un_cache done: %s, %s', self, _func )
+        logger.debug('decorator un_cache done: %s, %s', self, _func )
         return result
 
     return _inner
@@ -173,25 +174,13 @@ class SqlAlchemyResource(Resource):
         DEBUG_VISIBILITY = False or logger.isEnabledFor(logging.DEBUG)
         visibilities = set(visibilities)
         if DEBUG_VISIBILITY:
-            logger.info('get_visible_fields: field_hash initial: %s, manual: %s', 
-                schema_fields.keys(),manual_field_includes )
+            logger.info('get_visible_fields: field_hash initial: %r, manual: %r, exact: %r', 
+                schema_fields.keys(),manual_field_includes, exact_fields )
         try:
             if exact_fields:
                 temp = { key:field for key,field in schema_fields.items()
                     if key in exact_fields or key in filter_fields }
             else:
-#                 if visibilities:
-#                     visibilities = set(visibilities)
-#                 else:
-#                     visibilities = set([])
-#                     if is_for_detail:
-#                         visibilities.add('d')
-#                         # also return the edit fields, let the UI filter them
-#                         # expedient, so the model does not have to be reloaded to edit
-#                         # TODO: review; security issue
-#                         visibilities.add('e')
-#                     else:
-#                         visibilities = set(['l'])
                         
                 temp = { key:field for key,field in schema_fields.items() 
                     if ((field.get('visibility', None) 
@@ -206,7 +195,15 @@ class SqlAlchemyResource(Resource):
             # dependency fields
             dependency_fields = set()
             for field in temp.values():
-                dependency_fields.update(field.get('dependencies',[]))
+        
+                if field.get('value_template', None):
+                    dependency_fields.update(
+                        re.findall(r'{([a-zA-Z0-9_-]+)}', field['value_template']))
+                if field.get('display_options', None):
+                    dependency_fields.update(
+                        re.findall(r'{([a-zA-Z0-9_-]+)}', field['display_options']))
+                if field.get('dependencies',None):
+                    dependency_fields.update(field.get('dependencies'))
                 logger.debug('field: %s, dependencies: %s', field['key'],field.get('dependencies',[]))
             if DEBUG_VISIBILITY:
                 logger.info('dependency_fields %s', dependency_fields)
@@ -677,32 +674,39 @@ class SqlAlchemyResource(Resource):
         '''
         Return a deserialized list of dicts
         '''
-        response = self.get_list(
-            request,
-            desired_format='application/json',
-            includes='*',
-            **kwargs)
-        _data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        _data = _data[self._meta.collection_name]
-        logger.debug(' data: %s'% _data)
-        return _data
-
+        includes = kwargs.pop('includes', '*')
+        try:
+            response = self.get_list(
+                request,
+                desired_format='application/json',
+                includes=includes,
+                **kwargs)
+            _data = self._meta.serializer.deserialize(
+                LimsSerializer.get_content(response), format='application/json')
+            _data = _data[self._meta.collection_name]
+            logger.debug(' data: %s'% _data)
+            return _data
+        except Http404:
+            return []
+        
     def _get_detail_response(self,request,**kwargs):
         '''
         Return the detail response as a dict
         '''
         logger.info('_get_detail_response: %r', kwargs)
-        response = self.get_detail(
-            request,
-            desired_format='application/json',
-            includes='*',
-            **kwargs)
-        _data = self._meta.serializer.deserialize(
-            LimsSerializer.get_content(response), format='application/json')
-        logger.debug(' data: %s'% _data)
-        return _data
-
+        try:
+            response = self.get_detail(
+                request,
+                desired_format='application/json',
+                includes='*',
+                **kwargs)
+            _data = self._meta.serializer.deserialize(
+                LimsSerializer.get_content(response), format='application/json')
+            logger.debug(' data: %s'% _data)
+            return _data
+        except Http404:
+            return []
+        
     def get_list(self, request, **kwargs):
         '''
         Override the Tastypie/Django ORM get_list method - list/reporting 

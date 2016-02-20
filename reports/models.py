@@ -32,10 +32,6 @@ class MetaManager(GetOrNoneManager):
     def __init__(self, **kwargs):
         super(MetaManager,self).__init__(**kwargs)
 
-    # this is how you override a Manager's base QuerySet
-    def get_query_set(self):
-        return super(MetaManager, self).get_query_set()
-
     def get_and_parse(self, scope='', field_definition_scope='fields.metahash', 
                       clear=False):
         '''
@@ -60,11 +56,10 @@ class MetaManager(GetOrNoneManager):
             metahash = self.get_and_parse_int(
                 scope=scope, field_definition_scope=field_definition_scope)
             cache.set('metahash:'+scope, metahash);
-            logger.debug(str((
-                'get_and_parse done, for ', scope, 'hash found', metahash.keys())))
+            logger.debug(
+                'get_and_parse done, for %r, hash found: %r', scope, metahash.keys())
         else:
-            logger.debug(str((
-                'retrieve the cached field definitions for ',scope)))
+            logger.debug('retrieve the cached field definitions for %r',scope)
         return metahash
 
 
@@ -78,15 +73,16 @@ class MetaManager(GetOrNoneManager):
         this hash;
             e.g. "fields.metahash", or "fields.resource, or fields.vocabularies"
         '''
-        logger.debug('get_and_parse table field definitions for ' + scope)
+        logger.debug('get_and_parse table field definitions for scope: %r, fds: %r',
+            scope, field_definition_scope)
         # try to make clear that the field definitions, though stored in the 
         # metahash as well, could be in a separate table
         field_definition_table = MetaHash.objects.all().filter(
             scope=field_definition_scope)
-        
+        logger.debug('field_definition_table: %r', field_definition_table)
         # the objects themselves are stored in the metahash table as well
         unparsed_objects = MetaHash.objects.all().filter(scope=scope)
-        
+        logger.debug('unparsed_objects: %r', unparsed_objects)
         parsed_objects = {}
         for unparsed_object in unparsed_objects:
             parsed_object = {}

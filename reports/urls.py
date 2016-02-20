@@ -4,7 +4,8 @@ from reports import views
 from tastypie.api import Api
 
 from reports.api import MetaHashResource, VocabulariesResource, ResourceResource,\
-    ApiLogResource, UserResource, UserGroupResource, PermissionResource, RecordResource
+    ApiLogResource, UserResource, UserGroupResource, PermissionResource, RecordResource, \
+    FieldResource
 
 
 v1_api = Api(api_name='v1')
@@ -16,6 +17,8 @@ v1_api.register(UserResource())
 v1_api.register(UserGroupResource())
 v1_api.register(PermissionResource())
 v1_api.register(RecordResource())
+
+v1_api.register(FieldResource())
 
 urlpatterns = patterns('',
 #     url(r'^$', views.main, name="home"),

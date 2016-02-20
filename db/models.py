@@ -1010,8 +1010,10 @@ class ReagentPublicationLink(models.Model):
     class Meta:
         db_table = 'reagent_publication_link'
 
-class SilencingReagent(models.Model):
-    reagent = models.OneToOneField(Reagent, primary_key=True)
+class SilencingReagent(Reagent):
+    reagentlink = models.OneToOneField(
+        'Reagent', primary_key=True, parent_link=True,db_column='reagent_id')
+#     reagent = models.OneToOneField(Reagent, primary_key=True)
     sequence = models.TextField(blank=True)
     anti_sense_sequence = models.TextField(blank=True)
     silencing_reagent_type = models.TextField(blank=True)
@@ -1088,8 +1090,10 @@ class GeneSymbol(models.Model):
 #         unique_together = (('silencing_reagent', 'well'))    
 #         db_table = 'silencing_reagent_duplex_wells'
 
-class SmallMoleculeReagent(models.Model):
-    reagent = models.OneToOneField(Reagent, primary_key=True)
+class SmallMoleculeReagent(Reagent):
+    reagentlink = models.OneToOneField(
+        'Reagent', primary_key=True, parent_link=True,db_column='reagent_id')
+#     reagent = models.OneToOneField(Reagent, primary_key=True)
     inchi = models.TextField(blank=True)
     molecular_formula = models.TextField(blank=True)
     molecular_mass = models.DecimalField(null=True, max_digits=15, decimal_places=9, blank=True)
@@ -1109,8 +1113,10 @@ class Molfile(models.Model):
     class Meta:
         db_table = 'molfile'
 
-class NaturalProductReagent(models.Model):
-    reagent = models.OneToOneField(Reagent, primary_key=True)
+class NaturalProductReagent(Reagent):
+    reagentlink = models.OneToOneField(
+        'Reagent', primary_key=True, parent_link=True,db_column='reagent_id')
+#     reagent = models.OneToOneField(Reagent, primary_key=True)
     class Meta:
         db_table = 'natural_product_reagent'
 

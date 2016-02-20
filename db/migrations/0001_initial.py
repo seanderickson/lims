@@ -1057,15 +1057,6 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.CreateModel(
-            name='NaturalProductReagent',
-            fields=[
-                ('reagent', models.OneToOneField(primary_key=True, serialize=False, to='db.Reagent')),
-            ],
-            options={
-                'db_table': 'natural_product_reagent',
-            },
-        ),
-        migrations.CreateModel(
             name='RnaiCherryPickRequest',
             fields=[
                 ('cherry_pick_request', models.OneToOneField(primary_key=True, serialize=False, to='db.CherryPickRequest')),
@@ -1102,7 +1093,10 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='SilencingReagent',
             fields=[
-                ('reagent', models.OneToOneField(primary_key=True, serialize=False, to='db.Reagent')),
+                ('reagentlink', models.OneToOneField(
+                    primary_key=True, parent_link=True,db_column='reagent_id',
+                    serialize=False, to='db.Reagent')),
+#                 ('reagent', models.OneToOneField(primary_key=True, serialize=False, to='db.Reagent')),
                 ('sequence', models.TextField(blank=True)),
                 ('anti_sense_sequence', models.TextField(blank=True)),
                 ('silencing_reagent_type', models.TextField(blank=True)),
@@ -1113,18 +1107,12 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.CreateModel(
-            name='SmallMoleculeCherryPickRequest',
-            fields=[
-                ('cherry_pick_request', models.OneToOneField(primary_key=True, serialize=False, to='db.CherryPickRequest')),
-            ],
-            options={
-                'db_table': 'small_molecule_cherry_pick_request',
-            },
-        ),
-        migrations.CreateModel(
             name='SmallMoleculeReagent',
             fields=[
-                ('reagent', models.OneToOneField(primary_key=True, serialize=False, to='db.Reagent')),
+                ('reagentlink', models.OneToOneField(
+                    primary_key=True, parent_link=True,db_column='reagent_id',
+                    serialize=False, to='db.Reagent')),
+#                 ('reagent', models.OneToOneField(primary_key=True, serialize=False, to='db.Reagent')),
                 ('inchi', models.TextField(blank=True)),
                 ('molecular_formula', models.TextField(blank=True)),
                 ('molecular_mass', models.DecimalField(null=True, max_digits=15, decimal_places=9, blank=True)),
@@ -1135,6 +1123,27 @@ class Migration(migrations.Migration):
             ],
             options={
                 'db_table': 'small_molecule_reagent',
+            },
+        ),
+        migrations.CreateModel(
+            name='NaturalProductReagent',
+            fields=[
+                ('reagentlink', models.OneToOneField(
+                    primary_key=True, parent_link=True,db_column='reagent_id',
+                    serialize=False, to='db.Reagent')),
+#                 ('reagent', models.OneToOneField(primary_key=True, serialize=False, to='db.Reagent')),
+            ],
+            options={
+                'db_table': 'natural_product_reagent',
+            },
+        ),
+        migrations.CreateModel(
+            name='SmallMoleculeCherryPickRequest',
+            fields=[
+                ('cherry_pick_request', models.OneToOneField(primary_key=True, serialize=False, to='db.CherryPickRequest')),
+            ],
+            options={
+                'db_table': 'small_molecule_cherry_pick_request',
             },
         ),
         migrations.AddField(

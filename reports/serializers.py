@@ -38,8 +38,9 @@ class CsvBooleanField(fields.ApiField):
     """
     dehydrated_type = 'boolean'
     help_text = 'Boolean data. Ex: True'
-
-    def convert(self, value):
+    
+    @staticmethod
+    def convert_val(value):
         if value is None:
             return None
         if isinstance(value, basestring):
@@ -48,6 +49,10 @@ class CsvBooleanField(fields.ApiField):
             return False
         else:
             return bool(value)
+
+    def convert(self, value):
+        return self.convert_val(value)
+
 
 
 class TextIntegerField(fields.IntegerField):
@@ -71,7 +76,7 @@ class BackboneSerializer(Serializer):
         """
         Override to quote attributes from the client.
         """
-        content = content.replace(r'(\w+):', r'"\1" :')
+        content = content.decode('utf-8').replace(r'(\w+):', r'"\1" :')
         if content:
             return json.loads(content)
         else:
@@ -694,9 +699,11 @@ class LimsSerializer(PrettyJSONSerializer, BackboneSerializer,CSVSerializer,
     '''
     @staticmethod
     def get_content(resp):
-        
         if isinstance(resp, StreamingHttpResponse):
-            if not hasattr(resp,'cached_content'):
+            # Response is in an iterator, 
+            # and can can possibly be iterated only once (resultsets)
+            # Use this utility to cache the result (e.g. for testing)
+            if not hasattr(resp,'cached_content') or not getattr(resp, 'cached_content'):
                 buffer = cStringIO.StringIO()
                 for line in resp.streaming_content:
                     buffer.write(line)

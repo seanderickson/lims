@@ -16,7 +16,7 @@ from django.utils.timezone import now
 from tastypie.test import ResourceTestCase, TestApiClient
 
 from db.models import Reagent, Substance, Library, ScreensaverUser, \
-    UserChecklistItem, AttachedFile, ServiceActivity, Screen
+    UserChecklistItem, AttachedFile, ServiceActivity, Screen, Well
 import db.models
 from db.support import lims_utils
 from db.support import lims_utils
@@ -138,6 +138,7 @@ class LibraryResource(DBResourceTestCase):
         DBResourceTestCase.tearDown(self)
         logger.info('delete library resources')
         Library.objects.all().delete()
+        Well.objects.all().delete()
         ApiLog.objects.all().delete()
 
     def test1_create_library(self):
@@ -411,9 +412,12 @@ class LibraryResource(DBResourceTestCase):
                 (resp.status_code, self.get_content(resp)))
         
             resource_name = 'well'
-            resource_uri = '/'.join([BASE_URI_DB,'library', library_item['short_name'],resource_name])
+            resource_uri = '/'.join([
+                BASE_URI_DB,'library', library_item['short_name'],
+                resource_name])
             resp = self.api_client.get(
-                reagent_resource_uri, format='sdf', authentication=self.get_credentials(), 
+                reagent_resource_uri, format='sdf', 
+                authentication=self.get_credentials(), 
                 data=data_for_get)
             self.assertTrue(
                 resp.status_code in [200], 
@@ -492,6 +496,7 @@ class LibraryResource(DBResourceTestCase):
             
             # TODO: check logged values
             # TODO: check parent_log - library log/ version
+    
     def test7_load_sirnai(self):
 
         filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_rnai.xlsx'
@@ -583,7 +588,8 @@ class LibraryResource(DBResourceTestCase):
                 authentication=self.get_credentials(), **data_for_get )
             self.assertTrue(
                 resp.status_code in [200, 204], 
-                (resp.status_code, xls_serializer.from_xlsx(resp.content)))
+                (resp.status_code, 
+                 self.get_content(resp)))
         
         resource_name = 'reagent'
         reagent_resource_uri = '/'.join([
@@ -620,6 +626,7 @@ class LibraryResource(DBResourceTestCase):
             # second look at the found item
             expected_data = { key: inputobj[key] for key in fields.keys() 
                 if key in inputobj }
+            logger.info('checking: expected: %r', expected_data )
             result, msgs = assert_obj1_to_obj2(expected_data, outputobj)
             self.assertTrue(result, (msgs, expected_data, outputobj))
             

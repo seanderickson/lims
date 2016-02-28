@@ -58,44 +58,31 @@ requireOptions = Iccbl.requireOptions = function(options,requireOptionKeys){
 };
 
 /**
- * Replace all {tokens} in the string with model attributes. - fallback to
- * "token" if model attribute is not set.
- * @param - defaul_val - value to use if the matched token is not found in the model
- * - this can be used to replace any token with a given default value
- */
-var replaceTokens = Iccbl.replaceTokens = function(model,stringWithTokens, default_val) {
-  var interpolatedString = stringWithTokens.replace(/{([^}]+)}/g, 
-    function (match) 
-    {
-      match = match.replace(/[{}]/g,'');
-      if(!_.isUndefined(model.get(match))){
-        return model.get(match);
-      }else{
-        if(!_.isUndefined(default_val)){
-          return default_val;
-        }else{
-          return match;
-        }
-      }
-    });
-  return interpolatedString;
-}
-
-/**
  * Format a string of containing "replacement fields" surrounded by 
  * curly braces '{}'. Replacment fields are used as keys to lookup the 
  * replacement values in the valueHash.
- * If a replacement field key is not found in the valueHash, and a defaul_val
- * is provided, the default_val will replace the field, otherwise, the 
- * replacement field key itself is used.
+ * 
+ * Replace all {tokens} in the string with model/object attributes. - fallback to
+ * "token" if model attribute is not set.
+ * 
+ * @param object - either a Backbone.Model, or a object
+ * @param - defaul_val - value to use if the matched token is not found in the model
+ * - this can be used to replace any token with a given default value
  */
-var formatString = Iccbl.formatString = function(stringWithTokens, valueHash, default_val) {
+var formatString = Iccbl.formatString = function(
+    stringWithTokens, 
+    object, 
+    default_val) 
+  {
+  var isBackboneModel = object instanceof Backbone.Model;
   var interpolatedString = stringWithTokens.replace(/{([^}]+)}/g, 
     function (match) 
     {
       match = match.replace(/[{}]/g,'');
-      if(_.has(valueHash, match)){
-        return valueHash[match];
+      if(isBackboneModel && !_.isUndefined(object.get(match))){
+        return object.get(match);
+      }else if(_.has(object, match)){
+        return object[match];
       }else{
         if(!_.isUndefined(default_val)){
           return default_val;
@@ -287,8 +274,8 @@ var popKeyFromStack = Iccbl.popKeyFromStack = function(resource, urlStack, consu
 };
 
 var getIdKeys = Iccbl.getIdKeys = function(model,schema) {
-  if (_.has(schema['resource_definition'], 'id_attribute')) {
-    var id_attribute = schema['resource_definition']['id_attribute'];
+  if (_.has(schema, 'id_attribute')) {
+    var id_attribute = schema['id_attribute'];
     console.log('create id from ' + id_attribute);
     var idList = [];
     _.each(id_attribute, function(item){
@@ -315,8 +302,8 @@ var getIdKeys = Iccbl.getIdKeys = function(model,schema) {
 var getIdFromIdAttribute = Iccbl.getIdFromIdAttribute = 
   function(model, schema){
   
-  if (_.has(schema['resource_definition'], 'id_attribute')) {
-    var id_attribute = schema['resource_definition']['id_attribute'];
+  if (_.has(schema, 'id_attribute')) {
+    var id_attribute = schema['id_attribute'];
     console.log('create id from ' + id_attribute);
     var id = _.reduce(id_attribute, function(memo, item){
       if(!_.isEmpty(memo)) memo += '/';
@@ -340,9 +327,9 @@ var getTitleFromTitleAttribute = Iccbl.getTitleFromTitleAttribute =
     function(model, schema){
   var re_isQuoted = /['"]+/g;
   var fields = schema['fields'];
-  if(_.has(schema['resource_definition'], 'title_attribute')){
+  if(_.has(schema, 'title_attribute')){
     var title = _.reduce(
-      schema['resource_definition']['title_attribute'],
+      schema['title_attribute'],
       function(memo, item){
         if(item && item.match(re_isQuoted)){
           memo += item.replace(re_isQuoted, '');
@@ -686,7 +673,7 @@ var LinkCell = Iccbl.LinkCell = Backgrid.Cell.extend({
       var self = this;
       this.$el.empty();
       var formattedValue = this.formatter.fromRaw(this.model.get(this.column.get("name")));
-      var interpolatedVal = Iccbl.replaceTokens(self.model, self.hrefTemplate);
+      var interpolatedVal = Iccbl.formatString(self.hrefTemplate,self.model);
       self.$el.append($('<a>', {
         tabIndex : -1,
         href : interpolatedVal,
@@ -730,7 +717,7 @@ var UriListCell = Iccbl.UriListCell = Backgrid.Cell.extend({
     if(rawValue && !_.isEmpty(rawValue)){
       var i = 0;
       _.each(rawValue, function(val){
-        var interpolatedVal = Iccbl.replaceTokens(self.model, self.hrefTemplate, val);
+        var interpolatedVal = Iccbl.formatString(self.hrefTemplate, self.model, val);
         if(i>0) self.$el.append(',');
         self.$el.append($('<a>', {
           tabIndex : -1,
@@ -775,7 +762,7 @@ var ImageCell = Iccbl.ImageCell = Backgrid.Cell.extend({
     //      
     // if (!_.isEmpty(image_src_attr)){
     // // NOTE: format for backgrid cell options is "/{attribute_key}/"
-    // var src = Iccbl.replaceTokens(this.model,image_src_attr);
+    // var src = Iccbl.formatString(this.model,image_src_attr);
     // console.log('image src: ' + src);
     // return '<img src="'+src+'" width="100" alt="" />';
     // }else{
@@ -1124,9 +1111,13 @@ var CollectionInColumns = Iccbl.CollectionInColumns = Backbone.Collection.extend
 
 var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
   initialize: function(args) {
+    console.log('initialize UriContainerView');
     var model = this.model = args.model;
     var targetProperty = args.property || 'uriStack';
     this.listenTo(model, 'change:'+targetProperty , this.uriStackChange );
+    this.listenTo(model, 'all', function(e){
+      console.log('e',e);
+    });
     
     Backbone.View.prototype.initialize.apply(this,arguments);
   },
@@ -3676,7 +3667,7 @@ var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
     if(!_.isUndefined(this.hrefTemplate)){
       // hack - if hrefTemplate is defined, treat this like a link cell - 20150828
       var target = this.target || "_self";
-      var interpolatedVal = Iccbl.replaceTokens(this.model, this.hrefTemplate);
+      var interpolatedVal = Iccbl.formatString(this.hrefTemplate,this.model);
       this.$el.append($('<a>', {
         tabIndex : -1,
         href : interpolatedVal,
@@ -3906,17 +3897,6 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   console.log(key, 'data_type', data_type, 'display_type', display_type, prop);
   
   var cell_options = prop.display_options || {};
-//  var cell_options = {};
-//  if(_.has(prop,'display_options') && ! _.isEmpty(prop.display_options)){
-//    cell_options = prop['display_options'];
-//    cell_options = cell_options.replace(/'/g,'"');
-//    try{
-//      cell_options = JSON.parse(cell_options);
-//    }catch(e){
-//      console.log('warn: display_options is not JSON parseable, column: ' +
-//          key + ', options: ' + cell_options,e);      
-//    }
-//  } 
   var edit_type = _.isEmpty(prop.edit_type)?display_type:prop.edit_type.toLowerCase();
 
   var backgridCellType = 'string';

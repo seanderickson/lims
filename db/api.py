@@ -5334,6 +5334,46 @@ class NaturalProductReagentResource(ApiResource):
     def __init__(self, **kwargs):
         super(NaturalProductReagentResource,self).__init__(**kwargs)
 
+    @transaction.atomic()    
+    def patch_obj(self,deserialized, **kwargs):
+
+        well = kwargs.get('well', None)
+        if not well:
+            raise ValidationError(key='well', msg='required')
+
+        initializer_dict = self.parse(deserialized)
+        
+        id_kwargs = self.get_id(deserialized,**kwargs)
+        
+        patch = False
+        if not well.reagent_set.exists():
+            reagent = NaturalProductReagent(well=well)
+            errors = self.validate(initializer_dict, patch=False)
+            if errors:
+                raise ValidationError(errors)
+        
+        else:
+            patch = True
+            # TODO: only works for a single reagent
+            # can search for the reagent using id_kwargs
+            # reagent = well.reagent_set.all().filter(**id_kwargs)
+            # TODO: update reagent
+            reagent = well.reagent_set.all()[0]
+            reagent = reagent.naturalproductreagent
+            errors = self.validate(initializer_dict, patch=True)
+            if errors:
+                raise ValidationError(errors)
+            logger.info('found reagent: %r, %r', reagent.well_id, reagent )
+        for key,val in initializer_dict.items():
+            if hasattr(reagent,key):
+                setattr(reagent,key,val)
+        reagent.save()
+
+        logger.info('patched natural product reagent')
+        
+        return reagent        
+
+
 
 class SilencingReagentResource(ApiResource):
     
@@ -5492,8 +5532,49 @@ class SilencingReagentResource(ApiResource):
         
         id_kwargs = self.get_id(deserialized,**kwargs)
         
-        raise NotImplementedError('TODO: 20160218: continue ApiResource refactor'
-            ', follow SmallMoleculeReagent work')
+        patch = False
+        if not well.reagent_set.exists():
+            reagent = SilencingReagent(well=well)
+            errors = self.validate(initializer_dict, patch=False)
+            if errors:
+                raise ValidationError(errors)
+
+            # only allow duplex_wells to be set on create
+            if 'duplex_wells' in kwargs:
+                reagent.save()
+                reagent.duplex_wells = kwargs['duplex_wells']
+        
+        else:
+            patch = True
+            # TODO: only works for a single reagent
+            # can search for the reagent using id_kwargs
+            # reagent = well.reagent_set.all().filter(**id_kwargs)
+            # TODO: update reagent
+            reagent = well.reagent_set.all()[0]
+            reagent = reagent.silencingreagent
+            errors = self.validate(initializer_dict, patch=True)
+            if errors:
+                raise ValidationError(errors)
+            logger.info('found reagent: %r, %r', reagent.well_id, reagent )
+        for key,val in initializer_dict.items():
+            if hasattr(reagent,key):
+                setattr(reagent,key,val)
+        reagent.save()
+
+        
+        # Now do the gene tables
+        
+        gene_key = 'entrezgene_id'
+        if deserialized.get('vendor_%s'%gene_key, None):
+            reagent.vendor_gene = \
+                self._create_gene(deserialized, 'vendor')
+        if deserialized.get('facility_%s'%gene_key, None):
+            reagent.facility_gene = \
+                self._create_gene(deserialized, 'facility')
+        reagent.save()
+                
+        return reagent        
+        
 
     def obj_create_old(self, bundle, **kwargs):
         
@@ -5516,7 +5597,7 @@ class SilencingReagentResource(ApiResource):
         
         return bundle
     
-    def _create_gene_old(self, data, source_type):
+    def _create_gene(self, data, source_type):
         
         gene_keys = ['entrezgene_id', 'gene_name', 'species_name']
         gene = Gene()
@@ -5632,7 +5713,6 @@ class SmallMoleculeReagentResource(ApiResource):
             if hasattr(reagent,key):
                 setattr(reagent,key,val)
         reagent.save()
-        logger.info('xxx r: %r, smiles: %r', reagent.well_id, reagent.smiles)
         
         if 'compound_name' in initializer_dict:
             reagent.smallmoleculecompoundname_set.all().delete()
@@ -5671,7 +5751,7 @@ class SmallMoleculeReagentResource(ApiResource):
             molfile.save()
         reagent.save()
                 
-        logger.info('patch_obj done')
+        logger.info('sm patch_obj done')
         return reagent
 
 
@@ -5904,13 +5984,13 @@ class ReagentResource(ApiResource):
             self.well_resource = WellResource()
         return self.well_resource
     
-    def get_reagent_resource(self, library_screen_type=None):
+    def get_reagent_resource(self, library=None):
         # FIXME: we should store the "type" on the entity
         
-        if library_screen_type == 'rnai':
+        if library.screen_type == 'rnai':
             return self.get_sr_resource()
         else:
-            if library_screen_type == 'natural_products':
+            if library.library_type == 'natural_products':
                 return self.get_npr_resource()
             else:
                 return self.get_smr_resource()
@@ -5965,11 +6045,11 @@ class ReagentResource(ApiResource):
                 'no library found for short_name', library_short_name)))
                 
     def build_schema(self, library=None):
-        logger.info('build schema for library: %r', library.short_name)
+        logger.info('build reagent schema for library: %r', library.short_name)
         schema = deepcopy(super(ReagentResource,self).build_schema())
         if library:
             sub_data = self.get_reagent_resource(
-                library_screen_type=library.screen_type).build_schema()
+                library=library).build_schema()
             
             newfields = {}
             newfields.update(sub_data['fields'])
@@ -5993,9 +6073,8 @@ class ReagentResource(ApiResource):
         if not well:
             raise ValidationError(key='well', msg='required')
         
-        library_screen_type = well.library.screen_type
         reagent_resource = self.get_reagent_resource(
-            library_screen_type=library_screen_type)
+            library=well.library)
         reagent = reagent_resource.patch_obj(deserialized,**kwargs)
         
         reagent.well = well
@@ -6393,7 +6472,7 @@ class WellResource(ApiResource):
                 raise ValidationError(
                     key='duplex_wells',
                     msg='library is not a pool libary: %r' % library.short_name )
-            well_ids = well_data['duplex_wells'] #.split(';')
+            well_ids = deserialized['duplex_wells'] #.split(';')
             for well_id in well_ids:
                 try:
                     duplex_wells.append(Well.objects.get(well_id=well_id))
@@ -6527,7 +6606,7 @@ class WellResource(ApiResource):
                             'duplex_well not found': str(('pool well', well_bundle.obj, well_id))}))
                     
         # lookup/create the reagent
-        sub_resource = self.get_reagent_resource(library_screen_type=library.screen_type)
+        sub_resource = self.get_reagent_resource(library=library)
         
         reagent_bundle = sub_resource.build_bundle(
             data=well_data, request=well_bundle.request)

@@ -333,7 +333,7 @@ class IccblBaseResource(Resource):
         if format:
             if format in self.content_types:
                 format = self.content_types[format]
-                logger.debug('format', format)
+                logger.debug('format: %r', format)
             else:
                 logger.error('unknown format: %r, options: %r', format, self.content_types)
                 raise ImmediateHttpResponse("unknown format: %s" % format)

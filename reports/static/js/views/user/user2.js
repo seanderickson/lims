@@ -20,7 +20,7 @@ define([
       this.tabViews = {}; // view cache
       this.uriStack = args.uriStack;
       this.consumedStack = [];
-      this.title = Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource.schema);
+      this.title = Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource);
 
       _.each(_.keys(this.tabbed_resources), function(key){
         if(key !== 'detail' && !appModel.hasPermission(
@@ -164,7 +164,7 @@ define([
     setDetail: function(delegateStack){
       var key = 'detail';
  
-      this.model.resource.schema.fields['permissions']['choices'] = appModel.get('permissionOptions');
+      this.model.resource.fields['permissions']['choices'] = appModel.get('permissionOptions');
       
       console.log('setDetail: delegateStack: ', delegateStack);
         var view = new DetailLayout({ 
@@ -186,19 +186,19 @@ define([
       var pUserModel = this.model.clone();
       pUserModel.key = this.model.key;
       var resource = _.extend({},this.model.resource);
-      resource.schema = _.extend({}, this.model.resource.schema );
-      resource.schema.fields = _.pick(
-        this.model.resource.schema.fields,
+      resource = _.extend({}, this.model.resource );
+      resource.fields = _.pick(
+        this.model.resource.fields,
         ['username','first_name','last_name','usergroups','permissions']);
-      resource.schema.fields['first_name']['visibility'] = [];
-      resource.schema.fields['last_name']['visibility'] = [];
-      resource.schema.fields['usergroups']['visibility'] = [];
-      resource.schema.fields['usergroups']['editability'] = ['u'];
-      resource.schema.fields['permissions']['editability'] = ['u'];
-      resource.schema.fields['first_name']['editability'] = [];
-      resource.schema.fields['last_name']['editability'] = [];
+      resource.fields['first_name']['visibility'] = [];
+      resource.fields['last_name']['visibility'] = [];
+      resource.fields['usergroups']['visibility'] = [];
+      resource.fields['usergroups']['editability'] = ['u'];
+      resource.fields['permissions']['editability'] = ['u'];
+      resource.fields['first_name']['editability'] = [];
+      resource.fields['last_name']['editability'] = [];
       pUserModel.resource = resource;
-      pUserModel.resource.schema.fields['permissions']['choices'] = (
+      pUserModel.resource.fields['permissions']['choices'] = (
           appModel.get('permissionOptions'));
       
       var view = new DetailLayout({ 
@@ -223,7 +223,7 @@ define([
 //                 'groups'].join('/');
 //      var view = new ListView({ options: {
 //        uriStack: _.clone(delegateStack),
-//        schemaResult: resource.schema,
+//        schemaResult: resource,
 //        resource: resource,
 //        url: url
 //      }});

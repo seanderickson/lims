@@ -291,7 +291,7 @@ define([
       }
 
       var columns = Iccbl.createBackgridColModel(
-  		this._options.schemaResult.fields, Iccbl.MyHeaderCell);
+  		this._options.schemaResult, Iccbl.MyHeaderCell);
 
       var grid = this.grid = new Backgrid.Grid({
         columns: columns,
@@ -311,7 +311,7 @@ define([
                   // set on create, from the Meta Hash
                   var defaults = {};
 
-                  id_attributes = self._options.schemaResult['resource_definition']['id_attribute']
+                  id_attributes = self._options.schemaResult['id_attribute']
                   _.each(schemaResult.fields, function(value, key){
                       if (key == 'resource_uri') {
                           defaults[key] = self._options.url;

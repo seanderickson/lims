@@ -3644,7 +3644,9 @@ var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
       }
       
     }
-    if(!_.isEmpty(rawData) && _.isEmpty(selectedText)){
+    var isEmpty = ( _.isEmpty(rawData) 
+        || (_.isArray(rawData) && rawData.length == 1 && _.isEmpty(rawData[0])))
+    if( !isEmpty && _.isEmpty(selectedText)){
       selectedText = rawData;
 
       Iccbl.appModel.error(Iccbl.formatString(
@@ -3980,7 +3982,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
         if(!cell_options.symbol){
           var msg = ('Error constructing SIUnit header cell: ' +
               'missing required "symbol" backgrid_cell_option');
-          Iccbl.appModel.error('error: ' + e);
+          Iccbl.appModel.error(msg);
         }
         
       }

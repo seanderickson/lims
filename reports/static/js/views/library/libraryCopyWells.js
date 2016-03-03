@@ -97,7 +97,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
 
       var view = new ListView({ options: {
         uriStack: uriStack,
-        schemaResult: resource.schema,
+        schemaResult: resource,
         resource: resource,
         url: url
       }});

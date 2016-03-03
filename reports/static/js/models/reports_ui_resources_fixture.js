@@ -22,16 +22,16 @@
       "description": "About page"
     },
 
-    "metahash": {
+    "field": {
         "header_message": "Define fields for display on detail and list views",
         "title": "Field Information",
-        "route": "list/metahash",
+        "route": "list/field",
         "list_view": "ListView",
         "detailView": "DetailView",
-        "api_resource": "metahash",
+        "api_resource": "field",
         "url_root": "/reports/api/v1",
         "options": { 
-          "search": {"scope__exact": "fields.metahash"}},
+          "search": {"scope__exact": "fields.field"}},
         "description": "Control field settings"
     },
 

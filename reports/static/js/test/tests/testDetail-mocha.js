@@ -103,9 +103,9 @@ define([
                 expect(input.html()).to.be.equal(finalModelVal);
 
                 expect(input.attr('href')).to.be.equal(
-                  Iccbl.replaceTokens(
-                    self.model,
+                  Iccbl.formatString(
                     cell_options.hrefTemplate,
+                    self.model,
                     modelVal));
               }
             }else if (data_type == 'date') {

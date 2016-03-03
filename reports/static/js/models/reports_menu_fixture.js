@@ -5,7 +5,7 @@
       "expanded": false,
       "view": "menu",  
       "submenus": {
-        "metahash":{
+        "field":{
             "view": "list"
         },
         "resource":{

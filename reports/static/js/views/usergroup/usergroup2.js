@@ -20,7 +20,7 @@ define([
       this.tabViews = {}; // view cache
       this.uriStack = args.uriStack;
       this.consumedStack = [];
-      this.title = Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource.schema);
+      this.title = Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource);
       
       _.bindAll(this, 'click_tab');
     },
@@ -151,7 +151,7 @@ define([
       
       var view = this.tabViews[key];
       
-      this.model.resource.schema.fields['permissions']['choices'] = appModel.get('permissionOptions');
+      this.model.resource.fields['permissions']['choices'] = appModel.get('permissionOptions');
       
       var editView = EditView.extend({});
       
@@ -163,7 +163,7 @@ define([
         });
         view.showEdit = function(){
           appModel.initializeAdminMode(function(){
-            var fields = self.model.resource.schema.fields;
+            var fields = self.model.resource.fields;
             var options = appModel.getUserGroupOptions();
             fields['super_groups']['choices'] = options;
             fields['sub_groups']['choices'] = options;
@@ -190,7 +190,7 @@ define([
                  'users'].join('/');
       view = new ListView({ options: {
         uriStack: _.clone(delegateStack),
-        schemaResult: resource.schema,
+        schemaResult: resource,
         resource: resource,
         url: url
       }});
@@ -209,7 +209,7 @@ define([
                  'subgroups'].join('/');
       view = new ListView({ options: {
         uriStack: _.clone(delegateStack),
-        schemaResult: self.model.resource.schema,
+        schemaResult: self.model.resource,
         resource: self.model.resource,
         url: url
       }});

@@ -63,11 +63,11 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       }else{
         displayed_scopes.push('fields.smallmoleculereagent');
       }
-      var specific_schema = _.clone(resource.schema);
+      var specific_schema = _.clone(resource);
       specific_schema.fields = {}
-      _.each(_.keys(resource.schema.fields), 
+      _.each(_.keys(resource.fields), 
           function(key){
-            var field = resource.schema.fields[key];
+            var field = resource.fields[key];
             if(_.contains(displayed_scopes, field['scope'])){
               specific_schema.fields[key] = field;
             }
@@ -95,7 +95,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var viewClass = DetailLayout;
 
       // prevent normal display of structure image value
-      var si_field = model.resource.schema.fields['structure_image']
+      var si_field = model.resource.fields['structure_image']
       if(si_field){
         si_field['visibility'] = [];
       }
@@ -133,10 +133,10 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       
       // FIXME: deprecate this for the LinkCell...
       var detailHandler = function(model) {
-        var key = Iccbl.getIdFromIdAttribute(model,resource.schema);
+        var key = Iccbl.getIdFromIdAttribute(model,resource);
         model.resource = resource;
         model.key = key;
-        var keysToReport = Iccbl.getIdKeys(model,resource.schema);
+        var keysToReport = Iccbl.getIdKeys(model,resource);
         self.consumedStack = keysToReport;
         self.showDetail(model);
       };

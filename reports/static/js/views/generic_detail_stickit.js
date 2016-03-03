@@ -24,7 +24,7 @@ define([
 	  initialize: function(args) {
 	    console.log('initialize generic_detail_stickit view');
 	    var self = this;
-	    var schema = this.schema = args.schema || this.model.resource.schema;
+	    var schema = this.schema = args.schema || this.model.resource;
       this.detailKeys = args.detailKeys || schema.detailKeys(); 
       var nestedModels = this.nestedModels = {};
       var nestedLists = this.nestedLists = {};
@@ -219,7 +219,7 @@ define([
         } 
 
         if(value && !_.isNull(value)){
-          var interpolatedVal = Iccbl.replaceTokens(self.model,_options.hrefTemplate,value);
+          var interpolatedVal = Iccbl.formatString(_options.hrefTemplate,self.model, value);
           if(vocabulary){
             value = getTitle(vocabulary,value);
           }
@@ -292,7 +292,7 @@ define([
       console.log('generic detail stickit, afterRender');
       var self = this;
       this.stickit(this.model, this.bindings);
-      this.schemaFieldsModel = new Backbone.Model(this.model.resource.schema.fields);
+      this.schemaFieldsModel = new Backbone.Model(this.model.resource.fields);
       this.stickit(this.schemaFieldsModel, this.schemaBindings);
 
       var btnbindings = {};
@@ -328,18 +328,18 @@ define([
                 model.collection = collection;
                 // custom handle click on cell
                 model.clickHandler = function(model){
-                  var id = Iccbl.getIdFromIdAttribute( model, model.resource.schema);
+                  var id = Iccbl.getIdFromIdAttribute( model, model.resource);
                   appModel.router.navigate(model.resource.key + '/' + id, {trigger:true});
                 };
                 return model;
               }
               ));
-          var commentFields = _.pick(resource.schema.fields, ['username','date_time','comment']);
+          var commentFields = _.pick(resource.fields, ['username','date_time','comment']);
           var columns = Iccbl.createBackgridColModel(commentFields);
           var view = new Backgrid.Grid({
             columns: columns,
             collection: collection,
-            schemaResult: resource.schema,
+            schemaResult: resource,
             resource: resource
           });
           // FIXME: this should work
@@ -359,7 +359,7 @@ define([
     serialize: function() {
       return {
         'buttons': _.chain(this.buttons), // TODO: buttons from the schema
-        'title': Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource.schema),
+        'title': Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource),
         'keys': _.chain(this.detailKeys)
       };      
     },    

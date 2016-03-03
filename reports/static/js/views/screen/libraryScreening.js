@@ -18,7 +18,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
 
     /**
      * Parse a single entry in the list of libray_copy_plate_range
-     * TODO: move this to metadata as regex
      */
     _parse_library_plate_entry: function(entry){
       var self = this;
@@ -39,16 +38,10 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
       }
     },
     
-    _createPlateRangeTable: function(library_plates_screened, $target_el, editable){
+    _createPlateRangeTable: function(plate_collection, $target_el, editable){
       var self = this;
+      $target_el.empty();
       
-      if (_.isEmpty(library_plates_screened)){
-        return;
-      }
-      var collection = new Backbone.Collection;
-      collection.comparator = 'start_plate';
-      collection.set(
-        _.map(library_plates_screened,self._parse_library_plate_entry));
       var TextWrapCell = Backgrid.Cell.extend({
         className: 'text-wrap-cell'
       });
@@ -68,7 +61,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
           'description' : 'Library Short Name',
           'order': 1,
           'sortable': true,
-          'cell': TextWrapCell
+          'cell': Iccbl.LinkCell.extend({
+            'hrefTemplate': '#library/{library}'
+          })
         }),
         _.extend({},colTemplate,{
           'name' : 'copy',
@@ -76,7 +71,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
           'description' : 'Copy Name',
           'order': 1,
           'sortable': true,
-          'cell': TextWrapCell
+          'cell': Iccbl.LinkCell.extend({
+            'hrefTemplate': '#library/{library}/copy/{copy}'
+          })
         }),
         _.extend({},colTemplate,{
           'name' : 'start_plate',
@@ -107,29 +104,20 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
             'sortable': false,
             'cell': Iccbl.DeleteCell
           }));
-        self.listenTo(collection, "MyCollection:delete", function (model) {
-          var entry = Iccbl.replaceTokens(model,nested_library_plate_pattern);
-          console.log('delete: ' , model, entry);
-          var lps = self.model.get('library_plates_screened');
-          lps = _.without(lps,_.find(lps,function(val){
-            return val === entry;
-          }));
-          console.log('new lps', lps);
-          collection.remove(model);
-          self.model.set('library_plates_screened',lps);
+        self.listenTo(plate_collection, "MyCollection:delete", function (model) {
+          var entry = Iccbl.formatString(nested_library_plate_pattern,model);
+          plate_collection.remove(model);
         });
-        
       }
       var colModel = new Backgrid.Columns(columns);
       colModel.comparator = 'order';
       colModel.sort();
 
-      $target_el.empty();
       var cell = $('<div>',{ class: 'col-sm-10' });
       
       var plate_range_grid = new Backgrid.Grid({
         columns: colModel,
-        collection: collection,
+        collection: plate_collection,
         className: 'backgrid table-striped table-condensed table-hover'
       });
       cell.append(plate_range_grid.render().$el);
@@ -137,7 +125,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
       
     }, // _createPlateRangeTable
 
-    _addPlateRangeDialog: function(parent_form){
+    _addPlateRangeDialog: function(plate_collection){
       
       var self = this;
       var options = options || {};
@@ -147,7 +135,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
       var formTemplate = appModel._form_template;
       var initfun = function(){
         console.log('initfun...');
-        libraryOptions = appModel.getLibraryOptions();
+        libraryOptions = appModel.getScreeningLibraryOptions(self.model.get('screen_type'));
         libraryOptions.unshift({val:'',label:''});
         
         formSchema['library'] = {
@@ -201,17 +189,15 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
               start2 = temp;
               attrs['start_plate'] = temp;
             }
-            var library_plates = parent_form.getValue('library_plates_screened');
-            _.each(library_plates, function(entry){
-              if (newEntry==entry){
+            plate_collection.each(function(model){
+              var plate_string = Iccbl.formatString(nested_library_plate_pattern, model);
+              if (newEntry==plate_string){
                 errs['library'] = 'Entry exists: ' + newEntry;
               }
-              var range = self._parse_library_plate_entry(entry);
-              
-              if(range['library']==attrs['library']){
-                if(range['copy']==attrs['copy']){
-                  var start1 = parseInt(range['start_plate']);
-                  var end1 = parseInt(range['end_plate']);
+              if(model.get('library')==attrs['library']){
+                if(model.get('copy')==attrs['copy']){
+                  var start1 = parseInt(model.get('start_plate'));
+                  var end1 = parseInt(model.get('end_plate'));
                   if(start2<end1 && end2 > start1 ){
                     errs['start_plate'] = 'overlapping range';
                   }
@@ -271,7 +257,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
           $chosen = form.$el.find('[name="' + fieldKey + '"]').parent()
               .find('.chosen-select');
           $chosen.empty();
-          _.each(libraryRecord.get('copies'),function(copy){
+          _.each(libraryRecord.get('screening_copies'),function(copy){
             $chosen.append($('<option>',{
                 value: copy
               }).text(copy));
@@ -279,7 +265,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
           $chosen.trigger("chosen:updated");
         });
         form.on("start_plate:change", function(e){
-          
+          // TODO: set the end plate > start plate
         });
           
         var dialog = appModel.showModal({
@@ -290,14 +276,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
             e.preventDefault();
             var errors = form.commit({ validate: true }) || {}; 
             if(_.isEmpty(errors) ){
-              var library_plates = parent_form.getValue('library_plates_screened');
-              library_plates = library_plates.slice();
-              var newEntry = Iccbl.formatString(nested_library_plate_pattern, form.getValue());
-              library_plates.push(newEntry);
-              parent_form.setValue({'library_plates_screened':library_plates});
-              $target_el = self.$el.find('[name="library_plates_screened"]');
-              self._createPlateRangeTable(library_plates,$target_el,true);
-              // TODO: utilize appModel.setPagePending
+              plate_collection.add(form.getValue());
               return true;
             }else{
               _.each(_.keys(errors), function(key){
@@ -313,42 +292,75 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
     }, //_addPlateRangeDialog
     
     initialize: function(args) {
+      
       var self = this;
+      
       var detailView = DetailView.extend({
+        
         afterRender: function(){
+          
           DetailView.prototype.afterRender.apply(this,arguments);
-          $target_el = this.$el.find('#library_plates_screened');
-          self._createPlateRangeTable(self.model.get('library_plates_screened'), $target_el);
 
-          $target_el = this.$el.find('#assay_protocol_last_modified_date');
-          var apilogResource = appModel.getResource('apilog');
-          var options = {
-            data_for_get: {
-              limit: 1,
-              key: self.model.get('activity_id'),
-              ref_resource_name: self.model.resource.key,
-              diff_keys__icontains: '"assay_protocol"',
-              order_by: ['-date_time']
-            }
-          };
-          Iccbl.getCollectionOnClient(apilogResource.apiUri,function(collection){
-            if(collection && !collection.isEmpty()){
-              var model = collection.at(0);
-              console.log('assay_protocol_last_modified_date',model.get('date_time'));
-              self.model.set('assay_protocol_last_modified_date',model.get('date_time'));
-            }
-          },options);
+          var $target_el = this.$el.find('#library_plates_screened');
+          var plate_collection = new Backbone.Collection;
+          plate_collection.comparator = 'start_plate';
+          plate_collection.set(
+            _.map(self.model.get('library_plates_screened'),
+                  self._parse_library_plate_entry));
+          self._createPlateRangeTable(plate_collection, $target_el);
+          
+          if(!_.isEmpty(self.model.get('assay_protocol'))){
+            $target_el = this.$el.find('#assay_protocol_last_modified_date');
+            var apilogResource = appModel.getResource('apilog');
+            var options = {
+              data_for_get: {
+                limit: 1,
+                key: self.model.get('activity_id'),
+                ref_resource_name: self.model.resource.key,
+                diff_keys__icontains: '"assay_protocol"',
+                order_by: ['-date_time']
+              }
+            };
+            Iccbl.getCollectionOnClient(apilogResource.apiUri,function(collection){
+              if(collection && !collection.isEmpty()){
+                var model = collection.at(0);
+                console.log('assay_protocol_last_modified_date',model.get('date_time'));
+                self.model.set('assay_protocol_last_modified_date',model.get('date_time'));
+              }else{
+                // no apilog found, set it to the creation date
+                self.model.set('assay_protocol_last_modified_date',
+                  self.model.get('date_created'));
+              }
+            },options);
+          }
         
         }
       });
       
       var editView = EditView.extend({
+        
         afterRender: function(){
-          var self_editform = this;
+
           EditView.prototype.afterRender.apply(this,arguments);
 
-          $target_el = this.$el.find('[name="library_plates_screened"]');
-          self._createPlateRangeTable(self.model.get('library_plates_screened'),$target_el,true);
+          var self_editform = this;
+          var $target_el = this.$el.find('[name="library_plates_screened"]');
+          var plate_collection = new Backbone.Collection;
+          plate_collection.comparator = 'start_plate';
+          self.listenTo(plate_collection, "MyCollection:delete", function (model) {
+            var entry = Iccbl.formatString(nested_library_plate_pattern,model);
+            plate_collection.remove(model);
+          });
+
+          self_editform.listenTo(plate_collection, 'update', function (plate_collection) {
+            self_editform.setValue('library_plates_screened', plate_collection.map(function(model){
+              return Iccbl.formatString(nested_library_plate_pattern, model);
+            }));
+          });
+          var lps = self.model.get('library_plates_screened');
+          if(_.isEmpty(lps)) lps = [];
+          plate_collection.set(_.map(lps,self._parse_library_plate_entry));
+          self._createPlateRangeTable(plate_collection, $target_el, true);
 
           // library_copy_plates button
           var addButton = $([
@@ -358,7 +370,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
             ].join(''));
           addButton.click(function(event){
             event.preventDefault();
-            self._addPlateRangeDialog(self_editform);
+            self._addPlateRangeDialog(plate_collection);
           });
           $target_el = $target_el.parent();
           $target_el.append(addButton);
@@ -375,6 +387,32 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
               $target_el.show();
             }
           });
+          // attach listener volume calculator
+          function calculateVolFromLibraryPlates(){
+            var num_replicates = self_editform.getValue('number_of_replicates');
+            var vol_to_assayplates  = self_editform.getValue('volume_transferred_per_well_to_assay_plates');
+            if(_.isNumber(num_replicates) && _.isNumber(vol_to_assayplates)){
+              if(num_replicates > 0 && vol_to_assayplates > 0){
+                var calculated = num_replicates * vol_to_assayplates;
+                self_editform.setValue('volume_transferred_per_well_from_library_plates',calculated);
+              }
+            } else {
+              console.log('cannot calculate volume until form values are entered');
+            }
+          };
+          var calcVolButton = $([
+            '<button class="btn btn-default btn-sm" ',
+              'role="button" id="calc_volume_transferred_per_well_from_library_plates" href="#">',
+              'calculate</button>'
+            ].join(''));
+          $target_el = self_editform.$el.find('[key=form-group-volume_transferred_per_well_from_library_plates]');
+          $target_el.append(calcVolButton);
+          calcVolButton.click(function(event){
+            event.preventDefault();
+            calculateVolFromLibraryPlates();
+          });
+          this.listenTo(this, "number_of_replicates:change", calculateVolFromLibraryPlates);
+          this.listenTo(this, "volume_transferred_per_well_to_assay_plates:change", calculateVolFromLibraryPlates);
         }
       });
       args.EditView = editView;
@@ -409,7 +447,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
       var self = this;
       appModel.initializeAdminMode(function(){
         var userOptions = appModel.getAdminUserOptions();
-        var fields = self.model.resource.schema.fields;
+        var fields = self.model.resource.fields;
         fields['performed_by_username']['choices'] = (
             [{ val: '', label: ''}].concat(userOptions));
         DetailLayout.prototype.showEdit.apply(self,arguments);

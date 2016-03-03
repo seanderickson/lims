@@ -344,7 +344,7 @@ define([
           if( _.has(fieldDef,'backgrid_cell_options')) {
             // NOTE: format for backgrid cell options is "/{attribute_key}/"
             var backgrid_cell_options = fieldDef['backgrid_cell_options'];
-            var _route = Iccbl.replaceTokens(model,backgrid_cell_options);
+            var _route = Iccbl.formatString(backgrid_cell_options, model);
             console.log('route: ' + _route);
             appModel.router.navigate(_route, {trigger:true});
           }else{

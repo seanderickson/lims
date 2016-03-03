@@ -23,7 +23,7 @@ define([
       this.args = args;
       this.DetailView = args.DetailView || DetailView;
       this.EditView = args.EditView || EditView;
-      this.modelSchema = args.modelSchema || this.model.resource.schema;
+      this.modelSchema = args.modelSchema || this.model.resource;
       this.modelFields = args.modelFields || this.modelSchema.fields;
       _.bindAll(this, 'showDetail', 'showEdit');
     },
@@ -41,7 +41,7 @@ define([
       return {
         'title': Iccbl.getTitleFromTitleAttribute(
             this.model,
-            this.model.resource.schema),
+            this.model.resource),
       }      
     },    
   

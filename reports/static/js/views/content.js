@@ -42,7 +42,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     className: "col-sm-10 col-md-10 col-lg-10",
     
     initialize: function() {
-      console.log('initialize content.js');
+      console.log('initialize content.js', arguments);
       Iccbl.UriContainerView.prototype.initialize.apply(this,arguments);
       this.title = null;
       this.consumedStack = [];
@@ -110,7 +110,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       }
       
       titleFunc(model.resource.title + ': ' + 
-        Iccbl.getTitleFromTitleAttribute(model,model.resource.schema) );
+        Iccbl.getTitleFromTitleAttribute(model,model.resource) );
       
       var view = new viewClass({ model: model, uriStack: uriStack});
       self.listenTo(view, 'update_title', titleFunc );
@@ -263,6 +263,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
 
     // delegated from UriContainerView on appModel change:uriStack
     changeUri: function(uriStack) {
+      console.log('changeUri:', uriStack);
       var self = this;
       var consumedStack = this.consumedStack = [];
 
@@ -304,30 +305,37 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         return;
       }
       
-      if (_.isUndefined(resource) || _.isUndefined(resource.schema)){
+      if (_.isUndefined(resource) || _.isUndefined(resource)){
         var msg = "Resource schema not defined: " + uiResourceId;
         appModel.error(msg)
         throw msg;
       }
 
-      // Test for list args, if not found, then it's a detail view
-      if (!_.isEmpty(uriStack) && 
-            !_.contains(appModel.LIST_ARGS, uriStack[0]) &&
-            uriStack[0] != 'search') {
-        // DETAIL VIEW
-        
-        if(uriStack[0] == '+add'){
-          self.showAdd(resource, uriStack);
-        }else{ 
-          var _key = Iccbl.popKeyFromStack(resource, uriStack, consumedStack );
-          appModel.getModel(uiResourceId, _key, function(model){
-            self.showDetail(uriStack, model);
-          });
+      // Re-fetch the specific resource schema from the Resource endpoint:
+      // - if the Resource has customizations of the schema
+      // - i.e. "extraSelectorOptions
+      appModel.getResourceFromUrl(uiResourceId, resource.apiUri + '/schema', function(resource){
+        // Test for list args, if not found, then it's a detail view
+        if (!_.isEmpty(uriStack) && 
+              !_.contains(appModel.LIST_ARGS, uriStack[0]) &&
+              uriStack[0] != 'search') {
+          // DETAIL VIEW
+          
+          if(uriStack[0] == '+add'){
+            self.showAdd(resource, uriStack);
+          }else{ 
+            var _key = Iccbl.popKeyFromStack(resource, uriStack, consumedStack );
+            appModel.getModel(uiResourceId, _key, function(model){
+              self.showDetail(uriStack, model);
+            });
+          }
+        } else {
+          // LIST VIEW
+          self.showList(resource, uriStack,resource);
         }
-      } else {
-        // LIST VIEW
-        self.showList(resource, uriStack,resource.schema);
-      }
+        
+      });
+
     }
   });
 

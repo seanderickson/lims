@@ -227,15 +227,12 @@ define([
   
     _observeFormEvents: function() {
       // redirect all of the nested events up
-      console.log('obs');
       if (!this.nestedForm) return;
-      
       this.nestedForm.on('all', function() {
         // args = ["key:change", form, fieldEditor]
         var args = _.toArray(arguments);
         args[1] = this;
         // args = ["key:change", this=objectEditor, fieldEditor]
-  
         this.trigger.apply(this, args);
       }, this);
     },
@@ -513,6 +510,7 @@ define([
   
   var ChosenSelect = Backbone.Form.editors.Select.extend({
     render: function() {
+      var self = this;
       Backbone.Form.editors.Select.prototype.render.apply(this);
       
       this.setOptions(this.schema.options);
@@ -541,7 +539,7 @@ define([
       this.consumedStack = []; 
       this.saveCallBack = args.saveCallBack;
 
-      this.modelSchema = args.modelSchema || this.model.resource.schema;
+      this.modelSchema = args.modelSchema || this.model.resource;
       this.modelFields = args.modelFields || this.modelSchema.fields;
       this.editKeys = args.editKeys || this.modelSchema.allEditVisibleKeys();
       this.editableKeys = args.editableKeys || this.modelSchema.updateKeys();
@@ -892,7 +890,7 @@ define([
           // to reimplement backbone-forms
           //  function(value, formValues){
           //    //                TODO: figure out how to get the pending model
-          //    return 'value: ' + value + ' is incorrect: ' + Iccbl.replaceTokens(new Backbone.Model(formValues), fi.validation_message);
+          //    return 'value: ' + value + ' is incorrect: ' + Iccbl.formatString(fi.validation_message, formValues);
           //  };
         }
         validators.unshift(validator);
@@ -1116,7 +1114,9 @@ define([
         url += '/';
       }
       
-      options['key'] = Iccbl.getIdFromIdAttribute( self.model,self.model.resource.schema );
+      self.model.idAttribute = self.model.resource['id_attribute'];
+      
+      options['key'] = Iccbl.getIdFromIdAttribute( self.model,self.model.resource );
       if (_.contains(this.uriStack, '+add') || !options['key'] ){
         options['patch'] = false;
       }else{
@@ -1146,7 +1146,7 @@ define([
             if(options['patch']==false){
               // this is an +add event
               model = new Backbone.Model(model);
-              var key = Iccbl.getIdFromIdAttribute( model,self.model.resource.schema );
+              var key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
               appModel.router.navigate(self.model.resource.key + '/' + key, {trigger:true});
             }
           })
@@ -1155,7 +1155,12 @@ define([
             console.log('model saved');
           })
           .fail(function(){ 
-            self.model.fetch();
+            if (options['patch']){
+              self.model.fetch();
+            }else{
+              self.remove();
+              appModel.router.back();
+            }
             Iccbl.appModel.jqXHRfail.apply(this,arguments); 
           })
           .always(function() {

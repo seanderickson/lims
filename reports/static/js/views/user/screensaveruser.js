@@ -134,12 +134,12 @@ define([
         EditView: editView
       });
       view.showEdit = function(){
-        this.model.resource.schema.fields['permissions']['choices'] = (
+        this.model.resource.fields['permissions']['choices'] = (
             appModel.get('permissionOptions'));
         
         appModel.getPrincipalInvestigatorOptions(function(options){
 
-          self.model.resource.schema.fields['lab_head_username']['choices'] = options;
+          self.model.resource.fields['lab_head_username']['choices'] = options;
           
           // Set up the dynamic add lab_affiliation form
           // with the edit view available, set up the lab_head_affiliation rules
@@ -358,13 +358,13 @@ define([
       var key = 'screens';
       var originalResource = appModel.getResource('screen');
       var resource = _.extend({},originalResource);
-      resource.schema = _.extend({}, originalResource.schema );
-      resource.schema.fields = _.pick(
-        originalResource.schema.fields,
+      resource = _.extend({}, originalResource );
+      resource.fields = _.pick(
+        originalResource.fields,
         ['facility_id','title','screen_type','screensaver_user_role', 'status','status_date',
          'date_of_last_activity','date_created']);
-      resource.schema.fields['screen_type']['visibility'] = ['l'];
-      resource.schema.fields['screensaver_user_role']['visibility'] = ['l'];
+      resource.fields['screen_type']['visibility'] = ['l'];
+      resource.fields['screensaver_user_role']['visibility'] = ['l'];
 
       var url = [self.model.resource.apiUri, 
                  self.model.key,
@@ -382,7 +382,7 @@ define([
       
       var view = new ListView({ options: {
           uriStack: _.clone(delegateStack),
-          schemaResult: resource.schema,
+          schemaResult: resource,
           resource: resource,
           url: url,
           extraControls: [addScreenButton]
@@ -468,7 +468,7 @@ define([
                      'serviceactivities'].join('/');
           view = new ListView({ options: {
             uriStack: _.clone(delegateStack),
-            schemaResult: resource.schema,
+            schemaResult: resource,
             resource: resource,
             url: url,
             extraControls: extraControls
@@ -497,7 +497,7 @@ define([
       var resource = Iccbl.appModel.getResource('serviceactivity');
       var defaults = {};
       appModel.initializeAdminMode(function(){
-        resource.schema.fields['performed_by_username']['choices'] = appModel.getAdminUserOptions();
+        resource.fields['performed_by_username']['choices'] = appModel.getAdminUserOptions();
 
         _.each(resource.fields, function(value, key){
             if (key == 'resource_uri') {
@@ -558,7 +558,7 @@ define([
       
       var view = new ListView({ options: {
         uriStack: _.clone(delegateStack),
-        schemaResult: resource.schema,
+        schemaResult: resource,
         resource: resource,
         url: url,
         extraControls: [uploadAttachedFileButton, showDeleteButton]
@@ -876,7 +876,7 @@ define([
         
       view = new ListView({ options: {
         uriStack: _.clone(delegateStack),
-        schemaResult: resource.schema,
+        schemaResult: resource,
         resource: resource,
         url: url,
         collection: collection,

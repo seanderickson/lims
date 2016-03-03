@@ -157,7 +157,7 @@ define([
       var resource = appModel.getResource('library');
       var view = new ListView({ options: {
         uriStack: _.clone(delegateStack),
-        schemaResult: resource.schema,
+        schemaResult: resource,
         resource: resource,
         url: url,
         extraControls: []
@@ -184,7 +184,7 @@ define([
       var resource = appModel.getResource('librarycopyplate');
       var view = new ListView({ options: {
         uriStack: _.clone(delegateStack),
-        schemaResult: resource.schema,
+        schemaResult: resource,
         resource: resource,
         url: url,
         extraControls: []
@@ -211,7 +211,7 @@ define([
       var resource = appModel.getResource('librarycopyplate');
       var view = new ListView({ options: {
         uriStack: _.clone(delegateStack),
-        schemaResult: resource.schema,
+        schemaResult: resource,
         resource: resource,
         url: url,
         extraControls: []
@@ -279,7 +279,7 @@ define([
     setDetail: function(delegateStack){
       var self,outerSelf = self = this;
       var key = 'detail';
-      var fields = self.model.resource.schema.fields;
+      var fields = self.model.resource.fields;
       // set up a custom vocabulary that joins username to name; will be 
       // used as the text of the linklist
       fields['collaborator_usernames'].vocabulary = (
@@ -326,7 +326,7 @@ define([
           fields['lead_screener_username']['choices'] = (
               [{ val: '', label: ''}].concat(userOptions));
           fields['lab_head_username']['choices'] = (
-                appModel.getPrincipalInvestigatorOptions );
+                appModel.getPrincipalInvestigatorOptions() );
           DetailLayout.prototype.showEdit.apply(view,arguments);
         });  
       };
@@ -456,7 +456,7 @@ define([
         var resource = appModel.getResource('cherrypickrequest');
         var view = new ListView({ options: {
           uriStack: _.clone(delegateStack),
-          schemaResult: resource.schema,
+          schemaResult: resource,
           resource: resource,
           url: url,
           extraControls: []
@@ -486,16 +486,16 @@ define([
         var resource = appModel.getResource('activity');
         
         var sa_vocab = appModel.getVocabulary('activity.type');
-        resource.schema.fields['type'].vocabulary = 
+        resource.fields['type'].vocabulary = 
           _.map(sa_vocab, function(v){
             return [v.title,v.key];
           }); // TODO: app model method for this
         
-        console.log('combined vocab', resource.schema.fields['type'].vocabulary );
+        console.log('combined vocab', resource.fields['type'].vocabulary );
         
         var view = new ListView({ options: {
           uriStack: _.clone(delegateStack),
-          schemaResult: resource.schema,
+          schemaResult: resource,
           resource: resource,
           url: url,
           extraControls: []
@@ -518,7 +518,8 @@ define([
       console.log('add library screening');
       var self = this;
       var defaults = {
-        screen_facility_id: self.model.get('facility_id')
+        screen_facility_id: self.model.get('facility_id'),
+        screen_type: self.model.get('screen_type')
       };
       var newModel = appModel.createNewModel('libraryscreening', defaults);
 
@@ -565,7 +566,7 @@ define([
                    'libraryscreening'].join('/');
         view = new ListView({ options: {
           uriStack: _.clone(delegateStack),
-          schemaResult: lsResource.schema,
+          schemaResult: lsResource,
           resource: lsResource,
           url: url
         }});
@@ -587,7 +588,7 @@ define([
       });
       if (!view){
       
-          var summaryKeys = self.model.resource.schema.filterKeys('visibility', 'summary');
+          var summaryKeys = self.model.resource.filterKeys('visibility', 'summary');
           var summaryModel = appModel.getModel(
             self.model.resource.key, self.model.key, 
             function(model){
@@ -670,6 +671,9 @@ define([
           order_by: ['ordinal']
         },
         success: function(collection, response) {
+          if (!collection || collection.isEmpty()){
+            return;
+          }
           collection.each(function(dc){
             dc.set('total_positives', createPositiveStat(dc.get('positives_count')));
             dc.set('strong_positives', createPositiveStat(dc.get('strong_positives_count')));
@@ -745,7 +749,6 @@ define([
           cell.html(positives_grid.render().$el);
           $target_el.append(cell);
         }
-//        error: Iccbl.appModel.backboneFetchError, 
       }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
       
     },
@@ -755,7 +758,7 @@ define([
       var key = 'billing';
       var view = this.tabViews[key];
       if (!view){
-        var billingKeys = self.model.resource.schema.filterKeys('visibility', 'billing');
+        var billingKeys = self.model.resource.filterKeys('visibility', 'billing');
         var summaryModel = appModel.getModel(
           self.model.resource.key, self.model.key, 
           function(model){
@@ -827,7 +830,7 @@ define([
         colModel.sort();
         
         // create the collection by pivoting
-        orderedFields = _.sortBy(datacolumnResource.schema.fields,'ordinal');
+        orderedFields = _.sortBy(datacolumnResource.fields,'ordinal');
         var pivotCollection = new Backbone.Collection();
         _.each(orderedFields, function(field){
           if(_.contains(field.visibility, 'l') && field.key != 'name' ){

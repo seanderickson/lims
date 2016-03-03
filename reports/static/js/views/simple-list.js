@@ -19,7 +19,7 @@ define([
         var self = this;
         this.args = args;
         var resource = this.resource = args.resource;
-        var schema = this.schema = resource.schema;
+        var schema = this.schema = resource;
         var collection = this.collection = args.collection;
         var includes = args.includes || [];
         var orderStack = args.orderStack || [];

@@ -57,7 +57,7 @@ define([
 
       // TODO: deprecate these variables
       // use the REPORTS_API_URI, and DB_API_URI defined below
-      root_url: '/reports',  // used for the backbone history
+      root_url: '/lims',  // used for the backbone history
       api_root_url: '/reports/api/v1',
 
       path: '',
@@ -175,6 +175,35 @@ define([
       return options;
     },
 
+    getScreeningLibraryOptions: function(screen_type, callBack){
+      var self = this;
+      var prop = 'screeningLibraryOptions-'+screen_type;
+      var options = this.get(prop);
+      if(!options){
+        this.getLibraries(function(libraries){
+          options = [];
+          libraries.each(function(library){
+            if (_.contains(
+                ['not_allowed','retired','not_yet_plated'],
+                library.get('screening_status'))){
+              return;
+            }
+            if (library.get('screen_type') != screen_type){
+              return;
+            }
+            var short_name = library.get('short_name');
+            var library_name = library.get('library_name');
+            options.push({ val: short_name, label: library_name });
+          });
+          self.set(prop,options);
+          if (callBack) callBack(options);
+        });
+      }else{
+        if (callBack) callBack(options);
+      }
+      return options;
+    },
+
     /**
      * Generate a list of "options" suitable for use in a user multiselect.
      * [ { val: username, label: name:username }, ... ]
@@ -263,7 +292,10 @@ define([
     
     getLibraries: function(callback){
       data_for_get = { 
-        exact_fields: ['short_name','library_name','start_plate','end_plate','copies'], 
+        exact_fields: [
+           'short_name','library_name','start_plate','end_plate','copies',
+           'screening_copies',
+           'library_type','screening_status','screen_type'], 
         order_by: ['short_name']
       };
       return this.getCachedResourceCollection(
@@ -533,7 +565,7 @@ define([
         _.each(resourcesCollection,function(resource){
           resource.apiUri = '/' + resource.api_name + '/' + 
             self.apiVersion + '/' + resource.key;
-          resource.schema = _.extend(resource.schema, schemaClass);
+          resource = _.extend(resource, schemaClass);
         });
 
         // 1. Create a resource hash, keyed by the resource id key
@@ -542,11 +574,7 @@ define([
         var resources = {};
         _.each(resourcesCollection, function(resource){
           resources[resource.key] = resource;
-          if(! resource.schema ){
-            self.error('resource mis-configured: ' + resource.key + ', no schema');
-            return;
-          }
-          _.each(_.values(resource.schema.fields), self.parseSchemaField );
+          _.each(_.values(resource.fields), self.parseSchemaField );
           
           if (_.has(ui_resources, resource.key)) {
             ui_resources[resource.key] = _.extend(
@@ -604,7 +632,7 @@ define([
      * 
      */
     getSchema: function(resourceId) {
-      return this.getResource(resourceId).schema;
+      return this.getResource(resourceId);
     },
     
     createNewModel: function(resourceId, defaults) {
@@ -612,8 +640,8 @@ define([
       var self = this;
       var resource = self.getResource(resourceId);
       var defaults = defaults || {};
-      _.each(resource.schema.allEditVisibleKeys(), function(key){
-        var field = resource.schema.fields[key];
+      _.each(resource.allEditVisibleKeys(), function(key){
+        var field = resource.fields[key];
         if (key == 'resource_uri') {
           // TODO: not used
           defaults[key] = resource.apiUri; 
@@ -802,9 +830,11 @@ define([
           success : function(model) {
             console.log('resource schema model', model.toJSON());
             schema = model.toJSON();
-            ui_resource = _.extend({}, ui_resource, schema.resource_definition);
+            _.each(_.values(schema.fields), self.parseSchemaField );
+
+            ui_resource = _.extend({}, ui_resource, schema);
             var schemaClass = new SchemaClass();
-            ui_resource.schema = _.extend(schema, schemaClass);
+            ui_resource = _.extend(ui_resource, schemaClass);
             
             callback(ui_resource)
           }

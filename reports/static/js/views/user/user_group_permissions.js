@@ -89,7 +89,7 @@ define([
 //      console.log('showEdit...');
 //      var self = this;
 //
-//      self.model.resource.schema.fields['permissions']['choices'] = (
+//      self.model.resource.fields['permissions']['choices'] = (
 //          appModel.get('permissionOptions'));
 //
 //      var view = new EditView({ 
@@ -113,7 +113,7 @@ define([
         'buttons': _.chain(this.buttons),
         'title': Iccbl.getTitleFromTitleAttribute(
             this.model,
-            this.model.resource.schema),
+            this.model.resource),
       }      
     },    
   

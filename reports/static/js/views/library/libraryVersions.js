@@ -87,15 +87,15 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var uriStack = _.clone(this.uriStack);
       var view = new ListView({ options: {
         uriStack: uriStack,
-        schemaResult: resource.schema,
+        schemaResult: resource,
         resource: resource,
         url: url
       }});
       self.listenTo(view, 'detail', function(model) {
-        var key = Iccbl.getIdFromIdAttribute(model,resource.schema);
+        var key = Iccbl.getIdFromIdAttribute(model,resource);
         model.resource = resource;
         model.key = key;
-        var keysToReport = Iccbl.getIdKeys(model,resource.schema);
+        var keysToReport = Iccbl.getIdKeys(model,resource);
         if(keysToReport[0] = self.library.key){
           keysToReport.shift(); // get rid of the library key part
         }

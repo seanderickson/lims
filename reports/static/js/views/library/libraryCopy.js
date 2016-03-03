@@ -202,7 +202,7 @@ define([
                    'plate'].join('/');
         view = new ListView({ options: {
           uriStack: _.clone(delegateStack),
-          schemaResult: plateResource.schema,
+          schemaResult: plateResource,
           resource: plateResource,
           url: url
         }});

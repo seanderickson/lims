@@ -62,14 +62,14 @@ from db.support.data_converter import default_converter
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT
 from reports import ValidationError
-from reports.api import ManagedModelResource, ManagedResource, ApiLogResource, \
-    UserGroupAuthorization, ManagedLinkedResource, log_obj_update, \
+from reports.api import ApiLogResource, \
+    UserGroupAuthorization, \
     IccblBaseResource, VocabulariesResource, \
-    MetaHashResource, UserResource, compare_dicts, parse_val, ManagedSqlAlchemyResourceMixin, \
+    UserResource, compare_dicts, parse_val, \
     UserGroupResource, ApiLogResource, ApiResource, \
     write_authorization, read_authorization
 from reports.dump_obj import dumpObj
-from reports.models import MetaHash, Vocabularies, ApiLog, UserProfile, \
+from reports.models import Vocabularies, ApiLog, UserProfile, \
     API_ACTION_DELETE, API_ACTION_PUT
 from reports.serializers import CursorSerializer, LimsSerializer, XLSSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource, un_cache
@@ -765,8 +765,10 @@ class ScreenResultResource(ApiResource):
             base_query_tables = ['assay_well','screen']
             
             # force query to use well_query_index.well_id
-            custom_columns = { 'well_id': literal_column(
-                'well_query_index.well_id').label('well_id')}
+            custom_columns = { 
+                'well_id': 
+                    literal_column('well_query_index.well_id'),
+            }
             
             for fi in [fi for fi in field_hash.values() if fi.get('is_datacolumn',None)]:
                 custom_columns[fi['key']] = self._build_result_value_column(fi)
@@ -1020,7 +1022,7 @@ class ScreenResultResource(ApiResource):
         return (columnName,_dict)
 
 
-class DataColumnResource_sqlalchemy(ApiResource):
+class DataColumnResource(ApiResource):
 
     class Meta:
 
@@ -1032,7 +1034,6 @@ class DataColumnResource_sqlalchemy(ApiResource):
         ordering = []
         filtering = { 'screen': ALL_WITH_RELATIONS}
         serializer = LimsSerializer()
-        metahashResource = MetaHashResource()
 
     def __init__(self, **kwargs):
         super(DataColumnResource,self).__init__(**kwargs)
@@ -1067,7 +1068,8 @@ class DataColumnResource_sqlalchemy(ApiResource):
 
     @read_authorization
     def build_list_response(self,request, **kwargs):
-
+        
+        logger.info('build datacolumn2 response...')
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
@@ -1075,7 +1077,7 @@ class DataColumnResource_sqlalchemy(ApiResource):
         
         is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._get_filename(schema, kwargs)
-        
+
         try:
             # general setup
           
@@ -1094,13 +1096,89 @@ class DataColumnResource_sqlalchemy(ApiResource):
              
             rowproxy_generator = None
             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
- 
+                rowproxy_generator = \
+                    IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+            
+            def create_dc_generator(generator):
+                ''' 
+                Transform the DataColumn records into Resource.Fields for the UI
+                '''
+                class DataColumnRow:
+                    default_field_values = {
+                        'key': 'dc_%s_%s',
+                        'scope': 'datacolumn.screenresult-%s',
+                        'data_type': 'string',
+                        'display_options': None,
+                        'ordinal': 0,
+                        'visibility': ['l','d'],
+                        'filtering': True,
+                        'ordering': True,
+                        'is_datacolumn': True
+                    }
+                    data_type_lookup = {
+                        'partition_positive_indicator': {
+                            'vocabulary_scope_ref': 'resultvalue.partitioned_positive',
+                            'data_type': 'string',
+                            'edit_type': 'select'
+                            },
+                        'boolean_positive_indicator': {
+                            'data_type': 'boolean' 
+                            },
+                        'confirmed_positive_indicator': {
+                            'vocabulary_scope_ref': 'resultvalue.confirmed_positive_indicator',
+                            'data_type': 'string',
+                            'edit_type': 'select' 
+                            },
+                    }
+                    def __init__(self, row):
+                        self.row = row
+
+                        self.meta = {}
+                        self.meta.update(DataColumnRow.default_field_values)        
+
+                        dc_data_type = self.row['data_type']
+                        if dc_data_type == 'numeric':
+                            if self.row.has_key('decimal_places'):
+                                if self.row['decimal_places'] > 0:
+                                    self.meta['data_type'] = 'decimal'
+                                    self.meta['display_options'] = '{ "decimals": %s }' % self.row['decimal_places']
+                                else:
+                                    self.meta['data_type'] = 'integer'
+                        elif dc_data_type in DataColumnRow.data_type_lookup:
+                            self.meta.update(DataColumnRow.data_type_lookup[dc_data_type])
+
+                        self.meta['ordinal'] = len(field_hash) + self.row['ordinal']
+                        self.meta['key'] = ( self.meta['key'] 
+                            % ( default_converter(self.row['name']),
+                                self.row['screen_facility_id'] ) )
+                        self.meta['scope'] = ( self.meta['scope'] 
+                            % self.row['screen_facility_id'] )
+
+                    def has_key(self, key):
+                        return self.row.has_key(key) or key in self.meta
+                    
+                    def keys(self):
+                        return self.row.keys();
+                    def __getitem__(self, key):
+                        if key in self.meta:
+                            return self.meta[key]
+                        else:
+                            return self.row[key]
+
+                def datacolumn_fields_generator(cursor):
+                    if generator:
+                        cursor = generator(cursor)
+                    for row in cursor:
+                        yield DataColumnRow(row)
+                return datacolumn_fields_generator
+            
+            rowproxy_generator = create_dc_generator(rowproxy_generator)
             # specific setup 
             base_query_tables = [
                 'data_column', 'screen']
             
             custom_columns = {
+#                 'key': literal_column("'tbd'")
             }
             
             columns = self.build_sqlalchemy_columns(
@@ -1139,288 +1217,115 @@ class DataColumnResource_sqlalchemy(ApiResource):
             raise e  
 
 
-class DataColumnResource(ManagedModelResource):
-    '''
-    A DataColumn is the metadata for a single column in a Screen result set.
-    - extends the "Metahash Field" definition
-    - this metadata is stored in the datacolumn table, for historic reasons 
-    (DataColumns were defined for the ScreenResult design.)
-    
-    '''
-    
-    # included to allow querying like ?screen__facility_id=##
-    screen = fields.ToOneField('db.api.ScreenResource', 'screen_result__screen')  
-    screen_facility_id = fields.CharField('screen_result__screen__facility_id')
-    
-    class Meta:
-
-        queryset = DataColumn.objects.all() #.order_by('facility_id')
-        authentication = MultiAuthentication(
-            BasicAuthentication(), SessionAuthentication())
-        authorization= UserGroupAuthorization()
-        resource_name = 'datacolumn'
-        ordering = []
-        filtering = { 'screen': ALL_WITH_RELATIONS}
-        serializer = LimsSerializer()
-        metahashResource = MetaHashResource()
-
-    def __init__(self, **kwargs):
-        super(DataColumnResource,self).__init__(**kwargs)
-
-    def build_schema(self):
-
-        schema = ManagedModelResource.build_schema(self)
-        meta_field_schema = self._meta.metahashResource.build_schema()
-        
-        # mix in metahash field definitions: datacolum extends the metahash field
-        new_fields_schema = meta_field_schema['fields'].copy()
-        for fi in new_fields_schema.values():
-            # set all supertype visibility to detail - users will only want 
-            # datacolumn definitions
-            fi['visibility'] = ['d'] 
-        new_fields_schema.update(schema['fields'])
-        schema['fields'] = new_fields_schema
-        return schema
-    
-    def dehydrate(self, bundle):
-        # FIXME: use the same method here and in the ScreenResultResource
-        
-        # Custom dehydrate: each datacolumn extends a Metahash Field
-        # - augment each datacolumn with the Metahash field (supertype) fields
-        # - these fields are critical to UI interpretation
-
-        bundle =  ManagedModelResource.dehydrate(self, bundle)
-        
-        field_defaults = {
-            'visibility': ['l','d'],
-            'data_type': 'string',
-            'filtering': True,
-            }
-        data_type_lookup = {
-            'partition_positive_indicator': {
-                'vocabulary_scope_ref': 'resultvalue.partitioned_positive',
-                'data_type': 'string',
-                'edit_type': 'select'
-                },
-            'boolean_positive_indicator': {
-                'data_type': 'boolean' 
-                },
-            'confirmed_positive_indicator': {
-                'vocabulary_scope_ref': 'resultvalue.confirmed_positive_indicator',
-                'data_type': 'string',
-                'edit_type': 'select' 
-                },
-        }
-        
-        dc = bundle.obj
-        _dict = bundle.data
-        _dict.update(field_defaults)
-        columnName = "dc_%s" % (default_converter(dc.name))
-        
-        _dict['title'] = dc.name
-        _dict['comment'] = dc.comments
-        _dict['key'] = columnName
-        # so that the value columns come last
-        _dict['ordinal'] += len(self.fields) + dc.ordinal 
-        
-        if dc.data_type == 'numeric':
-            if _dict.get('decimal_places', 0) > 0:
-                _dict['data_type'] = 'decimal'
-                _dict['backgrid_cell_type'] = 'Iccbl.DecimalCell'
-                _dict['display_options'] = \
-                    '{ "decimals": %s }' % _dict['decimal_places']
-            else:
-                _dict['data_type'] = 'integer'
-        if dc.data_type in data_type_lookup:
-            _dict.update(data_type_lookup[dc.data_type])
-            
-        return bundle
-       
-    def prepend_urls(self):
-
-        return [
-            url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('get_schema'), name="api_get_schema"),
-            url((r"^(?P<resource_name>%s)/"
-                 r"(?P<data_column_id>\d+)%s$") 
-                    % (self._meta.resource_name, trailing_slash()), 
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-        ]    
-    
-
-# # Deprecate - use apilog viewer
-# class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
-# 
-#     class Meta:
+# class DataColumnResource_old(ManagedModelResource):
+#     '''
+#     A DataColumn is the metadata for a single column in a Screen result set.
+#     - extends the "Metahash Field" definition
+#     - this metadata is stored in the datacolumn table, for historic reasons 
+#     (DataColumns were defined for the ScreenResult design.)
 #     
-#         queryset = CopyWell.objects.all().order_by('well_id')
-#         authentication = MultiAuthentication(BasicAuthentication(), 
-#                                              SessionAuthentication())
-#         authorization= UserGroupAuthorization()
-#         resource_name = 'copywellhistory'
-#         ordering = []
-#         filtering = {}
-#         serializer = LimsSerializer()
-#         always_return_data = True 
-#         
-#     def __init__(self, **kwargs):
-#         super(CopyWellHistoryResource,self).__init__(**kwargs)
+#     '''
+#     
+#     # included to allow querying like ?screen__facility_id=##
+#     screen = fields.ToOneField('db.api.ScreenResource', 'screen_result__screen')  
+#     screen_facility_id = fields.CharField('screen_result__screen__facility_id')
+#     
+#     class Meta:
 # 
-#     def prepend_urls(self):
+#         queryset = DataColumn.objects.all() #.order_by('facility_id')
+#         authentication = MultiAuthentication(
+#             BasicAuthentication(), SessionAuthentication())
+#         authorization= UserGroupAuthorization()
+#         resource_name = 'datacolumn'
+#         ordering = []
+#         filtering = { 'screen': ALL_WITH_RELATIONS}
+#         serializer = LimsSerializer()
+#         metahashResource = MetaHashResource()
+# 
+#     def __init__(self, **kwargs):
+#         super(DataColumnResource,self).__init__(**kwargs)
+# 
+#     def build_schema(self):
+# 
+#         schema = ManagedModelResource.build_schema(self)
+#         meta_field_schema = self._meta.metahashResource.build_schema()
 #         
+#         # mix in metahash field definitions: datacolum extends the metahash field
+#         new_fields_schema = meta_field_schema['fields'].copy()
+#         for fi in new_fields_schema.values():
+#             # set all supertype visibility to detail - users will only want 
+#             # datacolumn definitions
+#             fi['visibility'] = ['d'] 
+#         new_fields_schema.update(schema['fields'])
+#         schema['fields'] = new_fields_schema
+#         return schema
+#     
+#     def dehydrate(self, bundle):
+#         # FIXME: use the same method here and in the ScreenResultResource
+#         
+#         # Custom dehydrate: each datacolumn extends a Metahash Field
+#         # - augment each datacolumn with the Metahash field (supertype) fields
+#         # - these fields are critical to UI interpretation
+# 
+#         bundle =  ManagedModelResource.dehydrate(self, bundle)
+#         
+#         field_defaults = {
+#             'visibility': ['l','d'],
+#             'data_type': 'string',
+#             'filtering': True,
+#             }
+#         data_type_lookup = {
+#             'partition_positive_indicator': {
+#                 'vocabulary_scope_ref': 'resultvalue.partitioned_positive',
+#                 'data_type': 'string',
+#                 'edit_type': 'select'
+#                 },
+#             'boolean_positive_indicator': {
+#                 'data_type': 'boolean' 
+#                 },
+#             'confirmed_positive_indicator': {
+#                 'vocabulary_scope_ref': 'resultvalue.confirmed_positive_indicator',
+#                 'data_type': 'string',
+#                 'edit_type': 'select' 
+#                 },
+#         }
+#         
+#         dc = bundle.obj
+#         _dict = bundle.data
+#         _dict.update(field_defaults)
+#         columnName = "dc_%s" % (default_converter(dc.name))
+#         
+#         _dict['title'] = dc.name
+#         _dict['comment'] = dc.comments
+#         _dict['key'] = columnName
+#         # so that the value columns come last
+#         _dict['ordinal'] += len(self.fields) + dc.ordinal 
+#         
+#         if dc.data_type == 'numeric':
+#             if _dict.get('decimal_places', 0) > 0:
+#                 _dict['data_type'] = 'decimal'
+#                 _dict['backgrid_cell_type'] = 'Iccbl.DecimalCell'
+#                 _dict['display_options'] = \
+#                     '{ "decimals": %s }' % _dict['decimal_places']
+#             else:
+#                 _dict['data_type'] = 'integer'
+#         if dc.data_type in data_type_lookup:
+#             _dict.update(data_type_lookup[dc.data_type])
+#             
+#         return bundle
+#        
+#     def prepend_urls(self):
+# 
 #         return [
 #             url(r"^(?P<resource_name>%s)/schema%s$" 
 #                 % (self._meta.resource_name, trailing_slash()), 
 #                 self.wrap_view('get_schema'), name="api_get_schema"),
-#             url(r"^(?P<resource_name>%s)/search/(?P<search_ID>[\d]+)%s$" 
-#                 % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('search'), name="api_search"),
-#             url(r"^(?P<resource_name>%s)"
-#                 r"/(?P<copy_name>[\w\d_.\-\+ ]+)" 
-#                 r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$" 
+#             url((r"^(?P<resource_name>%s)/"
+#                  r"(?P<data_column_id>\d+)%s$") 
 #                     % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-#             url(r"^(?P<resource_name>%s)"
-#                 r"/(?P<copy_name>[\w\d_.\-\+: ]+)%s$" 
-#                     % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-#         ]
-# 
-#     def get_detail(self, request, **kwargs):
-# 
-#         copy_name = kwargs.get('copy_name', None)
-#         if not copy_name:
-#             logger.info(str(('no copy_name provided')))
-#             raise NotImplementedError('must provide a copy_name parameter')
-#         
-#         well_id = kwargs.get('well_id', None)
-#         if not well_id:
-#             logger.info(str(('no well_id provided')))
-#             raise NotImplementedError('must provide a well_id parameter')
-# 
-#         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
-#         kwargs['is_for_detail']=True
-#         return self.build_list_response(request, **kwargs)
-#         
-#     @read_authorization
-#     def get_list(self,request,**kwargs):
-# 
-#         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-#         return self.build_list_response(request, **kwargs)
-# 
-#     @read_authorization
-#     def build_list_response(self,request, **kwargs):
-# 
-#         param_hash = {}
-#         param_hash.update(kwargs)
-#         param_hash.update(self._convert_request_to_dict(request))
-#         schema = super(CopyWellHistoryResource,self).build_schema()
-#         
-#         is_for_detail = kwargs.pop('is_for_detail', False)
-#         filename = self._get_filename(schema, kwargs)
-#         well_id = param_hash.pop('well_id', None)
-#         if well_id:
-#             param_hash['well_id__eq'] = well_id
-#         copy_name = param_hash.pop('copy_name', None)
-#         if copy_name:
-#             param_hash['copy_name__eq'] = copy_name
-# 
-#         try:
-#             
-#             # general setup
-#           
-#             manual_field_includes = set(param_hash.get('includes', []))
-#   
-#             (filter_expression, filter_fields) = \
-#                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
-# 
-#             if filter_expression is None:
-#                 msgs = { 'Copy well resource': 'can only service requests with filter expressions' }
-#                 logger.info(str((msgs)))
-#                 raise ImmediateHttpResponse(response=self.error_response(request,msgs))
-#                                   
-#             field_hash = self.get_visible_fields(
-#                 schema['fields'], filter_fields, manual_field_includes, 
-#                 param_hash.get('visibilities'), 
-#                 exact_fields=set(param_hash.get('exact_fields',[])))
-#               
-#             order_params = param_hash.get('order_by',[])
-#             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
-#              
-#             rowproxy_generator = None
-#             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-#                 rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
-#  
-#             # specific setup 
-#             base_query_tables = [
-#                 'copy_well', 'copy', 'plate', 'well','library',
-#                 'well_volume_adjustment','activity']
-#             
-#             # NOTE: date_time is included here as an exercise:
-#             # why db table structure needs to be redone
-#             custom_columns = {
-#                 'consumed_volume': literal_column(
-#                     'initial_volume-copy_well.volume').label('consumed_volume'),
-#                 'date_time': literal_column('\n'.join([
-#                     'case when wva.well_volume_correction_activity_id is not null then (', 
-#                     'select a1.date_created from activity a1', 
-#                     'where a1.activity_id = wva.well_volume_correction_activity_id )',  
-#                     'else ( select a2.date_created from activity a2', 
-#                     'join cherry_pick_assay_plate cpap on(cpap.cherry_pick_liquid_transfer_id=a2.activity_id)',
-#                     'join lab_cherry_pick lcp on(lcp.cherry_pick_assay_plate_id=cpap.cherry_pick_assay_plate_id)',
-#                     'where lcp.lab_cherry_pick_id = wva.lab_cherry_pick_id ) ',
-#                     'end',
-#                     ])).label('date_time'),
-#             }
-#             
-#             columns = self.build_sqlalchemy_columns(
-#                 field_hash.values(), base_query_tables=base_query_tables,
-#                 custom_columns=custom_columns )
-# 
-#             # build the query statement
-# 
-#             _cw = self.bridge['copy_well']
-#             _c = self.bridge['copy']
-#             _l = self.bridge['library']
-#             _p = self.bridge['plate']
-#             _w = self.bridge['well']
-#             _wva = self.bridge['well_volume_adjustment']
-#             _a = self.bridge['activity']
-#             
-#             _wva = _wva.alias('wva')
-#             j = join(_cw, _c, _c.c.copy_id == _cw.c.copy_id )
-#             j = j.join(_p, _cw.c.plate_id == _p.c.plate_id )
-#             j = j.join(_w, _cw.c.well_id == _w.c.well_id )
-#             j = j.join(_l, _w.c.library_id == _l.c.library_id )
-#             j = j.join(_wva,onclause=(and_(
-#                 _cw.c.copy_id == _wva.c.copy_id,_cw.c.well_id == _wva.c.well_id)),
-#                 isouter=True)
-#             j = j.join(_a, _wva.c.well_volume_correction_activity_id 
-#                 == _a.c.activity_id, isouter=True )
-#             stmt = select(columns.values()).select_from(j)
-# 
-#             # general setup
-#              
-#             (stmt,count_stmt) = self.wrap_statement(
-#                 stmt,order_clauses,filter_expression )
-#             
-#             title_function = None
-#             if param_hash.get(HTTP_PARAM_USE_TITLES, False):
-#                 title_function = lambda key: field_hash[key]['title']
-#             
-#             return self.stream_response_from_statement(
-#                 request, stmt, count_stmt, filename, 
-#                 field_hash=field_hash, 
-#                 param_hash=param_hash,
-#                 is_for_detail=is_for_detail,
-#                 rowproxy_generator=rowproxy_generator,
-#                 title_function=title_function  )
-#              
-#         except Exception, e:
-#             logger.exception('on get list')
-#             raise e  
-   
+#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+#         ]    
+    
 
 class CopyWellResource(ApiResource):
     
@@ -1536,7 +1441,8 @@ class CopyWellResource(ApiResource):
              
             rowproxy_generator = None
             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+                rowproxy_generator = \
+                    IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
             base_query_tables = ['copy_well', 'copy', 'plate', 'well','library']
@@ -1670,7 +1576,8 @@ class CherryPickRequestResource(ApiResource):
              
             rowproxy_generator = None
             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+                rowproxy_generator = \
+                    IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
             base_query_tables = ['cherry_pick_request','screen']
@@ -1897,7 +1804,8 @@ class CherryPickPlateResource(ApiResource):
              
             rowproxy_generator = None
             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-                rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+                rowproxy_generator = \
+                    IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
             base_query_tables = [
@@ -4004,7 +3912,7 @@ class ScreenResource(ApiResource):
         return ActivityResource().dispatch('list', request, **kwargs)    
     
     def dispatch_screen_datacolumnview(self, request, **kwargs):
-        kwargs['screen_facility_id'] = kwargs.pop('facility_id')
+        kwargs['screen_facility_id__eq'] = kwargs.pop('facility_id')
         return DataColumnResource().dispatch('list', request, **kwargs)    
         
     def dispatch_screen_cherrypickview(self, request, **kwargs):
@@ -4637,7 +4545,6 @@ class UserChecklistItemResource(ApiResource):
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
         
-    @read_authorization
     def get_list(self,request,**kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
@@ -4820,7 +4727,7 @@ class UserChecklistItemResource(ApiResource):
             initializer_dict['admin_user_id'] = admin_user.pk
         except ObjectDoesNotExist:
             logger.exception('admin_user/username does not exist: %s' % admin_username)
-            raise
+            raise Exception('admin_user/username does not exist: %s' % admin_username)
 
         try:
             try:
@@ -5369,7 +5276,7 @@ class NaturalProductReagentResource(ApiResource):
                 setattr(reagent,key,val)
         reagent.save()
 
-        logger.info('patched natural product reagent')
+        logger.debug('patched natural product reagent: %r', self.get_id(model_to_dict(reagent)))
         
         return reagent        
 
@@ -5629,39 +5536,39 @@ class SilencingReagentResource(ApiResource):
         
         return gene
     
-    def dehydrate_old(self, bundle):
-        
-        bundle = super(SilencingReagentResource, self).dehydrate(bundle)
-        
-        if bundle.obj and hasattr(bundle.obj,'silencingreagent'):
-            if bundle.obj.silencingreagent.vendor_gene:
-                gene = bundle.obj.silencingreagent.vendor_gene
-                type = 'vendor'
-                self._dehydrate_gene(gene, type, bundle)
-            
-            if bundle.obj.silencingreagent.facility_gene:
-                gene = bundle.obj.silencingreagent.facility_gene
-                type = 'facility'
-                self._dehydrate_gene(gene, type, bundle)
-            
-            if bundle.obj.silencingreagent.duplex_wells.exists():
-                bundle.data['duplex_wells'] = ';'.join(
-                    [x.well_id for x in bundle.obj.silencingreagent.duplex_wells.all().order_by('well_id') ])
-        return bundle
-        
-    def _dehydrate_gene_old(self, gene, type, bundle):
-        
-        gene_keys = ['entrezgene_id', 'gene_name', 'species_name']
-        for key in gene_keys:
-            bundle.data['%s_%s' %(type,key)] = getattr(gene, key)
-        _key = 'entrezgene_symbols'
-        if gene.genesymbol_set.exists():
-            bundle.data['%s_%s'%(type,_key)] = ';'.join(
-                [x.entrezgene_symbol for x in gene.genesymbol_set.all().order_by('ordinal')])
-        _key = 'genbank_accession_numbers'
-        if gene.genegenbankaccessionnumber_set.exists():
-            bundle.data['%s_%s'%(type,_key)] = ';'.join(
-                [x.genbank_accession_number for x in gene.genegenbankaccessionnumber_set.all()])
+#     def dehydrate_old(self, bundle):
+#         
+#         bundle = super(SilencingReagentResource, self).dehydrate(bundle)
+#         
+#         if bundle.obj and hasattr(bundle.obj,'silencingreagent'):
+#             if bundle.obj.silencingreagent.vendor_gene:
+#                 gene = bundle.obj.silencingreagent.vendor_gene
+#                 type = 'vendor'
+#                 self._dehydrate_gene(gene, type, bundle)
+#             
+#             if bundle.obj.silencingreagent.facility_gene:
+#                 gene = bundle.obj.silencingreagent.facility_gene
+#                 type = 'facility'
+#                 self._dehydrate_gene(gene, type, bundle)
+#             
+#             if bundle.obj.silencingreagent.duplex_wells.exists():
+#                 bundle.data['duplex_wells'] = ';'.join(
+#                     [x.well_id for x in bundle.obj.silencingreagent.duplex_wells.all().order_by('well_id') ])
+#         return bundle
+#         
+#     def _dehydrate_gene_old(self, gene, type, bundle):
+#         
+#         gene_keys = ['entrezgene_id', 'gene_name', 'species_name']
+#         for key in gene_keys:
+#             bundle.data['%s_%s' %(type,key)] = getattr(gene, key)
+#         _key = 'entrezgene_symbols'
+#         if gene.genesymbol_set.exists():
+#             bundle.data['%s_%s'%(type,_key)] = ';'.join(
+#                 [x.entrezgene_symbol for x in gene.genesymbol_set.all().order_by('ordinal')])
+#         _key = 'genbank_accession_numbers'
+#         if gene.genegenbankaccessionnumber_set.exists():
+#             bundle.data['%s_%s'%(type,_key)] = ';'.join(
+#                 [x.genbank_accession_number for x in gene.genegenbankaccessionnumber_set.all()])
         
 
 class SmallMoleculeReagentResource(ApiResource):
@@ -6347,15 +6254,12 @@ class WellResource(ApiResource):
             library_log.diffs = {
                 'version_number': [prev_version, library.version_number]}
             library_log.ref_resource_name = 'library'
-            library_log.uri = self.get_library_resource().get_resource_uri(library)
+            library_log.uri = self.get_library_resource().get_resource_uri(
+                model_to_dict(library))
             library_log.key = '/'.join(
-                [str(x) for x in self.get_library_resource().detail_uri_kwargs(library).values()])
+                self.get_library_resource().get_id(model_to_dict(library)).values())
             library_log.save()
     
-    #         # cache the schema
-    #         schema = self.build_schema(library=library)
-    #         kwargs['schema'] = schema 
-            
             # Cache all the wells on the library for use with this process 
             wellMap = dict( (well.well_id, well) for well in library.well_set.all())
             if len(wellMap)==0:
@@ -6489,144 +6393,144 @@ class WellResource(ApiResource):
     
     
     
-    # REWORK, follow ApiLogResource, also, remove transaction.atomic 20150831
-    @write_authorization
-    @un_cache        
-    @transaction.atomic()
-    def put_list_old(self, request, **kwargs):
-        
-        if 'library_short_name' not in kwargs:
-            raise BadRequest('library_short_name is required')
-        
-        deserialized = self.deserialize(request,request.body)
-        if not self._meta.collection_name in deserialized:
-            raise BadRequest(str(("Invalid data sent. missing: " , self._meta.collection_name)))
-        
-        basic_bundle = self.build_bundle(request=request)
- 
-        library = Library.objects.get(short_name=kwargs['library_short_name'])
-        logger.info('put_list: WellResource: library: %r...', library.short_name)
-
-        prev_version = library.version_number
-        if library.version_number:
-            library.version_number += 1
-        else:
-            library.version_number = 1
-        library.save()
-        
-        library_log = self.make_log(request)
-        library_log.diff_keys = ['version_number']
-        library_log.diffs = {
-            'version_number': [prev_version, library.version_number]}
-        library_log.ref_resource_name = 'library'
-        library_log.uri = self.get_library_resource().get_resource_uri(library)
-        library_log.key = '/'.join(
-            [str(x) for x in self.get_library_resource().detail_uri_kwargs(library).values()])
-        library_log.save()
-        
-        # Cache all the wells on the library for use with this process 
-        wellMap = dict( (well.well_id, well) for well in library.well_set.all())
-        if len(wellMap)==0:
-            raise BadRequest(str(('library has not been created, no wells', library)))
-        
-        i=0
-        bundles_seen = []
-        skip_errors=False
-        for well_data in deserialized[self._meta.collection_name]:
-            
-            well_data['library_short_name']=kwargs['library_short_name']
-            
-            logger.debug(str(('well_data', well_data)))
-            well_id = well_data.get('well_id', None)
-            if not well_id:
-                well_name = well_data.get('well_name', None)
-                plate_number = well_data.get('plate_number',None)
-                if well_name and plate_number:                
-                    well_id = '%s:%s' %(str(plate_number).zfill(5), well_name)
-
-            if not well_id:
-                raise ImmediateHttpResponse(
-                    response=self.error_response(request, {'well_id': 'required'}))
-            
-            well = wellMap.get(well_id, None)
-            if not well:
-                raise ImmediateHttpResponse(
-                    response=self.error_response(request, {
-                        'well_id': str(('well not found for this library', well_id))}))
-                
-            well_bundle = self.build_bundle(
-                obj=well, data=well_data, request=request);
-            
-            kwargs.update({ 'library': library })
-            kwargs.update({ 'parent_log': library_log })
-            well_bundle = self.obj_update(well_bundle, **kwargs)
-                
-            i = i+1
-            bundles_seen.append(well_bundle)
-        
-        logger.debug(str(('put reagents', i, library_log)))
-        
-        if not self._meta.always_return_data:
-            return http.HttpNoContent()
-        else:
-            to_be_serialized = {}
-            to_be_serialized[self._meta.collection_name] = [
-                self.full_dehydrate(bundle, for_list=True) for bundle in bundles_seen]
-            to_be_serialized = self.alter_list_data_to_serialize(request, to_be_serialized)
-            return self.create_response(request, to_be_serialized)
-
-    @log_obj_update      
-    @transaction.atomic()
-    def obj_update_old(self, well_bundle, **kwargs):
-        # called only from local put_list  
-            
-        library = kwargs.pop('library')
-        well_data = well_bundle.data
-        
-        well_bundle = self.full_hydrate(well_bundle)
-        self.is_valid(well_bundle)
-        if well_bundle.errors and not skip_errors:
-            raise ImmediateHttpResponse(response=self.error_response(
-                well_bundle.request, well_bundle.errors))
-        well_bundle.obj.save()
-        
-        duplex_wells = []
-        if well_data.get('duplex_wells', None):
-            if not library.is_pool:
-                raise ImmediateHttpResponse(
-                    response=self.error_response(request, {
-                        'duplex_wells': str(('library is not a pool libary', library))}))
-            well_ids = well_data['duplex_wells'] #.split(';')
-            for well_id in well_ids:
-                try:
-                    duplex_wells.append(Well.objects.get(well_id=well_id))
-                except:
-                    raise ImmediateHttpResponse(
-                        response=self.error_response(well_bundle.request, {
-                            'duplex_well not found': str(('pool well', well_bundle.obj, well_id))}))
-                    
-        # lookup/create the reagent
-        sub_resource = self.get_reagent_resource(library=library)
-        
-        reagent_bundle = sub_resource.build_bundle(
-            data=well_data, request=well_bundle.request)
-        if not well_bundle.obj.reagent_set.exists():
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(str(('==== creating reagent for ', well_bundle.obj)) )
-            sub_resource.obj_create(
-                reagent_bundle, 
-                **{ 'well': well_bundle.obj, 'library': library, 'duplex_wells': duplex_wells })
-        else:
-            # NOTE: this only works if there is only one reagent in the well:
-            # TODO: implement update for specific reagent through ReagentResource
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(str(('==== updating *first* reagent for ', well_bundle.obj)) )
-            # lookup and update the reagent
-            reagent_bundle.obj = well_bundle.obj.reagent_set.all()[0]
-            sub_resource.obj_update(reagent_bundle)
-            logger.debug(str(('updated reagent', reagent_bundle.obj)))
-        
-        return well_bundle
+#     # REWORK, follow ApiLogResource, also, remove transaction.atomic 20150831
+#     @write_authorization
+#     @un_cache        
+#     @transaction.atomic()
+#     def put_list_old(self, request, **kwargs):
+#         
+#         if 'library_short_name' not in kwargs:
+#             raise BadRequest('library_short_name is required')
+#         
+#         deserialized = self.deserialize(request,request.body)
+#         if not self._meta.collection_name in deserialized:
+#             raise BadRequest(str(("Invalid data sent. missing: " , self._meta.collection_name)))
+#         
+#         basic_bundle = self.build_bundle(request=request)
+#  
+#         library = Library.objects.get(short_name=kwargs['library_short_name'])
+#         logger.info('put_list: WellResource: library: %r...', library.short_name)
+# 
+#         prev_version = library.version_number
+#         if library.version_number:
+#             library.version_number += 1
+#         else:
+#             library.version_number = 1
+#         library.save()
+#         
+#         library_log = self.make_log(request)
+#         library_log.diff_keys = ['version_number']
+#         library_log.diffs = {
+#             'version_number': [prev_version, library.version_number]}
+#         library_log.ref_resource_name = 'library'
+#         library_log.uri = self.get_library_resource().get_resource_uri(library)
+#         library_log.key = '/'.join(
+#             [str(x) for x in self.get_library_resource().detail_uri_kwargs(library).values()])
+#         library_log.save()
+#         
+#         # Cache all the wells on the library for use with this process 
+#         wellMap = dict( (well.well_id, well) for well in library.well_set.all())
+#         if len(wellMap)==0:
+#             raise BadRequest(str(('library has not been created, no wells', library)))
+#         
+#         i=0
+#         bundles_seen = []
+#         skip_errors=False
+#         for well_data in deserialized[self._meta.collection_name]:
+#             
+#             well_data['library_short_name']=kwargs['library_short_name']
+#             
+#             logger.debug(str(('well_data', well_data)))
+#             well_id = well_data.get('well_id', None)
+#             if not well_id:
+#                 well_name = well_data.get('well_name', None)
+#                 plate_number = well_data.get('plate_number',None)
+#                 if well_name and plate_number:                
+#                     well_id = '%s:%s' %(str(plate_number).zfill(5), well_name)
+# 
+#             if not well_id:
+#                 raise ImmediateHttpResponse(
+#                     response=self.error_response(request, {'well_id': 'required'}))
+#             
+#             well = wellMap.get(well_id, None)
+#             if not well:
+#                 raise ImmediateHttpResponse(
+#                     response=self.error_response(request, {
+#                         'well_id': str(('well not found for this library', well_id))}))
+#                 
+#             well_bundle = self.build_bundle(
+#                 obj=well, data=well_data, request=request);
+#             
+#             kwargs.update({ 'library': library })
+#             kwargs.update({ 'parent_log': library_log })
+#             well_bundle = self.obj_update(well_bundle, **kwargs)
+#                 
+#             i = i+1
+#             bundles_seen.append(well_bundle)
+#         
+#         logger.debug(str(('put reagents', i, library_log)))
+#         
+#         if not self._meta.always_return_data:
+#             return http.HttpNoContent()
+#         else:
+#             to_be_serialized = {}
+#             to_be_serialized[self._meta.collection_name] = [
+#                 self.full_dehydrate(bundle, for_list=True) for bundle in bundles_seen]
+#             to_be_serialized = self.alter_list_data_to_serialize(request, to_be_serialized)
+#             return self.create_response(request, to_be_serialized)
+# 
+#     @log_obj_update      
+#     @transaction.atomic()
+#     def obj_update_old(self, well_bundle, **kwargs):
+#         # called only from local put_list  
+#             
+#         library = kwargs.pop('library')
+#         well_data = well_bundle.data
+#         
+#         well_bundle = self.full_hydrate(well_bundle)
+#         self.is_valid(well_bundle)
+#         if well_bundle.errors and not skip_errors:
+#             raise ImmediateHttpResponse(response=self.error_response(
+#                 well_bundle.request, well_bundle.errors))
+#         well_bundle.obj.save()
+#         
+#         duplex_wells = []
+#         if well_data.get('duplex_wells', None):
+#             if not library.is_pool:
+#                 raise ImmediateHttpResponse(
+#                     response=self.error_response(request, {
+#                         'duplex_wells': str(('library is not a pool libary', library))}))
+#             well_ids = well_data['duplex_wells'] #.split(';')
+#             for well_id in well_ids:
+#                 try:
+#                     duplex_wells.append(Well.objects.get(well_id=well_id))
+#                 except:
+#                     raise ImmediateHttpResponse(
+#                         response=self.error_response(well_bundle.request, {
+#                             'duplex_well not found': str(('pool well', well_bundle.obj, well_id))}))
+#                     
+#         # lookup/create the reagent
+#         sub_resource = self.get_reagent_resource(library=library)
+#         
+#         reagent_bundle = sub_resource.build_bundle(
+#             data=well_data, request=well_bundle.request)
+#         if not well_bundle.obj.reagent_set.exists():
+#             if logger.isEnabledFor(logging.DEBUG):
+#                 logger.debug(str(('==== creating reagent for ', well_bundle.obj)) )
+#             sub_resource.obj_create(
+#                 reagent_bundle, 
+#                 **{ 'well': well_bundle.obj, 'library': library, 'duplex_wells': duplex_wells })
+#         else:
+#             # NOTE: this only works if there is only one reagent in the well:
+#             # TODO: implement update for specific reagent through ReagentResource
+#             if logger.isEnabledFor(logging.DEBUG):
+#                 logger.debug(str(('==== updating *first* reagent for ', well_bundle.obj)) )
+#             # lookup and update the reagent
+#             reagent_bundle.obj = well_bundle.obj.reagent_set.all()[0]
+#             sub_resource.obj_update(reagent_bundle)
+#             logger.debug(str(('updated reagent', reagent_bundle.obj)))
+#         
+#         return well_bundle
 
 
 class LibraryResource(ApiResource):
@@ -6930,8 +6834,8 @@ class LibraryResource(ApiResource):
         logger.info(str(('dispatch_library_reagentview ', kwargs)))
         kwargs['library_short_name'] = kwargs.pop('short_name')
         return self.get_reagent_resource().dispatch('list', request, **kwargs)    
-                    
-    def build_schema(self, librarytype=None):
+       
+    def build_schema(self):
 
         schema = cache.get(self._meta.resource_name + ":schema")
         if not schema:
@@ -7101,3 +7005,176 @@ class LibraryResource(ApiResource):
 #                 return True
 #         return super(BasicAuthenticationAjaxBrowsers, self).is_authenticated(request, **kwargs)
 
+
+# # Deprecate - use apilog viewer
+# class CopyWellHistoryResource(SqlAlchemyResource, ManagedModelResource):
+# 
+#     class Meta:
+#     
+#         queryset = CopyWell.objects.all().order_by('well_id')
+#         authentication = MultiAuthentication(BasicAuthentication(), 
+#                                              SessionAuthentication())
+#         authorization= UserGroupAuthorization()
+#         resource_name = 'copywellhistory'
+#         ordering = []
+#         filtering = {}
+#         serializer = LimsSerializer()
+#         always_return_data = True 
+#         
+#     def __init__(self, **kwargs):
+#         super(CopyWellHistoryResource,self).__init__(**kwargs)
+# 
+#     def prepend_urls(self):
+#         
+#         return [
+#             url(r"^(?P<resource_name>%s)/schema%s$" 
+#                 % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('get_schema'), name="api_get_schema"),
+#             url(r"^(?P<resource_name>%s)/search/(?P<search_ID>[\d]+)%s$" 
+#                 % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('search'), name="api_search"),
+#             url(r"^(?P<resource_name>%s)"
+#                 r"/(?P<copy_name>[\w\d_.\-\+ ]+)" 
+#                 r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$" 
+#                     % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+#             url(r"^(?P<resource_name>%s)"
+#                 r"/(?P<copy_name>[\w\d_.\-\+: ]+)%s$" 
+#                     % (self._meta.resource_name, trailing_slash()), 
+#                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+#         ]
+# 
+#     def get_detail(self, request, **kwargs):
+# 
+#         copy_name = kwargs.get('copy_name', None)
+#         if not copy_name:
+#             logger.info(str(('no copy_name provided')))
+#             raise NotImplementedError('must provide a copy_name parameter')
+#         
+#         well_id = kwargs.get('well_id', None)
+#         if not well_id:
+#             logger.info(str(('no well_id provided')))
+#             raise NotImplementedError('must provide a well_id parameter')
+# 
+#         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+#         kwargs['is_for_detail']=True
+#         return self.build_list_response(request, **kwargs)
+#         
+#     @read_authorization
+#     def get_list(self,request,**kwargs):
+# 
+#         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+#         return self.build_list_response(request, **kwargs)
+# 
+#     @read_authorization
+#     def build_list_response(self,request, **kwargs):
+# 
+#         param_hash = {}
+#         param_hash.update(kwargs)
+#         param_hash.update(self._convert_request_to_dict(request))
+#         schema = super(CopyWellHistoryResource,self).build_schema()
+#         
+#         is_for_detail = kwargs.pop('is_for_detail', False)
+#         filename = self._get_filename(schema, kwargs)
+#         well_id = param_hash.pop('well_id', None)
+#         if well_id:
+#             param_hash['well_id__eq'] = well_id
+#         copy_name = param_hash.pop('copy_name', None)
+#         if copy_name:
+#             param_hash['copy_name__eq'] = copy_name
+# 
+#         try:
+#             
+#             # general setup
+#           
+#             manual_field_includes = set(param_hash.get('includes', []))
+#   
+#             (filter_expression, filter_fields) = \
+#                 SqlAlchemyResource.build_sqlalchemy_filters(schema, param_hash=param_hash)
+# 
+#             if filter_expression is None:
+#                 msgs = { 'Copy well resource': 'can only service requests with filter expressions' }
+#                 logger.info(str((msgs)))
+#                 raise ImmediateHttpResponse(response=self.error_response(request,msgs))
+#                                   
+#             field_hash = self.get_visible_fields(
+#                 schema['fields'], filter_fields, manual_field_includes, 
+#                 param_hash.get('visibilities'), 
+#                 exact_fields=set(param_hash.get('exact_fields',[])))
+#               
+#             order_params = param_hash.get('order_by',[])
+#             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(order_params, field_hash)
+#              
+#             rowproxy_generator = None
+#             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
+#                 rowproxy_generator = IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+#  
+#             # specific setup 
+#             base_query_tables = [
+#                 'copy_well', 'copy', 'plate', 'well','library',
+#                 'well_volume_adjustment','activity']
+#             
+#             # NOTE: date_time is included here as an exercise:
+#             # why db table structure needs to be redone
+#             custom_columns = {
+#                 'consumed_volume': literal_column(
+#                     'initial_volume-copy_well.volume').label('consumed_volume'),
+#                 'date_time': literal_column('\n'.join([
+#                     'case when wva.well_volume_correction_activity_id is not null then (', 
+#                     'select a1.date_created from activity a1', 
+#                     'where a1.activity_id = wva.well_volume_correction_activity_id )',  
+#                     'else ( select a2.date_created from activity a2', 
+#                     'join cherry_pick_assay_plate cpap on(cpap.cherry_pick_liquid_transfer_id=a2.activity_id)',
+#                     'join lab_cherry_pick lcp on(lcp.cherry_pick_assay_plate_id=cpap.cherry_pick_assay_plate_id)',
+#                     'where lcp.lab_cherry_pick_id = wva.lab_cherry_pick_id ) ',
+#                     'end',
+#                     ])).label('date_time'),
+#             }
+#             
+#             columns = self.build_sqlalchemy_columns(
+#                 field_hash.values(), base_query_tables=base_query_tables,
+#                 custom_columns=custom_columns )
+# 
+#             # build the query statement
+# 
+#             _cw = self.bridge['copy_well']
+#             _c = self.bridge['copy']
+#             _l = self.bridge['library']
+#             _p = self.bridge['plate']
+#             _w = self.bridge['well']
+#             _wva = self.bridge['well_volume_adjustment']
+#             _a = self.bridge['activity']
+#             
+#             _wva = _wva.alias('wva')
+#             j = join(_cw, _c, _c.c.copy_id == _cw.c.copy_id )
+#             j = j.join(_p, _cw.c.plate_id == _p.c.plate_id )
+#             j = j.join(_w, _cw.c.well_id == _w.c.well_id )
+#             j = j.join(_l, _w.c.library_id == _l.c.library_id )
+#             j = j.join(_wva,onclause=(and_(
+#                 _cw.c.copy_id == _wva.c.copy_id,_cw.c.well_id == _wva.c.well_id)),
+#                 isouter=True)
+#             j = j.join(_a, _wva.c.well_volume_correction_activity_id 
+#                 == _a.c.activity_id, isouter=True )
+#             stmt = select(columns.values()).select_from(j)
+# 
+#             # general setup
+#              
+#             (stmt,count_stmt) = self.wrap_statement(
+#                 stmt,order_clauses,filter_expression )
+#             
+#             title_function = None
+#             if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+#                 title_function = lambda key: field_hash[key]['title']
+#             
+#             return self.stream_response_from_statement(
+#                 request, stmt, count_stmt, filename, 
+#                 field_hash=field_hash, 
+#                 param_hash=param_hash,
+#                 is_for_detail=is_for_detail,
+#                 rowproxy_generator=rowproxy_generator,
+#                 title_function=title_function  )
+#              
+#         except Exception, e:
+#             logger.exception('on get list')
+#             raise e  
+   

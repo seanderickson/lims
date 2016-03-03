@@ -228,7 +228,7 @@ class LibraryResource(DBResourceTestCase):
         '''
         Test the schema "required" validations 
         ''' 
-
+        logger.info('test create_library_invalids...')
         library_resource = self.get_resource_from_server('library')
         fields = library_resource['fields']
         resource_uri = BASE_URI_DB + '/library'
@@ -626,7 +626,7 @@ class LibraryResource(DBResourceTestCase):
             # second look at the found item
             expected_data = { key: inputobj[key] for key in fields.keys() 
                 if key in inputobj }
-            logger.info('checking: expected: %r', expected_data )
+            logger.debug('checking: expected: %r', expected_data )
             result, msgs = assert_obj1_to_obj2(expected_data, outputobj)
             self.assertTrue(result, (msgs, expected_data, outputobj))
             

@@ -9,6 +9,7 @@ from django.db import models
 from django.utils import timezone
 from tastypie.utils.dict import dict_strip_unicode_keys
 from django.utils.encoding import python_2_unicode_compatible
+from collections import OrderedDict
 
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ class MetaManager(GetOrNoneManager):
     def __init__(self, **kwargs):
         super(MetaManager,self).__init__(**kwargs)
 
-    def get_and_parse(self, scope='', field_definition_scope='fields.metahash', 
+    def get_and_parse(self, scope='', field_definition_scope='fields.field', 
                       clear=False):
         '''
         @param scope - i.e. the table to get field definitions for
@@ -44,7 +45,7 @@ class MetaManager(GetOrNoneManager):
             e.g. "fields.screensaveruser", or "fields.screen"
         field_definition_scope - also defines what is in the the json_field for
         this hash;
-            e.g. "fields.metahash", or "fields.resource, or fields.vocabularies"
+            e.g. "fields.field", or "fields.resource, or fields.vocabularies"
         '''
         metahash = {}
         if not clear:
@@ -64,14 +65,14 @@ class MetaManager(GetOrNoneManager):
 
 
     def get_and_parse_int(self, scope='', 
-                          field_definition_scope='fields.metahash'):
+                          field_definition_scope='fields.field'):
         '''
         non-cached Query the metahash table for data identified by "scope", 
         and fields defined by "field_definition_scope"
             e.g. "fields.screensaveruser", or "fields.screen"
         field_definition_scope - also defines what is in the the json_field for 
         this hash;
-            e.g. "fields.metahash", or "fields.resource, or fields.vocabularies"
+            e.g. "fields.field", or "fields.resource, or fields.vocabularies"
         '''
         logger.debug('get_and_parse table field definitions for scope: %r, fds: %r',
             scope, field_definition_scope)
@@ -81,9 +82,9 @@ class MetaManager(GetOrNoneManager):
             scope=field_definition_scope)
         logger.debug('field_definition_table: %r', field_definition_table)
         # the objects themselves are stored in the metahash table as well
-        unparsed_objects = MetaHash.objects.all().filter(scope=scope)
+        unparsed_objects = MetaHash.objects.all().filter(scope=scope).order_by('ordinal')
         logger.debug('unparsed_objects: %r', unparsed_objects)
-        parsed_objects = {}
+        parsed_objects = OrderedDict()
         for unparsed_object in unparsed_objects:
             parsed_object = {}
             # only need the key from the field definition table
@@ -106,6 +107,7 @@ class MetaManager(GetOrNoneManager):
                         scope=vocab_ref)]
             
             parsed_objects[unparsed_object.key] = dict_strip_unicode_keys(parsed_object)
+
         return parsed_objects
 
 

@@ -1,5 +1,5 @@
 key,scope,resource_uri,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,data_type,display_type,display_options,edit_type,is_restricted
-room,fields.platelocation,/reports/api/v1/metahash/fields.platelocation/room/,1,,TRUE,Room,Room,TRUE,,,[l;d],string,link,,,
-freezer,fields.platelocation,/reports/api/v1/metahash/fields.platelocation/freezer/,2,,TRUE,Freezer,Freezer,TRUE,,,[l;d],string,,,,
-shelf,fields.platelocation,/reports/api/v1/metahash/fields.platelocation/shelf/,3,,TRUE,Shelf,Shelf,TRUE,,,[l;d],string,,,,
-bin,fields.platelocation,/reports/api/v1/metahash/fields.platelocation/bin/,4,,TRUE,Bin,Bin,TRUE,,,[l;d],string,,,,
+room,fields.platelocation,/reports/api/v1/field/fields.platelocation/room/,1,,TRUE,Room,Room,TRUE,,,[l;d],string,link,,,
+freezer,fields.platelocation,/reports/api/v1/field/fields.platelocation/freezer/,2,,TRUE,Freezer,Freezer,TRUE,,,[l;d],string,,,,
+shelf,fields.platelocation,/reports/api/v1/field/fields.platelocation/shelf/,3,,TRUE,Shelf,Shelf,TRUE,,,[l;d],string,,,,
+bin,fields.platelocation,/reports/api/v1/field/fields.platelocation/bin/,4,,TRUE,Bin,Bin,TRUE,,,[l;d],string,,,,

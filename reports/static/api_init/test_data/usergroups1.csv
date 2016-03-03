@@ -1,5 +1,5 @@
 name,users,permissions,super_groups,sub_groups
-testGroup1,[yal1;sde4],[resource/metahash/read;fields.user/username/read],,
+testGroup1,[yal1;sde4],[resource/field/read;fields.user/username/read],,
 testGroup2,[sde4;bra2],[resource/user/read;resource/usergroup/read],,
 testGroup3,,[resource/user/read;resource/usergroup/read;resource/vocabularies/read],,
 testGroup4,[tester4],,,

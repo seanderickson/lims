@@ -37,11 +37,11 @@ PYTHONPATH=. python reports/utils/db_init.py --input_dir=lims/static/production_
 
 #####
 # upload single meta data files
-curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/metahash/ --data-binary @db/static/api_init/metahash_fields_library.csv 
+curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/field/ --data-binary @db/static/api_init/metahash_fields_library.csv 
 
-curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/metahash/ --data-binary @reports/static/api_init/metahash_fields_apilog.csv
+curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/field/ --data-binary @reports/static/api_init/metahash_fields_apilog.csv
 
-curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/metahash/ --data-binary @reports/static/api_init/metahash_fields_initial_patch.csv
+curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/field/ --data-binary @reports/static/api_init/metahash_fields_initial_patch.csv
 
 curl -v  --dump-header - -H "Content-Type: text/csv" --user sde -X PATCH http://localhost:8000/reports/api/v1/vocabularies/ --data-binary @db/static/api_init/vocabularies_data.csv
 

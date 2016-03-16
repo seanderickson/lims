@@ -268,7 +268,7 @@ function migratedb {
   echo "running migrations: $(ts) ..." >> "$LOGFILE"
 
   # check which migrations are completed - if we've skipped db restore, then only apply latest
-  completed_migrations=$($DJANGO_CMD migrate db --list | grep '[X]' | awk '{print $2}')
+  completed_migrations=$($DJANGO_CMD migrate db --list | grep '\[X\]' | awk '{print $2}')
   echo "completed migrations: $completed_migrations" >> "$LOGFILE"
   
   migration='0004'
@@ -520,23 +520,23 @@ function code_bootstrap {
 
 echo "start migration: $(ts) ..."
 
-# main "$@"
+main "$@"
 
-  restoredb
+#  restoredb
   
-  restoredb_data
+#  restoredb_data
     
-  maybe_activate_virtualenv
+#  maybe_activate_virtualenv
   
   
-  django_syncdb
+#  django_syncdb
 
-  premigratedb  
+#  premigratedb  
 
-  bootstrap
+#  bootstrap
   
   # the later migrations require the bootstrapped data
-  migratedb
+#  migratedb
 
 
 

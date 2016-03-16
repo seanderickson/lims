@@ -100,7 +100,7 @@ def patch(patch_file, obj_url,headers, session=None, authentication=None):
             elif authentication:
                 r = requests.patch(
                     obj_url, auth=authentication, headers=headers, data=f.read(),verify=False)
-            if(r.status_code not in [200,202,204]):
+            if(r.status_code not in [200,201,202,204]):
                 
                 raise ApiError(obj_url,'PATCH',r)
             print ('PATCH: ', patch_file, ', to: ',obj_url,' ,response:', 
@@ -114,7 +114,7 @@ def patch(patch_file, obj_url,headers, session=None, authentication=None):
                     logger.debug('----no json object to report')
                     logger.debug(str(('text response', r.text)))
     except Exception, e:
-        logger.error('patch: %s , exception, %r', obj_url, e)
+        logger.exception('on patch: %s', obj_url)
         raise e
 
 

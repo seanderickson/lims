@@ -122,8 +122,8 @@ def parse_val(value, key, data_type):
         else:
             raise Exception('unknown data type: %s: "%s"' % (key,data_type))
     except Exception, e:
+        logger.exception('value not parsed %r:%r',key, value)
         raise ValidationError(key=key,msg='parse error: %r' % str(e))
-#         logger.exception('value not parsed %r' % value)
 #         raise            
 
     
@@ -2009,7 +2009,7 @@ class ManagedSqlAlchemyResourceMixin(IccblBaseResource,SqlAlchemyResource):
             logger.info('log patches original: %s, =====new data===== %s',
                 original_data,new_data)
         schema = self.build_schema()
-        id_attribute = resource = schema['resource_definition']['id_attribute']
+        id_attribute = schema['id_attribute']
         if DEBUG_PATCH_LOG:
             logger.info('===id_attribute: %s', id_attribute)
         deleted_items = list(original_data)        
@@ -2135,6 +2135,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
         return self.get_resource_resource().get_resource_schema(self._meta.resource_name)
 
     def deserialize(self, request, data, format='application/json'):
+        logger.info('apiResource deserialize...')
         return self._meta.serializer.deserialize(
             data, 
             format=request.META.get('CONTENT_TYPE', 'application/json'))
@@ -2146,7 +2147,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
         
     def get_id(self,deserialized,**kwargs):
         schema = self.build_schema()
-        id_attribute = schema['resource_definition']['id_attribute']
+        id_attribute = schema['id_attribute']
         fields = schema['fields']
         kwargs_for_id = {}
         for id_field in id_attribute:
@@ -2162,7 +2163,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
 
     def find_key_from_resource_uri(self,resource_uri):
         schema = self.build_schema()
-        id_attribute = resource = schema['resource_definition']['id_attribute']
+        id_attribute = schema['id_attribute']
         resource_name = self._meta.resource_name + '/'
          
         index = resource_uri.rfind(resource_name)
@@ -2180,7 +2181,6 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
         else:
             return dict(zip(id_attribute,keys))
 
-# TODO: latest 20150218
     def parse(self,deserialized):
         schema = self.build_schema()
         fields = schema['fields']
@@ -2214,7 +2214,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
         logger.debug('-----deserialized: %r', deserialized)
         # Look for id's kwargs, to limit the potential candidates for logging
         schema = self.build_schema()
-        id_attribute = resource = schema['resource_definition']['id_attribute']
+        id_attribute = schema['id_attribute']
         kwargs_for_log = kwargs.copy()
         logger.debug('id_attribute: %r', id_attribute)
         for id_field in id_attribute:
@@ -2253,7 +2253,6 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
     @write_authorization
     @un_cache        
     def put_list(self,request, **kwargs):
-
         # TODO: enforce a policy that either objects are patched or deleted
         #         raise NotImplementedError('put_list must be implemented')
             
@@ -2334,9 +2333,6 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
         # TODO: enforce a policy that either objects are patched or deleted
         raise NotImplementedError('put_detail must be implemented')
 
-#         deserialized = self._meta.serializer.deserialize(
-#             request.body, 
-#             format=request.META.get('CONTENT_TYPE', 'application/json'))
         deserialized = self.deserialize(request,request.body)
 
         logger.debug('put detail: %r, %r' % (deserialized,kwargs))
@@ -2344,7 +2340,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
         # cache state, for logging
         # Look for id's kwargs, to limit the potential candidates for logging
         schema = self.build_schema()
-        id_attribute = schema['resource_definition']['id_attribute']
+        id_attribute = schema['id_attribute']
         kwargs_for_log = {}
         for id_field in id_attribute:
             if deserialized.get(id_field,None):
@@ -2391,7 +2387,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
         # cache state, for logging
         # Look for id's kwargs, to limit the potential candidates for logging
         schema = self.build_schema()
-        id_attribute = schema['resource_definition']['id_attribute']
+        id_attribute = schema['id_attribute']
         kwargs_for_log = {}
         try:
             kwargs_for_log = self.get_id(deserialized,**kwargs)
@@ -2449,7 +2445,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
         # cache state, for logging
         # Look for id's kwargs, to limit the potential candidates for logging
         schema = self.build_schema()
-        id_attribute = schema['resource_definition']['id_attribute']
+        id_attribute = schema['id_attribute']
         kwargs_for_log = {}
         for id_field in id_attribute:
             if kwargs.get(id_field,None):
@@ -2474,7 +2470,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
             logger.debug(str(('log comment', log_comment)))
         
         schema = self.build_schema()
-        id_attribute = resource = schema['resource_definition']['id_attribute']
+        id_attribute = schema['id_attribute']
 
         log = ApiLog()
         log.username = request.user.username 
@@ -2532,7 +2528,7 @@ class ApiResource(ManagedSqlAlchemyResourceMixin,SqlAlchemyResource):
         DEBUG_VALIDATION = False or logger.isEnabledFor(logging.DEBUG)
         schema = self.build_schema()
         fields = schema['fields']
-        id_attribute = schema['resource_definition']['id_attribute']
+        id_attribute = schema['id_attribute']
         
         # do validations
         errors = {}
@@ -2862,14 +2858,38 @@ class ApiLogResource(ApiResource):
 
     def dispatch_apilog_childview2(self, request, **kwargs):
         logger.info(str(('kwargs', kwargs)))
+#         ref_resource_name = kwargs.pop('ref_resource_name')
+#         key = kwargs.pop('key')
+#         date_time = kwargs.pop('date_time')
+        
+#         date_time = dateutil.parser.parse(date_time)
+#         logger.info(str(('childview2', ref_resource_name, key, date_time)))
+#  
+#         from django.db.models import Lookup
+#          
+#         class IsoDateEqual(Lookup):
+#             lookup_name = 'iso_date_equal'
+#          
+#             def as_sql(self, compiler, connection):
+#                 lhs, lhs_params = self.process_lhs(compiler, connection)
+#                 rhs, rhs_params = self.process_rhs(compiler, connection)
+#                 params = lhs_params + rhs_params
+#                 return "date_trunc('millisecond', %s') = %s" % (lhs, rhs), params        
+#         from django.db.models.fields import Field
+#         Field.register_lookup(IsoDateEqual)
+#          
+#         parent_log = ApiLog.objects.get(ref_resource_name=ref_resource_name, 
+#             key=key, date_time__iso_date_equal=date_time)
+        
+        
+        parent_log = self._get_detail_response(request,**kwargs)
+        logger.info(str(('parent_log', parent_log)))
+
         ref_resource_name = kwargs.pop('ref_resource_name')
         key = kwargs.pop('key')
         date_time = kwargs.pop('date_time')
-        logger.info(str(('childview2', ref_resource_name, key, date_time)))
-        parent_log = ApiLog.objects.get(ref_resource_name=ref_resource_name, 
-            key=key, date_time=date_time)
-        logger.info(str(('parent_log', parent_log)))
-        kwargs['parent_log_id'] = parent_log.id
+
+        kwargs['parent_log_id'] = parent_log['id']
         return ApiLogResource().dispatch('list', request, **kwargs)    
 
 
@@ -2915,7 +2935,6 @@ class FieldResource(ApiResource):
 #             content_type=build_content_type(desired_format))
 
     def build_schema(self):
-        logger.info('build field schema...')
         # start with the default schema for bootstrapping
         default_field = {
             'data_type': 'string',
@@ -3001,10 +3020,6 @@ class FieldResource(ApiResource):
         schema['extraSelectorOptions'] = { 
             'label': 'Resource', 'searchColumn': 'scope', 'options': temp }
 
-        # TODO: recursive nested for legacy reasons
-#         schema['resource_definition'] = { }
-#         schema['resource_definition'].update(schema)
-        
         return schema
     
     def get_detail(self, request, **kwargs):
@@ -3268,9 +3283,6 @@ class ResourceResource(ApiResource):
             'supertype': '',
             'fields': field_hash
         }
-        # TODO: resource_definition is recursive nested for legacy reasons
-        resource_schema['resource_definition'] = { }
-        resource_schema['resource_definition'].update(resource_schema)
         
         return resource_schema
     
@@ -3351,9 +3363,7 @@ class ResourceResource(ApiResource):
                 else:
                     logger.error('supertype: %r, not found in resources: %r', supertype, resources.keys())
             
-            # TODO: resource_definition is recursive nested for legacy reasons
-            resource['resource_definition'] = { 'id_attribute': resource['id_attribute'] }
-       
+            resource['content_types'].append('csv')
         # TODO: extend with class specific implementations
             
         # TODO: pagination, sort, filter

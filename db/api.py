@@ -1177,9 +1177,7 @@ class DataColumnResource(ApiResource):
             base_query_tables = [
                 'data_column', 'screen']
             
-            custom_columns = {
-#                 'key': literal_column("'tbd'")
-            }
+            custom_columns = {}
             
             columns = self.build_sqlalchemy_columns(
                 field_hash.values(), base_query_tables=base_query_tables,
@@ -2400,7 +2398,7 @@ class AttachedFileResource(ApiResource):
             logger.debug(str(('log comment', log_comment)))
         
         schema = self.build_schema()
-        id_attribute = resource = schema['resource_definition']['id_attribute']
+        id_attribute = resource = schema['id_attribute']
 
         log = ApiLog()
         log.username = request.user.username 
@@ -2461,7 +2459,7 @@ class AttachedFileResource(ApiResource):
                 logger.debug(str(('log comment', log_comment)))
             
             schema = self.build_schema()
-            id_attribute = resource = schema['resource_definition']['id_attribute']
+            id_attribute = resource = schema['id_attribute']
     
             log = ApiLog()
             log.username = request.user.username 
@@ -5124,10 +5122,12 @@ class ScreensaverUserResource(ApiResource):
             screensaver_user = None
             try:
                 screensaver_user = ScreensaverUser.objects.get(user=user)
+                logger.info('found user to patch: %r', screensaver_user)
                 errors = self.validate(deserialized, patch=True)
                 if errors:
                     raise ValidationError(errors)
             except ObjectDoesNotExist:
+                logger.info('create user: %r', deserialized)
                 errors = self.validate(deserialized, patch=False)
                 if errors:
                     raise ValidationError(errors)
@@ -5591,7 +5591,7 @@ class SmallMoleculeReagentResource(ApiResource):
 
     @transaction.atomic()    
     def patch_obj(self,deserialized, **kwargs):
-
+        
         well = kwargs.get('well', None)
         if not well:
             raise ValidationError(key='well', msg='required')
@@ -5731,11 +5731,6 @@ class ReagentResource(ApiResource):
             if not library:
                 library = Well.objects.get(well_id=well_id).library
 
-        #         plate_number = param_hash.pop('plate_number', 
-        #             param_hash.get('plate_number__eq', None))
-        #         if plate_number:
-        #             param_hash['plate_number__eq'] = int(plate_number)
-
         substance_id = param_hash.pop('substance_id', None)
         if substance_id:
             param_hash['substance_id__eq'] = substance_id
@@ -5782,7 +5777,7 @@ class ReagentResource(ApiResource):
                 _temp = { key:field for key,field in field_hash.items() 
                     if field.get('scope', None) in default_fields }
                 field_hash = _temp
-                logger.info('final field hash: %r', field_hash.keys())
+                logger.debug('final field hash: %r', field_hash.keys())
             else:
                 # consider limiting fields available
                 pass
@@ -6015,50 +6010,56 @@ class WellResource(ApiResource):
         self.reagent_resource = None
         super(WellResource,self).__init__(**kwargs)
 
-#     def deserialize(self, request, data=None, format=None):
-#         '''
-#         Override deserialize so we can pull apart the multipart form and get the 
-#         uploaded content.
-#         Note: native TP doesn't support multipart uploads, this will support
-#         standard multipart form uploads in modern browsers
-#         '''
-#         logger.info(str(('deserialize', format)))
-#         if not format:
-#             format = request.META.get('CONTENT_TYPE', 'application/json')
-# 
-#         if format.startswith('multipart'):
-#             if len(request.FILES.keys()) != 1:
-#                 raise ImmediateHttpResponse(
-#                     response=self.error_response(request, 
-#                         { 'FILES', 'File upload supports only one file at a time'}))
-#             
-#             if 'sdf' in request.FILES:  
-#                 # process *only* the first file
-#                 file = request.FILES['sdf']
-#                 format = 'chemical/x-mdl-sdfile'
-#                 
-#                 # NOTE: have to override super, because it ignores the format and 
-#                 # grabs it again from the Request headers (which is "multipart...")
-#                 #  return super(ReagentResource, self).deserialize(request, file, format) 
-#                 deserialized = self._meta.serializer.deserialize(file.read(), format=format)
-# 
-#             elif 'xls' in request.FILES:
-#                 # TP cannot handle binary file formats - it is calling 
-#                 # django.utils.encoding.force_text on all input
-#                 file = request.FILES['sdf']
-#                 deserialized = self._meta.xls_serializer.from_xls(file.read())
-#             else:
-#                 logger.error(str(('UnsupportedFormat', request.FILES.keys() )))
-#                 raise UnsupportedFormat(str(('Unknown file type: ', request.FILES.keys()) ) )
-#         
-#         elif format == 'application/xls':
-#             # TP cannot handle binary file formats - it is calling 
-#             # django.utils.encoding.force_text on all input
-#             deserialized = self._meta.xls_serializer.from_xls(request.body)
-#             
-#         else:
-#             deserialized = super(WellResource, self).deserialize(request, request.body, format)    
-#         
+    def deserialize(self, request, data=None, format=None):
+        '''
+        Override deserialize so we can pull apart the multipart form and get the 
+        uploaded content.
+        Note: native TP doesn't support multipart uploads, this will support
+        standard multipart form uploads in modern browsers
+        '''
+        logger.info(str(('deserialize', format)))
+        if not format:
+            format = request.META.get('CONTENT_TYPE', 'application/json')
+        logger.info('format: %r', format)
+        if format.startswith('multipart'):
+            logger.info('request.Files.keys: %r', request.FILES.keys())
+            if len(request.FILES.keys()) != 1:
+                raise ImmediateHttpResponse(
+                    response=self.error_response(
+                        request, 
+                        { 'FILES': 'File upload supports only one file at a time',
+                          'filenames': request.FILES.keys(),
+                        }
+                ))
+             
+            if 'sdf' in request.FILES:  
+                # process *only* the first file
+                file = request.FILES['sdf']
+                logger.info('file: %r', file)
+                format = 'chemical/x-mdl-sdfile'
+                 
+                # NOTE: have to override super, because it ignores the format and 
+                # grabs it again from the Request headers (which is "multipart...")
+                #  return super(ReagentResource, self).deserialize(request, file, format) 
+                deserialized = self._meta.serializer.deserialize(file.read(), format=format)
+ 
+            elif 'xls' in request.FILES:
+                # TP cannot handle binary file formats - it is calling 
+                # django.utils.encoding.force_text on all input
+                file = request.FILES['sdf']
+                deserialized = self._meta.xls_serializer.from_xls(file.read())
+            else:
+                logger.error(str(('UnsupportedFormat', request.FILES.keys() )))
+                raise UnsupportedFormat(str(('Unknown file type: ', request.FILES.keys()) ) )
+         
+        elif format == 'application/xls':
+            # TP cannot handle binary file formats - it is calling 
+            # django.utils.encoding.force_text on all input
+            deserialized = self._meta.xls_serializer.from_xls(request.body)
+             
+        else:
+            deserialized = super(WellResource, self).deserialize(request, request.body, format)    
+         
 #         if self._meta.collection_name in deserialized: 
 #             # this is a list of data
 #             deserialized[self._meta.collection_name] = \
@@ -6066,8 +6067,8 @@ class WellResource(ApiResource):
 #         else:   
 #             # this is a single item of data
 #             deserialized = self.alias_item(deserialized)
-#             
-#         return deserialized
+             
+        return deserialized
     
     def get_sr_resource(self):
         if not self.sr_resource:
@@ -6134,12 +6135,12 @@ class WellResource(ApiResource):
         if library:
             sub_data = self.get_reagent_resource().build_schema(
                 library=library)
-            data = deepcopy(data)
+#             data = deepcopy(data)
             
             newfields = {}
             newfields.update(sub_data['fields'])
             newfields.update(data['fields'])
-            data.update(sub_data)
+#             data.update(sub_data)
             data['fields'] = newfields
 
         temp = [ x.title.lower() 
@@ -6166,7 +6167,9 @@ class WellResource(ApiResource):
         return self.get_reagent_resource().get_list(request, **kwargs)
 
     def post_list(self, request, **kwargs):
-        raise NotImplementedError("Post is not implemented for ReagentResource, use patch instead")
+        # TODO: use patch routine from ApiResource
+        return self.put_list(request, **kwargs)
+#         raise NotImplementedError("Post is not implemented for ReagentResource, use patch instead")
     
     @write_authorization
     def patch_list(self, request, **kwargs):
@@ -6183,17 +6186,9 @@ class WellResource(ApiResource):
         # so put is allowed to create, but patch must reference extant reagent 
         # (changes reagent assoc with well)
 
-        
-        
-        
-        
         # TODO: use patch routine from ApiResource
         return self.put_list(request, **kwargs)
     
-
-
-###################################
-# TODO: use ApiResource.put_list
     @write_authorization
     @un_cache        
     def put_list(self,request, **kwargs):
@@ -6201,14 +6196,17 @@ class WellResource(ApiResource):
         if 'library_short_name' not in kwargs:
             raise BadRequest('library_short_name is required')
         
-        deserialized = self.deserialize(request,request.body)
+        logger.info('deserializing well upload...')
+        deserialized = self.deserialize(request,request.body,format=None)
+        
         if not self._meta.collection_name in deserialized:
             raise BadRequest("Invalid data sent, must be nested in '%s'" 
                 % self._meta.collection_name)
         deserialized = deserialized[self._meta.collection_name]
+        logger.info('done: %d', len(deserialized))
 
         schema = self.build_schema()
-        id_attribute = resource = schema['id_attribute']
+        id_attribute = schema['id_attribute']
         kwargs_for_log = kwargs.copy()
         for id_field in id_attribute:
             ids = set()
@@ -6223,21 +6221,7 @@ class WellResource(ApiResource):
         kwargs_for_log['library_well_type__ne'] = 'undefined'
         original_data = self._get_list_response(request,**kwargs_for_log)
         
-#         # Look for id's kwargs, to limit the potential candidates for logging
-#         schema = self.build_schema()
-#         id_attribute = resource = schema['resource_definition']['id_attribute']
-#         kwargs_for_log = kwargs.copy()
-#         for id_field in id_attribute:
-#             ids = set()
-#             # Test for each id key; it's ok on create for ids to be None
-#             for _dict in [x for x in deserialized if x.get(id_field, None)]:
-#                 ids.add(_dict.get(id_field))
-#             if ids:
-#                 kwargs_for_log['%s__in'%id_field] = LIST_DELIMITER_URL_PARAM.join(ids)
-#         # get original state, for logging
-#         original_data = self._get_list_response(request,**kwargs_for_log)
         with transaction.atomic():
-                
 
             library = Library.objects.get(short_name=kwargs['library_short_name'])
             logger.info('put_list: WellResource: library: %r...', library.short_name)
@@ -6267,7 +6251,6 @@ class WellResource(ApiResource):
                 raise ImmediateHttpResponse(response=self.error_response(request, errors))
     
             for well_data in deserialized:
-                
                 well_data['library_short_name']=kwargs['library_short_name']
                 
                 well_id = well_data.get('well_id', None)
@@ -6303,23 +6286,25 @@ class WellResource(ApiResource):
         # get new state, for logging
         new_data = self._get_list_response(request,**kwargs_for_log)
         
-        logger.debug('new data: %s'% new_data)
-        logger.debug('patch list done, new data: %d' 
-            % (len(new_data)))
-        self.log_patches(request, original_data,new_data,**kwargs)
-
+        original_data_patches_only = []
+        new_data_patches_only = []
+        for item in original_data:
+            for new_item in new_data:
+                if item['well_id'] == new_item['well_id']:
+                    original_data_patches_only.append(item)
+                    new_data_patches_only.append(new_item)
         
-
-
-
+        logger.debug('new data: %s'% new_data_patches_only)
+        logger.debug('patch list done, new data: %d' 
+            % (len(new_data_patches_only)))
+        self.log_patches(request, original_data_patches_only,new_data_patches_only,**kwargs)
+        
         if not self._meta.always_return_data:
             return http.HttpAccepted()
         else:
             response = self.get_list(request, **kwargs)             
             response.status_code = 200
             return response 
-    
-    
     
     
     @transaction.atomic()    
@@ -6337,16 +6322,6 @@ class WellResource(ApiResource):
             except ObjectDoesNotExist:
                 raise Http404('library not found: %r' % library_short_name)
 
-#         schema = kwargs.get('schema', None)
-#         if not schema:
-#             schema = self.build_schema(library=library)
-#         fields = schema['fields']
-#         
-#         initializer_dict = {}
-#         for key in fields.keys():
-#             if key in deserialized:
-#                 initializer_dict[key] = parse_val(
-#                     deserialized.get(key,None), key,fields[key]['data_type']) 
         initializer_dict = self.parse(deserialized)
         
         id_kwargs = self.get_id(deserialized,**kwargs)
@@ -6843,27 +6818,42 @@ class LibraryResource(ApiResource):
             schema = super(LibraryResource,self).build_schema()
             
             if 'start_plate' in schema['fields'] and 'end_plate' in schema['fields']:
-                # (only run if library fields already initialized)
-                # Exemplary section - set start/end plate ranges
-                maxsmr = ( 
-                    Library.objects
-                        .filter(screen_type='small_molecule')
-                        .exclude(library_type='natural_products')
-                        .aggregate(Max('end_plate')) )
-                maxsmr = maxsmr['end_plate__max']      
-                minrnai = ( 
-                    Library.objects
-                        .filter(screen_type='rnai')
-                        .aggregate(Min('end_plate')) )
-                minrnai = minrnai['end_plate__min']
-                maxrnai = ( 
-                    Library.objects
-                        .filter(screen_type='rnai')
-                        .aggregate(Max('end_plate')) )
-                maxrnai = maxrnai['end_plate__max']
-                schema['library_plate_range'] = [maxsmr,minrnai,maxrnai]
-                schema['fields']['start_plate']['range'] = [maxsmr,minrnai,maxrnai]
-                schema['fields']['end_plate']['range'] = [maxsmr,minrnai,maxrnai]
+                ranges = ( Library.objects.all()
+                    .order_by('start_plate')
+                    .values_list('start_plate', 'end_plate'))
+                plate_ranges = []
+                temp = 0
+                for s,e in ranges:
+                    if temp == 0:
+                        plate_ranges.append(s)
+                    elif s > temp + 1:
+                        plate_ranges.append(temp)
+                        plate_ranges.append(s)
+                    temp = e
+                plate_ranges.append(temp)
+                schema['library_plate_ranges'] = plate_ranges
+                    
+                    
+                    
+#                 # (only run if library fields already initialized)
+#                 # Exemplary section - set start/end plate ranges
+#                 smr_range = ( 
+#                     Library.objects
+#                         .filter(screen_type='small_molecule')
+#                         .exclude(library_type='natural_products')
+#                         .aggregate(Min('start_plate'),Max('end_plate')) )
+# #                 logger.info('range: %r', smr_range)
+#                 maxsmr = smr_range['end_plate__max']      
+#                 minsmr = smr_range['start_plate__min']      
+#                 rnai_range = ( 
+#                     Library.objects
+#                         .filter(screen_type='rnai')
+#                         .aggregate(Min('start_plate'),Max('end_plate')) )
+#                 minrnai = rnai_range['start_plate__min']
+#                 maxrnai = rnai_range['end_plate__max']
+#                 schema['library_plate_range'] = [minsmr,maxsmr,minrnai,maxrnai]
+#                 schema['fields']['start_plate']['range'] = [minsmr,maxsmr,minrnai,maxrnai]
+#                 schema['fields']['end_plate']['range'] = [maxsmr,minrnai,maxrnai]
             
             temp = [ x.library_type for x in self.Meta.queryset.distinct('library_type')]
             schema['extraSelectorOptions'] = { 

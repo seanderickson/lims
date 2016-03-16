@@ -60,7 +60,7 @@ module.exports = function (grunt) {
           'backbone-forms.js' : 'backbone-forms/distribution/backbone-forms.js',
           'backbone-forms-list.js' : 'backbone-forms/distribution/editors/list.js',
           'backbone.layoutmanager.js' : 'layoutmanager/backbone.layoutmanager.js',
-          'lunr.js' : 'lunr.js/lunr.js',
+          'lunr.js' : 'lunr/lunr.js',
           'text.js' : 'text/text.js', 
           'bootstrap.js' : 'bootstrap/dist/js/bootstrap.js',
           'multiselect.js' : 'multiselect/js/jquery.multi-select.js',

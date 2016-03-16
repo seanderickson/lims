@@ -412,7 +412,8 @@ function frontend_setup {
   cd ../..
   
   if [[ $IS_DEV_SERVER -ne 1 ]]; then
-    $DJANGO_CMD collectstatic --noinput --ignore="*node_modules*" --ignore="*bower_components*" || error "collectstatic failed: $?"
+    $DJANGO_CMD collectstatic --noinput --ignore="*node_modules*" \
+        --ignore="*bower_components*" --ignore="*api_init*" || error "collectstatic failed: $?"
   fi
   
   echo "frontend_setup done: $(ts)" >> "$LOGFILE"

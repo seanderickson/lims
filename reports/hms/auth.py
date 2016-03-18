@@ -61,13 +61,13 @@ def authenticate(ecommons_id, ecommons_password):
         issue_instant, not_before, not_after, ecommons_id, ecommons_password)
     r = requests.post(url, data=prepared_req, headers=headers, timeout=10 )
     if r.status_code != 200: 
-        raise Exception(str(('HTTP response', r.status_code, r)))
+        raise Exception('HTTP response code: %r, %r' % (r.status_code, r.content()))
 
     matchObject = re.match(PATTERN_STATUS_CODE, r.text)
     if matchObject:
         status=matchObject.group(1)
         if status=='2000':
-            logger.info('successful authentication for ' + ecommons_id)
+            logger.info('successful authentication for %r',ecommons_id)
             return True
         else:
             logger.warn(str((

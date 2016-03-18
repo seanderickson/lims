@@ -575,6 +575,6 @@ class Migration(migrations.Migration):
             model_name='screensaveruser',
             name='lab_head_affiliation', 
             field=models.TextField(null=True)),
-        
+        migrations.RunSQL('alter table reagent alter column library_contents_version_id drop not null'),
         
     ]

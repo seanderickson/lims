@@ -13,7 +13,6 @@ define([
             appModel, DetailLayout, EditView,
             ListView, layout) {
 
-  // TODO: create a genericTabbedLayout base class?
   var UserView = Backbone.Layout.extend({
 
     initialize: function(args) {
@@ -168,6 +167,8 @@ define([
             fields['super_groups']['choices'] = options;
             fields['sub_groups']['choices'] = options;
             fields['users']['choices'] = appModel.getUserOptions();
+            console.log('appModel.getPermissionsOptions()',appModel.getPermissionsOptions());
+            fields['permissions']['choices'] = appModel.getPermissionsOptions();
             DetailLayout.prototype.showEdit.call(view,arguments);
           });  
         };
@@ -221,8 +222,26 @@ define([
       
     },
     
+    setPermissionGroups: function(delegateStack){
+      var self = this;
+      var key = 'supergroups';
+      var url = [self.model.resource.apiUri, 
+                 self.model.key,
+                 'supergroups'].join('/');
+      view = new ListView({ options: {
+        uriStack: _.clone(delegateStack),
+        schemaResult: self.model.resource,
+        resource: self.model.resource,
+        url: url
+      }});
+      Backbone.Layout.setupView(view);
+      this.consumedStack = [key]; 
+      self.reportUriStack([]);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      this.setView("#tab_container", view ).render();
+    },
+    
     onClose: function() {
-      // TODO: is this necessary when using Backbone LayoutManager
       this.tabViews = {};
       this.remove();
     }

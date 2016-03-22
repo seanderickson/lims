@@ -50,6 +50,30 @@ define([
     });
     return detailKeys;
   };  
+  
+  SchemaClass.prototype.groupedKeys = function(keys){
+    var self = this;
+    var groupedKeys = [];
+    var groups = {};
+    _.each(keys,function(key){
+      var fi = self.fields[key];
+      if (fi.display_options && fi.display_options.group){
+        if (!_.has(groups,fi.display_options.group)){
+          var newGroup = {
+            title: fi.display_options.group,
+            fields: []
+          }
+          groups[fi.display_options.group] = newGroup;
+          groupedKeys.push(newGroup); 
+        }
+        group = groups[fi.display_options.group];
+        group.fields.push(key);
+      }else{
+        groupedKeys.push(key);
+      }
+    });
+    return groupedKeys;
+  };
 
   var AppState = Backbone.Model.extend({
     
@@ -289,6 +313,10 @@ define([
       }
       return options;
     },
+
+    getPermissionsOptions: function(){
+      return this.get('permissionOptions');
+    },
     
     getLibraries: function(callback){
       data_for_get = { 
@@ -425,7 +453,7 @@ define([
       var optionGroups = { resources: []};
       _.each(_.keys(resources), function(rkey){
         var resource = resources[rkey];
-        if(!_.has(resource,'schema')){
+        if(!_.has(resource,'fields')){
           // skip these, only consider server side resources that have fields
           return;
         }
@@ -438,7 +466,7 @@ define([
           label: ['resource',rkey,'write'].join(':'), 
         });
         var fieldGroup = rkey;
-        var fields = resource['schema']['fields'];
+        var fields = resource['fields'];
         if(!_.has(optionGroups,fieldGroup)){
           optionGroups[fieldGroup] = [];
         }
@@ -651,8 +679,16 @@ define([
           if(! _.has(defaults, key)){
             if(field.default && !_.isNull(field.default)){
               try {
-                defaults[key] = JSON.parse(field.default);
+                if (field.data_type == 'string'){
+                  defaults[key] = field.default;
+                }else if (field.data_type == 'boolean'){
+                  defaults[key] = JSON.parse(field.default.toLowerCase());
+                }else{
+                  // TODO: test all types here
+                  defaults[key] = JSON.parse(field.default);
+                }
               }catch(e){
+                console.log('json parse error', key, field.default);
                 if (field.data_type == 'date' && field.default == 'now'){
                   defaults[key] = Iccbl.getISODateString(new Date());
                 }else{
@@ -763,7 +799,7 @@ define([
       var self = this;
       if(self.getCurrentUser().is_superuser) return true;
       
-      var r_perm = 'permission/resource/'+ resource;
+      var r_perm = 'resource/'+ resource;
       if(!_.isUndefined(permission)){
         r_perm += '/'+ permission;
       }// otherwise, will return true if user has either permission

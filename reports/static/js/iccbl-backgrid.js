@@ -1,36 +1,8 @@
-/**
- * @summary ICCBL-lims Backgrid Extension Functions
- * @description Utility Functions for the iccbl-lims
- * @version 0.1
- * @file iccbl-backgrid.js
- * @author Sean Erickson
- * @contact sean_erickson “AT” hms.harvard.edu
- * 
- * @copyright 2014 Harvard University, all rights reserved.
- * 
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License as published by the Free Software
- * Foundation; either version 2 of the License, or (at your option) any later
- * version.
- * 
- * This source file is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the license files for details.
- * 
- * For details please refer to: https://github.com/hmsiccbl/lims
- */
-
-// FIXME: lunr should not be a requirement - for server side filtering,
-// and backgrid_filter is requiring it.
-// Note: backbone_forms included for testing imports to work properly
-// - bad imports can result in the:
-// "Warning: PhantomJS timed out, possibly due to a missing Mocha run() call"
-
 define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms', 
-        'backgrid_filter', 'backgrid_paginator', 'lunr', // 'backgrid_select_all',
+        'backgrid_filter', 'backgrid_paginator', //'lunr', // 'backgrid_select_all',
         'layoutmanager'],
     function($, _, Backbone, Backgrid, BackboneForms,
-             BackgridFilter, BackgridPaginator, lunr, // BackgridSelectAll,
+             BackgridFilter, BackgridPaginator, //lunr, // BackgridSelectAll,
              layoutmanager ) {
 
 var root = window;
@@ -115,7 +87,7 @@ var stringToFunction = Iccbl.stringToFunction = function(str) {
  * @param jsDate a JavaScript Date object
  */
 var getISODateString = Iccbl.getISODateString = function(jsDate){
-  return jsDate ? jsDate.toISOString().split('T')[0] : jsDate;
+  return jsDate && _.isDate(jsDate) ? jsDate.toISOString().split('T')[0] : jsDate;
   // equivalent:
   //  date = lpad(jsDate.getUTCFullYear(), 4, 0) 
   //    + '-' + lpad(jsDate.getUTCMonth() + 1, 2, 0) 
@@ -3609,7 +3581,6 @@ var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
     var optionValues = _.result(this, "optionValues");
     var model = this.model;
     var rawData = this.formatter.fromRaw(model.get(this.column.get("name")), model);
-
     var selectedText = [];
 
     if (_.isArray(optionValues) &&  !_.isEmpty(optionValues)){
@@ -3624,7 +3595,7 @@ var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
             var optionValue = optionValue[1];
 
             if (optionValue == rawDatum){
-              selectedText.push(optionText);
+              selectedText.push(_.escape(optionText));
             }
           }
           else if (_.isObject(optionValue)) {
@@ -3633,7 +3604,7 @@ var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
             for (var j = 0; j < optionGroupValues.length; j++) {
               var optionGroupValue = optionGroupValues[j];
               if (optionGroupValue[1] == rawDatum) {
-                selectedText.push(optionGroupValue[0]);
+                selectedText.push(_.escape(optionGroupValue[0]));
               }
             }
           }

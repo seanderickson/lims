@@ -25,7 +25,7 @@ from sqlalchemy.sql.expression import nullsfirst, nullslast
 from sqlalchemy.sql.functions import func
 from sqlalchemy.sql.sqltypes import Numeric, Text
 from tastypie.exceptions import BadRequest, ImmediateHttpResponse
-from tastypie.http import HttpNotFound
+from tastypie.http import HttpNotFound, HttpBadRequest
 from tastypie.resources import Resource
 from tastypie.utils.mime import build_content_type
 
@@ -171,7 +171,7 @@ class SqlAlchemyResource(Resource):
         
         TODO: this method is not SqlAlchemy specific
         '''
-        DEBUG_VISIBILITY = False or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_VISIBILITY = True or logger.isEnabledFor(logging.DEBUG)
         visibilities = set(visibilities)
         if DEBUG_VISIBILITY:
             logger.info('get_visible_fields: field_hash initial: %r, manual: %r, exact: %r', 
@@ -181,7 +181,6 @@ class SqlAlchemyResource(Resource):
                 temp = { key:field for key,field in schema_fields.items()
                     if key in exact_fields or key in filter_fields }
             else:
-                        
                 temp = { key:field for key,field in schema_fields.items() 
                     if ((field.get('visibility', None) 
                             and visibilities & set(field['visibility'])) 
@@ -221,8 +220,18 @@ class SqlAlchemyResource(Resource):
     
             if DEBUG_VISIBILITY:
                 logger.info('field_hash final: %s', field_hash.keys())
+        
+            if not field_hash:
+                response = HttpResponse('no fields specified')
+                response.status_code = 400
+                raise ImmediateHttpResponse(
+                    response=response)
+            
             return field_hash
-
+        
+        except ImmediateHttpResponse:
+            raise
+        
         except Exception, e:
             logger.exception('on get_visible_fields')
             raise e 
@@ -826,7 +835,8 @@ class SqlAlchemyResource(Resource):
             downloadID=None, title_function=None, use_caching=True, meta=None ):
         DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
 
-        logger.info('stream_response_from_statement: %r' % param_hash)
+        if DEBUG_STREAMING:
+            logger.info('stream_response_from_statement: %r' % param_hash)
         limit = param_hash.get('limit', 0)        
         try:
             limit = int(limit)
@@ -852,10 +862,10 @@ class SqlAlchemyResource(Resource):
             logger.debug('offset: %s, limit: %s', offset, limit)
             conn = self.bridge.get_engine().connect()
             
-            if True:
-                logger.info('stmt: %s, param_hash: %s ', 
-                    str(stmt.compile(compile_kwargs={"literal_binds": True})), 
-                    param_hash)
+#             if DEBUG_STREAMING:
+            logger.info('stmt: %s, param_hash: %s ', 
+                str(stmt.compile(compile_kwargs={"literal_binds": True})), 
+                param_hash)
             if DEBUG_STREAMING:
                 logger.info(str(('count stmt', str(count_stmt))))
             

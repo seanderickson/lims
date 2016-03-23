@@ -157,7 +157,7 @@ def json_generator(cursor,meta,request, is_for_detail=False,field_hash=None):
                     if field.get('value_template', None):
                         value_template = field['value_template']
                         if DEBUG_STREAMING: 
-                            logger.info(str(('field', key, value_template)))
+                            logger.info('field: %r, value_template: %r', key, value_template)
                         newval = interpolate_value_template(value_template, row)
                         if field['display_type'] == 'image':
                             # hack to speed things up:

@@ -3,15 +3,9 @@ from __future__ import unicode_literals
 import cStringIO
 import logging
 import re
-
 import six
 
-
-# Imports an SDF/molfile
-# Original version by Gabriel Barriz
 logger = logging.getLogger(__name__)
-# ---------------------------------------------------------------------------
-
 
 VERBOSE = False,
 ENCODING = u'utf8',
@@ -19,7 +13,6 @@ MOLDATAKEY = u'molfile'
 COMMENTKEY = u'comment'
 COMMENTTAG = u'comment'
 
-# ---------------------------------------------------------------------------
 _moldata_re = re.compile(ur'M\s+END')
 _dos2unix = re.compile(ur'\r\n')
 _dos_unix_le = re.compile(ur'[\r\n]{1,2}')
@@ -74,7 +67,7 @@ def first_nonempty_line(preamble):
         if len(txt):
             return txt
 
-def parse_sdf(data, _delimre=re.compile(ur'(?<=\n)\$\$\$\$')): #ur'(?<=\n)\$\$\$\$\n')):
+def parse_sdf(data, _delimre=re.compile(ur'(?<=\n)\$\$\$\$')):
     """
     for mol_record in sdf2py.parse_sdf(sdf_data_as_a_string):
         preamble = mol_record.pop(_params.MOLDATAKEY)
@@ -84,22 +77,16 @@ def parse_sdf(data, _delimre=re.compile(ur'(?<=\n)\$\$\$\$')): #ur'(?<=\n)\$\$\$
             print (u'%s: %s' % (tag, value)).encode(_params.ENCODING)
         print
     """
-    #     data = data.strip(u'\r\n')
-    #     data = data.strip(u'\n')
     result = []
     if isinstance(data, six.string_types):
         data = data.strip()
         data = data.strip(u'$')
 
         mols = _delimre.split(data)
-        # original
-        #     return tuple(dict(parse_mol(mol)) for mol in mols)
-    
         for mol in mols:
             x = dict(parse_mol(mol))
             result.append(x)
     else: # treat the data as an iterable
-        
         buffer = cStringIO.StringIO()
         for line in data:
             if _delimre.match(line):

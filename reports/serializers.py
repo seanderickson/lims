@@ -178,6 +178,7 @@ class SDFSerializer(Serializer):
 
         TODO: version 2 - read from a stream
         '''
+        logger.info('sdf parsing...')
         objects = s2p.parse_sdf(content,
             _delimre=re.compile(ur'(?<=\n)\$\$\$\$'))
         if root and not isinstance(objects, dict):
@@ -448,8 +449,8 @@ class CSVSerializer(Serializer):
         if isinstance(data, dict):
             # usually, this happens when the data is actually an error message;
             # but also, it could be just one item being returned
-            logger.error(str(('non-standard data', data)))
-            raise Exception(str(('non-standard data', data)))
+            logger.error(str(('non-standard data: embedded dict', data)))
+            raise Exception(str(('non-standard data: embedded dict', data)))
         else:    
             # default 
             i = 0

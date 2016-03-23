@@ -534,6 +534,7 @@ define([
     initialize: function(args) {
 
       console.log('Editview initialize: ', args);
+      var self = this;
       
       this.uriStack = args.uriStack;
       this.consumedStack = []; 
@@ -542,9 +543,10 @@ define([
       this.modelSchema = args.modelSchema || this.model.resource;
       this.modelFields = args.modelFields || this.modelSchema.fields;
       this.editKeys = args.editKeys || this.modelSchema.allEditVisibleKeys();
+      this.groupedKeys = this.modelSchema.groupedKeys(this.editKeys);
       this.editableKeys = args.editableKeys || this.modelSchema.updateKeys();
       if(_.isEmpty(_.compact(_.values(
-        this.model.pick(this.model.resource['id_attribute']))))){
+          this.model.pick(this.model.resource['id_attribute']))))){
         this.editableKeys = _.union(this.editableKeys,this.modelSchema.createKeys());
       }
       // Add comment field
@@ -578,12 +580,18 @@ define([
       var delegateModel = new Backbone.Model(_.clone(this.model.attributes ));
       delegateModel.resource = this.model.resource;
       this.delegateDetailView = new DetailView({ model: delegateModel });
-
+      
+      if (args.editTemplate){
+        this.template = _.template(args.editTemplate);
+      }else{
+        this.template = _.template(editTemplate);
+      }
+      
       // NOTE: due to a phantomjs js bug, must convert arguments to a real array
       Backbone.Form.prototype.initialize.apply(this,Array.prototype.slice.apply(arguments));
       
     },
-
+    
     events: {
       'click button#save': 'save'
     },
@@ -933,7 +941,9 @@ define([
     templateData: function() {
       return {
         'fieldDefinitions': this.modelFields,
-        'keys': _.chain(this.finalEditableKeys)
+        'keys': _.chain(this.finalEditableKeys),
+        'editKeys': _.chain(this.editKeys),
+        'groupedKeys': _.chain(this.groupedKeys)
       };      
     },	
 
@@ -1016,7 +1026,7 @@ define([
       console.log('afterRender finished');
     },
     
-    template: _.template(editTemplate),
+//    template: _.template(editTemplate),
     
     /**
      * Filter Backbone's changeAttributes:
@@ -1114,12 +1124,12 @@ define([
         url += '/';
       }
       
-      self.model.idAttribute = self.model.resource['id_attribute'];
       
       options['key'] = Iccbl.getIdFromIdAttribute( self.model,self.model.resource );
       if (_.contains(this.uriStack, '+add') || !options['key'] ){
-        options['patch'] = false;
+        // options['patch'] = false;
       }else{
+        self.model.idAttribute = self.model.resource['id_attribute'];
         options['patch'] = true;
         // TODO: check if creating new or updating here
         // set the id specifically on the model: backbone requires this to 

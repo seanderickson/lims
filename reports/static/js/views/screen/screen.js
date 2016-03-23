@@ -110,6 +110,7 @@ define([
       if (!_.isEmpty(this.uriStack)){
         viewId = this.uriStack.shift();
         if (viewId == '+add') {
+          console.log('adding screen...');
           this.$('ul.nav-tabs > li').addClass('disabled');
           this.uriStack.unshift(viewId);
           viewId = 'detail';
@@ -287,7 +288,6 @@ define([
             this.model.get('collaborator_names')));
 
       var editView = EditView.extend({
-        
         afterRender: function(){
           console.log('override afterRender');
           outerSelf._addVocabularyButton(
@@ -326,7 +326,12 @@ define([
           fields['lead_screener_username']['choices'] = (
               [{ val: '', label: ''}].concat(userOptions));
           fields['lab_head_username']['choices'] = (
-                appModel.getPrincipalInvestigatorOptions() );
+              appModel.getPrincipalInvestigatorOptions() );
+          fields['publishable_protocol_entered_by']['choices'] = (
+              appModel.getAdminUserOptions() );
+          // TODO: this should default only after pp value is entered
+          //view.model.set('publishable_protocol_entered_by',
+          //    appModel.getCurrentUser().username);
           DetailLayout.prototype.showEdit.apply(view,arguments);
         });  
       };
@@ -664,7 +669,7 @@ define([
       dcCollection.fetch({
         data: { 
           limit: 0,
-          screen_facility_id: self.model.get('facility_id'),
+          screen_facility_id__eq: self.model.get('facility_id'),
           data_type__in: [
             'partition_positive_indicator','boolean_positive_indicator',
             'confirmed_positive_indicator'],

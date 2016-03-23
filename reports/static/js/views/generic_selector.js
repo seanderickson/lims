@@ -36,10 +36,6 @@ define([
 
       render : function() {
           this.$el.empty();
-//          if (!_.contains(this._options.options, '')) {
-//              this._options.options.unshift('');
-//              // create a blank entry
-//          }
           
           // NOTE: for Underscore 1.7.0, templates will have to be initialize in 
           // two steps, like this.  So 1. compiled, 2. interpolated
@@ -50,10 +46,6 @@ define([
                 options : _(this._options.options)
               });
           this.$el.html(temp);
-          //          this.$el.html(_.template(genericSelectorTemplate, {
-          //              label : this._options.label,
-          //              options : _(this._options.options)
-          //          }));
           if (!_.isUndefined(this._options.selectorClass)) {
               this.$('#generic_selector').removeClass().addClass(this._options.selectorClass);
           };

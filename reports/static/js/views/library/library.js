@@ -10,14 +10,12 @@ define([
   'models/app_state',
   'views/library/libraryCopy', 
   'views/library/libraryWells', 
-  'views/library/libraryVersions',
   'views/generic_detail_layout',
   'views/generic_edit',
   'views/list2',
   'text!templates/generic-tabbed.html'
 ], function($, _, Backbone, Iccbl, layoutmanager, appModel, LibraryCopyView, 
-            LibraryWellsView, LibraryVersionsView,
-            DetailLayout, EditView, ListView, 
+            LibraryWellsView, DetailLayout, EditView, ListView, 
             libraryTemplate) {
   
   var LibraryView = Backbone.Layout.extend({
@@ -57,11 +55,6 @@ define([
         description: 'Well based view of the library contents', 
         title: 'Wells', invoke: 'setWells' ,
         resource: 'well'
-      },
-      version: { 
-        description: 'Library contents version', 
-        title: 'Versions', invoke: 'setVersions' ,
-        resource: 'librarycontentsversion'
       }
     },      
     
@@ -78,6 +71,7 @@ define([
     },
     
     saveFile: function() {
+      var self=this;
       var file = $('input[name="fileInput"]')[0].files[0]; 
       var data = new FormData();
       var url = _.result(this.model, 'url') + '/well';
@@ -85,8 +79,6 @@ define([
       // We are using this as a non-standard way to signal the upload type to the 
       // serializer. (TP doesn't support mulitpart uploads, so this is patched in).
       data.append('sdf', file);
-      //      data.append('file', file, {'Content-type': 'chemical/x-mdl-sdfile'});
-      //      data.append('Content-type','chemical/x-mdl-sdfile');
       var headers = {};
       headers[appModel.HEADER_APILOG_COMMENT] = self.model.get('comment');
       $.ajax({
@@ -95,18 +87,15 @@ define([
         cache: false,
         contentType: false,
         processData: false,
-        type: 'PUT',
-        headers: headers, 
-        success: function(data){
+        type: 'POST',
+        headers: headers
+      })
+      .fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); })
+      .done(function(model, resp){
           // FIXME: should be showing a regular message
           appModel.error('success');
-          // FIXME: should reload the library view to reflect new comments/etc.
-        },
-        done: function(model, resp){
-          // TODO: done replaces success as of jq 1.8
-          console.log('done');
-        }
-      }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });
+          self.model.fetch();
+      });
     },
 
     /**
@@ -135,24 +124,23 @@ define([
       var viewId = 'detail';
       if (!_.isEmpty(this.uriStack)){
         viewId = this.uriStack.shift();
-        if (viewId == '+add') {
-          this.uriStack.unshift(viewId);
-          this.showAdd();
-          return;
-        }else if (viewId == 'edit'){
-          this.uriStack.unshift(viewId);
-          this.showEdit();
-          return;
+        if(viewId == '+add'){
+          this.$('ul.nav-tabs > li').addClass('disabled');
+          this.uriStack.unshift(viewId); 
+          viewId = 'detail';
         }
-
+        if(viewId == 'edit'){
+          this.uriStack.unshift(viewId); 
+          viewId = 'detail';
+        }
         if (!_.has(this.tabbed_resources, viewId)){
           var msg = 'could not find the tabbed resource: ' + viewId;
-          appModel.error(msg);
+          window.alert(msg);
           throw msg;
         }
       }
       this.change_to_tab(viewId);
-    },
+    },    
     
     click_tab : function(event){
       event.preventDefault();
@@ -189,6 +177,8 @@ define([
     },
     
     showAdd: function() {
+      console.log('add view');
+      
       var self = this;
       var delegateStack = _.clone(this.uriStack);
       var view = new DetailLayout({
@@ -222,41 +212,53 @@ define([
     },
     
     setDetail: function(delegateStack) {
-      var key = 'detail';
-      
-      var view = this.tabViews[key];
-      if ( !view ) {
-        view = new DetailLayout({ 
-          model: this.model,
-          uriStack: delegateStack, 
-          buttons: ['download', 'upload'] });
-        this.tabViews[key] = view;
-      } 
-      // NOTE: have to re-listen after removing a view
-      this.listenTo(view , 'uriStack:change', this.reportUriStack);
-      // NOTE: if subview doesn't report stack, report it here
-      //      this.reportUriStack([]);
-      this.setView("#tab_container", view ).render();
-    },
-
-    setVersions: function(delegateStack) {
-      // FIXME: this is old, remove
+      console.log('detail view');
       
       var self = this;
-      var key = 'version';
-      var view = this.tabViews[key];
-      if ( !view ) {
-        var view = new LibraryVersionsView({
-          library: self.model,
-          uriStack: delegateStack
-        });
-        self.tabViews[key] = view;
-        Backbone.Layout.setupView(view);
-      } else {
-        self.reportUriStack([]);
+      var key = 'detail';
+      var buttons = ['download'];
+      if (appModel.hasPermission('library', 'write')){
+        buttons = buttons.concat(['upload','history','edit']);
       }
-      // NOTE: have to re-listen after removing a view
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      
+      // Custom library model validation: plate range
+      this.model.validate = function(attrs) {
+        var errs = {};
+        console.log('validating: ', attrs); 
+        if (!_.isNumber(attrs.start_plate)){
+          errs.start_plate = 'number required';
+        }else{
+          var ranges = self.model.resource.library_plate_ranges;
+          for (var i=0; i<ranges.length-1; i++){
+            var start = ranges[i];
+            var end = ranges[i+1];
+            if (attrs.start_plate >= start && attrs.start_plate <= end){
+              errs.start_plate = 'range already used: ' + start + '-' + end;
+              break;
+            }
+            if (attrs.end_plate >= start && attrs.end_plate <= end){
+              errs.start_plate = 'range already used: ' + start + '-' + end;
+              break;
+            }
+            i++;
+          }
+        }
+        if (!_.isEmpty(errs)) return errs;
+      };
+
+      var view = this.tabViews[key];
+      if (view) {
+        // remove the view to refresh the page form
+        this.removeView(this.tabViews[key]);
+      }
+      
+      view = new DetailLayout({ 
+        model: this.model,
+        uriStack: delegateStack, 
+        buttons: buttons });
+      this.tabViews[key] = view;
+
+      this.listenTo(view , 'uriStack:change', this.reportUriStack);
       this.setView("#tab_container", view ).render();
     },
 
@@ -270,7 +272,6 @@ define([
       self.tabViews[key] = view;
       Backbone.Layout.setupView(view);
       self.reportUriStack([]);
-      // NOTE: have to re-listen after removing a view
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
     },
@@ -298,21 +299,7 @@ define([
 
     setCopies: function(delegateStack) {
       var self = this;
-      // Note, no longer caching view; if user clicks on it then refresh
-      // var key = 'copy';
-      // var view = this.tabViews[key];
-      // if ( !view ) {
-        
-      // FIXME: UI Architecture: 
-      // should either:
-      // 1. show List view for copies query,
-      // 2. or employ the the LibraryCopy (detail) view in the content space:
       var copyResource = appModel.getResource('librarycopy'); 
-      // TODO: allow LibraryCopy model to be provided, with an empty uriStack?
-      // (this facilitates in-memory model sharing)
-      // (prefer: not to do this, rather, implement model caching on the app-state,
-      //  - needs cache-busting technique as well)
-      
       if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
           !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
         // Detail view
@@ -326,16 +313,12 @@ define([
             library: self.model
           });
           Backbone.Layout.setupView(view);
-          //self.tabViews[key] = view;
-
-          // NOTE: have to re-listen after removing a view
           self.listenTo(view , 'uriStack:change', self.reportUriStack);
           self.setView("#tab_container", view ).render();
         });        
         return;
       }else{
         // List view
-        // special url because list is a child view for library
         var url = [self.model.resource.apiUri, 
                    self.model.key,
                    'copy'].join('/');
@@ -346,9 +329,7 @@ define([
           url: url
         }});
         Backbone.Layout.setupView(view);
-        //self.tabViews[key] = view;
         self.reportUriStack([]);
-        // NOTE: have to re-listen after removing a view
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         this.setView("#tab_container", view ).render();
       }

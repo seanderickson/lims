@@ -64,6 +64,7 @@ define([
       console.log('setDetail: ', delegateStack);
         
       // Create model validation rules based on classification
+      // FIXME: attach model validation on showAdd as well
       this.model.validate = function(attrs) {
         var errs = {};
 
@@ -358,7 +359,6 @@ define([
       var key = 'screens';
       var originalResource = appModel.getResource('screen');
       var resource = _.extend({},originalResource);
-      resource = _.extend({}, originalResource );
       resource.fields = _.pick(
         originalResource.fields,
         ['facility_id','title','screen_type','screensaver_user_role', 'status','status_date',

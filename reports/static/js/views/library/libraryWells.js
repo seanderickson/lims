@@ -48,44 +48,40 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       // NOTE: library/well view is actually a "reagents" view
       var reagents_url = library.resource.apiUri +'/' + library.key + '/well';
       var url = reagents_url;
-      var resource = appModel.getResource('reagent');
-      
-      // Adjust the schema fields for the library type:
-      // TODO: consider separate SMR,SR,NPR resources
-      // - todo: generic method to display only the subtype's fields, i.e.:
-      // subtype_scope = 'fields.' + model.resource.key; and also its supertypes
-      
-      var displayed_scopes = ['fields.well', 'fields.reagent'];
-      if(this.library.get('screen_type') == 'rnai'){
-        displayed_scopes.push('fields.silencingreagent');
-      }else if(this.library.get('library_type') == 'natural_products'){
-        displayed_scopes.push('fields.naturalproductreagent');
-      }else{
-        displayed_scopes.push('fields.smallmoleculereagent');
-      }
-      var specific_schema = _.clone(resource);
-      specific_schema.fields = {}
-      _.each(_.keys(resource.fields), 
-          function(key){
-            var field = resource.fields[key];
-            if(_.contains(displayed_scopes, field['scope'])){
-              specific_schema.fields[key] = field;
-            }
-          });
-      
-      if (!_.isEmpty(uriStack) && !_.isEmpty(uriStack[0]) &&
-              !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
-        var _key = Iccbl.popKeyFromStack(resource,uriStack,self.consumedStack);
 
-        appModel.getModel('well', _key, function(model){
-          model.resource = resource;
-          self.showDetail(model, specific_schema);
-        } );
-      } else {
-        self.consumedStack = [];
-        self.showList(resource, reagents_url, specific_schema);
-      }
+      appModel.getResourceFromUrl('well', reagents_url + '/schema', function(resource){
+
+        var displayed_scopes = ['fields.well', 'fields.reagent'];
+        if(self.library.get('screen_type') == 'rnai'){
+          displayed_scopes.push('fields.silencingreagent');
+        }else if(self.library.get('library_type') == 'natural_products'){
+          displayed_scopes.push('fields.naturalproductreagent');
+        }else{
+          displayed_scopes.push('fields.smallmoleculereagent');
+        }
+        var specific_schema = _.clone(resource);
+        specific_schema.fields = {}
+        _.each(_.keys(resource.fields), 
+            function(key){
+              var field = resource.fields[key];
+              if(_.contains(displayed_scopes, field['scope'])){
+                specific_schema.fields[key] = field;
+              }
+            });
         
+        if (!_.isEmpty(uriStack) && !_.isEmpty(uriStack[0]) &&
+                !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
+          var _key = Iccbl.popKeyFromStack(resource,uriStack,self.consumedStack);
+  
+          appModel.getModel('well', _key, function(model){
+            model.resource = resource;
+            self.showDetail(model, specific_schema);
+          } );
+        } else {
+          self.consumedStack = [];
+          self.showList(resource, reagents_url, specific_schema);
+        }
+      });        
     },    
     
     showDetail: function(model, specific_schema) {

@@ -9,7 +9,6 @@ import os
 
 from django.contrib.auth.models import User, UserManager
 from django.db import migrations, models
-# from django.utils.timezone import utc, make_aware
 import pytz
 
 from db.support.data_converter import default_converter
@@ -18,7 +17,6 @@ from reports.models import Vocabularies, ApiLog
 from datetime import timedelta
 
 
-# from reports.utils.sqlalchemy_bridge import Bridge
 logger = logging.getLogger(__name__)
 
 def create_screensaver_users(apps, schema_editor):
@@ -161,7 +159,6 @@ def create_screensaver_users(apps, schema_editor):
             except Exception, e:
                 logger.error(str(('cannot create user ',username,e)))
                 raise
-#                     continue;
         # find or create the userprofile
         try:
             up = UserProfileClass.objects.get(username=username)
@@ -211,7 +208,9 @@ def create_roles(apps, schema_editor):
     ScreensaverUser = apps.get_model('db', 'ScreensaverUser')
     ScreensaverUserRole = apps.get_model('db', 'ScreensaverUserRole')
     role_group_map = {}
-    
+
+    # Create UserGroups
+    # - Group permissions are set using /lims/static/production_data/screensaver_usergroups-prod.csv    
     for ssrole in ( ScreensaverUserRole.objects.all()
         .distinct('screensaver_user_role')
         .values_list('screensaver_user_role', flat=True) ):
@@ -364,9 +363,6 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
     connection = schema_editor.connection
     cursor = connection.cursor()
 
-#     bridge = Bridge()
-#     conn = bridge.get_engine().connect()
-
     log_ref_resource_name = 'userchecklistitem'
     
     _dict = None
@@ -388,7 +384,6 @@ order by screening_room_user_id, checklist_item_group, item_name, cie.date_perfo
             if date_time.date() != _dict['date_performed']:
                 # only use the less accurate date_performed date if that date
                 # is not equal to the date_created date
-#                     date_time = _dict['date_performed']
                 date_time = pytz.timezone('US/Eastern').localize(
                     datetime.datetime.combine(
                         _dict['date_performed'],
@@ -506,16 +501,7 @@ class Migration(migrations.Migration):
         #     deactivated 
         #     na
         #     completed
-#         migrations.AddField(
-#             model_name='userchecklistitem',
-#             name='status_notified_date', 
-#             field=models.DateField(null=True)),
-#         migrations.AddField(
-#             model_name='userchecklistitem',
-#             name='previous_status', 
-#             field=models.TextField(null=True)),
 
         migrations.RunPython(create_screensaver_users),
         migrations.RunPython(create_roles),
-#         migrations.RunPython(create_user_checklist_items),
     ]

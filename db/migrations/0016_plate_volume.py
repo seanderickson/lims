@@ -1,3 +1,4 @@
+
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
@@ -6,12 +7,12 @@ import json
 import logging
 
 from django.db import migrations, models
+from django.db.utils import IntegrityError
 from pytz import timezone
 import pytz
 
 from db.support.data_converter import default_converter
 from reports.models import ApiLog
-from django.db.utils import IntegrityError
 
 
 logger = logging.getLogger(__name__)
@@ -25,8 +26,6 @@ plate_resource_name = 'plate'
 plate_uri = '/db/api/v1/' + plate_resource_name
 
 # this is a workaround, because some activities have identical date_of_activity
-
-
 times_seen = set()
 # unique offset for the logs in this migration to avoid collisions
 plate_vol_time_offset = 1111
@@ -77,7 +76,6 @@ def _child_log_from(parent_log):
     child_log.comment = parent_log.comment
     return child_log
 
-    
 def create_library_screening_logs(apps, schema_editor):
     
     logger.info(str(('create library screening logs')))
@@ -88,10 +86,12 @@ def create_library_screening_logs(apps, schema_editor):
     copyplate_to_volume = {}
     i = 0 
     total_plate_logs = 0
-    for screening in LibraryScreening.objects.all().order_by('activity__activity__activity__date_of_activity'):
-        lab_activity = screening.activity.activity
+    for screening in LibraryScreening.objects.all().order_by(
+            'screeninglink__labactivitylink__activitylink__date_of_activity'):
+        lab_activity = screening.screeninglink.labactivitylink
+        
         screen = lab_activity.screen
-        activity = lab_activity.activity
+        activity = lab_activity.activitylink
         # create parent logs:
         logger.debug(str(('for screen', screen.facility_id)))
         

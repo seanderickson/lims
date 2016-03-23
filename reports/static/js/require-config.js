@@ -17,7 +17,7 @@ require.config({
     backbone_forms_list: 'libs/backbone-forms-list',
     layoutmanager: 'libs/backbone.layoutmanager',
     bootstrap: 'libs/bootstrap',
-    lunr: 'libs/lunr',
+//    lunr: 'libs/lunr',
     text: 'libs/text',
     router: 'router',
     app_state: 'models/app_state',

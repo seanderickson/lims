@@ -1,12 +1,42 @@
 <table class='table table-condensed data-list'>
-        <% 
-        keys.each(function(key) {
-         %>
-         <tr>
-            <td class='col-sm-2 dl-title' id="title-<%=key %>" title='' />
-            <td class='dl-data' id="<%=key %>">&nbsp;</td>
-         </tr>
-     <% }); %>
+<% 
+  (groupedKeys).each(function(key) { 
+    console.log('key',key);
+%>
+<% 
+    if(! _.isObject(key)) 
+    {
+%>
+     <tr>
+        <td class='col-sm-2 dl-title' id="title-<%=key %>" title='' />
+        <td class='dl-data' id="<%=key %>">&nbsp;</td>
+     </tr>
+<% 
+    }else{
+      var group = key;
+%>
+      <tr>
+        <td class='col-sm-2 dl-title' title='' ><%=group.title %></td>
+        <td class='dl-data' >
+        <table class='table table-condensed data-list'>
+<% 
+      _.each(group.fields, function(groupKey){
+        console.log('group-key', groupKey);
+%>
+          <tr>
+            <td class='col-sm-2 dl-title' id="title-<%=groupKey %>" title='' />
+            <td class='dl-data' id="<%=groupKey %>">&nbsp;</td>
+          </tr>
+<%
+        });
+%>
+        </table>
+        </td>
+      </tr>
+<% 
+    }
+  }); 
+%>
 </table>
 
 <form id='generic-form' class="form-horizontal" >

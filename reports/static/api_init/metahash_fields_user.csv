@@ -1,9 +1,9 @@
 key,scope,resource_uri,table,field,ordinal,comment,data_type,display_type,display_options,edit_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,alias,is_restricted,regex,default
-first_name,fields.user,/reports/api/v1/field/fields.user/first_name/,auth_user,,100,,string,,,,TRUE,"First Name","First Name",TRUE,,,[l;d],[c;u],,,,
-last_name,fields.user,/reports/api/v1/field/fields.user/last_name/,auth_user,,101,,string,,,,TRUE,"Last Name","Last Name",TRUE,,,[l;d],[c;u],,,,
-ecommons_id,fields.user,/reports/api/v1/field/fields.user/ecommons_id/,,,102,,string,,,,TRUE,Ecommons,Ecommons,TRUE,,,[l;d],[c;u],,,,
-email,fields.user,/reports/api/v1/field/fields.user/email/,auth_user,,103,,string,,"{ 'maxlength': '100' }",,TRUE,Email,Email,TRUE,,,[l;d],[c;u],,,"^[\w\-]{1,}([\w\-\+.]{1,1}[\w\-]{1,}){0,}[@][\w\-]{1,}([.]([\w\-]{1,})){1,3}$",
 username,fields.user,/reports/api/v1/field/fields.user/username/,,,100,,string,link,"{ 'hrefTemplate': '#screensaveruser/{username}' }",,TRUE,Username,Username,TRUE,,,[l;d],[c],,,,
+first_name,fields.user,/reports/api/v1/field/fields.user/first_name/,auth_user,,101,,string,,,,TRUE,"First Name","First Name",TRUE,,,[l;d],[c;u],,,,
+last_name,fields.user,/reports/api/v1/field/fields.user/last_name/,auth_user,,102,,string,,,,TRUE,"Last Name","Last Name",TRUE,,,[l;d],[c;u],,,,
+ecommons_id,fields.user,/reports/api/v1/field/fields.user/ecommons_id/,,,103,,string,,,,TRUE,Ecommons,Ecommons,TRUE,,,[l;d],[c;u],,,,
+email,fields.user,/reports/api/v1/field/fields.user/email/,auth_user,,104,,string,,"{ 'maxlength': '100' }",,TRUE,Email,Email,TRUE,,,[l;d],[c;u],,,"^[\w\-]{1,}([\w\-\+.]{1,1}[\w\-]{1,}){0,}[@][\w\-]{1,}([.]([\w\-]{1,})){1,3}$",
 is_staff,fields.user,/reports/api/v1/field/fields.user/is_staff/,auth_user,,106,,boolean,,,,TRUE,"Staff users may upload data","Is Staff",TRUE,,,[l;d],[c;u],,,,FALSE
 permissions,fields.user,/reports/api/v1/field/fields.user/permissions/,,,155,,list,,,multiselect2,TRUE,"Permissions assigned directly to the user","User Permissions",TRUE,,,[d],[c;u],,,,
 usergroups,fields.user,/reports/api/v1/field/fields.user/usergroups/,,,150,,list,link,"{ 'hrefTemplate': '#usergroup/{value}' }",multiselect2,TRUE,"Groups that the user belongs to","User Groups",TRUE,,,[d],[c;u],,,,

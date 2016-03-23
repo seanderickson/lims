@@ -571,18 +571,16 @@ define([
           rawField['display_options'] = JSON.parse(options);
         }catch(e){
           console.log('warn: display_options is not JSON parseable, column: ' +
-              rawField['key'] + ', options: ' + options,e);      
+              rawField['key'] + ', options: ', options,e);      
         }
       } 
     },
     
-    
     getResources: function(callBack){
-      console.log('- getResources from the server...')
+      console.log('getResources from the server...')
       var self = this;
       // Retrieve the resource definitions from the server
       var resourceUrl = self.reportsApiUri + '/resource'
-      
       
       Iccbl.getCollectionOnClient(resourceUrl, function(collection){
         

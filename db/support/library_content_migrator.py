@@ -7,7 +7,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
 from django.db.models import Count
 from django.forms.models import model_to_dict
-from django.utils import timezone, tzinfo
+from django.utils import timezone
 from django.utils.timezone import make_aware
 from tastypie.bundle import Bundle
 from tastypie.resources import Resource
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 class Migrator:
     '''
-    purpose: support class for the 0013,0014 library content version migrations
+    purpose: support class for the library content version migrations
     '''
 
     smrResource = SmallMoleculeReagentResource()
@@ -165,7 +165,7 @@ where r.library_contents_version_id=%s order by well_id;
                     })
                 log.uri = self.libraryResource.get_resource_uri(model_to_dict(library))
                 log.key = '/'.join([str(x) for x in (
-                    self.libraryResource.detail_uri_kwargs(library).values()) ])
+                    self.libraryResource.get_id(model_to_dict(library)).values()) ])
                 log.diff_keys = json.dumps(['version_number'])
                 log.diffs = json.dumps([
                     prev_version.version_number if prev_version else 0, version.version_number])

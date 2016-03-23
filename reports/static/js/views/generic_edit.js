@@ -22,10 +22,10 @@ define([
     tagname: 'siuniteditor',
     
     fieldTemplate: _.template([
-      '<div data-editor class="form-control col-sm-10" title="<%= help %>"  >',
+      '<div data-editor class="form-control col-sm-10" title="<%= help %>"  >'
       ].join('')),
     unitFieldTemplate: _.template([
-      '<div data-editor title="<%= help %>"  >',
+      '<div data-editor title="<%= help %>"  >'
       ].join('')),
 
     formTemplate: _.template([
@@ -43,8 +43,8 @@ define([
       ['M', 1e6],
       ['k', 1e3],
       ['', 1],
-      ['m', 1e-3,],
-      ['μ', 1e-6,],
+      ['m', 1e-3],
+      ['μ', 1e-6],
       ['n', 1e-9 ],
       ['p', 1e-12 ]
       ],
@@ -74,7 +74,10 @@ define([
       console.log('siunit initialize', options);
       Backbone.Form.editors.Base.prototype.initialize.call(this, options);
 
-      var options = this.options = options || {};
+      var _options = typeof options !== 'undefined' ?  options : {};
+      options = _options;
+      this.options = options;
+      
       var formSchema = this.formSchema = {};
       var multiplier = this.multiplier = options.schema.multiplier || 1;
       var symbol = this.symbol = options.schema.symbol;
@@ -83,7 +86,7 @@ define([
       var units = this.units = [];
       
       if(! symbol){
-        throw 'Error: SIUnitFormFilter requires a "symbol" option' 
+        throw 'Error: SIUnitFormFilter requires a "symbol" option'; 
       }
       _.each(this.siunits,function(pair){
         if(options.schema.maxunit){
@@ -181,7 +184,7 @@ define([
       // run strip after every calculation to round out floating point math errors
       function strip(number) {
         return (parseFloat(number.toPrecision(12)));
-        };
+      }
       val = strip(val * multiplier);
       if(si_mult > 0){ // if si unit is undefined, assume to be 1
         val = strip(val * si_mult);
@@ -195,7 +198,7 @@ define([
       var self = this;
       function strip(number) {
         return (parseFloat(number.toPrecision(12)));
-        };
+      }
       number = strip(number/self.multiplier);
       pair = _.find(this.siunits, function(pair){
         return pair[1] <= Math.abs(number); 
@@ -281,7 +284,7 @@ define([
     initialize: function(options) {
         Backbone.Form.editors.Base.prototype.initialize.call(this, options);
         if (this.value){
-          this.value = new Date(this.value)
+          this.value = new Date(this.value);
         }
     },
 
@@ -545,13 +548,12 @@ define([
       this.editKeys = args.editKeys || this.modelSchema.allEditVisibleKeys();
       this.groupedKeys = this.modelSchema.groupedKeys(this.editKeys);
       this.editableKeys = args.editableKeys || this.modelSchema.updateKeys();
-      if(_.isEmpty(_.compact(_.values(
-          this.model.pick(this.model.resource['id_attribute']))))){
+      if(_.isEmpty(_.compact(_.values(this.model.pick(this.model.resource['id_attribute']))))){
         this.editableKeys = _.union(this.editableKeys,this.modelSchema.createKeys());
       }
       // Add comment field
-      if( _.propertyOf(this.model.resource,'require_comment_on_save')
-          && !_.contains(this.editableKeys, 'apilog_comment')){
+      if( _.propertyOf(this.model.resource,'require_comment_on_save') && 
+          !_.contains(this.editableKeys, 'apilog_comment')){
         this.editableKeys.push('apilog_comment');
         this.modelFields = _.extend({
           'apilog_comment': {
@@ -604,7 +606,7 @@ define([
       '      <div data-error class="text-danger" ></div>',
       '      <div><%= help %></div>',
       '    </div>',
-      '  </div>',
+      '  </div>'
     ].join('')),
 
     altTextAreaFieldTemplate:  _.template([
@@ -615,7 +617,7 @@ define([
       '      <div data-error class="text-danger" ></div>',
       '      <div><%= help %></div>',
       '    </div>',
-      '  </div>',
+      '  </div>'
     ].join('')),
 
     altMultiselectFieldTemplate:  _.template([
@@ -626,7 +628,7 @@ define([
       '      <div data-error class="text-danger" ></div>',
       '      <div><%= help %></div>',
       '    </div>',
-      '  </div>',
+      '  </div>'
     ].join('')),
 
     altMultiselect2FieldTemplate:  _.template('\
@@ -828,7 +830,8 @@ define([
 
     _createValidators: function(fi) {
         
-      var validators = [], validator;
+      var validators = [];
+      var validator;
       
       if (_.contains(['integer','float','decimal'],fi.data_type))
       {
@@ -852,17 +855,17 @@ define([
             for(var i=0; i<fi.range.length; i++){
               schema_val = fi.range[i]
               if(i>0) rangeMsg += ', ';
-              if(i%2 == 0){
+              if(i%2 === 0){
                 rangeMsg += '> ' + schema_val
               }else{
                 rangeMsg += '< ' + schema_val
               }
             }
             // compare range in pairs
-            for(var i=0; i<fi.range.length; i+=2){
-              schema_lower = parseInt(fi.range[i])
+            for(i=0; i<fi.range.length; i+=2){
+              schema_lower = parseInt(fi.range[i],10)
               if(fi.range.length > i+1){
-                schema_upper = parseInt(fi.range[i+1])
+                schema_upper = parseInt(fi.range[i+1],10)
                 if(value >schema_lower && value<schema_upper){
                   value_ok = true;
                   break;
@@ -989,16 +992,14 @@ define([
               selectableSearchString = '#'+that.$container.attr('id')+' .ms-elem-selectable:not(.ms-selected)',
               selectionSearchString = '#'+that.$container.attr('id')+' .ms-elem-selection.ms-selected';
 
-          that.qs1 = $selectableSearch.quicksearch(selectableSearchString)
-          .on('keydown', function(e){
+          that.qs1 = $selectableSearch.quicksearch(selectableSearchString).on('keydown', function(e){
             if (e.which === 40){
               that.$selectableUl.focus();
               return false;
             }
           });
 
-          that.qs2 = $selectionSearch.quicksearch(selectionSearchString)
-          .on('keydown', function(e){
+          that.qs2 = $selectionSearch.quicksearch(selectionSearchString).on('keydown', function(e){
             if (e.which == 40){
               that.$selectionUl.focus();
               return false;
@@ -1034,7 +1035,7 @@ define([
      * - remove nulls/empty strings
      * - sort lists to test equality (TODO: support for ordered lists)
      */
-    _getChangedAttributes(model){
+    _getChangedAttributes: function(model){
       var self = this;
       var changedAttributes = model.changedAttributes();
       console.log('original changedAttributes: ', changedAttributes);
@@ -1042,7 +1043,7 @@ define([
         changedAttributes = _.pick(changedAttributes, this.finalEditableKeys);
       }
       changedAttributes = _.omit(changedAttributes, function(value,key,object){
-
+        var prev;
         if( _.has(self.initialValues,key)){
           // test if the editor conversion is equivalent
           if (self.initialValues[key]== value){
@@ -1052,7 +1053,7 @@ define([
         
         // equate null to empty string, object, or array
         if(_.isNull(value)){
-          var prev = model.previous(key);
+          prev = model.previous(key);
           if(_.isNull(prev)) return true;
           if(_.isObject(prev) || _.isString(prev) || _.isArray(prev)){
             return _.isEmpty(prev);
@@ -1060,7 +1061,7 @@ define([
         }
         if(_.isObject(value) || _.isString(value) || _.isArray(value)){
           if(_.isEmpty(value)){
-            var prev = model.previous(key);
+            prev = model.previous(key);
             if(_.isNull(prev)) return true;
             if(_.isObject(prev) || _.isString(prev) || _.isArray(prev)){
               return _.isEmpty(prev);
@@ -1073,8 +1074,8 @@ define([
         // NOTE: JSON does not officially support control-characters, so 
         // newlines should be escaped/unescaped on send/receive in the API (TODO)
         if(_.isString(value) && model.previous(key)){
-          if( value.replace(/(\r\n|\n|\r)/gm,"\n") 
-              == model.previous(key).replace(/(\r\n|\n|\r)/gm,"\n") ){
+          if( value.replace(/(\r\n|\n|\r)/gm,"\n") == 
+              model.previous(key).replace(/(\r\n|\n|\r)/gm,"\n") ){
             return true;
           }
         }
@@ -1126,9 +1127,9 @@ define([
       
       
       options['key'] = Iccbl.getIdFromIdAttribute( self.model,self.model.resource );
-      if (_.contains(this.uriStack, '+add') || !options['key'] ){
-        // options['patch'] = false;
-      }else{
+      if (!_.contains(this.uriStack, '+add') && options['key'] ){
+//        // options['patch'] = false;
+//      }else{
         self.model.idAttribute = self.model.resource['id_attribute'];
         options['patch'] = true;
         // TODO: check if creating new or updating here
@@ -1153,7 +1154,7 @@ define([
         this.model.save(changedAttributes, options)
           .success(function(model, resp) {
             console.log('success');
-            if(options['patch']==false){
+            if(!options['patch']){
               // this is an +add event
               model = new Backbone.Model(model);
               var key = Iccbl.getIdFromIdAttribute( model,self.model.resource );

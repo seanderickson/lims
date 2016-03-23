@@ -180,6 +180,7 @@ define([
       this.$fixture.empty().appendTo($("#fixtures"));
       this.model = new Backbone.Model(JSON.parse(test_model_raw));
       this.model.resource = this.resource;
+      var self = this;
 //      var onEditCallBack = function(displayFunction){
 //        appModel.getUserOptions(function(options){
 //          self.model.resource.schema.fields['users']['choices'] = options;
@@ -189,7 +190,7 @@ define([
     
       this.view = new EditView({ 
 
-        model: this.model
+        model: self.model
       });
       this.view.render();
       this.$fixture.append(this.view.el);

@@ -15,23 +15,21 @@
                 "list",
                 "detail"
                 ],
-  "schema": {
-    "extraSelectorOptions": {},
-    "fields": {
-        "alias": {},
-        "api_name": {},
-        "comment": {},
-        "description": {},
-        "id": {},
-        "id_attribute": {},
-        "is_restricted": {},
-        "key": {},
-        "ordinal": {},
-        "resource_uri": {},
-        "scope": {},
-        "title": {},
-        "title_attribute": {},
-        "visibility": {}
-      }
-  }
+  "extraSelectorOptions": {},
+  "fields": {
+      "alias": {},
+      "api_name": {},
+      "comment": {},
+      "description": {},
+      "id": {},
+      "id_attribute": {},
+      "is_restricted": {},
+      "key": {},
+      "ordinal": {},
+      "resource_uri": {},
+      "scope": {},
+      "title": {},
+      "title_attribute": {},
+      "visibility": {}
+    }
 }

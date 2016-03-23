@@ -114,16 +114,29 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
 
       var self = this;
       var uriStack = _.clone(this.uriStack);
-      
-      // hack - should fit the reagent_type default columns into the metadata
       var library_type = this.library.get('library_type');
+
+      function add_to_includes(stack,values){
+        var found = false;
+        var key;
+        for (var i=0; i<stack.length; i++){
+          key = stack[i];
+          if (key=='includes'){
+            current_values = stack[i+1];
+            current_values.concat(values);
+            found=true;
+            break;
+          }
+          if (!found){
+            stack.concat('includes',values);
+          }
+        }
+      }
       console.log('library_type: ' + library_type);
       if( this.library.get('screen_type') == 'rnai'){
-        uriStack.push('includes');
-        uriStack.push('vendor_entrezgene_symbols,vendor_entrezgene_id');
+        add_to_includes(uriStack,['vendor_entrezgene_symbols,vendor_entrezgene_id']);
       }else if(library_type != 'natural_products'){
-        uriStack.push('includes');
-        uriStack.push('compound_name');
+        add_to_includes(uriStack,'compound_name');
       }
       
       

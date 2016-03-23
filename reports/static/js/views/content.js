@@ -52,6 +52,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     showAdd: function(resource, uriStack){
       var self = this;
       var newModel = appModel.createNewModel(resource.key);
+      newModel.resource = resource;
       this.$('#content_title').html(resource.title + ': Add' );
       var viewClass = DetailLayout;
       if (_.has(resource, 'detailView')){
@@ -326,6 +327,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           }else{ 
             var _key = Iccbl.popKeyFromStack(resource, uriStack, consumedStack );
             appModel.getModel(uiResourceId, _key, function(model){
+              model.resource = resource;
               self.showDetail(uriStack, model);
             });
           }

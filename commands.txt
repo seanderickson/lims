@@ -24,6 +24,11 @@ PYTHONPATH=. python reports/utils/db_init.py --input_dir=./db/static/api_init/ -
 
 # set up default testing users (note, will delete existing users)
 PYTHONPATH=. python reports/utils/db_init.py --input_dir=lims/static/production_data/ -u http://localhost:8000/reports/api/v1 -f lims/static/production_data/api_init_actions.csv -U sde
+PYTHONPATH=. python reports/utils/db_init.py --input_dir=lims/static/production_data/ -u http://localhost:8000/reports/api/v1 -f lims/static/production_data/api_init_actions_patch.csv -U sde
+
+PYTHONPATH=. python reports/utils/db_init.py --input_dir=lims/static/production_data/ \
+  -u https://dev.screensaver2.med.harvard.edu/reports/api/v1 \
+  -f lims/static/production_data/api_init_actions_patch.csv -U sde
 
 #####
 # run all tests

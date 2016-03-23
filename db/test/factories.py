@@ -8,10 +8,10 @@ class ScreenFactory(factory.django.DjangoModelFactory):
         model = db.models.Screen
     species = 'bacteria' 
     data_sharing_level = 1
-    facility_id = factory.Sequence(lambda n: str(n))
+#     facility_id = factory.Sequence(lambda n: str(n))
     project_phase = "primary_screen"
     screen_type = "small_molecule"
-    title = "Test screen %s" % facility_id
+    title = factory.Sequence(lambda n: 'Screen Title_'+ str(n) )
 
 class ScreensaverUserFactory(factory.django.DjangoModelFactory):
     class Meta:

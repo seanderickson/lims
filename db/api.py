@@ -445,7 +445,7 @@ class ScreenResultResource(ApiResource):
     # FIXME: need test cases for this
     def clear_cache(self, all=False, by_date=None, by_uri=None, by_size=False):
 
-        ManagedResource.clear_cache(self)
+        ApiResource.clear_cache(self)
 
         max_indexes_to_cache = getattr(settings, 'MAX_WELL_INDEXES_TO_CACHE',2e+07)
         
@@ -4462,20 +4462,37 @@ class ScreenResource(ApiResource):
         # create/update the screen
         try:
             screen = None
-            try:
-                screen = Screen.objects.get(**id_kwargs)
-                errors = self.validate(deserialized, patch=True)
-                if errors:
-                    raise ValidationError(errors)
-            except ObjectDoesNotExist, e:
-                logger.info('Screen %s does not exist, creating', id_kwargs)
-                screen = Screen(**id_kwargs)
+            
+            if id_kwargs:
+                try:
+                    screen = Screen.objects.get(**id_kwargs)
+                    errors = self.validate(deserialized, patch=True)
+                    if errors:
+                        raise ValidationError(errors)
+                except ObjectDoesNotExist, e:
+                    raise Exception('screen does not exist: %r' % id_kwargs)
+            else:
+                # find a new facility id
+                query = Screen.objects.filter(project_phase__iexact='primary_screen')
+                query = query.extra(
+                    select={'facility_id_int': 'facility_id::integer'})\
+                    .order_by('-facility_id_int')
+                query = query.values_list('facility_id_int', flat=True)
+                if query.exists():
+                    logger.info('facility_id_max: %r', query[0])
+                    facility_id = str(int(query[0]) + 1)
+                else:
+                    logger.info('create the first facility id (1)')
+                    facility_id = '1'
+                initializer_dict['facility_id'] = facility_id
+                screen = Screen(facility_id=facility_id)
                 errors = self.validate(deserialized, patch=False)
                 if errors:
                     raise ValidationError(errors)
 
             for key,val in initializer_dict.items():
-                if hasattr(screen,key):
+                if val is not None and hasattr(screen,key):
+                    logger.info('set: %r:%r', key,val)
                     setattr(screen,key,val)
             
             screen.save()
@@ -6283,7 +6300,17 @@ class WellResource(ApiResource):
                         response=self.error_response(request, e.errors))
 
 
-        # get new state, for logging
+            experimental_well_count = library.well_set.filter(
+                library_well_type__iexact='experimental').count()
+            if library.experimental_well_count != experimental_well_count:
+                library_log.diff_keys.append('experimental_well_count')
+                library_log.diffs['experimental_well_count'] = \
+                    [library.experimental_well_count,experimental_well_count]
+                library_log.save()
+                library.experimental_well_count = experimental_well_count
+                library.save()
+                
+        # get new wells state, for logging
         new_data = self._get_list_response(request,**kwargs_for_log)
         
         original_data_patches_only = []

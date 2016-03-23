@@ -78,9 +78,40 @@ class DBResourceTestCase(IResourceTestCase):
         if data:
             input_data.update(data)
         resource_uri = '/'.join([BASE_URI_DB, 'screen'])
-        test_uri = '/'.join([resource_uri,input_data['facility_id']])
+        _data_for_get = { 
+            'limit': 0,
+            'includes': '*'
+        }
+        logger.info('screen input_data to create: %r', input_data)
+
+        logger.info('post to %r...', resource_uri)
+        resp = self.api_client.post(
+            resource_uri, format='json', data=input_data, 
+            authentication=self.get_credentials())
+        new_obj = self.deserialize(resp)
+        self.assertTrue(
+            resp.status_code in [200,201], 
+            (resp.status_code, self.get_content(resp)))
         
-        return self._create_resource(input_data,resource_uri,test_uri)
+        resource_test_uri = resource_uri + '/' + new_obj['facility_id']        
+        logger.info('get from %r... %r', resource_test_uri, _data_for_get)
+        resp = self.api_client.get(
+            resource_test_uri, format='json', 
+            authentication=self.get_credentials(), data=_data_for_get)
+        self.assertTrue(
+            resp.status_code in [200,201], 
+            (resp.status_code,self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        if 'objects' in new_obj:
+            self.assertEqual(len(new_obj['objects']),1,
+                'created resource test_uri: %r, returns multiple objects: %r'
+                % (resource_test_uri,new_obj))
+            new_obj = new_obj['objects'][0]
+        logger.debug('created obj: %r', new_obj)
+        result,msg = assert_obj1_to_obj2(input_data,new_obj)
+        self.assertTrue(result, msg)
+        logger.debug('item created: %r', new_obj)
+        return new_obj
 
     def create_screensaveruser(self, data=None):
         
@@ -311,8 +342,6 @@ class LibraryResource(DBResourceTestCase):
 
         with open(filename) as input_file:
             
-            ### NOTE: submit the data as an object, because the test framework
-            ### will convert it to the target format.
             input_data = self.serializer.from_sdf(input_file.read())
             input_data = input_data['objects']
             expected_count = 8
@@ -328,7 +357,7 @@ class LibraryResource(DBResourceTestCase):
                 resource_uri, format='sdf', data=input_data, 
                 authentication=self.get_credentials(), **data_for_get )
             self.assertTrue(
-                resp.status_code in [200, 204], 
+                resp.status_code in [200], 
                 (resp.status_code, self.get_content(resp)))
         
         # NOTE: get the library "reagents" instead of the wells: reagents have a 
@@ -382,7 +411,7 @@ class LibraryResource(DBResourceTestCase):
                 ('substance_id not unique', substance_id, substance_ids))
             substance_ids.add(substance_id)
                     
-        logger.debug('==== done: test6_load_small_molecule_file =====')
+        logger.debug('==== done: test6_load_small_molecule_file: create =====')
     
         # test 2: update some wells, check results, and api logs
         filename = ( APP_ROOT_DIR 
@@ -408,7 +437,7 @@ class LibraryResource(DBResourceTestCase):
                 resource_uri, format='sdf', data=input_data, 
                 authentication=self.get_credentials(), **data_for_get )
             self.assertTrue(
-                resp.status_code in [200, 204], 
+                resp.status_code in [200], 
                 (resp.status_code, self.get_content(resp)))
         
             resource_name = 'well'
@@ -435,7 +464,6 @@ class LibraryResource(DBResourceTestCase):
             well_ids_to_check = input_data
     
             for update_well in well_ids_to_check:
-                logger.info('find: %r', update_well)
                 search = { 
                     'well_name': update_well['well_name'], 
                     'plate_number': update_well['plate_number']}
@@ -447,9 +475,13 @@ class LibraryResource(DBResourceTestCase):
                           returned_data ) ) 
                 result, msgs = assert_obj1_to_obj2(update_well, outputobj)
                 self.assertTrue(result, (msgs, update_well, outputobj))
-
+                self.assertTrue('library_well_type' in outputobj,
+                    'library_well_type is missing in %r' % outputobj)
+                self.assertTrue(outputobj['library_well_type']=='experimental',
+                    'wrong library_well_type: %r' % outputobj)
+            
             # 2. check the apilogs - library
-            resource_uri = BASE_REPORTS_URI + '/apilog' #?ref_resource_name=record'
+            resource_uri = BASE_REPORTS_URI + '/apilog'
             resp = self.api_client.get(
                 resource_uri, format='json', 
                 authentication=self.get_credentials(), 
@@ -476,25 +508,33 @@ class LibraryResource(DBResourceTestCase):
                 resp.status_code in [200], 
                 (resp.status_code, self.get_content(resp)))
             new_obj = self.deserialize(resp)
-            logger.debug('===apilogs: %s', json.dumps(new_obj))
             logs = new_obj['objects']
-            # look for 12 logs; 8 for create, 4 for update
-            expected_count = 12
+            # (none for create), 4 for update
+            expected_count = 4
             self.assertEqual( 
                 len(logs), expected_count , 
                 str((len(logs), expected_count)))
             
-            create_logs = [log for log in logs if log['api_action'] == 'CREATE']
-            patch_logs = [log for log in logs if log['api_action'] == 'PATCH']
-            
             self.assertEqual(
-                len(create_logs), 8, 
-                ('expected %d create logs, found: %d' %(8,len(create_logs)), create_logs))
-            self.assertEqual(
-                len(patch_logs), 4, 
-                ('expected %d patch logs, found: %d' %(4,len(create_logs)), create_logs))
+                len(logs), 4, 
+                ('expected %d patch logs, found: %d' %(4,len(logs)), logs))
             
-            # TODO: check logged values
+            for log in logs:
+                self.assertTrue(
+                    ( 'parent_log_uri' in log and
+                      library_item['short_name'] in log['parent_log_uri'] ), 
+                    'parent_log_uri should contain: %r - %r' 
+                    % (library_item['short_name'], log) )
+                if log['key'] == '01536:A01':
+                    self.assertTrue(
+                        set(json.loads(log['diff_keys']))==
+                        set([
+                            "pubchem_cid", "vendor_identifier", 
+                            "vendor_batch_id", "compound_name", "smiles"]),
+                        'diff_keys: %r should equal %r' % (
+                            log['diff_keys'],[
+                                "pubchem_cid", "vendor_identifier", 
+                                "vendor_batch_id", "compound_name", "smiles"]))
             # TODO: check parent_log - library log/ version
     
     def test7_load_sirnai(self):

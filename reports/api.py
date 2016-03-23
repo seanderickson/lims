@@ -79,6 +79,9 @@ from operator import itemgetter
 # from db.models import ScreensaverUser
 logger = logging.getLogger(__name__)
 
+URI_VERSION = 'v1'
+BASE_URI = '/reports/api/' + URI_VERSION
+
 def parse_val(value, key, data_type):
     """
     All values are read as strings from the input files, so this function 
@@ -3011,7 +3014,7 @@ class FieldResource(ApiResource):
             'table': 'metahash',
             'title_attribute': ['scope','key'],
             'ordinal': 0,
-            'resource_uri':'/reports/api/v1/resource/field',
+            'resource_uri': BASE_URI +'/resource/field',
             'api_name': 'reports',
             'supertype': '',
             'fields': field_schema,
@@ -3278,7 +3281,7 @@ class ResourceResource(ApiResource):
             'table': 'metahash',
             'title_attribute': ['key'],
             'ordinal': 0,
-            'resource_uri':'/reports/api/v1/resource/field',
+            'resource_uri': BASE_URI + '/resource/field',
             'api_name': 'reports',
             'supertype': '',
             'fields': field_hash
@@ -4200,7 +4203,7 @@ class UserResource(ApiResource):
         _ugx = _ug.alias('ugx')
         custom_columns = {
             'resource_uri': func.array_to_string(array([
-                '/reports/api/v1/user',text('reports_userprofile.username')]),'/'),
+                BASE_URI,'user',text('reports_userprofile.username')]),'/'),
             'permissions': 
                 select([func.array_to_string(
                         func.array_agg(text('inner_perms.permission')),
@@ -4315,7 +4318,7 @@ class UserResource(ApiResource):
             # specific setup
             custom_columns = {
                 'resource_uri': func.array_to_string(array([
-                    '/reports/api/v1/user',text('auth_user.username')]),'/'),
+                    BASE_URI,'user',text('auth_user.username')]),'/'),
             }
             columns = self.build_sqlalchemy_columns(field_hash.values(),custom_columns=custom_columns )
 
@@ -5111,7 +5114,7 @@ class UserGroupResource(ApiResource):
             _ug3 = _ug.alias('ug3')
             custom_columns = {
                 'resource_uri': func.array_to_string(array([
-                    '/reports/api/v1/usergroup',text('reports_usergroup.name')]),'/'),
+                    BASE_URI,'usergroup',text('reports_usergroup.name')]),'/'),
                 'permissions': 
                     select([func.array_to_string(
                             func.array_agg(text('innerperm.permission')),

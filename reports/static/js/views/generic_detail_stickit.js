@@ -26,6 +26,7 @@ define([
 	    var self = this;
 	    var schema = this.schema = args.schema || this.model.resource;
       this.detailKeys = args.detailKeys || schema.detailKeys(); 
+      this.groupedKeys = schema.groupedKeys(this.detailKeys);
       var nestedModels = this.nestedModels = {};
       var nestedLists = this.nestedLists = {};
       var buttons = this.buttons = args.buttons || ['download','history','back','edit','delete'];
@@ -360,6 +361,7 @@ define([
       return {
         'buttons': _.chain(this.buttons), // TODO: buttons from the schema
         'title': Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource),
+        'groupedKeys': _.chain(this.groupedKeys),
         'keys': _.chain(this.detailKeys)
       };      
     },    

@@ -1062,7 +1062,7 @@ class IResourceTestCase(SimpleTestCase):
                 resp.status_code in [200,201], 
                 (resp.status_code, self.get_content(resp)))
         
-        logger.info('get from %r... %r', resource_test_uri, data_for_get)
+        logger.info('get from %r... %r', resource_test_uri, _data_for_get)
         resp = self.api_client.get(
             resource_test_uri, format='json', 
             authentication=self.get_credentials(), data=_data_for_get)

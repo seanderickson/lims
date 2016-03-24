@@ -132,6 +132,21 @@ def parse_val(value, key, data_type):
     
 class UserGroupAuthorization(Authorization):
     
+    @staticmethod
+    def get_authorized_resources(user, permission_type):
+        userprofile = user.userprofile
+        permission_types = [permission_type]
+        if permission_type == 'read':
+            permission_types.append('write')
+        resources_user = ( userprofile.permissions.all()
+            .filter(scope='resource', type__in=permission_types)
+            .values_list('key', flat=True))
+        resources_group = [ permission.key 
+                for group in userprofile.usergroup_set.all() 
+                for permission in group.get_all_permissions(
+                    scope='resource', type__in=permission_types)]
+        return set(resources_user) | set(resources_group)
+    
     def _is_resource_authorized(self, resource_name, user, permission_type):
         
         DEBUG_AUTHORIZATION = False or logger.isEnabledFor(logging.DEBUG)
@@ -2691,7 +2706,6 @@ class ApiLogResource(ApiResource):
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
         
-    @read_authorization
     def get_list(self,request,**kwargs):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
@@ -2700,10 +2714,6 @@ class ApiLogResource(ApiResource):
 
         
     def build_list_response(self,request, **kwargs):
-        ''' 
-        Overrides tastypie.resource.Resource.get_list for an SqlAlchemy implementation
-        @returns django.http.response.StreamingHttpResponse 
-        '''
         DEBUG_GET_LIST = False or logger.isEnabledFor(logging.DEBUG)
 
         parent_log_id = None
@@ -2813,7 +2823,17 @@ class ApiLogResource(ApiResource):
 
             # general setup
              
-            (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )
+            (stmt,count_stmt) = self.wrap_statement(
+                stmt,order_clauses,filter_expression )
+            
+            # authorization filter
+            if not request.user.is_superuser:
+                # FIXME: "read" is too open
+                # - grant read level access on a case-by-case basis
+                # i.e. for screen.status updates
+                resources = UserGroupAuthorization.get_authorized_resources(
+                    request.user, 'read')
+                stmt = stmt.where(column('ref_resource_name').in_(resources))
             
             if not order_clauses:
                 stmt = stmt.order_by('ref_resource_name','key', 'date_time')
@@ -5224,7 +5244,7 @@ class UserGroupResource(ApiResource):
             
             j = _ug
             stmt = select(columns.values()).select_from(j)
-
+            stmt = stmt.order_by('name')
             # general setup
              
             (stmt,count_stmt) = self.wrap_statement(stmt,order_clauses,filter_expression )

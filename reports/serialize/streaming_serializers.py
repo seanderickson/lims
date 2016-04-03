@@ -14,7 +14,7 @@ import os.path
 import re
 import shutil
 import sys
-from tempfile import SpooledTemporaryFile
+from tempfile import SpooledTemporaryFile, NamedTemporaryFile
 import time
 from wsgiref.util import FileWrapper
 from zipfile import ZipFile
@@ -25,18 +25,26 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.core.urlresolvers import resolve
 from django.http.response import StreamingHttpResponse
 from tastypie.exceptions import ImmediateHttpResponse
-from xlsxwriter.workbook import Workbook
+from django.utils.encoding import smart_str
+# import openpyxl
+# using XlsxWriter for constant memory usage
+import xlsxwriter
 
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     LIST_BRACKETS, MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE, \
-    LIST_DELIMITER_XLS, CSV_DELIMITER, HTTP_PARAM_RAW_LISTS
-from reports.serializers import csv_convert
-import reports.utils.sdf2py
+    CSV_DELIMITER, HTTP_PARAM_RAW_LISTS
 
 
+import reports.serialize.csvutils as csvutils
+import reports.serialize.sdfutils as sdfutils
+from reports.serialize.csvutils import LIST_DELIMITER_CSV
+from reports.serialize.xlsutils import LIST_DELIMITER_XLS
+from reports.serialize import XLSX_MIMETYPE
+from reports.serialize import dict_to_rows
+from db.support.data_converter import default_converter
 logger = logging.getLogger(__name__)
 
-MOLDATAKEY = reports.utils.sdf2py.MOLDATAKEY
+MOLDATAKEY = sdfutils.MOLDATAKEY
 
 DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
 
@@ -56,7 +64,6 @@ class ChunkIterWrapper(object):
         bytecount = 0
         try:
             if self.fragment:
-                logger.debug(str(('fragment', self.fragment)))
                 #  FIXME: 
                 # if fragment (row remainder) is still > chunk_size, will just serve it here.
                 bytecount = len(self.fragment)
@@ -107,21 +114,21 @@ def interpolate_value_template(value_template, row):
         val = matchobj.group()
         val = re.sub(r'[{}]+', '', val)
         if DEBUG_STREAMING:
-            logger.info(str(('val from value template',val, 
-                row.has_key(val), row[val])))
+            logger.info('val from value template: %r, %r, %r',
+                val,row.has_key(val), row[val])
         if row.has_key(val):
             return str(row[val])
         else:
-            logger.error(str((
-                'field needed for value template is not available', 
-                val, row)))
+            logger.error(
+                'field needed for value template %r is not available: %r', 
+                val, row)
             return ''
     return re.sub(r'{([^}]+)}', get_value_from_template, value_template)
 
 
 def json_generator(cursor,meta,request, is_for_detail=False,field_hash=None):
     
-    if DEBUG_STREAMING: logger.info(str(('meta', meta )))
+    if DEBUG_STREAMING: logger.info('meta: %r', meta )
     
     # NOTE, using "ensure_ascii" = True to force encoding of all 
     # chars to be encoded using ascii or escaped unicode; 
@@ -133,13 +140,10 @@ def json_generator(cursor,meta,request, is_for_detail=False,field_hash=None):
     i=0
     try:
         for row in cursor:
-            if DEBUG_STREAMING: logger.info(str(('row', row, row.keys())))
+            if DEBUG_STREAMING: logger.info('row: %r', row)
             if field_hash:
                 _dict = OrderedDict()
                 for key, field in field_hash.iteritems():
-                    if DEBUG_STREAMING: 
-                        logger.info(str(('key', key,  str(row), 
-                            row.has_key(key))))
                     value = None
                     if row.has_key(key):
                         value = row[key]
@@ -147,11 +151,10 @@ def json_generator(cursor,meta,request, is_for_detail=False,field_hash=None):
                          or field.get('linked_field_type',None) == 'fields.ListField'
                          or field.get('data_type', None) == 'list' ):
                         # FIXME: need to do an escaped split
-                        if DEBUG_STREAMING: logger.info(str(('split', key, value)))
                         if hasattr(value, 'split'):
                             value = value.split(LIST_DELIMITER_SQL_ARRAY)
 
-                    if DEBUG_STREAMING: logger.info(str(('key val', key, value, field)))
+                    if DEBUG_STREAMING: logger.info('key %r val %r, %r', key, value, field)
                     _dict[key] = value
                     
                     if field.get('value_template', None):
@@ -177,12 +180,11 @@ def json_generator(cursor,meta,request, is_for_detail=False,field_hash=None):
                             _dict[key]=newval
 
             else:
-                if DEBUG_STREAMING: logger.info(str(('raw', row)))
+                if DEBUG_STREAMING: logger.info('raw: %r', row)
                 _dict = dict((x,y) for x, y in row.items())
 
             i += 1
             try:
-                if DEBUG_STREAMING: logger.info(str(('_dict',i, _dict)))
                 if i == 1:
                     # NOTE, using "ensure_ascii" = True to force encoding of all 
                     # chars to the ascii charset; otherwise, cStringIO has problems
@@ -191,16 +193,14 @@ def json_generator(cursor,meta,request, is_for_detail=False,field_hash=None):
                 else:
                     # NOTE, using "ensure_ascii" = True to force encoding of all 
                     # chars to the ascii charset; otherwise, cStringIO has problems
-                    # so "tm" becomes \u2122
+                    # e.g. "tm" becomes \u2122
                     # Upon fp.write  the unicode is converted to the default charset?
                     # also, CStringIO doesn't support UTF-8 mixed with ascii, for instance
                     # NOTE2: control characters are not allowed: should convert \n to "\\n"
                     yield ', ' + json.dumps(_dict, cls=DjangoJSONEncoder,
                         sort_keys=True, ensure_ascii=True, indent=2, encoding="utf-8")
             except Exception, e:
-                print 'Exception'
-                logger.info(str(('exception')))
-                logger.error(str(('ex', _dict, e)))
+                logger.exception('dict: %r', _dict)
                 raise e
         logger.debug('streaming finished')
         
@@ -219,8 +219,8 @@ class Echo(object):
     def write(self, value):
         return value
 
-def csv_generator(cursor,request,
-        field_hash=None,title_function=None,list_brackets=None):    
+def csv_generator(
+        cursor,request,field_hash=None,title_function=None,list_brackets=None):    
     
     pseudo_buffer = Echo()
     quotechar = b'"' # note that csv under python 2.7 doesn't allow multibyte quote char
@@ -234,10 +234,10 @@ def csv_generator(cursor,request,
             if i == 1:
                 if field_hash:
                     titles = field_hash.keys()
-                    logger.info(str(('keys', titles, title_function)))
+                    logger.info('keys: %r, title_function: %r', titles, title_function)
                     if title_function:
                         titles = [title_function(key) for key in titles]
-                    logger.info(str(('titles', titles)))
+                    logger.info('titles: %r', titles)
                     yield csvwriter.writerow(titles)
                 else:
                     yield csvwriter.writerow(row.keys())
@@ -248,11 +248,10 @@ def csv_generator(cursor,request,
                     value = ''
                     if row.has_key(key):
                         value = row[key]
-                    if value and ( field.get('json_field_type',None) == 'fields.ListField' 
+                    if value and ( 
+                        field.get('json_field_type',None) == 'fields.ListField' 
                          or field.get('linked_field_type',None) == 'fields.ListField'
                          or field.get('data_type', None) == 'list' ):
-                        # FIXME: must quote special strings?
-#                                 value = '[' + ",".join(value.split(LIST_DELIMITER_SQL_ARRAY)) + ']'
                         value = value.split(LIST_DELIMITER_SQL_ARRAY)
                                             
                     if field.get('value_template', None):
@@ -271,24 +270,23 @@ def csv_generator(cursor,request,
                                 response = view(*args, **kwargs)
                                 value = newval
                             except Exception, e:
-                                logger.info(str(('no image at', newval,e)))
+                                logger.info('no image at: %r, %r', newval,e)
                         else:
                             value = newval
 
                     values.append(value)
                 yield csvwriter.writerow([
-                    csv_convert(val, list_brackets=list_brackets) 
+                    csvutils.csv_convert(val, list_brackets=list_brackets) 
                         for val in values])
             
             else:
                 yield csvwriter.writerow([
-                    csv_convert(val, list_brackets=list_brackets) 
+                    csvutils.csv_convert(val, list_brackets=list_brackets) 
                         for val in row.values()])
 
     except Exception, e:
         logger.exception('csv streaming error')
         raise e                      
-
 
 
 def sdf_generator(cursor, field_hash=None):
@@ -308,8 +306,6 @@ def sdf_generator(cursor, field_hash=None):
         i = 0
         for row in cursor:
             i += 1
-            if DEBUG_STREAMING:
-                logger.info(str(('row', i, row)))
             if row.has_key(MOLDATAKEY) and row[MOLDATAKEY]:
                 yield str(row[MOLDATAKEY])
                 yield '\n' 
@@ -330,7 +326,7 @@ def sdf_generator(cursor, field_hash=None):
                     if field.get('value_template', None):
                         value_template = field['value_template']
                         if DEBUG_STREAMING:     
-                            logger.info(str(('field', key, value_template)))
+                            logger.info('field: %r:%r, %r', key, value_template)
                         value = interpolate_value_template(value_template, row)
                     if value and ( field.get('json_field_type',None) == 'fields.ListField' 
                          or field.get('linked_field_type',None) == 'fields.ListField'
@@ -356,7 +352,7 @@ def sdf_generator(cursor, field_hash=None):
                 yield '$$$$\n'
                         
             else:
-                logger.info(str(('no field hash defined')))
+                logger.info('no field hash defined')
                 for k,v in row.items():
                     if k == MOLDATAKEY: 
                         continue
@@ -382,21 +378,124 @@ def sdf_generator(cursor, field_hash=None):
                     yield '\n'
                 yield '$$$$\n'
     
-        logger.info(str(('wrote i', i)))    
+        logger.info('wrote %d', i)
     except Exception, e:
         logger.exception('streaming error')
         raise ImmediateHttpResponse('ex during sdf export: %r' % e)     
 
 
-def get_xls_response(cursor, output_filename,request,field_hash=None,
-    title_function=None, list_brackets=None):
+def cursorGenerator(cursor, field_hash, visible_fields):
     '''
-    @param output_filename - for naming temp files
+    Generate dicts from cursor rows and visible fields 
+    '''
+    assert set(visible_fields) <= set(field_hash.keys()), (
+        'programming error: field hash: %r must contain all visible fields: %r'
+        % (field_hash.keys(), visible_fields))
+    
+    row_count = 0
+    for row in cursor:
+        output_row = []
+        for key in visible_fields:
+            field = field_hash[key]
+            value = None
+            if row.has_key(key):
+                value = row[key]
+                     
+            if value and ( field.get('json_field_type',None) == 'fields.ListField' 
+                 or field.get('linked_field_type',None) == 'fields.ListField'
+                 or field.get('data_type', None) == 'list' ):
+                value = value.split(LIST_DELIMITER_SQL_ARRAY)
+            if field.get('value_template', None):
+                value_template = field['value_template']
+                if DEBUG_STREAMING: 
+                    logger.info('field: %r, value_template: %r', key, value_template)
+                value = interpolate_value_template(value_template, row)
+            output_row.append(value)
+        row_count += 1
+        yield dict(zip(visible_fields,output_row))
+
+def CursorGenerator(object):
+    '''
+    Generate dicts from cursor rows and visible fields 
     '''
     
-    structure_image_dir = os.path.abspath(settings.WELL_STRUCTURE_IMAGE_DIR)
+    def __init__(cursor, schema, visible_fields):
+        self.cursor = cursor
+        self.schema = schema
+        self.visible_fields = visible_fields
+        
+    def __iter__(self):
+        return self
+    
+    def __next__(self):
+        return self.next()
+    
+    def next(self):
+        fields = schema['fields']
+        row_count = 0
+        for row in cursor:
+            if row_count == 0:
+                yield self.visible_fields
+            
+            output_row = []
+            for key in self.visible_fields:
+                field = fields[key]
+                value = None
+                if row.has_key(key):
+                    value = row[key]
+                         
+                if value and ( field.get('json_field_type',None) == 'fields.ListField' 
+                     or field.get('linked_field_type',None) == 'fields.ListField'
+                     or field.get('data_type', None) == 'list' ):
+                    value = value.split(LIST_DELIMITER_SQL_ARRAY)
+                if field.get('value_template', None):
+                    value_template = field['value_template']
+                    if DEBUG_STREAMING: 
+                        logger.info('field: %r, value_template: %r', key, value_template)
+                    value = interpolate_value_template(value_template, row)
+                output_row.append(value)
+            row_count += 1
+            yield output_row
+
+
+def get_xls_response(
+        cursor, output_filename,request,field_hash=None,
+        title_function=None, list_brackets=None):
+    '''
+    Create an xlsx file that will be streamed through the StreamingHttpResponse.
+    - if length exceeds MAX_ROWS_PER_XLS_FILE, create multiple files and zip them.
+    - TODO: when using xlsx, can simply add extra sheets to the file.
+    @param output_filename - for naming temp files
+
+    FIXME: wrap cursor with cursorgenerator; pass in the image columns as arg
+    FIXME: rework this using the generic_xlsx_response as a template:
+    - this method is used for all xlsx serialization at this time, except 
+    for in testing, and in ScreenResultSerializer - 20190419.
+    '''
+
+    def write_xls_image(worksheet, filerow, col, val, request):
+        '''
+        Retrieve and write an image to the worksheet row, col
+        '''
+        logger.info('write image %r to row: %d col %d', val, filerow, col)
+        newval = val
+        try:
+            view, args, kwargs = resolve(newval)
+            kwargs['request'] = request
+            response = view(*args, **kwargs)
+            image = Image.open(io.BytesIO(response.content))
+            height = image.size[1]
+            width = image.size[0]
+            worksheet.set_row(filerow, height)
+            scaling = 0.130 # trial and error width in default excel font
+            worksheet.set_column(col,col, width*scaling)
+            worksheet.insert_image(
+                filerow, col, newval, 
+                {'image_data': io.BytesIO(response.content)})
+        except Exception, e:
+            logger.info('no image at: %r, %r', newval,e)
+
     # create a temp dir
-    # FIXME: replace with tempfile.SpooledTemporaryFile
     # with TemporaryFile() as f:
     temp_dir = os.path.join(
         settings.TEMP_FILE_DIR, str(time.clock()).replace('.', '_'))
@@ -406,8 +505,8 @@ def get_xls_response(cursor, output_filename,request,field_hash=None,
         # Create an new Excel file and add a worksheet.
         filename = '%s.xlsx' % (output_filename)
         temp_file = os.path.join(temp_dir, filename)
-        if DEBUG_STREAMING: logger.info(str(('temp file', temp_file)))
-        workbook = Workbook(temp_file)
+        if DEBUG_STREAMING: logger.info('temp file: %r', temp_file)
+        workbook = xlsxwriter.Workbook(temp_file)
         worksheet = workbook.add_worksheet()
          
         # FIXME: only need max rows if the file will be too big (structure images)
@@ -440,12 +539,12 @@ def get_xls_response(cursor, output_filename,request,field_hash=None,
                          or field.get('data_type', None) == 'list' ):
                         value = value.split(LIST_DELIMITER_SQL_ARRAY)
                     worksheet.write(filerow, col, 
-                        csv_convert(value, delimiter=LIST_DELIMITER_XLS, 
+                        csvutils.csv_convert(value, delimiter=LIST_DELIMITER_XLS, 
                             list_brackets=list_brackets))
 
                     if field.get('value_template', None):
                         value_template = field['value_template']
-                        if DEBUG_STREAMING: logger.info(str(('field', key, value_template)))
+                        if DEBUG_STREAMING: logger.info('field: %r,%r,%r', key, value_template)
                         newval = interpolate_value_template(value_template, row)
                         if field['display_type'] == 'image':
                             max_rows_per_file = MAX_IMAGE_ROWS_PER_XLS_FILE
@@ -454,22 +553,7 @@ def get_xls_response(cursor, output_filename,request,field_hash=None,
                                     row.has_key('library_well_type') and
                                     row['library_well_type'] == 'empty' ):
                                 continue
-                            # see if the specified url is available
-                            try:
-                                view, args, kwargs = resolve(newval)
-                                kwargs['request'] = request
-                                response = view(*args, **kwargs)
-                                image = Image.open(io.BytesIO(response.content))
-                                height = image.size[1]
-                                width = image.size[0]
-                                worksheet.set_row(filerow, height)
-                                scaling = 0.130 # trial and error width in default excel font
-                                worksheet.set_column(col,col, width*scaling)
-                                worksheet.insert_image(
-                                    filerow, col, newval, 
-                                    {'image_data': io.BytesIO(response.content)})
-                            except Exception, e:
-                                logger.info(str(('no image at', newval,e)))
+                            write_xls_image(worksheet, filerow, col, newval, request)
                         else:
                             worksheet.write(filerow, col, newval)
             else:
@@ -481,38 +565,35 @@ def get_xls_response(cursor, output_filename,request,field_hash=None,
                  
             if irow % max_rows_per_file == 0:
                 workbook.close()
-                logger.info(str(('wrote file', temp_file)))
+                logger.info('wrote file: %r', temp_file)
  
                 # Create an new Excel file and add a worksheet.
                 filename = '%s_%s.xlsx' % (output_filename, irow)
                 temp_file = os.path.join(temp_dir, filename)
-                logger.info(str(('temp file', temp_file)))
-                workbook = Workbook(temp_file)
+                workbook = xlsxwriter.Workbook(temp_file)
                 worksheet = workbook.add_worksheet()
                          
                 file_names_to_zip.append(temp_file)
                 filerow = 0
                      
         workbook.close()
-        logger.info(str(('wrote file', temp_file)))
+        logger.info('wrote file: %r', temp_file)
  
-        content_type = (
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; '
-            'charset=utf-8' )
+        content_type = '%s; charset=utf-8' % XLSX_MIMETYPE
         if len(file_names_to_zip) >1:
             # create a temp zip file
             content_type='application/zip; charset=utf-8'
             temp_file = os.path.join('/tmp',str(time.clock()))
-            logger.info(str(('temp ZIP file', temp_file)))
+            logger.info('temp ZIP file: %r', temp_file)
  
             with ZipFile(temp_file, 'w') as zip_file:
                 for _file in file_names_to_zip:
                     zip_file.write(_file, os.path.basename(_file))
-            logger.info(str(('wrote file', temp_file)))
+            logger.info('wrote file %r', temp_file)
             filename = '%s.zip' % output_filename
 
         _file = file(temp_file)
-        logger.info(str(('download tmp file',temp_file,_file)))
+        logger.info('download tmp file: %r, %r',temp_file,_file)
         wrapper = FileWrapper(_file)
         response = StreamingHttpResponse(
             wrapper, content_type=content_type) 
@@ -525,13 +606,103 @@ def get_xls_response(cursor, output_filename,request,field_hash=None,
         raise e   
     finally:
         try:
-            logger.info(str(('rmdir', temp_dir)))
+            logger.info('rmdir: %r', temp_dir)
             shutil.rmtree(temp_dir)
             if os.path.exists(temp_file):
-                logger.info(str(('remove', temp_file)))
+                logger.info('remove: %r', temp_file)
                 os.remove(temp_file)     
-            logger.info(str(('removed', temp_dir)))
         except Exception, e:
             logger.exception('on xlsx & zip file process file: %s' % output_filename)
-            raise ImmediateHttpResponse(str(('ex during rmdir', e)))
+            raise ImmediateHttpResponse('ex during rmdir: %r, %r' 
+                %(output_filename, e))
     
+
+class FileWrapper1:
+    """
+    Wrapper to convert file-like objects to iterables
+        - modified to delete the file after iterating
+    """
+
+    def __init__(self, filelike, blksize=8192):
+        self.filelike = filelike
+        self.blksize = blksize
+
+    def __getitem__(self,key):
+        data = self.filelike.read(self.blksize)
+        if data:
+            return data
+        
+        # Modify: delete file after iterating
+        logger.info('1done...')
+        self.filelike.close()
+        os.remove(self.filelike.name)
+
+        raise IndexError
+
+    def __iter__(self):
+        return self
+
+    def next(self):
+        data = self.filelike.read(self.blksize)
+        if data:
+            return data
+        
+        # Modify: delete file after iterating
+        logger.info('done writing to response...')
+        self.filelike.close()
+        os.remove(self.filelike.name)
+        
+        raise StopIteration
+
+def generic_xlsx_response(data):
+    '''
+    Write out a data dictionary:
+    dict keys: named sheets
+    values:
+    - if dict, convert to rows using dict_to_rows
+    - if list, write directly as sheet rows
+    - otherwise write as string
+    '''
+    # using XlsxWriter for constant memory usage
+    with  NamedTemporaryFile(delete=False) as temp_file:
+        wb = xlsxwriter.Workbook(temp_file, {'constant_memory': True})
+        
+        if isinstance(data, dict):
+            # case 1: dict of lists, lists are ready to write
+            logger.info('generic_xlsx_response for data: %r', data.keys())
+            for key, sheet_rows in data.items():
+                sheet_name = default_converter(key)
+                logger.info('writing sheet %r...', sheet_name)
+                sheet = wb.add_worksheet(sheet_name)
+                if isinstance(sheet_rows, dict):
+                    for i, row in enumerate(dict_to_rows(sheet_rows)):
+                        sheet.write_row(i,0,row)
+                elif isinstance(sheet_rows, basestring):
+                    sheet.write_string(0,0,sheet_rows)
+                else:
+                    write_rows_to_sheet(sheet_rows, sheet)
+        else:
+            raise ImmediateHttpResponse(
+                'unknown data for generic xls serialization: %r' % type(data))
+        logger.info('save to temp file')
+        wb.close()
+        temp_file.seek(0, os.SEEK_END)
+        size = temp_file.tell()
+        temp_file.seek(0)   
+    logger.info('stream to response')
+    _file = file(temp_file.name)
+    response = StreamingHttpResponse(FileWrapper1(_file)) 
+    response['Content-Length'] = size
+    response['Content-Type'] = XLSX_MIMETYPE
+    return response
+    
+def write_rows_to_sheet(rows, sheet):
+    for row,values in enumerate(rows):
+        for i, val in enumerate(values):
+            val = csvutils.csv_convert(val, delimiter=LIST_DELIMITER_XLS)
+            if val:
+                if len(val) > 32767: 
+                    logger.error('warn, row too long, %d, key: %r, len: %d', 
+                        row,key,len(val) )
+                sheet.write_string(row,i,val)
+                

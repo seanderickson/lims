@@ -148,8 +148,6 @@ def create_library_screening_logs(apps, schema_editor):
             cp_log.json_field = json.dumps({
                 'volume_transferred_per_well_from_library_plates': str(adjustment)
                 })
-#                 logger.info(str(('plate', cp_log.key, 'assay_plate', assay_plate)))
-#                 logger.info(str(('saving', cp_log)))
             cp_logs.append(cp_log)
             j += 1
             # TODO: possibly create logs for the assay plates created (assaywells)
@@ -224,10 +222,8 @@ def create_lcp_logs(apps):
         #    lab_activity.volume_transferred_per_well_from_library_plates
         extra_information['screen'] = screen_facility_id
         cpr_log.json_field = json.dumps(extra_information)
-#             logger.info(str(('create cpr_log', cpr_log)))
         cpr_log.save()
         
-        # b. cpap child logs        
         j = 0
         for cpap in cplt.cherrypickassayplate_set.all():
             cpap_log = _child_log_from(cpr_log)
@@ -247,10 +243,7 @@ def create_lcp_logs(apps):
             cpap_parent_logs[cpap.cherry_pick_assay_plate_id] = cpap_log
             j += 1
         logger.info(str(('cpr',cpr.cherry_pick_request_id,'cpaps processed',j)))
-            # lcp/cpap logs
         
-#             if i % 100 == 0:
-#                 break
         
     logger.info(str((
         'finished step 1:',len(liquid_transfers), 'cpap parent logs',
@@ -370,8 +363,6 @@ def create_lcp_wva_logs(apps,cpap_parent_logs):
                 if  adj['legacy_plate_name']:
                     log.comment = log.comment + '. ' + adj['legacy_plate_name']
 
-#                     log.json_field = json.dumps({
-#                         'volume_adjustment': round(float(adj['volume_adjustment']),10) })
                 if (log.ref_resource_name,log.key,log.date_time) in prev_logs :
                     logger.warn(str(('log key already exists!', log)))
                     log.date_time = log.date_time + timedelta(0,i+parent_log_count) # hack, add second
@@ -548,8 +539,6 @@ def create_copywell_adjustments(apps):
     # first get the plate volume = initial volume
     logger.info(str(('create copywell adjustments...')))
     copy_plate_initial_volumes = {}
-#         for plate in orm.Plate.objects.all()\
-#                 .filter(copy__usage_type='cherry_pick_source_plates'):
     for plate in apps.get_mdodel('db', 'Plate').objects.all():
         key = '%s/%s' % (plate.copy.name,str(plate.plate_number).zfill(5))
         copy_plate_initial_volumes[key] = plate.well_volume

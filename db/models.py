@@ -276,19 +276,27 @@ class AssayPlate(models.Model):
     library_screening = models.ForeignKey('LibraryScreening', null=True, blank=True)
     screen_result_data_loading = models.ForeignKey(AdministrativeActivity, null=True, blank=True)
     
+    # TODO: this replaces screen_result_data_loading
+    is_loaded = models.NullBooleanField(null=True)
+    
     class Meta:
         db_table = 'assay_plate'
     def __unicode__(self):
         return unicode(str((self.plate.copy.name, self.plate_number, self.replicate_ordinal)))
         
 class AssayWell(models.Model):
-    assay_well_id = models.IntegerField(primary_key=True)
+    assay_well_id = models.AutoField(primary_key=True)
+#     assay_well_id = models.IntegerField(primary_key=True)
     # version = models.IntegerField()
-    assay_well_control_type = models.TextField(blank=True)
+    assay_well_control_type = models.TextField(null=True,blank=True)
     is_positive = models.BooleanField()
     screen_result = models.ForeignKey('ScreenResult')
     well = models.ForeignKey('Well')
-    confirmed_positive_value = models.TextField(blank=True)
+    confirmed_positive_value = models.TextField(null=True,blank=True)
+    
+    # New field
+    plate_number = models.IntegerField(null=False)
+    
     class Meta:
         db_table = 'assay_well'
 
@@ -514,7 +522,8 @@ class Screen(models.Model):
         blank=True, related_name='led_screen')
     lab_head = models.ForeignKey('ScreensaverUser', null=True, blank=True,
         related_name='lab_head_screen')
-    collaborators = models.ManyToManyField('ScreensaverUser', related_name='collaborating_screens')
+    collaborators = models.ManyToManyField('ScreensaverUser', 
+        related_name='collaborating_screens')
 
     date_of_application = models.DateField(null=True, blank=True)
     data_meeting_complete = models.DateField(null=True, blank=True)
@@ -566,16 +575,21 @@ class Screen(models.Model):
     
     screened_experimental_well_count = models.IntegerField(null=False, default=0)
     unique_screened_experimental_well_count = models.IntegerField(null=False, default=0)
+    
+    ####
+    # The following stat fields are deprecated: calculated dynamically
     total_plated_lab_cherry_picks = models.IntegerField(null=False, default=0)
     assay_plates_screened_count = models.IntegerField(null=False, default=0)
     library_plates_screened_count = models.IntegerField(null=False, default=0)
     library_plates_data_loaded_count = models.IntegerField(null=False, default=0)
+    # Not used: - same as data_loaded
     library_plates_data_analyzed_count = models.IntegerField(null=False, default=0)
     min_screened_replicate_count = models.IntegerField(null=True, blank=True)
     max_screened_replicate_count = models.IntegerField(null=True, blank=True)
     min_data_loaded_replicate_count = models.IntegerField(null=True, blank=True)
     max_data_loaded_replicate_count = models.IntegerField(null=True, blank=True)
     libraries_screened_count = models.IntegerField(null=True, blank=True)
+    ####
     
     image_url = models.TextField(blank=True)
     well_studied = models.ForeignKey('Well', null=True, blank=True)
@@ -663,17 +677,25 @@ class ScreenResult(models.Model):
         db_table = 'screen_result'
 
 class ResultValue(models.Model):
-    # TODO: at some point result_value_id and result_value_id_seq have been 
-    # disconnected; review ss result value loading code
-    result_value_id = models.IntegerField(null=True, blank=True)
-    assay_well_control_type = models.TextField(blank=True)
+    # NOTE: ResultValues will not be created with the ORM, so this definition
+    # is for proper database schema creation.
+    # From SS1:
+    # - no primary key (natural key: [well_id,data_column_id])
+    # - no default sequence (fixed in migrations)
+    result_value_id = models.AutoField(primary_key=True)
+    assay_well_control_type = models.TextField(null=True, blank=True)
     is_exclude = models.NullBooleanField(null=True, blank=True)
+
+    # FIXME: legacy - this should be a DecimalField instead to preserve precision
     numeric_value = models.FloatField(null=True, blank=True)
+    
     is_positive = models.NullBooleanField(null=True, blank=True)
-    value = models.TextField(blank=True)
+    value = models.TextField(null=True, blank=True)
     data_column = models.ForeignKey('DataColumn', null=True, blank=True)
     well = models.ForeignKey('Well', null=True, blank=True)
     class Meta:
+        # FIXME: no primary key defined:
+        # - the natural primary key is the (well,datacolumn)
         db_table = 'result_value'
 
 class DataColumn(models.Model):
@@ -700,6 +722,11 @@ class DataColumn(models.Model):
     strong_positives_count = models.IntegerField(null=True, blank=True)
     medium_positives_count = models.IntegerField(null=True, blank=True)
     weak_positives_count = models.IntegerField(null=True, blank=True)
+
+# FIXME: migrate derived from columns link    
+#     derived_from_columns = models.ManyToManyField('DataColumn', 
+#         related_name='derived_columns')
+    
     class Meta:
         db_table = 'data_column'
 

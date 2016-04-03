@@ -17,6 +17,7 @@ current_timestamp,
   ** This script must be run before the migrations/0004_screen_status.py is run.
 **/
 
+
 /**
   *** Add id field to screen_status ***
   Purpose: add an id to capture the natural ordering of the status table; 
@@ -313,6 +314,37 @@ CREATE INDEX "screen_collaborators_ad850f96" ON "screen_collaborators" ("screens
 DROP TABLE collaborator_link;
 
 /** done - collaborator_link table **/
+
+
+/**
+  Create a many-to-many join table for the datacolumn.derived_from field, then
+  populate it using the legacy table (todo: remove the legacy table)
+CREATE TABLE "datacolumn_derived_from_columns" (
+  "id" serial NOT NULL PRIMARY KEY, 
+  "data_column_id" integer NOT NULL, 
+  "derived_from_id" integer NOT NULL, 
+  UNIQUE ("data_column_id", "derived_from_id")
+  );
+INSERT into datacolumn_derived_from_columns 
+  ( select nextval('datacolumn_derived_from_columns_id_seq'), 
+      derived_data_column_id, derived_from_data_column_id 
+      from data_column_derived_from_link );
+        
+**/
+
+/**
+20160408
+TODO: verify that the ldld here is the same as the sr.date_loaded
+# 'last_data_loading_date': literal_column(
+#     '( select activity.date_created '
+#     '  from activity '
+#     '  join administrative_activity aa using(activity_id) '
+#     '  join screen_update_activity on update_activity_id=activity_id  '
+#     "  where administrative_activity_type = 'Screen Result Data Loading' " 
+#     '  and screen_id=screen.screen_id '
+#     '  order by date_created desc limit 1 )'
+update screen_result set date_loaded = TODO: 
+**/
 
 
 DROP TABLE cell_lineage;

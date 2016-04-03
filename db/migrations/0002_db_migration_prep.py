@@ -55,6 +55,7 @@ def _update_table_autofield(db, table, column):
 def convert_django_autofields(apps, schema_editor):
     
     table_autofields = (
+        ('result_value', 'result_value_id'),
         ('reagent', 'reagent_id'),
         ('screen', 'screen_id'),
         ('library', 'library_id'),
@@ -576,5 +577,20 @@ class Migration(migrations.Migration):
             name='lab_head_affiliation', 
             field=models.TextField(null=True)),
         migrations.RunSQL('alter table reagent alter column library_contents_version_id drop not null'),
+
+        
+        #  Update assay_well with the plate_number to expedite plate data loading stats 
+        migrations.AddField(
+            model_name='assaywell',
+            name='plate_number', 
+            field=models.IntegerField(null=True)),
+        migrations.RunSQL(
+            'update assay_well '
+            'set plate_number = substring(well_id from 1 for 5 )::integer;'),
+        migrations.AlterField(
+            model_name='assaywell',
+            name='plate_number',
+            field=models.IntegerField(null=False)),
+
         
     ]

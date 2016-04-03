@@ -15,7 +15,6 @@ import re
 import sys
 import traceback
 
-import dateutil
 from django.conf import settings
 from django.conf.global_settings import AUTH_USER_MODEL
 from django.conf.urls import url
@@ -34,7 +33,6 @@ from django.http.response import HttpResponse, Http404
 from django.http.response import HttpResponseBase
 from django.utils import timezone
 from django.utils.encoding import smart_text
-import six
 from sqlalchemy import select, asc, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import Any
@@ -52,9 +50,9 @@ from tastypie.authorization import Authorization, ReadOnlyAuthorization
 from tastypie.bundle import Bundle
 from tastypie.constants import ALL, ALL_WITH_RELATIONS
 from tastypie.exceptions import NotFound, ImmediateHttpResponse, Unauthorized, \
-    BadRequest
+    BadRequest, ApiFieldError
 from tastypie.http import HttpForbidden, HttpNotFound, HttpNotImplemented, \
-    HttpNoContent
+    HttpNoContent, HttpBadRequest
 from tastypie.resources import Resource, ModelResource
 from tastypie.resources import convert_post_to_put
 import tastypie.resources
@@ -67,65 +65,26 @@ from tastypie.validation import Validation
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT
 from reports import ValidationError
+from reports.api_base import IccblBaseResource, un_cache
 from reports.dump_obj import dumpObj
 from reports.models import API_ACTION_CREATE
 from reports.models import MetaHash, Vocabularies, ApiLog, ListLog, Permission, \
                            UserGroup, UserProfile, Record, API_ACTION_DELETE
-from reports.serializers import LimsSerializer, CsvBooleanField, CSVSerializer
-from reports.sqlalchemy_resource import SqlAlchemyResource, un_cache, _concat
-from reports.utils.profile_decorator import profile
+from reports.serializers import LimsSerializer, CSVSerializer
+from reports.serialize import parse_val, parse_json_field, XLSX_MIMETYPE, \
+    SDF_MIMETYPE, XLS_MIMETYPE
 
+from reports.sqlalchemy_resource import SqlAlchemyResource, _concat
+from reports.utils.profile_decorator import profile
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.cache import patch_cache_control, patch_vary_headers
+from django.utils.html import escape
+from reports.serializers import dict_to_rows
 
 logger = logging.getLogger(__name__)
 
 URI_VERSION = 'v1'
 BASE_URI = '/reports/api/' + URI_VERSION
-
-def parse_val(value, key, data_type):
-    """
-    All values are read as strings from the input files, so this function 
-    converts them as directed.
-    TODO: validation
-    """
-    try:
-        if ( value is None 
-            or value == '' 
-            or value == 'None' 
-            or value == u'None' 
-            or value == u'n/a'):
-            if data_type == 'string': 
-                return ''
-            else:  
-                return None
-        if data_type == 'string':
-            return value
-        elif data_type == 'integer':
-            # todo: this is a kludge, create an integer from values like "5.0"
-            return int(float(value))
-        elif data_type == 'date':
-            return dateutil.parser.parse(value)
-        elif data_type == 'datetime':
-            return dateutil.parser.parse(value)
-        elif data_type == 'boolean':
-            if value is True or value is False:
-                 return value
-            value = str(value)
-            if(value.lower() == 'true' or value.lower() == 't'): return True
-            return False
-        elif data_type in ['float','decimal']:
-            return float(value)
-        elif data_type == 'list':
-            if isinstance(value, six.string_types):
-                if value.strip():
-                    return (value,) # convert string to list
-                else:
-                    return None
-            return value # otherwise, better be a list
-        else:
-            raise Exception('unknown data type: %s: "%s"' % (key,data_type))
-    except Exception, e:
-        logger.exception('value not parsed %r:%r',key, value)
-        raise ValidationError(key=key,msg='parse error: %r' % str(e))
 
     
 class UserGroupAuthorization(Authorization):
@@ -435,313 +394,444 @@ def get_supertype_fields(resource_definition):
     else:
         return {}    
 
-
-class IccblBaseResource(Resource):
-    """
-    Override tastypie.resources.Resource to replace check:
-     if not isinstance(response, HttpResponse):
-        return http.HttpNoContent()
-    with:
-     if not isinstance(response, HttpResponseBase):
-        return http.HttpNoContent()
-    -- this allows for use of the StreamingHttpResponse or the HttpResponse
-    """
-
-    content_types = {
-                     'xls': 'application/xls',
-                     'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                     'csv': 'text/csv',
-                     'sdf': 'chemical/x-mdl-sdfile',
-                     'json': 'application/json',
-                     }
-
-    def make_log(self, request, **kwargs):
-        log = ApiLog()
-        log.username = request.user.username 
-        log.user_id = request.user.id 
-        log.date_time = timezone.now()
-        log.api_action = str((request.method)).upper()
- 
-        # TODO: how do we feel about passing form data in the headers?
-        # TODO: abstract the form field name
-        if HEADER_APILOG_COMMENT in request.META:
-            log.comment = request.META[HEADER_APILOG_COMMENT]
-     
-        if kwargs:
-            for key, value in kwargs.items():
-                if hasattr(log, key):
-                    setattr(log, key, value)
-         
-        return log
-
-    def _get_filename(self,schema, kwargs):
-        filekeys = []
-        if 'id_attribute' in schema:
-            filekeys.extend([ str(kwargs[key]) for 
-                key in schema['id_attribute'] if key in kwargs ])
-        else:
-            _dict = {key:val for key,val in kwargs.items() 
-                if key not in [
-                    'visibilities','exact_fields','api_name','resource_name',
-                    'includes','order_by']}
-            for i,(x,y) in enumerate(_dict.items()):
-                filekeys.append(str(x))
-                filekeys.append(str(y))
-                if i == 10:
-                    break
-                 
-        filekeys.insert(0,self._meta.resource_name)
-        logger.info('filekeys: %r', filekeys)
-        filename = '_'.join(filekeys)
-        filename = re.sub(r'[\W]+','_',filename)
-        logger.debug('get_filename: %r, %r' % (filename, kwargs))
-        return filename
-    
-    def get_format(self, request):
-        '''
-        Return mime-type "format" set on the request, or
-        use mimeparse.best_match:
-        "Return the mime-type with the highest quality ('q') from list of candidates."
-        - uses Resource.content_types
-        '''
-        format = request.GET.get('format', 'json')
-        logger.debug('format %s', format)
-        if format:
-            if format in self.content_types:
-                format = self.content_types[format]
-                logger.debug('format: %r', format)
-            else:
-                logger.error('unknown format: %r, options: %r', 
-                    format, self.content_types)
-                raise ImmediateHttpResponse("unknown format: %s" % format)
-        else:
-            # Try to fallback on the Accepts header.
-            if request.META.get('HTTP_ACCEPT', '*/*') != '*/*':
-                try:
-                    import mimeparse
-                    format = mimeparse.best_match(
-                        self.content_types.values(), request.META['HTTP_ACCEPT'])
-                    if not format:
-                        raise ImmediateHttpResponse(
-                            "no best match format for HTTP_ACCEPT: %r"
-                            % request.META['HTTP_ACCEPT'])
-                        
-                    logger.debug('format %s, HTTP_ACCEPT: %s', format, 
-                        request.META['HTTP_ACCEPT'])
-                except ValueError:
-                    logger.exception('Invalid Accept header: %r',
-                        request.META['HTTP_ACCEPT'])
-                    raise ImmediateHttpResponse('Invalid Accept header')
-            elif request.META.get('CONTENT_TYPE', '*/*') != '*/*':
-                format = request.META.get('CONTENT_TYPE', '*/*')
-        logger.debug('got format: %s', format)
-        return format
-
-    def dispatch(self, request_type, request, **kwargs):
-        """
-        Override tastypie.resources.Resource to replace check:
-         if not isinstance(response, HttpResponse):
-            return http.HttpNoContent()
-        with:
-         if not isinstance(response, HttpResponseBase):
-            return http.HttpNoContent()
-        -- this allows for use of the StreamingHttpResponse or the HttpResponse
-        
-        Other modifications:
-        - use of the "downloadID" cookie
-        """
-        allowed_methods = getattr(
-            self._meta, "%s_allowed_methods" % request_type, None)
-
-        if 'HTTP_X_HTTP_METHOD_OVERRIDE' in request.META:
-            request.method = request.META['HTTP_X_HTTP_METHOD_OVERRIDE']
-
-        request_method = self.method_check(request, allowed=allowed_methods)
-        method = getattr(self, "%s_%s" % (request_method, request_type), None)
-
-        if method is None:
-            raise ImmediateHttpResponse(response=HttpNotImplemented())
-
-        self.is_authenticated(request)
-        self.throttle_check(request)
-
-        # All clear. Process the request.
-        convert_post_to_put(request)
-        response = method(request, **kwargs)
-
-        # Add the throttled request.
-        self.log_throttled_access(request)
-
-        # If what comes back isn't a ``HttpResponse``, assume that the
-        # request was accepted and that some action occurred. This also
-        # prevents Django from freaking out.
-        if not isinstance(response, HttpResponseBase):
-            return HttpNoContent()
-
-        
-        ### Custom iccbl-lims parameter: set cookie to tell browser javascript
-        ### UI that the download request is finished
-        downloadID = request.GET.get('downloadID', None)
-        if downloadID:
-            logger.info('set cookie "downloadID" %r', downloadID )
-            response.set_cookie('downloadID', downloadID)
-        else:
-            logger.debug('no downloadID: %s' % request.GET )
-
-        return response
-       
-    @staticmethod    
-    def create_vocabulary_rowproxy_generator(field_hash):
-        '''
-        Create cursor row generator:
-        - generator wraps a sqlalchemy.engine.ResultProxy (cursor)
-        - yields a wrapper for sqlalchemy.engine.RowProxy on each iteration
-        - the wrapper will return vocabulary titles for valid vocabulary values
-        in each row[key] for the key columns that are vocabulary columns.
-        - returns the regular row[key] value for other columns
-        '''
-        vocabularies = {}
-        for key, field in field_hash.iteritems():
-            if field.get('vocabulary_scope_ref', None):
-                scope = field.get('vocabulary_scope_ref')
-                vocabularies[key] = \
-                    VocabulariesResource()._get_vocabularies_by_scope(scope)
-        def vocabulary_rowproxy_generator(cursor):
-            class Row:
-                def __init__(self, row):
-                    self.row = row
-                def has_key(self, key):
-                    return self.row.has_key(key)
-                def keys(self):
-                    return self.row.keys();
-                def __getitem__(self, key):
-                    if not row[key]:
-                        return None
-                    if key in vocabularies:
-                        if row[key] not in vocabularies[key]:
-                            logger.error(
-                                ('Unknown vocabulary:'
-                                 ' scope:%s key:%s val:%r, keys defined: %r'),
-                                field_hash[key]['vocabulary_scope_ref'], key, 
-                                row[key],vocabularies[key].keys() )
-                            return self.row[key] 
-                        else:
-                            return vocabularies[key][row[key]]['title']
-                    else:
-                        return self.row[key]
-            for row in cursor:
-                yield Row(row)
-        return vocabulary_rowproxy_generator
-
-    def log_patches(self,request, original_data, new_data, **kwargs):
-        '''
-        log differences between dicts having the same identity in the arrays:
-        @param original_data - data from before the API action
-        @param new_data - data from after the API action
-        - dicts have the same identity if the id_attribute keys have the same
-        value.
-        '''
-        DEBUG_PATCH_LOG = False or logger.isEnabledFor(logging.DEBUG)
-        if DEBUG_PATCH_LOG:
-            logger.info('log patches: %s' %kwargs)
-        log_comment = None
-        if HEADER_APILOG_COMMENT in request.META:
-            log_comment = request.META[HEADER_APILOG_COMMENT]
-        
-        if DEBUG_PATCH_LOG:
-            logger.info('log patches original: %s, =====new data===== %s',
-                original_data,new_data)
-        schema = self.build_schema()
-        id_attribute = schema['id_attribute']
-        if DEBUG_PATCH_LOG:
-            logger.info('===id_attribute: %s', id_attribute)
-        deleted_items = list(original_data)        
-        for new_dict in new_data:
-            log = ApiLog()
-            log.username = request.user.username 
-            log.user_id = request.user.id 
-            log.date_time = timezone.now()
-            log.ref_resource_name = self._meta.resource_name
-            log.key = '/'.join([str(new_dict[x]) for x in id_attribute])
-            log.uri = '/'.join([self._meta.resource_name,log.key])
-            
-            # user can specify any valid, escaped json for this field
-            # if 'apilog_json_field' in bundle.data:
-            #     log.json_field = bundle.data['apilog_json_field']
-            
-            log.comment = log_comment
-    
-            if 'parent_log' in kwargs:
-                log.parent_log = kwargs.get('parent_log', None)
-            
-            prev_dict = None
-            for c_dict in original_data:
-                if c_dict:
-                    if DEBUG_PATCH_LOG:
-                        logger.info('consider prev dict: %s', c_dict)
-                    prev_dict = c_dict
-                    for key in id_attribute:
-                        if new_dict[key] != c_dict[key]:
-                            prev_dict = None
-                            break
-                    if prev_dict:
-                        break # found
-            if DEBUG_PATCH_LOG:
-                logger.info(
-                    'prev_dict: %s, ======new_dict====: %s', 
-                    prev_dict, new_dict)
-            if prev_dict:
-                # if found, then it is modified, not deleted
-                logger.debug('remove from deleted dict %r, %r',
-                    prev_dict, deleted_items)
-                deleted_items.remove(prev_dict)
-                
-                difflog = compare_dicts(prev_dict,new_dict)
-                if 'diff_keys' in difflog:
-                    # log = ApiLog.objects.create()
-                    log.api_action = str((request.method)).upper()
-                    log.diff_dict_to_api_log(difflog)
-                    log.save()
-                    if DEBUG_PATCH_LOG:
-                        logger.info('update, api log: %r' % log)
-                else:
-                    # don't save the log
-                    if DEBUG_PATCH_LOG:
-                        logger.info('no diffs found: %r, %r, %r' 
-                            % (prev_dict,new_dict,difflog))
-            else: # creating
-                log.api_action = API_ACTION_CREATE
-                log.added_keys = json.dumps(new_dict.keys())
-                log.diffs = json.dumps(new_dict)
-                log.save()
-                if DEBUG_PATCH_LOG:
-                    logger.info('create, api log: %s', log)
-                
-        for deleted_dict in deleted_items:
-            log = ApiLog()
-            log.comment = log_comment
-            log.username = request.user.username 
-            log.user_id = request.user.id 
-            log.date_time = timezone.now()
-            log.ref_resource_name = self._meta.resource_name
-            log.key = '/'.join([str(deleted_dict[x]) for x in id_attribute])
-            log.uri = '/'.join([self._meta.resource_name,log.key])
-        
-            # user can specify any valid, escaped json for this field
-            # if 'apilog_json_field' in bundle.data:
-            #     log.json_field = bundle.data['apilog_json_field']
-            
-            log.comment = log_comment
-    
-            if 'parent_log' in kwargs:
-                log.parent_log = kwargs.get('parent_log', None)
-
-            log.api_action = API_ACTION_DELETE
-            log.diff_keys = json.dumps(deleted_dict.keys())
-            log.diffs = json.dumps(deleted_dict)
-            log.save()
-            if DEBUG_PATCH_LOG:
-                logger.info('delete, api log: %r',log)
+# def un_cache(_func):
+#     '''
+#     Wrapper function to disable caching for 
+#     SQLAlchemyResource.stream_response_from_statement and other caches
+#     ''' 
+#     @wraps(_func)
+#     def _inner(self, *args, **kwargs):
+#         logger.debug('decorator un_cache: %s, %s', self, _func )
+#         IccblBaseResource.clear_cache(self)
+#         IccblBaseResource.set_caching(self,False)
+#         result = _func(self, *args, **kwargs)
+#         IccblBaseResource.set_caching(self,True)
+#         logger.debug('decorator un_cache done: %s, %s', self, _func )
+#         return result
+# 
+#     return _inner
+# 
+# 
+# class IccblBaseResource(Resource):
+#     """
+#     Override tastypie.resources.Resource to replace check:
+#      if not isinstance(response, HttpResponse):
+#         return http.HttpNoContent()
+#     with:
+#      if not isinstance(response, HttpResponseBase):
+#         return http.HttpNoContent()
+#     -- this allows for use of the StreamingHttpResponse or the HttpResponse
+#     """
+# 
+#     content_types = {
+#                      'xls': 'application/xls',
+#                      'xlsx': XLSX_MIMETYPE,
+#                      'csv': 'text/csv',
+#                      'sdf': SDF_MIMETYPE,
+#                      'json': 'application/json',
+#                      }
+# 
+#     def clear_cache(self):
+#         logger.debug('clearing the cache from resource: %s (all caches cleared)' 
+#             % self._meta.resource_name)
+#         cache.clear()
+# 
+#     def set_caching(self,use_cache):
+#         self.use_cache = use_cache
+# 
+#     def make_log(self, request, **kwargs):
+#         log = ApiLog()
+#         log.username = request.user.username 
+#         log.user_id = request.user.id 
+#         log.date_time = timezone.now()
+#         log.api_action = str((request.method)).upper()
+#  
+#         # TODO: how do we feel about passing form data in the headers?
+#         # TODO: abstract the form field name
+#         if HEADER_APILOG_COMMENT in request.META:
+#             log.comment = request.META[HEADER_APILOG_COMMENT]
+#      
+#         if kwargs:
+#             for key, value in kwargs.items():
+#                 if hasattr(log, key):
+#                     setattr(log, key, value)
+#          
+#         return log
+# 
+#     def _get_filename(self,schema, kwargs):
+#         filekeys = []
+#         if 'id_attribute' in schema:
+#             filekeys.extend([ str(kwargs[key]) for 
+#                 key in schema['id_attribute'] if key in kwargs ])
+#         else:
+#             _dict = {key:val for key,val in kwargs.items() 
+#                 if key not in [
+#                     'visibilities','exact_fields','api_name','resource_name',
+#                     'includes','order_by']}
+#             for i,(x,y) in enumerate(_dict.items()):
+#                 filekeys.append(str(x))
+#                 filekeys.append(str(y))
+#                 if i == 10:
+#                     break
+#                  
+#         filekeys.insert(0,self._meta.resource_name)
+#         logger.debug('filekeys: %r', filekeys)
+#         filename = '_'.join(filekeys)
+#         filename = re.sub(r'[\W]+','_',filename)
+#         logger.debug('get_filename: %r, %r' % (filename, kwargs))
+#         return filename
+#     
+#     def get_format(self, request, **kwargs):
+#         
+#         return self._meta.serializer.get_format(request,**kwargs)
+#     
+# #     def get_format(self, request):
+# #         '''
+# #         Return mime-type "format" set on the request, or
+# #         use mimeparse.best_match:
+# #         "Return the mime-type with the highest quality ('q') 
+# #         from list of candidates."
+# #         - uses Resource.content_types
+# #         '''
+# #         format = None
+# #         if request.GET.get('format',None):
+# #             format = request.GET.get('format', 'json')
+# #             logger.info('format: %r', format)
+# #             if format in self.content_types:
+# #                 format = self.content_types[format]
+# #                 logger.debug('format: %r', format)
+# #             else:
+# #                 logger.error('unknown format: %r, options: %r', 
+# #                     format, self.content_types)
+# #                 raise ImmediateHttpResponse("unknown format: %s" % format)
+# #         else:
+# #             # Try to fallback on the Accepts header.
+# #             if request.META.get('HTTP_ACCEPT', '*/*') != '*/*':
+# #                 try:
+# #                     import mimeparse
+# #                     format = mimeparse.best_match(
+# #                         self.content_types.values(), 
+# #                         request.META['HTTP_ACCEPT'])
+# #                     if not format:
+# #                         raise ImmediateHttpResponse(
+# #                             "no best match format for HTTP_ACCEPT: %r"
+# #                             % request.META['HTTP_ACCEPT'])
+# #                         
+# #                     logger.info('format %s, HTTP_ACCEPT: %s', format, 
+# #                         request.META['HTTP_ACCEPT'])
+# #                 except ValueError:
+# #                     logger.exception('Invalid Accept header: %r',
+# #                         request.META['HTTP_ACCEPT'])
+# #                     raise ImmediateHttpResponse('Invalid Accept header')
+# #             elif request.META.get('CONTENT_TYPE', '*/*') != '*/*':
+# #                 format = request.META.get('CONTENT_TYPE', '*/*')
+# #         logger.info('got format: %s', format)
+# #         return format
+# 
+#     def wrap_view(self, view):
+#         """
+#         Override the tastypie implementation to handle our own ValidationErrors.
+#         
+#         
+#         Wraps methods so they can be called in a more functional way as well
+#         as handling exceptions better.
+# 
+#         Note that if ``BadRequest`` or an exception with a ``response`` attr
+#         are seen, there is special handling to either present a message back
+#         to the user or return the response traveling with the exception.
+#         """
+#         @csrf_exempt
+#         def wrapper(request, *args, **kwargs):
+#             try:
+#                 callback = getattr(self, view)
+#                 logger.info('callback: %r, %r', callback, view)
+#                 response = callback(request, *args, **kwargs)
+#                 # Our response can vary based on a number of factors, use
+#                 # the cache class to determine what we should ``Vary`` on so
+#                 # caches won't return the wrong (cached) version.
+#                 varies = getattr(self._meta.cache, "varies", [])
+# 
+#                 if varies:
+#                     patch_vary_headers(response, varies)
+# 
+#                 if self._meta.cache.cacheable(request, response):
+#                     if self._meta.cache.cache_control():
+#                         # If the request is cacheable and we have a
+#                         # ``Cache-Control`` available then patch the header.
+#                         patch_cache_control(response, **self._meta.cache.cache_control())
+# 
+#                 if request.is_ajax() and not response.has_header("Cache-Control"):
+#                     # IE excessively caches XMLHttpRequests, so we're disabling
+#                     # the browser cache here.
+#                     # See http://www.enhanceie.com/ie/bugs.asp for details.
+#                     patch_cache_control(response, no_cache=True)
+# 
+#                 return response
+#             except (BadRequest, fields.ApiFieldError) as e:
+#                 data = {"error": sanitize(e.args[0]) if getattr(e, 'args') else ''}
+#                 return self.error_response(request, data, response_class=HttpBadRequest)
+#             except ValidationError as e:
+#                 logger.info('validation error: %r', e)
+#                 # TODO: make this compatible with the 
+#                 # django.core.exceptions.ValidationError
+#                 # 20160419 - sde
+# #                 data = {'error': dict_to_rows(e.errors) }
+#                 desired_format = self.get_format(request)
+#                 try:
+#                     if desired_format in [XLSX_MIMETYPE, XLS_MIMETYPE]:
+#                         from reports.serialize.streaming_serializers import generic_xlsx_response
+#                         response = generic_xlsx_response({ 'errors': e.errors })
+#                         response['Content-Disposition'] = \
+#                             'attachment; filename=%s.xlsx' % 'errors'
+#                         downloadID = request.GET.get('downloadID', None)
+#                         if downloadID:
+#                             logger.info('set cookie "downloadID" %r', downloadID )
+#                             response.set_cookie('downloadID', downloadID)
+#                         else:
+#                             logger.debug('no downloadID: %s' % request.GET )
+#                         return response
+#                     else:
+#                         serialized = self.serialize(
+#                             request, { 'errors': e.errors }, desired_format)
+#                         return HttpBadRequest(content=serialized, content_type=desired_format)
+#                 except BadRequest as e:
+#                     error = "Additional errors occurred, but serialization of those errors failed."
+#                     if settings.DEBUG:
+#                         error += " %s" % e
+#                     return HttpBadRequest(content=error, content_type='text/plain')
+#         
+#                 return HttpBadRequest(
+#                     content=serialized, 
+#                     content_type=build_content_type(desired_format))
+#             except Exception as e:
+#                 if hasattr(e, 'response'):
+#                     return e.response
+# 
+#                 # A real, non-expected exception.
+#                 # Handle the case where the full traceback is more helpful
+#                 # than the serialized error.
+#                 if settings.DEBUG and getattr(settings, 'TASTYPIE_FULL_DEBUG', False):
+#                     raise
+# 
+#                 # Re-raise the error to get a proper traceback when the error
+#                 # happend during a test case
+#                 if request.META.get('SERVER_NAME') == 'testserver':
+#                     raise
+# 
+#                 # Rather than re-raising, we're going to things similar to
+#                 # what Django does. The difference is returning a serialized
+#                 # error message.
+#                 return self._handle_500(request, e)
+# 
+#         return wrapper
+# 
+# 
+#     def dispatch(self, request_type, request, **kwargs):
+#         """
+#         Override tastypie.resources.Resource to replace check:
+#          if not isinstance(response, HttpResponse):
+#             return http.HttpNoContent()
+#         with:
+#          if not isinstance(response, HttpResponseBase):
+#             return http.HttpNoContent()
+#         -- this allows for use of the StreamingHttpResponse or the HttpResponse
+#         
+#         Other modifications:
+#         - use of the "downloadID" cookie
+#         """
+#         allowed_methods = getattr(
+#             self._meta, "%s_allowed_methods" % request_type, None)
+# 
+#         if 'HTTP_X_HTTP_METHOD_OVERRIDE' in request.META:
+#             request.method = request.META['HTTP_X_HTTP_METHOD_OVERRIDE']
+# 
+#         request_method = self.method_check(request, allowed=allowed_methods)
+#         method = getattr(self, "%s_%s" % (request_method, request_type), None)
+# 
+#         if method is None:
+#             raise ImmediateHttpResponse(response=HttpNotImplemented())
+# 
+#         self.is_authenticated(request)
+#         self.throttle_check(request)
+# 
+#         # All clear. Process the request.
+#         convert_post_to_put(request)
+#         logger.info('calling method: %r', "%s_%s" % (request_method, request_type))
+#         response = method(request, **kwargs)
+# 
+#         # Add the throttled request.
+#         self.log_throttled_access(request)
+# 
+#         # If what comes back isn't a ``HttpResponse``, assume that the
+#         # request was accepted and that some action occurred. This also
+#         # prevents Django from freaking out.
+#         if not isinstance(response, HttpResponseBase):
+#             return HttpNoContent()
+# 
+#         
+#         ### Custom iccbl-lims parameter: set cookie to tell browser javascript
+#         ### UI that the download request is finished
+#         downloadID = request.GET.get('downloadID', None)
+#         if downloadID:
+#             logger.info('set cookie "downloadID" %r', downloadID )
+#             response.set_cookie('downloadID', downloadID)
+#         else:
+#             logger.debug('no downloadID: %s' % request.GET )
+# 
+#         return response
+#        
+#     @staticmethod    
+#     def create_vocabulary_rowproxy_generator(field_hash):
+#         '''
+#         Create cursor row generator:
+#         - generator wraps a sqlalchemy.engine.ResultProxy (cursor)
+#         - yields a wrapper for sqlalchemy.engine.RowProxy on each iteration
+#         - the wrapper will return vocabulary titles for valid vocabulary values
+#         in each row[key] for the key columns that are vocabulary columns.
+#         - returns the regular row[key] value for other columns
+#         '''
+#         vocabularies = {}
+#         for key, field in field_hash.iteritems():
+#             if field.get('vocabulary_scope_ref', None):
+#                 scope = field.get('vocabulary_scope_ref')
+#                 vocabularies[key] = \
+#                     VocabulariesResource()._get_vocabularies_by_scope(scope)
+#         def vocabulary_rowproxy_generator(cursor):
+#             class Row:
+#                 def __init__(self, row):
+#                     self.row = row
+#                 def has_key(self, key):
+#                     return self.row.has_key(key)
+#                 def keys(self):
+#                     return self.row.keys();
+#                 def __getitem__(self, key):
+#                     if not row[key]:
+#                         return None
+#                     if key in vocabularies:
+#                         if row[key] not in vocabularies[key]:
+#                             logger.error(
+#                                 ('Unknown vocabulary:'
+#                                  ' scope:%s key:%s val:%r, keys defined: %r'),
+#                                 field_hash[key]['vocabulary_scope_ref'], key, 
+#                                 row[key],vocabularies[key].keys() )
+#                             return self.row[key] 
+#                         else:
+#                             return vocabularies[key][row[key]]['title']
+#                     else:
+#                         return self.row[key]
+#             for row in cursor:
+#                 yield Row(row)
+#         return vocabulary_rowproxy_generator
+# 
+#     def log_patches(self,request, original_data, new_data, **kwargs):
+#         '''
+#         log differences between dicts having the same identity in the arrays:
+#         @param original_data - data from before the API action
+#         @param new_data - data from after the API action
+#         - dicts have the same identity if the id_attribute keys have the same
+#         value.
+#         '''
+#         DEBUG_PATCH_LOG = False or logger.isEnabledFor(logging.DEBUG)
+#         if DEBUG_PATCH_LOG:
+#             logger.info('log patches: %s' %kwargs)
+#         log_comment = None
+#         if HEADER_APILOG_COMMENT in request.META:
+#             log_comment = request.META[HEADER_APILOG_COMMENT]
+#         
+#         if DEBUG_PATCH_LOG:
+#             logger.info('log patches original: %s, =====new data===== %s',
+#                 original_data,new_data)
+#         schema = self.build_schema()
+#         id_attribute = schema['id_attribute']
+#         if DEBUG_PATCH_LOG:
+#             logger.info('===id_attribute: %s', id_attribute)
+#         deleted_items = list(original_data)        
+#         for new_dict in new_data:
+#             log = ApiLog()
+#             log.username = request.user.username 
+#             log.user_id = request.user.id 
+#             log.date_time = timezone.now()
+#             log.ref_resource_name = self._meta.resource_name
+#             log.key = '/'.join([str(new_dict[x]) for x in id_attribute])
+#             log.uri = '/'.join([self._meta.resource_name,log.key])
+#             
+#             # user can specify any valid, escaped json for this field
+#             # if 'apilog_json_field' in bundle.data:
+#             #     log.json_field = bundle.data['apilog_json_field']
+#             
+#             log.comment = log_comment
+#     
+#             if 'parent_log' in kwargs:
+#                 log.parent_log = kwargs.get('parent_log', None)
+#             
+#             prev_dict = None
+#             for c_dict in original_data:
+#                 if c_dict:
+#                     if DEBUG_PATCH_LOG:
+#                         logger.info('consider prev dict: %s', c_dict)
+#                     prev_dict = c_dict
+#                     for key in id_attribute:
+#                         if new_dict[key] != c_dict[key]:
+#                             prev_dict = None
+#                             break
+#                     if prev_dict:
+#                         break # found
+#             if DEBUG_PATCH_LOG:
+#                 logger.info(
+#                     'prev_dict: %s, ======new_dict====: %s', 
+#                     prev_dict, new_dict)
+#             if prev_dict:
+#                 # if found, then it is modified, not deleted
+#                 logger.debug('remove from deleted dict %r, %r',
+#                     prev_dict, deleted_items)
+#                 deleted_items.remove(prev_dict)
+#                 
+#                 difflog = compare_dicts(prev_dict,new_dict)
+#                 if 'diff_keys' in difflog:
+#                     # log = ApiLog.objects.create()
+#                     log.api_action = str((request.method)).upper()
+#                     log.diff_dict_to_api_log(difflog)
+#                     log.save()
+#                     if DEBUG_PATCH_LOG:
+#                         logger.info('update, api log: %r' % log)
+#                 else:
+#                     # don't save the log
+#                     if DEBUG_PATCH_LOG:
+#                         logger.info('no diffs found: %r, %r, %r' 
+#                             % (prev_dict,new_dict,difflog))
+#             else: # creating
+#                 log.api_action = API_ACTION_CREATE
+#                 log.added_keys = json.dumps(new_dict.keys())
+#                 log.diffs = json.dumps(new_dict)
+#                 log.save()
+#                 if DEBUG_PATCH_LOG:
+#                     logger.info('create, api log: %s', log)
+#                 
+#         for deleted_dict in deleted_items:
+#             log = ApiLog()
+#             log.comment = log_comment
+#             log.username = request.user.username 
+#             log.user_id = request.user.id 
+#             log.date_time = timezone.now()
+#             log.ref_resource_name = self._meta.resource_name
+#             log.key = '/'.join([str(deleted_dict[x]) for x in id_attribute])
+#             log.uri = '/'.join([self._meta.resource_name,log.key])
+#         
+#             # user can specify any valid, escaped json for this field
+#             # if 'apilog_json_field' in bundle.data:
+#             #     log.json_field = bundle.data['apilog_json_field']
+#             
+#             log.comment = log_comment
+#     
+#             if 'parent_log' in kwargs:
+#                 log.parent_log = kwargs.get('parent_log', None)
+# 
+#             log.api_action = API_ACTION_DELETE
+#             log.diff_keys = json.dumps(deleted_dict.keys())
+#             log.diffs = json.dumps(deleted_dict)
+#             log.save()
+#             if DEBUG_PATCH_LOG:
+#                 logger.info('delete, api log: %r',log)
 
 
 class ApiLogAuthorization(UserGroupAuthorization):
@@ -767,7 +857,7 @@ class ApiLogAuthorization(UserGroupAuthorization):
             return True
 
 
-class ApiResource(IccblBaseResource,SqlAlchemyResource):
+class ApiResource(SqlAlchemyResource):
     '''
     Provides framework for "Patch" and "Put" methods
     - patch_list, put_list, put_detail; with logging
@@ -791,7 +881,8 @@ class ApiResource(IccblBaseResource,SqlAlchemyResource):
     
     def get_schema(self, request, **kwargs):
     
-        desired_format = self.determine_format(request)
+#         desired_format = self.determine_format(request)
+        desired_format = self.get_format(request,**kwargs)
         serialized = self.serialize(
             request, self.build_schema(), desired_format)
         return HttpResponse(
@@ -803,9 +894,11 @@ class ApiResource(IccblBaseResource,SqlAlchemyResource):
         return self.get_resource_resource().get_resource_schema(
             self._meta.resource_name)
 
-    def deserialize(self, request, data, format='application/json'):
+    # FIXME: format is not used
+    def deserialize(self, request, data=None, format='application/json'):
         logger.info('apiResource deserialize...')
         return self._meta.serializer.deserialize(
+            request,
             data, 
             format=request.META.get('CONTENT_TYPE', 'application/json'))
 
@@ -1213,6 +1306,8 @@ class ApiResource(IccblBaseResource,SqlAlchemyResource):
         errors = {}
         
         for name, field in fields.items():
+            if DEBUG_VALIDATION:
+                logger.info('validate key: %r, field: %r', name,field)
             if name == 'resource_uri':
                 continue
             
@@ -1292,34 +1387,158 @@ class ApiResource(IccblBaseResource,SqlAlchemyResource):
             logger.warn('errors in submitted data: %r, errs: %s', _dict, errors)
         return errors
 
-    @staticmethod
-    def parse_json_field(json_field_type, val):
-        'Parse a field nested in the json_obj'
+    @staticmethod    
+    def create_vocabulary_rowproxy_generator(field_hash):
+        '''
+        Create cursor row generator:
+        - generator wraps a sqlalchemy.engine.ResultProxy (cursor)
+        - yields a wrapper for sqlalchemy.engine.RowProxy on each iteration
+        - the wrapper will return vocabulary titles for valid vocabulary values
+        in each row[key] for the key columns that are vocabulary columns.
+        - returns the regular row[key] value for other columns
+        '''
+        vocabularies = {}
+        for key, field in field_hash.iteritems():
+            if field.get('vocabulary_scope_ref', None):
+                scope = field.get('vocabulary_scope_ref')
+                vocabularies[key] = \
+                    VocabulariesResource()._get_vocabularies_by_scope(scope)
+        def vocabulary_rowproxy_generator(cursor):
+            class Row:
+                def __init__(self, row):
+                    self.row = row
+                def has_key(self, key):
+                    return self.row.has_key(key)
+                def keys(self):
+                    return self.row.keys();
+                def __getitem__(self, key):
+                    if not row[key]:
+                        return None
+                    if key in vocabularies:
+                        if row[key] not in vocabularies[key]:
+                            logger.error(
+                                ('Unknown vocabulary:'
+                                 ' scope:%s key:%s val:%r, keys defined: %r'),
+                                field_hash[key]['vocabulary_scope_ref'], key, 
+                                row[key],vocabularies[key].keys() )
+                            return self.row[key] 
+                        else:
+                            return vocabularies[key][row[key]]['title']
+                    else:
+                        return self.row[key]
+            for row in cursor:
+                yield Row(row)
+        return vocabulary_rowproxy_generator
+
+    def log_patches(self,request, original_data, new_data, **kwargs):
+        '''
+        log differences between dicts having the same identity in the arrays:
+        @param original_data - data from before the API action
+        @param new_data - data from after the API action
+        - dicts have the same identity if the id_attribute keys have the same
+        value.
+        '''
+        DEBUG_PATCH_LOG = False or logger.isEnabledFor(logging.DEBUG)
+        if DEBUG_PATCH_LOG:
+            logger.info('log patches: %s' %kwargs)
+        log_comment = None
+        if HEADER_APILOG_COMMENT in request.META:
+            log_comment = request.META[HEADER_APILOG_COMMENT]
         
-        # FIXME: now that tastypie is removed, 
-        # json_field_type should equal data_type
-        if json_field_type == 'fields.CharField':
-            json_obj[key] = parse_val(val, key, 'string')
-        elif json_field_type == 'fields.ListField':
-            json_obj[key] = parse_val(val, key, 'list')
-        elif json_field_type == 'CsvBooleanField':                    
-            json_obj[key] = parse_val(val, key, 'boolean')
-        elif json_field_type == 'fields.BooleanField':
-            json_obj[key] = parse_val(val, key, 'boolean')
-        elif json_field_type == 'fields.IntegerField':
-            json_obj[key] = parse_val(val, key, 'integer')
-        elif json_field_type == 'fields.DateField':
-            raise NotImplementedError(
-                'json DateField field is not implemented')
-        elif json_field_type == 'fields.DecimalField':
-            raise NotImplementedError(
-                'json decimal field is not implemented')
-        elif json_field_type == 'fields.FloatField':
-            raise NotImplementedError(
-                'json float field is not implemented')
-        else:
-            raise NotImplementedError(
-                'unknown json_field_type: %s' % json_field_type)
+        if DEBUG_PATCH_LOG:
+            logger.info('log patches original: %s, =====new data===== %s',
+                original_data,new_data)
+        schema = self.build_schema()
+        id_attribute = schema['id_attribute']
+        if DEBUG_PATCH_LOG:
+            logger.info('===id_attribute: %s', id_attribute)
+        deleted_items = list(original_data)        
+        for new_dict in new_data:
+            log = ApiLog()
+            log.username = request.user.username 
+            log.user_id = request.user.id 
+            log.date_time = timezone.now()
+            log.ref_resource_name = self._meta.resource_name
+            log.key = '/'.join([str(new_dict[x]) for x in id_attribute])
+            log.uri = '/'.join([self._meta.resource_name,log.key])
+            
+            # user can specify any valid, escaped json for this field
+            # if 'apilog_json_field' in bundle.data:
+            #     log.json_field = bundle.data['apilog_json_field']
+            
+            log.comment = log_comment
+    
+            if 'parent_log' in kwargs:
+                log.parent_log = kwargs.get('parent_log', None)
+            
+            prev_dict = None
+            for c_dict in original_data:
+                if c_dict:
+                    if DEBUG_PATCH_LOG:
+                        logger.info('consider prev dict: %s', c_dict)
+                    prev_dict = c_dict
+                    for key in id_attribute:
+                        if new_dict[key] != c_dict[key]:
+                            prev_dict = None
+                            break
+                    if prev_dict:
+                        break # found
+            if DEBUG_PATCH_LOG:
+                logger.info(
+                    'prev_dict: %s, ======new_dict====: %s', 
+                    prev_dict, new_dict)
+            if prev_dict:
+                # if found, then it is modified, not deleted
+                logger.debug('remove from deleted dict %r, %r',
+                    prev_dict, deleted_items)
+                deleted_items.remove(prev_dict)
+                
+                difflog = compare_dicts(prev_dict,new_dict)
+                if 'diff_keys' in difflog:
+                    # log = ApiLog.objects.create()
+                    log.api_action = str((request.method)).upper()
+                    log.diff_dict_to_api_log(difflog)
+                    log.save()
+                    if DEBUG_PATCH_LOG:
+                        logger.info('update, api log: %r' % log)
+                else:
+                    # don't save the log
+                    if DEBUG_PATCH_LOG:
+                        logger.info('no diffs found: %r, %r, %r' 
+                            % (prev_dict,new_dict,difflog))
+            else: # creating
+                log.api_action = API_ACTION_CREATE
+                log.added_keys = json.dumps(new_dict.keys())
+                log.diffs = json.dumps(new_dict)
+                log.save()
+                if DEBUG_PATCH_LOG:
+                    logger.info('create, api log: %s', log)
+                
+        for deleted_dict in deleted_items:
+            log = ApiLog()
+            log.comment = log_comment
+            log.username = request.user.username 
+            log.user_id = request.user.id 
+            log.date_time = timezone.now()
+            log.ref_resource_name = self._meta.resource_name
+            log.key = '/'.join([str(deleted_dict[x]) for x in id_attribute])
+            log.uri = '/'.join([self._meta.resource_name,log.key])
+        
+            # user can specify any valid, escaped json for this field
+            # if 'apilog_json_field' in bundle.data:
+            #     log.json_field = bundle.data['apilog_json_field']
+            
+            log.comment = log_comment
+    
+            if 'parent_log' in kwargs:
+                log.parent_log = kwargs.get('parent_log', None)
+
+            log.api_action = API_ACTION_DELETE
+            log.diff_keys = json.dumps(deleted_dict.keys())
+            log.diffs = json.dumps(deleted_dict)
+            log.save()
+            if DEBUG_PATCH_LOG:
+                logger.info('delete, api log: %r',log)
 
 
 
@@ -1373,7 +1592,8 @@ class ApiLogResource(ApiResource):
 
     def dispatch_clear_cache(self, request, **kwargs):
         self.clear_cache()
-        desired_format = self.determine_format(request)
+#         desired_format = self.determine_format(request)
+        desired_format = self.get_format(request, **kwargs)
         content_type=build_content_type(desired_format)
         return HttpResponse(content='ok',content_type=content_type)
 
@@ -1474,7 +1694,7 @@ class ApiLogResource(ApiResource):
              
             rowproxy_generator = None
             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-                rowproxy_generator = IccblBaseResource.\
+                rowproxy_generator = ApiResource.\
                     create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup 
@@ -1761,7 +1981,8 @@ class FieldResource(ApiResource):
                 'meta': { 'limit': 0, 'offset': 0, 'total_count': len(fields) }, 
                 self._meta.collection_name: fields 
             }
-        desired_format = self.determine_format(request)
+#         desired_format = self.determine_format(request)
+        desired_format = self.get_format(request, **kwargs)
         serialized = self.serialize(request, response_hash, desired_format)
         return HttpResponse(
             content=serialized, 
@@ -1822,8 +2043,8 @@ class FieldResource(ApiResource):
             for key,val in initializer_dict.items():
                 fieldinformation = fields[key]
                 if fieldinformation.get('json_field_type', None):
-                    json_obj[key] = self.parse_json_field(
-                        fieldinformation['json_field_type'], val)
+                    json_obj[key] = parse_json_field(
+                        val, key, fieldinformation['json_field_type'])
                     
             field.json_field = json.dumps(json_obj)
             
@@ -1878,7 +2099,8 @@ class ResourceResource(ApiResource):
     
     def get_schema(self, request, **kwargs):
     
-        desired_format = self.determine_format(request)
+#         desired_format = self.determine_format(request)
+        desired_format = self.get_format(request, **kwargs)
         serialized = self.serialize(
             request, self.build_schema(), desired_format)
         return HttpResponse(
@@ -1888,17 +2110,43 @@ class ResourceResource(ApiResource):
     def clear_cache(self):
         ApiResource.clear_cache(self)
         cache.delete('resources');
+        cache.delete('resource_listing')
         
     def _get_list_response(self, request, key=None, **kwargs):
-        resources = cache.get('resources')
-        if not resources:
-            resources =  ApiResource._get_list_response(self, request)
-            cache.set('resources', resources)
         
+        cached = cache.get('resources')
+        if not cached  or not self.use_cache:
+            resources = super(ResourceResource,self)._get_list_response(
+                request, **kwargs)
+        else: 
+            resources = cached['objects']
+
         if key:
             return [resource for resource in resources if resource['key']==key]
         else:
             return resources
+
+
+    @read_authorization
+    def get_list(self,request,**kwargs):
+ 
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+        # return self.build_list_response(request, **kwargs)
+         
+        # FIXME - need to check and cache on kwargs
+        # Ok for the time being, because vocabularies/resources are not filtered
+        cached_content = cache.get('resources')
+        if not cached_content or not self.use_cache:
+            response = self.build_list_response(request, format='json')
+            cached_content = self._meta.serializer.from_json(
+                self._meta.serializer.get_content(response))
+            cache.set('resources', cached_content)
+        else:
+            logger.debug('using cached resources')
+        desired_format = self.get_format(request, **kwargs)
+        return HttpResponse(
+            content=self.serialize(request, cached_content, desired_format), 
+            content_type=build_content_type(desired_format))
         
     def get_resource_schema(self,key):
         # get the resource fields
@@ -1910,10 +2158,10 @@ class ResourceResource(ApiResource):
         request.user = User
         
         temp = self._get_list_response(request=request, key=key)
-        assert ( len(temp) < 2, 
+        assert len(temp)< 2,( 
             'ResourceResource returns multiple objects for key: %r, %r' 
             %(key,temp))
-        assert ( len(temp)==1, 
+        assert len(temp)==1,( 
             'ResourceResource returns no objects for key: %r' %key )
         return temp[0]
     
@@ -1955,12 +2203,6 @@ class ResourceResource(ApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
-        
-    @read_authorization
-    def get_list(self,request,**kwargs):
-
-        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-        return self.build_list_response(request, **kwargs)
 
     @read_authorization
     def build_list_response(self,request, **kwargs):
@@ -1992,8 +2234,8 @@ class ResourceResource(ApiResource):
         
         # for each resource, pull in the fields of the supertype resource
         # todo recursion
-        
         for key,resource in resources.items():
+            logger.debug('resource: %r', resource)
             resource['1'] = resource['key']
             resource['fields'] = field_hash.get('fields.%s'%key, {})
             resource['resource_uri'] = '/'.join([
@@ -2056,7 +2298,8 @@ class ResourceResource(ApiResource):
                 self._meta.collection_name: values
             }
         
-        desired_format = self.determine_format(request)
+#         desired_format = self.determine_format(request)
+        desired_format = self.get_format(request, **kwargs)
         serialized = self.serialize(request, response_hash, desired_format)
         return HttpResponse(
             content=serialized, 
@@ -2118,13 +2361,13 @@ class ResourceResource(ApiResource):
             for key,val in initializer_dict.items():
                 fieldinformation = fields[key]
                 if fieldinformation.get('json_field_type', None):
-                    json_obj[key] = self.parse_json_field(
-                        fieldinformation['json_field_type'], val)
+                    json_obj[key] = parse_json_field(
+                        val, key, fieldinformation['json_field_type'])
                     
             field.json_field = json.dumps(json_obj)
             field.save()
                     
-            logger.info('patch_obj done')
+            logger.info('patch_obj Resource done')
             return field
             
         except Exception, e:
@@ -2175,13 +2418,49 @@ class VocabulariesResource(ApiResource):
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
         
+        
+    def _get_list_response(self, request, key=None, **kwargs):
+        
+        # FIXME: check request params for caching
+        vocabularies = cache.get('vocabularies')
+        if not vocabularies  or not self.use_cache:
+            vocabularies =  ApiResource._get_list_response(self, request)
+            cache.set('vocabularies', vocabularies)
+#         vocabularies = super(VocabulariesResource,self)._get_list_response(
+#             request, key=key, **kwargs)
+        
+        if key:
+            return [vocabularies for vocabularies in vocabularies if vocabularies['key']==key]
+        else:
+            return vocabularies
+
+        
     @read_authorization
     def get_list(self,request,**kwargs):
-
+ 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-
         return self.build_list_response(request, **kwargs)
-
+         
+#         # FIXME - need to check and cache on kwargs
+#         # Ok for the time being, because vocabularies are not filtered
+#         cached_content = cache.get('vocabulary_listing')
+#         if not cached_content or not self.use_cache:
+#             response = self.build_list_response(request, format='json',
+#                 visibilities=['l'])
+#             cached_content = self._meta.serializer.from_json(
+#                 self._meta.serializer.get_content(response))
+#             cache.set('vocabulary_listing', cached_content)
+#         else:
+#             logger.info('using cached vocabularies')
+#         desired_format = self.get_format(request, **kwargs)
+#         return HttpResponse(
+#             content=self.serialize(request, cached_content, desired_format), 
+#             content_type=build_content_type(desired_format))
+            
+        
+    def clear_cache(self):
+        ApiResource.clear_cache(self)
+        cache.delete('vocabulary_listing')
         
     def build_list_response(self,request, **kwargs):
 
@@ -2366,7 +2645,7 @@ class VocabulariesResource(ApiResource):
                 _scope = v['scope']
                 if _scope not in vocabularies:
                      vocabularies[_scope] = {}
-                     logger.info('created vocab scope: %r', _scope)
+                     logger.debug('created vocab by scope: %r', _scope)
                 vocabularies[_scope][v['key']] = v
                 
             # Hack: activity.type is serviceactivity.type + activity.class
@@ -2445,8 +2724,8 @@ class VocabulariesResource(ApiResource):
             for key,val in initializer_dict.items():
                 fieldinformation = fields[key]
                 if fieldinformation.get('json_field_type', None):
-                    json_obj[key] = self.parse_json_field(
-                        fieldinformation['json_field_type'], val)
+                    json_obj[key] = parse_json_field(
+                        val, key, fieldinformation['json_field_type'])
                     
             vocab.json_field = json.dumps(json_obj)
             
@@ -2680,7 +2959,7 @@ class UserResource(ApiResource):
             rowproxy_generator = None
             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
                 rowproxy_generator = \
-                    IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup
             custom_columns = {
@@ -2863,7 +3142,7 @@ class UserResource(ApiResource):
                                     usergroup.users.add(userprofile)
                                     usergroup.save()
                                     logger.info(
-                                        'added user %r to usergroup %r', 
+                                        'added user %r, %r to usergroup %r', 
                                         userprofile,userprofile.user, usergroup)
                                 except ObjectDoesNotExist as e:
                                     msg = ('no such usergroup: %r, initializer: %r'
@@ -3283,7 +3562,7 @@ class UserGroupResource(ApiResource):
             rowproxy_generator = None
             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
                 rowproxy_generator = \
-                    IccblBaseResource.create_vocabulary_rowproxy_generator(field_hash)
+                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
             
             # specific setup
             _up = self.bridge['reports_userprofile']
@@ -3622,7 +3901,7 @@ class PermissionResource(ApiResource):
              
             rowproxy_generator = None
             if param_hash.get(HTTP_PARAM_USE_VOCAB,False):
-                rowproxy_generator = IccblBaseResource.\
+                rowproxy_generator = ApiResource.\
                     create_vocabulary_rowproxy_generator(field_hash)
  
             # specific setup

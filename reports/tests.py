@@ -73,17 +73,19 @@ from reports import dump_obj, HEADER_APILOG_COMMENT
 from reports.api import compare_dicts
 from reports.dump_obj import dumpObj
 from reports.models import API_ACTION_CREATE, MetaHash
-from reports.serializers import CsvBooleanField, CSVSerializer, SDFSerializer, \
+from reports.serializers import CSVSerializer, SDFSerializer, \
     LimsSerializer, XLSSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource
 import reports.utils.log_utils
-from reports.utils.sdf2py import MOLDATAKEY
-import reports.utils.serialize
+from reports.serialize.sdfutils import MOLDATAKEY
+import reports.serialize.csvutils as csvutils
+from reports.serialize import parse_val
+
 from django.test.runner import DiscoverRunner
 import sys
 
 
-_ = reports.utils.log_utils.LogMessageFormatter   # optional, to improve readability
+# _ = reports.utils.log_utils.LogMessageFormatter   # optional, to improve readability
 logger = logging.getLogger(__name__)
 
 BASE_URI = '/reports/api/v1'
@@ -93,6 +95,19 @@ try:
 except:
     APP_ROOT_DIR = os.path.abspath(os.path.dirname(reports.__path__))
 
+def find_in_dict(key,content):
+    ''' 
+    @return a value nested in a key of a dictionary - tree
+    '''
+    if isinstance(content, dict):
+        if key in content:
+            return content[key]
+        else:
+            for value in content.values():
+                val = find_in_dict(key,value)
+                if val:
+                    return val
+    return None
 
 def is_boolean(field):
     if type(field) == bool: return True
@@ -103,7 +118,6 @@ def is_boolean(field):
             return True
     return False
     
-csvBooleanField = CsvBooleanField()
 
 def numerical_equivalency(val, val2):
     try:
@@ -114,17 +128,17 @@ def numerical_equivalency(val, val2):
     return False
 
 ####
-# NOTE: equivocal, and other equivalency methods are for end-to-end testing, 
+# Equivocal, and other equivalency methods are for end-to-end testing, 
 # using string equals, of the API with values read from csv or json.
 # Values are submitted, then read back as json from the API.
 ####
 
 def equivocal(val1, val2):
     '''
-    For testing equality from the CSV input to the JSON response of what is 
-    created in the DB
-    obj1 input
-    obj2 output 
+    Test for equivalence between string,number,boolean,or list where:
+    - either object has been converted to a string,
+    - with lists, ordering has changed, or members have been converted to 
+    their string representation.
     '''
     if val1 == val2:
         return True, ('val1', val1, 'val2', val2 )
@@ -154,7 +168,8 @@ def equivocal(val1, val2):
         val2 = str(val2)
         if val1 != val2:
             if (is_boolean(val1) and 
-                    csvBooleanField.convert(val1)==csvBooleanField.convert(val2)):
+                    parse_val(val1,'testval1','boolean')
+                        == parse_val(val2,'testval2','boolean')):
                 return True, ('val1', val1, 'val2', val2 )
             elif numerical_equivalency(val1,val2):
                 return True, ('val1', val1, 'val2', val2 )
@@ -363,6 +378,7 @@ class BaselineTest(TestCase):
             # Test that boolean strings can come back as booleans 
             # (if booleanfield is defined)
             ['TRUE',True], 
+            ['TRUE',1], 
             ['false','False'],
             ['FALSE','false'],
             ['False',False],
@@ -380,7 +396,8 @@ class BaselineTest(TestCase):
             ['1',2],    
             ['','1'],
             ['sal','val'],
-            ['True','1'],
+            ['True','2'],
+            ['True','0'],
             ['true',''],
             ['TRUE',False],
             ['false','true'],
@@ -402,12 +419,12 @@ class BaselineTest(TestCase):
         self.assertFalse(result, msgs)
         obj3 = { 'one':'1', 'two':'2', 'three':'' }
         result, msgs = assert_obj1_to_obj2(obj3, obj1)
-        self.assertFalse(result, _(result,msgs))
+        self.assertFalse(result, (result,msgs))
 
         obj4 = { 'one':'1', 'two':'2', 'three':'' }
         obj5 = { 'one':'1', 'two':'2', 'three':None }
         result, msgs = assert_obj1_to_obj2(obj5, obj4)
-        self.assertTrue(result, _(result,msgs))
+        self.assertTrue(result, (result,msgs))
         logger.debug('====== test1_assert_obj1_to_obj2 done ====')
 
     def test2_find_obj_in_list(self):
@@ -428,7 +445,7 @@ class BaselineTest(TestCase):
 
         obj_list = [ obj3, obj1a ]
         result, msgs = find_obj_in_list(obj1, obj_list)
-        logger.debug(_(result,msgs))
+        logger.debug('%r, %r', result,msgs)
         self.assertFalse(result, msgs)
 
         obj_list = [ obj1a, obj3 ]
@@ -495,7 +512,7 @@ class SerializerTest(TestCase):
         input = [['one','two', 'three', 'four', 'five','six'],
                 ['uno', '2', 'true', 'false', '',['a','b','c']]]
         
-        input_data = reports.utils.serialize.from_csv_iterate(input)
+        input_data = csvutils.from_csv_iterate(input)
         for obj in input_data:
             self.assertTrue(obj['one']=='uno')
             self.assertTrue(obj['two']=='2')
@@ -767,7 +784,7 @@ M  END'''            }
                         self.fail('input object not found')
 
 
-class XLSSerializerTest(SimpleTestCase):
+class XlsSerializerTest(SimpleTestCase):
     
     def test1_read(self):
         logger.debug('==== test1 XLS read')
@@ -898,38 +915,7 @@ class XLSSerializerTest(SimpleTestCase):
                     
                     self.fail('xlsx input object not found')
 
-
-class HydrationTest(TestCase):
-    
-    def test_hydrate_boolean_tastypie(self):
-        field = BooleanField()
-        
-        test_data = [ True, False, 'true', 'TRUE', 'FALSE', 'false', '' ]
-        expected  = [ True, False, True, True, True, True, False ]
-        
-        for i, item in enumerate(test_data):
-            result = field.convert(item)
-            self.assertEqual(result, expected[i], 
-                (i,' is not equal', item, result, expected[i]))
-            
-    def test_hydrate_boolean_lims(self):
-        field = CsvBooleanField()
-        
-        test_data = [ True, False, 'true', 'TRUE', 'FALSE', 'false', '' ]
-        expected  = [ True, False, True, True, False, False, False ]
-        
-        for i, item in enumerate(test_data):
-            result = field.convert(item)
-            self.assertEqual(result, expected[i],
-                (i,' is not equal', item, result, expected[i]))
-    def test_hydrate_list(self):
-        test_data = ['one','two','three']
-        field = fields.ListField()
-        
-        result = field.convert(test_data)
-        
-        self.assertEqual(test_data, result)
-  
+   
 class LogCompareTest(TestCase):
     
     def test_compare_dicts(self):
@@ -1062,9 +1048,22 @@ class IResourceTestCase(SimpleTestCase):
                 resp.status_code in [200,201], 
                 (resp.status_code, self.get_content(resp)))
         
-        logger.info('get from %r... %r', resource_test_uri, _data_for_get)
+        new_obj = self.get_single_resource(resource_test_uri)
+        result,msg = assert_obj1_to_obj2(input_data,new_obj)
+        self.assertTrue(result, msg)
+        logger.debug('item created: %r', new_obj)
+        return new_obj
+    
+    def get_single_resource(self, resource_uri, data_for_get=None):
+        _data_for_get = { 
+            'limit': 0,
+            'includes': '*'
+        }
+        if data_for_get:
+            _data_for_get.update(data_for_get)
+        logger.info('get from %r... %r', resource_uri, _data_for_get)
         resp = self.api_client.get(
-            resource_test_uri, format='json', 
+            resource_uri, format='json', 
             authentication=self.get_credentials(), data=_data_for_get)
         self.assertTrue(
             resp.status_code in [200,201], 
@@ -1072,13 +1071,10 @@ class IResourceTestCase(SimpleTestCase):
         new_obj = self.deserialize(resp)
         if 'objects' in new_obj:
             self.assertEqual(len(new_obj['objects']),1,
-                'created resource test_uri: %r, returns multiple objects: %r'
-                % (resource_test_uri,new_obj))
+                'more than one object returned for: %r, returns: %r'
+                % (resource_uri,new_obj))
             new_obj = new_obj['objects'][0]
-        logger.debug('created obj: %r', new_obj)
-        result,msg = assert_obj1_to_obj2(input_data,new_obj)
-        self.assertTrue(result, msg)
-        logger.debug('item created: %r', new_obj)
+        logger.debug('obj: %r', new_obj)
         return new_obj
     
     def get_resource_from_server(self, resource_name):
@@ -1089,10 +1085,16 @@ class IResourceTestCase(SimpleTestCase):
         logger.info('Get the resource schema: %r', resource_uri )
         return self.get_from_server(resource_uri)
         
-    def get_from_server(self, resource_uri):
+    def get_from_server(self, resource_uri, data_for_get=None):
+        _data_for_get = { 
+            'limit': 0,
+            'includes': '*'
+        }
+        if data_for_get:
+            _data_for_get.update(data_for_get)
         resp = self.api_client.get(
             resource_uri, format='json', authentication=self.get_credentials(), 
-            data={ 'limit': 999 })
+            data=_data_for_get)
         self.assertTrue(resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         return self.deserialize(resp)
@@ -1181,7 +1183,7 @@ class IResourceTestCase(SimpleTestCase):
             self.assertTrue(
                 resp.status_code <= 204, 
                 (resp.status_code, self.get_content(resp)))
-    
+            logger.info('get: %r', resource_uri)
             resp = self.api_client.get(
                 resource_uri, format='json', 
                 authentication=self.get_credentials(), data=data_for_get)
@@ -1217,7 +1219,7 @@ class IResourceTestCase(SimpleTestCase):
         if not os.path.exists(input_actions_file):
             raise AssertionError('no such file %s' % input_actions_file)
         with open(input_actions_file) as input_file:
-            api_init_actions = reports.utils.serialize.from_csv(input_file)
+            api_init_actions = csvutils.from_csv(input_file)
             if not api_init_actions:
                 raise AssertionError('no actions read from file: %s' % input_actions_file)
             for action in api_init_actions:
@@ -1250,7 +1252,9 @@ class IResourceTestCase(SimpleTestCase):
         It returns a Python datastructure (typically a ``dict``) of the serialized data.
         """
         # Override to allow for use of the StreamingHttpResponse or the HttpResponse
-        return self.serializer.deserialize(self.get_content(resp), format=resp['Content-Type'])
+        return self.serializer.deserialize(
+            content=self.get_content(resp), 
+            format=resp['Content-Type'])
 
     def serialize(self, data, format='application/json'):
         """

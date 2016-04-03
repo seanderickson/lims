@@ -12,6 +12,7 @@ class ScreenFactory(factory.django.DjangoModelFactory):
     project_phase = "primary_screen"
     screen_type = "small_molecule"
     title = factory.Sequence(lambda n: 'Screen Title_'+ str(n) )
+    summary = factory.Sequence(lambda n: 'Screen summary No_'+ str(n) )
 
 class ScreensaverUserFactory(factory.django.DjangoModelFactory):
     class Meta:

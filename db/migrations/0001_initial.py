@@ -95,9 +95,10 @@ class Migration(migrations.Migration):
             fields=[
                 ('assay_well_id', models.AutoField(serialize=False, primary_key=True)),
                 ('version', models.IntegerField()),
-                ('assay_well_control_type', models.TextField(blank=True)),
+                ('assay_well_control_type', models.TextField(null=True,blank=True)),
                 ('is_positive', models.BooleanField()),
-                ('confirmed_positive_value', models.TextField(blank=True)),
+                ('confirmed_positive_value', models.TextField(null=True,blank=True)),
+                ('plate_number', models.IntegerField()),
             ],
             options={
                 'db_table': 'assay_well',
@@ -633,13 +634,13 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='ResultValue',
             fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('result_value_id', models.IntegerField(null=True, blank=True)),
-                ('assay_well_control_type', models.TextField(blank=True)),
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('result_value_id', models.AutoField(serialize=False, primary_key=True)),
+                ('assay_well_control_type', models.TextField(null=True, blank=True)),
                 ('is_exclude', models.NullBooleanField()),
                 ('numeric_value', models.FloatField(null=True, blank=True)),
                 ('is_positive', models.NullBooleanField()),
-                ('value', models.TextField(blank=True)),
+                ('value', models.TextField(null=True,blank=True)),
                 ('data_column', models.ForeignKey(blank=True, to='db.DataColumn', null=True)),
             ],
             options={

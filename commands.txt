@@ -18,6 +18,19 @@ PROFILE_LOG_BASE='/tmp'
 PYTHONPATH=. python reports/utils/profile_decorator.py /tmp/unlimited_get_list-20141031T193039.prof 
 
 #####
+screen result upload test:
+$ curl -v --user sde -F xls=@db/static/test_data/screens/ScreenResultTest_115.xls \
+   http://localhost:8000/db/api/v1/screenresult/1356
+
+curl -v --user sde -H 'Content-Type: application/xls' \
+  "http://localhost:8000/db/api/v1/screenresult/1356?&limit=0&format=xls&use_vocabularies=true&raw_lists=true" \
+  -o ScreenResult1356.xlsx
+
+screen importer test
+(iccbl-env) $ PYTHONPATH=. python db/support/screen_result_importer.py -f db/static/test_data/screens/ScreenRe
+sultTest_115.xls | python -m json.tool
+
+#####
 # Re-initialize the meta data for the site
 PYTHONPATH=. python reports/utils/db_init.py --input_dir=./reports/static/api_init/ -f ./reports/static/api_init/api_init_actions.csv -u http://localhost:8000/reports/api/v1 -U sde
 PYTHONPATH=. python reports/utils/db_init.py --input_dir=./db/static/api_init/ -f ./db/static/api_init/api_init_actions.csv -u http://localhost:8000/reports/api/v1 -U sde
@@ -35,7 +48,7 @@ PYTHONPATH=. python reports/utils/db_init.py --input_dir=lims/static/production_
 ./manage.py test db.tests.LibraryResource --verbosity=2 --settings=lims.settings_testing
 
 # run tests without the test db
-./manage.py test reports.SDFSerializerTest.test2_clean_data_sdf --settings=lims.settings_testing_nodb
+./manage.py test reports.tests.SDFSerializerTest.test2_clean_data_sdf --settings=lims.settings_testing_nodb
 
 # re-use the database and avoid reinitializing the metahash
 ./manage.py test --keepdb

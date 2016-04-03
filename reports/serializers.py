@@ -1,4 +1,6 @@
+# Non-streaming implementations of Tastypie Serializer
 from __future__ import unicode_literals
+
 import StringIO
 import cStringIO
 from collections import OrderedDict
@@ -12,65 +14,166 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.db.backends.utils import CursorDebugWrapper
 from django.http.response import StreamingHttpResponse
 from django.utils.encoding import smart_str
+import mimeparse
+from openpyxl.workbook.workbook import Workbook
 from psycopg2.psycopg1 import cursor
 import six
-from tastypie import fields
-from tastypie.bundle import Bundle
-from tastypie.exceptions import UnsupportedFormat
+from tastypie.exceptions import UnsupportedFormat, BadRequest, \
+    ImmediateHttpResponse
 from tastypie.serializers import Serializer
 import xlrd
-from xlsxwriter.workbook import Workbook
-import xlwt
 
-from reports import LIST_DELIMITER_CSV, LIST_DELIMITER_XLS
-import reports.utils.sdf2py as s2p
-from reports.utils.serialize import from_csv_iterate
-import reports.utils.serialize
+from db.support import screen_result_importer
+from reports.serialize import XLSX_MIMETYPE, XLS_MIMETYPE, SDF_MIMETYPE
+from reports.serialize import dict_to_rows
+from reports.serialize.csvutils import LIST_DELIMITER_CSV
+import reports.serialize.csvutils as csvutils
+import reports.serialize.sdfutils as sdfutils
+from reports.serialize.streaming_serializers import generic_xlsx_response
+from reports.serialize.xlsutils import LIST_DELIMITER_XLS
+import reports.serialize.xlsutils as xlsutils
 
 
 logger = logging.getLogger(__name__)
 
-class CsvBooleanField(fields.ApiField):
-    """
-    Interpret case insensitive "true" as True, 
-    all other values are False.
-    Non-strings are interpreted as usual, using bool(val).
-    """
-    dehydrated_type = 'boolean'
-    help_text = 'Boolean data. Ex: True'
-    
+class BaseSerializer(Serializer):
+
     @staticmethod
-    def convert_val(value):
-        if value is None:
-            return None
-        if isinstance(value, basestring):
-            if value.lower() == 'true':
-                return True
-            return False
+    def get_content(resp):
+        if isinstance(resp, StreamingHttpResponse):
+            # Response is in an iterator, 
+            # and can can possibly be iterated only once (resultsets)
+            # Use this utility to cache the result (e.g. for testing)
+            if not hasattr(resp,'cached_content') or not getattr(resp, 'cached_content'):
+                buffer = cStringIO.StringIO()
+                for line in resp.streaming_content:
+                    buffer.write(line)
+                resp.cached_content = buffer.getvalue()
+            return resp.cached_content
         else:
-            return bool(value)
+            return resp.content
 
-    def convert(self, value):
-        return self.convert_val(value)
+    def get_format(self, request, **kwargs):
+        '''
+        Return mime-type "format" set on the request, or
+        use mimeparse.best_match:
+        "Return the mime-type with the highest quality ('q') from list of 
+        candidates."
+        - uses Resource.content_types
+        - replaces tastypie.utils.mime.determine_format
+        '''
+        
+        format = None
+        if kwargs and 'format' in kwargs:
+            format = kwargs['format']
+        
+        if not format and request.GET.get('format',None):
+            format = request.GET.get('format')
+            
+        if format:
+            logger.debug('mapping format: %r', format)
+            if format in self.content_types:
+                format = self.content_types[format]
+                logger.debug('format: %r', format)
+            else:
+                logger.error('unknown format: %r, options: %r', 
+                    format, self.content_types)
+                raise ImmediateHttpResponse("unknown format: %s" % format)
+                
+        else:
+            logger.info('get_format: Try to fallback on the Accepts header')
+            if request.META.get('HTTP_ACCEPT', '*/*') != '*/*':
+                try:
+                    format = mimeparse.best_match(
+                        self.content_types.values(), 
+                        request.META['HTTP_ACCEPT'])
+                    if format == 'text/javascript':
+                        # NOTE - 
+                        # if the HTTP_ACCEPT header contains multiple entries 
+                        # with equal weighting, mimeparse.best_match returns
+                        # the last match. This results in the request header:
+                        # "application/json, text/javascript, */*; q=0.01"
+                        # (sent from jquery ajax call) returning 'text/javascript'
+                        # because the tastypie wrapper interprets this as 
+                        # a JSONP request, override here and set to 
+                        # 'application/json' 
+                        if 'application/json' in  request.META['HTTP_ACCEPT']:
+                            format = 'application/json'
 
+                    if not format:
+                        raise ImmediateHttpResponse(
+                            "no best match format for HTTP_ACCEPT: %r"
+                            % request.META['HTTP_ACCEPT'])
+                        
+                    logger.info('format %s, HTTP_ACCEPT: %s', format, 
+                        request.META['HTTP_ACCEPT'])
+                except ValueError:
+                    logger.exception('Invalid Accept header: %r',
+                        request.META['HTTP_ACCEPT'])
+                    raise ImmediateHttpResponse('Invalid Accept header')
+            elif request.META.get('CONTENT_TYPE', '*/*') != '*/*':
+                format = request.META.get('CONTENT_TYPE', '*/*')
 
+        logger.debug('got format: %s', format)
+        return format
 
-class TextIntegerField(fields.IntegerField):
-    """
-    Special hydration for text-to-integer interpretation; 
-    - convert empty string to None
-    """
-    dehydrated_type = 'integer'
-    help_text = 'Integer data. Ex: 2673'
+    def serialize(self, data, format='application/json', options=None):
+        """
+        Override Tastypie - 
+        """
 
-    def hydrate(self, bundle):
-        val = super(TextIntegerField,self).hydrate(bundle)
-        if not val or val == '': 
-            return None
-        return val
+        desired_format = None
+        if options is None:
+            options = {}
 
+        for short_format, long_format in self.content_types.items():
+            if format == long_format:
+                if hasattr(self, "to_%s" % short_format):
+                    desired_format = short_format
+                    break
 
-class BackboneSerializer(Serializer):
+        if desired_format is None:
+            raise UnsupportedFormat(
+                "The format indicated '%s' had no available serialization "
+                "method. Please check your ``formats`` and ``content_types`` "
+                "on your Serializer." % format)
+
+        serialized = getattr(self, "to_%s" % desired_format)(data, options)
+        return serialized
+
+    def deserialize(self, request=None, content=None, format='application/json'):
+        """
+        Override Tastypie - 
+        - pass the request, to allow multipart form processing in subclasses
+        """
+        assert (request or content), ('must specify either request or content')
+
+        desired_format = None
+
+        format = format.split(';')[0]
+
+        for short_format, long_format in self.content_types.items():
+            if format == long_format:
+                if hasattr(self, "from_%s" % short_format):
+                    desired_format = short_format
+                    break
+
+        if desired_format is None:
+            raise UnsupportedFormat(
+                ("The format indicated '%s' had no available deserialization "
+                 "method. Please check your ``formats`` and ``content_types`` "
+                 "on your Serializer.") % format)
+
+        if not content:
+            content = request.body
+        
+        if isinstance(content, six.binary_type):
+            content = force_text(content)
+
+        deserialized = getattr(self, "from_%s" % desired_format)(content)
+        return deserialized
+
+class BackboneSerializer(BaseSerializer):
     
     def from_json(self, content):
         """
@@ -82,7 +185,7 @@ class BackboneSerializer(Serializer):
         else:
             return None
 
-class PrettyJSONSerializer(Serializer):
+class PrettyJSONSerializer(BaseSerializer):
     json_indent = 2
 
     def to_json(self, data, options=None):
@@ -90,19 +193,19 @@ class PrettyJSONSerializer(Serializer):
         data = self.to_simple(data, options)
         # NOTE, using "ensure_ascii" = True to force encoding of all 
         # chars to the ascii charset; otherwise, cStringIO has problems
-        return json.dumps(data, cls=DjangoJSONEncoder,
-                sort_keys=True, ensure_ascii=True, indent=self.json_indent, encoding="utf-8")
+        return json.dumps(
+            data, cls=DjangoJSONEncoder,
+            sort_keys=True, ensure_ascii=True, indent=self.json_indent, 
+            encoding="utf-8")
 
 
-class SDFSerializer(Serializer):
+class SDFSerializer(BaseSerializer):
     
-    # FIXME: init could call super.__init__ first, then just modify
-    # "self.content_types" and "self.formats"
     def __init__(self, content_types=None, formats=None, **kwargs):
 
         if not content_types:
             content_types = Serializer.content_types.copy();
-        content_types['sdf'] = 'chemical/x-mdl-sdfile'
+        content_types['sdf'] = SDF_MIMETYPE
         
         if not formats:
             _formats = Serializer.formats # or []
@@ -116,54 +219,15 @@ class SDFSerializer(Serializer):
         
     def to_sdf(self, data, options=None):
         
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(str(('to_sdf', data, options)))
-
         data = self.to_simple(data, options)
-        output = cStringIO.StringIO()
 
         if 'objects' in data:
             data = data['objects']
         if len(data) == 0:
             return data
         
-        if isinstance(data,dict):
-            data = [data]
-            
-        MOLDATAKEY = s2p.MOLDATAKEY
-        for d in data:
-            
-            if d.get(MOLDATAKEY, None):
-                output.write(str(d[MOLDATAKEY]))
-                output.write('\n') 
-                # because we've not copied the data, don't delete it
-                # future optimize: implement data as iterable
-                #                 del d[MOLDATAKEY]
-            for k,v in d.items():
-                if k == MOLDATAKEY: 
-                    continue
-                output.write('> <%s>\n' % k)
-                # according to 
-                # http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip
-                # "only one blank line should terminate a data item"
-                if v:
-                    # find lists, but not strings (or dicts)
-                    # Note: a dict here will be non-standard; probably an error 
-                    # report, so just stringify dicts as is.
-                    if not hasattr(v, "strip") and isinstance(v, (list,tuple)): 
-                        for x in v:
-                            # DB should be UTF-8, so this should not be necessary,
-                            # however, it appears we have legacy non-utf data in 
-                            # some tables (i.e. small_molecule_compound_name 193090
-                            output.write(unicode.encode(x,'utf-8'))
-#                             output.write(str(x))
-                            output.write('\n')
-                    else:
-                        output.write(str(v))
-                        output.write('\n')
-
-                output.write('\n')
-            output.write('$$$$\n')
+        output = cStringIO.StringIO()
+        sdfutils.to_sdf(data,output)
         return output.getvalue()
     
     def from_sdf(self, content, root='objects'):
@@ -171,47 +235,21 @@ class SDFSerializer(Serializer):
         @param root - property to nest the return object iterable in for the 
             response (None if no nesting, and return object will be an iterable)
 
-        NOTE: the use of "objects" only makes sense for lists - and cannot be used
-        when there is only one item in the list; therefore this will not even work
-        with a "POST"; tastypie isn't aware that the object is nested in "objects".
-        This shouldn't be used at all, but we need to dig further into tastypie
-
-        TODO: version 2 - read from a stream
         '''
-        logger.info('sdf parsing...')
-        objects = s2p.parse_sdf(content,
-            _delimre=re.compile(ur'(?<=\n)\$\$\$\$'))
+        objects = sdfutils.parse_sdf(content)
         if root and not isinstance(objects, dict):
             return { root: objects }
         else:
             return objects
 
-def csv_convert(val, delimiter=LIST_DELIMITER_CSV, list_brackets='[]'):
-    if isinstance(val, (list,tuple)):
-        if list_brackets:
-            return ( list_brackets[0] 
-                + delimiter.join([smart_str(x) for x in val]) 
-                + list_brackets[1] )
-        else: 
-            return delimiter.join([smart_str(x) for x in val]) 
-    elif val != None:
-        if type(val) == bool:
-            if val:
-                return 'TRUE'
-            else:
-                return 'FALSE'
-        else:
-            return smart_str(val)
-    else:
-        return None
 
-class XLSSerializer(Serializer):
+class XLSSerializer(BaseSerializer):
     
     def __init__(self,content_types=None, formats=None, **kwargs):
         if not content_types:
             content_types = Serializer.content_types.copy();
-        content_types['xls'] = 'application/xls'
-        content_types['xlsx'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        content_types['xls'] = XLS_MIMETYPE
+        content_types['xlsx'] = XLSX_MIMETYPE
         
         if not formats:
             _formats = Serializer.formats # or []
@@ -225,12 +263,15 @@ class XLSSerializer(Serializer):
             content_types=content_types,**kwargs);
 
 
-    def deserialize(self, content, format='application/json'):
+    def deserialize(self, request=None, content=None, format='application/json'):
         """
-        Override - 20150304 - remove "force_text"
-        Given some data and a format, calls the correct method to deserialize
-        the data and returns the result.
+        Override - 20150304 - to remove "force_text"
         """
+        assert (request or content), ('must specify either request or content')
+
+        if not format:
+            format = request.META.get('CONTENT_TYPE', 'application/json')
+
         desired_format = None
 
         format = format.split(';')[0]
@@ -242,129 +283,50 @@ class XLSSerializer(Serializer):
                     break
 
         if desired_format is None:
-            raise UnsupportedFormat("The format indicated '%s' had no available deserialization method. Please check your ``formats`` and ``content_types`` on your Serializer." % format)
+            raise UnsupportedFormat(
+                ("The format indicated '%s' had no available deserialization "
+                "method. Please check your ``formats`` and ``content_types`` "
+                "on your Serializer.") % format)
+        
+        # override for xls
+        # if isinstance(content, six.binary_type):
+        #     content = force_text(content)
+
+        if not content:
+            content = request.body
 
         deserialized = getattr(self, "from_%s" % desired_format)(content)
         return deserialized
-
+    
+    def to_xls(self,data, options=None):
+        # ALL XLS serialization is to xlsx
+        return self.to_xlsx(data, options)
+    
     def to_xlsx(self, data, options=None):
-        '''
-        Quick hack - prefer streaming solutions
-        FIXME: not tested 20150304
-        '''
+        logger.info('Non-streamed xlsx data using generic serialization ')
         
-        options = options or {}
-        data = self.to_simple(data, options)
-        
-        raw_data = StringIO.StringIO()
-        workbook = Workbook(raw_data)
-        
-        if 'error' in data or 'error_messsage' in data:
-            sheet = workbook.add_worksheet('error')
-            sheet.write(0, 0, 'error')
-            sheet.write(1, 0, data.get('error', data.get('error_message', 'unknown error')))
-            if data.get('traceback', None):
-                sheet.write(0,1, 'traceback')
-                sheet.write(1,1, data.get('traceback', ''))
-            book.close()
-            return raw_data.getvalue()
-        
-        # TODO: smarter way to ignore 'objects'
+        def sheet_rows(list_of_objects):
+            ''' write a header row using the object keys '''
+            for i,item in enumerate(list_of_objects):
+                if i == 0:
+                    yield item.keys()
+                yield item.values()
         if 'objects' in data:
-            data = data['objects']
-        if len(data) == 0:
-            return data
-
-        sheet = workbook.add_worksheet('objects')
-
-        if isinstance(data, dict):
-            # usually, this happens when the data is actually an error message;
-            # but also, it could be just one item being returned
-            for i,(key,item) in enumerate(data.items()):
-                sheet.write(0,i,smart_str(key))
-                sheet.write(1,i,csv_convert(item))
-        else:    
-            # default 
-            keys = None
-            for row,item in enumerate(data):
-                if row == 0:
-                    for i, key in enumerate(item.keys()):
-                        sheet.write(0,i,smart_str(key))
-                for i, val in enumerate(item.values()):
-                    val = csv_convert(val, delimiter=LIST_DELIMITER_XLS)
-                    if val and len(val) > 32767: 
-                        logger.error(str(('warn, row too long', 
-                            row,key, val)))
-                    sheet.write(row+1,i,val)
+            data['objects'] = sheet_rows(data['objects'])
+        else:
+            data = { 'objects': sheet_rows(data) }
         
-        workbook.close()
+        response = generic_xlsx_response(data)
+        return self.get_content(response)
         
-        return raw_data.getvalue()
-
-    def to_xls(self, data, options=None):
-
-        options = options or {}
-        data = self.to_simple(data, options)
-        
-        raw_data = StringIO.StringIO()
-        book = xlwt.Workbook(encoding='utf8')
-        
-        if 'error' in data or 'error_messsage' in data:
-            sheet = book.add_sheet('error')
-            sheet.write(0, 0, 'error')
-            sheet.write(1, 0, data.get('error', data.get('error_message', 'unknown error')))
-            if data.get('traceback', None):
-                sheet.write(0,1, 'traceback')
-                sheet.write(1,1, data.get('traceback', ''))
-            book.save(raw_data)
-            return raw_data.getvalue()
-        
-        # TODO: smarter way to ignore 'objects'
-        if 'objects' in data:
-            data = data['objects']
-        if len(data) == 0:
-            return data
-
-        sheet = book.add_sheet('objects')
-
-        if isinstance(data, dict):
-            # usually, this happens when the data is actually an error message;
-            # but also, it could be just one item being returned
-            for i,(key,item) in enumerate(data.items()):
-                sheet.write(0,i,smart_str(key))
-                sheet.write(1,i,csv_convert(item))
-        else:    
-            # default 
-            keys = None
-            for row,item in enumerate(data):
-                if row == 0:
-                    for i, key in enumerate(item.keys()):
-                        sheet.write(0,i,smart_str(key))
-                for i, val in enumerate(item.values()):
-                    val = csv_convert(val, delimiter=LIST_DELIMITER_XLS)
-                    if val and len(val) > 32767: 
-                        logger.error(str(('warn, row too long', 
-                            row,key, val)))
-                    sheet.write(row+1,i,val)
-        
-        book.save(raw_data)
-        
-        return raw_data.getvalue()
-
     def from_xlsx(self, content, root='objects'):
-        ''' TODO: preliminary 20150304
-        '''
-        logger.info(str(('experimental, read xlsx using xlrd')))
         return self.from_xls(content, root=root)
-        
-        
+
     def from_xls(self, content, root='objects'):
         
         if isinstance(content, six.string_types):
             wb = xlrd.open_workbook(file_contents=content)
         else:
-            # TODO: this won't work!
-            # streaming content is coming from XlsxWriter, so need to read xlsx!
             wb = xlrd.open_workbook(cStringIO.StringIO(content))
             
         if wb.nsheets > 1:
@@ -372,34 +334,244 @@ class XLSSerializer(Serializer):
         
         # TODO: if root is specified, then get the sheet by name
         sheet = wb.sheet_by_index(0)
-
-        def read_sheet(sheet):
-            def read_row(row):
-                for col in range(sheet.ncols):
-                    cell = sheet.cell(row,col)
-                    value = cell.value
-                    if not value:
-                        yield None
-                    elif cell.ctype == xlrd.XL_CELL_NUMBER:
-                        ival = int(value)
-                        if value == ival:
-                            value = ival
-                        yield str(value)
-                    else:
-                        yield str(value)
-            for row in range(sheet.nrows):
-                yield read_row(row)
-
+        
+        if sheet.name.lower() in ['error', 'errors']:
+            return xlsutils.sheet_rows(sheet)
+            
         # because workbooks are treated like sets of csv sheets, now convert
         # as if this were a csv sheet
-        data = from_csv_iterate(read_sheet(sheet),list_delimiter=LIST_DELIMITER_XLS)
+        data = csvutils.from_csv_iterate(
+            xlsutils.sheet_rows(sheet),list_delimiter=LIST_DELIMITER_XLS)
 
         if root:
             return { root: data }
         else:
             return data
+
+#     def to_xlsx_old(self, data, options=None):
+#         '''
+#         TODO: replace xlsxwriter.Workbook with openpyxl.Workbook
+#         - 20160411
+#         NOTE: not used by the API - streaming_serializers used instead
+#         '''
+#         
+#         options = options or {}
+#         data = self.to_simple(data, options)
+#         
+#         raw_data = StringIO.StringIO()
+#         workbook = Workbook(raw_data)
+#         
+#         if 'error' in data or 'error_messsage' in data:
+#             sheet = workbook.add_worksheet('error')
+#             sheet.write(0, 0, 'error')
+#             sheet.write(1, 0, data.get('error', data.get('error_message', 'unknown error')))
+#             if data.get('traceback', None):
+#                 sheet.write(0,1, 'traceback')
+#                 sheet.write(1,1, data.get('traceback', ''))
+#             book.close()
+#             return raw_data.getvalue()
+#         
+#         if 'objects' in data:
+#             data = data['objects']
+#         if len(data) == 0:
+#             return data
+# 
+#         sheet = workbook.add_worksheet('objects')
+# 
+#         if isinstance(data, dict):
+#             # usually, this happens when the data is actually an error message;
+#             # but also, it could be just one item being returned
+#             for i,(key,item) in enumerate(data.items()):
+#                 sheet.write(0,i,smart_str(key))
+#                 sheet.write(1,i,csvutils.csv_convert(item))
+#         else:    
+#             # default 
+#             keys = None
+#             for row,item in enumerate(data):
+#                 if row == 0:
+#                     for i, key in enumerate(item.keys()):
+#                         sheet.write(0,i,smart_str(key))
+#                 for i, val in enumerate(item.values()):
+#                     val = csvutils.csv_convert(val, delimiter=LIST_DELIMITER_XLS)
+#                     if val and len(val) > 32767: 
+#                         logger.error('warn, row too long, %d, key: %r, len: %d', 
+#                             row,key,len(val) )
+#                     sheet.write(row+1,i,val)
+#         
+#         workbook.close()
+#         
+#         return raw_data.getvalue()
+# 
+#     def to_xls_old(self, data, options=None):
+# 
+#         options = options or {}
+#         data = self.to_simple(data, options)
+#         
+#         raw_data = StringIO.StringIO()
+#         book = xlwt.Workbook(encoding='utf8')
+#         
+#         if 'error' in data or 'error_messsage' in data:
+#             sheet = book.add_sheet('error')
+#             sheet.write(0, 0, 'error')
+#             sheet.write(1, 0, data.get(
+#                 'error', data.get('error_message', 'unknown error')))
+#             if data.get('traceback', None):
+#                 sheet.write(0,1, 'traceback')
+#                 sheet.write(1,1, data.get('traceback', ''))
+#             book.save(raw_data)
+#             return raw_data.getvalue()
+#         
+#         if 'objects' in data:
+#             data = data['objects']
+#         if len(data) == 0:
+#             return data
+# 
+#         sheet = book.add_sheet('objects')
+# 
+#         if isinstance(data, dict):
+#             # usually, this happens when the data is actually an error message;
+#             # but also, it could be just one item being returned
+#             for i,(key,item) in enumerate(data.items()):
+#                 sheet.write(0,i,smart_str(key))
+#                 sheet.write(1,i,csvutils.csv_convert(item))
+#         else:    
+#             # default 
+#             keys = None
+#             for row,item in enumerate(data):
+#                 if row == 0:
+#                     for i, key in enumerate(item.keys()):
+#                         sheet.write(0,i,smart_str(key))
+#                 for i, val in enumerate(item.values()):
+#                     val = csvutils.csv_convert(val, delimiter=LIST_DELIMITER_XLS)
+#                     if val and len(val) > 32767: 
+#                         logger.error('warn, row too long, %d, key: %r, len: %d', 
+#                             row,key,len(val) )
+#                     sheet.write(row+1,i,val)
+#         
+#         book.save(raw_data)
+#         
+#         return raw_data.getvalue()
+
+
+
+class ScreenResultSerializer(XLSSerializer):
+
+    def __init__(self,content_types=None, formats=None, **kwargs):
+        if not content_types:
+            content_types = Serializer.content_types.copy();
+        content_types['xls'] = 'application/xls'
+        content_types['xlsx'] = XLSX_MIMETYPE
+        
+        if not formats:
+            _formats = Serializer.formats # or []
+            _formats = copy.copy(_formats)
+            formats = _formats
+        formats.append('xls')
+        formats.append('xlsx')
+            
+        super(ScreenResultSerializer,self).__init__(
+            formats=formats, 
+            content_types=content_types,**kwargs);
+
+    def get_format(self, request, **kwargs):
+        format = super(ScreenResultSerializer,self).get_format(request,**kwargs)
+        if format.startswith('multipart'):
+            logger.info('request.Files.keys: %r', request.FILES.keys())
+            if len(request.FILES.keys()) != 1:
+                raise ImmediateHttpResponse(
+                    response=self.error_response(
+                        request,
+                        { 'FILES': 'File upload supports only one file at a time',
+                          'filenames': request.FILES.keys(),
+                        }
+                ))
+            if 'xls' in request.FILES:
+                format = 'application/xls'
+            else:
+                logger.error(
+                    'Unsupported multipart file key: %r',request.FILES.keys())
+                raise UnsupportedFormat(
+                    'Unsupported multipart file key: %r' % request.FILES.keys())
+
+        logger.info('screen result format determined: %r', format)
+        return format 
+    
+    def deserialize(self, request=None, content=None, format='application/json'):
+        '''
+        Override deserialize:
+        - pass in request
+        - get content from the multipart form
+        '''
+        assert (request or content), ('must specify either request or content')
+        logger.info('format: %r', format)
+        if not format:
+            format = request.META.get('CONTENT_TYPE', 'application/json')
+        logger.info('deserialize: %r', format)
+        if format.startswith('multipart'):
+            logger.info('multipart, files: %r', dir(request))
+            logger.info('request.Files.keys: %r', request.FILES.keys())
+            if len(request.FILES.keys()) != 1:
+                raise ImmediateHttpResponse(
+                    response=self.error_response(
+                        request,
+                        { 'FILES': 'File upload supports only one file at a time',
+                          'filenames': request.FILES.keys(),
+                        }
+                ))
+            if 'xls' in request.FILES:
+                file = request.FILES['xls']
+                deserialized = screen_result_importer.read_file(file)
+            else:
+                logger.error(
+                    'Unsupported multipart file key: %r',request.FILES.keys())
+                raise UnsupportedFormat(
+                    'Unsupported multipart file key: %r' % request.FILES.keys())
+        else:
+            desired_format = None
+            format = format.split(';')[0]
+            for short_format, long_format in self.content_types.items():
+                if format == long_format:
+                    if hasattr(self, "from_%s" % short_format):
+                        desired_format = short_format
+                        break
+            if not content:
+                content = request.body
+            if desired_format is None:
+                raise UnsupportedFormat(
+                    ("The format indicated '%s' had no available deserialization "
+                    "method. Please check your ``formats`` and ``content_types`` "
+                    "on your Serializer.") % format)
+
+            try:
+                deserialized = getattr(self, "from_%s" % desired_format)(content)
+            except Exception, e:
+                logger.exception('on deserialize: %r, %r', desired_format, content)
+                raise
+        if not deserialized:
+            raise BadRequest('unknown format')
+        return deserialized
+
+    def to_xlsx(self, data, options=None):
+        logger.info('Non-streamed Screenresult using generic serialization')
+        response = generic_xlsx_response(data)
+        return self.get_content(response)
+    
+    def to_xls(self, data, options=None):
+        return self.to_xlsx(data, options)
+    
+    def from_xlsx(self, content):
+        return self.from_xls(content)
+
+    def from_xls(self, content):
+        
+        if isinstance(content, six.string_types):
+            wb = xlrd.open_workbook(file_contents=content)
+        else:
+            wb = xlrd.open_workbook(cStringIO.StringIO(content))
+        return screen_result_importer.read_workbook(wb)
+
                 
-class CSVSerializer(Serializer):
+class CSVSerializer(BaseSerializer):
     
     def __init__(self, content_types=None, formats=None, **kwargs):
         
@@ -426,20 +598,19 @@ class CSVSerializer(Serializer):
         
         options = options or {}
         data = self.to_simple(data, options)
+
         raw_data = StringIO.StringIO()
         # default: delimiter = ',' quotechar='"'
         writer = csv.writer(raw_data) 
 
         if 'error' in data:
-            writer.writerow(['error'])
-            writer.writerow([data['error']])
-            logger.warn(str(('error', data)))
+            for row in dict_to_rows(data['error']):
+                writer.writerow(row)
+            # writer.writerow(['error'])
+            # writer.writerow([data['error']])
+            # logger.warn(str(('error', data)))
             return raw_data.getvalue()
             
-        # TODO: stream this, don't do the whole dict at once 
-        
-        # TODO: smarter way to ignore 'objects'
-        # TODO: if error is thrown all the way to tp.wrapper, then root may not be a string...
         if 'objects' in data:
             data = data['objects']
 
@@ -449,10 +620,8 @@ class CSVSerializer(Serializer):
         if isinstance(data, dict):
             # usually, this happens when the data is actually an error message;
             # but also, it could be just one item being returned
-            logger.error(str(('non-standard data: embedded dict', data)))
-            raise Exception(str(('non-standard data: embedded dict', data)))
+            raise Exception('non-standard data: embedded dict: %r', data)
         else:    
-            # default 
             i = 0
             keys = None
             for item in data:
@@ -460,110 +629,25 @@ class CSVSerializer(Serializer):
                     keys = item.keys()
                     writer.writerow([smart_str(key) for key in keys])
                 i += 1
-                writer.writerow([csv_convert(val) for val in item.values()])
+                writer.writerow([csvutils.csv_convert(val) for val in item.values()])
 
         return raw_data.getvalue()
 
-#     def to_csv_stream(self, query, options=None, outputstream=None):
-#         '''
-#         @param root ignored for csv!
-#         
-#         '''
-#         
-#         options = options or {}
-#         data = self.to_simple(data, options)
-#         
-#         # default: delimiter = ',' quotechar='"'
-#         writer = csv.writer(raw_data) 
-# 
-#         if 'error' in data:
-#             writer.writerow(['error'])
-#             writer.writerow([data['error']])
-#             logger.warn(str(('error', data)))
-#             return raw_data.getvalue()
-#             
-#         i = 0
-#         keys = None
-#         for item in query:
-#             if i == 0:
-#                 keys = item.keys()
-#                 writer.writerow([smart_str(key) for key in keys])
-#             i += 1
-#             writer.writerow(self.get_list(item))
-
-#         
-#     def get_list(self,item):
-#         '''
-#         Convert a csv row into a list of values
-#         '''
-#         _list = []
-#         for key in item:
-#             _list.append(csv_convert(item[key]))
-#         return _list
-    
     def from_csv(self, content, root='objects'):
         '''
         @param root - property to nest the return object iterable in for the 
             response (None if no nesting, and return object will be an iterable)
 
-        NOTE: the use of "objects" only makes sense for lists - and cannot be used
-        when there is only one item in the list; therefore this will not even work
-        with a "POST"; tastypie isn't aware that the object is nested in "objects".
-        This shouldn't be used at all, but we need to dig further into tastypie
-
-        TODO: version 2 - read from a stream
         '''
-        objects = reports.utils.serialize.from_csv(
+        objects = csvutils.from_csv(
             StringIO.StringIO(content),list_delimiter=LIST_DELIMITER_CSV)
         if root:
             return { root: objects }
         else:
             return objects
                 
-    
-#     def from_csv(self, content, root='objects'):
-#         '''
-#         @param root - property to nest the return object iterable in for the 
-#             response (None if no nesting, and return object will be an iterable)
-#         
-#         '''
-#         raw_data = StringIO.StringIO(content)
-#         
-#         # TODO: also, stream this
-#         # default: delimiter = ',' quotechar='"'
-#         logger.debug('reading...')
-#         reader = csv.reader(raw_data)
-#         return self.from_csv_iterate(reader, root)
-#         
-#     def from_csv_iterate(self, iterable, root='objects'):
-#         data_result = []
-#         i = 0
-#         keys = []
-#         list_keys = [] # cache
-#         for row in iterable:
-#             if i == 0:
-#                 keys = row
-#             else:
-#                 item = dict(zip(keys,row))
-#                 for key in item.keys():
-#                     val = item[key]
-#                     if ( val and len(val)> 1 and 
-#                             (key in list_keys or val[0]=='[') ):
-#                         # due to the simplicity of the serializer, above, any 
-#                         # quoted string is a nested list
-#                         list_keys.append(key)
-#                         item[key] = val.strip('"[]').split(',')
-#                 data_result.append(item)
-#             i += 1
-#         logger.debug('read in data, count: ' + str(len(data_result)) )   
-# 
-#         if root:
-#             return { root: data_result }
-#         else:
-#             return data_result
 
-
-class CursorSerializer(Serializer):
+class CursorSerializer(BaseSerializer):
     """
     A simple serializer that takes a cursor, queries it for its columns, and
     outputs this as either CSV or JSON.
@@ -579,22 +663,16 @@ class CursorSerializer(Serializer):
         'csv': 'text/csv',
     }
   
-    def to_csv(self, bundle_or_obj, options=None):
-        '''
-        NOTE: ignores all content except for "objects"
-        '''
-        
+    def to_csv(self, obj, options=None):
         raw_data = StringIO.StringIO()
 
-        obj = bundle_or_obj            
-        if isinstance(bundle_or_obj, Bundle):
-            obj = bundle_or_obj.obj
-            
         # this is an unexpected way to get this error, look into tastypie
         if(isinstance(obj,dict) and 'error_message' in obj):
-            logger.warn(str(('report error', obj)))
+        
+            logger.warn('report error: %r', obj)
             raw_data.writelines(('error_message\n',obj['error_message'],'\n'))
             return raw_data.getvalue() 
+
         elif isinstance(obj,dict) :
             
             writer = csv.writer(raw_data)
@@ -634,18 +712,12 @@ class CursorSerializer(Serializer):
             i += 1
         logger.info('_cursor_to_csv done, wrote: %d' % i)
 
-    def to_json(self,bundle_or_obj, options=None):
+    def to_json(self,obj, options=None):
         
-        logger.info(str(('typeof the object sent to_json',type(bundle_or_obj))))
         raw_data = StringIO.StringIO()
          
-        if isinstance(bundle_or_obj, Bundle):
-            obj = bundle_or_obj.obj
-        else:
-            obj = bundle_or_obj            
-            
         if isinstance(obj,dict) and 'error_message' in obj :
-            logger.warn(str(('report error', obj)))
+            logger.warn('report error: %r', obj)
             raw_data.writelines(('error_message\n',obj['error_message'],'\n'))
             return raw_data.getvalue() 
         elif isinstance(obj,dict) :
@@ -673,8 +745,8 @@ class CursorSerializer(Serializer):
     def _cursor_to_json(self, _cursor, raw_data):
         if not isinstance(_cursor, (cursor, CursorDebugWrapper) ):
             raise Exception(
-                str(('obj for serialization is not a "cursor": ', 
-                     type(_cursor) )))
+                'obj for serialization is not a "cursor": %r'
+                % type(_cursor) )
         
         i=0
         cols = [col[0] for col in _cursor.description]
@@ -698,55 +770,5 @@ class LimsSerializer(PrettyJSONSerializer, BackboneSerializer,CSVSerializer,
     ''' 
     Combine all of the Serializers used by the API
     '''
-    @staticmethod
-    def get_content(resp):
-        if isinstance(resp, StreamingHttpResponse):
-            # Response is in an iterator, 
-            # and can can possibly be iterated only once (resultsets)
-            # Use this utility to cache the result (e.g. for testing)
-            if not hasattr(resp,'cached_content') or not getattr(resp, 'cached_content'):
-                buffer = cStringIO.StringIO()
-                for line in resp.streaming_content:
-                    buffer.write(line)
-                resp.cached_content = buffer.getvalue()
-            return resp.cached_content
-        else:
-            return resp.content
-
-# class SmilesPNGSerializer(Serializer):
-#     
-#     def __init__(self, content_types=None, formats=None, **kwargs):
-# 
-#         if not content_types:
-#             content_types = Serializer.content_types.copy();
-#         content_types['png'] = 'image/png'
-#         
-#         if not formats:
-#             _formats = Serializer.formats # or []
-#             _formats = copy.copy(_formats)
-#             formats = _formats
-#         formats.append('png')
-#             
-#         super(SmilesPNGSerializer,self).__init__(
-#             formats=formats, 
-#             content_types=content_types,**kwargs);
-# 
-#         
-#     def to_png(self, data, options=None):
-#         import rdkit.Chem
-#         import rdkit.Chem.AllChem
-#         import rdkit.Chem.Draw
-# #         import matplotlib
-# 
-# 
-#         m = rdkit.Chem.MolFromSmiles('Cc1ccccc1')
-#         rdkit.Chem.AllChem.Compute2DCoords(m)
-#         im = rdkit.Chem.Draw.MolToImage(m)
-#         return im
-# #         matplotlib.pyplot.imshow(im)
-#         
-# #         response = HttpResponse(mimetype="image/png")
-# #         img.save(response, "PNG")
-# #         return response
 
 

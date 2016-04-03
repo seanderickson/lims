@@ -31,13 +31,20 @@ from tastypie.utils.mime import build_content_type
 
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     LIST_BRACKETS, MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE, \
-    LIST_DELIMITER_XLS, LIST_DELIMITER_CSV, HTTP_PARAM_RAW_LISTS
+    HTTP_PARAM_RAW_LISTS
+from reports.serialize.csvutils import LIST_DELIMITER_CSV, csv_convert
 from reports.serializers import LimsSerializer
 from reports.utils.sqlalchemy_bridge import Bridge
-from reports.utils.streaming_serializers import sdf_generator, json_generator, \
-    get_xls_response, csv_generator, ChunkIterWrapper
+from reports.serialize.streaming_serializers import sdf_generator, \
+    json_generator, get_xls_response, csv_generator, ChunkIterWrapper,\
+    cursorGenerator
+from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE
 import re
-
+from tempfile import SpooledTemporaryFile, NamedTemporaryFile
+from openpyxl import Workbook
+from wsgiref.util import FileWrapper
+import xlsxwriter
+from reports.api_base import IccblBaseResource
 
 logger = logging.getLogger(__name__)
 
@@ -49,25 +56,25 @@ def _concat(*args):
     '''
     return func.array_to_string(array([x for x in args]),'')
         
-def un_cache(_func):
-    '''
-    Wrapper function to disable caching for 
-    SQLAlchemyResource.stream_response_from_statement
-    ''' 
-    @wraps(_func)
-    def _inner(self, *args, **kwargs):
-        logger.debug('decorator un_cache: %s, %s', self, _func )
-        SqlAlchemyResource.clear_cache(self)
-        SqlAlchemyResource.set_caching(self,False)
-        result = _func(self, *args, **kwargs)
-        SqlAlchemyResource.set_caching(self,True)
-        logger.debug('decorator un_cache done: %s, %s', self, _func )
-        return result
+# def un_cache(_func):
+#     '''
+#     Wrapper function to disable caching for 
+#     SQLAlchemyResource.stream_response_from_statement
+#     ''' 
+#     @wraps(_func)
+#     def _inner(self, *args, **kwargs):
+#         logger.debug('decorator un_cache: %s, %s', self, _func )
+#         SqlAlchemyResource.clear_cache(self)
+#         SqlAlchemyResource.set_caching(self,False)
+#         result = _func(self, *args, **kwargs)
+#         SqlAlchemyResource.set_caching(self,True)
+#         logger.debug('decorator un_cache done: %s, %s', self, _func )
+#         return result
+# 
+#     return _inner
 
-    return _inner
 
-
-class SqlAlchemyResource(Resource):
+class SqlAlchemyResource(IccblBaseResource):
     '''
     A resource that uses SqlAlchemy to facilitate the read queries:
     - get_list
@@ -92,8 +99,8 @@ class SqlAlchemyResource(Resource):
         
         super(SqlAlchemyResource, self).__init__(*args, **kwargs)
     
-    def set_caching(self,use_cache):
-        self.use_cache = use_cache
+#     def set_caching(self,use_cache):
+#         self.use_cache = use_cache
 
     @classmethod
     def wrap_statement(cls, stmt, order_clauses, filter_expression):
@@ -103,7 +110,6 @@ class SqlAlchemyResource(Resource):
         @param filter_expression - sqlalchemy.whereclause
         '''
         if order_clauses:
-            logger.info(str(('order_clauses', [str(c) for c in order_clauses])))
             _alias = Alias(stmt)
             stmt = select([text('*')]).select_from(_alias)
             stmt = stmt.order_by(*order_clauses)
@@ -154,7 +160,7 @@ class SqlAlchemyResource(Resource):
             if isinstance(val, basestring):
                 _dict[key] = [val]
         
-        _dict['desired_format'] = self.get_format(request)
+#         _dict['desired_format'] = self.get_format(request)
         
         return _dict    
     
@@ -171,7 +177,7 @@ class SqlAlchemyResource(Resource):
         
         TODO: this method is not SqlAlchemy specific
         '''
-        DEBUG_VISIBILITY = True or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_VISIBILITY = False or logger.isEnabledFor(logging.DEBUG)
         visibilities = set(visibilities)
         if DEBUG_VISIBILITY:
             logger.info('get_visible_fields: field_hash initial: %r, manual: %r, exact: %r', 
@@ -344,9 +350,10 @@ class SqlAlchemyResource(Resource):
                         stmt2 = stmt2.select_from(join_stmt).label(key)
                         columns[key] = stmt2
                 else:
-                    logger.warn(
-                        'field is not in the base tables %r, nor in a linked field, '
-                        'and is not custom: %s', base_query_tables, key)
+                    if DEBUG_BUILD_COLUMNS:        
+                        logger.info(
+                            'field is not in the base tables %r, nor in a linked field, '
+                            'and is not custom: %s', base_query_tables, key)
             if DEBUG_BUILD_COLUMNS: logger.info(str(('columns', columns.keys())))
             return columns
         except Exception, e:
@@ -433,7 +440,7 @@ class SqlAlchemyResource(Resource):
         # then AND'd with the regular filters (if any)
         search_data = param_hash.get('search_data', None)
         if search_data:
-            logger.info(str(('search_data', search_data)))
+            logger.info('search_data: %r', search_data)
             if search_data and isinstance(search_data, basestring):
                 # standard, convert single valued list params
                 search_data = [search_data]
@@ -687,10 +694,11 @@ class SqlAlchemyResource(Resource):
         try:
             response = self.get_list(
                 request,
-                desired_format='application/json',
+                format='json',
                 includes=includes,
                 **kwargs)
             _data = self._meta.serializer.deserialize(
+                request,
                 LimsSerializer.get_content(response), format='application/json')
             _data = _data[self._meta.collection_name]
             logger.debug(' data: %s'% _data)
@@ -706,10 +714,11 @@ class SqlAlchemyResource(Resource):
         try:
             response = self.get_detail(
                 request,
-                desired_format='application/json',
+                format='json',
                 includes='*',
                 **kwargs)
             _data = self._meta.serializer.deserialize(
+                request,
                 LimsSerializer.get_content(response), format='application/json')
             logger.debug(' data: %s'% _data)
             return _data
@@ -730,10 +739,10 @@ class SqlAlchemyResource(Resource):
             'get_list_response must be implemented for the SqlAlchemyResource', 
             self._meta.resource_name)) )
     
-    def clear_cache(self):
-        logger.debug('clearing the cache from resource: %s (all caches cleared)' 
-            % self._meta.resource_name)
-        cache.clear()
+#     def clear_cache(self):
+#         logger.debug('clearing the cache from resource: %s (all caches cleared)' 
+#             % self._meta.resource_name)
+#         cache.clear()
 
     def _cached_resultproxy(self, stmt, count_stmt, param_hash, limit, offset):
         ''' 
@@ -746,7 +755,7 @@ class SqlAlchemyResource(Resource):
         
         TODO: cache clearing on database writes
         '''
-        DEBUG_CACHE = False or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_CACHE = True or logger.isEnabledFor(logging.DEBUG)
         if limit == 0:
             raise Exception('limit for caching must be >0')
         
@@ -862,14 +871,16 @@ class SqlAlchemyResource(Resource):
             logger.debug('offset: %s, limit: %s', offset, limit)
             conn = self.bridge.get_engine().connect()
             
-#             if DEBUG_STREAMING:
-            logger.info('stmt: %s, param_hash: %s ', 
-                str(stmt.compile(compile_kwargs={"literal_binds": True})), 
-                param_hash)
+            if DEBUG_STREAMING:
+                logger.info('stmt: %s, param_hash: %s ', 
+                    str(stmt.compile(compile_kwargs={"literal_binds": True})), 
+                    param_hash)
             if DEBUG_STREAMING:
                 logger.info(str(('count stmt', str(count_stmt))))
             
-            desired_format = param_hash.get('desired_format',self.get_format(request))
+#             desired_format = param_hash.get('desired_format',self.get_format(request))
+            desired_format = self.get_format(request, **param_hash)
+            logger.debug('---- desired_format: %r, hash: %r', desired_format, param_hash)
             result = None
             if desired_format == 'application/json':
                 logger.debug('streaming json')
@@ -882,7 +893,7 @@ class SqlAlchemyResource(Resource):
                         count = cache_hit['count']
                     else:
                         # cache routine should always return a cache object
-                        logger.error(str(('error, cache not set: execute stmt')))
+                        logger.error('error, cache not set: execute stmt')
                         count = conn.execute(count_stmt).scalar()
                         result = conn.execute(stmt)
                     logger.info(str(('====count====', count)))
@@ -960,8 +971,9 @@ class SqlAlchemyResource(Resource):
             if request.GET.get(HTTP_PARAM_RAW_LISTS, False):
                 list_brackets = None
     
-            desired_format = param_hash.get(
-                'desired_format',self.get_format(request))
+#             desired_format = param_hash.get(
+#                 'desired_format',self.get_format(request))
+            desired_format = self.get_format(request, **param_hash)
             content_type=build_content_type(desired_format)
             logger.debug('desired_format: %s, content_type: %s', 
                 desired_format, content_type)
@@ -979,14 +991,165 @@ class SqlAlchemyResource(Resource):
             
             
             elif( desired_format == 'application/xls' or
-                desired_format == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): 
+                desired_format == XLSX_MIMETYPE ): 
                 # NOTE: will respond with xlsx for both desired formats
-                
+                 
                 response = get_xls_response(result,output_filename,request, 
                     field_hash=field_hash, title_function=title_function,
                     list_brackets=list_brackets)
-                    
-            elif desired_format == 'chemical/x-mdl-sdfile':
+#             elif( desired_format == 'application/xls' or
+#                 desired_format == XLSX_MIMETYPE ): 
+#                 # NOTE: will respond with xlsx for both desired formats
+#                 def dict_to_rows(_dict):
+#                     logger.info('_dict: %r', _dict)
+#                     values = []
+#                     if isinstance(_dict, dict):
+#                         for key,val in _dict.items():
+#                             for row in dict_to_rows(val):
+#                                 if not row:
+#                                     values.append([key,None])
+#                                 else:
+#                                     keyrow = [key]
+#                                     if isinstance(row, basestring):
+#                                         keyrow.append(row)
+#                                     else:
+#                                         keyrow.extend(row)
+#                                     values.append(keyrow)
+#                     else:
+#                         values = (csv_convert(_dict),)
+#                     return values
+#                 class FileWrapper1:
+#                     """
+#                     Wrapper to convert file-like objects to iterables
+#                         - modified to delete the file after iterating
+#                     """
+#                 
+#                     def __init__(self, filelike, blksize=8192):
+#                         self.filelike = filelike
+#                         self.blksize = blksize
+#                 
+#                     def __getitem__(self,key):
+#                         data = self.filelike.read(self.blksize)
+#                         if data:
+#                             return data
+#                         
+#                         # Modify: delete file after iterating
+#                         logger.info('1done...')
+#                         self.filelike.close()
+#                         os.remove(self.filelike.name)
+# 
+#                         raise IndexError
+#                 
+#                     def __iter__(self):
+#                         return self
+#                 
+#                     def next(self):
+#                         data = self.filelike.read(self.blksize)
+#                         if data:
+#                             return data
+#                         
+#                         # Modify: delete file after iterating
+#                         logger.info('1done...')
+#                         self.filelike.close()
+#                         os.remove(self.filelike.name)
+#                         
+#                         raise StopIteration
+#                     
+#                     
+#                 def xlsx_response_openpyxl(meta, data, fields=None, title_function=None):
+#                     # Issue; entire file is created in memory
+#                     with  NamedTemporaryFile(delete=False) as temp_file:
+#                         wb = Workbook(optimized_write=True)
+#                     
+#                         sheet = wb.create_sheet(title='meta')
+#                         for row in dict_to_rows(meta):
+#                             logger.info('meta row: %r', row)
+#                             sheet.append(row)
+#                         if fields:
+#                             sheet = wb.create_sheet(title='fields')
+#                             keys = fields.values()[0].keys()
+#                             keys = sorted(keys)
+#                             for key in keys:
+#                                 row = [key]
+#                                 for field in fields.values():
+#                                     row.append(csv_convert(field[key]))
+#                                 logger.info('row: %s', row)
+#                                 sheet.append(row)
+#                             
+#                         sheet = wb.create_sheet(title='data')
+#                         for i,row in enumerate(data):
+#                             if i == 0:
+#                                 # Requires data to be uniform
+#                                 sheet.append([title_function(x) for x in row.keys()])
+#                             sheet.append(row.values())
+#                             
+#                         logger.info('save to temp file')
+#                         wb.save(temp_file)
+#                         temp_file.seek(0, os.SEEK_END)
+#                         size = temp_file.tell()
+#                         temp_file.seek(0)   
+#                     logger.info('stream to response')
+#                     chunk_size = 8192
+#                     _file = file(temp_file.name)
+#                     response = StreamingHttpResponse(
+#                         FileWrapper1(_file), content_type=content_type) 
+#                     response['Content-Length'] = size
+#                     response['Content-Type'] = XLSX_MIMETYPE
+#                     response['Content-Disposition'] = \
+#                         'attachment; filename=%s.xlsx' % meta['output_filename']
+#                     return response
+# 
+#                 def xlsx_response(meta, data, fields=None, title_function=None):
+#                     # using XlsxWriter for constant memory usage
+#                     with  NamedTemporaryFile(delete=False) as temp_file:
+#                         wb = xlsxwriter.Workbook(temp_file, {'constant_memory': True})                    
+#                         sheet = wb.add_worksheet('meta')
+#                         for i,row in enumerate(dict_to_rows(meta)):
+#                             logger.info('meta row: %r', row)
+#                             sheet.write_row(i,0,row)
+#                         if fields:
+#                             sheet = wb.add_worksheet('fields')
+#                             keys = fields.values()[0].keys()
+#                             keys = sorted(keys)
+#                             for i,key in enumerate(keys):
+#                                 row = [key]
+#                                 for field in fields.values():
+#                                     row.append(csv_convert(field[key]))
+#                                 sheet.write_row(i,0,row)
+#                             
+#                         sheet = wb.add_worksheet('data')
+#                         for i,row in enumerate(data):
+#                             if i == 0:
+#                                 # Requires data to be uniform
+#                                 sheet.write_row(i,0,[title_function(x) for x in row.keys()])
+#                             sheet.write_row(i+1,0,[csv_convert(x) for x in row.values()])
+#                             
+#                         logger.info('save to temp file')
+#                         wb.close()
+#                         temp_file.seek(0, os.SEEK_END)
+#                         size = temp_file.tell()
+#                         temp_file.seek(0)   
+#                     logger.info('stream to response')
+#                     chunk_size = 8192
+#                     _file = file(temp_file.name)
+#                     response = StreamingHttpResponse(
+#                         FileWrapper1(_file), content_type=content_type) 
+#                     response['Content-Length'] = size
+#                     response['Content-Type'] = XLSX_MIMETYPE
+#                     response['Content-Disposition'] = \
+#                         'attachment; filename=%s.xlsx' % meta['output_filename']
+#                     return response
+#                     
+#                 meta = meta or {}
+#                 meta['output_filename'] = output_filename
+#                 response = xlsx_response(
+#                     meta,
+#                     cursorGenerator( result, field_hash, field_hash.keys()), 
+#                     fields=field_hash,
+#                     title_function=title_function)
+#                 
+#                  
+            elif desired_format == SDF_MIMETYPE:
                 
                 response = StreamingHttpResponse(
                     ChunkIterWrapper(sdf_generator(result, field_hash)),

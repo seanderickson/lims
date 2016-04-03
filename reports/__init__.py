@@ -1,7 +1,9 @@
 from __future__ import unicode_literals
 
-LIST_DELIMITER_CSV = ';'
-LIST_DELIMITER_XLS = ';'
+import django.core.exceptions
+from collections import OrderedDict
+import logging
+
 # Note the csv package does not allow multibyte delimiters 
 CSV_DELIMITER = b','  
 LIST_DELIMITER_SQL_ARRAY = ';'
@@ -18,16 +20,22 @@ HEADER_APILOG_COMMENT = 'HTTP_X_APILOG_COMMENT'
 
 LIST_BRACKETS = '[]' # default char to surround nested list in xls, csv
 
+logger = logging.getLogger(__name__)
+
 class ValidationError(Exception):
     def __init__(self,errors=None, key=None, msg=None):
-        super(ValidationError, self).__init__('validation error')
         
-        assert errors or key or msg, 'ValidationError initialization requires "errors" parameter'
-        
+        assert errors is not None or (key and msg),( 
+            'ValidationError initialization requires "errors" parameter')
+         
         self.errors = errors or {}
-        
+         
         if key:
             self.errors[key] = [msg]
-    
+     
     def __repr__(self, *args, **kwargs):
         return 'validation errors: %r' % self.errors
+    
+class ParseError(ValidationError):
+    pass
+

@@ -33,6 +33,8 @@ import re
 
 DEFAULT_CONVERTER=re.compile(r'[\W]+')
 def default_converter(original_text, sep='_'):
-        temp = DEFAULT_CONVERTER.sub(' ', original_text)
-        return sep.join(temp.lower().split())      
+    if not original_text:
+        return None
+    temp = DEFAULT_CONVERTER.sub(' ', original_text)
+    return sep.join(temp.lower().split())      
   

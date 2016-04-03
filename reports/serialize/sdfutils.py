@@ -66,7 +66,7 @@ def first_nonempty_line(preamble):
     for txt in [line.strip() for line in preamble.splitlines()]:
         if len(txt):
             return txt
-
+                                        
 def parse_sdf(data, _delimre=re.compile(ur'(?<=\n)\$\$\$\$')):
     """
     for mol_record in sdf2py.parse_sdf(sdf_data_as_a_string):
@@ -97,6 +97,51 @@ def parse_sdf(data, _delimre=re.compile(ur'(?<=\n)\$\$\$\$')):
                 buffer.write(line)
     
     return tuple(result)
+
+
+def to_sdf(data,output):
+    '''
+    @param data an iterable containing dict objects to be written
+    @param output a file like object
+    '''
+    
+    if isinstance(data,dict):
+        data = [data]
+            
+    for d in data:
+        
+        if d.get(MOLDATAKEY, None):
+            output.write(str(d[MOLDATAKEY]))
+            output.write('\n') 
+            # because we've not copied the data, don't delete it
+            # future optimize: implement data as iterable
+            #                 del d[MOLDATAKEY]
+        for k,v in d.items():
+            if k == MOLDATAKEY: 
+                continue
+            output.write('> <%s>\n' % k)
+            # according to 
+            # http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip
+            # "only one blank line should terminate a data item"
+            if v:
+                # find lists, but not strings (or dicts)
+                # Note: a dict here will be non-standard; probably an error 
+                # report, so just stringify dicts as is.
+                if not hasattr(v, "strip") and isinstance(v, (list,tuple)): 
+                    for x in v:
+                        # DB should be UTF-8, so this should not be necessary,
+                        # however, it appears we have legacy non-utf data in 
+                        # some tables (i.e. small_molecule_compound_name 193090
+                        output.write(unicode.encode(x,'utf-8'))
+#                             output.write(str(x))
+                        output.write('\n')
+                else:
+                    output.write(str(v))
+                    output.write('\n')
+
+            output.write('\n')
+        output.write('$$$$\n')
+
         
 
 if __name__ == '__main__':

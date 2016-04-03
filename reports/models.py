@@ -80,6 +80,10 @@ class MetaManager(GetOrNoneManager):
         # metahash as well, could be in a separate table
         field_definition_table = MetaHash.objects.all().filter(
             scope=field_definition_scope)
+        if not field_definition_table:
+            logger.warn('field definitions not found for: %r',
+                field_definition_scope)
+            return {}
         logger.debug('field_definition_table: %r', field_definition_table)
         # the objects themselves are stored in the metahash table as well
         unparsed_objects = MetaHash.objects.all().filter(scope=scope).order_by('ordinal')

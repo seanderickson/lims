@@ -4,6 +4,7 @@ import cStringIO
 import json
 import logging
 import os
+from os import path
 import sys
 
 from django.contrib.auth.models import User
@@ -18,17 +19,23 @@ from tastypie.test import ResourceTestCase, TestApiClient
 from db.models import Reagent, Substance, Library, ScreensaverUser, \
     UserChecklistItem, AttachedFile, ServiceActivity, Screen, Well
 import db.models
+from db.support import lims_utils, screen_result_importer
 from db.support import lims_utils
-from db.support import lims_utils
-from db.test.factories import LibraryFactory, ScreenFactory, ScreensaverUserFactory
+from db.test.factories import LibraryFactory, ScreenFactory, \
+    ScreensaverUserFactory
 from reports.dump_obj import dumpObj
 from reports.models import ApiLog, UserProfile, UserGroup
-from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer
+from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer, \
+    ScreenResultSerializer
+from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE
 from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.tests import IResourceTestCase, equivocal
-from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, find_obj_in_list
+from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, \
+    find_obj_in_list, find_in_dict
 import reports.tests
 import reports.utils.log_utils
+from reports import ValidationError
+from collections import OrderedDict
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +65,8 @@ class DBResourceTestCase(IResourceTestCase):
         self.directory = os.path.join(APP_ROOT_DIR, 'db/static/api_init')
         serializer=CSVSerializer() 
         testApiClient = TestApiClient(serializer=serializer) 
-        input_actions_file = os.path.join(self.directory, 'api_init_actions.csv')
+        input_actions_file = os.path.join(
+            self.directory, 'api_init_actions.csv')
         logger.info('open input_actions file: %r', input_actions_file)
         self._run_api_init_actions(input_actions_file)
     
@@ -69,21 +77,46 @@ class DBResourceTestCase(IResourceTestCase):
             input_data.update(data)
         resource_uri = '/'.join([BASE_URI_DB, 'library'])
         test_uri = '/'.join([resource_uri,input_data['short_name']])
-        
         return self._create_resource(input_data,resource_uri,test_uri)
 
-    def create_screen(self, data=None):
+    @staticmethod
+    def create_small_molecule_test_well(
+            plate, well_index, platesize=384, library_well_type=None):
         
+        library_well_types = [
+            'experimental','dmso','library_control' ]
+        well_name = lims_utils.well_name_from_index(well_index, platesize)
+        if not library_well_type:
+            library_well_type = library_well_types[well_index%3]
+        return {
+            'plate_number': plate, 'well_name': well_name,
+            'library_well_type' : library_well_type,
+            'vendor_name': 'vendorX',
+            'vendor_identifier': 'ID-%d' % well_index,
+            'vendor_batch_id': 2,
+            'molar_concentration': float('0.00%d' %well_index),
+            'smiles': 'H%dC%dN%d' % (well_index%10,well_index%11,well_index%12),
+            'compound_name': ['name-%d'%well_index, 'name-%d'%((well_index+11)%100)]
+        }
+
+    def create_screen(self, data=None):
+
+        lab_head = self.create_screensaveruser({ 
+            'username': 'lab_head_1'
+        })
         input_data = ScreenFactory.attributes()
+        logger.info('input_data: %r', input_data)
         if data:
             input_data.update(data)
+        if 'lab_head_username' not in input_data:
+            input_data['lab_head_username'] = lab_head['username']
+            
         resource_uri = '/'.join([BASE_URI_DB, 'screen'])
         _data_for_get = { 
             'limit': 0,
             'includes': '*'
         }
         logger.info('screen input_data to create: %r', input_data)
-
         logger.info('post to %r...', resource_uri)
         resp = self.api_client.post(
             resource_uri, format='json', data=input_data, 
@@ -92,26 +125,16 @@ class DBResourceTestCase(IResourceTestCase):
         self.assertTrue(
             resp.status_code in [200,201], 
             (resp.status_code, self.get_content(resp)))
-        
-        resource_test_uri = resource_uri + '/' + new_obj['facility_id']        
-        logger.info('get from %r... %r', resource_test_uri, _data_for_get)
-        resp = self.api_client.get(
-            resource_test_uri, format='json', 
-            authentication=self.get_credentials(), data=_data_for_get)
-        self.assertTrue(
-            resp.status_code in [200,201], 
-            (resp.status_code,self.get_content(resp)))
-        new_obj = self.deserialize(resp)
-        if 'objects' in new_obj:
-            self.assertEqual(len(new_obj['objects']),1,
-                'created resource test_uri: %r, returns multiple objects: %r'
-                % (resource_test_uri,new_obj))
-            new_obj = new_obj['objects'][0]
-        logger.debug('created obj: %r', new_obj)
+    
+        new_obj = self.get_screen(new_obj['facility_id'])    
         result,msg = assert_obj1_to_obj2(input_data,new_obj)
         self.assertTrue(result, msg)
         logger.debug('item created: %r', new_obj)
         return new_obj
+
+    def get_screen(self, facility_id, data_for_get=None):
+        resource_uri = '/'.join([BASE_URI_DB, 'screen', facility_id])
+        return self.get_single_resource(resource_uri, data_for_get)
 
     def create_screensaveruser(self, data=None):
         
@@ -127,7 +150,6 @@ class DBResourceTestCase(IResourceTestCase):
 def setUpModule():
 
     logger.info('=== setup Module')
-    
     keepdb = False
     reinit_metahash = False
     if len(sys.argv) > 1:
@@ -171,7 +193,7 @@ class LibraryResource(DBResourceTestCase):
         Library.objects.all().delete()
         Well.objects.all().delete()
         ApiLog.objects.all().delete()
-
+    
     def test1_create_library(self):
         
         resource_uri = BASE_URI_DB + '/library'
@@ -199,9 +221,9 @@ class LibraryResource(DBResourceTestCase):
         expected_count = 384*3
         self.assertEqual(
             len(new_obj['objects']), expected_count, 
-            str(('wrong number of wells',len(new_obj['objects']), expected_count)))
+            'wrong number of wells: %d, expected: %d' 
+                % (len(new_obj['objects']), expected_count))
         
-        logger.info('examine the wells created...')
         index = 0
         platesize = 384
         plate = 1535        
@@ -213,7 +235,67 @@ class LibraryResource(DBResourceTestCase):
             well_search = {'well_id': well_id}
             result, well = find_obj_in_list(well_search, new_obj['objects'])
             self.assertTrue(result, well)
-                
+            
+        # load wells
+        plate = 1534
+        input_data = [
+            self.create_small_molecule_test_well(plate,i) for i in range(0,384)]
+        resource_name = 'well'
+        resource_uri = '/'.join([
+            BASE_URI_DB,'library', library1['short_name'],resource_name])
+        resp = self.api_client.put(
+            resource_uri, format='sdf', data={ 'objects': input_data } , 
+            authentication=self.get_credentials(), **data_for_get )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        
+        # NOTE: get the library "reagents" instead of the wells: reagents have 
+        # one-to-many reln to wells, so the well endpoint returns only first;
+        # also, the well resource is not the linked resource type, and does not
+        # have the reagent fields.  
+        resource_name = 'reagent'
+        reagent_resource_uri = '/'.join([
+            BASE_URI_DB,'library', library1['short_name'],resource_name])
+        new_obj = self.get_from_server(resource_uri, data_for_get)
+        returned_data = new_obj['objects']
+        expected_count = 384
+        self.assertEqual(
+            len(returned_data), expected_count, 
+            ('expected', expected_count, 'found',len(returned_data)))
+        
+        # test 1: test well keys
+        specific_schema = self.get_from_server(resource_uri + '/schema')
+        fields = specific_schema['fields']
+        
+        self.validate_wells(input_data, returned_data, fields)
+        
+    def validate_wells(self, input_data, output_data, fields):
+        substance_ids = set()
+        for inputobj in input_data:
+            # first just search for the well
+            search = { 'well_id': 
+                lims_utils.well_id(
+                    inputobj['plate_number'],inputobj['well_name']) }
+            result, outputobj = find_obj_in_list(
+                search,output_data) #, excludes=excludes )
+            self.assertTrue(
+                result, 
+                ('not found', search,outputobj,'=== objects returned ===', 
+                      output_data ) ) 
+            # second look at the found item
+            expected_data = { 
+                key: inputobj[key] for key in fields.keys() if key in inputobj }
+            result, msgs = assert_obj1_to_obj2(expected_data, outputobj)
+            self.assertTrue(
+                result, (msgs, 'input', expected_data, 'output', outputobj))
+
+            substance_id = outputobj['substance_id']
+            self.assertTrue(
+                substance_id not in substance_ids, 
+                ('substance_id not unique', substance_id, substance_ids))
+            substance_ids.add(substance_id)
+        
     def test10_create_library_copy(self):
         
         library = self.create_library({
@@ -255,6 +337,12 @@ class LibraryResource(DBResourceTestCase):
                 plate_number>=start_plate and plate_number<=end_plate,
                 'wrong plate_number: %r' % obj)
 
+    def test11_create_library_copy_invalids(self):
+        # TODO: try to create duplicate copy names
+        # TODO: try to create invalid types, plate ranges
+        
+        pass
+    
     def test4_create_library_invalids(self):
         '''
         Test the schema "required" validations 
@@ -332,13 +420,15 @@ class LibraryResource(DBResourceTestCase):
             'screen_type': 'small_molecule' })
 
         resource_name = 'well'
-        resource_uri = '/'.join([BASE_URI_DB,'library', library_item['short_name'],resource_name])
-        filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_small_molecule.sdf'
-
+        resource_uri = '/'.join([
+            BASE_URI_DB,'library', library_item['short_name'],resource_name])
+        filename = (
+            '%s/db/static/test_data/libraries/clean_data_small_molecule.sdf'
+                % APP_ROOT_DIR )
         data_for_get={}
         data_for_get.setdefault('limit', 0)
         data_for_get.setdefault('includes', ['*'])
-        data_for_get.setdefault('HTTP_ACCEPT', 'chemical/x-mdl-sdfile' )
+        data_for_get.setdefault('HTTP_ACCEPT', SDF_MIMETYPE )
 
         with open(filename) as input_file:
             
@@ -360,15 +450,16 @@ class LibraryResource(DBResourceTestCase):
                 resp.status_code in [200], 
                 (resp.status_code, self.get_content(resp)))
         
-        # NOTE: get the library "reagents" instead of the wells: reagents have a 
+        # NOTE: get the library "reagents" instead of the wells: reagents have 
         # one-to-many reln to wells, so the well endpoint returns only first;
-        # also, the well resource is not the linked resource type, and does not have
-        # the reagent fields.  
+        # also, the well resource is not the linked resource type, and does not
+        # have the reagent fields.  
         resource_name = 'reagent'
         reagent_resource_uri = '/'.join([
             BASE_URI_DB,'library', library_item['short_name'],resource_name])
         resp = self.api_client.get(
-            reagent_resource_uri, format='sdf', authentication=self.get_credentials(), 
+            reagent_resource_uri, format='sdf', 
+            authentication=self.get_credentials(), 
             data=data_for_get)
         self.assertTrue(
             resp.status_code in [200], 
@@ -386,30 +477,7 @@ class LibraryResource(DBResourceTestCase):
         specific_schema = self.get_from_server(resource_uri + '/schema')
         fields = specific_schema['fields']
         
-        substance_ids = set()
-        for inputobj in input_data:
-            # first just search for the well
-            search = { 'well_id': 
-                lims_utils.well_id(
-                    inputobj['plate_number'],inputobj['well_name']) }
-            result, outputobj = find_obj_in_list(
-                search,returned_data) #, excludes=excludes )
-            self.assertTrue(
-                result, 
-                ('not found', search,outputobj,'=== objects returned ===', 
-                      returned_data ) ) 
-            # second look at the found item
-            expected_data = { 
-                key: inputobj[key] for key in fields.keys() if key in inputobj }
-            result, msgs = assert_obj1_to_obj2(expected_data, outputobj)
-            self.assertTrue(
-                result, (msgs, 'input', expected_data, 'output', outputobj))
-
-            substance_id = outputobj['substance_id']
-            self.assertTrue(
-                substance_id not in substance_ids, 
-                ('substance_id not unique', substance_id, substance_ids))
-            substance_ids.add(substance_id)
+        self.validate_wells(input_data, returned_data, fields)
                     
         logger.debug('==== done: test6_load_small_molecule_file: create =====')
     
@@ -420,7 +488,7 @@ class LibraryResource(DBResourceTestCase):
         data_for_get={}
         data_for_get.setdefault('limit', 0)
         data_for_get.setdefault('includes', ['*'])
-        data_for_get.setdefault('HTTP_ACCEPT', 'chemical/x-mdl-sdfile' )
+        data_for_get.setdefault('HTTP_ACCEPT', SDF_MIMETYPE )
 
         with open(filename) as input_file:
             
@@ -475,9 +543,11 @@ class LibraryResource(DBResourceTestCase):
                           returned_data ) ) 
                 result, msgs = assert_obj1_to_obj2(update_well, outputobj)
                 self.assertTrue(result, (msgs, update_well, outputobj))
-                self.assertTrue('library_well_type' in outputobj,
+                self.assertTrue(
+                    'library_well_type' in outputobj,
                     'library_well_type is missing in %r' % outputobj)
-                self.assertTrue(outputobj['library_well_type']=='experimental',
+                self.assertTrue(
+                    outputobj['library_well_type']=='experimental',
                     'wrong library_well_type: %r' % outputobj)
             
             # 2. check the apilogs - library
@@ -539,7 +609,8 @@ class LibraryResource(DBResourceTestCase):
     
     def test7_load_sirnai(self):
 
-        filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_data_rnai.xlsx'
+        filename = ('%s/db/static/test_data/libraries/clean_data_rnai.xlsx'
+                    % APP_ROOT_DIR )
         
         library_item = self.create_library({ 
             'start_plate': 50001,  
@@ -557,8 +628,9 @@ class LibraryResource(DBResourceTestCase):
 
     def test8_sirna_duplex(self):
         
-        filename = ( APP_ROOT_DIR 
-            + '/db/static/test_data/libraries/clean_rnai_duplex_50440_50443.xlsx')
+        filename = (  
+            '%s/db/static/test_data/libraries/clean_rnai_duplex_50440_50443.xlsx'
+            % APP_ROOT_DIR)
         
         # create the duplex library
         library_item = self.create_library({ 
@@ -568,8 +640,8 @@ class LibraryResource(DBResourceTestCase):
             'screen_type': 'rnai' })
         
         self._load_xls_reagent_file(filename,library_item, 532, 1536 )
-        filename = APP_ROOT_DIR + '/db/static/test_data/libraries/clean_rnai_pool.xlsx'
-        
+        filename = ( '%s/db/static/test_data/libraries/clean_rnai_pool.xlsx'
+                     % APP_ROOT_DIR )
         # create the pool library
         library_item = self.create_library({ 
             'start_plate': 50439,  
@@ -584,8 +656,9 @@ class LibraryResource(DBResourceTestCase):
         
     def test9_natural_product(self):
         
-        filename = ( APP_ROOT_DIR 
-            + '/db/static/test_data/libraries/clean_data_natural_product.xlsx')
+        filename = (  
+            '%s/db/static/test_data/libraries/clean_data_natural_product.xlsx'
+            % APP_ROOT_DIR )
         
         library_item = self.create_library({ 
             'start_plate': 2037,  
@@ -608,16 +681,14 @@ class LibraryResource(DBResourceTestCase):
         data_for_get={}
         data_for_get.setdefault('limit', 0)
         data_for_get.setdefault('includes', ['*'])
-        data_for_get.setdefault('HTTP_ACCEPT', 
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' )
+        data_for_get.setdefault('HTTP_ACCEPT', XLSX_MIMETYPE )
         xls_serializer = XLSSerializer()
         
         with open(filename) as input_file:
             ### NOTE: submit the data as an object, because the test framework
             ### will convert it to the target format.
             input_data = self.serializer.from_xlsx(input_file.read())
-            input_data = input_data['objects']
-        
+            input_data = [x for x in input_data['objects']]
             self.assertEqual(
                 len(input_data), expected_in, 
                 str(('initial serialization of ',filename,'found',
@@ -635,13 +706,14 @@ class LibraryResource(DBResourceTestCase):
         reagent_resource_uri = '/'.join([
             BASE_URI_DB,'library', library_item['short_name'],resource_name])
         resp = self.api_client.get(
-            reagent_resource_uri, format='xlsx', authentication=self.get_credentials(), 
+            reagent_resource_uri, format='xlsx', 
+            authentication=self.get_credentials(), 
             data=data_for_get)
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
-        returned_data = new_obj['objects']
+        returned_data = [x for x in new_obj['objects']]
         self.assertEqual(
             len(returned_data), expected_count, 
             str(('returned_data of ',filename,'found',
@@ -651,31 +723,848 @@ class LibraryResource(DBResourceTestCase):
         specific_schema = self.get_from_server(resource_uri + '/schema')
         fields = specific_schema['fields']
         
-        substance_ids = set()
-        for inputobj in input_data:
-            # first just search for the well
-            search = { 
-                'well_id': lims_utils.well_id(
-                    inputobj['plate_number'],inputobj['well_name']) }
-            result, outputobj = find_obj_in_list(search,returned_data)
-            self.assertTrue(
-                result, 
-                ('not found', search,outputobj,'=== objects returned ===', 
-                      returned_data )) 
-
-            # second look at the found item
-            expected_data = { key: inputobj[key] for key in fields.keys() 
-                if key in inputobj }
-            logger.debug('checking: expected: %r', expected_data )
-            result, msgs = assert_obj1_to_obj2(expected_data, outputobj)
-            self.assertTrue(result, (msgs, expected_data, outputobj))
-            
-            substance_id = outputobj['substance_id']
-            self.assertTrue(
-                substance_id not in substance_ids, 
-                ('substance_id not unique', substance_id, substance_ids))
-            substance_ids.add(substance_id)
+        self.validate_wells(input_data, returned_data, fields)
+#         substance_ids = set()
+#         for inputobj in input_data:
+#             # first just search for the well
+#             search = { 
+#                 'well_id': lims_utils.well_id(
+#                     inputobj['plate_number'],inputobj['well_name']) }
+#             result, outputobj = find_obj_in_list(search,returned_data)
+#             self.assertTrue(
+#                 result, 
+#                 ('not found', search,outputobj,'=== objects returned ===', 
+#                       returned_data )) 
+# 
+#             # second look at the found item
+#             expected_data = { key: inputobj[key] for key in fields.keys() 
+#                 if key in inputobj }
+#             logger.debug('checking: expected: %r', expected_data )
+#             result, msgs = assert_obj1_to_obj2(expected_data, outputobj)
+#             self.assertTrue(result, (msgs, expected_data, outputobj))
+#             
+#             substance_id = outputobj['substance_id']
+#             self.assertTrue(
+#                 substance_id not in substance_ids, 
+#                 ('substance_id not unique', substance_id, substance_ids))
+#             substance_ids.add(substance_id)
                     
+
+class ScreenResultSerializerTest(TestCase):
+    
+    def test1_read_write(self):
+        serializer = ScreenResultSerializer()
+        file = 'ScreenResultTest_1_valid.xlsx'
+        file_out = 'ScreenResultTest_1_valid_out.xlsx'
+        filename = '%s/db/static/test_data/screens/%s' %(APP_ROOT_DIR,file)
+        filename_out = (
+            '%s/db/static/test_data/screens/%s' %(APP_ROOT_DIR,file_out) )
+        logger.info('check file: %r ', path.exists(filename))
+        with open(filename, 'rb') as input_file:
+            input_data = screen_result_importer.read_file(input_file)
+            logger.info('input_data: keys: %r', input_data.keys())
+            
+        lookup_key = 'meta'
+        self.assertTrue(lookup_key in input_data, 
+            '%r not in input_data: %r' % (lookup_key, input_data.keys()))
+        meta = input_data[lookup_key]
+        lookup_key = 'screen_facility_id'
+        self.assertTrue(lookup_key in meta, 
+            '%r not in meta: %r' % (lookup_key, meta))
+        screen_facility_id = meta[lookup_key]
+        
+        lookup_key = 'fields'
+        self.assertTrue(lookup_key in input_data, 
+            '%r not in input_data: %r' % (lookup_key, input_data.keys()))
+        data_columns = input_data[lookup_key]
+        logger.info('data colums: %r', data_columns.keys())
+        
+        lookup_key = 'objects'
+        self.assertTrue(lookup_key in input_data, 
+            '%r not in input_data: %r' % (lookup_key, input_data.keys()))
+        result_values = input_data[lookup_key]
+        
+        with open(filename_out, 'wb') as output_file:
+            logger.info('write back out to %r', filename_out)
+            data = screen_result_importer.create_data_structure(
+                            screen_facility_id, data_columns, result_values)
+            output_file.write(serializer.to_xlsx(data))
+                
+        with open(filename_out, 'rb') as output_file_in:
+            try:
+                logger.info('read back in from output file: %r', filename_out)
+                output_data = serializer.from_xlsx(output_file_in.read())
+                logger.info('output_data: keys: %r', output_data.keys())
+            except ValidationError,e:
+                logger.warn('validation error: %r', e.errors)
+                raise
+        self.validate(self, input_data, output_data)
+        
+    def test2_errors(self):
+        serializer = ScreenResultSerializer()
+        file = 'ScreenResultParseErrorsTest.xlsx'
+        file_out = 'ScreenResultParseErrorsTest_out.xlsx'
+        filename = '%s/db/static/test_data/screens/%s' %(APP_ROOT_DIR,file)
+        filename_out = (
+            '%s/db/static/test_data/screens/%s' %(APP_ROOT_DIR,file_out) )
+        logger.info('check file: %r ', path.exists(filename))
+        with open(filename, 'rb') as input_file:
+            try:
+                input_data = serializer.from_xlsx(input_file.read())
+                
+                # need  to iterate some of the result values to trigger the 
+                # validation error
+                
+                for rv in input_data['objects']:
+                    logger.info('rv: %r', rv)
+                    self.fail(
+                        'error workbook should generate errors exception: %r'
+                        % filename)
+            except ValidationError, e:
+                logger.info('errors reported: %r', e.errors)
+                self.assertTrue(len(e.errors.keys())==3, 
+                    'should be 3 errors, one for each plate sheet without a "plate" field')
+                
+#     assertTrue(errors.contains(new ParseError("value required", "Data Columns:(B,3)")));
+#     assertTrue(errors.contains(new ParseError("illegal value", "Data Columns:(E,4)")));
+#     assertTrue(errors.contains(new ParseError(
+#         "unparseable value \"paradiso positive indicator\"
+#          (expected one of [Boolean Positive Indicator, Confirmed Positive Indicator, Numeric, Partition Positive Indicator, Text])",
+#           "Data Columns:(G,3)")));
+#     assertTrue(errors.contains(new ParseError("invalid Data Column worksheet column label 'B'
+#      (expected one of [E, F])", "Data Columns:(D,10)")));
+#     assertTrue(errors.contains(new ParseError("invalid Data Column worksheet column label 'H' 
+#     (expected one of [E, F, G])", "Data Columns:(E,10)")));
+#     assertTrue(errors.contains(new ParseError("invalid Data Column worksheet column label 'D'
+#      (expected one of [E, F, G, H])", "Data Columns:(F,10)")));
+#     assertTrue(errors.contains(new ParseError("unparseable value \"follow-up\" 
+#     (expected one of [, follow up, primary])", "Data Columns:(E,11)")));
+                
+    @staticmethod
+    def validate(testinstance,input_data,output_data):
+        logger.info('validate input/output data')
+        logger.info('input_data: keys: %r', input_data.keys())
+        logger.info('output_data: keys: %r', output_data.keys())
+        logger.info(
+            'output_data: field keys: %r', output_data['fields'].keys())
+                    
+        input_fields = input_data['fields']
+        output_fields = output_data['fields']
+        testinstance.assertTrue(
+            len(input_fields)==len(output_fields),
+            'input/output fields: %r, %r' 
+            % (input_fields.keys(), output_fields.keys()))    
+        for colname,input_field in input_fields.items():
+            found = None
+            for output_field in output_fields.values():
+                if input_field['name'] == output_field['name']:
+                    found = output_field
+                    break
+            testinstance.assertTrue(
+                found is not None, 
+                'input datacolumn not found: %r, output datacolumns: %r'
+                % (input_field, output_fields))
+
+            for column_field, val in input_field.items():
+                val = input_field[column_field]
+                val2 = output_field[column_field]
+                result,msg = equivocal(val, val2)
+                testinstance.assertTrue(
+                    result,
+                    'column not equal: column %r:%r, input: %r, output: %r, %r'
+                    % (colname,column_field, val, val2, msg))
+        
+        # test result values
+        items_to_test = 1000
+        # save output data generator to a list
+        output_list = [x for x in output_data['objects']]
+        for i,result_value in enumerate(input_data['objects']):
+            found = None
+            for result_value_out in output_list:
+                logger.debug('try: %r - %r', result_value,result_value_out)
+                if result_value['well_id'] == result_value_out['well_id']:
+                    found = result_value_out
+                    break;
+                logger.debug('not matched')
+            if not found:
+                testinstance.fail(
+                    'result value well_id not found: %r in %r' 
+                    % (result_value['well_id'], [x for x in output_list]))
+            for key,val in result_value.items():
+                testinstance.assertTrue(
+                    key in found, 
+                    ('key: %r, from input: %r,'
+                        ' not found in output result_value: %r') 
+                    % (key, result_value, found) )
+                # Test both types of serialized result_value: 
+                # dict (direct from parser), and val: (returned from api)
+                if isinstance(val, dict):
+                    for k,v in val.items():
+                        val2 = found[key][k]
+                        if val2 == 'NP':
+                            testinstance.assertTrue(v=='NP' or v==None,
+                                ('partition positive val: %r, key: %r, %r - %r'
+                                    % (v, key, result_value, found)))
+                            break
+                        elif val2 == 'NT':
+                            testinstance.assertTrue(v=='NT' or v==None,
+                                ('confirmed positive val: %r, key: %r, %r - %r'
+                                    % (v, key, result_value, found)))
+                            break
+                        result,msg = equivocal(v, val2)
+                        testinstance.assertTrue(
+                            result,
+                            ('rv output not equal: key: %r field:%r, '
+                             ' %r != %r, %r, '
+                             'input: %r, output: %r')
+                            % (key, k, v, val2, msg, result_value, found) )
+                else:
+                    val2 = found[key]
+                    if val2 == 'NP':
+                        testinstance.assertTrue(val=='NP' or val==None,
+                            ('partition positive val: %r, key: %r, %r - %r'
+                                % (val, key, result_value, found)))
+                        break
+                    elif val2 == 'NT':
+                        testinstance.assertTrue(v=='NT' or v==None,
+                            ('confirmed positive val: %r, key: %r, %r - %r'
+                                % (val, key, result_value, found)))
+                        break
+                    result,msg = equivocal(val, val2)
+                    testinstance.assertTrue(
+                        result,
+                        ('meta field not equal: %r %r != %r, %r'
+                             'input: %r, output: %r')
+                        % (key, val, val2, msg, result_value, found))
+            if i == items_to_test:
+                break
+                
+class ScreenResultResource(DBResourceTestCase):
+
+    def __init__(self,*args,**kwargs):
+    
+        super(DBResourceTestCase, self).__init__(*args,**kwargs)
+        self.sr_serializer = ScreenResultSerializer()
+        self.sr_api_client = TestApiClient(serializer=self.sr_serializer)       
+
+    def setUp(self):
+
+        super(ScreenResultResource, self).setUp()
+
+    def tearDown(self):
+        
+        DBResourceTestCase.tearDown(self)
+        logger.info('delete resources')
+        from django.db import connection
+        cursor = connection.cursor()
+        cursor.execute('delete from well_query_index;')
+        cursor.execute('delete from well_data_column_positive_index;')
+        cursor.execute('delete from cached_query;')
+        Screen.objects.all().delete()
+        Library.objects.all().delete()
+        ApiLog.objects.all().delete()
+
+    def test1_load_example_file(self):
+
+        
+        self.admin_user = self.create_screensaveruser({ 
+            'username': 'adminuser',
+            'is_superuser': True
+        })
+        
+        logger.info('create library...')
+        library1 = self.create_library({
+            'start_plate': 1, 
+            'end_plate': 20,
+            'screen_type': 'small_molecule' })
+
+        logger.info('create screen...')        
+        screen = self.create_screen({ 'screen_type': 'small_molecule' })
+
+        logger.info('create and load well data...')
+        input_data = []
+        for plate in range(1,4):
+            for i in range(0,384):
+                if i in [20,21,22]:
+                    # setup control wells
+                    input_data.append(self.create_small_molecule_test_well(
+                        plate,i,library_well_type='empty'))
+                else:
+                    input_data.append(self.create_small_molecule_test_well(
+                        plate,i,library_well_type='experimental'))
+        resource_name = 'well'
+        resource_uri = '/'.join([
+            BASE_URI_DB,'library', library1['short_name'],resource_name])
+        resp = self.api_client.put(
+            resource_uri, format='sdf', data={ 'objects': input_data } , 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+
+        data_for_get={}
+        data_for_get.setdefault('limit', 0)
+        data_for_get.setdefault('includes', ['*'])
+        data_for_get.setdefault('HTTP_ACCEPT', XLSX_MIMETYPE )
+        
+        file = 'ScreenResultTest_1_valid.xlsx'
+        filename = '%s/db/static/test_data/screens/%s' %(APP_ROOT_DIR,file)
+        with open(filename) as input_file:
+
+            ### NOTE: submit the data as an object, because the test framework
+            ### will convert it to the target format.
+            input_data = self.sr_serializer.from_xlsx(input_file.read())
+            logger.info('input_data: keys: %r', input_data.keys())
+            logger.info(
+                'input_datacolumns: keys: %r', input_data['fields'].keys())
+            screen_facility_id = screen['facility_id']
+            resource_name = 'screenresult'
+            resource_uri = '/'.join([
+                BASE_URI_DB,resource_name,screen_facility_id])
+            logger.info('PUT screen result to the server...')
+            
+            input_data_parsed = screen_result_importer.create_data_structure(
+                screen_facility_id, input_data['fields'], input_data['objects'])
+            resp = self.sr_api_client.put(
+                resource_uri, format='xlsx', data=input_data_parsed, 
+                authentication=self.get_credentials(), **data_for_get )
+            if resp.status_code not in [200, 204]:
+                content = self.get_content(resp)
+                if content:
+                    logger.info('resp: %r', 
+                        [[str(y) for y in x] for x in self.serializer.from_xlsx(content)])
+            self.assertTrue(
+                resp.status_code in [200, 204], 
+                (resp.status_code))
+            
+
+        logger.info('screen result loaded, refetch from server...')
+        resp = self.sr_api_client.get(
+            resource_uri, authentication=self.get_credentials(), 
+            format='xlsx', **data_for_get)
+        self.assertTrue(
+            resp.status_code in [200,201,202], 
+            (resp.status_code, self.get_content(resp)))
+        output_data = self.sr_serializer.deserialize(
+            content=self.get_content(resp), format=XLSX_MIMETYPE)
+        
+        ScreenResultSerializerTest.validate(self, input_data, output_data)
+
+    def _setup_test_config(self):
+        # use the same setup for test_valid and test_invalid
+        
+        self.admin_user = self.create_screensaveruser({ 
+            'username': 'adminuser',
+            'is_superuser': True
+        })
+        
+        logger.info('create library...')
+        library1 = self.create_library({
+            'start_plate': 1, 
+            'end_plate': 20,
+            'screen_type': 'small_molecule' })
+
+        logger.info('create and load well data...')
+        plate = 1
+        input_data = [
+            self.create_small_molecule_test_well(
+                plate,i,library_well_type='experimental') 
+            for i in range(0,20)]
+        # setup one control well
+        input_data.append(
+            self.create_small_molecule_test_well(
+                plate,20,library_well_type='empty') 
+            )
+        resource_name = 'well'
+        resource_uri = '/'.join([
+            BASE_URI_DB,'library', library1['short_name'],resource_name])
+        resp = self.api_client.put(
+            resource_uri, format='sdf', data={ 'objects': input_data } , 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+
+    def test2_load_valid_input(self):
+        
+        self._setup_test_config()
+        logger.info('create screen...')        
+        screen = self.create_screen({ 'screen_type': 'small_molecule' })
+        
+        
+        fields = {
+            'E': {
+                'ordinal': 0,
+                'name': 'Field1',
+                'data_worksheet_column': 'E',
+                'data_type': 'text', 
+                'description': 'field 1 description',
+                'replicate_ordinal': 1,
+            },
+            'F': {
+                'ordinal': 1,
+                'name': 'Field2',
+                'data_worksheet_column': 'F',
+                'data_type': 'numeric',
+                'decimal_places': 2, 
+                'description': 'field 2 description',
+                'replicate_ordinal': 1,
+                'is_follow_up_data': True,
+                'assay_readout_type': 'luminescence',
+            },
+            'G': {
+                'ordinal': 2,
+                'name': 'Field3',
+                'data_worksheet_column': 'G',
+                'data_type': 'numeric',
+                'decimal_places': 4, 
+                'description': 'field 3 description',
+                'replicate_ordinal': 2,
+                'is_follow_up_data': True,
+                'assay_readout_type': 'flourescence_intensity',
+            },
+            'H': {
+                'ordinal': 3,
+                'name': 'Field4',
+                'data_worksheet_column': 'H',
+                'data_type': 'confirmed_positive_indicator',
+                'description': 'field 4 description',
+                'how_derived': 'z-score > 1 for Field3'
+            },
+            'I': {
+                'ordinal': 4,
+                'name': 'Field5',
+                'data_worksheet_column': 'I',
+                'data_type': 'partition_positive_indicator',
+                'description': 'field 5 description',
+                'how_derived': 'ranking of z-score <.5, ,.5<=x<=1, >1'
+            },
+        }
+        result_values = [
+            { 
+                'well_id': '00001:A01', 
+                'E': { 'value': 'test value 1'},
+                'F': { 'numeric_value': 91.19 },
+                'G': { 'numeric_value': .0011 },
+                'H': { 'value': None },  # should be interpreted as 'NT'
+                'I': { 'value': None }, # should be interpreted as 'NP'
+            },
+            { 
+                'well_id': '00001:A02', 
+                'E': { 'value': 'test value 2'},
+                'F': { 'numeric_value': 0.99 },
+                'G': { 'numeric_value': 1.0331 },
+                'H': { 'value': 'CP'},
+                'I': { 'value': 'W' },
+            },
+            { 
+                'well_id': '00001:A03', 
+                'E': { 'value': 'test value 2'},
+                'F': { 'numeric_value': 1.99 },
+                'G': { 'numeric_value': 1.032 },
+                'H': { 'value': 'I'},
+                'I': { 'value': 'M' },
+            },
+            { 
+                'well_id': '00001:A04', 
+                'E': { 'value': 'test value 2'},
+                'F': { 'numeric_value': 1.99 },
+                'G': { 'numeric_value': 1.032 },
+                'H': { 'value': 'NT'},
+                'I': { 'value': 'S' },
+            },
+            { 
+                'well_id': '00001:A05', 
+                'E': { 'value': 'test value 2'},
+                'F': { 'numeric_value': 1.1 },
+                'G': { 'numeric_value': 1.1 },
+                'H': { 'value': 'CP'},
+                'I': { 'value': 'M' },
+            },
+            { 
+                'well_id': '00001:A06', 
+                'E': { 'value': 'test value 2'},
+                'F': { 'numeric_value': 1.1 },
+                'G': { 'numeric_value': 1.1 },
+                'H': { 'value': 'FP'},
+                'I': { 'value': 'M' },
+            },
+            { 
+                'well_id': '00001:A21',
+                'assay_well_control_type': 'assay_control', 
+                'E': { 'value': 'test value 2'},
+                'F': { 'numeric_value': 1.1 },
+                'G': { 'numeric_value': 1.1 },
+                'H': { 'value': 'FP'}, # non experimental well should be ignored
+                'I': { 'value': 'M' }, # non experimental well should be ignored
+            },
+        ]
+        input_data = OrderedDict((
+            ('meta', {'screen_facility_id': screen['facility_id'] } ),
+            ('fields', fields),
+            ('objects', result_values),
+        ))
+        input_data_put = screen_result_importer.create_data_structure(
+            screen['facility_id'], 
+            fields, 
+            result_values)
+        
+        data_for_get={}
+        data_for_get.setdefault('limit', 0)
+        data_for_get.setdefault('includes', ['*'])
+        data_for_get.setdefault('HTTP_ACCEPT', XLSX_MIMETYPE )
+
+        logger.info('PUT screen result to the server...')
+        screen_facility_id = screen['facility_id']
+        resource_name = 'screenresult'
+        resource_uri = '/'.join([
+            BASE_URI_DB,resource_name,screen_facility_id])
+        resp = self.sr_api_client.put(
+            resource_uri, format='xlsx', data=input_data_put, 
+            authentication=self.get_credentials(), **data_for_get )
+        if resp.status_code not in [200, 204]:
+            content = self.get_content(resp)
+            if content:
+                logger.info('resp: %r', 
+                    [[str(y) for y in x] for x in self.serializer.from_xlsx(content)])
+        self.assertTrue(
+            resp.status_code in [200, 204], resp.status_code)
+
+        logger.info('refetch screen result from server...')
+        resp = self.sr_api_client.get(
+            resource_uri, authentication=self.get_credentials(), 
+            format='xlsx', **data_for_get)
+        if resp.status_code not in [200, 204]:
+            content = self.get_content(resp)
+            if content:
+                logger.info('resp: %r', 
+                    [[str(y) for y in x] for x in self.serializer.from_xlsx(content)])
+        self.assertTrue(resp.status_code in [200,201,202],resp.status_code)
+        output_data = self.sr_serializer.deserialize(
+            content=self.get_content(resp), format=XLSX_MIMETYPE)
+        ScreenResultSerializerTest.validate(self, input_data, output_data)
+        
+        # Test statistics:
+        # result value count
+        # experimental wells, replicates, etc
+        
+        screen = self.get_screen(screen['facility_id'])
+        
+        key = 'experimental_well_count'
+        expected_value = 6
+        self.assertTrue(screen[key]==expected_value,
+            (key,'expected_value',expected_value,
+                'returned value',screen[key]))
+        key = 'library_plates_data_loaded'
+        expected_value = 1
+        self.assertTrue(screen[key]==expected_value,
+            (key,'expected_value',expected_value,
+                'returned value',screen[key]))
+        key = 'min_data_loaded_replicate_count'
+        expected_value = 2
+        self.assertTrue(screen[key]==expected_value,
+            (key,'expected_value',expected_value,
+                'returned value',screen[key]))
+        key = 'max_data_loaded_replicate_count'        
+        expected_value = 2
+        self.assertTrue(screen[key]==expected_value,
+            (key,'expected_value',expected_value,
+                'returned value',screen[key]))
+
+        key = 'assay_readout_types'
+        expected_value = ['luminescence', 'flourescence_intensity']
+        self.assertTrue(set(screen[key]) <= set(expected_value),
+            (key,'expected_value',expected_value,
+                'returned value',screen[key]))
+
+        # Test Datacolumn positive counts
+        
+        resource_name = 'datacolumn'
+        resource_uri = '/'.join([BASE_URI_DB,resource_name])
+        data_for_get={
+            'screen_facility_id__eq': screen_facility_id,
+            'data_type__in': [
+              'partition_positive_indicator','boolean_positive_indicator',
+              'confirmed_positive_indicator'],
+            'order_by': ['ordinal']
+        }
+        data_for_get.setdefault('limit', 0)
+        resp = self.api_client.get(
+            resource_uri, authentication=self.get_credentials(), 
+            format='json', data=data_for_get)
+        self.assertTrue(
+            resp.status_code in [200,201,202], 
+            (resp.status_code, self.get_content(resp)))
+        output_data = self.deserialize(resp)
+        logger.debug('datacolumn output_data: %r', output_data )
+        self.assertTrue(len(output_data['objects'])==2, 
+            ('should only show two positive indicator column', output_data))
+
+        confirmed_positive_col = None
+        partion_positive_col = None
+        for col in output_data['objects']:
+            if col['data_type'] == 'confirmed_positive_indicator':
+                confirmed_positive_col = col
+            if col['data_type'] == 'partition_positive_indicator':
+                partion_positive_col = col
+        self.assertTrue(confirmed_positive_col is not None, 
+            ('confirmed_positive_col not found in %r',output_data))
+        self.assertTrue(partion_positive_col is not None, 
+            ('partion_positive_col not found in %r',output_data))
+        
+        key = 'positives_count'
+        expected_value=2
+        self.assertTrue(confirmed_positive_col[key]==expected_value,
+            (key,'expected_value',expected_value,
+                'returned value',confirmed_positive_col[key]))
+        key = 'positives_count'
+        expected_value=5
+        self.assertTrue(partion_positive_col[key]==expected_value,
+            (key,'expected_value',expected_value,
+                'returned value',partion_positive_col[key]))
+        key = 'strong_positives_count'
+        expected_value=1
+        self.assertTrue(partion_positive_col[key]==expected_value,
+            (key,'expected_value',expected_value,
+                'returned value',partion_positive_col[key]))
+        key = 'medium_positives_count'
+        expected_value=3
+        self.assertTrue(partion_positive_col[key]==expected_value,
+            (key,'expected_value',expected_value,
+                'returned value',partion_positive_col[key]))
+        key = 'weak_positives_count'
+        expected_value=1
+        self.assertTrue(partion_positive_col[key]==expected_value,
+            (key,'expected_value',expected_value,
+                'returned value',partion_positive_col[key]))
+
+
+    def test3_result_value_errors_from_file(self):
+        self.admin_user = self.create_screensaveruser({ 
+            'username': 'adminuser',
+            'is_superuser': True
+        })
+        
+        logger.info('create library...')
+        library1 = self.create_library({
+            'start_plate': 1, 
+            'end_plate': 20,
+            'screen_type': 'small_molecule' })
+
+        logger.info('create and load well data...')
+        input_data = []
+        plate = 1
+        for i in range(0,384):
+            if i in [0,3,6]:
+                # setup control wells
+                input_data.append(self.create_small_molecule_test_well(
+                    plate,i,library_well_type='empty'))
+            else:
+                input_data.append(self.create_small_molecule_test_well(
+                    plate,i,library_well_type='experimental'))
+        resource_name = 'well'
+        resource_uri = '/'.join([
+            BASE_URI_DB,'library', library1['short_name'],resource_name])
+        resp = self.api_client.put(
+            resource_uri, format='sdf', data={ 'objects': input_data } , 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+
+        
+        logger.info('create screen...')        
+        screen = self.create_screen({ 'screen_type': 'small_molecule' })
+        
+        data_for_get={}
+        data_for_get.setdefault('limit', 0)
+        data_for_get.setdefault('includes', ['*'])
+        data_for_get.setdefault('format', 'xls')
+        data_for_get.setdefault('HTTP_ACCEPT', 'application/json' )
+        
+        file = 'ScreenResultRVErrorsTest.xlsx'
+        file_out = 'ScreenResultRVErrorsTest_out.xlsx'
+        filename = '%s/db/static/test_data/screens/%s' %(APP_ROOT_DIR,file)
+        filename_out = (
+            '%s/db/static/test_data/screens/%s' %(APP_ROOT_DIR,file_out) )
+        logger.info('check file: %r ', path.exists(filename))
+        with open(filename, 'rb') as input_file:
+
+            # NOTE: now posting as xls, so that the parse errors will be 
+            # processed along with the validation errors
+            
+            resource_name = 'screenresult'
+            screen_facility_id = screen['facility_id']
+            resource_uri = '/'.join([
+                BASE_URI_DB,resource_name,screen_facility_id])
+            logger.info('PUT screen result to the server...')
+            authentication=self.get_credentials()
+            data_for_get['HTTP_AUTHORIZATION'] = authentication
+            django_test_client = self.api_client.client
+            resp = django_test_client.post(
+                resource_uri, content_type='application/xls', 
+                data=input_file.read(), **data_for_get)
+            self.assertTrue(
+                resp.status_code == 400, resp.status_code)
+            content = self.deserialize(resp)
+            logger.info('content; %r', content)
+            
+            # TODO: check for expected errors
+            
+            key = 'PL_00001'
+            self.assertTrue(find_in_dict(key, content), 
+                'key: %r should be in errors: %r' % (key, content))
+            sheet_errors = find_in_dict(key, content)
+            
+            key = '00001:A01-G'
+            self.assertTrue(key in sheet_errors, 
+                'key: %r should be in errors: %r' % (key, sheet_errors))
+            self.assertTrue('could not convert' in str(sheet_errors[key]),
+                'error should be a conversion error: %r, %r' %(key,sheet_errors[key]) )
+            key = '00001:A03'
+            self.assertTrue(key in sheet_errors, 
+                'key: %r should be in errors: %r' % (key, sheet_errors))
+            self.assertTrue('unknown exclude' in str(sheet_errors[key]),
+                'error should be a excluded cols error: %r, %r' %(key,sheet_errors[key]) )
+            key = '00001:A05-E'
+            self.assertTrue(key in sheet_errors, 
+                'key: %r should be in errors: %r' % (key, sheet_errors))
+            self.assertTrue('could not convert' in str(sheet_errors[key]),
+                'error should be a conversion error: %r, %r' %(key,sheet_errors[key]) )
+
+    def test4_data_column_errors(self):
+        self.admin_user = self.create_screensaveruser({ 
+            'username': 'adminuser',
+            'is_superuser': True
+        })
+        
+        logger.info('create library...')
+        library1 = self.create_library({
+            'start_plate': 1, 
+            'end_plate': 20,
+            'screen_type': 'small_molecule' })
+
+        logger.info('create screen...')        
+        screen = self.create_screen({ 'screen_type': 'small_molecule' })
+        
+        fields = {
+            'E': {
+                'ordinal': 0,
+                'name': 'Field1',
+                'data_worksheet_column': 'E',
+                'data_type': 'text', 
+                'description': 'field 1 description',
+                'replicate_ordinal': 1,
+            },
+            'F': {
+                'ordinal': 1,
+                'name': 'Field2',
+                'data_worksheet_column': 'F',
+                #'data_type': 'numeric',
+                'decimal_places': 2, 
+                'description': 'field 2 description',
+                'replicate_ordinal': 1,
+                'is_follow_up_data': True,
+                'assay_readout_type': 'luminescence',
+            },
+            'G': {
+                'ordinal': 2,
+                'name': 'Field3',
+                'data_worksheet_column': 'G',
+                'data_type': 'numeric',
+                'decimal_places': 'x', 
+                'description': 'field 3 description',
+                'replicate_ordinal': 2,
+                'is_follow_up_data': True,
+                'assay_readout_type': 'flourescence_intensity',
+            },
+            'H': {
+                'ordinal': 3,
+                'name': 'Field4',
+                'data_worksheet_column': 'H',
+                'data_type': 'confirmed_positive_indicator',
+                'description': 'field 4 description',
+                'how_derived': 'z-score > 1 for Field3',
+                'derived_from_columns': 'F,Y'
+            },
+            'I': {
+                'ordinal': 4,
+                'name': 'Field5',
+                'data_worksheet_column': 'I',
+                'data_type': 'partition_positive_indicator',
+                'description': 'field 5 description',
+                'how_derived': 'ranking of z-score <.5, ,.5<=x<=1, >1'
+            },
+        }
+        result_values = [
+            { 
+                'well_id': '00001:A01', 
+                'E': { 'value': 'test value 1'},
+                'F': { 'numeric_value': 91.19 },
+                'G': { 'numeric_value': .0011 },
+                'H': { 'value': None },  # should be interpreted as 'NT'
+                'I': { 'value': None }, # should be interpreted as 'NP'
+            },
+        ]
+        input_data = OrderedDict((
+            ('meta', {'screen_facility_id': screen['facility_id'] } ),
+            ('fields', fields),
+            ('objects', result_values),
+        ))
+
+        
+        # NOTE: now posting directly, w/out the tp client,
+        # so that the parse errors will be 
+        # processed along with the validation errors
+        data_for_get={}
+        data_for_get.setdefault('limit', 0)
+        data_for_get.setdefault('includes', ['*'])
+#         data_for_get.setdefault('format', 'xls')
+#         data_for_get.setdefault('HTTP_ACCEPT', 'application/json' )
+        
+        resource_name = 'screenresult'
+        screen_facility_id = screen['facility_id']
+        resource_uri = '/'.join([
+            BASE_URI_DB,resource_name,screen_facility_id])
+        logger.info('PUT screen result to the server...')
+        authentication=self.get_credentials()
+        data_for_get['HTTP_AUTHORIZATION'] = authentication
+        django_test_client = self.api_client.client
+        resp = django_test_client.post(
+            resource_uri, content_type='application/json', 
+            data=json.dumps(input_data), **data_for_get)
+        self.assertTrue(
+            resp.status_code == 400, resp.status_code)
+        content = self.deserialize(resp)
+        logger.info('content; %r', content)
+        
+        # TODO: check for expected errors
+        
+            
+        key = 'F' # missing data_type
+        self.assertTrue(find_in_dict(key, content), 
+            'key: %r should be in errors: %r' % (key, content))
+        col_errors = find_in_dict(key, content)
+        self.assertTrue('data_type' in str(col_errors),
+            'error should be a "data_type" error: %r, %r' %(key,col_errors) )
+        
+        key = 'G' # decimal_places not number
+        self.assertTrue(find_in_dict(key, content), 
+            'key: %r should be in errors: %r' % (key, content))
+        col_errors = find_in_dict(key, content)
+        self.assertTrue('decimal_places' in str(col_errors),
+            'error should be a "decimal_places" error: %r, %r' %(key,col_errors) )
+        
+        key = 'H' # derived from col dne
+        self.assertTrue(find_in_dict(key, content), 
+            'key: %r should be in errors: %r' % (key, content))
+        col_errors = find_in_dict(key, content)
+        self.assertTrue('derived_from_columns' in str(col_errors),
+            'error should be a "derived_from_columns" error: %r, %r' %(key,col_errors) )
+        
 
 class ScreenResource(DBResourceTestCase):
         
@@ -855,11 +1744,16 @@ class ScreenResource(DBResourceTestCase):
     def test1_create_screen(self):
         logger.info('==== test1_create_screen =====')
         
-        screen_item = self.create_screen()
+        data = {
+            'cell_lines': ['293_hek_293','colo_858'],
+        }
+        screen_item = self.create_screen(data=data)
         
         self.assertTrue(
             'facility_id' in screen_item, 
             'the facility_id was not created')
+        
+        logger.info('screen created: %r', screen_item)
         
 
 class MutualScreensTest(DBResourceTestCase,ResourceTestCase):
@@ -1094,8 +1988,8 @@ class ScreensaverUserResource(DBResourceTestCase):
         kwargs['HTTP_AUTHORIZATION'] = authentication
         
         django_test_client = self.api_client.client
-        resp = django_test_client.post(resource_uri, 
-            content_type=content_type, 
+        resp = django_test_client.post(
+            resource_uri, content_type=content_type, 
             data=attachedfile_item_post, **kwargs)
         self.assertTrue(
             resp.status_code in [201, 202], 

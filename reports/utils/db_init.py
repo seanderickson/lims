@@ -1,6 +1,5 @@
 from __future__ import unicode_literals
 import json
-import logging
 import requests
 import sys, os
 from urlparse import urlparse
@@ -9,8 +8,9 @@ import getpass
 
 from django_requests import get_logged_in_session
 
-import reports.utils.serialize
+import reports.serialize.csvutils as csvutils
 
+import logging
 logger = logging.getLogger(__name__)
 
 # TODO: this replaces /reports/management/commands/db_init.py - sde4 - 201404
@@ -177,7 +177,7 @@ if __name__ == "__main__":
     headers['Accept'] = 'application/json'
     
     with open(args.input_actions_file) as input_file:
-        api_init_actions = reports.utils.serialize.from_csv(input_file)
+        api_init_actions = csvutils.from_csv(input_file)
 
         for action in api_init_actions:
             

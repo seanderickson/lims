@@ -96,9 +96,14 @@ define([
      */
     serialize: function() {
       var self = this;
-      return {
+      var displayed_tabbed_resources = _.extend({},this.tabbed_resources);
+      if (! self.model.get('has_screen_result')){
+        delete displayed_tabbed_resources['results'];
+        delete displayed_tabbed_resources['datacolumns'];
+      }
+        return {
         'base_url': self.model.resource.key + '/' + self.model.key,
-        'tab_resources': this.tabbed_resources
+        'tab_resources': displayed_tabbed_resources
       }      
     }, 
     
@@ -373,6 +378,9 @@ define([
           order_by: ['date_time']
         },
         success: function(collection, response) {
+          if (collection.isEmpty()){
+            return;
+          }
           collection.each(function(model){
             var diffs = JSON.parse(model.get('diffs'));
             console.log('diffs', diffs);
@@ -518,7 +526,154 @@ define([
         self.reportUriStack([]);
       }
     },
+    
+    /**
+     * Loads the screen results using ajax to post the file.
+     * - because ajax cannot handle post response attachments (easily), set
+     * the response type to 'application/json' and display the errors in a 
+     * modal dialog.
+     */
+    loadScreenResults: function(){
+      console.log('load screen results');
+      var self=this;
+
+      function saveFile() {
+        var file = $('input[name="fileInput"]')[0].files[0]; 
+        var data = new FormData();
+        var url = [self.model.resource.apiUri,self.model.key,'screenresult'].join('/');
+        // NOTE: 'xls' is sent as the key to the FILE object in the upload.
+        // We are using this as a non-standard way to signal the upload type to the 
+        // serializer. (TP doesn't support mulitpart uploads, so this is patched in).
+        data.append('xls', file);
+        var headers = {
+          'Accept': 'application/json'
+        };
+        headers[appModel.HEADER_APILOG_COMMENT] = self.model.get('comment');
+        $.ajax({
+          url: url,    
+          data: data,
+          cache: false,
+          contentType: false,
+          processData: false,
+          type: 'POST',
+          headers: headers
+        })
+        .fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); })
+        .done(function(model, resp){
+            // FIXME: should be showing a regular message
+            appModel.error('success');
+            self.model.fetch();
+            self.setSummary([]);
+        });
+      }
+      appModel.showModal({
+          ok: saveFile,
+          body: '<input type="file" name="fileInput" />',
+          title: 'Select a Screen Result (xlsx workbook) file to upload'  });
+    
+    },
+
+    /**
+     * Loads the screen results using a post form - 
+     * - allows for the the "errors.xlsx" file to be downloaded to the hidden frame
+     * - problem: cannot retrieve the post response in ajax
+     */
+    loadScreenResults_using_post_form: function(){
+      console.log('load screen results');
+      var self=this;
+      var base_url = [self.model.resource.apiUri,self.model.key,'screenresult'].join('/');
+      var modalcontent = $('\
+        <div id="myModal" class="modal-dialog" tabindex="-1">\
+          <div id="loading" style="display: none;" ></div>\
+          <div class="modal-content">\
+          <div class="modal-header">\
+          </div>\
+          <div class="modal-body">\
+              <iframe id="innerframe" frameborder="0">\
+                </iframe>\
+          </div>\
+          <div class="modal-footer">\
+            <button class="btn" data-dismiss="modal">Cancel</button>\
+          </div>\
+          </div>\
+        </div>');
       
+      formText = '\
+        <form id="innerform" action="/db/api/v1/screenresult/1356?format=xls"\
+         method="post" enctype="multipart/form-data" name="fileinfo" >\
+          <input type="file" name="xls" required />\
+          <input id="submitbutton" type="submit" value="press" />\
+        </form>\
+        ';
+      var $modal = $('#modal');
+      $modal.empty();
+      $modal.append(modalcontent);
+      $modal.modal({show:true, backdrop: 'static'});
+      
+      $innerframe = $modal.find('#innerframe');
+      $innerframe[0].contentWindow.document.open();
+      $innerframe[0].contentWindow.document.write(formText);
+      
+      $form = $('#innerform',$innerframe[0].contentWindow.document)
+
+      // When tracking the download, we're going to have
+      // the server echo back a cookie that will be set
+      // when the download Response has been received.
+      var url = base_url;
+      url += '?format=xls'
+      var downloadID = ( new Date() ).getTime();
+      // Add the "downloadID" parameter for the server
+      // Server will set a cookie on the response to signal download complete
+      url += "&downloadID=" + downloadID;
+      
+      $form.attr('action',url);
+      $form.find('#submitbutton').click(function(e){
+        console.log('submitted...');
+
+          $modal.find('#loading').fadeIn({duration:100});
+
+          // The local cookie cache is defined in the browser
+          // as one large string; we need to search for the
+          // name-value pattern with the above ID.
+          var cookiePattern = new RegExp( ( "downloadID=" + downloadID ), "i" );
+
+          // Now, we need to start watching the local Cookies to
+          // see when the download ID has been updated by the
+          // response headers.
+          var intervalCheckTime = 1000; // 1s
+          var maxIntervals = 3600;      // 3600s
+          var limitForDownload = 0;
+          var cookieTimer = setInterval( checkCookies, intervalCheckTime );
+
+          var i = 0;
+          function checkCookies() {
+            if ( document.cookie.search( cookiePattern ) >= 0 ) {
+              clearInterval( cookieTimer );
+              $('#loading').fadeOut({duration:100});
+              // delete the coookie
+              downloadID = ( new Date() ).getTime();
+              url = base_url + "?format=xls&downloadID=" + downloadID;
+              $form.attr('action',url);
+              document.cookie = "downloadID=";
+              return(
+                console.log( "Download complete!!" )
+              );
+            }else if(i >= maxIntervals){
+              clearInterval( cookieTimer );
+              window.alert('download abort after tries: ' + i);
+              return(
+                console.log( "Download abort!!" )
+              );
+            }
+            console.log(
+              "File still downloading...",
+              new Date().getTime()
+            );
+            i++;
+          }
+      });
+    },    
+    
     addLibraryScreening: function(){
       console.log('add library screening');
       var self = this;
@@ -585,74 +740,80 @@ define([
     setSummary : function(delegateStack){
       var self = this;
       var key = 'summary';
-      var view = this.tabViews[key];
       var $addLibraryScreeningButton = $('<button>Add Library Screening</button>');
-      
       $addLibraryScreeningButton.click(function(e){
         self.addLibraryScreening();
       });
-      if (!view){
-      
-          var summaryKeys = self.model.resource.filterKeys('visibility', 'summary');
-          var summaryModel = appModel.getModel(
-            self.model.resource.key, self.model.key, 
-            function(model){
-              view = new DetailView({ 
-                model: model, 
-                uriStack: _.clone(delegateStack),
-                detailKeys: summaryKeys,
-                buttons: ['history'],
-                afterRender: function(){
-                  DetailView.prototype.afterRender.apply(this);
-                  this.$el.find('#libraries_screened_count').click(function(e){
-                    e.preventDefault();
-                    console.log('libraries screened click', e);
-                    self.consumedStack = ['libraries'];
-                    self.showLibraries(delegateStack);
-                  });
-                  this.$el.find('#library_plates_screened').click(function(e){
-                    e.preventDefault();
-                    console.log('library_plates_screend screened click', e);
-                    self.consumedStack = ['copyplates'];
-                    self.showCopyPlates(delegateStack);
-                  });
-                  this.$el.find('#library_plates_data_loaded').click(function(e){
-                    e.preventDefault();
-                    console.log('library_plates_data_loaded click', e);
-                    self.consumedStack = ['copyplates'];
-                    self.showCopyPlatesLoaded(delegateStack);
-                  });
+      var $loadScreenResultsButton = $('<button>Load Screen Results</button>');
+      $loadScreenResultsButton.click(function(e){
+        e.preventDefault();
+        self.loadScreenResults();
+      });
 
-                  self._createPositivesSummary(this.$el.find('#positives_summary'));
-                  
-                  this.$el.prepend($addLibraryScreeningButton);
-                }
+      var summaryKeys = self.model.resource.filterKeys('visibility', 'summary');
+      var summaryModel = appModel.getModel(
+        self.model.resource.key, self.model.key, 
+        function(model){
+          view = new DetailView({ 
+            model: model, 
+            uriStack: _.clone(delegateStack),
+            detailKeys: summaryKeys,
+            buttons: ['history'],
+            afterRender: function(){
+              DetailView.prototype.afterRender.apply(this);
+              this.$el.find('#libraries_screened_count').click(function(e){
+                e.preventDefault();
+                console.log('libraries screened click', e);
+                self.consumedStack = ['libraries'];
+                self.showLibraries(delegateStack);
               });
-              self.tabViews[key] = view;
+              this.$el.find('#library_plates_screened').click(function(e){
+                e.preventDefault();
+                console.log('library_plates_screend screened click', e);
+                self.consumedStack = ['copyplates'];
+                self.showCopyPlates(delegateStack);
+              });
+              this.$el.find('#library_plates_data_loaded').click(function(e){
+                e.preventDefault();
+                console.log('library_plates_data_loaded click', e);
+                self.consumedStack = ['copyplates'];
+                self.showCopyPlatesLoaded(delegateStack);
+              });
+
+              self._createPositivesSummary(this.$el.find('#positives_summary'));
               
-              self.setView("#tab_container", view ).render();
-              
-              // TODO: fixup the detaillayout & detail view so that well is on detailview
-              view.$el.addClass('well');
-              self.reportUriStack([]);
-              
-            },{ data_for_get: { visibilities: ['summary']} }
-          );
-        
-      }else{
-        self.listenTo(view , 'uriStack:change', this.reportUriStack);
-        self.setView("#tab_container", view ).render();
-        self.reportUriStack([]);
-      }
+              //this.$el.prepend($testButton);
+              this.$el.prepend($loadScreenResultsButton);
+              this.$el.prepend($addLibraryScreeningButton);
+            }
+          });
+          self.tabViews[key] = view;
+          
+          self.setView("#tab_container", view ).render();
+          
+          // TODO: fixup the detaillayout & detail view so that well is on detailview
+          view.$el.addClass('well');
+          self.reportUriStack([]);
+          
+        },{ data_for_get: { visibilities: ['summary']} }
+      );
     },
     
     _createPositivesSummary: function($target_el){
       var self = this;
 
       var experimental_wells_loaded = self.model.get('experimental_well_count');
+      if(!_.isNumber(experimental_wells_loaded) ||
+          experimental_wells_loaded < 1 ){
+        return;
+      }
       function createPositiveStat(raw_value){
         var formatter = new Iccbl.DecimalFormatter({ decimals: 2 });
         if (!raw_value) raw_value = 0;
+        if( raw_value === 0 || !_.isNumber(experimental_wells_loaded) ||
+            experimental_wells_loaded < 1 ){
+          return ''
+        }
         return Iccbl.formatString(
             '{val} ({percent}%)', {
               val: raw_value,

@@ -146,17 +146,15 @@ define([
     },
     
     setCurrentUser: function(callBack) {
+      console.log('set the current user', window.user);
       var self = this;
       this.getModel('user', window.user, 
         function(model){
+          console.log('user model:', model);
           self.currentUser = model.toJSON();
           console.log('Current user: ' + JSON.stringify(self.currentUser));
           
           if(callBack) callBack(); 
-        },{
-          failCallback: function(){
-            window.alert('Error: cannot retrieve the user: ' + window.user );
-          }
         }
       );
     },
@@ -440,6 +438,7 @@ define([
           }
           vocabularies[v.scope][v.key]=v;
         });
+        console.log('getVocabularies: done');
         callBack(vocabularies);
       });
     },    
@@ -716,6 +715,7 @@ define([
      * Get a model from the server
      */
     getModel: function(resourceId, key, callBack, options) {
+      console.log('getModel', resourceId, key);
       var self = this;
       var options = options || {};
       var failCallback = options.failCallback;
@@ -726,7 +726,7 @@ define([
         key = key.join('/');
       }
       var url = resource.apiUri + '/' + key;
-
+      console.log('fetch model', url);
       var ModelClass = Backbone.Model.extend({
         url : url,
         defaults : { },
@@ -743,6 +743,7 @@ define([
       instance.fetch({
         data: data_for_get,
         success : function(model) {
+          console.log('model retrieved:', model);
           model.resource = resource;
           model.key = key;
           try{
@@ -753,6 +754,7 @@ define([
           }
         }
       }).fail(function(){ 
+        console.log('fail...', arguments, failCallback);
         if (failCallback){
           failCallback.apply(this,arguments);
         }else{
@@ -880,7 +882,7 @@ define([
      * Process a jQuery.jqXHR.fail callback for the ajax() call.
      */
     jqXHRfail: function(jqXHR, textStatus, errorThrown){
-    
+      console.log('jqXHRfail', textStatus, errorThrown);
       var msg = textStatus || 'Error';
       if (errorThrown){
         msg += ': ' + errorThrown; 
@@ -894,13 +896,67 @@ define([
           msg += ':\n status:' + jqXHR.status;
         }
         if ( _.has(jqXHR,'responseJSON') && !_.isEmpty(jqXHR.responseJSON) ) {
-          _.each(_.keys(jqXHR.responseJSON), function(key){
-            Iccbl.appModel.error(key + ": " + jqXHR.responseJSON[key]);
-          });
+          Iccbl.appModel.showJsonMessages(jqXHR.responseJSON);
         }
       }
       $(document).trigger('ajaxComplete');
       Iccbl.appModel.error(msg);
+    },
+    
+    /**
+     * Show a JSON object in a modal dialog:
+     * - transform the object into a table using a depth-first traversal:
+     * - each row contains the nodes traversed to each leaf node.
+     */
+    showJsonMessages: function(jsonObj){
+      
+      function dict_to_rows(dict){
+        var rows = [];
+        if (_.isObject(dict) && !_.isArray(dict)){
+          _.each(_.keys(dict), function(key){
+            _.each(dict_to_rows(dict[key]),function(row){
+              if (_.isEmpty(row)){
+                rows.push(key);
+              }else{
+                var keyrow = [key];
+                if (!_.isArray(row)){
+                  keyrow.push(row);
+                }else{
+                  keyrow = keyrow.concat(row);
+                }
+                rows.push(keyrow);
+              }
+            });
+          });
+        }else{
+          console.log('dict: ', dict);
+          if (_.isArray(dict)){
+            return dict;
+          }else{
+            return [dict];
+          }
+        }
+        return rows;
+      }
+      
+      var title = "Messages";
+      if(_.keys(jsonObj).length == 1){
+        title = _.keys(jsonObj)[0];
+        jsonObj = jsonObj[title];
+      }
+      
+      var msg_rows = dict_to_rows(jsonObj);
+      
+      var bodyMsg = _.map(msg_rows, function(msg_row){
+        return msg_row.join(' - ');
+      }).join('<br>');
+      
+      
+      Iccbl.appModel.showModalMessage({
+        body: bodyMsg,
+        title: title  
+      });
+      
     },
    
     error: function(msg){

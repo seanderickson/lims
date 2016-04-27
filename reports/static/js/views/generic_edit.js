@@ -10,13 +10,12 @@ define([
     'models/app_state',
     'views/generic_detail_stickit',
     'text!templates/generic-edit.html',
-    'text!templates/modal_ok_cancel.html',
     'bootstrap',
     'bootstrap-datepicker',
     'chosen'
 ], function( $, _, Backbone, backbone_forms, backbone_forms_list, 
             multiselect, quicksearch, Iccbl, appModel,
-            DetailView, editTemplate, modalOkCancel ) {
+            DetailView, editTemplate ) {
   var SIunitEditor = Backbone.Form.editors.Base.extend({
     
     tagname: 'siuniteditor',
@@ -595,7 +594,8 @@ define([
     },
     
     events: {
-      'click button#save': 'save'
+      'click button#save': 'save',
+      'click button#cancel': 'cancel'
     },
     
     altFieldTemplate:  _.template([
@@ -1084,6 +1084,12 @@ define([
       
       return changedAttributes;
     },
+    
+    cancel: function(e) {
+      e.preventDefault();
+      this.remove();
+      appModel.router.back();
+    }, 
     
     save: function( event ) {
       event.preventDefault();

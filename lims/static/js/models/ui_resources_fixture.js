@@ -43,7 +43,7 @@
         "url_root": "/db/api/v1",
         "description": "View user information",
         "options": { 
-          "search": {"screeningroomuser__isnull": "False"} }
+          "search": {"is_staff__exact": "False"} }
     },
 
     "staff": {

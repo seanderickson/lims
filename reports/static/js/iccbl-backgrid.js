@@ -1087,9 +1087,6 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
     var model = this.model = args.model;
     var targetProperty = args.property || 'uriStack';
     this.listenTo(model, 'change:'+targetProperty , this.uriStackChange );
-    this.listenTo(model, 'all', function(e){
-      console.log('e',e);
-    });
     
     Backbone.View.prototype.initialize.apply(this,arguments);
   },
@@ -1164,7 +1161,6 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
         console.log('fetch success, direction: ' + direction);
         collection.trigger("backgrid:sorted", column, direction, collection);
       }
-//      error: Iccbl.appModel.backboneFetchError
     }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
     
     column.set("direction", direction);
@@ -1822,6 +1818,7 @@ var TextFormFilter = CriteriumFormFilter.extend({
       }
     });
     this.model = new FormFields();
+    this.model.set('lower_criteria','='); // default
     this.selectedFields = ['lower_criteria','form_textarea','invert_field']; 
     
     TextFormFilter.__super__.initialize.apply(this, arguments);
@@ -2040,7 +2037,9 @@ var DateFormFilter = CriteriumFormFilter.extend({
       }
     });
     this.model = new FormFields();
-    this.selectedFields = ['lower_criteria','lower_value','form_textarea','upper_value','invert_field']; 
+    this.model.set('lower_criteria','='); // default
+    this.selectedFields = ['lower_criteria','lower_value','form_textarea',
+                           'upper_value','invert_field']; 
     
     this.listenTo(this, "change", function(e){
       var criteria = self.getValue('lower_criteria');
@@ -3008,6 +3007,7 @@ var NumberFormFilter = CriteriumFormFilter.extend({
       }
     });
     this.model = options['model'] = new FormFields();
+    this.model.set('lower_criteria','='); // default
     
     options.fields = fields.concat(
         ['lower_criteria','lower_value','form_textarea','upper_value','invert_field']); 

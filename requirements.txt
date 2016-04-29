@@ -19,4 +19,5 @@ wsgiref >=0.1.2
 xlrd #=0.9.4
 xlwt >=1
 XlsxWriter #==0.7.7
+openpyxl #==2.3.4
 

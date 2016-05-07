@@ -174,6 +174,45 @@ def alter_table_references(apps, schema_editor):
         db,'screen', 'lab_head_id','screensaver_user', 
         'screensaver_user_id', null_ok=True)
 
+
+def add_timezone_to_timestamp_fields(apps, schema_editor):
+    
+    # Change timestamp fields to use timezone information:
+    # From the docs:
+    # The PostgreSQL backend stores datetimes as timestamp with time zone. 
+    # In practice, this means it converts datetimes from the connection’s time zone 
+    # to UTC on storage, and from UTC to the connection’s time zone on retrieval.
+    # 
+    # As a consequence, if you’re using PostgreSQL, you can switch between 
+    # USE_TZ = False and USE_TZ = True freely. The database connection’s time zone 
+    # will be set to TIME_ZONE or UTC respectively, so that Django obtains correct 
+    # datetimes in all cases. You don’t need to perform any data conversions.
+    # 
+    # Note: it appears that legacy Screensaver dates were stored without timezone
+    # information. This modification will apply the database default timezone 
+    # (America/New_York for orchestra), which will be correct.
+    
+    table_columns = (
+        ('attached_file', ('date_created', 'date_loaded', 'date_publicly_available')),
+        ('activity', ('date_created', 'date_loaded', 'date_publicly_available')),
+        ('checklist_item_event', ('date_created', 'date_loaded', 'date_publicly_available')),
+        ('cherry_pick_request', ('date_created', 'date_loaded', 'date_publicly_available')),
+        ('copy', ('date_created', 'date_loaded', 'date_publicly_available')),
+        ('library', ('date_created', 'date_loaded', 'date_publicly_available')),
+        ('plate', ('date_created', 'date_loaded', 'date_publicly_available')),
+        ('screen', ('date_created', 'date_loaded', 'date_publicly_available')),
+        ('screensaver_user', ('date_created', 'date_loaded', 'date_publicly_available')),
+        ('screen_result', ('date_created', 'date_loaded', 'date_publicly_available')),
+        )
+    
+    for table, columns in table_fields:
+        for column in columns:
+            schema_editor.execute(
+                ('ALTER TABLE {table} ALTER COLUMN {column} '
+                    'SET DATA TYPE timestamp with time zone').format(
+                      table=table, column=column))
+    
+
 #     _alter_table_reference(
 #         db,'lab_head', 'screensaver_user_id','screensaver_user', 
 #         'screensaver_user_id', null_ok=True)
@@ -277,12 +316,12 @@ class Migration(migrations.Migration):
             name='substance_id',
             field=models.CharField(null=True,max_length=8),
         ),
-#         migrations.RunPython(create_reagent_ids),
-#         migrations.AlterField(
-#             model_name='reagent',
-#             name='substance_id',
-#             field=models.CharField(unique=True, max_length=8),
-#             ),
+        # migrations.RunPython(create_reagent_ids),
+        # migrations.AlterField(
+        #     model_name='reagent',
+        #     name='substance_id',
+        #     field=models.CharField(unique=True, max_length=8),
+        #     ),
         migrations.AddField(
             model_name='screen',
             name='status_date',
@@ -371,17 +410,18 @@ class Migration(migrations.Migration):
             ' from  lab_head lh '
             ' where lh.screensaver_user_id=su.screensaver_user_id'),
 
-#         migrations.AddField(
-#             model_name='screensaveruser',
-#             name='lab_head_affiliation_link', 
-#             field=models.ForeignKey('LabAffiliation',null=True)),
-#         migrations.RunSQL(
-#             'UPDATE screensaver_user su '
-#             ' set lab_head_affiliation_link_id=lh.lab_affiliation_id '
-#             ' from lab_head lh '
-#             ' where su.screensaver_user_id=lh.screensaver_user_id'),
+        # migrations.AddField(
+        #     model_name='screensaveruser',
+        #     name='lab_head_affiliation_link', 
+        #     field=models.ForeignKey('LabAffiliation',null=True)),
+        # migrations.RunSQL(
+        #     'UPDATE screensaver_user su '
+        #     ' set lab_head_affiliation_link_id=lh.lab_affiliation_id '
+        #     ' from lab_head lh '
+        #     ' where su.screensaver_user_id=lh.screensaver_user_id'),
          
         migrations.RunPython(alter_table_references),
+        migrations.RunPython(add_timezone_to_timestamp_fields),
         
         # move the lab_head->screening_room_user explicitly, because there are dependent fk's
         migrations.RunSQL(

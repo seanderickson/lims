@@ -89,7 +89,7 @@ LOGGING = {
             'level': 'INFO',
         },
         # suppress streaming errors (i.e. image not found)
-        'reports.utils.streaming_serializers': {  
+        'reports.serialize.streaming_serializers': {  
             'handlers': ['logfile'],
             'propagate': True,
             'level': 'WARN',
@@ -110,9 +110,9 @@ LOGGING = {
             'level': 'INFO',
         },               
         'reports.tests': {  # set a default handler
-            'handlers': ['logfile'],
+            'handlers': ['console'],
             'propagate': False,
-            'level': 'INFO',
+            'level': 'DEBUG',
         },        
         'django': {  # set a default handler
             'handlers': ['logfile'],

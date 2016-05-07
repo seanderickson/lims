@@ -83,6 +83,7 @@ from reports.serialize import parse_val
 
 from django.test.runner import DiscoverRunner
 import sys
+from django.test.client import Client
 
 
 # _ = reports.utils.log_utils.LogMessageFormatter   # optional, to improve readability
@@ -964,13 +965,21 @@ class IResourceTestCase(SimpleTestCase):
     
         super(IResourceTestCase, self).__init__(*args,**kwargs)
         
-#         self.resource_uri = BASE_URI + '/field'
         self.directory = os.path.join(APP_ROOT_DIR, 'reports/static/api_init')
         self.csv_serializer=CSVSerializer() 
-        
         self.serializer = LimsSerializer()
         self.api_client = TestApiClient(serializer=self.serializer)       
-    
+
+        # TODO: replace all tastypie.test.TestApiClient clients with the
+        # django.test.client.Client instances:
+        # Tastypie mucks with the HEADERS and uses the non-standard "format" arg:
+        # resp = self.sr_api_client.get(
+        #     resource_uri, authentication=self.get_credentials(), 
+        #     format='xlsx', **data_for_get)
+        # Tastypie PUT/POST requires that the data be serialized before posting,
+        # and does not create the multipart/form-data header
+        self.django_client = Client()
+            
     def setUp(self):
         super(IResourceTestCase, self).setUp()
 

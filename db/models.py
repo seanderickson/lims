@@ -65,9 +65,12 @@ class Activity(models.Model):
     activity_id = models.AutoField(primary_key=True) 
     date_created = models.DateTimeField(default=timezone.now)
     comments = models.TextField(blank=True)
-    performed_by = models.ForeignKey('ScreensaverUser',related_name='activities_performed')
+    performed_by = models.ForeignKey(
+        'ScreensaverUser',related_name='activities_performed')
     date_of_activity = models.DateField()
-    created_by = models.ForeignKey('ScreensaverUser', null=True, blank=True, related_name='activities_created')
+    created_by = models.ForeignKey(
+        'ScreensaverUser', null=True, blank=True, 
+        related_name='activities_created')
     date_loaded = models.DateTimeField(null=True, blank=True)
     date_publicly_available = models.DateTimeField(null=True, blank=True)
     class Meta:

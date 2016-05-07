@@ -25,7 +25,7 @@ def create_log_time(input_date):
     while date_time in times_seen:
         i += 1
         date_time += timedelta(0,i)
-        logger.info('adjust time: %s', date_time.isoformat())
+        logger.debug('adjust time: %s', date_time.isoformat())
     times_seen.add(date_time)
     return date_time
 

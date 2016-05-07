@@ -59,7 +59,7 @@ class CustomAuthenticationBackend():
             return self._inner_authenticate(username, password)
 
     def _inner_authenticate(self, username=None, password=None):
-        logger.info('innner_authenticate: %r', username)
+        logger.info('inner_authenticate: %r', username)
         try:
             user = User.objects.get(username=username)
             if user.has_usable_password():

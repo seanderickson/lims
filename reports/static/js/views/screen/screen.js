@@ -95,6 +95,7 @@ define([
      * Layoutmanager hook
      */
     serialize: function() {
+      console.log('serialize called...');
       var self = this;
       var displayed_tabbed_resources = _.extend({},this.tabbed_resources);
       if (! self.model.get('has_screen_result')){
@@ -111,6 +112,7 @@ define([
      * Layoutmanager hook
      */
     afterRender: function(){
+      console.log('afterRender called...');
       var viewId = 'detail';
       if (!_.isEmpty(this.uriStack)){
         viewId = this.uriStack.shift();
@@ -278,6 +280,9 @@ define([
     },
 
     render : function(){
+      console.log('render called');
+//      ScreenView.__super__.render.apply(this, arguments);
+      
       window.scrollTo(0, 0);
       return this;
     },
@@ -542,8 +547,8 @@ define([
         var data = new FormData();
         var url = [self.model.resource.apiUri,self.model.key,'screenresult'].join('/');
         // NOTE: 'xls' is sent as the key to the FILE object in the upload.
-        // We are using this as a non-standard way to signal the upload type to the 
-        // serializer. (TP doesn't support mulitpart uploads, so this is patched in).
+        // Use this as a non-standard way to signal the upload type to the 
+        // serializer. 
         data.append('xls', file);
         var headers = {
           'Accept': 'application/json'
@@ -572,7 +577,176 @@ define([
           title: 'Select a Screen Result (xlsx workbook) file to upload'  });
     
     },
+    
+    deleteScreenResults: function(){
+      var self = this;
+      var formSchema = {};
+      formSchema['comments'] = {
+        title: 'Comments',
+        key: 'comments',
+        validators: ['required'],
+        type: 'TextArea'
+//        template: fieldTemplate
+      };
 
+      var FormFields = Backbone.Model.extend({
+        schema: formSchema
+      });
+      var formFields = new FormFields();
+      var form = new Backbone.Form({
+        model: formFields
+//        template: _.template(form_template)
+      });
+      var _form_el = form.render().el;
+      var dialog = appModel.showModal({
+          ok: function(){
+            var errors = form.commit({ validate: true }); 
+            if(!_.isEmpty(errors) ){
+              _.each(_.keys(errors), function(key){
+                $('[name="'+key +'"').parents('.form-group').addClass('has-error');
+              });
+              return false;
+            }else{
+              var url = [self.model.resource.apiUri,self.model.key,'screenresult'].join('/');
+              var values = form.getValue();
+              var headers = {
+                'Accept': 'application/json'
+              };
+              headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
+              $.ajax({
+                url: url,    
+                cache: false,
+                contentType: false,
+                processData: false,
+                type: 'DELETE',
+                headers: headers
+              })
+              .fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); })
+              .done(function(model, resp){
+                  appModel.error('success');
+                  self.model.fetch({
+                    success: function() {
+                      self.setSummary([]);
+                      console.log('call render...');
+                      self.render();
+                    }
+                  });
+              });
+            }        
+          },
+          view: _form_el,
+          title: 'Delete screen results for ' + self.model.get('facility_id')
+      });
+      
+    },
+    
+    loadScreenResults_ver2_with_comments: function(){
+      var self = this;
+      var form_template = [
+         "<div class='form-horizontal container' id='screenresult_form' >",
+         "<form data-fieldsets class='form-horizontal container' >",
+         "<div class='form-group' ><input type='file' name='fileInput' /></div>",
+         "</form>",
+         "</div>"].join('');      
+      
+      var fieldTemplate = _.template([
+        '<div class="form-group" >',
+        '    <label class="control-label " for="<%= editorId %>"><%= title %></label>',
+        '    <div class="" >',
+        '      <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
+        '      <div data-error class="text-danger" ></div>',
+        '      <div><%= help %></div>',
+        '    </div>',
+        '  </div>',
+      ].join(''));
+      
+      var formSchema = {};
+      formSchema['comments'] = {
+        title: 'Comments',
+        key: 'comments',
+        validators: ['required'],
+        type: 'TextArea',
+        template: fieldTemplate
+      };
+
+      var FormFields = Backbone.Model.extend({
+        schema: formSchema,
+        validate: function(attrs){
+          console.log('form validate', attrs);
+          var errs = {};
+          var file = $('input[name="fileInput"]')[0].files[0]; 
+          if (! file) {
+            errs.fileInput = 'Must specify a file';
+          }
+          if (!_.isEmpty(errs)) return errs;
+        }
+      });
+      var formFields = new FormFields();
+      var form = new Backbone.Form({
+        model: formFields,
+        template: _.template(form_template)
+      });
+      var _form_el = form.render().el;
+
+      function saveFile() {
+
+        var errors = form.commit({ validate: true }); // runs schema and model validation
+        if(!_.isEmpty(errors) ){
+          console.log('form errors, abort submit: ',errors);
+          _.each(_.keys(errors), function(key){
+            $('[name="'+key +'"').parents('.form-group').addClass('has-error');
+            if( key == '_others'){
+              _.each(errors[key], function(otherError){
+                // TODO: display file req'd msg
+              });
+            }
+          });
+          return false;
+        }else{
+          var url = [self.model.resource.apiUri,self.model.key,'screenresult'].join('/');
+          var values = form.getValue();
+          var file = $('input[name="fileInput"]')[0].files[0]; 
+          var data = new FormData();
+          // NOTE: 'xls' is sent as the key to the FILE object in the upload.
+          // Use this as a non-standard way to signal the upload type to the 
+          // serializer. 
+          data.append('xls', file);
+          var headers = {
+            'Accept': 'application/json'
+          };
+          headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
+          $.ajax({
+            url: url,    
+            data: data,
+            cache: false,
+            contentType: false,
+            processData: false,
+            type: 'POST',
+            headers: headers
+          })
+          .fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); })
+          .done(function(model, resp){
+              // FIXME: should be showing a regular message
+              appModel.error('success');
+              self.model.fetch({
+                success: function() {
+                  self.setSummary([]);
+                  console.log('call render...');
+                  self.render();
+                }
+              });
+         });
+        }        
+      }
+      
+      var dialog = appModel.showModal({
+          ok: saveFile,
+          view: _form_el,
+          title: 'Select a Screen Result (xlsx workbook) file to upload'
+      });
+    },
+    
+    
     /**
      * Loads the screen results using a post form - 
      * - allows for the the "errors.xlsx" file to be downloaded to the hidden frame
@@ -747,9 +921,14 @@ define([
       var $loadScreenResultsButton = $('<button>Load Screen Results</button>');
       $loadScreenResultsButton.click(function(e){
         e.preventDefault();
-        self.loadScreenResults();
+        self.loadScreenResults_ver2_with_comments();
       });
-
+      var $deleteScreenResultsButton = $('<button>Delete Screen Results</button>');
+      $deleteScreenResultsButton.click(function(e){
+        e.preventDefault();
+        self.deleteScreenResults();
+      });
+      
       var summaryKeys = self.model.resource.filterKeys('visibility', 'summary');
       var summaryModel = appModel.getModel(
         self.model.resource.key, self.model.key, 
@@ -783,6 +962,9 @@ define([
               self._createPositivesSummary(this.$el.find('#positives_summary'));
               
               //this.$el.prepend($testButton);
+              if (self.model.get('has_screen_result')){
+                this.$el.prepend($deleteScreenResultsButton);
+              }
               this.$el.prepend($loadScreenResultsButton);
               this.$el.prepend($addLibraryScreeningButton);
             }

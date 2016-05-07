@@ -38,10 +38,11 @@ from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
 import reports.serialize.csvutils as csvutils
 import reports.serialize.sdfutils as sdfutils
 from reports.serialize.csvutils import LIST_DELIMITER_CSV
-from reports.serialize.xlsutils import LIST_DELIMITER_XLS
+from reports.serialize.xlsutils import generic_xls_write_workbook, LIST_DELIMITER_XLS
 from reports.serialize import XLSX_MIMETYPE
 from reports.serialize import dict_to_rows
 from db.support.data_converter import default_converter
+from django.utils.timezone import localtime
 logger = logging.getLogger(__name__)
 
 MOLDATAKEY = sdfutils.MOLDATAKEY
@@ -127,7 +128,6 @@ def interpolate_value_template(value_template, row):
 
 
 def json_generator(cursor,meta,request, is_for_detail=False,field_hash=None):
-    
     if DEBUG_STREAMING: logger.info('meta: %r', meta )
     
     # NOTE, using "ensure_ascii" = True to force encoding of all 
@@ -154,7 +154,9 @@ def json_generator(cursor,meta,request, is_for_detail=False,field_hash=None):
                         if hasattr(value, 'split'):
                             value = value.split(LIST_DELIMITER_SQL_ARRAY)
 
-                    if DEBUG_STREAMING: logger.info('key %r val %r, %r', key, value, field)
+                    if DEBUG_STREAMING: 
+                        logger.info('key %r val %r, %r', key, value, type(value))
+                    
                     _dict[key] = value
                     
                     if field.get('value_template', None):
@@ -665,27 +667,7 @@ def generic_xlsx_response(data):
     '''
     # using XlsxWriter for constant memory usage
     with  NamedTemporaryFile(delete=False) as temp_file:
-        wb = xlsxwriter.Workbook(temp_file, {'constant_memory': True})
-        
-        if isinstance(data, dict):
-            # case 1: dict of lists, lists are ready to write
-            logger.info('generic_xlsx_response for data: %r', data.keys())
-            for key, sheet_rows in data.items():
-                sheet_name = default_converter(key)
-                logger.info('writing sheet %r...', sheet_name)
-                sheet = wb.add_worksheet(sheet_name)
-                if isinstance(sheet_rows, dict):
-                    for i, row in enumerate(dict_to_rows(sheet_rows)):
-                        sheet.write_row(i,0,row)
-                elif isinstance(sheet_rows, basestring):
-                    sheet.write_string(0,0,sheet_rows)
-                else:
-                    write_rows_to_sheet(sheet_rows, sheet)
-        else:
-            raise ImmediateHttpResponse(
-                'unknown data for generic xls serialization: %r' % type(data))
-        logger.info('save to temp file')
-        wb.close()
+        generic_xls_write_workbook(temp_file, data)
         temp_file.seek(0, os.SEEK_END)
         size = temp_file.tell()
         temp_file.seek(0)   
@@ -696,13 +678,4 @@ def generic_xlsx_response(data):
     response['Content-Type'] = XLSX_MIMETYPE
     return response
     
-def write_rows_to_sheet(rows, sheet):
-    for row,values in enumerate(rows):
-        for i, val in enumerate(values):
-            val = csvutils.csv_convert(val, delimiter=LIST_DELIMITER_XLS)
-            if val:
-                if len(val) > 32767: 
-                    logger.error('warn, row too long, %d, key: %r, len: %d', 
-                        row,key,len(val) )
-                sheet.write_string(row,i,val)
                 

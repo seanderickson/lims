@@ -1,8 +1,5 @@
 from __future__ import unicode_literals
 
-from __builtin__ import False
-from _codecs import encode
-from collections import defaultdict
 from copy import deepcopy
 import csv
 import hashlib
@@ -37,20 +34,16 @@ from sqlalchemy.sql.expression import column, join, insert, delete, distinct, \
     exists, _Cast, cast
 from sqlalchemy.sql.expression import nullsfirst, nullslast
 from sqlalchemy.sql.sqltypes import TEXT
-from tastypie import fields
-from tastypie import http
+import tastypie.http
 from tastypie.authentication import BasicAuthentication, SessionAuthentication, \
     MultiAuthentication
 from tastypie.authorization import Authorization
 from tastypie.bundle import Bundle
 from tastypie.constants import ALL_WITH_RELATIONS
-from tastypie.exceptions import BadRequest, ImmediateHttpResponse, \
-    UnsupportedFormat, NotFound
+from tastypie.exceptions import BadRequest, NotFound
 from tastypie.http import HttpNotFound
 from tastypie.resources import Resource
-from tastypie.utils import timezone
 from tastypie.utils.urls import trailing_slash
-import xlrd
 
 from db.models import ScreensaverUser, Screen, \
     ScreenResult, DataColumn, Library, Plate, Copy, \
@@ -70,7 +63,7 @@ from db.support.screen_result_importer import PARTITION_POSITIVE_MAPPING, \
 from db.support.data_converter import default_converter
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT
-from reports import ValidationError
+from reports import ValidationError, _now
 from reports.api_base import IccblBaseResource, un_cache
 from reports.api import ApiLogResource, \
     UserGroupAuthorization, \
@@ -81,14 +74,16 @@ from reports.api import ApiLogResource, \
 from reports.dump_obj import dumpObj
 from reports.models import Vocabularies, ApiLog, UserProfile, \
     API_ACTION_DELETE, API_ACTION_PUT
-from reports.serialize import parse_val, XLSX_MIMETYPE, SDF_MIMETYPE
+from reports.serialize import parse_val, XLSX_MIMETYPE, SDF_MIMETYPE,\
+    XLS_MIMETYPE, JSON_MIMETYPE, CSV_MIMETYPE
 from reports.serializers import CursorSerializer, LimsSerializer, \
     XLSSerializer, ScreenResultSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.sqlalchemy_resource import _concat
 from tastypie.utils.mime import build_content_type
 from reports.serialize.streaming_serializers import ChunkIterWrapper, \
-    json_generator, cursorGenerator, sdf_generator,generic_xlsx_response
+    json_generator, cursorGenerator, sdf_generator,generic_xlsx_response,\
+    csv_generator
 from wsgiref.util import FileWrapper
 from reports.serialize.csvutils import csv_convert,string_convert
 
@@ -99,7 +94,6 @@ logger = logging.getLogger(__name__)
     
 def _get_raw_time_string():
   return timezone.now().strftime("%Y%m%d%H%M%S")
-    
     
 
 # class PlateLocationResource(ManagedModelResource):
@@ -170,7 +164,7 @@ class LibraryCopyPlateResource(ApiResource):
 
         library_short_name = kwargs.get('library_short_name', None)
         if not library_short_name:
-            logger.info(str(('no library_short_name provided')))
+            logger.info('no library_short_name provided')
         copy_name = kwargs.get('copy_name', None)
         if not copy_name:
             raise Http404('must provide a copy_name parameter')
@@ -202,7 +196,7 @@ class LibraryCopyPlateResource(ApiResource):
         library_short_name = param_hash.pop('library_short_name',
             param_hash.get('library_short_name__eq', None))
         if not library_short_name:
-            logger.info(str(('no library_short_name provided')))
+            logger.info('no library_short_name provided')
         else:
             param_hash['library_short_name__eq'] = library_short_name
 
@@ -230,10 +224,7 @@ class LibraryCopyPlateResource(ApiResource):
                 filter_expression, loaded_for_screen_id, for_screen_id)
             if (filter_expression is None
                     and for_screen_id is None and loaded_for_screen_id is None):
-                msgs = { 'Library copy plates resource': 
-                    'can only service requests with filter expressions' }
-                raise ImmediateHttpResponse(
-                    response=self.error_response(request, msgs))
+                raise BadRequest('Can only service requests with filter expressions')
                  
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes,
@@ -429,55 +420,6 @@ class ScreenResultResource(ApiResource):
         except Exception as e:
             logger.info('creating the well_data_column_positive_index table')
             self._create_well_data_column_positive_index_table(conn)
-        
-
-#     def deserialize(self, request, data=None, format=None):
-#         '''
-#         Override deserialize:
-#         - get content from the multipart form
-#         '''
-# 
-#         if not format:
-#             format = request.META.get('CONTENT_TYPE', 'application/json')
-#         
-#         logger.info('deserialize: %r', format)
-#         
-#         if format.startswith('multipart'):
-# 
-#             logger.info('request.Files.keys: %r', request.FILES.keys())
-#             
-#             if len(request.FILES.keys()) != 1:
-#                 raise ImmediateHttpResponse(
-#                     response=self.error_response(
-#                         request,
-#                         { 'FILES': 'File upload supports only one file at a time',
-#                           'filenames': request.FILES.keys(),
-#                         }
-#                 ))
-#              
-#             if 'xls' in request.FILES:
-#                 file = request.FILES['xls']
-#                 
-#                 deserialized = screen_result_importer.read_file(file)
-#             else:
-#                 logger.error(
-#                     'Unsupported multipart file key: %r',
-#                     request.FILES.keys())
-#                 raise UnsupportedFormat(
-#                     'Unsupported multipart file key: %r' 
-#                     % request.FILES.keys())
-#          
-#         elif format == 'application/xls':
-#             # This option is included for the testing framework
-#             deserialized = screen_result_importer.read_workbook(
-#                 xlrd.open_workbook(file_contents=request._stream))
-#              
-#         else:
-#             raise NotImplementedError(
-#                 'Screen Results must be posted as a multipart form')    
-#          
-#         return deserialized
-
         
     def _create_well_query_index_table(self, conn):
         try:
@@ -757,8 +699,9 @@ class ScreenResultResource(ApiResource):
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
                 order_params, field_hash)
              
+            desired_format = self.get_serialize_format(request, **kwargs)
             rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
+            if param_hash.get(HTTP_PARAM_USE_VOCAB, False) or desired_format != JSON_MIMETYPE:
                 rowproxy_generator = \
                     ApiResource.create_vocabulary_rowproxy_generator(field_hash)
      
@@ -888,7 +831,6 @@ class ScreenResultResource(ApiResource):
                 raise e
             
             ######
-            
             # Now that query_index table is populated, use it to build the 
             # output query
             
@@ -965,7 +907,6 @@ class ScreenResultResource(ApiResource):
                 
             # Custom screen result serialization
             
-            desired_format = self.get_format(request, **kwargs)
             content_type = build_content_type(desired_format)
             logger.info('desired_format: %s, content_type: %s',
                 desired_format, content_type)
@@ -997,7 +938,7 @@ class ScreenResultResource(ApiResource):
              
             # Perform custom serialization because each output format will be 
             # different.
-            if desired_format == 'application/json':
+            if desired_format == JSON_MIMETYPE:
                 # meta['fields'] = schema['fields']
                 response = StreamingHttpResponse(
                     ChunkIterWrapper(
@@ -1006,10 +947,10 @@ class ScreenResultResource(ApiResource):
                             is_for_detail=is_for_detail, field_hash=field_hash)))
                 response['Content-Type'] = content_type
                 return response
-            elif(desired_format == 'application/xls' or
+            elif(desired_format == XLS_MIMETYPE or
                 desired_format == XLSX_MIMETYPE): 
                 response = generic_xlsx_response(
-                    screen_result_importer.create_data_structure(
+                    screen_result_importer.create_output_data(
                         screen_facility_id, schema['fields'], 
                         is_excluded_gen(cursorGenerator(
                              result,field_hash,field_hash.keys()))))
@@ -1024,6 +965,17 @@ class ScreenResultResource(ApiResource):
                 response['Content-Type'] = SDF_MIMETYPE
                 response['Content-Disposition'] = \
                     'attachment; filename=%s.sdf' % filename
+                return response
+            elif desired_format == CSV_MIMETYPE:
+                response = StreamingHttpResponse(
+                    ChunkIterWrapper(
+                        csv_generator(
+                            is_excluded_gen(result), request,
+                            field_hash=field_hash, title_function=title_function)),
+                    content_type=content_type)
+                response['Content-Type'] = CSV_MIMETYPE
+                response['Content-Disposition'] = \
+                    'attachment; filename=%s.csv' % filename
                 return response
             else: 
                 raise BadRequest('format not implemented: %r', desired_format)
@@ -1131,8 +1083,8 @@ class ScreenResultResource(ApiResource):
         try:
             screenresult = ScreenResult.objects.get(
                 screen__facility_id=facility_id)
-            return self.create_response(
-                request, self.build_schema(screenresult))
+            return self.build_response(
+                request, self.build_schema(screenresult), **kwargs)
         except ObjectDoesNotExist, e:
             raise Http404(
                 'no screen result found for facility id: %r' % facility_id)
@@ -1219,7 +1171,6 @@ class ScreenResultResource(ApiResource):
                         _visibility = set(_dict['visibility'])
                         _visibility.update(['l', 'd'])
                         _dict['visibility'] = list(_visibility)
-                    
             return data
 
         except Exception, e:
@@ -1266,7 +1217,44 @@ class ScreenResultResource(ApiResource):
     @write_authorization
     def patch_list(self, request, **kwargs):
         return self.patch_detail(request, **kwargs)
+
+    @write_authorization
+    @un_cache        
+    def delete_list(self, request, **kwargs):
+        logger.info('delete screen result from list: %r', kwargs)
+        return self.delete_detail(request, **kwargs)
     
+    @write_authorization
+    @un_cache
+    @transaction.atomic()
+    def delete_detail(self, request, **kwargs):
+        logger.info('deleting screen result %r', kwargs)
+        if 'screen_facility_id' not in kwargs:
+            raise BadRequest('screen_facility_id is required')
+        screen_facility_id = kwargs['screen_facility_id']
+        self.clear_cache(by_uri='/screenresult/%s' % screen_facility_id)
+        screen = Screen.objects.get(facility_id=screen_facility_id)
+
+        logger.info('delete screen result for %r', screen_facility_id)
+        if hasattr(screen, 'screenresult'):
+            screen_result = screen.screenresult
+            logger.info('screen result: %r exists, deleting extant data',
+                screen_result)
+            screen_result.datacolumn_set.all().delete()
+            screen_result.assaywell_set.all().delete()
+            screen_result.screen.assayplate_set\
+                .filter(library_screening__isnull=True).delete()
+            
+            screen_log = self.make_log(request, **kwargs)
+            screen_log.ref_resource_name = 'screen'
+            screen_log.key = screen.facility_id
+            screen_log.uri = '/'.join(['screen', screen_log.key])
+            screen_log.save()
+        else:
+            raise BadRequest('no screen result to delete')
+
+        return tastypie.http.HttpNoContent()
+            
     @write_authorization
     @un_cache        
     def patch_detail(self, request, **kwargs):
@@ -1293,10 +1281,13 @@ class ScreenResultResource(ApiResource):
         
         with transaction.atomic():
 
-            screen = Screen.objects.get(facility_id=kwargs['screen_facility_id'])
+            screen = Screen.objects.get(facility_id=screen_facility_id)
 
-            # FIXME: logging
-            screen_log = self.make_log(request)
+            screen_log = self.make_log(request, **kwargs)
+            screen_log.ref_resource_name = 'screen'
+            screen_log.key = screen.facility_id
+            screen_log.uri = '/'.join(['screen', screen_log.key])
+            screen_log.diff_keys = ['last_data_loading_date']
             
             logger.info('Create screen result for %r', screen_facility_id)
             if hasattr(screen, 'screenresult'):
@@ -1307,15 +1298,22 @@ class ScreenResultResource(ApiResource):
                 screen_result.assaywell_set.all().delete()
                 screen_result.screen.assayplate_set\
                     .filter(library_screening__isnull=True).delete()
-                screen_result.date_loaded = timezone.now()
+                screen_log.diffs = { 'last_data_loading_date': 
+                    [screen_result.date_loaded, screen_log.date_time]}
+                screen_result.date_loaded = screen_log.date_time
             else:
                 screen_result = ScreenResult.objects.create(
                     screen=screen,
                     experimental_well_count=0,
                     replicate_count=0,
-                    date_loaded=timezone.now())
+                    date_loaded=screen_log.date_time)
+                screen_log.diffs = {
+                    'last_data_loading_date': [None, screen_log.date_time] }
                 logger.info('created screen result: %r', screen_result)
             
+            screen_log.save()
+            
+            logger.info('created log: %r', screen_log)
             logger.info('Create screen result data columns for %r', screen_facility_id)
             sheet_col_to_datacolumn = {}
             derived_from_columns_map = {}
@@ -1343,7 +1341,7 @@ class ScreenResultResource(ApiResource):
                         '%s are not in available columns: %s'
                         % (string_convert(derived_cols),string_convert(columns.keys())))
                     errors[sheet_column] = col_errors
-                # TODO: derived_from_columns
+                # TODO: save derived_from_columns
             if errors:
                 raise ValidationError( errors={ 'data_columns': errors })
 
@@ -1359,14 +1357,11 @@ class ScreenResultResource(ApiResource):
         self.create_data_loading_statistics(screen_result)
             
         if not self._meta.always_return_data:
-            desired_format = self.get_format(request, **kwargs)
             response_message = {'success': {'result': 'screen result loaded'}}
-            serialized = self.serialize(request, response_message, desired_format)
-            response = HttpResponse(
-                content=serialized, 
-                content_type=build_content_type(desired_format))
-            response['Content-Disposition'] = \
-                'attachment; filename=screen_result_loading_success-%s.xlsx' % screen_facility_id
+            response = self.build_response(request, response_message, **kwargs)
+            response['Content-Disposition'] = (
+                'attachment; filename=screen_result_loading_success-%s.xlsx' 
+                % screen_facility_id )
             return response
         else:
             response = self.get_list(request, **kwargs)             
@@ -1389,9 +1384,7 @@ class ScreenResultResource(ApiResource):
             item, colname, dc.name, dc.data_type)
         key = '%s-%s' % (well.well_id, colname)
         rv_initializer['data_column_id'] = dc.data_column_id
-        if (well.library_well_type == 'experimental'
-                and not rv_initializer['is_exclude']
-                and dc.data_type in positive_types):
+        if dc.data_type in positive_types:
             val = rv_initializer['value']
             if dc.data_type == 'partition_positive_indicator':
                 if val not in PARTITION_POSITIVE_MAPPING:
@@ -1400,18 +1393,8 @@ class ScreenResultResource(ApiResource):
                         msg='%r val: %r must be one of %r'
                             % (dc.data_type, val, 
                                 PARTITION_POSITIVE_MAPPING.keys()))
-                if val == 'W':
-                    dc.weak_positives_count += 1
-                    dc.positives_count += 1
-                    assay_well.is_positive = True
-                elif val == 'M':
-                    dc.medium_positives_count += 1
-                    dc.positives_count += 1
-                    assay_well.is_positive = True
-                elif val == 'S':
-                    dc.positives_count += 1
-                    dc.strong_positives_count += 1
-                    assay_well.is_positive = True
+                val = PARTITION_POSITIVE_MAPPING[val]
+                rv_initializer['value'] = val
             elif dc.data_type == 'confirmed_positive_indicator':
                 if val not in CONFIRMED_POSITIVE_MAPPING:
                     raise ValidationError(
@@ -1419,14 +1402,9 @@ class ScreenResultResource(ApiResource):
                         msg='%r val: %r must be one of %r'
                             % (dc.data_type, val, 
                                 CONFIRMED_POSITIVE_MAPPING.keys()))
-                if val == 'CP':
-                    dc.positives_count += 1
-                    assay_well.is_positive = True
-            elif dc.data_type == 'boolean_positive_indicator':
-                if val is True:
-                    dc.positives_count += 1
-                    assay_well.is_positive = True
-        elif (dc.data_type in positive_types):
+                val = CONFIRMED_POSITIVE_MAPPING[val]
+                rv_initializer['value'] = val
+
             if well.library_well_type != 'experimental':
                 logger.info(
                     ('non experimental well, not considered for positives:'
@@ -1437,13 +1415,36 @@ class ScreenResultResource(ApiResource):
                     ('excluded col, not considered for positives:'
                      'well: %r, col: %r, type: %r, val: %r'),
                     well.well_id, colname, dc.data_type, item)
-        if dc.data_type == 'confirmed_positive_indicator':
-            if assay_well.confirmed_positive_value:
-                raise ValidationError(
-                    key=key,
-                    msg=('only one "confirmed_positive_indicator" is'
-                        'allowed per row'))
-            assay_well.confirmed_positive_value = rv_initializer['value']
+            else:
+                if dc.data_type == 'partition_positive_indicator':
+                    if val == PARTITION_POSITIVE_MAPPING['W']:
+                        dc.weak_positives_count += 1
+                        dc.positives_count += 1
+                        assay_well.is_positive = True
+                    elif val == PARTITION_POSITIVE_MAPPING['M']:
+                        dc.medium_positives_count += 1
+                        dc.positives_count += 1
+                        assay_well.is_positive = True
+                    elif val == PARTITION_POSITIVE_MAPPING['S']:
+                        dc.positives_count += 1
+                        dc.strong_positives_count += 1
+                        assay_well.is_positive = True
+                elif dc.data_type == 'confirmed_positive_indicator':
+                    if val == CONFIRMED_POSITIVE_MAPPING['CP']:
+                        dc.positives_count += 1
+                        assay_well.is_positive = True
+                elif dc.data_type == 'boolean_positive_indicator':
+                    if val is True:
+                        dc.positives_count += 1
+                        assay_well.is_positive = True
+        
+            if dc.data_type == 'confirmed_positive_indicator':
+                if assay_well.confirmed_positive_value:
+                    raise ValidationError(
+                        key=key,
+                        msg=('only one "confirmed_positive_indicator" is'
+                            'allowed per row'))
+                assay_well.confirmed_positive_value = rv_initializer['value']
         
         logger.debug('rv_initializer: %r', rv_initializer)
         return rv_initializer
@@ -1532,12 +1533,10 @@ class ScreenResultResource(ApiResource):
                     rows_created += 1
                     if rows_created % 10000 == 0:
                         logger.info('wrote %d result rows to temp file', rows_created)
-                    
-                    
+
                 except ValidationError, e:
                     logger.info('validation error: %r', e)
                     errors.update(e.errors) 
-                    # todo    
                 except StopIteration, e:
                     break
             
@@ -1561,8 +1560,10 @@ class ScreenResultResource(ApiResource):
         if plates_max_replicate_loaded:
             plates_max_replicate_loaded = sorted(plates_max_replicate_loaded.values())
             logger.info('plates_max_replicate_loaded: %r', plates_max_replicate_loaded)
-            screen_result.screen.min_data_loaded_replicate_count = plates_max_replicate_loaded[0]
-            screen_result.screen.max_data_loaded_replicate_count = plates_max_replicate_loaded[-1]
+            screen_result.screen.min_data_loaded_replicate_count = \
+                plates_max_replicate_loaded[0]
+            screen_result.screen.max_data_loaded_replicate_count = \
+                plates_max_replicate_loaded[-1]
         else:
             screen_result.screen.min_data_loaded_replicate_count = 1
             screen_result.screen.max_data_loaded_replicate_count = 1
@@ -1572,7 +1573,12 @@ class ScreenResultResource(ApiResource):
         
         logger.info('create_result_values - done.')
 
-    
+    # REMOVED - find or create assay plates for screenresult load wells
+    # This is removed because the only reason for creating these "assay_plates"
+    # is to find the min/max replicates loaded for assay plates with data loaded.
+    # This stat will be calculated during load time instead - see: 
+    # "plates_max_replicate_loaded" tracking hash in screen_result load process
+    #    
     # def find_or_create_assay_plates_data_loaded(self,screen_result):
     # 
     #     # FIXME: create stats needed without creating assay_plates
@@ -1684,28 +1690,13 @@ class ScreenResultResource(ApiResource):
             
         screen_result.save()
         
-#         screen_result.screen.min_data_loaded_replicate_count
-#         screen_result.screen.max_data_loaded_replicate_count
-        
         self.create_screen_screening_statistics(screen_result.screen)
         
     
     def create_screen_screening_statistics(self, screen):
         
-        # calculated dynamically
-        # total_plated_lab_cherry_picks = models.IntegerField(null=False, default=0)
-        # assay_plates_screened_count = models.IntegerField(null=False, default=0)
-        # library_plates_screened_count = models.IntegerField(null=False, default=0)
-        # library_plates_data_loaded_count = models.IntegerField(null=False, default=0)
-        # min_screened_replicate_count = models.IntegerField(null=True, blank=True)
-        # max_screened_replicate_count = models.IntegerField(null=True, blank=True)
-        # min_data_loaded_replicate_count = models.IntegerField(null=True, blank=True)
-        # max_data_loaded_replicate_count = models.IntegerField(null=True, blank=True)
-        # libraries_screened_count = models.IntegerField(null=True, blank=True)
-        
         conn = self.bridge.get_engine().connect()
         screen_facility_id = screen.facility_id
-
         sql = (
             'select count(w.well_id) '
             'from Well w, Screen s  '
@@ -1720,7 +1711,6 @@ class ScreenResultResource(ApiResource):
             conn.execute(
                 sql, ('experimental', screen_facility_id))
             .scalar() or 0)
-        
         sql = (
             'select count(distinct(w.well_id)) '
             'from Well w, Screen s  '
@@ -1738,7 +1728,6 @@ class ScreenResultResource(ApiResource):
         
         # Not used:
         # library_plates_data_analyzed_count = models.IntegerField(null=False, default=0)
-    
         screen.save()
         
 
@@ -1774,7 +1763,7 @@ class DataColumnResource(ApiResource):
 
         data_column_id = kwargs.get('data_column_id', None)
         if not data_column_id:
-            logger.info(str(('no data_column_id provided')))
+            logger.info('no data_column_id provided')
             raise NotImplementedError('must provide a data_column_id parameter')
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
@@ -2016,21 +2005,18 @@ class CopyWellResource(ApiResource):
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
         ]
-
     def get_detail(self, request, **kwargs):
 
         library_short_name = kwargs.get('library_short_name', None)
         if not library_short_name:
-            logger.info(str(('no library_short_name provided')))
+            logger.info('no library_short_name provided')
          
         copy_name = kwargs.get('copy_name', None)
         if not copy_name:
-            logger.info(str(('no copy_name provided')))
             raise NotImplementedError('must provide a copy_name parameter')
         
         well_id = kwargs.get('well_id', None)
         if not well_id:
-            logger.info(str(('no well_id provided')))
             raise NotImplementedError('must provide a well_id parameter')
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
@@ -2074,10 +2060,7 @@ class CopyWellResource(ApiResource):
                     schema, param_hash=param_hash)
 
             if filter_expression is None:
-                msgs = { 'Copy well resource': 
-                    'can only service requests with filter expressions' }
-                raise ImmediateHttpResponse(
-                    response=self.error_response(request, msgs))
+                raise BadRequest('can only service requests with filter expressions')
                                   
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes,
@@ -2683,7 +2666,7 @@ class LibraryCopyResource(ApiResource):
         library_short_name = param_hash.pop('library_short_name',
             param_hash.get('library_short_name__eq', None))
         if not library_short_name:
-            logger.info(str(('no library_short_name provided')))
+            logger.info('no library_short_name provided')
         else:
             param_hash['library_short_name__eq'] = library_short_name
         name = param_hash.pop('name', param_hash.get('name', None))
@@ -2701,11 +2684,8 @@ class LibraryCopyResource(ApiResource):
                     schema, param_hash=param_hash)
 
             if filter_expression is None:
-                msgs = { 'Library copies resource': 
-                    'can only service requests with filter expressions' }
-                raise ImmediateHttpResponse(
-                    response=self.error_response(request, msgs))
-                                  
+                raise BadRequest('can only service requests with filter expressions')
+
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes,
                 param_hash.get('visibilities'),
@@ -2861,8 +2841,6 @@ class LibraryCopyResource(ApiResource):
             j = j.outerjoin(c2, text('c1.copy_id = c2.copy_id'))
             j = j.outerjoin(c3, text('c1.copy_id = c3.copy_id'))
             
-            logger.info(str(('====j', str(j))))
-            
             stmt = select(columns.values()).select_from(j)
             
             # general setup
@@ -2908,7 +2886,7 @@ class LibraryCopyResource(ApiResource):
         initializer_dict = {}
 
         # TODO: wrapper for parsing
-        logger.info('fields: %r, deserialized: %r', fields.keys(), deserialized)
+        logger.debug('fields: %r, deserialized: %r', fields.keys(), deserialized)
         for key in fields.keys():
             if deserialized.get(key, None) is not None:
                 initializer_dict[key] = parse_val(
@@ -2946,7 +2924,7 @@ class LibraryCopyResource(ApiResource):
                         deserialized.get(key, None), key,
                         fields[key]['data_type']) 
             if initializer_dict:
-                logger.info('initializer dict: %s', initializer_dict)
+                logger.debug('initializer dict: %s', initializer_dict)
                 for key, val in initializer_dict.items():
                     if hasattr(librarycopy, key):
                         setattr(librarycopy, key, val)
@@ -2958,12 +2936,12 @@ class LibraryCopyResource(ApiResource):
 
             # create librarycopyplates
             library = librarycopy.library
-            logger.info('create plates start: %d, end: %d',
+            logger.debug('create plates start: %d, end: %d',
                 library.start_plate, library.end_plate)
             for x in range(library.start_plate, library.end_plate + 1):
                 p = Plate.objects.create(copy=librarycopy, plate_number=x)
                 p.save()
-                logger.info('saved plate: %r', p.plate_number)
+                logger.debug('saved plate: %r', p.plate_number)
             
             logger.info('patch_obj done')
             return librarycopy
@@ -3059,7 +3037,6 @@ class AttachedFileResource(ApiResource):
             raise NotImplementedError('must provide a username parameter')
         try:
             user = ScreensaverUser.objects.get(username=username)
-            logger.info('using user %s' % user)
         except ObjectDoesNotExist:
             logger.exception('username does not exist: %s' % username)
             raise
@@ -3073,14 +3050,14 @@ class AttachedFileResource(ApiResource):
         try:
             admin_user = ScreensaverUser.objects.get(
                 username=created_by_username)
-            logger.info('using admin_user %s' % admin_user)
+            logger.debug('using admin_user %s' % admin_user)
         except ObjectDoesNotExist:
             logger.exception('created_by_username does not exist: %s',
                 created_by_username)
             raise
         file_date = param_hash.pop('file_date', None)
         if file_date:
-            logger.info(str(('file_date', file_date)))
+            logger.debug('file_date %r', file_date)
             file_date = parse_val(file_date, 'file_date', 'date')
             
         af = AttachedFile.objects.create(
@@ -3094,32 +3071,15 @@ class AttachedFileResource(ApiResource):
             af.file_date = file_date
         af.save()
         
-        # Log
-        new_dict = model_to_dict(af)
-        logger.info('log create: kwargs: %s, af: %s' % (kwargs, new_dict))
-
-        log_comment = None
-        if HEADER_APILOG_COMMENT in request.META:
-            log_comment = request.META[HEADER_APILOG_COMMENT]
-            logger.debug(str(('log comment', log_comment)))
-        
         schema = self.build_schema()
         id_attribute = resource = schema['id_attribute']
 
-        log = ApiLog()
-        log.username = request.user.username 
-        log.user_id = request.user.id 
-        log.date_time = timezone.now()
+        new_dict = model_to_dict(af)
+        log = self.make_log(request, **kwargs)
         log.ref_resource_name = self._meta.resource_name
         log.key = '/'.join([str(new_dict[x]) for x in id_attribute])
         log.uri = '/'.join([self._meta.resource_name, log.key])
     
-        # user can specify any valid, escaped json for this field
-        # if 'apilog_json_field' in bundle.data:
-        #     log.json_field = bundle.data['apilog_json_field']
-        
-        log.comment = log_comment
-
         if 'parent_log' in kwargs:
             log.parent_log = kwargs.get('parent_log', None)
     
@@ -3132,7 +3092,7 @@ class AttachedFileResource(ApiResource):
 
         logger.info('attached file created: %s for user %s' % (af, user))
         
-        return http.HttpAccepted()
+        return tastypie.http.HttpAccepted()
         
         # NOTE: return data - multipart/form - what format?
         # if not self._meta.always_return_data:
@@ -3159,46 +3119,30 @@ class AttachedFileResource(ApiResource):
             af.delete()
     
             logger.info('deleted: %s' % kwargs)
-            log_comment = None
-            if HEADER_APILOG_COMMENT in request.META:
-                log_comment = request.META[HEADER_APILOG_COMMENT]
-                logger.debug(str(('log comment', log_comment)))
             
             schema = self.build_schema()
             id_attribute = resource = schema['id_attribute']
     
-            log = ApiLog()
-            log.username = request.user.username 
-            log.user_id = request.user.id 
-            log.date_time = timezone.now()
+            log = self.make_log(request, **kwargs)
             log.ref_resource_name = self._meta.resource_name
             log.key = '/'.join([str(_dict[x]) for x in id_attribute])
             log.uri = '/'.join([self._meta.resource_name, log.key])
-        
-            # user can specify any valid, escaped json for this field
-            # if 'apilog_json_field' in bundle.data:
-            #     log.json_field = bundle.data['apilog_json_field']
-            
-            log.comment = log_comment
-    
             if 'parent_log' in kwargs:
                 log.parent_log = kwargs.get('parent_log', None)
-        
             log.api_action = API_ACTION_DELETE
             log.added_keys = json.dumps(_dict.keys(), cls=DjangoJSONEncoder)
             log.diffs = json.dumps(_dict, cls=DjangoJSONEncoder)
             log.save()
-            logger.info(str(('delete, api log', log)))
+            logger.debug('delete, api log: %r', log)
 
-            return http.HttpNoContent()
+            return tastypie.http.HttpNoContent()
         except NotFound:
-            return http.HttpNotFound()
+            return tastypie.http.HttpNotFound()
 
     def get_detail(self, request, **kwargs):
 
         attached_file_id = kwargs.get('attached_file_id', None)
         if not attached_file_id:
-            logger.info(str(('no attached_file_id provided', kwargs)))
             raise NotImplementedError(
                 'must provide a attached_file_id parameter')
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
@@ -4209,8 +4153,7 @@ class LibraryScreeningResource(ActivityResource):
 
         # TODO: wrapper for parsing
         # FIXME: move parsing until after validation
-#         -------
-#         ------- FIXME: parse and validate only editable fields
+        # FIXME: parse and validate only editable fields
         
         for key in fields.keys():
             if deserialized.get(key, None) is not None:
@@ -4246,7 +4189,7 @@ class LibraryScreeningResource(ActivityResource):
                 raise ValidationError(
                     key=_key,
                     msg='does not exist: {val}'.format(val=_val))
-        logger.info('initializer_dict: %r', initializer_dict)
+        logger.debug('initializer_dict: %r', initializer_dict)
         try:
             library_screening = None
             if patch:
@@ -4489,9 +4432,9 @@ class ServiceActivityResource(ActivityResource):
         initializer_dict['service_activity_type'] = activity_type
         performed_by_username = deserialized.get('performed_by_username', None)
         if not performed_by_username:
-            raise Exception(
-                'performed_by_username not specified %s' % deserialized)
-
+            raise ValidationError(
+                key='performed_by_username',
+                msg='required')
         try:
             serviced_user = ScreensaverUser.objects.get(
                 username=serviced_username)
@@ -4525,7 +4468,6 @@ class ServiceActivityResource(ActivityResource):
                 activity = Activity.objects.create(
                     performed_by=performed_by_user,
                     date_of_activity=initializer_dict['date_of_activity'])
-            logger.info(str(('initializer dict', initializer_dict)))
             for key, val in initializer_dict.items():
                 if hasattr(activity, key):
                     # note: setattr only works for simple attributes, not foreign keys
@@ -4740,7 +4682,6 @@ class ScreenResource(ApiResource):
 
         facility_id = kwargs.get('facility_id', None)
         if not facility_id:
-            logger.info(str(('no facility_id provided')))
             raise NotImplementedError('must provide a facility_id parameter')
         
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
@@ -5042,8 +4983,9 @@ class ScreenResource(ApiResource):
                 .select_from(_su)
                 .where(_su.c.screensaver_user_id == _screen.c.lead_screener_id)),
             'has_screen_result': literal_column(
-                '(select screen_result_id is not null from screen_result '
-                '     where screen_id=screen.screen_id  ) '
+                '(select dc.data_column_id is not null '
+                '     from data_column dc join screen_result using(screen_result_id) '
+                '     where screen_id=screen.screen_id limit 1 ) '
                 ),
             'cell_lines': (
                 select([
@@ -5557,15 +5499,12 @@ class UserChecklistItemResource(ApiResource):
 
         username = kwargs.get('username', None)
         if not username:
-            logger.info(str(('no username provided')))
             raise NotImplementedError('must provide a username parameter')
         item_group = kwargs.get('item_group', None)
         if not item_group:
-            logger.info(str(('no item_group provided')))
             raise NotImplementedError('must provide a item_group parameter')
         item_name = kwargs.get('item_name', None)
         if not item_name:
-            logger.info(str(('no item_name provided')))
             raise NotImplementedError('must provide a item_name parameter')
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
@@ -5778,7 +5717,6 @@ class UserChecklistItemResource(ApiResource):
                     'UserChecklistItem does not exist: %s/%s/%s, creating' 
                     % (username, item_group, item_name))
                 uci = UserChecklistItem()
-            logger.info(str(('initializer dict', initializer_dict)))
             for key, val in initializer_dict.items():
                 if hasattr(uci, key):
                     # note: setattr does not work for foreign keys
@@ -6019,7 +5957,6 @@ class ScreensaverUserResource(ApiResource):
             _au = self.bridge['auth_user']
             _up = self.bridge['reports_userprofile']
             _s = self.bridge['screen']
-#             _cl = self.bridge['collaborator_link']
             _screen_collab = self.bridge['screen_collaborators']
             _fur = self.bridge['user_facility_usage_role']
             _lhsu = _su.alias('lhsu')
@@ -6239,7 +6176,6 @@ class ScreensaverUserResource(ApiResource):
                         deserialized.get(key, None), key,
                         fields[key]['data_type']) 
             if initializer_dict:
-                logger.info('initializer dict: %s', initializer_dict)
                 for key, val in initializer_dict.items():
                     if hasattr(screensaver_user, key):
                         setattr(screensaver_user, key, val)
@@ -6437,7 +6373,7 @@ class SilencingReagentResource(ApiResource):
                 field_name = field['key']
             label = field['key']
             if DEBUG_BUILD_COLS: 
-                logger.info(str(('field[key]', field['key'])))
+                logger.info('field[key]: %r', field['key'])
             join_stmt = None
             join_column = None
             if field['key'] in vendor_columns:
@@ -6780,7 +6716,7 @@ class ReagentResource(ApiResource):
         
         library_short_name = param_hash.pop('library_short_name', None)
         if not library_short_name:
-            logger.info(str(('no library_short_name provided')))
+            logger.info('no library_short_name provided')
         else:
             param_hash['library_short_name__eq'] = library_short_name
             library = Library.objects.get(short_name=library_short_name)
@@ -6804,10 +6740,8 @@ class ReagentResource(ApiResource):
         try:
             
             # general setup
-             
             manual_field_includes = set(param_hash.get('includes', []))
-#             desired_format = self.get_format(request)
-            desired_format = self.get_format(request, **kwargs)
+            desired_format = self.get_serialize_format(request, **kwargs)
             if desired_format == SDF_MIMETYPE:
                 manual_field_includes.add('molfile')
   
@@ -6816,9 +6750,7 @@ class ReagentResource(ApiResource):
                     schema, param_hash=param_hash, **kwargs)
             
             if filter_expression is None:
-                msgs = { 'reagent resource': 
-                    'can only service requests with filter expressions' }
-                raise ImmediateHttpResponse(response=self.error_response(request, msgs))
+                raise BadRequest('can only service requests with filter expressions')
                  
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes,
@@ -6869,30 +6801,30 @@ class ReagentResource(ApiResource):
                 field_hash.values(), base_query_tables=base_query_tables,
                 custom_columns=sub_columns)
             
-# Could use the library param to limit the column building exercise
-# to the sub-resource, but since all columns can be joined, just include
-# the SR columns, as above.            
-#             sub_resource = None
-#             if library:
-#                 sub_resource = self.get_reagent_resource(library_screen_type=library.screen_type)
-#             if sub_resource and hasattr(sub_resource, 'build_sqlalchemy_columns'):
-#                 sub_columns = sub_resource.build_sqlalchemy_columns(
-#                     field_hash.values(), self.bridge)
-#                 if DEBUG_GET_LIST: 
-#                     logger.info(str(('sub_columns', sub_columns.keys())))
-#                 columns = self.build_sqlalchemy_columns(
-#                     field_hash.values(), base_query_tables=base_query_tables,
-#                     custom_columns=sub_columns)
-#             else:
-# 
-#                 sub_columns = sub_resource.build_sqlalchemy_columns(
-#                     field_hash.values(), self.bridge)
-#                 if DEBUG_GET_LIST: 
-#                     logger.info(str(('sub_columns', sub_columns.keys())))
-#                 columns = self.build_sqlalchemy_columns(
-#                     field_hash.values(), base_query_tables=base_query_tables,
-#                     custom_columns=sub_columns)
-#                 
+            # Could use the library param to limit the column building exercise
+            # to the sub-resource, but since all columns can be joined, just include
+            # the SR columns, as above.            
+            # sub_resource = None
+            # if library:
+            #     sub_resource = self.get_reagent_resource(library_screen_type=library.screen_type)
+            # if sub_resource and hasattr(sub_resource, 'build_sqlalchemy_columns'):
+            #     sub_columns = sub_resource.build_sqlalchemy_columns(
+            #         field_hash.values(), self.bridge)
+            #     if DEBUG_GET_LIST: 
+            #         logger.info(str(('sub_columns', sub_columns.keys())))
+            #     columns = self.build_sqlalchemy_columns(
+            #         field_hash.values(), base_query_tables=base_query_tables,
+            #         custom_columns=sub_columns)
+            # else:
+            # 
+            #     sub_columns = sub_resource.build_sqlalchemy_columns(
+            #         field_hash.values(), self.bridge)
+            #     if DEBUG_GET_LIST: 
+            #         logger.info(str(('sub_columns', sub_columns.keys())))
+            #     columns = self.build_sqlalchemy_columns(
+            #         field_hash.values(), base_query_tables=base_query_tables,
+            #         custom_columns=sub_columns)
+            #      
                 
 #                 # Note: excludes smr,rnai,np,... tables if library not specified
 #                 logger.info(str(('build generic resource columns')))
@@ -6932,7 +6864,6 @@ class ReagentResource(ApiResource):
         except Exception, e:
             logger.exception('on get list')
             raise e  
-        
  
     def get_sr_resource(self):
         if not self.sr_resource:
@@ -6972,12 +6903,12 @@ class ReagentResource(ApiResource):
                 
     def get_schema(self, request, **kwargs):
         if not 'library_short_name' in kwargs:
-            return self.create_response(request, self.build_schema())
+            return self.build_response(request, self.build_schema(), **kwargs)
         
         library_short_name = kwargs.pop('library_short_name')
         try:
             library = Library.objects.get(short_name=library_short_name)
-            return self.create_response(request, self.build_schema(library))
+            return self.build_response(request, self.build_schema(library), **kwargs)
             
         except Library.DoesNotExist, e:
             raise Http404(str(('cannot build schema - library def needed'
@@ -7024,7 +6955,7 @@ class WellResource(ApiResource):
 
     class Meta:
 
-        queryset = Well.objects.all()  # .order_by('facility_id')
+        queryset = Well.objects.all()
         authentication = MultiAuthentication(BasicAuthentication(),
                                              SessionAuthentication())
         authorization = UserGroupAuthorization()
@@ -7044,40 +6975,30 @@ class WellResource(ApiResource):
         self.reagent_resource = None
         super(WellResource, self).__init__(**kwargs)
 
-    def deserialize(self, request, data=None, format=None):
+    def deserialize(self, request):
         '''
-        Override deserialize so we can pull apart the multipart form and get the 
-        uploaded content.
-        Note: native TP doesn't support multipart uploads, this will support
-        standard multipart form uploads in modern browsers
+        Override deserialize to access the multipart/form-data content.
         '''
-        logger.info('deserialize: %r', format)
-        if not format:
-            format = request.META.get('CONTENT_TYPE', 'application/json')
-        logger.info('format: %r', format)
+        format = self.get_deserialize_format(request)
+        logger.info('well deserialize format: %r', format)
         if format.startswith('multipart'):
             logger.info('request.Files.keys: %r', request.FILES.keys())
             if len(request.FILES.keys()) != 1:
-                raise ImmediateHttpResponse(
-                    response=self.error_response(
-                        request,
-                        { 'FILES': 'File upload supports only one file at a time',
-                          'filenames': request.FILES.keys(),
-                        }
-                ))
+                raise BadRequest({ 
+                    'FILES': 'File upload supports only one file at a time',
+                    'filenames': request.FILES.keys(),
+                })
              
             if 'sdf' in request.FILES:  
                 # process *only* the first file
                 file = request.FILES['sdf']
                 logger.info('file: %r', file)
-                format = SDF_MIMETYPE
-                 
                 # NOTE: 
                 # override super, because it ignores the format and 
                 # grabs it again from the Request headers 
                 # (which is "multipart...")
                 deserialized = self._meta.serializer.deserialize(
-                    file.read(), format=format)
+                    file.read(), format=SDF_MIMETYPE)
  
             elif 'xls' in request.FILES:
                 # TP cannot handle binary file formats - it is calling 
@@ -7085,8 +7006,8 @@ class WellResource(ApiResource):
                 file = request.FILES['xls']
                 deserialized = self._meta.xls_serializer.from_xls(file.read())
             else:
-                raise UnsupportedFormat(
-                    'UnsupportedFormat %r', request.FILES.keys())
+                raise BadRequest(
+                    'Unsupported multipart file key: %r', request.FILES.keys())
          
         elif format == 'application/xls':
             # TP cannot handle binary file formats - it is calling 
@@ -7094,8 +7015,7 @@ class WellResource(ApiResource):
             deserialized = self._meta.xls_serializer.from_xls(request.body)
              
         else:
-            deserialized = super(WellResource, self).deserialize(
-                request, request.body, format)    
+            deserialized = super(WellResource, self).deserialize(request)    
          
         return deserialized
     
@@ -7147,12 +7067,12 @@ class WellResource(ApiResource):
                 
     def get_schema(self, request, **kwargs):
         if not 'library_short_name' in kwargs:
-            return self.create_response(request, self.build_schema())
+            return self.build_response(request, self.build_schema(),**kwargs)
         
         library_short_name = kwargs.pop('library_short_name')
         try:
             library = Library.objects.get(short_name=library_short_name)
-            return self.create_response(request, self.build_schema(library))
+            return self.build_response(request, self.build_schema(library),**kwargs)
             
         except Library.DoesNotExist, e:
             raise Http404(str(('cannot build schema - library def needed'
@@ -7164,14 +7084,10 @@ class WellResource(ApiResource):
         if library:
             sub_data = self.get_reagent_resource().build_schema(
                 library=library)
-#             data = deepcopy(data)
-            
             newfields = {}
             newfields.update(sub_data['fields'])
             newfields.update(data['fields'])
-#             data.update(sub_data)
             data['fields'] = newfields
-
         temp = [ 
             x.title.lower() 
                 for x in 
@@ -7180,15 +7096,12 @@ class WellResource(ApiResource):
             'label': 'Type',
             'searchColumn': 'library_well_type',
             'options': temp }
-
         return data
     
     def get_detail(self, request, **kwargs):
-        logger.info(str(('get_detail')))
 
         well_id = kwargs.get('well_id', None)
         if not well_id:
-            logger.info(str(('no well_id provided')))
             raise NotImplementedError('must provide a well_id parameter')
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
@@ -7227,9 +7140,7 @@ class WellResource(ApiResource):
         if 'library_short_name' not in kwargs:
             raise BadRequest('library_short_name is required')
         
-        logger.info('deserializing well upload...')
-        deserialized = self.deserialize(request, request.body, format=None)
-        
+        deserialized = self.deserialize(request)
         if not self._meta.collection_name in deserialized:
             raise BadRequest("Invalid data sent, must be nested in '%s'" 
                 % self._meta.collection_name)
@@ -7266,10 +7177,9 @@ class WellResource(ApiResource):
                 library.version_number = 1
             library.save()
             
-            library_log = self.make_log(request)
+            library_log = self.make_log(request, **kwargs)
             library_log.diff_keys = ['version_number']
-            library_log.diffs = {
-                'version_number': [prev_version, library.version_number]}
+            library_log.diffs = { 'version_number': [prev_version, library.version_number]}
             library_log.ref_resource_name = 'library'
             library_log.uri = self.get_library_resource().get_resource_uri(
                 model_to_dict(library))
@@ -7277,15 +7187,12 @@ class WellResource(ApiResource):
                 '/'.join(
                     self.get_library_resource()
                         .get_id(model_to_dict(library)).values()))
-            library_log.save()
     
             # Cache all the wells on the library for use with this process 
             wellMap = dict((well.well_id, well) 
                 for well in library.well_set.all())
             if len(wellMap) == 0:
-                errors = { 'library': 'Library wells have not been created'}
-                raise ImmediateHttpResponse(
-                    response=self.error_response(request, errors))
+                raise BadRequest('Library wells have not been created')
     
             for well_data in deserialized:
                 well_data['library_short_name'] = kwargs['library_short_name']
@@ -7299,17 +7206,15 @@ class WellResource(ApiResource):
                             str(plate_number).zfill(5), well_name)
     
                 if not well_id:
-                    raise ImmediateHttpResponse(
-                        response=self.error_response(
-                            request, {'well_id': 'required'}))
+                    raise BadRequest('well_id is required')
                 
                 well = wellMap.get(well_id, None)
                 if not well:
-                    raise ImmediateHttpResponse(response=self.error_response(
-                        request, {
-                            'well_id': 'well %r not found for this library %r'
-                            % (well_id, well_data['library_short_name'])
-                        }))
+                    raise ValidationError(
+                        key='well_id',
+                        msg=('well %r not found for this library %r'
+                            % (well_id, well_data['library_short_name']))
+                    )
                     
                 kwargs.update({ 'library': library })
                 kwargs.update({ 'well': well })
@@ -7318,9 +7223,7 @@ class WellResource(ApiResource):
                     self.patch_obj(well_data, **kwargs)
                 except ValidationError, e:
                     logger.exception('Validation error: %r', e)
-                    raise ImmediateHttpResponse(
-                        response=self.error_response(request, e.errors))
-
+                    raise e
 
             experimental_well_count = library.well_set.filter(
                 library_well_type__iexact='experimental').count()
@@ -7328,9 +7231,10 @@ class WellResource(ApiResource):
                 library_log.diff_keys.append('experimental_well_count')
                 library_log.diffs['experimental_well_count'] = \
                     [library.experimental_well_count, experimental_well_count]
-                library_log.save()
                 library.experimental_well_count = experimental_well_count
                 library.save()
+
+            library_log.save()
                 
         # get new wells state, for logging
         new_data = self._get_list_response(request, **kwargs_for_log)
@@ -7351,7 +7255,7 @@ class WellResource(ApiResource):
             **kwargs)
         
         if not self._meta.always_return_data:
-            return http.HttpAccepted()
+            return tastypie.http.HttpAccepted()
         else:
             response = self.get_list(request, **kwargs)             
             response.status_code = 200
@@ -7457,7 +7361,6 @@ class LibraryResource(ApiResource):
 
         library_short_name = kwargs.pop('short_name', None)
         if not library_short_name:
-            logger.info(str(('no library_short_name provided')))
             raise NotImplementedError('must provide a short_name parameter')
         else:
             kwargs['short_name__eq'] = library_short_name
@@ -7839,7 +7742,6 @@ class LibraryResource(ApiResource):
                         # FIXME: use vocabularies for well type
                         well.library_well_type = 'undefined'
                         bulk_create_wells.append(well)
-#                         well.save()
                         i += 1
                         if i % 38400 == 0:
                             logger.info('created %d wells', i)

@@ -1,6 +1,8 @@
 from __future__ import unicode_literals
 
 import django.core.exceptions
+import django.utils.timezone
+
 from collections import OrderedDict
 import logging
 
@@ -38,4 +40,12 @@ class ValidationError(Exception):
     
 class ParseError(ValidationError):
     pass
+
+def _now():
+    d = django.utils.timezone.now()
+    if d.tzinfo:
+        d = django.utils.timezone.localtime(d)
+    logger.debug('timezone: %r, %r', d.tzinfo, d )
+    return d
+
 

@@ -325,11 +325,17 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           if(uriStack[0] == '+add'){
             self.showAdd(resource, uriStack);
           }else{ 
-            var _key = Iccbl.popKeyFromStack(resource, uriStack, consumedStack );
-            appModel.getModel(uiResourceId, _key, function(model){
-              model.resource = resource;
-              self.showDetail(uriStack, model);
-            });
+            try{
+              var _key = Iccbl.popKeyFromStack(resource, uriStack, consumedStack );
+              appModel.getModel(uiResourceId, _key, function(model){
+                model.resource = resource;
+                self.showDetail(uriStack, model);
+              });
+            }catch(e){
+              var msg = 'Unable to display resource: ' + uiResourceId;
+              console.log(msg,e);
+              this.error(msg);
+            }
           }
         } else {
           // LIST VIEW

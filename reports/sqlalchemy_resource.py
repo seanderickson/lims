@@ -697,6 +697,7 @@ class SqlAlchemyResource(IccblBaseResource):
                 format='json',
                 includes=includes,
                 **kwargs)
+            logger.info('get_list_response...')
             _data = self._meta.serializer.deserialize(
                 request,
                 LimsSerializer.get_content(response), format='application/json')
@@ -879,7 +880,7 @@ class SqlAlchemyResource(IccblBaseResource):
                 logger.info(str(('count stmt', str(count_stmt))))
             
 #             desired_format = param_hash.get('desired_format',self.get_format(request))
-            desired_format = self.get_format(request, **param_hash)
+            desired_format = self.get_serialize_format(request, **param_hash)
             logger.debug('---- desired_format: %r, hash: %r', desired_format, param_hash)
             result = None
             if desired_format == 'application/json':
@@ -973,7 +974,7 @@ class SqlAlchemyResource(IccblBaseResource):
     
 #             desired_format = param_hash.get(
 #                 'desired_format',self.get_format(request))
-            desired_format = self.get_format(request, **param_hash)
+            desired_format = self.get_serialize_format(request, **param_hash)
             content_type=build_content_type(desired_format)
             logger.debug('desired_format: %s, content_type: %s', 
                 desired_format, content_type)

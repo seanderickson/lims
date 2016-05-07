@@ -1,7 +1,51 @@
 # TODO: convert to openpyxl
 import xlrd
+import xlsxwriter
+from reports.serialize import dict_to_rows, csvutils
+from tastypie.exceptions import BadRequest
+import logging
+from db.support.data_converter import default_converter
+
+logger = logging.getLogger(__name__)
+
 
 LIST_DELIMITER_XLS = ';'
+
+def generic_xls_write_workbook(file, data):
+    '''Writes a dict of iterables to a workbook, 
+    where each iterable is ready to write
+    '''
+    wb = xlsxwriter.Workbook(file, {'constant_memory': True})
+    
+    if isinstance(data, dict):
+        logger.info('generic_xls_write_workbook for data: %r', data.keys())
+        for key, sheet_rows in data.items():
+            sheet_name = default_converter(key)
+            logger.info('writing sheet %r...', sheet_name)
+            sheet = wb.add_worksheet(sheet_name)
+            if isinstance(sheet_rows, dict):
+                for i, row in enumerate(dict_to_rows(sheet_rows)):
+                    sheet.write_row(i,0,row)
+            elif isinstance(sheet_rows, basestring):
+                sheet.write_string(0,0,sheet_rows)
+            else:
+                write_rows_to_sheet(sheet_rows, sheet)
+    else:
+        raise BadRequest(
+            'unknown data for generic xls serialization: %r' % type(data))
+    logger.info('save to file; %r', file.name)
+    wb.close()
+
+def write_rows_to_sheet(rows, sheet):
+    for row,values in enumerate(rows):
+        for i, val in enumerate(values):
+            val = csvutils.csv_convert(val, delimiter=LIST_DELIMITER_XLS)
+            if val:
+                if len(val) > 32767: 
+                    logger.error('warn, row too long, %d, key: %r, len: %d', 
+                        row,key,len(val) )
+                sheet.write_string(row,i,val)
+
 
 def read_string(cell):
     value = cell.value

@@ -17,7 +17,7 @@ from xlsxwriter.utility import xl_col_to_name
 logger = logging.getLogger(__name__)
 
 from reports.serialize.xlsutils import sheet_cols, sheet_rows, \
-    sheet_rows_by_colnames, workbook_sheets
+    sheet_rows_by_colnames, workbook_sheets, generic_xls_write_workbook
 
 
 PARTITION_POSITIVE_MAPPING = {
@@ -450,7 +450,7 @@ def read_workbook(wb):
 #     
 # def serialize_to_workbook(data):
 # ####
-# replaced by create_data_structure
+# replaced by create_output_data
 # 
 # 
 # #####
@@ -473,7 +473,12 @@ def read_workbook(wb):
 #     
 #     return create_workbook(screen_facility_id, fields, result_values)
     
-def create_data_structure(screen_facility_id, fields, result_values ):
+def write_workbook(file, screen_facility_id, fields, result_values):
+    generic_xls_write_workbook(
+        file, 
+        create_output_data(screen_facility_id, fields, result_values ))
+    
+def create_output_data(screen_facility_id, fields, result_values ):
     '''
     Translate Screen Result data into a data structure ready for Serialization:
     {
@@ -595,6 +600,16 @@ def read_file(input_file):
        "Data Sheets: old format ["PL_0001", "PL_0002, etc ]
        - new format: one sheet with a plate number column
     '''
+    # FIXME: use openpyxl for memory optimization
+    # from openpyxl import load_workbook
+    # wb = load_workbook(filename='large_file.xlsx', read_only=True)
+    # ws = wb['big_data'] # ws is now an IterableWorksheet
+    # 
+    # for row in ws.rows:
+    #     for cell in row:
+    #         print(cell.value)    
+    
+    
     logger.info('open screen result file for loading...')
     wb = xlrd.open_workbook(file_contents=input_file.read())
     return read_workbook(wb)

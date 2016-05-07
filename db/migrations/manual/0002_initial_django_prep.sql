@@ -247,7 +247,24 @@ update well set molar_concentration = molar_concentration*1000000;
 alter table well rename COLUMN molar_concentration to micro_molar_concentration;
 **/
 
-/** change timestamp fields to use timezone information **/
+/** 
+  Change timestamp fields to use timezone information:
+  From the docs:
+  The PostgreSQL backend stores datetimes as timestamp with time zone. 
+  In practice, this means it converts datetimes from the connection’s time zone 
+  to UTC on storage, and from UTC to the connection’s time zone on retrieval.
+  
+  As a consequence, if you’re using PostgreSQL, you can switch between 
+  USE_TZ = False and USE_TZ = True freely. The database connection’s time zone 
+  will be set to TIME_ZONE or UTC respectively, so that Django obtains correct 
+  datetimes in all cases. You don’t need to perform any data conversions.
+  
+  Note: it appears that legacy Screensaver dates were stored without timezone
+  information. This modification will apply the database default timezone 
+  (America/New_York for orchestra), which will be correct.
+
+** MOVED TO MIGRATION 0002 ***
+
 alter table library alter column date_created SET DATA TYPE timestamp with time zone;
 alter table library alter column date_loaded SET DATA TYPE timestamp with time zone; 
 alter table library alter column date_publicly_available SET DATA TYPE timestamp with time zone;
@@ -259,6 +276,12 @@ alter table screen alter column date_publicly_available SET DATA TYPE timestamp 
 alter table screensaver_user alter column date_created SET DATA TYPE timestamp with time zone;
 alter table screensaver_user alter column date_loaded SET DATA TYPE timestamp with time zone; 
 alter table screensaver_user alter column date_publicly_available SET DATA TYPE timestamp with time zone;
+
+alter table screen_result alter column date_loaded SET DATA TYPE timestamp with time zone;
+alter table screen_result alter column date_publicly_available SET DATA TYPE timestamp with time zone;
+alter table screen_result alter column date_created SET DATA TYPE timestamp with time zone;
+ **/
+
 
 /**
   Add id field to screensaver_user_role:

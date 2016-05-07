@@ -6,8 +6,7 @@ import re
 
 from django.conf import settings
 from django.core.cache import cache
-from django.http.response import HttpResponseBase
-from django.utils import timezone
+from django.http.response import HttpResponseBase, HttpResponse
 from django.utils.cache import patch_cache_control, patch_vary_headers
 from django.views.decorators.csrf import csrf_exempt
 from tastypie.exceptions import ImmediateHttpResponse, BadRequest
@@ -15,7 +14,7 @@ from tastypie.http import HttpBadRequest, HttpNotImplemented, HttpNoContent
 from tastypie.resources import Resource, convert_post_to_put, sanitize
 from tastypie.utils.mime import build_content_type
 
-from reports import HEADER_APILOG_COMMENT, ValidationError
+from reports import HEADER_APILOG_COMMENT, ValidationError, _now
 from reports.models import ApiLog
 from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE, \
     CSV_MIMETYPE, JSON_MIMETYPE
@@ -66,20 +65,25 @@ class IccblBaseResource(Resource):
     def set_caching(self,use_cache):
         self.use_cache = use_cache
 
-    def serialize(self, request, data, format, options=None):
-        options = options or {}
-        return self._meta.serializer.serialize(data, format, options)
+    def build_response(self, request, data, **kwargs):
+        serialized = self.serialize(request, data, **kwargs)
+        desired_format = self.get_serialize_format(request,**kwargs)
+        return HttpResponse(
+            content=serialized, 
+            content_type=build_content_type(desired_format))
+        
+    def serialize(self, request, data, **kwargs):
+        desired_format = self.get_serialize_format(request, **kwargs)
+        return self._meta.serializer.serialize(data, desired_format)
 
-    def deserialize(self, request, data, format='application/json'):
-        deserialized = self._meta.serializer.deserialize(
-            data, format=request.META.get('CONTENT_TYPE', 'application/json'))
-        return deserialized
+    def deserialize(self, request, data, **kwargs):
+        return self._meta.serializer.deserialize(request, data, **kwargs)
 
     def make_log(self, request, **kwargs):
         log = ApiLog()
         log.username = request.user.username 
         log.user_id = request.user.id 
-        log.date_time = timezone.now()
+        log.date_time = _now()
         log.api_action = str((request.method)).upper()
  
         # TODO: how do we feel about passing form data in the headers?
@@ -116,9 +120,13 @@ class IccblBaseResource(Resource):
         logger.debug('get_filename: %r, %r' % (filename, kwargs))
         return filename
     
-    def get_format(self, request, **kwargs):
+    def get_deserialize_format(self, request, **kwargs):
         
-        return self._meta.serializer.get_format(request,**kwargs)
+        return self._meta.serializer.get_deserialize_format(request,**kwargs)
+
+    def get_serialize_format(self, request, **kwargs):
+        
+        return self._meta.serializer.get_serialize_format(request,**kwargs)
 
     def wrap_view(self, view):
         """
@@ -160,16 +168,20 @@ class IccblBaseResource(Resource):
                 return response
             except (BadRequest) as e:
                 data = {"error": sanitize(e.args[0]) if getattr(e, 'args') else ''}
-                return self.error_response(request, data, response_class=HttpBadRequest)
+                
+                serialized = self.serialize(request, data, **kwargs)
+                desired_format = self.get_serialize_format(request,**kwargs)
+                return HttpBadRequest(
+                    content=serialized, 
+                    content_type=build_content_type(desired_format))
+                # return self.error_response(request, data, response_class=HttpBadRequest)
+            
             except ValidationError as e:
                 logger.info('validation error: %r', e)
-                # TODO: make this compatible with the 
-                # django.core.exceptions.ValidationError
-                # 20160419 - sde
-                desired_format = self.get_format(request)
+                desired_format = self.get_serialize_format(request)
                 try:
                     serialized = self.serialize(
-                        request, { 'errors': e.errors }, desired_format)
+                        request, { 'errors': e.errors }, **kwargs)
                     response =  HttpBadRequest(
                         content=serialized, content_type=desired_format)
                     if desired_format in [XLSX_MIMETYPE, XLS_MIMETYPE]:

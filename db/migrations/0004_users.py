@@ -189,10 +189,13 @@ def create_screensaver_users(apps, schema_editor):
             up.save()
                 
         su.user = up
-        su.save()
-        logger.debug('saved %r, %s' % (up,up.username))
-        i += 1
-        
+        try:
+            logger.info('save %r, %s' % (up,up.username))
+            su.save()
+            logger.debug('saved %r, %s' % (up,up.username))
+            i += 1
+        except Exception, e:
+            logger.exception('unable to save the converted user: %r', su.username )
     logger.info(str(( 'Converted ', i , ' users, skipped: ', skip_count)))
     
 # FIXME: 20150722 - NOT FINISHED ROLES

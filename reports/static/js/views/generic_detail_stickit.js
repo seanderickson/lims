@@ -139,8 +139,9 @@ define([
       
       function dateGetter(value){
         if (value && !_.isEmpty(value)) {
+          console.log('date',value, new Date(value));
           try {
-            return Iccbl.getUTCDateString(new Date(value));
+            return Iccbl.getDateString(new Date(value));
           } catch(e) {
             var msg = Iccbl.formatString(
               'unable to parse date value: {value}, for field: {field}',
@@ -178,12 +179,12 @@ define([
           return value;
         }
       }
-      updateMethod: 'html',
       function booleanGetter(value){
         if(_.isBoolean(value)){
-          return value;
+          if (value === true) return 'True';
+          else return 'False';
         }else{
-          return false;
+          return value;
         }
       }
             
@@ -191,10 +192,10 @@ define([
         'date': dateGetter,
         'list': listGetter,
         'float': decimalGetter,
-        'decimal': decimalGetter
+        'decimal': decimalGetter,
         //'integer': defaultGetter,
         //'string' : defaultGetter,
-        //'boolean' : defaultGetter
+        'boolean' : booleanGetter
         //'datetime': defaultGetter,
       };
       
@@ -219,7 +220,7 @@ define([
           _options.target = '_self';
         } 
 
-        if(value && !_.isNull(value)){
+        if(value && !_.isNull(value) && value != '-' ){
           var interpolatedVal = Iccbl.formatString(_options.hrefTemplate,self.model, value);
           if(vocabulary){
             value = getTitle(vocabulary,value);
@@ -257,13 +258,25 @@ define([
       // compose getter hierarchy; default<-data_type<-display_type<-vocabulary
       
       if(_.has(data_type_formatters, data_type)){
-        binding.onGet = _.compose(binding.onGet, data_type_formatters[data_type]);
+        binding.onGet = _.compose(binding.onGet,data_type_formatters[data_type]);
       }else{
         binding.onGet = _.compose(binding.onGet, defaultGetter);
       }
       if(_.has(display_type_formatters, display_type)){
         console.log('add getter for field: ', key, ', display_type: ', display_type);
-        binding.onGet = _.compose(baseGetter, display_type_formatters[display_type]);
+        if (display_type == 'linklist'){
+          // for the linklist, run the listgetter first
+          binding.onGet = _.compose(binding.onGet, display_type_formatters[display_type]);
+        }else if (display_type == 'siunit'){
+          // for siunit, skip other (i.e. decimalGetter)
+          binding.onGet = _.compose(baseGetter, display_type_formatters[display_type]);
+        }else if (display_type == 'link'){
+          // for linkGetter, run the other (i.e. dateGetter) first
+          binding.onGet = _.compose(display_type_formatters[display_type], binding.onGet);
+        }else{
+          console.log('unknown display type', display_type, key);
+          binding.onGet = _.compose(display_type_formatters[display_type], binding.onGet);
+        }
       }
 
       // FIXME: "nested" and "nested_list" are unused 20150629 after ui_type refactor to data_type

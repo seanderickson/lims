@@ -109,7 +109,7 @@ define([
                     modelVal));
               }
             }else if (data_type == 'date') {
-              modelVal = Iccbl.getUTCDateString(new Date(modelVal));
+              modelVal = Iccbl.getDateString(new Date(modelVal));
               expect(modelVal).to.be.equal(displayedVal);
             }else if(data_type=='list'){
               if(vocabulary){

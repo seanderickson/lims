@@ -946,11 +946,12 @@ define([
       }
       
       var msg_rows = dict_to_rows(jsonObj);
-      
-      var bodyMsg = _.map(msg_rows, function(msg_row){
-        return msg_row.join(' - ');
-      }).join('<br>');
-      
+      var bodyMsg = msg_rows;
+      if (_.isArray(msg_rows)){
+        bodyMsg = _.map(msg_rows, function(msg_row){
+          return msg_row.join(' - ');
+        }).join('<br>');
+      }
       
       Iccbl.appModel.showModalMessage({
         body: bodyMsg,

@@ -10,6 +10,7 @@ from django.utils import timezone
 from tastypie.utils.dict import dict_strip_unicode_keys
 from django.utils.encoding import python_2_unicode_compatible
 from collections import OrderedDict
+from django.core.serializers.json import DjangoJSONEncoder
 
 
 logger = logging.getLogger(__name__)
@@ -169,22 +170,41 @@ class ApiLog(models.Model):
         return unicode(str((self.api_action, self.ref_resource_name, self.key, 
             str(self.date_time), self.username, self.added_keys, self.removed_keys, 
             self.diff_keys, self.diffs, self.comment, self.json_field)))
+
+    @staticmethod   
+    def json_dumps(obj):
+        return json.dumps(
+            obj, skipkeys=False,check_circular=True, allow_nan=True, 
+            default=lambda x: str(x), cls=DjangoJSONEncoder)
+    
+    def save(self, **kwargs):
+        ''' override to convert json fields '''
+        if isinstance(self.added_keys, dict):
+            self.added_keys = self.json_dumps(self.added_keys)
+        
+        if isinstance(self.removed_keys, dict):
+            self.removed_keys = self.json_dumps(self.removed_keys)
+        
+        if isinstance(self.diff_keys, dict):
+            self.diff_keys = self.json_dumps(self.diff_keys)
+        
+        if isinstance(self.diffs, dict):
+            self.diffs = self.json_dumps(self.diffs)
+        
+        return models.Model.save(self, **kwargs)
     
     def diff_dict_to_api_log(self, log):
         '''
         Set the diff fields from a dict
         @param log a dict version of the diff fields
         '''
-        json_dumps = lambda y: json.dumps(
-            y, skipkeys=False,check_circular=True, allow_nan=True, 
-            default=lambda x: str(x))
         if 'added_keys' in log:
-            self.added_keys = json_dumps(log['added_keys'])
+            self.added_keys = self.json_dumps(log['added_keys'])
         if 'removed_keys' in log:
-            self.removed_keys = json_dumps(log['removed_keys'])
+            self.removed_keys = self.json_dumps(log['removed_keys'])
         if 'diff_keys' in log:
-            self.diff_keys = json_dumps(log['diff_keys'])
-            self.diffs = json_dumps(log['diffs'])
+            self.diff_keys = self.json_dumps(log['diff_keys'])
+            self.diffs = self.json_dumps(log['diffs'])
 
 
 class ListLog(models.Model):

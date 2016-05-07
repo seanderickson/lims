@@ -101,12 +101,26 @@ var getISODateString = Iccbl.getISODateString = function(jsDate){
  * - for display of dates in the UI
  * @param jsDate a JavaScript Date object
  */
-var getIccblUTCDateString = Iccbl.getUTCDateString = function(jsDate){
+var getIccblUTCDateString = Iccbl.getDateString = function(jsDate){
   if (!jsDate) return jsDate;
   return ( 
       lpad(jsDate.getUTCMonth() + 1, 2, 0) 
       + '/' + lpad(jsDate.getUTCDate(), 2, 0) 
       + '/' + lpad(jsDate.getUTCFullYear(), 4, 0) );
+}
+
+/**
+ * Returns the "ICCBL" formatted date part of the Date object, ignoring the timezone.
+ * "ICCBL" format is "MM/DD/YYYY"
+ * - for display of dates in the UI
+ * @param jsDate a JavaScript Date object
+ */
+var getIccblDateString = Iccbl.getDateString = function(jsDate){
+  if (!jsDate) return jsDate;
+  return ( 
+      lpad(jsDate.getMonth() + 1, 2, 0) 
+      + '/' + lpad(jsDate.getDate(), 2, 0) 
+      + '/' + lpad(jsDate.getFullYear(), 4, 0) );
 }
 
 var UrlStack = Iccbl.UrlStack = Backbone.Model.extend({
@@ -3701,13 +3715,13 @@ _.extend(DatetimeFormatter.prototype, {
       var jsDate = new Date(Date.UTC(DDMMYYYY[3] * 1 || 0,
         DDMMYYYY[2] * 1 - 1 || 0,
         DDMMYYYY[1] * 1 || 0));
-      return getIccblUTCDateString(jsDate);
+      return getIccblDateString(jsDate);
     }else{
       var temp = rawData.split('T')[0];
       if(this.DATE_RE.test(temp)){
         var YYYYMMDD = this.DATE_RE.exec(temp);
         var jsDate = new Date(Date.UTC(YYYYMMDD[1]*1, YYYYMMDD[2]*1-1, YYYYMMDD[3]*1 ))
-        return getIccblUTCDateString(jsDate);
+        return getIccblDateString(jsDate);
       }else{
         Iccbl.appModel.error('unrecognized date: ' + rawData );
       }
@@ -3778,7 +3792,7 @@ _.extend(DatetimeFormatter.prototype, {
       //    lpad(jsDate.getUTCFullYear(), 4, 0) 
       //    + '-' + lpad(jsDate.getUTCMonth() + 1, 2, 0) 
       //    + '-' + lpad(jsDate.getUTCDate(), 2, 0);
-      result = ( getIccblUTCDateString(jsDate) );
+      result = ( getIccblDateString(jsDate) );
       //          lpad(jsDate.getUTCMonth() + 1, 2, 0) 
       //          + '/' + lpad(jsDate.getUTCDate(), 2, 0) 
       //          + '/' + lpad(jsDate.getUTCFullYear(), 4, 0)

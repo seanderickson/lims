@@ -205,7 +205,7 @@ def add_timezone_to_timestamp_fields(apps, schema_editor):
         ('screen_result', ('date_created', 'date_loaded', 'date_publicly_available')),
         )
     
-    for table, columns in table_fields:
+    for table, columns in table_columns:
         for column in columns:
             schema_editor.execute(
                 ('ALTER TABLE {table} ALTER COLUMN {column} '

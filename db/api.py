@@ -422,6 +422,7 @@ class ScreenResultResource(ApiResource):
             self._create_well_data_column_positive_index_table(conn)
         
     def _create_well_query_index_table(self, conn):
+       
         try:
             conn.execute(text(
                 'CREATE TABLE "well_query_index" ('
@@ -709,6 +710,7 @@ class ScreenResultResource(ApiResource):
             
             conn = self.bridge.get_engine().connect()
             _aw = self.bridge['assay_well']
+            _w = self.bridge['well']
             _sr = self.bridge['screen_result']
             _s = self.bridge['screen']
             _rv = self.bridge['result_value']
@@ -852,10 +854,12 @@ class ScreenResultResource(ApiResource):
                 _wqx = _wqx.limit(limit)
             _wqx = _wqx.offset(offset)
             _wqx = _wqx.cte('wqx')
-            j = join(_wqx, _aw, _wqx.c.well_id == _aw.c.well_id)
+            # Join to well table first to take advantage of foreign key index
+            j = join(_wqx, _w, _wqx.c.well_id == _w.c.well_id)
+            j = j.join(_aw, _w.c.well_id == _aw.c.well_id )
             j = j.join(_sr, _aw.c.screen_result_id == _sr.c.screen_result_id)
             j = j.join(_s, _sr.c.screen_id == _s.c.screen_id)
-            
+
             # Using nested selects
             for fi in [
                 fi for fi in field_hash.values() 
@@ -890,7 +894,8 @@ class ScreenResultResource(ApiResource):
             stmt = select(columns.values()).select_from(j)
             stmt = stmt.where(
                 _aw.c.screen_result_id == screenresult.screen_result_id)
-            logger.debug('excute stmt %r',
+            logger.info('execute stmt...')
+            logger.info('excute stmt %r',
                 str(stmt.compile(compile_kwargs={"literal_binds": True})))
             result = conn.execute(stmt)
             logger.info('excuted base stmt')

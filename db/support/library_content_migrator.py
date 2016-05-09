@@ -8,9 +8,9 @@ from django.db import models
 from django.db.models import Count
 from django.forms.models import model_to_dict
 from django.utils import timezone
-from django.utils.timezone import make_aware
-from tastypie.bundle import Bundle
-from tastypie.resources import Resource
+# from django.utils.timezone import make_aware
+# from tastypie.bundle import Bundle
+# from tastypie.resources import Resource
 
 from db.api import SmallMoleculeReagentResource, WellResource, \
     SilencingReagentResource, NaturalProductReagentResource, LibraryResource
@@ -153,8 +153,9 @@ where r.library_contents_version_id=%s order by well_id;
                 if not log.user_id:
                     # logger.info(str(("can't find a user id for version", version, activity)))
                     log.user_id = 1
-                log.date_time = make_aware(
-                    activity.date_created,timezone.get_default_timezone())
+                log.date_time = activity.date_created
+#                 log.date_time = make_aware(
+#                     activity.date_created,timezone.get_default_timezone())
                 log.ref_resource_name = self.libraryResource._meta.resource_name
                 # TODO: what action? could also be a REST specifier, i.e. 'PATCH'
                 log.api_action = 'PUT'
@@ -275,7 +276,8 @@ where r.library_contents_version_id=%s order by well_id;
         # FIXME
         log.user_id = 1
         
-        log.date_time = make_aware(activity.date_created,timezone.get_default_timezone())
+#         log.date_time = make_aware(activity.date_created,timezone.get_default_timezone())
+        log.date_time = activity.date_created
         log.ref_resource_name = self.wellResource._meta.resource_name
         # TODO: what types here? could also be a REST specifier, i.e. 'PATCH'
         log.api_action = 'MIGRATION'

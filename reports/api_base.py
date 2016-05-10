@@ -65,13 +65,6 @@ class IccblBaseResource(Resource):
     def set_caching(self,use_cache):
         self.use_cache = use_cache
 
-    def build_response(self, request, data, **kwargs):
-        serialized = self.serialize(request, data, **kwargs)
-        desired_format = self.get_serialize_format(request,**kwargs)
-        return HttpResponse(
-            content=serialized, 
-            content_type=build_content_type(desired_format))
-        
     def serialize(self, request, data, **kwargs):
         desired_format = self.get_serialize_format(request, **kwargs)
         return self._meta.serializer.serialize(data, desired_format)
@@ -128,17 +121,70 @@ class IccblBaseResource(Resource):
         
         return self._meta.serializer.get_serialize_format(request,**kwargs)
 
+    def build_response(self, request, data, response_class=HttpResponse, **kwargs):
+        
+        serialized = self.serialize(request, data, **kwargs)
+        desired_format = self.get_serialize_format(request,**kwargs)
+        return response_class(
+            content=serialized, 
+            content_type=build_content_type(desired_format))
+
+    def build_error_response(self, request, data, response_class=HttpBadRequest, **kwargs):
+        format = 'json'
+        if kwargs and 'format' in kwargs:
+            format = kwargs['format']
+        try:
+            return self.build_response(
+                request, data, response_class=response_class, format=format)
+        except Exception, e:
+            logger.exception('On trying to serialize the error response: %r, %r',
+                data, e)
+            return HttpBadRequest(content=data, content_type='text/plain')
+
+    def _handle_500(self, request, exception):
+        ''' Override Tastypie for serialization'''
+        import traceback
+        import sys
+        the_trace = '\n'.join(traceback.format_exception(*(sys.exc_info())))
+        response_class = http.HttpApplicationError
+        response_code = 500
+
+        NOT_FOUND_EXCEPTIONS = (NotFound, ObjectDoesNotExist, Http404)
+
+        if isinstance(exception, NOT_FOUND_EXCEPTIONS):
+            response_class = HttpResponseNotFound
+            response_code = 404
+
+        if settings.DEBUG:
+            data = {
+                "error_message": sanitize(six.text_type(exception)),
+                "traceback": the_trace,
+            }
+            return self.error_response(request, data, response_class=response_class)
+
+        # When DEBUG is False, send an error message to the admins (unless it's
+        # a 404, in which case we check the setting).
+        send_broken_links = getattr(settings, 'SEND_BROKEN_LINK_EMAILS', False)
+
+        if not response_code == 404 or send_broken_links:
+            log = logging.getLogger('django.request.tastypie')
+            log.error('Internal Server Error: %s' % request.path, exc_info=True,
+                      extra={'status_code': response_code, 'request': request})
+
+        # Send the signal so other apps are aware of the exception.
+        got_request_exception.send(self.__class__, request=request)
+
+        # Prep the data going out.
+        data = {
+            "error_message": getattr(settings, 'TASTYPIE_CANNED_ERROR', "Sorry, this request could not be processed. Please try again later."),
+        }
+        return self.build_error_response(request, data, response_class=response_class)
+        
     def wrap_view(self, view):
         """
         Override the tastypie implementation to handle our own ValidationErrors.
-        
-        Wraps methods so they can be called in a more functional way as well
-        as handling exceptions better.
-
-        Note that if ``BadRequest`` or an exception with a ``response`` attr
-        are seen, there is special handling to either present a message back
-        to the user or return the response traveling with the exception.
         """
+
         @csrf_exempt
         def wrapper(request, *args, **kwargs):
             try:
@@ -166,62 +212,41 @@ class IccblBaseResource(Resource):
                     patch_cache_control(response, no_cache=True)
 
                 return response
-            except (BadRequest) as e:
+            except BadRequest as e:
+                # for BadRequest, the message is the first/only arg
                 data = {"error": sanitize(e.args[0]) if getattr(e, 'args') else ''}
-                
-                serialized = self.serialize(request, data, **kwargs)
-                desired_format = self.get_serialize_format(request,**kwargs)
-                return HttpBadRequest(
-                    content=serialized, 
-                    content_type=build_content_type(desired_format))
-                # return self.error_response(request, data, response_class=HttpBadRequest)
-            
+                return self.build_error_response(request, data, **kwargs)
             except ValidationError as e:
                 logger.info('validation error: %r', e)
-                desired_format = self.get_serialize_format(request)
-                try:
-                    serialized = self.serialize(
-                        request, { 'errors': e.errors }, **kwargs)
-                    response =  HttpBadRequest(
-                        content=serialized, content_type=desired_format)
-                    if desired_format in [XLSX_MIMETYPE, XLS_MIMETYPE]:
-                        response['Content-Disposition'] = \
-                            'attachment; filename=%s.xlsx' % 'errors'
-                        downloadID = request.GET.get('downloadID', None)
-                        if downloadID:
-                            logger.info('set cookie "downloadID" %r', downloadID )
-                            response.set_cookie('downloadID', downloadID)
-                        else:
-                            logger.debug('no downloadID: %s' % request.GET )
-                    return response
-                    
-                except BadRequest as e:
-                    error = "Additional errors occurred, but serialization of those errors failed."
-                    if settings.DEBUG:
-                        error += " %s" % e
-                    return HttpBadRequest(content=error, content_type='text/plain')
-        
-                return HttpBadRequest(
-                    content=serialized, 
-                    content_type=build_content_type(desired_format))
+                response = self.build_error_response(
+                    request, { 'errors': e.errors }, **kwargs)
+                if 'xls' in response['Content-Type']:
+                    response['Content-Disposition'] = \
+                        'attachment; filename=%s.xlsx' % 'errors'
+                    downloadID = request.GET.get('downloadID', None)
+                    if downloadID:
+                        logger.info('set cookie "downloadID" %r', downloadID )
+                        response.set_cookie('downloadID', downloadID)
+                    else:
+                        logger.debug('no downloadID: %s' % request.GET )
+                return response
+            
             except Exception as e:
                 if hasattr(e, 'response'):
+                    # A specific response was specified
                     return e.response
 
                 # A real, non-expected exception.
                 # Handle the case where the full traceback is more helpful
                 # than the serialized error.
                 if settings.DEBUG and getattr(settings, 'TASTYPIE_FULL_DEBUG', False):
-                    raise
-
-                # Re-raise the error to get a proper traceback when the error
-                # happend during a test case
-                if request.META.get('SERVER_NAME') == 'testserver':
+                    logger.warn('raise tastypie full exception for %r', e)
                     raise
 
                 # Rather than re-raising, we're going to things similar to
                 # what Django does. The difference is returning a serialized
                 # error message.
+                logger.info('handle 500 error...')
                 return self._handle_500(request, e)
 
         return wrapper

@@ -18,8 +18,6 @@ import mimeparse
 from openpyxl.workbook.workbook import Workbook
 from psycopg2.psycopg1 import cursor
 import six
-from tastypie.exceptions import UnsupportedFormat, BadRequest, \
-    ImmediateHttpResponse
 from tastypie.serializers import Serializer
 import xlrd
 
@@ -33,6 +31,7 @@ import reports.serialize.sdfutils as sdfutils
 from reports.serialize.streaming_serializers import generic_xlsx_response
 from reports.serialize.xlsutils import LIST_DELIMITER_XLS
 import reports.serialize.xlsutils as xlsutils
+from tastypie.exceptions import BadRequest
 
 
 logger = logging.getLogger(__name__)
@@ -73,9 +72,9 @@ class BaseSerializer(Serializer):
                 format = self.content_types[format]
                 logger.debug('format: %r', format)
             else:
-                logger.error('unknown format: %r, options: %r', 
-                    format, self.content_types)
-                raise ImmediateHttpResponse("unknown format: %s" % format)
+                msg = ( 'unknown format: %r, options: %r'
+                        % (format, self.content_types.keys()))
+                raise BadRequest(msg)
         elif request.META.get('CONTENT_TYPE', '*/*') != '*/*':
             format = request.META.get('CONTENT_TYPE', '*/*')
         else:
@@ -94,14 +93,12 @@ class BaseSerializer(Serializer):
             format = request.GET.get('format')
 
         if format:
-            logger.debug('mapping format: %r', format)
             if format in self.content_types:
                 format = self.content_types[format]
-                logger.debug('format: %r', format)
             else:
-                logger.error('unknown format: %r, options: %r', 
-                    format, self.content_types)
-                raise ImmediateHttpResponse("unknown format: %s" % format)
+                msg = ( 'unknown format: %r, options: %r' 
+                        % (format, self.content_types.keys()))
+                raise BadRequest(msg)
         elif request.META.get('HTTP_ACCEPT', '*/*') != '*/*':
             logger.debug('get_format: Try to fallback on the Accepts header')
             try:
@@ -122,15 +119,12 @@ class BaseSerializer(Serializer):
                         format = 'application/json'
 
                 if not format:
-                    raise ImmediateHttpResponse(
+                    raise BadRequest(
                         "no best match format for HTTP_ACCEPT: %r"
                         % request.META['HTTP_ACCEPT'])
-                logger.debug('format %s, HTTP_ACCEPT: %s', format, 
-                    request.META['HTTP_ACCEPT'])
             except ValueError:
-                logger.exception('Invalid Accept header: %r',
+                raise BadRequest('Invalid Accept header: %r',
                     request.META['HTTP_ACCEPT'])
-                raise ImmediateHttpResponse('Invalid Accept header')
         elif request.META.get('CONTENT_TYPE', '*/*') != '*/*':
             format = request.META.get('CONTENT_TYPE', '*/*')
 
@@ -147,11 +141,10 @@ class BaseSerializer(Serializer):
                 if hasattr(self, "to_%s" % short_format):
                     desired_format = short_format
                     break
-
         if desired_format is None:
-            raise UnsupportedFormat(
-                'Requested serialization format: %r is not one of the '
-                'available formats: %r' % (format, self.content_types.values()))
+            msg = ( 'unknown serialize format: %r, options: %r'
+                    % (format, self.content_types.values()))
+            raise BadRequest(msg)
 
         serialized = getattr(self, "to_%s" % desired_format)(data)
         return serialized
@@ -162,22 +155,17 @@ class BaseSerializer(Serializer):
         
         if not format:
             format = self.get_deserialize_format(request, format=format)
-
         desired_format = None
- 
         format = format.split(';')[0]
- 
         for short_format, long_format in self.content_types.items():
             if format == long_format:
                 if hasattr(self, "from_%s" % short_format):
                     desired_format = short_format
                     break
- 
         if desired_format is None:
-            raise UnsupportedFormat(
-                ("The format indicated '%s' had no available deserialization "
-                 "method. Please check your ``formats`` and ``content_types`` "
-                 "on your Serializer.") % format)
+            msg = ( 'unknown serialize format: %r, options: %r' 
+                    % (format, self.content_types.values()))
+            raise BadRequest(msg)
 
         if not content:
             content = request.body
@@ -189,6 +177,14 @@ class BaseSerializer(Serializer):
         deserialized = getattr(self, "from_%s" % desired_format)(content)
         return deserialized
 
+    def to_html(self, data, options=None):
+        ''' For error reporting '''
+        
+        if isinstance(data, six.string_types):
+            return data
+        else:
+            return '<br>'.join([str(row) for row in dict_to_rows(data)])
+            
 class BackboneSerializer(BaseSerializer):
     
     def from_json(self, content):
@@ -295,14 +291,12 @@ class XLSSerializer(BaseSerializer):
                 if hasattr(self, "from_%s" % short_format):
                     desired_format = short_format
                     break
-
         if desired_format is None:
-            raise UnsupportedFormat(
-                ("The format indicated '%s' had no available deserialization "
-                "method. Please check your ``formats`` and ``content_types`` "
-                "on your Serializer.") % format)
-        
-        # override for xls
+            msg = ( 'unknown serialize format: %r, options: %r' 
+                    % (format, self.content_types.values()))
+            raise BadRequest(msg)
+
+        # Override: do not force_text for xls
         # if isinstance(content, six.binary_type):
         #     content = force_text(content)
 
@@ -314,11 +308,13 @@ class XLSSerializer(BaseSerializer):
         return deserialized
     
     def to_xls(self,data, options=None):
-        # ALL XLS serialization is to xlsx
+
+        # Note: all XLS serialization is to xlsx
         return self.to_xlsx(data, options)
     
     def to_xlsx(self, data, options=None):
-        logger.info('serialize Non-streamed xlsx data using generic serialization')
+
+        logger.info('Non-streamed xlsx data using generic serialization')
         
         def sheet_rows(list_of_objects):
             ''' write a header row using the object keys '''
@@ -461,28 +457,23 @@ class ScreenResultSerializer(XLSSerializer,SDFSerializer,CSVSerializer):
 
         if format.startswith('multipart'):
             if len(request.FILES.keys()) != 1:
-                raise ImmediateHttpResponse(
-                    response=self.error_response(
-                        request,
-                        { 'FILES': 'File upload supports only one file at a time',
-                          'filenames': request.FILES.keys(),
-                        }
-                ))
+                raise BadRequest(
+                    'File upload supports only one file at a time',
+                    'filenames sent: %r' % request.FILES.keys())
             if 'xls' in request.FILES:
-                # TODO: use temp file on read to save memory
                 file = request.FILES['xls']
                 deserialized = screen_result_importer.read_file(file)
             else:
-                raise UnsupportedFormat(
-                    'ScreenResult multipart file key must be "xls", '
-                    'received: %r' % request.FILES.keys())
+                msg = ( 'ScreenResult deserialization: multipart/form-data key '
+                        'must be "xls", received: %r' % request.FILES.keys())
+                raise BadRequest(msg)
         else:
-            # This option is used in testing
+            # For testing
             deserialization_formats = [XLS_MIMETYPE,XLSX_MIMETYPE,JSON_MIMETYPE]
             if format not in deserialization_formats:
-                raise UnsupportedFormat(
-                    'Requested deserialization format: %r is not one of the '
-                    'available formats: %r' % (format, deserialization_formats))
+                msg = ( 'unknown serialize format: %r, options: %r'
+                        % (format, deserialization_formats))
+                raise BadRequest(msg)
             if not content:
                 content = request.body
             if format == JSON_MIMETYPE:
@@ -505,7 +496,7 @@ class ScreenResultSerializer(XLSSerializer,SDFSerializer,CSVSerializer):
         return self.from_xls(content)
 
     def from_xls(self, content):
-        # NOTE: This is not the normal execute path: only used when testing
+        # For testing only - 
         if isinstance(content, six.string_types):
             wb = xlrd.open_workbook(file_contents=content)
         else:
@@ -513,7 +504,7 @@ class ScreenResultSerializer(XLSSerializer,SDFSerializer,CSVSerializer):
         return screen_result_importer.read_workbook(wb)
 
     def from_json(self, content):
-        # NOTE: This is not the normal execute path: only used when testing
+        # For testing only - 
         object = json.loads(content)
         logger.info('object: %r', object)
         object['objects'] = (x for x in object['objects'])

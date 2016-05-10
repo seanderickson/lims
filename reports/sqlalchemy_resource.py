@@ -697,7 +697,6 @@ class SqlAlchemyResource(IccblBaseResource):
                 format='json',
                 includes=includes,
                 **kwargs)
-            logger.info('get_list_response...')
             _data = self._meta.serializer.deserialize(
                 request,
                 LimsSerializer.get_content(response), format='application/json')
@@ -1168,10 +1167,12 @@ class SqlAlchemyResource(IccblBaseResource):
                 response['Content-Disposition'] = \
                     'attachment; filename=%s.csv' % output_filename
             else:
-                msg = str(('unknown format', desired_format, output_filename))
-                logger.error(msg)
-                raise ImmediateHttpResponse(msg)
-    
+                msg = 'unknown format: %r' % desired_format
+#                 response = HttpResponse(msg)
+#                 response.status_code = 400
+#                 raise ImmediateHttpResponse(
+#                     response=response)
+                raise BadRequest(msg)
             return response
 
         except Exception, e:

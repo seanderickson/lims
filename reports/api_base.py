@@ -6,11 +6,13 @@ import re
 
 from django.conf import settings
 from django.core.cache import cache
-from django.http.response import HttpResponseBase, HttpResponse
+from django.http.response import HttpResponseBase, HttpResponse,\
+    HttpResponseNotFound, Http404
 from django.utils.cache import patch_cache_control, patch_vary_headers
 from django.views.decorators.csrf import csrf_exempt
-from tastypie.exceptions import ImmediateHttpResponse, BadRequest
-from tastypie.http import HttpBadRequest, HttpNotImplemented, HttpNoContent
+from tastypie.exceptions import ImmediateHttpResponse, BadRequest, NotFound
+from tastypie.http import HttpBadRequest, HttpNotImplemented, HttpNoContent,\
+    HttpApplicationError
 from tastypie.resources import Resource, convert_post_to_put, sanitize
 from tastypie.utils.mime import build_content_type
 
@@ -18,6 +20,8 @@ from reports import HEADER_APILOG_COMMENT, ValidationError, _now
 from reports.models import ApiLog
 from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE, \
     CSV_MIMETYPE, JSON_MIMETYPE
+from django.core.exceptions import ObjectDoesNotExist
+from django.core.signals import got_request_exception
 
 
 logger = logging.getLogger(__name__)
@@ -146,7 +150,7 @@ class IccblBaseResource(Resource):
         import traceback
         import sys
         the_trace = '\n'.join(traceback.format_exception(*(sys.exc_info())))
-        response_class = http.HttpApplicationError
+        response_class = HttpApplicationError
         response_code = 500
 
         NOT_FOUND_EXCEPTIONS = (NotFound, ObjectDoesNotExist, Http404)
@@ -160,7 +164,7 @@ class IccblBaseResource(Resource):
                 "error_message": sanitize(six.text_type(exception)),
                 "traceback": the_trace,
             }
-            return self.error_response(request, data, response_class=response_class)
+            return self.build_error_response(request, data, response_class=response_class)
 
         # When DEBUG is False, send an error message to the admins (unless it's
         # a 404, in which case we check the setting).

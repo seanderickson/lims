@@ -22,6 +22,7 @@ from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE, \
     CSV_MIMETYPE, JSON_MIMETYPE
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.signals import got_request_exception
+import six
 
 
 logger = logging.getLogger(__name__)

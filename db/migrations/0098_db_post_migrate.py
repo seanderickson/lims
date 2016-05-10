@@ -31,7 +31,7 @@ class Migration(migrations.Migration):
 #         migrations.RunSQL('DROP TABLE screen_cell_line; '),
         migrations.RunSQL('ALTER TABLE screen DROP COLUMN transfection_agent_id ; '),
         migrations.RunSQL('DROP TABLE transfection_agent; '),
-        migrations.RunSQL('DROP TABLE service_activity; '),
+#         migrations.RunSQL('DROP TABLE service_activity; '),
         migrations.RunSQL('DROP TABLE screen_funding_support_link; '),
         migrations.RunSQL('DROP TABLE funding_support; '),
 

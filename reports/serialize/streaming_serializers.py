@@ -38,7 +38,7 @@ from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
 import reports.serialize.csvutils as csvutils
 import reports.serialize.sdfutils as sdfutils
 from reports.serialize.csvutils import LIST_DELIMITER_CSV
-from reports.serialize.xlsutils import generic_xls_write_workbook, screenresult_xls_write_workbook, LIST_DELIMITER_XLS
+from reports.serialize.xlsutils import generic_xls_write_workbook, LIST_DELIMITER_XLS
 from reports.serialize import XLSX_MIMETYPE
 from reports.serialize import dict_to_rows
 from db.support.data_converter import default_converter

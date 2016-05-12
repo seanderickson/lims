@@ -82,7 +82,7 @@ from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.sqlalchemy_resource import _concat
 from tastypie.utils.mime import build_content_type
 from reports.serialize.streaming_serializers import ChunkIterWrapper, \
-    json_generator, cursorGenerator, sdf_generator,generic_xlsx_response, screenresult_xlsx_response, \
+    json_generator, cursorGenerator, sdf_generator,generic_xlsx_response, \
     csv_generator
 from wsgiref.util import FileWrapper
 from reports.serialize.csvutils import csv_convert,string_convert

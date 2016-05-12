@@ -5,4 +5,4 @@ assay_well_control_type,fields.screenresult,assay_well,,/reports/api/v1/field/fi
 is_positive,fields.screenresult,assay_well,,/reports/api/v1/field/fields.screenresult/is_positive/,6,,TRUE,"Is the Assay Well flagged as positive","Assay Well Positive",TRUE,,,[l;d],boolean,,,,,
 confirmed_positive_value,fields.screenresult,assay_well,,/reports/api/v1/field/fields.screenresult/confirmed_positive_value/,4,,TRUE,"Confirmed positive indicator","Confirmed Positive",TRUE,,assaywell.confirmed_positive_indicator,[d],string,,,,,
 resource_uri,fields.screenresult,custom,,/reports/api/v1/field/fields.screenresult/resource_uri/,5,,TRUE,"Resource URI","Resource URI",TRUE,,,,string,,,,,/screenresult/{screen_facility_id}/{well_id}
-excluded,fields.screenresult,custom,,/reports/api/v1/field/fields.screenresult/excluded/,6,,FALSE,"Excluded Cols",Excluded,FALSE,,,[d],list,,,,,
+excluded,fields.screenresult,custom,,/reports/api/v1/field/fields.screenresult/excluded/,6,,TRUE,"Excluded Cols",Excluded,TRUE,,,[d],list,,,select,,

@@ -25,7 +25,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.core.urlresolvers import resolve
 from django.http.response import StreamingHttpResponse
 from tastypie.exceptions import ImmediateHttpResponse
-from django.utils.encoding import smart_str
+# from django.utils.encoding import smart_str
 # import openpyxl
 # using XlsxWriter for constant memory usage
 import xlsxwriter
@@ -38,7 +38,7 @@ from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
 import reports.serialize.csvutils as csvutils
 import reports.serialize.sdfutils as sdfutils
 from reports.serialize.csvutils import LIST_DELIMITER_CSV
-from reports.serialize.xlsutils import generic_xls_write_workbook, LIST_DELIMITER_XLS
+from reports.serialize.xlsutils import generic_xls_write_workbook, screenresult_xls_write_workbook, LIST_DELIMITER_XLS
 from reports.serialize import XLSX_MIMETYPE
 from reports.serialize import dict_to_rows
 from db.support.data_converter import default_converter
@@ -254,7 +254,9 @@ def csv_generator(
                         field.get('json_field_type',None) == 'fields.ListField' 
                          or field.get('linked_field_type',None) == 'fields.ListField'
                          or field.get('data_type', None) == 'list' ):
-                        value = value.split(LIST_DELIMITER_SQL_ARRAY)
+                        # check if it is a string (already may be a list)
+                        if hasattr(value, 'split'):
+                            value = value.split(LIST_DELIMITER_SQL_ARRAY)
                                             
                     if field.get('value_template', None):
                         value_template = field['value_template']
@@ -330,10 +332,13 @@ def sdf_generator(cursor, field_hash=None):
                         if DEBUG_STREAMING:     
                             logger.info('field: %r:%r, %r', key, value_template)
                         value = interpolate_value_template(value_template, row)
+                    
                     if value and ( field.get('json_field_type',None) == 'fields.ListField' 
                          or field.get('linked_field_type',None) == 'fields.ListField'
                          or field.get('data_type', None) == 'list' ):
-                        value = value.split(LIST_DELIMITER_SQL_ARRAY)
+                        # check if it is a string (already may be a list)
+                        if hasattr(value, 'split'):
+                            value = value.split(LIST_DELIMITER_SQL_ARRAY)
     
                     if value:
                         # find lists, but not strings (or dicts)
@@ -677,5 +682,4 @@ def generic_xlsx_response(data):
     response['Content-Length'] = size
     response['Content-Type'] = XLSX_MIMETYPE
     return response
-    
-                
+               

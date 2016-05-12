@@ -554,7 +554,11 @@ def create_output_data(screen_facility_id, fields, result_values ):
                 row.append(None)
             excluded_cols = []
             if result_value.has_key('excluded') and result_value['excluded']:
-                for data_column_name in result_value['excluded']:
+                temp = result_value['excluded']
+                if hasattr(temp, 'split'):
+                    temp = temp.split(LIST_DELIMITER_SQL_ARRAY)
+                    
+                for data_column_name in temp:
                     excluded_cols.append(get_column_letter(
                         len(RESULT_VALUE_FIELD_MAP)+1
                             +data_columns.index(data_column_name)))

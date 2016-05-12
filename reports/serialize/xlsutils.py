@@ -36,11 +36,12 @@ def generic_xls_write_workbook(file, data):
     logger.info('save to file; %r', file.name)
     wb.close()
 
+
 def write_rows_to_sheet(rows, sheet):
     for row,values in enumerate(rows):
         for i, val in enumerate(values):
             val = csvutils.csv_convert(val, delimiter=LIST_DELIMITER_XLS)
-            if val:
+            if val is not None:
                 if len(val) > 32767: 
                     logger.error('warn, row too long, %d, key: %r, len: %d', 
                         row,key,len(val) )

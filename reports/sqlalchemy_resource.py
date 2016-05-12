@@ -590,7 +590,16 @@ class SqlAlchemyResource(IccblBaseResource):
                     else:
                         expression = col != None
                 elif filter_type == 'in':
-                    expression = col.in_(value)
+                    if field['data_type'] == 'list':
+                        # NOTE: for the list type, interpret "in" as any of the 
+                        # given values are in the field
+                        temp_expressions = [] 
+                        for _val in value:
+                            temp_expressions.append(col.ilike('%{value}%'.format(
+                                value=_val)))
+                        expression = or_(*temp_expressions)
+                    else:
+                        expression = col.in_(value)
                 elif filter_type == 'ne':
                     expression = col != value
                 elif filter_type == 'range':

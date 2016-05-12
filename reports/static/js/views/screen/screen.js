@@ -1238,6 +1238,20 @@ define([
          '</form>'
          ].join(''));      
       var createResults = function(schemaResult){
+        
+          
+        var options = [];
+        _.each(schemaResult['fields'],function(field){
+          var dc_col_key = 'dc_' + self.model.key + '_';
+          console.log('consider: ', field);
+          if (field['key'].indexOf(dc_col_key)>-1){
+            var option_name = field['key'].substring(dc_col_key.length);
+            options.unshift([option_name, option_name]);
+          }
+        });
+        schemaResult['fields']['excluded']['vocabulary'] = options;
+        console.log('custom exclude options', options);
+        
         var initialSearchHash;
         view = new ListView({ options: {
           uriStack: _.clone(delegateStack),

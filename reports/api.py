@@ -2137,10 +2137,13 @@ class VocabulariesResource(ApiResource):
                 vocabularies[_scope][v['key']] = v
                 
             # Hack: activity.type is serviceactivity.type + activity.class
-            vocabularies['activity.type'] = \
-                deepcopy(vocabularies['serviceactivity.type'])
-            vocabularies['activity.type'].update(
-                deepcopy(vocabularies['activity.class']))
+            # TODO: reinstate this if needed? 20160510
+            # if 'serviceactivity.type' in vocabularies:
+            #     vocabularies['activity.type'] = \
+            #         deepcopy(vocabularies['serviceactivity.type'])
+            if 'activity.class' in vocabularies:
+                vocabularies['activity.type'].update(
+                    deepcopy(vocabularies['activity.class']))
             
             cache.set('vocabularies', vocabularies);
         if scope in vocabularies:

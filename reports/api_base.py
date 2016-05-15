@@ -251,7 +251,7 @@ class IccblBaseResource(Resource):
                 # Rather than re-raising, we're going to things similar to
                 # what Django does. The difference is returning a serialized
                 # error message.
-                logger.info('handle 500 error...')
+                logger.exception('handle 500 error %r...', str(e))
                 return self._handle_500(request, e)
 
         return wrapper

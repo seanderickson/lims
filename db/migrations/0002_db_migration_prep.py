@@ -22,7 +22,8 @@ def _update_table_autofield(db, table, column):
     # Changing field 'Screen.screen_id' to auto field
     # *NOTE: the following does not work with Postgres, for an already 
     # existing field:
-    # db.alter_column(u'screen', 'screen_id', self.gf('django.db.models.fields.AutoField')(primary_key=True))
+    # db.alter_column(u'screen', 'screen_id', self.gf(
+    #     'django.db.models.fields.AutoField')(primary_key=True))
     # ( Postgres can create a field of type 'serial', but it is not a real type, 
     # so postgres will not convert a field to 'serial'; as would be needed to work
     # with the Django Autofield;
@@ -100,7 +101,6 @@ def _alter_table_reference(db, sub_table, fk_column,
 
     ## NOTE: we are copying/deleting/making new foreign key because it is 
     ## proving difficult to find the constraint to drop for the extant foreign key
-    logger.info(str(('alter foreign key', sub_table, fk_column, new_parent, new_parent_column)))
     db.execute(
         ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
               table=sub_table, column=fk_column))
@@ -211,36 +211,6 @@ def add_timezone_to_timestamp_fields(apps, schema_editor):
                 ('ALTER TABLE {table} ALTER COLUMN {column} '
                     'SET DATA TYPE timestamp with time zone').format(
                       table=table, column=column))
-    
-
-#     _alter_table_reference(
-#         db,'lab_head', 'screensaver_user_id','screensaver_user', 
-#         'screensaver_user_id', null_ok=True)
-
-#     sub_table = 'attached_file'
-#     fk_column = 'screensaver_user_id'
-#     new_parent = 'screensaver_user'
-#     new_parent_column = 'screensaver_user_id'
-#     
-#     logger.info(str(('alter foreign key', sub_table, fk_column, new_parent, new_parent_column)))
-#     db.execute(
-#         ( "ALTER TABLE {table} RENAME COLUMN {column} to tmp_{column}").format(
-#               table=sub_table, column=fk_column))
-#     db.execute(
-#         ( "ALTER TABLE {table} ADD COLUMN {column} integer").format(
-#               table=sub_table, column=fk_column))
-#     db.execute(
-#         ( "update {table} set {column} = tmp_{column}").format(
-#               table=sub_table, column=fk_column))
-#     db.execute(
-#         ("ALTER TABLE {table} ADD CONSTRAINT fk_{column} "
-#             "FOREIGN KEY ({column}) "
-#             "REFERENCES {other_table} ({other_column}) ").format(
-#                 table=sub_table, column=fk_column, 
-#                 other_table=new_parent, other_column=new_parent_column))
-#     db.execute(
-#         ( "ALTER TABLE {table} DROP COLUMN tmp_{column} ").format(
-#               table=sub_table, column=fk_column))
 
 
 def create_reagent_ids(apps, schema_editor):
@@ -248,6 +218,7 @@ def create_reagent_ids(apps, schema_editor):
     for reagent in apps.get_model('db','Reagent').objects.all():
         reagent.substance_id = db.models.create_id()
         reagent.save()
+
 
 class Migration(migrations.Migration):
 
@@ -270,7 +241,8 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='CopyScreeningStatistics',
             fields=[
-                ('copy', models.OneToOneField(primary_key=True, serialize=False, to='db.Copy')),
+                ('copy', models.OneToOneField(
+                    primary_key=True, serialize=False, to='db.Copy')),
                 ('name', models.TextField()),
                 ('short_name', models.TextField()),
                 ('screening_count', models.IntegerField(null=True)),
@@ -288,7 +260,8 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='PlateScreeningStatistics',
             fields=[
-                ('plate', models.OneToOneField(primary_key=True, serialize=False, to='db.Plate')),
+                ('plate', models.OneToOneField(
+                    primary_key=True, serialize=False, to='db.Plate')),
                 ('plate_number', models.IntegerField(null=True)),
                 ('copy', models.ForeignKey(serialize=False, to='db.Copy')),
                 ('copy_name', models.TextField()),
@@ -316,12 +289,15 @@ class Migration(migrations.Migration):
             name='substance_id',
             field=models.CharField(null=True,max_length=8),
         ),
+        
+        # TODO: create substance ID's for reagents
         # migrations.RunPython(create_reagent_ids),
         # migrations.AlterField(
         #     model_name='reagent',
         #     name='substance_id',
         #     field=models.CharField(unique=True, max_length=8),
         #     ),
+        
         migrations.AddField(
             model_name='screen',
             name='status_date',
@@ -353,10 +329,8 @@ class Migration(migrations.Migration):
                 blank=True, to='db.ScreensaverUser', null=True),
         ),
         migrations.RunPython(convert_django_autofields),
-         
         migrations.RemoveField(model_name='reagent',name='facility_batch_id'),
         migrations.RemoveField(model_name='smallmoleculereagent',name='salt_form_id'),
-         
         migrations.RemoveField(model_name='well',name='version'),
         migrations.RemoveField(model_name='library',name='version'),
         migrations.RemoveField(model_name='screensaveruser',name='version'),
@@ -436,7 +410,9 @@ class Migration(migrations.Migration):
         migrations.RunPython(alter_table_parents),
         migrations.RunSQL(("ALTER TABLE {table} DROP COLUMN {column} ").format(
                   table='molfile', column='ordinal')),
-        migrations.RunSQL(("ALTER TABLE {table} ADD CONSTRAINT {table}_{column}_unique UNIQUE({column})").format(
+        migrations.RunSQL((
+            "ALTER TABLE {table} ADD CONSTRAINT "
+            "    {table}_{column}_unique UNIQUE({column})").format(
             table='screen_result', column='screen_id')),
         migrations.AddField(
             model_name='screensaveruser',
@@ -480,7 +456,8 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='CopyWell',
             fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('id', models.AutoField(verbose_name='ID', serialize=False, 
+                    auto_created=True, primary_key=True)),
                 ('plate_number', models.IntegerField()),
                 ('volume', models.FloatField(null=True, blank=True)),
                 ('initial_volume', models.FloatField(null=True, blank=True)),
@@ -504,7 +481,8 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='CachedQuery',
             fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('id', models.AutoField(verbose_name='ID', serialize=False, 
+                    auto_created=True, primary_key=True)),
                 ('key', models.TextField(unique=True)),
                 ('sql', models.TextField()),
                 ('uri', models.TextField()),
@@ -565,9 +543,11 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='ScreenFundingSupports',
             fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('id', models.AutoField(verbose_name='ID', serialize=False, 
+                    auto_created=True, primary_key=True)),
                 ('funding_support', models.TextField()),
-                ('screen', models.ForeignKey(related_name='fundingsupports', to='db.Screen')),
+                ('screen', models.ForeignKey(
+                    related_name='fundingsupports', to='db.Screen')),
             ],
             options={
                 'db_table': 'screen_funding_supports',
@@ -580,9 +560,12 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='ScreenCellLines',
             fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('id', models.AutoField(
+                    verbose_name='ID', serialize=False, auto_created=True, 
+                    primary_key=True)),
                 ('cell_line', models.TextField()),
-                ('screen', models.ForeignKey(related_name='celllines', to='db.Screen')),
+                ('screen', models.ForeignKey(
+                    related_name='celllines', to='db.Screen')),
             ],
             options={
                 'db_table': 'screen_cell_lines',
@@ -600,7 +583,9 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='UserFacilityUsageRole',
             fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('id', models.AutoField(
+                    verbose_name='ID', serialize=False, auto_created=True, 
+                    primary_key=True)),
                 ('facility_usage_role', models.TextField()),
                 ('screensaver_user', models.ForeignKey(to='db.ScreensaverUser')),
             ],
@@ -618,7 +603,6 @@ class Migration(migrations.Migration):
             field=models.TextField(null=True)),
         migrations.RunSQL('alter table reagent alter column library_contents_version_id drop not null'),
 
-        
         #  Update assay_well with the plate_number to expedite plate data loading stats 
         migrations.AddField(
             model_name='assaywell',
@@ -631,6 +615,4 @@ class Migration(migrations.Migration):
             model_name='assaywell',
             name='plate_number',
             field=models.IntegerField(null=False)),
-
-        
     ]

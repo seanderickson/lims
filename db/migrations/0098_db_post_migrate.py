@@ -31,8 +31,11 @@ class Migration(migrations.Migration):
 #         migrations.RunSQL('DROP TABLE screen_cell_line; '),
         migrations.RunSQL('ALTER TABLE screen DROP COLUMN transfection_agent_id ; '),
         migrations.RunSQL('DROP TABLE transfection_agent; '),
-#         migrations.RunSQL('DROP TABLE service_activity; '),
+        migrations.RunSQL(
+            'ALTER TABLE service_activity DROP COLUMN funding_support_id; '),
         migrations.RunSQL('DROP TABLE screen_funding_support_link; '),
+
+        # TODO: service_activity depends on funding support
         migrations.RunSQL('DROP TABLE funding_support; '),
 
 #         migrations.DeleteModel('ScreeningRoomUser'),

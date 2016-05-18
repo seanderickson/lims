@@ -422,7 +422,14 @@ class ScreenResultResource(ApiResource):
         except Exception as e:
             logger.info('creating the well_data_column_positive_index table')
             self._create_well_data_column_positive_index_table(conn)
-        
+            
+        self.reagent_resource = None
+
+    def get_reagent_resource(self):
+        if not self.reagent_resource:
+            self.reagent_resource = ReagentResource()
+        return self.reagent_resource
+    
     def _create_well_query_index_table(self, conn):
        
         try:
@@ -609,6 +616,11 @@ class ScreenResultResource(ApiResource):
         return rv_select
 
     def _build_result_value_cte(self, field_information):
+        '''
+        Not used - an alternate method of constructing the result values as 
+        subqueries. Analyze indicates that this requires more memory and 
+        scales poorly.
+        '''
         _rv = self.bridge['result_value']
         field_name = field_information['key']
         data_column_type = field_information.get('data_type') 
@@ -625,10 +637,497 @@ class ScreenResultResource(ApiResource):
             _rv.c.data_column_id == field_information['data_column_id']))
         rv_select = rv_select.cte(field_information['key'] + '_cte')
         return rv_select
+    
+    def get_query(self, username, screenresult, param_hash, schema, **kwargs):
 
+        manual_field_includes = set(param_hash.get('includes', []))
+        manual_field_includes.add('assay_well_control_type')
+            
+        limit = param_hash.get('limit', 0)        
+        try:
+            limit = int(limit)
+        except ValueError:
+            raise BadRequest(
+                "Invalid limit '%s' - positive integer required." % limit)
+        param_hash['limit'] = 0
+        
+        offset = param_hash.get('offset', 0)
+        try:
+            offset = int(offset)
+        except ValueError:
+            raise BadRequest(
+                "Invalid offset '%s' - positive integer required." % offset)
+        if offset < 0:    
+            offset = -offset
+        param_hash['offset'] = 0
+
+        # general setup
+        (filter_expression, filter_fields) = \
+            SqlAlchemyResource.build_sqlalchemy_filters(
+                schema, param_hash=param_hash)
+                              
+        field_hash = self.get_visible_fields(
+            schema['fields'], filter_fields, manual_field_includes,
+            param_hash.get('visibilities'),
+            exact_fields=set(param_hash.get('exact_fields', [])))
+        logger.info('field hash %r', field_hash.keys())
+        order_params = param_hash.get('order_by', [])
+        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+            order_params, field_hash)
+    
+        # specific setup 
+        
+        conn = self.bridge.get_engine().connect()
+        _aw = self.bridge['assay_well']
+        _w = self.bridge['well']
+        _sr = self.bridge['screen_result']
+        _s = self.bridge['screen']
+        _rv = self.bridge['result_value']
+        _dc = self.bridge['data_column']
+        _reagent = self.bridge['reagent']
+        _library = self.bridge['library']    
+        # Create the exclusions subquery: well_id:colnames_excluded
+        # Note: this is used to enable filtering and for the UI
+        # However, for export types, is overriden by the is_excluded_gen
+        # because the generator creates the full col name
+        excl_join = _rv.join(_dc, _rv.c.data_column_id==_dc.c.data_column_id)
+        excluded_cols_select = (
+            select([
+                _rv.c.well_id,
+                func.array_to_string(
+                    func.array_agg(func.lower(_dc.c.name)), LIST_DELIMITER_SQL_ARRAY).label('excluded')
+                ])
+            .select_from(excl_join)
+            .where(_dc.c.screen_result_id == screenresult.screen_result_id)
+            .where(_rv.c.is_exclude)
+            .group_by(_rv.c.well_id)
+            .order_by(_rv.c.well_id)
+            )
+        excluded_cols_select = excluded_cols_select.cte('exclusions')
+            
+        # Strategy: 
+        # 1. create the base clause, which will build a stored index in 
+        # the table: well_query_index;
+        # the base query uses only columns: well_id, +filters, +orderings
+        base_clause = _aw
+        base_clause = base_clause.join(_w, _aw.c.well_id == _w.c.well_id)
+        base_clause = base_clause.join(_sr, _aw.c.screen_result_id == _sr.c.screen_result_id)
+        base_clause = base_clause.join(_s, _sr.c.screen_id == _s.c.screen_id)
+        # JOIN THE REAGENT COLUMNS - TODO: only if filtering
+        base_clause = base_clause.join(_reagent,_w.c.well_id==_reagent.c.well_id, isouter=True)
+        base_clause = base_clause.join(_library,_w.c.library_id==_library.c.library_id)
+
+        base_custom_columns = {
+            'well_id': literal_column('assay_well.well_id'),
+            }
+
+        filter_excluded = True
+        if ('excluded' not in filter_fields 
+                and 'excluded' not in order_params
+                and '-excluded' not in order_params):
+            filter_excluded = False
+        if filter_excluded:
+            logger.info('filter excluded...')
+            base_clause = _aw.join(
+                excluded_cols_select, _aw.c.well_id==excluded_cols_select.c.well_id,isouter=True)
+            base_custom_columns['excluded'] = literal_column('exclusions.excluded')
+            
+        # The base_fields are always included in the query: 
+        # - all fields not part of result value lookup
+        # - any result_value lookups that are used in sort or filtering
+        # TODO: if doing mutual positives query, 
+        # then need to grab those datacolumns also.
+        base_fields = [ fi for fi in field_hash.values() 
+            if (not fi.get('is_datacolumn', None) 
+                 or fi['key'] in order_params
+                 or '-%s' % fi['key'] in order_params
+                 or fi['key'] in filter_fields)]
+        # Using nested selects 
+        for fi in [fi for fi in base_fields 
+                if fi.get('is_datacolumn', None)]:
+            rv_select = self._build_result_value_column(fi)
+            base_custom_columns[fi['key']] = rv_select
+        # #USING cte           
+        # for fi in [fi for fi in base_fields 
+        #         if fi.get('is_datacolumn', None)]:
+        #     rv_select = self._build_result_value_cte(fi)
+        #     base_clause = base_clause.join(
+        #         rv_select, _aw.c.well_id==rv_select.c.well_id,
+        #         isouter=True)
+        #     rv_selector = (
+        #         select([rv_select.c.value])
+        #         .select_from(rv_select)
+        #         .where(rv_select.c.well_id==text('assay_well.well_id'))
+        #         )
+        #     rv_selector.label(fi['key'])
+        #     base_custom_columns[fi['key']] = rv_selector            
+
+        base_query_tables = [
+            'assay_well','well','screen_result', 'screen', 'exclusions']
+        
+        logger.debug(
+            'sqlalchemy columns: base_fields: %r, base_custom_columns: %r',
+            base_fields, base_custom_columns)
+        base_columns = self.build_sqlalchemy_columns(
+            base_fields, base_query_tables=base_query_tables,
+            custom_columns=base_custom_columns) 
+        logger.info('base columns: %r', base_columns)
+        # remove is_positive if not needed, to help the query planner
+        if ('is_positive' not in filter_fields 
+                and 'is_positive' in base_columns
+                and 'is_positive' not in order_params
+                and '-is_positive' not in order_params):
+            del base_columns['is_positive']
+            
+
+        # GET THE REAGENT COLUMNS AND JOIN THEM
+        reagent_resource = self.get_reagent_resource()
+        base_reagent_tables = ['reagent','library','well']
+        reagent_columns = []
+        sub_columns = reagent_resource.build_sqlalchemy_columns(
+            base_fields, base_reagent_tables,
+            custom_columns=reagent_columns)
+        if 'plate_number' in base_fields:
+            sub_columns['plate_number'] = (literal_column(
+                "to_char(well.plate_number,'%s')" % PLATE_NUMBER_SQL_FORMAT)
+                .label('plate_number'))
+        for key,col in sub_columns.items():
+            if key not in base_columns:
+                base_columns[key] = col
+        
+        base_stmt = select(base_columns.values()).select_from(base_clause)
+        base_stmt = base_stmt.where(
+            _aw.c.screen_result_id == screenresult.screen_result_id)
+        # always add well_id order
+        base_stmt = base_stmt.order_by(asc(column('well_id')))  
+        
+        (base_stmt, count_stmt) = \
+            self.wrap_statement(base_stmt, order_clauses, filter_expression)
+
+        # 1.a insert the base statement well ids into the indexing table
+        
+        m = hashlib.md5()
+        compiled_stmt = str(base_stmt.compile(
+            compile_kwargs={"literal_binds": True}))
+        logger.debug(str(('compiled_stmt', compiled_stmt)))
+        m.update(compiled_stmt)
+        key = m.hexdigest()
+        
+        _wellQueryIndex = self.bridge['well_query_index']
+        (cachedQuery, create_new_well_index_cache) = \
+            CachedQuery.objects.all().get_or_create(key=key)
+        if create_new_well_index_cache:
+            try:
+                cachedQuery.sql = compiled_stmt
+                cachedQuery.username = username
+                cachedQuery.uri = \
+                    '/screenresult/%s' % screenresult.screen.facility_id
+                cachedQuery.params = json.dumps(param_hash)
+                cachedQuery.save()
+
+                base_stmt = base_stmt.alias('base_stmt')
+                insert_statement = insert(_wellQueryIndex).\
+                    from_select(['well_id', 'query_id'],
+                        select([
+                            literal_column("well_id"),
+                            literal_column(
+                                str(cachedQuery.id)).label('query_id')
+                            ]).select_from(base_stmt))
+                logger.info(
+                    'insert stmt: %r',
+                    str(insert_statement.compile(
+                        compile_kwargs={"literal_binds": True})))
+                conn.execute(insert_statement)
+                
+                count_stmt = _wellQueryIndex
+                count_stmt = select([func.count()]).select_from(count_stmt)
+                count_stmt = count_stmt.where(
+                    _wellQueryIndex.c.query_id == cachedQuery.id)
+                
+                cachedQuery.count = int(conn.execute(count_stmt).scalar())
+                
+                if cachedQuery.count == 0:
+#                     self.clear_cache(by_id=cachedQuery.id)
+                    cachedQuery.delete()
+                    logger.warn('Query generates no results: %r', compiled_stmt)
+                else:
+                    cachedQuery.save()
+
+                # clear out older cached query wells
+                self.clear_cache(by_size=True)
+            except Exception, e:
+                cachedQuery.delete()
+                logger.exception('ex on get/create wellquery for screenresult')
+                raise e
+        else:
+            logger.info('using cached well_query: %r', cachedQuery)
+            
+            
+        ######
+        # Now that query_index table is populated, use it to build the 
+        # output query
+        
+        # specific setup 
+        base_query_tables = ['assay_well', 'screen']
+        
+        # force query to use well_query_index.well_id
+        custom_columns = { 
+            'well_id': 
+                literal_column('well_query_index.well_id'),
+            'excluded': literal_column('exclusions.excluded')
+        }
+        logger.debug('base stmt: %r', str(base_stmt.compile()))
+
+        # Use the well_query_index well_ids as the central subquery loop
+        _wqx = select(['well_id']).select_from(_wellQueryIndex)
+        _wqx = _wqx.where(_wellQueryIndex.c.query_id == cachedQuery.id)
+        
+        if limit > 0:    
+            _wqx = _wqx.limit(limit)
+        _wqx = _wqx.offset(offset)
+        _wqx = _wqx.cte('wqx')
+        # Join to well table first to take advantage of foreign key index
+        j = join(_wqx, _w, _wqx.c.well_id == _w.c.well_id)
+        j = j.join(_aw, _w.c.well_id == _aw.c.well_id )
+        j = j.join(_sr, _aw.c.screen_result_id == _sr.c.screen_result_id)
+        j = j.join(_s, _sr.c.screen_id == _s.c.screen_id)
+
+        # JOIN THE REAGENT COLUMNS
+        j = j.join(_reagent,_w.c.well_id==_reagent.c.well_id, isouter=True)
+        j = j.join(_library,_w.c.library_id==_library.c.library_id)
+
+
+        
+        j = j.join(excluded_cols_select, 
+            excluded_cols_select.c.well_id == _aw.c.well_id, isouter=True)
+        # Using nested selects
+        for fi in [
+            fi for fi in field_hash.values() 
+                if fi.get('is_datacolumn', None)]:
+            custom_columns[fi['key']] = self._build_result_value_column(fi)
+            
+        # # USING ctes
+        # for fi in [
+        #     fi for fi in field_hash.values() 
+        #         if fi.get('is_datacolumn', None)]:
+        #     rv_select = self._build_result_value_cte(fi)
+        #     j = j.join(
+        #         rv_select, _aw.c.well_id==rv_select.c.well_id,
+        #         isouter=True)
+        #     rv_selector = (
+        #         select([rv_select.c.value])
+        #         .select_from(rv_select)
+        #         .where(rv_select.c.well_id==text('assay_well.well_id'))
+        #         )
+        #     rv_selector.label(fi['key'])
+        #     custom_columns[fi['key']] = rv_selector            
+        
+        columns = self.build_sqlalchemy_columns(
+            field_hash.values(), base_query_tables=base_query_tables,
+            custom_columns=custom_columns)
+
+
+        # GET THE REAGENT COLUMNS AND JOIN THEM
+        reagent_resource = self.get_reagent_resource()
+        base_reagent_tables = ['reagent','library','well']
+        reagent_columns = []
+        sub_columns = reagent_resource.build_sqlalchemy_columns(
+            field_hash.values(), base_reagent_tables,
+            custom_columns=reagent_columns)
+        sub_columns['plate_number'] = (literal_column(
+            "to_char(well.plate_number,'%s')" % PLATE_NUMBER_SQL_FORMAT)
+            .label('plate_number'))
+#         reagent_columns = self.build_sqlalchemy_columns(
+#             field_hash.values(), base_query_tables=base_reagent_tables,
+#             custom_columns=sub_columns)
+
+        for key,col in sub_columns.items():
+            if key not in columns:
+                columns[key] = col
+
+
+        # Force the query to use well_query_index.well_id
+        columns['well_id'] = literal_column('wqx.well_id').label('well_id')
+        logger.info('columns: %r', columns.keys())
+        ######
+        
+        stmt = select(columns.values()).select_from(j)
+        stmt = stmt.where(
+            _aw.c.screen_result_id == screenresult.screen_result_id)
+
+    
+        logger.info(
+            'stmt: %s',
+            str(stmt.compile(compile_kwargs={"literal_binds": True})))
+          
+        return (field_hash, columns, stmt, count_stmt, cachedQuery)
+    
+    
     
     @read_authorization
     def build_list_response(self, request, **kwargs):
+        ''' 
+        # store id's in a temp table version
+        '''
+
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
+        is_for_detail = kwargs.pop('is_for_detail', False)
+
+        screen_facility_id = param_hash.pop('screen_facility_id', None)
+        if not screen_facility_id:
+            raise NotImplementedError(
+                'must provide a screen_facility_id parameter')
+            
+        well_id = param_hash.pop('well_id', None)
+        if well_id:
+            param_hash['well_id__eq'] = well_id
+
+        screenresult = ScreenResult.objects.get(
+            screen__facility_id=screen_facility_id)              
+
+        show_mutual_positives = param_hash.get('show_mutual_positives', False)
+        schema = self.build_schema(
+            screenresult=screenresult,
+            show_mutual_positives=show_mutual_positives)
+
+        filename = self._get_filename(schema, kwargs)
+        desired_format = self.get_serialize_format(request, **kwargs)
+        manual_field_includes = set(param_hash.get('includes', []))
+        if desired_format == SDF_MIMETYPE:
+            manual_field_includes.add('molfile')
+        else:
+            manual_field_includes.discard('molfile')
+        param_hash['includes'] = list(manual_field_includes)
+
+        try:
+                
+            (field_hash, columns, stmt, count_stmt, cachedQuery) = \
+                self.get_query(
+                    request.user.username,
+                    screenresult,
+                    param_hash,
+                    schema,
+                    **kwargs)
+    
+            logger.info('execute stmt...')
+            logger.info('excute stmt %r',
+                str(stmt.compile(compile_kwargs={"literal_binds": True})))
+            conn = self.bridge.get_engine().connect()
+            result = conn.execute(stmt)
+            logger.info('excuted base stmt')
+            
+            title_function = None
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                title_function = lambda key: field_hash[key]['title']
+            
+            rowproxy_generator = None
+            if param_hash.get(HTTP_PARAM_USE_VOCAB, False) or desired_format != JSON_MIMETYPE:
+                rowproxy_generator = \
+                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+            if rowproxy_generator:
+                result = rowproxy_generator(result)
+                
+            # Custom screen result serialization
+            
+            content_type = build_content_type(desired_format)
+            logger.info('desired_format: %s, content_type: %s',
+                desired_format, content_type)
+            
+            def is_excluded_gen(cursor):
+                '''
+                Collate all of the excluded columns by well_id.
+                - To construct the proper column names; this allows for the 
+                "exclusions" query to be simpler.
+                '''
+                excluded_well_to_datacolumn_map = {}
+                for key,field in schema['fields'].items():
+                    if field.get('is_datacolumn', False):
+                        for well_id in field.get('excluded_wells', []):
+                            excluded_cols = excluded_well_to_datacolumn_map.get(well_id,[])
+                            excluded_cols.append(key)
+                            excluded_well_to_datacolumn_map[well_id] = excluded_cols
+                # TODO: sdf_generator, csv_generator expect a Row; a dict would be simpler
+                class Row:
+                    def __init__(self, row):
+                        self.row = row
+                    def has_key(self, key):
+                        return self.row.has_key(key)
+                    def keys(self):
+                        return self.row.keys()
+                    def __getitem__(self, key):
+                        if key == 'excluded':
+                            temp =  excluded_well_to_datacolumn_map.get(row['well_id'], None) 
+                            logger.info('excluded: %r', temp)
+                            return temp
+                        if not row[key]:
+                            return None
+                        else:
+                            return self.row[key]
+                for row in cursor:
+                    yield Row(row)
+                
+            # Perform custom serialization because each output format will be 
+            # different.
+            if desired_format == JSON_MIMETYPE:
+                # meta['fields'] = schema['fields']
+                meta = {
+                    'limit': param_hash.get('limit', 0),
+                    'offset': param_hash.get('offset',0),
+                    'screen_facility_id': screen_facility_id,
+                    'total_count': cachedQuery.count,
+                }    
+                
+                response = StreamingHttpResponse(
+                    ChunkIterWrapper(
+                        json_generator(
+                            # is_excluded generator not needed for JSON - already
+                            # part of the query, and no need to convert to col letters
+                            # is_excluded_gen(result), meta, request,
+                            result, meta, request,
+                            is_for_detail=is_for_detail, field_hash=field_hash)))
+                response['Content-Type'] = content_type
+                return response
+            elif(desired_format == XLS_MIMETYPE or
+                desired_format == XLSX_MIMETYPE): 
+                response = generic_xlsx_response(
+                    screen_result_importer.create_output_data(
+                        screen_facility_id, schema['fields'], 
+                        is_excluded_gen(cursorGenerator(
+                             result,field_hash,field_hash.keys()))))
+                response['Content-Disposition'] = \
+                    'attachment; filename=%s.xlsx' % filename
+                return response
+            elif desired_format == SDF_MIMETYPE:
+                response = StreamingHttpResponse(
+                    ChunkIterWrapper(
+                        sdf_generator(is_excluded_gen(result), field_hash)),
+                    content_type=content_type)
+                response['Content-Type'] = SDF_MIMETYPE
+                response['Content-Disposition'] = \
+                    'attachment; filename=%s.sdf' % filename
+                return response
+            elif desired_format == CSV_MIMETYPE:
+                response = StreamingHttpResponse(
+                    ChunkIterWrapper(
+                        csv_generator(
+                            is_excluded_gen(result), request,
+                            field_hash=field_hash, title_function=title_function)),
+                    content_type=content_type)
+                response['Content-Type'] = CSV_MIMETYPE
+                response['Content-Disposition'] = \
+                    'attachment; filename=%s.csv' % filename
+                return response
+            else: 
+                raise BadRequest('format not implemented: %r' % desired_format)
+        except Exception, e:
+            logger.exception('on get list: %r', e)
+            raise e  
+
+    @read_authorization
+    def build_list_response_bak(self, request, **kwargs):
         ''' 
         # store id's in a temp table version
         '''
@@ -1225,6 +1724,16 @@ class ScreenResultResource(ApiResource):
                         _visibility = set(_dict['visibility'])
                         _visibility.update(['l', 'd'])
                         _dict['visibility'] = list(_visibility)
+                        
+                well_schema = self.get_reagent_resource().build_schema(
+                    screenresult.screen.screen_type)
+                newfields = {}
+                newfields.update(well_schema['fields'])
+                for key,field in newfields.items():
+                    field['visibility'] = []
+                newfields.update(data['fields'])
+                data['fields'] = newfields
+                
             logger.info('build screenresult schema done')
             return data
 
@@ -4932,13 +5441,17 @@ class ScreenResource(ApiResource):
         #         order_by(_ap.c.screen_id, _ap.c.plate_number)
         # apdlrc = apdlrc.cte('apdlrc')
         
-        lps = select([
-            _ap.c.screen_id,
-            func.count(distinct(_ap.c.plate_number)).label('count')]).\
-                select_from(_ap).\
-                where(_ap.c.library_screening_id != None).\
-                group_by(_ap.c.screen_id).cte('lps')
-
+        lps = (
+            select([
+                _ap.c.screen_id,
+                func.count(distinct(_ap.c.plate_number)).label('count')
+            ])
+            .select_from(_ap.join(_screen,_ap.c.screen_id==_screen.c.screen_id))
+            .where(_ap.c.library_screening_id != None)
+            .group_by(_ap.c.screen_id))
+        if facility_id:
+            lps = lps.where(_screen.c.facility_id == facility_id )
+        lps = lps.cte('lps')    
         # Altered - 20160408 
         # per discussion with JS, no need to try to link presumed assay_plates
         # from the screen_result to (screening visit) assay_plates;
@@ -6404,13 +6917,16 @@ class SilencingReagentResource(ApiResource):
 
         super(SilencingReagentResource, self).__init__(**kwargs)
 
-    def build_sqlalchemy_columns(self, fields, bridge):
+    def build_sqlalchemy_columns(self, fields):
         '''
         @return an array of sqlalchemy.sql.schema.Column objects
         @param fields - field definitions, from the resource schema
         
         '''
+        logger.info('build silencing reagent columns...')
         DEBUG_BUILD_COLS = False or logger.isEnabledFor(logging.DEBUG)
+        
+        bridge = self.bridge
         
         columns = {}
         vendor_gene_columns = [
@@ -6780,55 +7296,18 @@ class ReagentResource(ApiResource):
         return self.build_list_response(request, **kwargs)
         
 
-    def get_query(self, library_type, param_hash):
-        # TODO: refactor so that the ReagentResource query can be passed 
-        # to the ScreenResultResource, used to add columns to the screenresult
-        # view.
-        pass
-        
-    @read_authorization
-    def build_list_response(self, request, **kwargs):
-        
-        param_hash = {}
-        param_hash.update(kwargs)
-        param_hash.update(self._convert_request_to_dict(request))
-        
-        is_for_detail = kwargs.pop('is_for_detail', False)
+    def get_query(self, param_hash, library_classification=None, library=None, **kwargs):
 
-        # TODO: eliminate dependency on library (for schema determination)
-        library = None
-        
-        library_short_name = param_hash.pop('library_short_name', None)
-        if not library_short_name:
-            logger.info('no library_short_name provided')
-        else:
-            param_hash['library_short_name__eq'] = library_short_name
-            library = Library.objects.get(short_name=library_short_name)
-
-        well_id = param_hash.pop('well_id', None)
-        if well_id:
-            param_hash['well_id__eq'] = well_id
-            if not library:
-                library = Well.objects.get(well_id=well_id).library
-
-        substance_id = param_hash.pop('substance_id', None)
-        if substance_id:
-            param_hash['substance_id__eq'] = substance_id
-            if not library:
-                library = Reagent.objects.get(
-                    substance_id=substance_id).well.library
-
-        schema = self.build_schema(library=library)
-        filename = self._get_filename(schema, kwargs)
+        schema = self.build_schema(library_classification=library_classification)
 
         try:
             
             # general setup
             manual_field_includes = set(param_hash.get('includes', []))
-            desired_format = self.get_serialize_format(request, **kwargs)
-            if desired_format == SDF_MIMETYPE:
-                manual_field_includes.add('molfile')
-  
+#             desired_format = self.get_serialize_format(request, **kwargs)
+#             if desired_format == SDF_MIMETYPE:
+#                 manual_field_includes.add('molfile')
+   
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash, **kwargs)
@@ -6843,11 +7322,11 @@ class ReagentResource(ApiResource):
             logger.debug('field hash scopes: %r',
                 set([field.get('scope', None) 
                     for field in field_hash.values()]))
-            if library:
+            if library_classification:
                 default_fields = ['fields.well', 'fields.reagent']
-                if library.screen_type == 'rnai':
+                if library_classification == 'rnai':
                     default_fields.append('fields.silencingreagent')
-                elif library.screen_type == 'natural_products':
+                elif library_classification == 'natural_products':
                     default_fields.append('fields.naturalproductreagent')
                 else:
                     default_fields.append('fields.smallmoleculereagent')
@@ -6864,26 +7343,26 @@ class ReagentResource(ApiResource):
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
                 order_params, field_hash)
              
-            rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
-                rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(
-                        field_hash)
+#             rowproxy_generator = None
+#             if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
+#                 rowproxy_generator = \
+#                     ApiResource.create_vocabulary_rowproxy_generator(
+#                         field_hash)
  
             # specific setup 
         
             base_query_tables = ['well', 'reagent', 'library']
             
-            columns = []
-            sub_columns = self.get_sr_resource().build_sqlalchemy_columns(
-                field_hash.values(), self.bridge)
-            sub_columns['plate_number'] = (literal_column(
-                "to_char(well.plate_number,'%s')" % PLATE_NUMBER_SQL_FORMAT)
-                .label('plate_number'))
+#             columns = []
+#             sub_columns = self.get_sr_resource().build_sqlalchemy_columns(
+#                 field_hash.values())
+#             sub_columns['plate_number'] = (literal_column(
+#                 "to_char(well.plate_number,'%s')" % PLATE_NUMBER_SQL_FORMAT)
+#                 .label('plate_number'))
             
             columns = self.build_sqlalchemy_columns(
                 field_hash.values(), base_query_tables=base_query_tables,
-                custom_columns=sub_columns)
+                custom_columns=None)
             
             # Could use the library param to limit the column building exercise
             # to the sub-resource, but since all columns can be joined, just include
@@ -6934,20 +7413,207 @@ class ReagentResource(ApiResource):
             if not order_clauses:
                 stmt = stmt.order_by("plate_number", "well_name")
 
-            title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
-                title_function = lambda key: field_hash[key]['title']
-
-            return self.stream_response_from_statement(
-                request, stmt, count_stmt, filename,
-                field_hash=field_hash, param_hash=param_hash,
-                is_for_detail=is_for_detail,
-                rowproxy_generator=rowproxy_generator,
-                title_function=title_function)
+            compiled_stmt = str(stmt.compile(
+                compile_kwargs={"literal_binds": True}))
+            logger.info('compiled_stmt %s', compiled_stmt)
+    
+            return (field_hash, columns, stmt, count_stmt)
                         
         except Exception, e:
             logger.exception('on get list')
             raise e  
+    
+    def build_sqlalchemy_columns(self, fields, base_query_tables=None, 
+            custom_columns=None):
+        sub_columns = self.get_sr_resource().build_sqlalchemy_columns(fields)
+        sub_columns['plate_number'] = (literal_column(
+            "to_char(well.plate_number,'%s')" % PLATE_NUMBER_SQL_FORMAT)
+            .label('plate_number'))
+        return ApiResource.build_sqlalchemy_columns(self, 
+            fields, base_query_tables=base_query_tables, 
+            custom_columns=sub_columns)
+        
+    @read_authorization
+    def build_list_response(self, request, **kwargs):
+        
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        
+        is_for_detail = kwargs.pop('is_for_detail', False)
+
+        # TODO: eliminate dependency on library (for schema determination)
+        library = None
+        library_classification = None
+        library_short_name = param_hash.pop('library_short_name', None)
+        if not library_short_name:
+            logger.info('no library_short_name provided')
+        else:
+            param_hash['library_short_name__eq'] = library_short_name
+            library = Library.objects.get(short_name=library_short_name)
+        well_id = param_hash.pop('well_id', None)
+        if well_id:
+            param_hash['well_id__eq'] = well_id
+            if not library:
+                library = Well.objects.get(well_id=well_id).library
+        if library:
+            library_classification = library.classification
+        substance_id = param_hash.pop('substance_id', None)
+        if substance_id:
+            param_hash['substance_id__eq'] = substance_id
+            if not library:
+                library = Reagent.objects.get(
+                    substance_id=substance_id).well.library
+
+        schema = self.build_schema(library_classification=library_classification)
+        filename = self._get_filename(schema, kwargs)
+
+        manual_field_includes = set(param_hash.get('includes', []))
+        desired_format = self.get_serialize_format(request, **kwargs)
+        if desired_format == SDF_MIMETYPE:
+            manual_field_includes.add('molfile')
+            param_hash['includes'] = manual_field_includes
+            
+        (field_hash, columns, stmt, count_stmt) = \
+            self.get_query(
+                param_hash, 
+                library_classification=library_classification,
+                library=library,
+                **kwargs)
+        
+        rowproxy_generator = None
+        if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
+            rowproxy_generator = \
+                ApiResource.create_vocabulary_rowproxy_generator(
+                    field_hash)
+
+#         try:
+#             
+#             # general setup
+#             manual_field_includes = set(param_hash.get('includes', []))
+#             desired_format = self.get_serialize_format(request, **kwargs)
+#             if desired_format == SDF_MIMETYPE:
+#                 manual_field_includes.add('molfile')
+#   
+#             (filter_expression, filter_fields) = \
+#                 SqlAlchemyResource.build_sqlalchemy_filters(
+#                     schema, param_hash=param_hash, **kwargs)
+#             
+#             if filter_expression is None:
+#                 raise BadRequest('can only service requests with filter expressions')
+#                  
+#             field_hash = self.get_visible_fields(
+#                 schema['fields'], filter_fields, manual_field_includes,
+#                 param_hash.get('visibilities'),
+#                 exact_fields=set(param_hash.get('exact_fields', [])))
+#             logger.debug('field hash scopes: %r',
+#                 set([field.get('scope', None) 
+#                     for field in field_hash.values()]))
+#             if library:
+#                 default_fields = ['fields.well', 'fields.reagent']
+#                 if library.screen_type == 'rnai':
+#                     default_fields.append('fields.silencingreagent')
+#                 elif library.screen_type == 'natural_products':
+#                     default_fields.append('fields.naturalproductreagent')
+#                 else:
+#                     default_fields.append('fields.smallmoleculereagent')
+#                 
+#                 _temp = { key:field for key, field in field_hash.items() 
+#                     if field.get('scope', None) in default_fields }
+#                 field_hash = _temp
+#                 logger.debug('final field hash: %r', field_hash.keys())
+#             else:
+#                 # consider limiting fields available
+#                 pass
+#             
+#             order_params = param_hash.get('order_by', [])
+#             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+#                 order_params, field_hash)
+#              
+#             rowproxy_generator = None
+#             if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
+#                 rowproxy_generator = \
+#                     ApiResource.create_vocabulary_rowproxy_generator(
+#                         field_hash)
+#  
+#             # specific setup 
+#         
+#             base_query_tables = ['well', 'reagent', 'library']
+#             
+#             columns = []
+#             sub_columns = self.get_sr_resource().build_sqlalchemy_columns(
+#                 field_hash.values(), self.bridge)
+#             sub_columns['plate_number'] = (literal_column(
+#                 "to_char(well.plate_number,'%s')" % PLATE_NUMBER_SQL_FORMAT)
+#                 .label('plate_number'))
+#             
+#             columns = self.build_sqlalchemy_columns(
+#                 field_hash.values(), base_query_tables=base_query_tables,
+#                 custom_columns=sub_columns)
+#             
+#             # Could use the library param to limit the column building exercise
+#             # to the sub-resource, but since all columns can be joined, just include
+#             # the SR columns, as above.            
+#             # sub_resource = None
+#             # if library:
+#             #     sub_resource = self.get_reagent_resource(library_screen_type=library.screen_type)
+#             # if sub_resource and hasattr(sub_resource, 'build_sqlalchemy_columns'):
+#             #     sub_columns = sub_resource.build_sqlalchemy_columns(
+#             #         field_hash.values(), self.bridge)
+#             #     if DEBUG_GET_LIST: 
+#             #         logger.info(str(('sub_columns', sub_columns.keys())))
+#             #     columns = self.build_sqlalchemy_columns(
+#             #         field_hash.values(), base_query_tables=base_query_tables,
+#             #         custom_columns=sub_columns)
+#             # else:
+#             # 
+#             #     sub_columns = sub_resource.build_sqlalchemy_columns(
+#             #         field_hash.values(), self.bridge)
+#             #     if DEBUG_GET_LIST: 
+#             #         logger.info(str(('sub_columns', sub_columns.keys())))
+#             #     columns = self.build_sqlalchemy_columns(
+#             #         field_hash.values(), base_query_tables=base_query_tables,
+#             #         custom_columns=sub_columns)
+#             #      
+#                 
+# #                 # Note: excludes smr,rnai,np,... tables if library not specified
+# #                 logger.info(str(('build generic resource columns')))
+# #                 columns = self.build_sqlalchemy_columns(
+# #                     field_hash.values(), base_query_tables=base_query_tables)
+#             
+#             # Start building a query; use the sqlalchemy.sql.schema.Table API:
+#             _well = self.bridge['well']
+#             _reagent = self.bridge['reagent']
+#             _library = self.bridge['library']
+#             j = _well.join(
+#                 _reagent, _well.c.well_id == _reagent.c.well_id, isouter=True)
+#             j = j.join(_library, _well.c.library_id == _library.c.library_id)
+#             stmt = select(columns.values()).select_from(j)
+#             
+#             if library:
+#                 stmt = stmt.where(_well.c.library_id == library.library_id) 
+# 
+#             # general setup
+#              
+#             (stmt, count_stmt) = self.wrap_statement(
+#                 stmt, order_clauses, filter_expression)
+#             if not order_clauses:
+#                 stmt = stmt.order_by("plate_number", "well_name")
+
+        title_function = None
+        if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+            title_function = lambda key: field_hash[key]['title']
+
+        return self.stream_response_from_statement(
+            request, stmt, count_stmt, filename,
+            field_hash=field_hash, param_hash=param_hash,
+            is_for_detail=is_for_detail,
+            rowproxy_generator=rowproxy_generator,
+            title_function=title_function)
+                        
+#         except Exception, e:
+#             logger.exception('on get list')
+#             raise e  
  
     def get_sr_resource(self):
         if not self.sr_resource:
@@ -6969,13 +7635,11 @@ class ReagentResource(ApiResource):
             self.well_resource = WellResource()
         return self.well_resource
     
-    def get_reagent_resource(self, library=None):
-        # FIXME: we should store the "type" on the entity
-        
-        if library.screen_type == 'rnai':
+    def get_reagent_resource(self, library_classification):
+        if library_classification == 'rnai':
             return self.get_sr_resource()
         else:
-            if library.library_type == 'natural_products':
+            if library_classification == 'natural_products':
                 return self.get_npr_resource()
             else:
                 return self.get_smr_resource()
@@ -6992,18 +7656,18 @@ class ReagentResource(ApiResource):
         library_short_name = kwargs.pop('library_short_name')
         try:
             library = Library.objects.get(short_name=library_short_name)
-            return self.build_response(request, self.build_schema(library), **kwargs)
+            return self.build_response(request, self.build_schema(library.classification), **kwargs)
             
         except Library.DoesNotExist, e:
             raise Http404(str(('cannot build schema - library def needed'
                 'no library found for short_name', library_short_name)))
                 
-    def build_schema(self, library=None):
-        logger.info('build reagent schema for library: %r', library.short_name)
+    def build_schema(self, library_classification=None):
+        logger.info('build reagent schema for library_classification: %r', library_classification)
         schema = deepcopy(super(ReagentResource, self).build_schema())
-        if library:
+        if library_classification:
             sub_data = self.get_reagent_resource(
-                library=library).build_schema()
+                library_classification).build_schema()
             
             newfields = {}
             newfields.update(sub_data['fields'])
@@ -7028,7 +7692,7 @@ class ReagentResource(ApiResource):
             raise ValidationError(key='well', msg='required')
         
         reagent_resource = self.get_reagent_resource(
-            library=well.library)
+            well.library.classification)
         reagent = reagent_resource.patch_obj(deserialized, **kwargs)
         
         reagent.well = well
@@ -7156,18 +7820,19 @@ class WellResource(ApiResource):
         library_short_name = kwargs.pop('library_short_name')
         try:
             library = Library.objects.get(short_name=library_short_name)
-            return self.build_response(request, self.build_schema(library),**kwargs)
+            return self.build_response(
+                request, self.build_schema(library.classification),**kwargs)
             
         except Library.DoesNotExist, e:
             raise Http404(str(('cannot build schema - library def needed'
                 'no library found for short_name', library_short_name)))
                 
-    def build_schema(self, library=None):
+    def build_schema(self, library_classification=None):
         data = super(WellResource, self).build_schema()
         
-        if library:
+        if library_classification:
             sub_data = self.get_reagent_resource().build_schema(
-                library=library)
+                library_classification=library_classification)
             newfields = {}
             newfields.update(sub_data['fields'])
             newfields.update(data['fields'])

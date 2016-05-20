@@ -1,10 +1,16 @@
 from __future__ import unicode_literals
 
-import dateutil
-import six
+import io
 import logging
+
+from PIL import Image
+import dateutil
+from django.core.urlresolvers import resolve
+import six
+
 from reports import ValidationError
 from reports.serialize import csvutils
+
 
 logger = logging.getLogger(__name__)
 
@@ -112,3 +118,9 @@ def parse_json_field(val, key, json_field_type):
         raise NotImplementedError(
             'unknown json_field_type: %s' % json_field_type)
 
+def resolve_image(request, uri):
+    logger.debug('find image at %r', uri)
+    view, args, kwargs = resolve(uri)
+    kwargs['request'] = request
+    response = view(*args, **kwargs)
+    return Image.open(io.BytesIO(response.content))

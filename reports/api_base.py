@@ -95,8 +95,8 @@ class IccblBaseResource(Resource):
                     setattr(log, key, value)
         return log
 
-    def _get_filename(self,schema, kwargs):
-        filekeys = []
+    def _get_filename(self, schema, kwargs, filename=''):
+        filekeys = [filename]
         if 'id_attribute' in schema:
             filekeys.extend([ str(kwargs[key]) for 
                 key in schema['id_attribute'] if key in kwargs ])
@@ -112,7 +112,7 @@ class IccblBaseResource(Resource):
                     break
                  
         filekeys.insert(0,self._meta.resource_name)
-        logger.debug('filekeys: %r', filekeys)
+        logger.info('filekeys: %r', filekeys)
         filename = '_'.join(filekeys)
         filename = re.sub(r'[\W]+','_',filename)
         logger.debug('get_filename: %r, %r' % (filename, kwargs))

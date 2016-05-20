@@ -146,7 +146,7 @@ def result_value_field_mapper(header_row):
             mapped_row.append(RESULT_VALUE_FIELD_MAP[value.lower()])
         else:
             mapped_row.append(xlrd.book.colname(i))
-            
+    logger.info('mapped header row: %r to %r', header_row, mapped_row)
     unmapped = [key for key,value in RESULT_VALUE_FIELD_MAP.items() 
         if value not in mapped_row]
     if unmapped:
@@ -253,10 +253,12 @@ def parse_result_row(i,parsed_columns,result_row):
         if colname in meta_columns:
             continue
         if colname not in parsed_columns:
-            raise ValidationError(
-                key='colname',
-                msg='result value column is not in recognized columns: %r' 
-                    % parsed_columns )
+            # NOTE: this is no longer an error, as the result value sheet may
+            # contain extra columns (selected by user on output)
+            logger.info(
+                'result value column %r is not in recognized columns: %r', 
+                colname, parsed_columns.keys())
+            continue
         column = parsed_columns[colname]
         if ( column['data_type'] == 'partition_positive_indicator'
             and not raw_val):
@@ -479,6 +481,137 @@ def write_workbook(file, screen_facility_id, fields, result_values):
         create_output_data(screen_facility_id, fields, result_values ))
     
 def create_output_data(screen_facility_id, fields, result_values ):
+    '''
+    Translate Screen Result data into a data structure ready for Serialization:
+    {
+       'Screen Info': [ [ row1 ], [ row2 ]...].
+       'Data Columns': [ [ row1 ], [ row2 ]...].
+       'Data': [ [ row1 ], [ row2 ]...].
+    }
+    '''
+    logger.info('create screen result data structure for %r', screen_facility_id)
+    control_type_mapping = {v:k for k,v in ASSAY_WELL_CONTROL_TYPES.items()}
+
+    data = OrderedDict()
+    
+    data['Screen Info'] = { 'Screen Number': screen_facility_id }
+    
+    data_column_structure = []
+    data['Data Columns'] = data_column_structure
+    
+    datacolumn_labels = DATA_COLUMN_FIELD_MAP.keys()
+    data_columns = []
+    other_columns = []
+    for key,field in fields.items(): 
+        if ( field.get('is_datacolumn',False) 
+            or field.get('data_worksheet_column', None)):
+            data_columns.append(key)
+        elif ( key not in ['well_id', 'plate_number','well_name',
+                           'screen_facility_id', 'assay_well_control_type']
+               and key not in RESULT_VALUE_FIELD_MAP.keys() ):
+            other_columns.append(key)
+    data_columns = sorted(data_columns, key=lambda x: fields[x]['ordinal'])
+    other_columns = sorted(other_columns, key=lambda x: fields[x]['ordinal'])
+    logger.info('data columns: %r, other_columns: %r', data_columns, other_columns)
+
+    header_row = [datacolumn_labels[0]]
+    header_row.extend([xl_col_to_name(len(RESULT_VALUE_FIELD_MAP)+i) 
+        for i in range(len(data_columns))])
+    logger.debug('header_row: %r', header_row)
+#     data_column_structure.append(header_row)
+
+    for i,(sheet_label,sheet_key) in enumerate(
+            DATA_COLUMN_FIELD_MAP.items()[1:]):
+        row = [sheet_label]
+        for j,key in enumerate(data_columns):
+            val = fields[key].get(sheet_key, None)
+            if sheet_key == 'data_type':
+                val = fields[key].get('assay_data_type',fields[key].get('data_type',None))
+            if val:
+                if sheet_key == 'is_follow_up_data':
+                    if val == True:
+                        val = 'Follow up'
+                    elif val == False:
+                        val = 'Primary'
+                row.append(str(val))
+            else:
+                row.append(None)
+                logger.debug(
+                    'Note: sheet key not found in schema field: %r, %r', 
+                    sheet_key, fields[key])
+        logger.debug('data column row: %r', row)
+        data_column_structure.append(OrderedDict(zip(header_row,row)))
+        
+    def result_value_generator(result_values):
+        
+        logger.info('Write the result values sheet')
+        header_row = []
+        header_row.extend(RESULT_VALUE_FIELD_MAP.keys())
+        header_row.extend([fields[key].get('title', key) for key in data_columns])
+        header_row.extend(other_columns)
+
+#         yield(header_row)
+
+        row_count = 0
+        for result_value in result_values:
+            row_count += 1
+            row = []
+            
+            row.extend(result_value['well_id'].split(':'))
+            if ( result_value.has_key('assay_well_control_type')
+                 and result_value['assay_well_control_type'] ):
+                row.append(
+                    control_type_mapping[default_converter(
+                        result_value['assay_well_control_type'])])
+            else:
+                row.append(None)
+            excluded_cols = []
+            if result_value.has_key('excluded') and result_value['excluded']:
+                temp = result_value['excluded']
+                if hasattr(temp, 'split'):
+                    temp = temp.split(LIST_DELIMITER_SQL_ARRAY)
+                    
+                for data_column_name in temp:
+                    excluded_cols.append(get_column_letter(
+                        len(RESULT_VALUE_FIELD_MAP)+1
+                            +data_columns.index(data_column_name)))
+                    excluded_cols = sorted(excluded_cols)
+            row.append(','.join(excluded_cols))
+            
+            for j,key in enumerate(data_columns):
+                if result_value.has_key(key):
+                    result_value_entry = result_value[key]
+                    # Test the entry:
+                    # 1: directly serializing dicts read in from a deserialized workbook
+                    # 2: directly serializing output from the api
+                    if isinstance(result_value_entry, dict):
+                        if 'numeric_value' in result_value_entry:
+                            row.append(result_value_entry['numeric_value'])
+                        elif 'value' in result_value_entry:
+                            row.append(result_value_entry['value'])
+                        else:
+                            logger.warn(
+                                'no value entry found in the result_value: %d', 
+                                result_value)
+                            row.append(None)
+                    else:
+                        row.append(result_value[key])
+                else:
+                    row.append(None)
+
+            for j,key in enumerate(other_columns):
+                if result_value.has_key(key):
+                    row.append(result_value[key])
+            
+            if row_count % 10000 == 0:
+                logger.info('wrote %d rows', row_count)
+            yield OrderedDict(zip(header_row,row))
+    
+    data['Data'] = result_value_generator(result_values)
+
+    return data
+
+def create_output_data_bak(screen_facility_id, fields, result_values ):
     '''
     Translate Screen Result data into a data structure ready for Serialization:
     {

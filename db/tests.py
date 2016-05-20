@@ -817,6 +817,8 @@ class ScreenResultSerializerTest(TestCase):
         logger.info('input_data: keys: %r', input_data.keys())
         logger.info('output_data: keys: %r', output_data.keys())
         logger.info(
+            'input_data: field keys: %r', input_data['fields'].keys())
+        logger.info(
             'output_data: field keys: %r', output_data['fields'].keys())
                     
         # Test DataColumns
@@ -939,6 +941,7 @@ class ScreenResultResource(DBResourceTestCase):
         Screen.objects.all().delete()
         Library.objects.all().delete()
         ApiLog.objects.all().delete()
+        ScreensaverUser.objects.all().filter(username='adminuser').delete()
 
     def _setup_test_config(self):
         # Setup ScreenResult dependencies
@@ -1015,10 +1018,6 @@ class ScreenResultResource(DBResourceTestCase):
         logger.info('PUT library well data ...')
         resp = self.django_client.put(
             resource_uri, data=json.dumps({ 'objects': input_data }) , **data_for_get)
-        # resp = self.api_client.put(
-        #     resource_uri, format='sdf', data={ 'objects': input_data } , 
-        #     authentication=self.get_credentials(), 
-        #     **{ 'limit': 0, 'includes': '*'} )
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
@@ -1309,8 +1308,8 @@ class ScreenResultResource(DBResourceTestCase):
         expected_value=2
         self.assertTrue(confirmed_positive_col[key]==expected_value,
             (key,'expected_value',expected_value,
-                'returned value',confirmed_positive_col[key]), 
-                'col', confirmed_positive_col)
+                'returned value',confirmed_positive_col[key], 
+                'col', confirmed_positive_col))
         key = 'positives_count'
         expected_value=5
         self.assertTrue(partion_positive_col[key]==expected_value,
@@ -1563,6 +1562,7 @@ class ScreenResource(DBResourceTestCase):
         Screen.objects.all().delete()
         Library.objects.all().delete()
         ApiLog.objects.all().delete()
+        ScreensaverUser.objects.all().filter(username='adminuser').delete()
         
     def test2_create_library_screening(self):
         

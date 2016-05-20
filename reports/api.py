@@ -13,7 +13,6 @@ import sys
 from django.conf import settings
 from django.conf.urls import url
 from django.contrib.auth.models import User as DjangoUser
-from django.contrib.auth.models import UserManager
 from django.contrib.sessions.models import Session
 from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
@@ -24,11 +23,10 @@ from django.db.models.aggregates import Max
 from django.forms.models import model_to_dict
 from django.http.request import HttpRequest
 from django.http.response import HttpResponse, Http404
-from django.utils.encoding import smart_text
 from sqlalchemy import select, asc, text
 from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.sql import and_, or_, not_ 
-from sqlalchemy.sql import asc, desc #, alias, Alias
+from sqlalchemy.sql import asc, desc  # , alias, Alias
 from sqlalchemy.sql import func
 from sqlalchemy.sql.elements import literal_column
 from sqlalchemy.sql.expression import column, join, distinct
@@ -37,7 +35,7 @@ from tastypie.authentication import BasicAuthentication, SessionAuthentication, 
 from tastypie.authorization import Authorization, ReadOnlyAuthorization
 from tastypie.exceptions import NotFound, ImmediateHttpResponse, Unauthorized, \
     BadRequest
-from tastypie.http import HttpForbidden, HttpNotFound, HttpNotImplemented, \
+from tastypie.http import HttpForbidden, HttpNotFound, \
     HttpNoContent, HttpBadRequest
 from tastypie.utils.timezone import make_naive
 from tastypie.utils.urls import trailing_slash
@@ -46,17 +44,14 @@ from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT
 from reports import ValidationError, _now
 from reports.api_base import IccblBaseResource, un_cache
-from reports.dump_obj import dumpObj
 from reports.models import MetaHash, Vocabularies, ApiLog, ListLog, Permission, \
                            UserGroup, UserProfile, Record, API_ACTION_DELETE, \
                            API_ACTION_CREATE
-from reports.serializers import LimsSerializer
 from reports.serialize import parse_val, parse_json_field, XLSX_MIMETYPE, \
     SDF_MIMETYPE, XLS_MIMETYPE
-
+from reports.serializers import LimsSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource, _concat
-from reports.utils.profile_decorator import profile
-from reports.serializers import dict_to_rows
+
 
 logger = logging.getLogger(__name__)
 
@@ -972,6 +967,7 @@ class ApiResource(SqlAlchemyResource):
             logger.info('===id_attribute: %s', id_attribute)
         deleted_items = list(original_data)        
         for new_dict in new_data:
+            logger.info('new dict: %r', new_dict)
             log = ApiLog()
             log.username = request.user.username 
             log.user_id = request.user.id 
@@ -1742,7 +1738,6 @@ class ResourceResource(ApiResource):
             for field in resource['fields'].values():
                 if not field.get('table',None):
                     field['table'] = resource.get('table', None)
-            
             supertype = resource.get('supertype', None)
             if supertype:
                 if supertype in resources:

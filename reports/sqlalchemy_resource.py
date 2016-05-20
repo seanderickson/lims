@@ -37,8 +37,8 @@ from reports.serializers import LimsSerializer
 from reports.utils.sqlalchemy_bridge import Bridge
 from reports.serialize.streaming_serializers import sdf_generator, \
     json_generator, get_xls_response, csv_generator, ChunkIterWrapper,\
-    cursorGenerator
-from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE
+    cursor_generator, image_generator
+from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE
 import re
 from tempfile import SpooledTemporaryFile, NamedTemporaryFile
 from openpyxl import Workbook
@@ -283,12 +283,13 @@ class SqlAlchemyResource(IccblBaseResource):
                 
                 field_table = field.get('table', None)
                 
-                if not field_table:
+                if not field_table and DEBUG_BUILD_COLUMNS:
                     logger.info(str(('skipping field because there is no '
                         '"field_table" value set',key,field)))
                     continue
                 if DEBUG_BUILD_COLUMNS: 
                     logger.info(str(('field', field['key'], 'field_table', field_table )))
+                
                 if field_table in base_query_tables:
                     # simple case: table.fields already selected in the base query:
                     # just need to specify them
@@ -425,12 +426,11 @@ class SqlAlchemyResource(IccblBaseResource):
         return value
 
     @staticmethod
-    def build_sqlalchemy_filters(schema, param_hash={}, **kwargs):
+    def build_sqlalchemy_filters(schema, param_hash={}):
         DEBUG_FILTERS = False or logger.isEnabledFor(logging.DEBUG)
         
         if DEBUG_FILTERS: 
-            logger.info('build_sqlalchemy_filters: param_hash %s, kwargs: %s', 
-                param_hash, kwargs)
+            logger.info('build_sqlalchemy_filters: param_hash %s', param_hash)
 
         # ordinary filters
         (filter_expression, filter_fields) = \
@@ -980,207 +980,68 @@ class SqlAlchemyResource(IccblBaseResource):
             if request.GET.get(HTTP_PARAM_RAW_LISTS, False):
                 list_brackets = None
     
-#             desired_format = param_hash.get(
-#                 'desired_format',self.get_format(request))
             desired_format = self.get_serialize_format(request, **param_hash)
             content_type=build_content_type(desired_format)
             logger.debug('desired_format: %s, content_type: %s', 
                 desired_format, content_type)
             
+            image_keys = [key for key,field in field_hash.items()
+                if field.get('display_type', None) == 'image']
+            ordered_keys = sorted(field_hash.keys(), 
+                key=lambda x: field_hash[x].get('ordinal',key))
+            list_fields = [ key for (key,field) in field_hash.items() 
+                if( field.get('json_field_type',None) == 'fields.ListField' 
+                    or field.get('linked_field_type',None) == 'fields.ListField'
+                    or field.get('data_type', None) == 'list' ) ]
+            value_templates = {key:field['value_template'] 
+                for key,field in field_hash.items() if field.get('value_template', None)}
+            data = cursor_generator(
+                result,ordered_keys,list_fields=list_fields,
+                value_templates=value_templates)
             response = None
-            
             if desired_format == 'application/json':
                 
                 response = StreamingHttpResponse(
                     ChunkIterWrapper(
                         json_generator(
-                            result,meta,request,
-                            is_for_detail=is_for_detail,field_hash=field_hash)))
+                            image_generator(data, image_keys, request), 
+                            meta, is_for_detail=is_for_detail)))
                 response['Content-Type'] = content_type
             
-            
-            elif( desired_format == 'application/xls' or
+            elif( desired_format == XLS_MIMETYPE or
                 desired_format == XLSX_MIMETYPE ): 
-                # NOTE: will respond with xlsx for both desired formats
-                 
-                response = get_xls_response(result,output_filename,request, 
-                    field_hash=field_hash, title_function=title_function,
+
+                data = {
+                    'data': data 
+                }
+                response = get_xls_response(
+                    data, output_filename, request=request, 
+                    title_function=title_function, image_keys=image_keys,
                     list_brackets=list_brackets)
-#             elif( desired_format == 'application/xls' or
-#                 desired_format == XLSX_MIMETYPE ): 
-#                 # NOTE: will respond with xlsx for both desired formats
-#                 def dict_to_rows(_dict):
-#                     logger.info('_dict: %r', _dict)
-#                     values = []
-#                     if isinstance(_dict, dict):
-#                         for key,val in _dict.items():
-#                             for row in dict_to_rows(val):
-#                                 if not row:
-#                                     values.append([key,None])
-#                                 else:
-#                                     keyrow = [key]
-#                                     if isinstance(row, basestring):
-#                                         keyrow.append(row)
-#                                     else:
-#                                         keyrow.extend(row)
-#                                     values.append(keyrow)
-#                     else:
-#                         values = (csv_convert(_dict),)
-#                     return values
-#                 class FileWrapper1:
-#                     """
-#                     Wrapper to convert file-like objects to iterables
-#                         - modified to delete the file after iterating
-#                     """
-#                 
-#                     def __init__(self, filelike, blksize=8192):
-#                         self.filelike = filelike
-#                         self.blksize = blksize
-#                 
-#                     def __getitem__(self,key):
-#                         data = self.filelike.read(self.blksize)
-#                         if data:
-#                             return data
-#                         
-#                         # Modify: delete file after iterating
-#                         logger.info('1done...')
-#                         self.filelike.close()
-#                         os.remove(self.filelike.name)
-# 
-#                         raise IndexError
-#                 
-#                     def __iter__(self):
-#                         return self
-#                 
-#                     def next(self):
-#                         data = self.filelike.read(self.blksize)
-#                         if data:
-#                             return data
-#                         
-#                         # Modify: delete file after iterating
-#                         logger.info('1done...')
-#                         self.filelike.close()
-#                         os.remove(self.filelike.name)
-#                         
-#                         raise StopIteration
-#                     
-#                     
-#                 def xlsx_response_openpyxl(meta, data, fields=None, title_function=None):
-#                     # Issue; entire file is created in memory
-#                     with  NamedTemporaryFile(delete=False) as temp_file:
-#                         wb = Workbook(optimized_write=True)
-#                     
-#                         sheet = wb.create_sheet(title='meta')
-#                         for row in dict_to_rows(meta):
-#                             logger.info('meta row: %r', row)
-#                             sheet.append(row)
-#                         if fields:
-#                             sheet = wb.create_sheet(title='fields')
-#                             keys = fields.values()[0].keys()
-#                             keys = sorted(keys)
-#                             for key in keys:
-#                                 row = [key]
-#                                 for field in fields.values():
-#                                     row.append(csv_convert(field[key]))
-#                                 logger.info('row: %s', row)
-#                                 sheet.append(row)
-#                             
-#                         sheet = wb.create_sheet(title='data')
-#                         for i,row in enumerate(data):
-#                             if i == 0:
-#                                 # Requires data to be uniform
-#                                 sheet.append([title_function(x) for x in row.keys()])
-#                             sheet.append(row.values())
-#                             
-#                         logger.info('save to temp file')
-#                         wb.save(temp_file)
-#                         temp_file.seek(0, os.SEEK_END)
-#                         size = temp_file.tell()
-#                         temp_file.seek(0)   
-#                     logger.info('stream to response')
-#                     chunk_size = 8192
-#                     _file = file(temp_file.name)
-#                     response = StreamingHttpResponse(
-#                         FileWrapper1(_file), content_type=content_type) 
-#                     response['Content-Length'] = size
-#                     response['Content-Type'] = XLSX_MIMETYPE
-#                     response['Content-Disposition'] = \
-#                         'attachment; filename=%s.xlsx' % meta['output_filename']
-#                     return response
-# 
-#                 def xlsx_response(meta, data, fields=None, title_function=None):
-#                     # using XlsxWriter for constant memory usage
-#                     with  NamedTemporaryFile(delete=False) as temp_file:
-#                         wb = xlsxwriter.Workbook(temp_file, {'constant_memory': True})                    
-#                         sheet = wb.add_worksheet('meta')
-#                         for i,row in enumerate(dict_to_rows(meta)):
-#                             logger.info('meta row: %r', row)
-#                             sheet.write_row(i,0,row)
-#                         if fields:
-#                             sheet = wb.add_worksheet('fields')
-#                             keys = fields.values()[0].keys()
-#                             keys = sorted(keys)
-#                             for i,key in enumerate(keys):
-#                                 row = [key]
-#                                 for field in fields.values():
-#                                     row.append(csv_convert(field[key]))
-#                                 sheet.write_row(i,0,row)
-#                             
-#                         sheet = wb.add_worksheet('data')
-#                         for i,row in enumerate(data):
-#                             if i == 0:
-#                                 # Requires data to be uniform
-#                                 sheet.write_row(i,0,[title_function(x) for x in row.keys()])
-#                             sheet.write_row(i+1,0,[csv_convert(x) for x in row.values()])
-#                             
-#                         logger.info('save to temp file')
-#                         wb.close()
-#                         temp_file.seek(0, os.SEEK_END)
-#                         size = temp_file.tell()
-#                         temp_file.seek(0)   
-#                     logger.info('stream to response')
-#                     chunk_size = 8192
-#                     _file = file(temp_file.name)
-#                     response = StreamingHttpResponse(
-#                         FileWrapper1(_file), content_type=content_type) 
-#                     response['Content-Length'] = size
-#                     response['Content-Type'] = XLSX_MIMETYPE
-#                     response['Content-Disposition'] = \
-#                         'attachment; filename=%s.xlsx' % meta['output_filename']
-#                     return response
-#                     
-#                 meta = meta or {}
-#                 meta['output_filename'] = output_filename
-#                 response = xlsx_response(
-#                     meta,
-#                     cursorGenerator( result, field_hash, field_hash.keys()), 
-#                     fields=field_hash,
-#                     title_function=title_function)
-#                 
-#                  
+
             elif desired_format == SDF_MIMETYPE:
                 
                 response = StreamingHttpResponse(
-                    ChunkIterWrapper(sdf_generator(result, field_hash)),
+                    ChunkIterWrapper(
+                        sdf_generator(
+                            image_generator(data,image_keys, request), 
+                            title_function=title_function)),
                     content_type=content_type)
                 response['Content-Disposition'] = \
                     'attachment; filename=%s.sdf' % output_filename
             
             elif desired_format == 'text/csv':
-    
                 response = StreamingHttpResponse(
-                    csv_generator(
-                        result,request,field_hash=field_hash,
-                        title_function=title_function,list_brackets=list_brackets),
+                    ChunkIterWrapper(
+                        csv_generator(
+                            image_generator(data, image_keys, request), 
+                            title_function=title_function, 
+                            list_brackets=list_brackets)),
                     content_type=content_type)
                 response['Content-Disposition'] = \
                     'attachment; filename=%s.csv' % output_filename
             else:
                 msg = 'unknown format: %r' % desired_format
-#                 response = HttpResponse(msg)
-#                 response.status_code = 400
-#                 raise ImmediateHttpResponse(
-#                     response=response)
                 raise BadRequest(msg)
             return response
 

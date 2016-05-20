@@ -1241,6 +1241,16 @@ class Library(models.Model):
     loaded_by = models.ForeignKey('ScreensaverUser',
                                   related_name='libraries_loaded',
                                   null=True, blank=True)
+    @property
+    def classification(self):
+        if self.screen_type == 'rnai':
+            return 'rnai'
+        else:
+            if self.library_type == 'natural_products':
+                return 'natural_product'
+            else:
+                return 'small_molecule'
+    
     class Meta:
         db_table = 'library'
     def __unicode__(self):

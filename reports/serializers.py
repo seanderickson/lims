@@ -28,7 +28,8 @@ from reports.serialize import dict_to_rows
 from reports.serialize.csvutils import LIST_DELIMITER_CSV
 import reports.serialize.csvutils as csvutils
 import reports.serialize.sdfutils as sdfutils
-from reports.serialize.streaming_serializers import generic_xlsx_response
+from reports.serialize.streaming_serializers import generic_xlsx_response,\
+    get_xls_response
 from reports.serialize.xlsutils import LIST_DELIMITER_XLS
 import reports.serialize.xlsutils as xlsutils
 from tastypie.exceptions import BadRequest
@@ -477,8 +478,10 @@ class ScreenResultSerializer(XLSSerializer,SDFSerializer,CSVSerializer):
             if not content:
                 content = request.body
             if format == JSON_MIMETYPE:
+                logger.info('deserialize screen result from json')
                 deserialized = self.from_json(content)
             else:
+                logger.info('deserialize screen result from xlsx')
                 deserialized = self.from_xlsx(content)            
 
         return deserialized
@@ -486,7 +489,7 @@ class ScreenResultSerializer(XLSSerializer,SDFSerializer,CSVSerializer):
     def to_xlsx(self, data, options=None):
         logger.debug(
             'serialize Non-streamed Screenresult using generic serialization')
-        response = generic_xlsx_response(data)
+        response = get_xls_response(data, 'generic_file')
         return self.get_content(response)
     
     def to_xls(self, data, options=None):

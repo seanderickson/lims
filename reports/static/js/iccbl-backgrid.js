@@ -401,6 +401,7 @@ var getSchema = Iccbl.getSchema = function(schema_url, callback) {
     data : "",
     dataType : "json",
     success : function(schemaResult) {
+        _.each(_.values(schemaResult.fields), Iccbl.appModel.parseSchemaField );
         callback(schemaResult);
     }, // end success outer ajax call
     error : function(x, e) {
@@ -3600,24 +3601,20 @@ var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
     if (_.isArray(optionValues) &&  !_.isEmpty(optionValues)){
       for (var k = 0; k < rawData.length; k++) {
         var rawDatum = rawData[k];
-
         for (var i = 0; i < optionValues.length; i++) {
           var optionValue = optionValues[i];
-
           if (_.isArray(optionValue)) {
             var optionText  = optionValue[0];
             var optionValue = optionValue[1];
-
-            if (optionValue == rawDatum){
+            if (optionValue.toLowerCase() == rawDatum.toLowerCase()){
               selectedText.push(_.escape(optionText));
             }
           }
           else if (_.isObject(optionValue)) {
             var optionGroupValues = optionValue.values;
-
             for (var j = 0; j < optionGroupValues.length; j++) {
               var optionGroupValue = optionGroupValues[j];
-              if (optionGroupValue[1] == rawDatum) {
+              if (optionGroupValue[1].toLowerCase() == rawDatum.toLowerCase()) {
                 selectedText.push(_.escape(optionGroupValue[0]));
               }
             }
@@ -3965,9 +3962,13 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
       if(display_type == 'siunit'){
         headerCell = SIUnitHeaderCell;
         if(!cell_options.symbol){
-          var msg = ('Error constructing SIUnit header cell: ' +
-              'missing required "symbol" backgrid_cell_option');
-          Iccbl.appModel.error(msg);
+          console.log('cell_options', cell_options, typeof cell_options);
+          Iccbl.appModel.error(Iccbl.formatString(
+            ('Error constructing SIUnit header cell: "{key}" ' + 
+              'missing required "symbol" in backgrid_cell_options {options}')  ,
+            { key: key,
+              options: cell_options
+            }));
         }
         
       }
@@ -3994,7 +3995,9 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     //  column['headerCell'] = column['headerCell'].extend(cell_options);
     //}
     if(!_.has(column, 'headerCell')){
-      console.log('no special header cell found for dt: ', data_type,'edit_type', edit_type);
+      column['headerCell'] = TextHeaderCell;
+      console.log('no special header cell found for col: ' + key + 
+        ', dt: ', data_type,'edit_type', edit_type);
     }
     
   }

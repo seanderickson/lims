@@ -1247,9 +1247,9 @@ define([
         console.log('change');
         var content_type = form.getValue('content_type');
         console.log('content_type: ' + content_type );
-        if(content_type != 'csv' && content_type != 'xls'){
-          form.$el.find('[name="use_vocabularies"]').prop('disabled', true);
-          form.$el.find('[name="use_titles"]').prop('disabled', true);
+        if(content_type == 'sdf'){
+          form.$el.find('[name="use_vocabularies"]').prop('disabled', false);
+          form.$el.find('[name="use_titles"]').prop('disabled', false);
           form.$el.find('[name="raw_lists"]').prop('disabled', true);
         }else{
           form.$el.find('[name="use_vocabularies"]').prop('disabled', false);

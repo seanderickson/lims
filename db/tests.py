@@ -874,40 +874,17 @@ class ScreenResultSerializerTest(TestCase):
                     ('key: %r, from input: %r,'
                         ' not found in output result_value: %r') 
                     % (key, result_value, found) )
-                # Test both types of serialized result_value: 
-                # dict (direct from parser), and val: (returned from api)
-                if isinstance(val, dict):
-                    for k,v in val.items():
-                        val2 = found[key][k]
-                        if val2 == 'NP':
-                            testinstance.assertTrue(v=='NP' or v==None,
-                                ('partition positive val: %r, key: %r, %r - %r'
-                                    % (v, key, result_value, found)))
-                            break
-                        elif val2 == 'NT':
-                            testinstance.assertTrue(v=='NT' or v==None,
-                                ('confirmed positive val: %r, key: %r, %r - %r'
-                                    % (v, key, result_value, found)))
-                            break
-                        result,msg = equivocal(v, val2)
-                        testinstance.assertTrue(
-                            result,
-                            ('rv output not equal: key: %r field:%r, '
-                             ' %r != %r, %r, '
-                             'input: %r, output: %r')
-                            % (key, k, v, val2, msg, result_value, found) )
+
+                val2 = found[key]
+                if val2 == 'NP':
+                    testinstance.assertTrue(val=='NP' or val==None,
+                        ('partition positive val: %r, key: %r, %r - %r'
+                            % (val, key, result_value, found)))
+                elif val2 == 'NT':
+                    testinstance.assertTrue(val=='NT' or val==None,
+                        ('confirmed positive val: %r, key: %r, %r - %r'
+                            % (val, key, result_value, found)))
                 else:
-                    val2 = found[key]
-                    if val2 == 'NP':
-                        testinstance.assertTrue(val=='NP' or val==None,
-                            ('partition positive val: %r, key: %r, %r - %r'
-                                % (val, key, result_value, found)))
-                        break
-                    elif val2 == 'NT':
-                        testinstance.assertTrue(v=='NT' or v==None,
-                            ('confirmed positive val: %r, key: %r, %r - %r'
-                                % (val, key, result_value, found)))
-                        break
                     result,msg = equivocal(val, val2)
                     testinstance.assertTrue(
                         result,
@@ -1067,18 +1044,14 @@ class ScreenResultResource(DBResourceTestCase):
         output_data = self.sr_serializer.deserialize(
             content=self.get_content(resp), format=XLSX_MIMETYPE)
         
-        ScreenResultSerializerTest.validate(self, input_data, output_data)
-
-    def test2_load_valid_input(self):
-
-        default_data_for_get = { 'limit': 0, 'includes': ['*'] }
-        default_data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
-        
-        self._setup_test_config()
-        logger.info('create screen...')        
-        screen = self.create_screen({ 'screen_type': 'small_molecule' })
-        
-        # create data as already parsed input        
+        ScreenResultSerializerTest.validate(self, input_data, output_data)    
+    
+    def _create_valid_input(self, screen_facility_id):
+        # create data as already parsed input
+        # TODO: rework the screenresult import into a generic serialization:
+        # fields: keyed by (unique) datacolumn name
+        # result_values: as an array of dicts (using a generator)
+        # result_values: dropt the "numeric_value/value"        
         fields = {
             'E': {
                 'ordinal': 0,
@@ -1130,71 +1103,96 @@ class ScreenResultResource(DBResourceTestCase):
         result_values = [
             { 
                 'well_id': '00001:A01', 
-                'E': { 'value': 'test value 1'},
-                'F': { 'numeric_value': 91.19 },
-                'G': { 'numeric_value': .0011 },
-                'H': { 'value': None },  # should be interpreted as 'NT'
-                'I': { 'value': None }, # should be interpreted as 'NP'
+                'E': 'test value 1',
+                'F': 91.19 ,
+                'G': .0011 ,
+                'H': None ,  # should be interpreted as 'NT'
+                'I': None , # should be interpreted as 'NP'
             },
             { 
                 'well_id': '00001:A02', 
-                'E': { 'value': 'test value 2'},
-                'F': { 'numeric_value': 0.99 },
-                'G': { 'numeric_value': 1.0331 },
-                'H': { 'value': 'CP'},
-                'I': { 'value': 'W' },
+                'E': 'test value 2',
+                'F': 0.99 ,
+                'G': 1.0331 ,
+                'H': 'CP',
+                'I': 'W' ,
             },
             { 
                 'well_id': '00001:A03', 
-                'E': { 'value': 'test value 2'},
-                'F': { 'numeric_value': 1.99 },
-                'G': { 'numeric_value': 1.032 },
-                'H': { 'value': 'I'},
-                'I': { 'value': 'M' },
+                'E': 'test value 2',
+                'F': 1.99 ,
+                'G': 1.032 ,
+                'H': 'I',
+                'I': 'M' ,
             },
             { 
                 'well_id': '00001:A04', 
-                'E': { 'value': 'test value 2'},
-                'F': { 'numeric_value': 1.99 },
-                'G': { 'numeric_value': 1.032 },
-                'H': { 'value': 'NT'},
-                'I': { 'value': 'S' },
+                'E': 'test value 2',
+                'F': 1.99 ,
+                'G': 1.032 ,
+                'H': 'NT',
+                'I': 'S' ,
             },
             { 
                 'well_id': '00001:A05', 
-                'E': { 'value': 'test value 2'},
-                'F': { 'numeric_value': 1.1 },
-                'G': { 'numeric_value': 1.1 },
-                'H': { 'value': 'CP'},
-                'I': { 'value': 'M' },
+                'E': 'test value 2',
+                'F': 1.1 ,
+                'G': 1.1 ,
+                'H': 'CP',
+                'I': 'M' ,
             },
             { 
                 'well_id': '00001:A06', 
-                'E': { 'value': 'test value 2'},
-                'F': { 'numeric_value': 1.1 },
-                'G': { 'numeric_value': 1.1 },
-                'H': { 'value': 'FP'},
-                'I': { 'value': 'M' },
+                'E': 'test value 2',
+                'F': 1.1 ,
+                'G': 1.1 ,
+                'H': 'FP',
+                'I': 'M' ,
             },
             { 
                 'well_id': '00001:A21',
                 'assay_well_control_type': 'assay_control', 
-                'E': { 'value': 'test value 2'},
-                'F': { 'numeric_value': 1.1 },
-                'G': { 'numeric_value': 1.1 },
-                'H': { 'value': 'FP'}, # non experimental well should be ignored
-                'I': { 'value': 'M' }, # non experimental well should be ignored
+                'E': 'test value 2',
+                'F': 1.1 ,
+                'G': 1.1 ,
+                'H': 'FP', # non experimental well should be ignored
+                'I': 'M' , # non experimental well should be ignored
+            },
+            { 
+                'well_id': '00001:A07',
+                'exclude': ['E','F','G','H','I'], 
+                'E': 'test value 2',
+                'F': 1.1 ,
+                'G': 1.1 ,
+                'H': 'FP',
+                'I': 'M' ,
             },
         ]
         input_data = OrderedDict((
-            ('meta', {'screen_facility_id': screen['facility_id'] } ),
+            ('meta', {'screen_facility_id': screen_facility_id } ),
             ('fields', fields),
             ('objects', result_values),
         ))
+        return input_data
+    
+    
+    def test2_load_valid_input(self):
+
+        default_data_for_get = { 'limit': 0, 'includes': ['*'] }
+        default_data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
+        
+        self._setup_test_config()
+        logger.info('create screen...')        
+        screen = self.create_screen({ 'screen_type': 'small_molecule' })
+        
+        screen_facility_id = screen['facility_id']
+        input_data = self._create_valid_input(screen_facility_id)
+
+        # The ScreenResult
         input_data_put = screen_result_importer.create_output_data(
-            screen['facility_id'], 
-            fields, 
-            result_values)
+            screen_facility_id, 
+            input_data['fields'], 
+            input_data['objects'] )
         # The ScreenResultSerializer only recognizes the XLSX format
         input_data_put = self.sr_serializer.serialize(
             input_data_put, format=XLSX_MIMETYPE)
@@ -1202,7 +1200,6 @@ class ScreenResultResource(DBResourceTestCase):
         data_for_get.update(default_data_for_get)
         data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
         data_for_get['HTTP_ACCEPT'] = XLSX_MIMETYPE
-
         logger.info('PUT screen result to the server...')
         screen_facility_id = screen['facility_id']
         resource_name = 'screenresult'
@@ -1243,7 +1240,7 @@ class ScreenResultResource(DBResourceTestCase):
         screen = self.get_screen(screen['facility_id'])
         
         key = 'experimental_well_count'
-        expected_value = 6
+        expected_value = 7
         self.assertTrue(screen[key]==expected_value,
             (key,'expected_value',expected_value,
                 'returned value',screen[key]))
@@ -1332,7 +1329,17 @@ class ScreenResultResource(DBResourceTestCase):
                 'returned value',partion_positive_col[key]))
 
 
-    def test3_result_value_errors_from_file(self):
+#     def test3_mutual_positives(self):
+#         
+#         self.test2_load_valid_input()
+#         
+#         # create another screen with the same input
+#         
+#         
+        
+        
+        
+    def test4_result_value_errors_from_file(self):
         self.admin_user = self.create_screensaveruser({ 
             'username': 'adminuser',
             'is_superuser': True
@@ -1424,7 +1431,7 @@ class ScreenResultResource(DBResourceTestCase):
             self.assertTrue('could not convert' in str(sheet_errors[key]),
                 'error should be a conversion error: %r, %r' %(key,sheet_errors[key]) )
 
-    def test4_data_column_errors(self):
+    def test5_data_column_errors(self):
         self.admin_user = self.create_screensaveruser({ 
             'username': 'adminuser',
             'is_superuser': True
@@ -1491,11 +1498,11 @@ class ScreenResultResource(DBResourceTestCase):
         result_values = [
             { 
                 'well_id': '00001:A01', 
-                'E': { 'value': 'test value 1'},
-                'F': { 'numeric_value': 91.19 },
-                'G': { 'numeric_value': .0011 },
-                'H': { 'value': None },  # should be interpreted as 'NT'
-                'I': { 'value': None }, # should be interpreted as 'NP'
+                'E': 'test value 1',
+                'F': 91.19,
+                'G': .0011,
+                'H': None,  # should be interpreted as 'NT'
+                'I': None, # should be interpreted as 'NP'
             },
         ]
         input_data = OrderedDict((

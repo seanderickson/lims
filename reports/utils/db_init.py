@@ -1,3 +1,8 @@
+# Use this to load api metadata initialization files that are detailed in the
+# "api_init_actions" file:
+# See static/api_init/api_init_actions.csv
+
+
 from __future__ import unicode_literals
 import json
 import requests

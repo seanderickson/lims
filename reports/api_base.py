@@ -128,7 +128,9 @@ class IccblBaseResource(Resource):
 
     def build_response(self, request, data, response_class=HttpResponse, **kwargs):
         
+        logger.info('build response %r', request.path)
         serialized = self.serialize(request, data, **kwargs)
+        logger.info('build response %r, serialized', request.path)
         desired_format = self.get_serialize_format(request,**kwargs)
         return response_class(
             content=serialized, 

@@ -8,7 +8,7 @@ from openpyxl.utils import get_column_letter
 
 import logging
 import json
-from reports import ParseError, ValidationError
+from reports import ParseError, ValidationError, LIST_DELIMITER_SQL_ARRAY
 from db.support.data_converter import default_converter
 from reports.serialize import parse_val
 from collections import OrderedDict
@@ -136,16 +136,17 @@ def parse_columns(columns_sheet):
         raise ValidationError(errors={'Data Columns': errors})
     return parsed_cols
         
-def result_value_field_mapper(header_row):
-    logger.info('map result value header row...')
+def result_value_field_mapper(header_row, parsed_columns):
+    logger.info('map result value header row... %r', parsed_columns.keys())
     mapped_row = []
     header_row = [x for x in header_row]
     for i,value in enumerate(header_row):
-        found = False
         if value.lower() in RESULT_VALUE_FIELD_MAP:
             mapped_row.append(RESULT_VALUE_FIELD_MAP[value.lower()])
         else:
-            mapped_row.append(xlrd.book.colname(i))
+            colname = xlrd.book.colname(i)
+            if colname in parsed_columns.keys():
+                mapped_row.append(colname)
     logger.info('mapped header row: %r to %r', header_row, mapped_row)
     unmapped = [key for key,value in RESULT_VALUE_FIELD_MAP.items() 
         if value not in mapped_row]
@@ -166,7 +167,7 @@ def parse_result_values(parsed_columns, sheets):
     
         rows = sheet_rows(sheet)
         try:
-            header_row = result_value_field_mapper(rows.next())
+            header_row = result_value_field_mapper(rows.next(), parsed_columns)
         except ValidationError, e:
             logger.info('error: %r', e)
             if not parse_error:
@@ -312,6 +313,247 @@ def parse_result_row(i,parsed_columns,result_row):
             rv_initializer['is_exclude'] = False
         
         logger.debug('rv_initializer: %r', rv_initializer)
+            
+    return parsed_row
+    
+def parse_result_row_orig(i,parsed_columns,result_row):    
+    
+    logger.debug('parse result row: %r', result_row)
+    
+    meta_columns = RESULT_VALUE_FIELD_MAP.values()
+    parsed_row = {}
+    excluded_cols = []
+    
+    meta_key = 'plate_number'
+    val = result_row[meta_key]
+    logger.debug('plate value to parse: %r', val)
+    plate_number = parse_val(val, meta_key, 'integer')
+    meta_key = 'well_name'
+    val = result_row[meta_key]
+    if WELLNAME_MATCHER.match(val):
+        wellname = val
+    else:
+        raise ParseError(
+            key=i, 
+            msg=('well_name val %r does not follow the pattern: %r'
+            % (val, WELLNAME_MATCHER.pattern))) 
+    parsed_row['well_id'] = \
+        '%s:%s' % (str(plate_number).zfill(5), wellname)
+    
+    meta_key = 'assay_well_control_type'
+    val = result_row.get(meta_key, None)
+    parsed_row[meta_key] = None
+    if val:
+        if val.lower() in ASSAY_WELL_CONTROL_TYPES:
+            parsed_row[meta_key] = \
+                ASSAY_WELL_CONTROL_TYPES[val.lower()]
+        else:
+            msg = ('%s: val %r is not one of the choices: %r'
+                % (meta_key, val, ASSAY_WELL_CONTROL_TYPES))
+            logger.error(msg)
+            raise ValidationError(key=parsed_row['well_id'], msg=msg)
+
+    meta_key = 'exclude'
+    val = result_row.get(meta_key, None)
+    if val:
+        if val.lower() == 'all':
+            excluded_cols = parsed_columns.keys()
+        else:
+            excluded_cols = [
+                x.strip().upper() for x in val.split(',')]
+            unknown_excluded_cols = (
+                set(excluded_cols) - set(parsed_columns.keys()))
+            if unknown_excluded_cols:
+                raise ValidationError(
+                    key = parsed_row['well_id'],
+                    msg = 'unknown excluded cols: %r' % unknown_excluded_cols )
+    
+    for colname, raw_val in result_row.items():
+        if colname in meta_columns:
+            continue
+        if colname not in parsed_columns:
+            # NOTE: this is no longer an error, as the result value sheet may
+            # contain extra columns (selected by user on output)
+            logger.info(
+                'result value column %r is not in recognized columns: %r', 
+                colname, parsed_columns.keys())
+            continue
+        column = parsed_columns[colname]
+        if ( column['data_type'] == 'partition_positive_indicator'
+            and not raw_val):
+            raw_val = 'NP' 
+        if ( column['data_type'] == 'confirmed_positive_indicator'
+            and not raw_val):
+            raw_val = 'NT' 
+        if raw_val is None:
+            continue
+        
+        key = '%s-%s' % (parsed_row['well_id'],colname)
+        rv_initializer = {}
+        parsed_row[colname] = rv_initializer
+        
+        if column['data_type'] == 'numeric':
+            # decimal_places = parse_val(
+            #     column['decimal_places'],'decimal_places','integer')
+            if  column['decimal_places'] > 0:
+                # parse, to validate
+                parse_val(raw_val, key, 'float')
+                # record the raw val, to save all digits (precision)
+                rv_initializer['numeric_value'] = raw_val
+            else:
+                rv_initializer['numeric_value'] = \
+                    parse_val(raw_val, key, 'integer')
+        elif column['data_type'] == 'partition_positive_indicator':
+            val = raw_val.upper()
+            if val not in PARTITION_POSITIVE_MAPPING:
+                raise ValidationError(
+                    key=key, 
+                    msg='val: %r must be one of %r'
+                        % (raw_val, PARTITION_POSITIVE_MAPPING.keys()))
+            rv_initializer['value'] = val
+        elif column['data_type'] == 'confirmed_positive_indicator':
+            val = raw_val.upper()
+            if val not in CONFIRMED_POSITIVE_MAPPING:
+                raise ValidationError(
+                    key=key, 
+                    msg='val: %r must be one of %r'
+                        % (raw_val, CONFIRMED_POSITIVE_MAPPING.keys()))
+            rv_initializer['value'] = val
+        elif column['data_type'] == 'boolean_positive_indicator':
+            val = parse_val(raw_val,key,'boolean')
+            rv_initializer['value'] = val
+        else:
+            rv_initializer['value'] = raw_val
+        
+        if colname in excluded_cols:
+            rv_initializer['is_exclude'] = True
+        else:
+            rv_initializer['is_exclude'] = False
+        
+        logger.debug('rv_initializer: %r', rv_initializer)
+            
+    return parsed_row
+    
+def parse_result_row(i,parsed_columns,result_row):    
+    
+    logger.debug('parse result row: %r', result_row)
+    
+    meta_columns = RESULT_VALUE_FIELD_MAP.values()
+    parsed_row = {}
+    excluded_cols = []
+    
+    meta_key = 'plate_number'
+    val = result_row[meta_key]
+    logger.debug('plate value to parse: %r', val)
+    plate_number = parse_val(val, meta_key, 'integer')
+    meta_key = 'well_name'
+    val = result_row[meta_key]
+    if WELLNAME_MATCHER.match(val):
+        wellname = val
+    else:
+        raise ParseError(
+            key=i, 
+            msg=('well_name val %r does not follow the pattern: %r'
+            % (val, WELLNAME_MATCHER.pattern))) 
+    parsed_row['well_id'] = \
+        '%s:%s' % (str(plate_number).zfill(5), wellname)
+    
+    meta_key = 'assay_well_control_type'
+    val = result_row.get(meta_key, None)
+    parsed_row[meta_key] = None
+    if val:
+        if val.lower() in ASSAY_WELL_CONTROL_TYPES:
+            parsed_row[meta_key] = \
+                ASSAY_WELL_CONTROL_TYPES[val.lower()]
+        else:
+            msg = ('%s: val %r is not one of the choices: %r'
+                % (meta_key, val, ASSAY_WELL_CONTROL_TYPES))
+            logger.error(msg)
+            raise ValidationError(key=parsed_row['well_id'], msg=msg)
+
+    meta_key = 'exclude'
+    val = result_row.get(meta_key, None)
+    if val:
+        if val.lower() == 'all':
+            excluded_cols = parsed_columns.keys()
+        else:
+            excluded_cols = [x.strip().upper() for x in val.split(',')]
+            unknown_excluded_cols = (
+                set(excluded_cols) - set(parsed_columns.keys()))
+            if unknown_excluded_cols:
+                raise ValidationError(
+                    key = parsed_row['well_id'],
+                    msg = 'unknown excluded cols: %r' % unknown_excluded_cols )
+            parsed_row[meta_key] = excluded_cols
+            
+    for colname, raw_val in result_row.items():
+        if colname in meta_columns:
+            continue
+        if colname not in parsed_columns:
+            # NOTE: this is no longer an error, as the result value sheet may
+            # contain extra columns (selected by user on output)
+            logger.info(
+                'result value column %r is not in recognized columns: %r', 
+                colname, parsed_columns.keys())
+            continue
+        column = parsed_columns[colname]
+        if ( column['data_type'] == 'partition_positive_indicator'
+            and not raw_val):
+            raw_val = 'NP' 
+        if ( column['data_type'] == 'confirmed_positive_indicator'
+            and not raw_val):
+            raw_val = 'NT' 
+        if raw_val is None:
+            continue
+        
+        key = '%s-%s' % (parsed_row['well_id'],colname)
+#         rv_initializer = {}
+#         parsed_row[colname] = rv_initializer
+        parsed_row[colname] = raw_val
+        
+        if column['data_type'] == 'numeric':
+            # decimal_places = parse_val(
+            #     column['decimal_places'],'decimal_places','integer')
+            if  column['decimal_places'] > 0:
+                # parse, to validate
+                parse_val(raw_val, key, 'float')
+                # record the raw val, to save all digits (precision)
+#                 rv_initializer['numeric_value'] = raw_val
+            else:
+#                 rv_initializer['numeric_value'] = \
+#                     parse_val(raw_val, key, 'integer')
+                parsed_row[colname] = parse_val(raw_val, key, 'integer')
+        elif column['data_type'] == 'partition_positive_indicator':
+            val = raw_val.upper()
+            if val not in PARTITION_POSITIVE_MAPPING:
+                raise ValidationError(
+                    key=key, 
+                    msg='val: %r must be one of %r'
+                        % (raw_val, PARTITION_POSITIVE_MAPPING.keys()))
+#             rv_initializer['value'] = val
+            parsed_row[colname] = val
+        elif column['data_type'] == 'confirmed_positive_indicator':
+            val = raw_val.upper()
+            if val not in CONFIRMED_POSITIVE_MAPPING:
+                raise ValidationError(
+                    key=key, 
+                    msg='val: %r must be one of %r'
+                        % (raw_val, CONFIRMED_POSITIVE_MAPPING.keys()))
+#             rv_initializer['value'] = val
+            parsed_row[colname] = val
+        elif column['data_type'] == 'boolean_positive_indicator':
+            val = parse_val(raw_val,key,'boolean')
+#             rv_initializer['value'] = val
+            parsed_row[colname] = val
+#         else:
+#             rv_initializer['value'] = raw_val
+        
+#         if colname in excluded_cols:
+#             rv_initializer['is_exclude'] = True
+#         else:
+#             rv_initializer['is_exclude'] = False
+        
+#         logger.debug('rv_initializer: %r', rv_initializer)
             
     return parsed_row
 
@@ -566,11 +808,11 @@ def create_output_data(screen_facility_id, fields, result_values ):
             else:
                 row.append(None)
             excluded_cols = []
-            if result_value.has_key('excluded') and result_value['excluded']:
-                temp = result_value['excluded']
+            if result_value.has_key('exclude') and result_value['exclude']:
+                temp = result_value['exclude']
                 if hasattr(temp, 'split'):
                     temp = temp.split(LIST_DELIMITER_SQL_ARRAY)
-                    
+                logger.info('data_columns: find %r, in %r', temp, data_columns)    
                 for data_column_name in temp:
                     excluded_cols.append(get_column_letter(
                         len(RESULT_VALUE_FIELD_MAP)+1
@@ -580,22 +822,7 @@ def create_output_data(screen_facility_id, fields, result_values ):
             
             for j,key in enumerate(data_columns):
                 if result_value.has_key(key):
-                    result_value_entry = result_value[key]
-                    # Test the entry:
-                    # 1: directly serializing dicts read in from a deserialized workbook
-                    # 2: directly serializing output from the api
-                    if isinstance(result_value_entry, dict):
-                        if 'numeric_value' in result_value_entry:
-                            row.append(result_value_entry['numeric_value'])
-                        elif 'value' in result_value_entry:
-                            row.append(result_value_entry['value'])
-                        else:
-                            logger.warn(
-                                'no value entry found in the result_value: %d', 
-                                result_value)
-                            row.append(None)
-                    else:
-                        row.append(result_value[key])
+                    row.append(result_value[key])
                 else:
                     row.append(None)
 
@@ -611,122 +838,7 @@ def create_output_data(screen_facility_id, fields, result_values ):
 
     return data
 
-def create_output_data_bak(screen_facility_id, fields, result_values ):
-    '''
-    Translate Screen Result data into a data structure ready for Serialization:
-    {
-       'Screen Info': [ [ row1 ], [ row2 ]...].
-       'Data Columns': [ [ row1 ], [ row2 ]...].
-       'Data': [ [ row1 ], [ row2 ]...].
-    }
-    '''
-    logger.info('create screen result data structure for %r', screen_facility_id)
-    control_type_mapping = {v:k for k,v in ASSAY_WELL_CONTROL_TYPES.items()}
-
-    data = OrderedDict()
-    
-    data['Screen Info'] = [ ('Screen Number', screen_facility_id) ]
-    
-    data_column_structure = []
-    data['Data Columns'] = data_column_structure
-    
-    datacolumn_labels = DATA_COLUMN_FIELD_MAP.keys()
-    data_columns = [key for key,field in fields.items() 
-        if ( field.get('is_datacolumn',False) 
-            or field.get('data_worksheet_column', None))  ]
-    data_columns = sorted(data_columns, key=lambda x: fields[x]['ordinal'])
-    logger.debug('data columns: %r', data_columns)
-    header_row = [datacolumn_labels[0]]
-    header_row.extend([xl_col_to_name(len(RESULT_VALUE_FIELD_MAP)+i) 
-        for i in range(len(data_columns))])
-    logger.debug('header_row: %r', header_row)
-    data_column_structure.append(header_row)
-
-    for i,(sheet_label,sheet_key) in enumerate(
-            DATA_COLUMN_FIELD_MAP.items()[1:]):
-        row = [sheet_label]
-        for j,key in enumerate(data_columns):
-            val = fields[key].get(sheet_key, None)
-            if sheet_key == 'data_type':
-                val = fields[key].get('assay_data_type',fields[key].get('data_type',None))
-            if val:
-                if sheet_key == 'is_follow_up_data':
-                    if val == True:
-                        val = 'Follow up'
-                    elif val == False:
-                        val = 'Primary'
-                row.append(str(val))
-            else:
-                row.append(None)
-                logger.debug(
-                    'Note: sheet key not found in schema field: %r, %r', 
-                    sheet_key, fields[key])
-        logger.debug('data column row: %r', row)
-        data_column_structure.append(row)
-        
-    def result_value_generator(result_values):
-        
-        logger.info('Write the result values sheet')
-        header_row = []
-        header_row.extend(RESULT_VALUE_FIELD_MAP.keys())
-        header_row.extend([fields[key].get('title', key) for key in data_columns])
-        yield(header_row)
-
-        row_count = 0
-        for result_value in result_values:
-            row_count += 1
-            row = []
-            
-            row.extend(result_value['well_id'].split(':'))
-            if ( result_value.has_key('assay_well_control_type')
-                 and result_value['assay_well_control_type'] ):
-                row.append(
-                    control_type_mapping[default_converter(
-                        result_value['assay_well_control_type'])])
-            else:
-                row.append(None)
-            excluded_cols = []
-            if result_value.has_key('excluded') and result_value['excluded']:
-                temp = result_value['excluded']
-                if hasattr(temp, 'split'):
-                    temp = temp.split(LIST_DELIMITER_SQL_ARRAY)
-                    
-                for data_column_name in temp:
-                    excluded_cols.append(get_column_letter(
-                        len(RESULT_VALUE_FIELD_MAP)+1
-                            +data_columns.index(data_column_name)))
-                    excluded_cols = sorted(excluded_cols)
-            row.append(','.join(excluded_cols))
-            
-            for j,key in enumerate(data_columns):
-                if result_value.has_key(key):
-                    result_value_entry = result_value[key]
-                    # Test the entry:
-                    # 1: directly serializing dicts read in from a deserialized workbook
-                    # 2: directly serializing output from the api
-                    if isinstance(result_value_entry, dict):
-                        if 'numeric_value' in result_value_entry:
-                            row.append(result_value_entry['numeric_value'])
-                        elif 'value' in result_value_entry:
-                            row.append(result_value_entry['value'])
-                        else:
-                            logger.warn(
-                                'no value entry found in the result_value: %d', 
-                                result_value)
-                            row.append(None)
-                    else:
-                        row.append(result_value[key])
-                else:
-                    row.append(None)
-            if row_count % 10000 == 0:
-                logger.info('wrote %d rows', row_count)
-            yield row
-    
-    data['Data'] = result_value_generator(result_values)
-
-    return data
-
-    
+   
 def read_file(input_file):
     '''Read a serialized (xlsx) screen result:
     - sheets:

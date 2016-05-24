@@ -643,7 +643,7 @@ class ScreenResultResource(ApiResource):
             select([
                 _rv.c.well_id,
                 func.array_to_string(
-                    func.array_agg(func.lower(_dc.c.name)), LIST_DELIMITER_SQL_ARRAY).label('excluded')
+                    func.array_agg(func.lower(_dc.c.name)), LIST_DELIMITER_SQL_ARRAY).label('exclude')
                 ])
             .select_from(excl_join)
             .where(_dc.c.screen_result_id == screenresult.screen_result_id)
@@ -685,7 +685,6 @@ class ScreenResultResource(ApiResource):
             schema['fields'], filter_fields, manual_field_includes,
             param_hash.get('visibilities'),
             exact_fields=set(param_hash.get('exact_fields', [])))
-        logger.info('field hash %r', [ '%s:%s,%r' % (x['key'],x['scope'],x.get('is_datacolumn', None)) for x in field_hash.values()])
         order_params = param_hash.get('order_by', [])
         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
             order_params, field_hash)
@@ -720,15 +719,15 @@ class ScreenResultResource(ApiResource):
             }
 
         filter_excluded = True
-        if ('excluded' not in filter_fields 
-                and 'excluded' not in order_params
-                and '-excluded' not in order_params):
+        if ('exclude' not in filter_fields 
+                and 'exclude' not in order_params
+                and '-exclude' not in order_params):
             filter_excluded = False
         if filter_excluded:
             logger.info('filter excluded...')
             base_clause = _aw.join(
                 excluded_cols_select, _aw.c.well_id==excluded_cols_select.c.well_id,isouter=True)
-            base_custom_columns['excluded'] = literal_column('exclusions.excluded')
+            base_custom_columns['exclude'] = literal_column('exclusions.exclude')
             
         # The base_fields are always included in the query: 
         # - all (screenresult) fields not part of result value lookup
@@ -765,13 +764,10 @@ class ScreenResultResource(ApiResource):
         base_query_tables = [
             'assay_well','well','screen_result', 'screen', 'exclusions']
         
-        logger.info(
-            'sqlalchemy columns: base_fields: %r, base_custom_columns: %r',
-            base_fields, base_custom_columns)
         base_columns = self.build_sqlalchemy_columns(
             base_fields, base_query_tables=base_query_tables,
             custom_columns=base_custom_columns) 
-        logger.info('base columns: %r', base_columns)
+        logger.debug('base columns: %r', base_columns)
         # remove is_positive if not needed, to help the query planner
         if ('is_positive' not in filter_fields 
                 and 'is_positive' in base_columns
@@ -871,7 +867,7 @@ class ScreenResultResource(ApiResource):
         custom_columns = { 
             'well_id': 
                 literal_column('well_query_index.well_id'),
-            'excluded': literal_column('exclusions.excluded')
+            'exclude': literal_column('exclusions.exclude')
         }
         # Use the well_query_index well_ids as the central subquery loop
         _wqx = select(['well_id']).select_from(_wellQueryIndex)
@@ -1038,9 +1034,9 @@ class ScreenResultResource(ApiResource):
                     well_id = row['well_id']
                     if well_id in excluded_well_to_datacolumn_map:
                         excluded_cols = excluded_well_to_datacolumn_map[well_id]
-                        row['excluded'] = sorted(excluded_cols)
+                        row['exclude'] = sorted(excluded_cols)
                     else:
-                        row['excluded'] = None
+                        row['exclude'] = None
                     yield row                  
             # Perform custom serialization because each output format will be 
             # different.
@@ -1518,7 +1514,7 @@ class ScreenResultResource(ApiResource):
             response.status_code = 200
             return response 
     
-    def create_result_value(self, colname, item, dc, well, initializer_dict, 
+    def create_result_value(self, colname, value, dc, well, initializer_dict, 
                             assay_well_initializer):
         
         positive_types = [
@@ -1526,69 +1522,90 @@ class ScreenResultResource(ApiResource):
             'partition_positive_indicator',
             'boolean_positive_indicator' ]
         well_id = well.well_id
+        
         rv_initializer = {}
         rv_initializer.update(initializer_dict)
-        rv_initializer.update(item)
-        
+        if colname in rv_initializer.get('exclude', []):
+            rv_initializer['is_exclude'] = True
+        if 'exclude' in rv_initializer:
+            del rv_initializer['exclude']
+
         logger.debug(
-            'create result value: item: %r, colname: %r, dc: %r %r',
-            item, colname, dc.name, dc.data_type)
+            'create result value: %r, colname: %r, dc: %r %r',
+            value, colname, dc.name, dc.data_type)
         key = '%s-%s' % (well_id, colname)
         rv_initializer['data_column_id'] = dc.data_column_id
-        if dc.data_type in positive_types:
-            val = rv_initializer['value']
-            if dc.data_type == 'partition_positive_indicator':
-                if val not in PARTITION_POSITIVE_MAPPING:
-                    raise ValidationError(
-                        key=key,
-                        msg='%r val: %r must be one of %r'
-                            % (dc.data_type, val, 
-                                PARTITION_POSITIVE_MAPPING.keys()))
-                val = PARTITION_POSITIVE_MAPPING[val]
-                rv_initializer['value'] = val
-            elif dc.data_type == 'confirmed_positive_indicator':
-                if val not in CONFIRMED_POSITIVE_MAPPING:
-                    raise ValidationError(
-                        key=key,
-                        msg='%r val: %r must be one of %r'
-                            % (dc.data_type, val, 
-                                CONFIRMED_POSITIVE_MAPPING.keys()))
-                val = CONFIRMED_POSITIVE_MAPPING[val]
-                rv_initializer['value'] = val
 
+        if dc.data_type == 'numeric':
+            if  dc.decimal_places > 0:
+                # parse, to validate
+                parse_val(value, key, 'float')
+                # record the raw val, to save all digits (precision)
+                rv_initializer['numeric_value'] = value
+            else:
+                rv_initializer['numeric_value'] = \
+                    parse_val(value, key, 'integer')
+        else:
+            rv_initializer['value'] = value
+
+        if dc.data_type in positive_types:
+            if dc.data_type == 'partition_positive_indicator':
+                if value not in PARTITION_POSITIVE_MAPPING:
+                    raise ValidationError(
+                        key=key,
+                        msg='%r val: %r must be one of %r'
+                            % (dc.data_type, value, 
+                                PARTITION_POSITIVE_MAPPING.keys()))
+                value = PARTITION_POSITIVE_MAPPING[value]
+                rv_initializer['value'] = value
+            elif dc.data_type == 'confirmed_positive_indicator':
+                if value not in CONFIRMED_POSITIVE_MAPPING:
+                    raise ValidationError(
+                        key=key,
+                        msg='%r val: %r must be one of %r'
+                            % (dc.data_type, value, 
+                                CONFIRMED_POSITIVE_MAPPING.keys()))
+                value = CONFIRMED_POSITIVE_MAPPING[value]
+                rv_initializer['value'] = value
+            elif  dc.data_type == 'boolean_positive_indicator':
+                value = parse_val(value,key,'boolean')
+                rv_initializer['value'] = value
+
+            # NOTE: the positive values are recorded in all cases, but 
+            # will only count if the well is experimental and not excluded
             if well.library_well_type != 'experimental':
                 logger.debug(
                     ('non experimental well, not considered for positives:'
                      'well: %r, col: %r, type: %r, val: %r'),
-                    well_id, colname, dc.data_type, item)
-            elif rv_initializer['is_exclude']:
+                    well_id, colname, dc.data_type, value)
+            elif rv_initializer['is_exclude'] is True:
                 logger.info(
                     ('excluded col, not considered for positives:'
                      'well: %r, col: %r, type: %r, val: %r'),
-                    well_id, colname, dc.data_type, item)
+                    well_id, colname, dc.data_type, value)
             else:
                 if dc.data_type == 'partition_positive_indicator':
-                    if val == PARTITION_POSITIVE_MAPPING['W']:
+                    if value == PARTITION_POSITIVE_MAPPING['W']:
                         dc.weak_positives_count += 1
                         dc.positives_count += 1
                         assay_well_initializer['is_positive'] = True
-                    elif val == PARTITION_POSITIVE_MAPPING['M']:
+                    elif value == PARTITION_POSITIVE_MAPPING['M']:
                         dc.medium_positives_count += 1
                         dc.positives_count += 1
                         assay_well_initializer['is_positive'] = True
-                    elif val == PARTITION_POSITIVE_MAPPING['S']:
+                    elif value == PARTITION_POSITIVE_MAPPING['S']:
                         dc.positives_count += 1
                         dc.strong_positives_count += 1
                         assay_well_initializer['is_positive'] = True
                 elif dc.data_type == 'confirmed_positive_indicator':
-                    if val == CONFIRMED_POSITIVE_MAPPING['CP']:
+                    if value == CONFIRMED_POSITIVE_MAPPING['CP']:
                         dc.positives_count += 1
                         assay_well_initializer['is_positive'] = True
                 elif dc.data_type == 'boolean_positive_indicator':
-                    if val is True:
+                    if value is True:
                         dc.positives_count += 1
                         assay_well_initializer['is_positive'] = True
-        
+         
             if dc.data_type == 'confirmed_positive_indicator':
                 if assay_well_initializer.get(
                         'confirmed_positive_value',PSYCOPG_NULL) != PSYCOPG_NULL:
@@ -1620,7 +1637,7 @@ class ScreenResultResource(ApiResource):
             'screen_result_id', 'well_id', 'plate_number', 'is_positive',
             'confirmed_positive_value','assay_well_control_type',
         ]
-        meta_columns = ['well_id', 'assay_well_control_type']
+        meta_columns = ['well_id', 'assay_well_control_type', 'exclude']
         
         with SpooledTemporaryFile(max_size=MAX_SPOOLFILE_SIZE) as f,\
             SpooledTemporaryFile(max_size=MAX_SPOOLFILE_SIZE) as assay_well_file:
@@ -1648,8 +1665,9 @@ class ScreenResultResource(ApiResource):
                     assay_well_initializer = { 
                         fieldname:PSYCOPG_NULL for fieldname in assay_well_fieldnames}
                     for meta_field in meta_columns:
-                        initializer_dict[meta_field] = result_row[meta_field]
-                    
+                        if meta_field in result_row:
+                            initializer_dict[meta_field] = result_row[meta_field]
+
                     well = Well.objects.get(well_id=result_row['well_id']) 
                     # FIXME: check for duplicate wells
                     assay_well_initializer.update({
@@ -1668,26 +1686,31 @@ class ScreenResultResource(ApiResource):
                                 key=well.well_id,
                                 msg='control wells must be one of %r, found: %r'
                                  % (allowed_control_well_types, well.library_well_type))
-                    
-                    for colname, item in result_row.items():
+
+                    for colname, val in result_row.items():
                         if colname in meta_columns:
                             continue
-                        if not item:
+                        if val is None:
                             continue
-                            
+                                
                         dc = sheet_col_to_datacolumn[colname]
                         rv_initializer = self.create_result_value(
-                            colname, item, dc, well, initializer_dict, assay_well_initializer)
+                            colname, val, dc, well, initializer_dict, 
+                            assay_well_initializer)
+                        
                         
                         if (dc.is_derived is False
                             and well.library_well_type == 'experimental'
-                            and not rv_initializer['is_exclude']):
+                            and rv_initializer['is_exclude'] is not True):
                             max_replicate = \
                                 plates_max_replicate_loaded.get(well.plate_number, 0)
                             if dc.replicate_ordinal > max_replicate:
                                 plates_max_replicate_loaded[well.plate_number] = \
                                     dc.replicate_ordinal
-                                
+                        else:
+                            logger.debug(('not counted for replicate: well: %r, '
+                                'type: %r, initializer: %r'), 
+                                well.well_id, well.library_well_type, rv_initializer)        
                         writer.writerow(rv_initializer)
                         rvs_to_create += 1
                 

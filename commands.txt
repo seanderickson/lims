@@ -17,6 +17,24 @@ PROFILE_LOG_BASE='/tmp'
 # then analyze the outpufile:
 PYTHONPATH=. python reports/utils/profile_decorator.py /tmp/unlimited_get_list-20141031T193039.prof 
 
+# EXAMPLE login interaction using cookies with curl
+# NOTE: basic authentication is not set up on Orchestra; 
+# because the wsgi client does not communicate credentials with the apache server
+curl -k --cookie-jar cookiefile \
+  -H "Referer: https://dev.screensaver2.med.harvard.edu/accounts/login/?next=/lims/" \
+  -X GET  "https://dev.screensaver2.med.harvard.edu/accounts/login/?next=/lims/"
+curl -k --cookie cookiefile  \
+  -H "Referer: https://dev.screensaver2.med.harvard.edu/accounts/login/?next=/lims/" \
+  -H "X-CSRFTOKEN: `grep csrftoken cookiefile | awk '{print $7}'`"  \
+  --user sde -X POST  "https://dev.screensaver2.med.harvard.edu/accounts/login/?next=/lims/"
+
+# EXAMPLE interaction using "django_requests.py" utility to do the form authentication
+# NOTE: basic authentication is not set up on Orchestra; 
+# because the wsgi client does not communicate credentials with the apache server
+PYTTHONPATH=. python reports/utils/django_requests.py -u sde \
+  -a GET "https://dev.screensaver2.med.harvard.edu/db/api/v1/screenresult/1158?page=1&limit=25&offset=0&library_well_type__eq=experimental"
+
+
 #####
 screen result upload test:
 $ curl -v --user sde -F xls=@db/static/test_data/screens/ScreenResultTest_115.xls \

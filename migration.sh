@@ -106,7 +106,9 @@ function gitpull {
 
   #  git checkout -- $SCRIPTPATH >>"$LOGFILE" 2>&1 || error "git-checkout $SCRIPTPATH failed: $?"
 
-  mv db/static/api_init/vocabularies_data_generated.csv db/static/api_init/vocabularies_data_generated.old.csv
+  if [[ -e db/static/api_init/vocabularies_data_generated.csv ]]; then
+    mv db/static/api_init/vocabularies_data_generated.csv db/static/api_init/vocabularies_data_generated.old.csv
+  fi
   
   git pull --ff-only $REMOTE $BRANCH >>"$LOGFILE" 2>&1 || error "git-pull failed: $?"
 
@@ -468,7 +470,13 @@ function main {
   
   # get the largest dataset, prime the well query/mutual positives 
   
-  wget https://dev.screensaver2.med.harvard.edu/db/api/v1/screenresult/1158?page=1&limit=25&offset=0&library_well_type__eq=experimental
+  # wget https://dev.screensaver2.med.harvard.edu/db/api/v1/screenresult/1158?page=1&limit=25&offset=0&library_well_type__eq=experimental
+
+  if [[ $IS_DEV_SERVER -ne 1 ]]; then
+    PYTHONPATH=. reports/utils/django_requests.py -u sde  \
+      -a GET "https://dev.screensaver2.med.harvard.edu/db/api/v1/screenresult/1158?page=1&limit=25&offset=0&library_well_type__eq=experimental"
+  
+
 }
 
 function code_bootstrap {

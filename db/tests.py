@@ -770,7 +770,7 @@ class ScreenResultSerializerTest(TestCase):
         with open(filename_out, 'wb') as output_file:
             logger.info('write back out to %r', filename_out)
             data = screen_result_importer.create_output_data(
-                            screen_facility_id, data_columns, result_values)
+                screen_facility_id, data_columns, result_values)
             output_file.write(serializer.to_xlsx(data))
                 
         with open(filename_out, 'rb') as output_file_in:
@@ -1184,16 +1184,17 @@ class ScreenResultResource(DBResourceTestCase):
         self._setup_test_config()
         logger.info('create screen...')        
         screen = self.create_screen({ 'screen_type': 'small_molecule' })
-        
         screen_facility_id = screen['facility_id']
+        logger.info('created screen %r', screen_facility_id)        
+        
         input_data = self._create_valid_input(screen_facility_id)
 
-        # The ScreenResult
+        # The ScreenResultSerializer only recognizes the XLSX format:
+        # So serialize the input data into an XLSX file
         input_data_put = screen_result_importer.create_output_data(
             screen_facility_id, 
             input_data['fields'], 
             input_data['objects'] )
-        # The ScreenResultSerializer only recognizes the XLSX format
         input_data_put = self.sr_serializer.serialize(
             input_data_put, format=XLSX_MIMETYPE)
         data_for_get = {}
@@ -1328,14 +1329,122 @@ class ScreenResultResource(DBResourceTestCase):
             (key,'expected_value',expected_value,
                 'returned value',partion_positive_col[key]))
 
+        logger.info('test2_load_valid_input, done.')        
 
-#     def test3_mutual_positives(self):
-#         
-#         self.test2_load_valid_input()
-#         
-#         # create another screen with the same input
-#         
-#         
+    def test3_mutual_positives(self):
+
+        default_data_for_get = { 'limit': 0, 'includes': ['*'] }
+        default_data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
+        
+        self.test2_load_valid_input()
+         
+        # create another screen with the same input
+        logger.info('create screen...')        
+        screen = self.create_screen({ 'screen_type': 'small_molecule' })
+        screen_facility_id = screen['facility_id']
+        logger.info('created screen %r', screen_facility_id)        
+        input_data = self._create_valid_input(screen_facility_id)
+
+        # The ScreenResultSerializer only recognizes the XLSX format:
+        # So serialize the input data into an XLSX file
+        input_data_put = screen_result_importer.create_output_data(
+            screen_facility_id, 
+            input_data['fields'], 
+            input_data['objects'] )
+        input_data_put = self.sr_serializer.serialize(
+            input_data_put, format=XLSX_MIMETYPE)
+        data_for_get = {}
+        data_for_get.update(default_data_for_get)
+        data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
+        data_for_get['HTTP_ACCEPT'] = XLSX_MIMETYPE
+        logger.info('PUT screen result to the server...')
+        screen_facility_id = screen['facility_id']
+        resource_name = 'screenresult'
+        resource_uri = '/'.join([
+            BASE_URI_DB,resource_name,screen_facility_id])
+        resp = self.django_client.put(
+            resource_uri, data=input_data_put, **data_for_get )
+        # resp = self.sr_api_client.put(
+        #     resource_uri, format='xlsx', data=input_data_put, 
+        #     authentication=self.get_credentials(), **data_for_get )
+        if resp.status_code not in [200, 204]:
+            content = self.get_content(resp)
+            if content:
+                logger.info('resp: %r', 
+                    [[str(y) for y in x] for x in self.serializer.from_xlsx(content)])
+        self.assertTrue(
+            resp.status_code in [200, 204], resp.status_code)
+
+        logger.info('refetch screen result from server...')
+        resp = self.django_client.get(resource_uri, **data_for_get)
+        # resp = self.sr_api_client.get(
+        #     resource_uri, authentication=self.get_credentials(), 
+        #     format='xlsx', **data_for_get)
+        if resp.status_code not in [200, 204]:
+            content = self.get_content(resp)
+            if content:
+                logger.info('resp: %r', 
+                    [[str(y) for y in x] for x in self.serializer.from_xlsx(content)])
+        self.assertTrue(resp.status_code in [200,201,202],resp.status_code)
+        output_data = self.sr_serializer.deserialize(
+            content=self.get_content(resp), format=XLSX_MIMETYPE)
+        ScreenResultSerializerTest.validate(self, input_data, output_data)
+        
+        # verify that the screen1 mutual columns = screen 2 mutual columns
+        screen_facility_id = screen['facility_id']
+        resource_name = 'screenresult'
+        resource_uri = '/'.join([
+            BASE_URI_DB,resource_name,screen_facility_id])
+         # use JSON to retrieve the data, mutual positives columns would be 
+         # ignored when deserializing from XLSX
+        data_for_get['HTTP_ACCEPT'] = JSON_MIMETYPE
+        data = {}
+        data['includes'] = '*'
+        data['show_mutual_positives'] = True
+        resp = self.django_client.get(resource_uri, data=data, **data_for_get)
+        if resp.status_code not in [200, 204]:
+            content = self.get_content(resp)
+            if content:
+                logger.info('resp: %r', 
+                    [[str(y) for y in x] for x in self.serializer.from_xlsx(content)])
+        self.assertTrue(resp.status_code in [200,201,202],resp.status_code)
+        logger.info('deserialize to json and check for mutual positives columns...')
+        # use generic deserialization to show all of the fields
+        output_data = self.serializer.deserialize(
+            content=self.get_content(resp), format=JSON_MIMETYPE)
+        
+        try:
+            # save output data generator to a list
+            output_list = [x for x in output_data['objects']]
+        except Exception, e:
+            logger.exception('%r', e)
+            raise
+        self.assertTrue(len(output_list)>0, 
+            'no screen results in output: %r' % output_data)
+        logger.info((
+            'verify that mutual positive columns are in the result value '
+            'fields: %r'), output_list[0] )
+        mutual_positive_cols_screen_1 = ['dc_1_field4', 'dc_1_field5']
+        for col in mutual_positive_cols_screen_1:
+            self.assertTrue(col in output_list[0].keys(), 
+                ('mutual positive column %r is missing in output cols: %r' 
+                 % (col, output_list[0].keys())))
+        # if a col is positive, check that the mutual pos cols have data as well
+        for row in output_list:
+            if row['is_positive']:
+                for col in mutual_positive_cols_screen_1:
+                    base_colname = col.split('_')[2]
+                    this_screen_colname = 'dc_2_%s' % base_colname
+                    self.assertTrue(this_screen_colname in row, 
+                        'could not find %r in row: %r' % (this_screen_colname, row))
+                    if row[this_screen_colname] is not None:
+                        self.assertTrue(row[col] is not None,
+                            ('mutual positive column %r is missing data in row: %r' 
+                             % (col, row)))
+                
+            
+        # test mutual column filtering 
+         
         
         
         

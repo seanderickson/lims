@@ -5,6 +5,7 @@ from functools import wraps
 import hashlib
 import logging
 import os.path
+import re
 import sys
 import urllib
 
@@ -25,26 +26,20 @@ from sqlalchemy.sql.expression import nullsfirst, nullslast
 from sqlalchemy.sql.functions import func
 from sqlalchemy.sql.sqltypes import Numeric, Text
 from tastypie.exceptions import BadRequest, ImmediateHttpResponse
-from tastypie.http import HttpNotFound, HttpBadRequest
-from tastypie.resources import Resource
 from tastypie.utils.mime import build_content_type
 
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     LIST_BRACKETS, MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE, \
     HTTP_PARAM_RAW_LISTS
+from reports.api_base import IccblBaseResource
+from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE
 from reports.serialize.csvutils import LIST_DELIMITER_CSV, csv_convert
+from reports.serialize.streaming_serializers import sdf_generator, \
+    json_generator, get_xls_response, csv_generator, ChunkIterWrapper, \
+    cursor_generator, image_generator
 from reports.serializers import LimsSerializer
 from reports.utils.sqlalchemy_bridge import Bridge
-from reports.serialize.streaming_serializers import sdf_generator, \
-    json_generator, get_xls_response, csv_generator, ChunkIterWrapper,\
-    cursor_generator, image_generator
-from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE
-import re
-from tempfile import SpooledTemporaryFile, NamedTemporaryFile
-from openpyxl import Workbook
-from wsgiref.util import FileWrapper
-import xlsxwriter
-from reports.api_base import IccblBaseResource
+
 
 logger = logging.getLogger(__name__)
 
@@ -159,8 +154,6 @@ class SqlAlchemyResource(IccblBaseResource):
             val = _dict.get(key,[])
             if isinstance(val, basestring):
                 _dict[key] = [val]
-        
-#         _dict['desired_format'] = self.get_format(request)
         
         return _dict    
     
@@ -755,7 +748,7 @@ class SqlAlchemyResource(IccblBaseResource):
 
     def _cached_resultproxy(self, stmt, count_stmt, param_hash, limit, offset):
         ''' 
-        ad-hoc cache for some resultsets:
+        Cache for resultsets:
         - Always returns the cache object with a resultset, either from the cache,
         or executed herein.
         
@@ -887,7 +880,6 @@ class SqlAlchemyResource(IccblBaseResource):
             if DEBUG_STREAMING:
                 logger.info(str(('count stmt', str(count_stmt))))
             
-#             desired_format = param_hash.get('desired_format',self.get_format(request))
             desired_format = self.get_serialize_format(request, **param_hash)
             logger.debug('---- desired_format: %r, hash: %r', desired_format, param_hash)
             result = None

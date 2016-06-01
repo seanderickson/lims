@@ -188,13 +188,12 @@ def sheet_rows(workbook_sheet):
     for row in range(workbook_sheet.nrows):
         yield read_row(row)
 
-def sheet_rows_by_colnames(sheets):
-    for sheet in sheets:
-#         colnames = [chr(ord('A')+i) for i in range(sheet.ncols)]
-        colnames = [xlrd.book.colname(i) for i in range(sheet.ncols)]
-        rows = sheet_rows(sheet)
-        for row in rows:
-            yield dict(zip(colnames,row))
+def sheet_rows_dicts(sheet):
+    colnames = [xlrd.book.colname(i) for i in range(sheet.ncols)]
+    rows = sheet_rows(sheet)
+    header = rows.next()
+    for row in rows:
+        yield dict(zip(header,row))
 
 def sheet_cols(workbook_sheet):
     def read_col(col):
@@ -206,6 +205,19 @@ def sheet_cols(workbook_sheet):
 def workbook_sheets(workbook):
     for sheet_num in range(workbook.nsheets):
         yield workbook.sheet_by_index(sheet_num)
+
+def workbook_as_datastructure(workbook):
+    '''
+    Create an ordered dict of the sheets in the workbook:
+    {
+        sheet_name: iterable of sheet rows
+    }
+    '''
+    workbook_datastructure = OrderedDict()
+    for sheet_num in range(workbook.nsheets):
+        sheet = workbook.sheet_by_index(sheet_num)
+        workbook_datastructure[sheet.name] = sheet_rows_dicts(sheet)
+    return workbook_datastructure
 
 def workbook_rows(workbook):
     for sheet in workbook_sheets(workbook):

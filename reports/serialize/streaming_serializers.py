@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 '''
 Utilities for streaming sql connection cursors in different serialization formats
 '''

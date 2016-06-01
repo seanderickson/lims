@@ -13,7 +13,6 @@ from django.forms.models import model_to_dict
 from django.http import HttpResponse
 from django.http.response import Http404, HttpResponseServerError
 from django.shortcuts import render
-from django.utils.encoding import smart_str
 
 from db import WELL_ID_PATTERN
 from db.models import ScreensaverUser, Reagent, AttachedFile

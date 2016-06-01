@@ -516,10 +516,13 @@ class ScreenResultResource(ApiResource):
                     conn.execute(stmt)
                     logger.info('cleared all cached wellQueryIndexes')
                     CachedQuery.objects.all().delete()
-                    stmt = delete(_well_data_column_positive_index)
-                    conn.execute(stmt)
-                    logger.info(
-                        'cleared all cached well_data_column_positive_indexes')
+                    # # TODO: delete the well_data_column_positive_indexes
+                    # # related to this uri only
+                    # stmt = delete(_well_data_column_positive_index)
+                    # conn.execute(stmt)
+                    # logger.info(
+                    #     'cleared all cached well_data_column_positive_indexes')
+
                 else:
                     
                     stmt = delete(_wellQueryIndex).where(
@@ -527,15 +530,25 @@ class ScreenResultResource(ApiResource):
                     conn.execute(stmt)
                     logger.info('cleared cached wellQueryIndexes: %r', ids)
                     CachedQuery.objects.filter(id__in=ids).delete()
-                    
-                    # TODO: delete the well_data_column_positive_indexes
-                    # related to this uri only
-                    stmt = delete(_well_data_column_positive_index)
-                    conn.execute(stmt)
+
+                    # stmt = delete(_well_data_column_positive_index)
+                    # conn.execute(stmt)
+                    # logger.info(
+                    #     'cleared all cached well_data_column_positive_indexes')
                     
             else:
+                logger.info('no CachedQuery values to be cleared')
+
+            # NOTE: for now, clear the wdcpi when a new screen_result is loaded:
+            # (when "all" or "by_uri" is set)
+            # TODO: incrementally clear the wdcpi for each set of ids, or all
+            if all is True or by_uri is not None:
+                logger.info('all: %r, by_uri: %r', all, by_uri)
+                stmt = delete(_well_data_column_positive_index)
+                conn.execute(stmt)
                 logger.info(
-                    'no CachedQueries or well_query_index values to be cleared')
+                    'cleared all cached well_data_column_positive_indexes')
+
 
         except Exception, e:
             logger.exception('on screenresult clear cache')
@@ -736,7 +749,6 @@ class ScreenResultResource(ApiResource):
         # then need to grab those datacolumns also.
         base_fields = [ fi for fi in field_hash.values() 
             if (
-#                 not fi.get('is_datacolumn', None)
                 fi['scope'] in ['fields.screenresult'] # everything except datacolumns
                  or fi['key'] in order_params
                  or '-%s' % fi['key'] in order_params
@@ -967,6 +979,7 @@ class ScreenResultResource(ApiResource):
             screen__facility_id=screen_facility_id)              
 
         show_mutual_positives = param_hash.get('show_mutual_positives', False)
+        logger.info('show mutual positives: %r, %r, %r', show_mutual_positives, param_hash, request.GET.keys())
         schema = self.build_schema(
             screenresult=screenresult,
             show_mutual_positives=show_mutual_positives)
@@ -1025,8 +1038,13 @@ class ScreenResultResource(ApiResource):
                 '''
                 excluded_well_to_datacolumn_map = {}
                 for key,field in schema['fields'].items():
-                    if field.get('is_datacolumn', False):
-                        for well_id in field.get('excluded_wells', []):
+                    if ( field.get('is_datacolumn', False) 
+                        and field['scope'] == 'datacolumn.screenresult-%s' % screen_facility_id):
+                        
+                        for well_id in (
+                            ResultValue.objects.filter(data_column_id=field['data_column_id'])
+                                .filter(is_exclude=True)
+                                .values_list('well_id', flat=True)):
                             excluded_cols = excluded_well_to_datacolumn_map.get(well_id,[])
                             excluded_cols.append(key)
                             excluded_well_to_datacolumn_map[well_id] = excluded_cols
@@ -1136,13 +1154,28 @@ class ScreenResultResource(ApiResource):
             _aw = self.bridge['assay_well']
             _sr = self.bridge['screen_result']
             _dc = self.bridge['data_column']
-    
+            
+            # FIXME: recreating the well_data_column_positive_index:
+            # - now: this call is lazy recreating, when the screen_result 
+            #   resource is first called.
+            # - TODO: recreate this index when the screen_result is loaded.
+            # 
+            # Note: because this is lazy recreated, we are creating the whole 
+            # index each time; could just recreate for the specific screen
+            #  
+            # Example query:
+            # count_stmt = ( 
+            #     select([text('*')])
+            #     .select_from(_well_data_column_positive_index
+            #         .join(_dc, _dc.c.data_column_id
+            #             ==_well_data_column_positive_index.c.data_column_id))
+            #     .where(_dc.c.screen_result_id==screen_result_id))
             count_stmt = _well_data_column_positive_index
             count_stmt = select([func.count()]).select_from(count_stmt)
             count = int(conn.execute(count_stmt).scalar())        
-            
+            logger.info('well_data_column_positive_index count: %r', count)
             if count == 0:
-                # cleared, recreate
+                # the well_data_column_positive_index has been cleared, recreate
                 base_stmt = join(
                     _aw, _dc, _aw.c.screen_result_id == _dc.c.screen_result_id)
                 base_stmt = select([
@@ -1153,15 +1186,16 @@ class ScreenResultResource(ApiResource):
                 base_stmt = base_stmt.where(
                     _dc.c.data_type.in_([
                         'boolean_positive_indicator',
-                        'partition_positive_indicator']))
+                        'partition_positive_indicator', 
+                        'confirmed_positive_indicator']))
                 base_stmt = base_stmt.order_by(
                     _dc.c.data_column_id, _aw.c.well_id)
                 insert_statement = (
                     insert(_well_data_column_positive_index)
                         .from_select(['well_id', 'data_column_id'], base_stmt))
-                logger.debug(
+                logger.info(
                     'mutual pos insert statement: %r',
-                    str(insert_statement.compile()))
+                    str(insert_statement.compile(compile_kwargs={"literal_binds": True})))
                 conn.execute(insert_statement)
     
             # Query to find mutual positive data columns:
@@ -1191,11 +1225,12 @@ class ScreenResultResource(ApiResource):
             
             stmt = stmt.where(exists(stmt2))
             
-            logger.debug('mutual positives statement: %r',
+            logger.info('mutual positives statement: %r',
                 str(stmt.compile(compile_kwargs={"literal_binds": True})))
             logger.info('execute mutual positives column query...')
-            return [x.data_column_id for x in conn.execute(stmt)]
-
+            cols =  [x.data_column_id for x in conn.execute(stmt)]
+            logger.info('done, cols %r', cols)
+            return cols
         except Exception, e:
             logger.exception('on get mutual positives columns')
             raise e  
@@ -1290,7 +1325,8 @@ class ScreenResultResource(ApiResource):
                 mutual_positives_columns = \
                     self.get_mutual_positives_columns(
                         screenresult.screen_result_id)
-                logger.info('iterate mutual positives columns...')
+                logger.info('iterate mutual positives columns %r...',
+                    show_mutual_positives)
                 for i, dc in enumerate(DataColumn.objects
                     .filter(data_column_id__in=mutual_positives_columns)
                     .order_by('screen_result__screen__facility_id', 'ordinal')):
@@ -1309,11 +1345,13 @@ class ScreenResultResource(ApiResource):
                     _dict['ordinal'] = _ordinal
                     
                     newfields[columnName] = _dict
+                    
                     if show_mutual_positives:
                         _visibility = set(_dict['visibility'])
                         _visibility.update(['l', 'd'])
                         _dict['visibility'] = list(_visibility)
-                        
+                    
+                    logger.debug('created mutual positive column: %r', _dict)    
                 data['fields'] = newfields
                 
             logger.info('build screenresult schema done')
@@ -1332,8 +1370,10 @@ class ScreenResultResource(ApiResource):
         _dict['title'] = '%s [%s]' % (dc.name, screen_facility_id) 
         _dict['description'] = _dict['description'] or _dict['title']
         _dict['comment'] = dc.comments
+        _dict['is_datacolumn'] = True
         _dict['key'] = columnName
         _dict['scope'] = 'datacolumn.screenresult-%s' % screen_facility_id
+        _dict['screen_facility_id'] = screen_facility_id
         _dict['assay_data_type'] = dc.data_type
         if dc.data_type == 'numeric':
             if _dict.get('decimal_places', 0) > 0:
@@ -1345,10 +1385,7 @@ class ScreenResultResource(ApiResource):
         if dc.data_type in self.data_type_lookup:
             _dict.update(self.data_type_lookup[dc.data_type])
 
-        _dict['excluded_wells'] = (
-            ResultValue.objects.filter(data_column=dc)
-                .filter(is_exclude=True)
-                .values_list('well_id', flat=True))
+        _dict['data_column_id'] = dc.data_column_id
         return (columnName, _dict)
 
         
@@ -1692,7 +1729,9 @@ class ScreenResultResource(ApiResource):
                             continue
                         if val is None:
                             continue
-                                
+                        if colname not in sheet_col_to_datacolumn:
+                            logger.debug('extra column found in the Data sheet: %r', colname)
+                            continue      
                         dc = sheet_col_to_datacolumn[colname]
                         rv_initializer = self.create_result_value(
                             colname, val, dc, well, initializer_dict, 
@@ -7382,6 +7421,18 @@ class WellResource(ApiResource):
         if 'library_short_name' not in kwargs:
             raise BadRequest('library_short_name is required')
         
+#         logger.info('1...: %r', deserialized.keys())
+#         if self._meta.collection_name in deserialized:
+#             deserialized = deserialized[self._meta.collection_name]
+#         elif isinstance(deserialized, OrderedDict):
+#             logger.info(
+#                 'Only reading the first sheet %r of the workbook at this time', 
+#                 deserialized.keys()[0])
+#             deserialized = deserialized.values()[0]
+#         else:
+#             raise BadRequest(
+#                 "Invalid data sent, must be nested in '%s', or must be an OrderedDict" 
+#                 % self._meta.collection_name)
         deserialized = self.deserialize(request)
         if not self._meta.collection_name in deserialized:
             raise BadRequest("Invalid data sent, must be nested in '%s'" 

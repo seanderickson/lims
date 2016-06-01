@@ -2,7 +2,7 @@ from __future__ import unicode_literals
 
 import csv
 import logging
-from django.utils.encoding import smart_str
+from django.utils.encoding import smart_text
 
 
 logger = logging.getLogger(__name__)
@@ -93,10 +93,10 @@ def csv_convert(val, delimiter=LIST_DELIMITER_CSV, list_brackets='[]'):
     if isinstance(val, (list,tuple)):
         if list_brackets:
             return ( list_brackets[0] 
-                + delimiter.join([smart_str(x) for x in val]) 
+                + delimiter.join([smart_text(x) for x in val]) 
                 + list_brackets[1] )
         else: 
-            return delimiter.join([smart_str(x) for x in val]) 
+            return delimiter.join([smart_text(x) for x in val]) 
     elif val != None:
         if type(val) == bool:
             if val:
@@ -104,6 +104,6 @@ def csv_convert(val, delimiter=LIST_DELIMITER_CSV, list_brackets='[]'):
             else:
                 return 'FALSE'
         else:
-            return smart_str(val)
+            return smart_text(val)
     else:
         return None

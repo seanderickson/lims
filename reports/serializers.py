@@ -13,26 +13,27 @@ import re
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.backends.utils import CursorDebugWrapper
 from django.http.response import StreamingHttpResponse
-from django.utils.encoding import smart_str
+from django.utils.encoding import smart_text
 import mimeparse
 from openpyxl.workbook.workbook import Workbook
 from psycopg2.psycopg1 import cursor
 import six
+from tastypie.exceptions import BadRequest
 from tastypie.serializers import Serializer
 import xlrd
 
 from db.support import screen_result_importer
-from reports.serialize import XLSX_MIMETYPE, XLS_MIMETYPE, SDF_MIMETYPE,\
+from reports.serialize import XLSX_MIMETYPE, XLS_MIMETYPE, SDF_MIMETYPE, \
     JSON_MIMETYPE
 from reports.serialize import dict_to_rows
 from reports.serialize.csvutils import LIST_DELIMITER_CSV
 import reports.serialize.csvutils as csvutils
 import reports.serialize.sdfutils as sdfutils
-from reports.serialize.streaming_serializers import generic_xlsx_response,\
+from reports.serialize.streaming_serializers import generic_xlsx_response, \
     get_xls_response
 from reports.serialize.xlsutils import LIST_DELIMITER_XLS
 import reports.serialize.xlsutils as xlsutils
-from tastypie.exceptions import BadRequest
+from reports.dump_obj import dumpObj
 
 
 logger = logging.getLogger(__name__)
@@ -202,6 +203,7 @@ class PrettyJSONSerializer(BaseSerializer):
     json_indent = 2
 
     def to_json(self, data, options=None):
+        logger.info('json serializing...')
         data = self.to_simple(data, options)
         # NOTE, using "ensure_ascii" = True to force encoding of all 
         # chars to the ascii charset; otherwise, cStringIO has problems
@@ -341,20 +343,29 @@ class XLSSerializer(BaseSerializer):
         else:
             wb = xlrd.open_workbook(cStringIO.StringIO(content))
             
+#         datastructure =  xlsutils.workbook_as_datastructure(wb)
+#         
+#         # deserialize into static datastructure
+#         for key,sheet_rows in datastructure.items():
+#             datastructure[key] = [[y for y in x.items()] for x in sheet_rows]
+#         
+#         return datastructure
+        
+        
         if wb.nsheets > 1:
             logger.warn('only first page of workbooks supported')
-        
+         
         # TODO: if root is specified, then get the sheet by name
         sheet = wb.sheet_by_index(0)
-        
+         
         if sheet.name.lower() in ['error', 'errors']:
             return xlsutils.sheet_rows(sheet)
-            
+             
         # because workbooks are treated like sets of csv sheets, now convert
         # as if this were a csv sheet
         data = csvutils.from_csv_iterate(
             xlsutils.sheet_rows(sheet),list_delimiter=LIST_DELIMITER_XLS)
-
+ 
         if root:
             return { root: data }
         else:
@@ -411,7 +422,7 @@ class CSVSerializer(BaseSerializer):
             for item in data:
                 if i == 0:
                     keys = item.keys()
-                    writer.writerow([smart_str(key) for key in keys])
+                    writer.writerow([smart_text(key) for key in keys])
                 i += 1
                 writer.writerow([csvutils.csv_convert(val) for val in item.values()])
 
@@ -506,12 +517,17 @@ class ScreenResultSerializer(XLSSerializer,SDFSerializer,CSVSerializer):
             wb = xlrd.open_workbook(cStringIO.StringIO(content))
         return screen_result_importer.read_workbook(wb)
 
-    def from_json(self, content):
-        # For testing only - 
-        object = json.loads(content)
-        logger.info('object: %r', object)
-        object['objects'] = (x for x in object['objects'])
-        return object
+    def to_json(self, data, options=None):
+        logger.info('serialize sr data...')
+        return XLSSerializer.to_json(self, data, options=options)
+
+#     def from_json(self, content):
+#         # For testing only - 
+#         object = json.loads(content)
+#         logger.info('object: %r', object)
+#         # create a generator for 
+#         object['objects'] = (x for x in object['objects'])
+#         return object
     
     
 class CursorSerializer(BaseSerializer):
@@ -575,7 +591,7 @@ class CursorSerializer(BaseSerializer):
 
         for row in cursor.fetchall():
             writer.writerow(
-                [smart_str(val, 'utf-8', errors='ignore') for val in row])
+                [smart_text(val, 'utf-8', errors='ignore') for val in row])
             i += 1
         logger.info('_cursor_to_csv done, wrote: %d' % i)
 

@@ -4280,6 +4280,7 @@ class LibraryScreeningResource(ActivityResource):
             
             # wrap the cursor and expand the library_plates_screened
             def create_lcp_gen(generator):
+                bridge = self.bridge
                 _library = self.bridge['library']
                 _lcp = self.bridge['plate']
                 _cp = self.bridge['copy']
@@ -4311,7 +4312,7 @@ class LibraryScreeningResource(ActivityResource):
                             self.row = row
                             self.entries = []
                             activity_id = row['activity_id']
-                            with self.bridge.get_engine().connect() as conn:
+                            with bridge.get_engine().connect() as conn:
                                 query = conn.execute(
                                     lcp_query, activity_id=activity_id)
                                 copy = None

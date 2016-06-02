@@ -70,7 +70,6 @@ define([
 
     initialize: function(options) {
       var self = this;
-      console.log('siunit initialize', options);
       Backbone.Form.editors.Base.prototype.initialize.call(this, options);
 
       var _options = typeof options !== 'undefined' ?  options : {};
@@ -111,9 +110,6 @@ define([
         editorClass: 'form-control',
         template: this.fieldTemplate
       };
-      
-      console.log('siunit initialize complete');
-    
     },
 
     focus: function() {
@@ -127,16 +123,12 @@ define([
     },
     
     render: function() {
-      console.log('render siunit', this.value);
-  
       var formModel;
-      
       if(this.value){
         formModel= new Backbone.Model(this._findNumberAndUnit(this.value));
       }else{
         formModel= new Backbone.Model({ number: 0, unit: this.defaultUnit });
       }
-      
       this.nestedForm = new Backbone.Form({
         schema: this.formSchema,
         model: formModel,
@@ -144,14 +136,9 @@ define([
         Field: Backbone.Form.NestedField,
         template: this.formTemplate
       });
-      
       this._observeFormEvents();
-      
       this.$el.html(this.nestedForm.render().el);
-      
       if (this.hasFocus) this.trigger('blur', this);
-
-      console.log('render siunit done', this.nestedForm.getValue());
       return this;
     },
     
@@ -161,7 +148,6 @@ define([
      * @return {String}
      */
     getValue: function() {
-      console.log('getvalue', this.nestedForm.getValue());
       var self = this;
       if (this.nestedForm){
         return this._calculate(
@@ -179,7 +165,6 @@ define([
     },
 
     _calculate: function(multiplier, si_mult, val){
-      console.log('calculate',multiplier,si_mult,val);
       // run strip after every calculation to round out floating point math errors
       function strip(number) {
         return (parseFloat(number.toPrecision(12)));
@@ -188,12 +173,10 @@ define([
       if(si_mult > 0){ // if si unit is undefined, assume to be 1
         val = strip(val * si_mult);
       }
-      console.log('calculate',multiplier,si_mult,val);
       return val;
     },
     
     _findNumberAndUnit: function(number){
-      console.log('findNumberAndUnit',number);
       var self = this;
       function strip(number) {
         return (parseFloat(number.toPrecision(12)));
@@ -210,20 +193,15 @@ define([
       
       var val = (1/pair[1])*number;
       val = Math.round(val*Math.pow(10,this.decimals))/Math.pow(10,this.decimals);
-      
-      console.log('findNumberAndUnit',val,pair);
       return {number:val, unit: pair[1]};
     },
   
     remove: function() {
-      console.log('remove');
       this.nestedForm.remove();
-  
       Backbone.View.prototype.remove.call(this);
     },
   
     validate: function() {
-      console.log('v');
       return this.nestedForm.validate();
     },
   
@@ -519,7 +497,6 @@ define([
       
       // if the current value is not in the options, then display it as the placeholder
       var currVal = this.model.get(this.key);
-      console.log('currval', currVal);
       if(!_.find(this.schema.options,function(option){
         return option.val == currVal;
       })){

@@ -24,7 +24,7 @@ from sqlalchemy.sql.elements import literal_column
 from sqlalchemy.sql.expression import column, join, cast
 from sqlalchemy.sql.expression import nullsfirst, nullslast
 from sqlalchemy.sql.functions import func
-from sqlalchemy.sql.sqltypes import Numeric, Text
+import sqlalchemy.sql.sqltypes
 from tastypie.exceptions import BadRequest, ImmediateHttpResponse
 from tastypie.utils.mime import build_content_type
 
@@ -486,18 +486,15 @@ class SqlAlchemyResource(IccblBaseResource):
                     continue;
                 filter_bits = filter_expr.split(lookup_sep)
                 if len(filter_bits) != 2:
-                    logger.warn(str((
-                        'filter expression must be of the form '
-                        '"field_name__expression"',
-                        filter_expr, filter_bits)))
+                    logger.warn(
+                        'filter expression %r must be of the form '
+                        '"field_name__expression"' % filter_expr )
                 field_name = filter_bits[0]
-                
+                filter_type = filter_bits[1]
                 inverted = False
                 if field_name and field_name[0] == '-':
                     inverted = True
                     field_name = field_name[1:]
-                            
-                filter_type = filter_bits[1]
                 if not field_name in schema['fields']:
                     logger.warn(str(('unknown filter field', field_name, filter_expr)))
                     continue
@@ -524,11 +521,15 @@ class SqlAlchemyResource(IccblBaseResource):
                 
                 expression = None
                 col = column(field_name)
+                if field['data_type'] in ['integer','float','decimal']:
+                    col = cast(col,sqlalchemy.sql.sqltypes.Numeric)
+                elif field['data_type'] == 'boolean':
+                    col = cast(col,sqlalchemy.sql.sqltypes.Boolean)
+                if field['data_type'] == 'string':
+                    col = func.trim(cast(col,sqlalchemy.sql.sqltypes.Text))
+
                 if filter_type in ['exact','eq']:
                     expression = col == value
-                    if field['data_type'] in ['integer','float','decimal']:
-                        col = cast(col,Numeric)
-                        expression = col == value
                     if field['data_type'] == 'list':
                         expression = text(
                             "'%s'=any(string_to_array(%s,'%s'))"
@@ -537,7 +538,7 @@ class SqlAlchemyResource(IccblBaseResource):
                     decimals = 0
                     if '.' in value:
                         decimals = len(value.split('.')[1])
-                    expression = func.round(cast(col,Numeric),decimals) == value
+                    expression = func.round(col,decimals) == value
                     if DEBUG_FILTERS:
                         logger.info(str(('create "about" expression for term:',
                             filter_expr,
@@ -548,24 +549,14 @@ class SqlAlchemyResource(IccblBaseResource):
                     expression = col.ilike('%{value}%'.format(
                         value=value))
                 elif filter_type == 'lt':
-                    if field['data_type'] in ['integer','float','decimal']:
-                        col = cast(col,Numeric)
                     expression = col < value
                 elif filter_type == 'lte':
-                    if field['data_type'] in ['integer','float','decimal']:
-                        col = cast(col,Numeric)
                     expression = col <= value
                 elif filter_type == 'gt':
-                    if field['data_type'] in ['integer','float','decimal']:
-                        col = cast(col,Numeric)
                     expression = col > value
                 elif filter_type == 'gte':
-                    if field['data_type'] in ['integer','float','decimal']:
-                        col = cast(col,Numeric)
                     expression = col >= value
                 elif filter_type == 'is_blank':
-                    if field['data_type'] == 'string':
-                        col = func.trim(cast(col,Text))
                     if value and str(value).lower() == 'true':
                         expression = col == None 
                         if field['data_type'] == 'string':
@@ -576,8 +567,6 @@ class SqlAlchemyResource(IccblBaseResource):
                              or field['data_type'] == 'list' ):
                             expression = col != ''
                 elif filter_type == 'is_null':
-                    if field['data_type'] == 'string':
-                        col = func.trim(cast(col,Text))
                     if value and str(value).lower() == 'true':
                         expression = col == None 
                     else:
@@ -602,8 +591,6 @@ class SqlAlchemyResource(IccblBaseResource):
                             field_name, filter_expr, value)))
                         continue
                     else:
-                        if field['data_type'] in ['integer','float','decimal']:
-                            col = cast(col,Numeric)
                         expression = col.between(
                             value[0],value[1],symmetric=True)
                 else:
@@ -746,7 +733,7 @@ class SqlAlchemyResource(IccblBaseResource):
 #             % self._meta.resource_name)
 #         cache.clear()
 
-    def _cached_resultproxy(self, stmt, count_stmt, param_hash, limit, offset):
+    def _cached_resultproxy(self, conn, stmt, count_stmt, param_hash, limit, offset):
         ''' 
         Cache for resultsets:
         - Always returns the cache object with a resultset, either from the cache,
@@ -763,7 +750,7 @@ class SqlAlchemyResource(IccblBaseResource):
         
         prefetch_number = 5
         
-        conn = self.bridge.get_engine().connect()
+#         conn = self.bridge.get_engine().connect()
         try:
             # use a hexdigest because statements can contain problematic chars 
             # for the memcache
@@ -800,16 +787,18 @@ class SqlAlchemyResource(IccblBaseResource):
                 prefetched_result = [dict(row) for row in resultset] if resultset else []
                 logger.info('executed stmt')
                 
-                if DEBUG_CACHE:
-                    logger.info('no cache hit, execute count')
+#                 if DEBUG_CACHE:
+                logger.info('no cache hit, execute count')
                 count = conn.execute(count_stmt).scalar()
-                if DEBUG_CACHE:
-                    logger.info('count: %s', count)
+#                 if DEBUG_CACHE:
+                logger.info('count: %s', count)
                 
                 # now fill in the cache with the prefetched sets or rows
                 for y in range(prefetch_number):
                     new_offset = offset + limit*y;
                     _start = limit*y
+                    logger.info('new_offset: %d, start: %d, len: %d', 
+                        new_offset, _start, len(prefetched_result))
                     if _start < len(prefetched_result):
                         key_digest = '%s_%s_%s' %(compiled_stmt, str(limit), str(new_offset))
                         m = hashlib.md5()
@@ -870,93 +859,92 @@ class SqlAlchemyResource(IccblBaseResource):
         stmt = stmt.offset(offset)
 
         try:
-            logger.debug('offset: %s, limit: %s', offset, limit)
-            conn = self.bridge.get_engine().connect()
+            with self.bridge.get_engine().connect() as conn:
+                logger.debug('offset: %s, limit: %s', offset, limit)
             
-            if DEBUG_STREAMING:
-                logger.info('stmt: %s, param_hash: %s ', 
-                    str(stmt.compile(compile_kwargs={"literal_binds": True})), 
-                    param_hash)
-            if DEBUG_STREAMING:
-                logger.info(str(('count stmt', str(count_stmt))))
-            
-            desired_format = self.get_serialize_format(request, **param_hash)
-            logger.debug('---- desired_format: %r, hash: %r', desired_format, param_hash)
-            result = None
-            if desired_format == 'application/json':
-                logger.debug('streaming json')
-                if not is_for_detail and use_caching and self.use_cache and limit > 0:
-                    cache_hit = self._cached_resultproxy(
-                        stmt, count_stmt, param_hash, limit, offset)
-                    if cache_hit:
-                        logger.info('cache hit')
-                        result = cache_hit['cached_result']
-                        count = cache_hit['count']
-                    else:
-                        # cache routine should always return a cache object
-                        logger.error('error, cache not set: execute stmt')
-                        count = conn.execute(count_stmt).scalar()
-                        result = conn.execute(stmt)
-                    logger.info(str(('====count====', count)))
-                    
-                else:
-                    if DEBUG_STREAMING:
-                        logger.info('execute count stmt')
-                    count = conn.execute(count_stmt).scalar()
-                    if DEBUG_STREAMING:
-                        logger.info('excuted count stmt')
-                    result = conn.execute(stmt)
-                    if DEBUG_STREAMING:
-                        logger.info('excuted stmt')
-    
-                if not meta:
-                    meta = {
-                        'limit': limit,
-                        'offset': offset,
-                        'total_count': count
-                        }
-                else:
-                    temp = {
-                        'limit': limit,
-                        'offset': offset,
-                        'total_count': count
-                        }
-                    temp.update(meta)    
-                    meta = temp
-                    
-                if rowproxy_generator:
-                    result = rowproxy_generator(result)
-    
-                # TODO: create a short-circuit if count==0
-                # if count == 0:
-                #    raise ImmediateHttpResponse(
-                #        response=self.error_response(
-                #            request, {'empty result': 'no records found'},
-                #            response_class=HttpNotFound))
                 if DEBUG_STREAMING:
-                    logger.info(str(('meta', meta)))
-    
-            else: # not json
-            
-                logger.info('excute stmt')
-                result = conn.execute(stmt)
-                logger.info('excuted stmt')
+                    logger.info('stmt: %s, param_hash: %s ', 
+                        str(stmt.compile(compile_kwargs={"literal_binds": True})), 
+                        param_hash)
+                    logger.info(str(('count stmt', str(count_stmt))))
                 
-                logger.info(str(('rowproxy_generator', rowproxy_generator)))
-                if rowproxy_generator:
-                    result = rowproxy_generator(result)
-                    # FIXME: test this for generators other than json generator        
+                desired_format = self.get_serialize_format(request, **param_hash)
+                logger.debug('---- desired_format: %r, hash: %r', desired_format, param_hash)
+                result = None
+                if desired_format == 'application/json':
+                    logger.debug('streaming json')
+                    if not is_for_detail and use_caching and self.use_cache and limit > 0:
+                        cache_hit = self._cached_resultproxy(
+                            conn, stmt, count_stmt, param_hash, limit, offset)
+                        if cache_hit:
+                            logger.info('cache hit')
+                            result = cache_hit['cached_result']
+                            count = cache_hit['count']
+                        else:
+                            # cache routine should always return a cache object
+                            logger.error('error, cache not set: execute stmt')
+                            count = conn.execute(count_stmt).scalar()
+                            result = conn.execute(stmt)
+                        logger.info(str(('====count====', count)))
+                        
+                    else:
+                        if DEBUG_STREAMING:
+                            logger.info('execute count stmt')
+                        count = conn.execute(count_stmt).scalar()
+                        if DEBUG_STREAMING:
+                            logger.info('excuted count stmt')
+                        result = conn.execute(stmt)
+                        if DEBUG_STREAMING:
+                            logger.info('excuted stmt')
+        
+                    if not meta:
+                        meta = {
+                            'limit': limit,
+                            'offset': offset,
+                            'total_count': count
+                            }
+                    else:
+                        temp = {
+                            'limit': limit,
+                            'offset': offset,
+                            'total_count': count
+                            }
+                        temp.update(meta)    
+                        meta = temp
+                        
+                    if rowproxy_generator:
+                        result = rowproxy_generator(result)
+        
+                    # TODO: create a short-circuit if count==0
+                    # if count == 0:
+                    #    raise ImmediateHttpResponse(
+                    #        response=self.error_response(
+                    #            request, {'empty result': 'no records found'},
+                    #            response_class=HttpNotFound))
+                    if DEBUG_STREAMING:
+                        logger.info(str(('meta', meta)))
+        
+                else: # not json
+                
+                    logger.info('excute stmt')
+                    result = conn.execute(stmt)
+                    logger.info('excuted stmt')
+                    
+                    logger.info(str(('rowproxy_generator', rowproxy_generator)))
+                    if rowproxy_generator:
+                        result = rowproxy_generator(result)
+                        # FIXME: test this for generators other than json generator        
     
+                return self.stream_response_from_cursor(request, result, output_filename, 
+                    field_hash=field_hash, 
+                    param_hash=param_hash, 
+                    is_for_detail=is_for_detail, 
+                    downloadID=downloadID, 
+                    title_function=title_function, 
+                    meta=meta)
         except Exception, e:
             logger.exception('on stream response')
             raise e          
-        return self.stream_response_from_cursor(request, result, output_filename, 
-            field_hash=field_hash, 
-            param_hash=param_hash, 
-            is_for_detail=is_for_detail, 
-            downloadID=downloadID, 
-            title_function=title_function, 
-            meta=meta)
         
     def stream_response_from_cursor(self,request,result,output_filename,
             field_hash={}, param_hash={}, 

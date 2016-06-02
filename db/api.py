@@ -401,20 +401,20 @@ class ScreenResultResource(ApiResource):
         self.scope = 'fields.screenresult'
         super(ScreenResultResource, self).__init__(**kwargs)
         
-        conn = self.bridge.get_engine().connect()
-        try:
-            conn.execute(text('select * from "well_query_index"; '));
-            logger.debug('The well_query_index table exists')
-        except Exception as e:
-            logger.info('creating the well_query_index table')
-            self._create_well_query_index_table(conn)
-        try:
-            conn.execute(text(
-                'select * from "well_data_column_positive_index"; '));
-            logger.debug('The well_data_column_positive_index table exists')
-        except Exception as e:
-            logger.info('creating the well_data_column_positive_index table')
-            self._create_well_data_column_positive_index_table(conn)
+        with self.bridge.get_engine().connect() as conn:
+            try:
+                conn.execute(text('select * from "well_query_index"; '));
+                logger.debug('The well_query_index table exists')
+            except Exception as e:
+                logger.info('creating the well_query_index table')
+                self._create_well_query_index_table(conn)
+            try:
+                conn.execute(text(
+                    'select * from "well_data_column_positive_index"; '));
+                logger.debug('The well_data_column_positive_index table exists')
+            except Exception as e:
+                logger.info('creating the well_data_column_positive_index table')
+                self._create_well_data_column_positive_index_table(conn)
             
         self.reagent_resource = None
 
@@ -428,6 +428,7 @@ class ScreenResultResource(ApiResource):
         try:
             conn.execute(text(
                 'CREATE TABLE "well_query_index" ('
+                '"id" serial NOT NULL,  '
                 '"well_id" text NOT NULL REFERENCES "well" ("well_id") '
                 '    DEFERRABLE INITIALLY DEFERRED,'
                 '"query_id" integer NOT NULL REFERENCES "cached_query" ("id") '
@@ -460,7 +461,8 @@ class ScreenResultResource(ApiResource):
                 'well_data_column_positive_index table,'
                 'note that this is normal if the table already exists '
                 '(PostgreSQL <9.1 has no "CREATE TABLE IF NOT EXISTS"'), e)
-            
+    
+    @transaction.atomic()        
     def clear_cache(self, all=False, by_date=None, by_uri=None, by_size=False):
         
         logger.info(
@@ -474,85 +476,85 @@ class ScreenResultResource(ApiResource):
             settings, 'MAX_WELL_INDEXES_TO_CACHE', 2e+08)
         logger.debug('max_indexes_to_cache %s' % max_indexes_to_cache)
 
-        conn = self.bridge.get_engine().connect()
         _wellQueryIndex = self.bridge['well_query_index']
         _well_data_column_positive_index = self.bridge[
             'well_data_column_positive_index']
-        
-        try:
-            query = CachedQuery.objects.filter(uri__contains='/screenresult/')
-            if query.exists():
-                logger.debug(
-                    'clear_cache: screenresult queries to consider %s',
-                    [(x.id, x.uri) for x in query])
-            ids = set()
-            if by_size:
-                query = query.order_by('-datetime')
-                cumulative_count = 0
 
-                for q in query:
-                    if q.count:
-                        cumulative_count += q.count
-                    if cumulative_count >= max_indexes_to_cache:
-                        last_id_to_save = q.id
-                        logger.info(
-                            'cumulative_count: %d, last_id_to_save: %d',
-                            cumulative_count, last_id_to_save)
-                        query = query.filter(id__lte=last_id_to_save)
-                        ids.update([q.id for q in query])
-                        break
-                
-            if by_date:  # TODO: test
-                query = query.filter(datetime__lte=by_date)
-                ids.update([q.id for q in query])
-            if by_uri: 
-                query = query.filter(uri__exact=by_uri)
-                ids.update([q.id for q in query])
-                
-            if ids or all:
-                logger.info('clear cachedQueries: ids: %r, all: %r', ids, all)
-                if all:
-                    stmt = delete(_wellQueryIndex)
-                    conn.execute(stmt)
-                    logger.info('cleared all cached wellQueryIndexes')
-                    CachedQuery.objects.all().delete()
-                    # # TODO: delete the well_data_column_positive_indexes
-                    # # related to this uri only
-                    # stmt = delete(_well_data_column_positive_index)
-                    # conn.execute(stmt)
-                    # logger.info(
-                    #     'cleared all cached well_data_column_positive_indexes')
-
+        with self.bridge.get_engine().begin() as conn:
+            # NOTE: mixing Django connection with SQA connection
+            # - thrown exceptions will rollback the nested SQA transaction
+            # see: http://docs.sqlalchemy.org/en/latest/core/connections.html
+            try:
+                query = CachedQuery.objects.filter(uri__contains='/screenresult/')
+                if query.exists():
+                    logger.debug(
+                        'clear_cache: screenresult queries to consider %s',
+                        [(x.id, x.uri) for x in query])
+                ids = set()
+                if by_size:
+                    query = query.order_by('-datetime')
+                    cumulative_count = 0
+    
+                    for q in query:
+                        if q.count:
+                            cumulative_count += q.count
+                        if cumulative_count >= max_indexes_to_cache:
+                            last_id_to_save = q.id
+                            logger.info(
+                                'cumulative_count: %d, last_id_to_save: %d',
+                                cumulative_count, last_id_to_save)
+                            query = query.filter(id__lte=last_id_to_save)
+                            ids.update([q.id for q in query])
+                            break
+                    
+                if by_date:  # TODO: test
+                    query = query.filter(datetime__lte=by_date)
+                    ids.update([q.id for q in query])
+                if by_uri: 
+                    query = query.filter(uri__exact=by_uri)
+                    ids.update([q.id for q in query])
+                    
+                if ids or all:
+                    logger.info('clear cachedQueries: ids: %r, all: %r', ids, all)
+                    if all:
+                        stmt = delete(_wellQueryIndex)
+                        conn.execute(stmt)
+                        logger.info('cleared all cached wellQueryIndexes')
+                        CachedQuery.objects.all().delete()
+                        # # TODO: delete the well_data_column_positive_indexes
+                        # # related to this uri only
+                        # stmt = delete(_well_data_column_positive_index)
+                        # conn.execute(stmt)
+                        # logger.info(
+                        #     'cleared all cached well_data_column_positive_indexes')
+    
+                    else:
+                        stmt = delete(_wellQueryIndex).where(
+                            _wellQueryIndex.c.query_id.in_(ids))
+                        conn.execute(stmt)
+                        logger.info('cleared cached wellQueryIndexes: %r', ids)
+                        CachedQuery.objects.filter(id__in=ids).delete()
+    
+                        # stmt = delete(_well_data_column_positive_index)
+                        # conn.execute(stmt)
+                        # logger.info(
+                        #     'cleared all cached well_data_column_positive_indexes')
                 else:
-                    
-                    stmt = delete(_wellQueryIndex).where(
-                        _wellQueryIndex.c.query_id.in_(ids))
+                    logger.info('no CachedQuery values to be cleared')
+    
+                # NOTE: for now, clear the wdcpi when a new screen_result is loaded:
+                # (when "all" or "by_uri" is set)
+                # TODO: incrementally clear the wdcpi for each set of ids, or all
+                if all is True or by_uri is not None:
+                    logger.info('all: %r, by_uri: %r', all, by_uri)
+                    stmt = delete(_well_data_column_positive_index)
                     conn.execute(stmt)
-                    logger.info('cleared cached wellQueryIndexes: %r', ids)
-                    CachedQuery.objects.filter(id__in=ids).delete()
-
-                    # stmt = delete(_well_data_column_positive_index)
-                    # conn.execute(stmt)
-                    # logger.info(
-                    #     'cleared all cached well_data_column_positive_indexes')
-                    
-            else:
-                logger.info('no CachedQuery values to be cleared')
-
-            # NOTE: for now, clear the wdcpi when a new screen_result is loaded:
-            # (when "all" or "by_uri" is set)
-            # TODO: incrementally clear the wdcpi for each set of ids, or all
-            if all is True or by_uri is not None:
-                logger.info('all: %r, by_uri: %r', all, by_uri)
-                stmt = delete(_well_data_column_positive_index)
-                conn.execute(stmt)
-                logger.info(
-                    'cleared all cached well_data_column_positive_indexes')
-
-
-        except Exception, e:
-            logger.exception('on screenresult clear cache')
-            raise e  
+                    logger.info(
+                        'cleared all cached well_data_column_positive_indexes')
+    
+            except Exception, e:
+                logger.exception('on screenresult clear cache')
+                raise e  
             
     def prepend_urls(self):
 
@@ -666,29 +668,11 @@ class ScreenResultResource(ApiResource):
             )
         return excluded_cols_select.cte('exclusions')
     
-    def get_query(self, username, screenresult, param_hash, schema, **kwargs):
+    def get_query(self, username, screenresult, param_hash, schema, limit, offset):
 
         manual_field_includes = set(param_hash.get('includes', []))
         manual_field_includes.add('assay_well_control_type')
             
-        limit = param_hash.get('limit', 0)        
-        try:
-            limit = int(limit)
-        except ValueError:
-            raise BadRequest(
-                "Invalid limit '%s' - positive integer required." % limit)
-        param_hash['limit'] = limit
-        
-        offset = param_hash.get('offset', 0)
-        try:
-            offset = int(offset)
-        except ValueError:
-            raise BadRequest(
-                "Invalid offset '%s' - positive integer required." % offset)
-        if offset < 0:    
-            offset = -offset
-        param_hash['offset'] = offset
-
         # general setup
         (filter_expression, filter_fields) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
@@ -704,7 +688,6 @@ class ScreenResultResource(ApiResource):
     
         # specific setup 
         
-        conn = self.bridge.get_engine().connect()
         _aw = self.bridge['assay_well']
         _w = self.bridge['well']
         _sr = self.bridge['screen_result']
@@ -723,7 +706,6 @@ class ScreenResultResource(ApiResource):
         base_clause = base_clause.join(_w, _aw.c.well_id == _w.c.well_id)
         base_clause = base_clause.join(_sr, _aw.c.screen_result_id == _sr.c.screen_result_id)
         base_clause = base_clause.join(_s, _sr.c.screen_id == _s.c.screen_id)
-        # JOIN THE REAGENT COLUMNS - TODO: only if filtering
         base_clause = base_clause.join(_reagent,_w.c.well_id==_reagent.c.well_id, isouter=True)
         base_clause = base_clause.join(_library,_w.c.library_id==_library.c.library_id)
 
@@ -787,7 +769,7 @@ class ScreenResultResource(ApiResource):
                 and '-is_positive' not in order_params):
             del base_columns['is_positive']
             
-        # GET THE REAGENT COLUMNS AND JOIN THEM - only if in the base_fields
+        # Get the reagent columns and join them - only if in the base_fields
         reagent_resource = self.get_reagent_resource()
         base_reagent_tables = ['reagent','library','well']
         reagent_columns = []
@@ -806,12 +788,10 @@ class ScreenResultResource(ApiResource):
         base_stmt = select(base_columns.values()).select_from(base_clause)
         base_stmt = base_stmt.where(
             _aw.c.screen_result_id == screenresult.screen_result_id)
-        # always add well_id order
-        base_stmt = base_stmt.order_by(asc(column('well_id')))  
-        
         (base_stmt, count_stmt) = \
             self.wrap_statement(base_stmt, order_clauses, filter_expression)
-
+        base_stmt = base_stmt.order_by(asc(column('well_id')))  
+        
         # 1.a insert the base statement well ids into the indexing table
         
         m = hashlib.md5()
@@ -822,49 +802,54 @@ class ScreenResultResource(ApiResource):
         
         m.update(compiled_stmt)
         key = m.hexdigest()
-        
+        logger.info('cached query key: %r', key)
         _wellQueryIndex = self.bridge['well_query_index']
         (cachedQuery, create_new_well_index_cache) = \
             CachedQuery.objects.all().get_or_create(key=key)
+        logger.info('create_new_well_index_cache: %r', create_new_well_index_cache)
         if create_new_well_index_cache:
-            try:
-                cachedQuery.sql = compiled_stmt
-                cachedQuery.username = username
-                cachedQuery.uri = \
-                    '/screenresult/%s' % screenresult.screen.facility_id
-                cachedQuery.params = json.dumps(param_hash)
-                cachedQuery.save()
-
-                base_stmt = base_stmt.alias('base_stmt')
-                insert_statement = insert(_wellQueryIndex).\
-                    from_select(['well_id', 'query_id'],
-                        select([
-                            literal_column("well_id"),
-                            literal_column(
-                                str(cachedQuery.id)).label('query_id')
-                            ]).select_from(base_stmt))
-                logger.info(
-                    'insert stmt: %r',
-                    str(insert_statement.compile(
-                        compile_kwargs={"literal_binds": True})))
-                conn.execute(insert_statement)
-                
-                count_stmt = _wellQueryIndex
-                count_stmt = select([func.count()]).select_from(count_stmt)
-                count_stmt = count_stmt.where(
-                    _wellQueryIndex.c.query_id == cachedQuery.id)
-                cachedQuery.count = int(conn.execute(count_stmt).scalar())
-                if cachedQuery.count == 0:
-                    cachedQuery.delete()
-                    logger.warn('Query generates no results: %r', compiled_stmt)
-                else:
+            with self.bridge.get_engine().begin() as conn:
+                # NOTE: mixing Django connection with SQA connection
+                # - thrown exceptions will rollback the nested SQA transaction
+                # see: http://docs.sqlalchemy.org/en/latest/core/connections.html
+                try:
+                    cachedQuery.sql = compiled_stmt
+                    cachedQuery.username = username
+                    cachedQuery.uri = \
+                        '/screenresult/%s' % screenresult.screen.facility_id
+                    cachedQuery.params = json.dumps(param_hash)
                     cachedQuery.save()
-                # clear out older cached query wells
-                self.clear_cache(by_size=True)
-            except Exception, e:
-                cachedQuery.delete()
-                logger.exception('ex on get/create wellquery for screenresult')
-                raise e
+    
+                    base_stmt = base_stmt.alias('base_stmt')
+                    insert_statement = insert(_wellQueryIndex).\
+                        from_select(['well_id', 'query_id'],
+                            select([
+                                literal_column("well_id"),
+                                literal_column(
+                                    str(cachedQuery.id)).label('query_id')
+                                ]).select_from(base_stmt))
+                    logger.info(
+                        'insert stmt: %r',
+                        str(insert_statement.compile(
+                            compile_kwargs={"literal_binds": True})))
+                    conn.execute(insert_statement)
+                    
+                    count_stmt = _wellQueryIndex
+                    count_stmt = select([func.count()]).select_from(count_stmt)
+                    count_stmt = count_stmt.where(
+                        _wellQueryIndex.c.query_id == cachedQuery.id)
+                    cachedQuery.count = int(conn.execute(count_stmt).scalar())
+                    if cachedQuery.count == 0:
+                        cachedQuery.delete()
+                        logger.warn('Query generates no results: %r', compiled_stmt)
+                    else:
+                        cachedQuery.save()
+                    # clear out older cached query wells
+                    self.clear_cache(by_size=True)
+                except Exception, e:
+                    cachedQuery.delete()
+                    logger.exception('ex on get/create wellquery for screenresult')
+                    raise e
         else:
             logger.info('using cached well_query: %r', cachedQuery)
             
@@ -882,8 +867,9 @@ class ScreenResultResource(ApiResource):
             'exclude': literal_column('exclusions.exclude')
         }
         # Use the well_query_index well_ids as the central subquery loop
-        _wqx = select(['well_id']).select_from(_wellQueryIndex)
+        _wqx = select(['id', 'well_id']).select_from(_wellQueryIndex)
         _wqx = _wqx.where(_wellQueryIndex.c.query_id == cachedQuery.id)
+        _wqx = _wqx.order_by(_wellQueryIndex.c.id)
         if limit > 0:    
             _wqx = _wqx.limit(limit)
         _wqx = _wqx.offset(offset)
@@ -949,6 +935,7 @@ class ScreenResultResource(ApiResource):
         stmt = select(columns.values()).select_from(j)
         stmt = stmt.where(
             _aw.c.screen_result_id == screenresult.screen_result_id)
+        stmt = stmt.order_by(_wqx.c.id)
 
         logger.info(
             'stmt: %s',
@@ -963,6 +950,23 @@ class ScreenResultResource(ApiResource):
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
+        limit = param_hash.get('limit', 0)        
+        try:
+            limit = int(limit)
+        except ValueError:
+            raise BadRequest(
+                "Invalid limit '%s' - positive integer required." % limit)
+        param_hash['limit'] = limit
+        
+        offset = param_hash.get('offset', 0)
+        try:
+            offset = int(offset)
+        except ValueError:
+            raise BadRequest(
+                "Invalid offset '%s' - positive integer required." % offset)
+        if offset < 0:    
+            offset = -offset
+        param_hash['offset'] = offset
         
         is_for_detail = kwargs.pop('is_for_detail', False)
 
@@ -1002,28 +1006,9 @@ class ScreenResultResource(ApiResource):
                     screenresult,
                     param_hash,
                     schema,
-                    **kwargs)
+                    limit,
+                    offset)
     
-            logger.info('excute stmt %r...',
-                str(stmt.compile(compile_kwargs={"literal_binds": True})))
-            conn = self.bridge.get_engine().connect()
-            result = conn.execute(stmt)
-            logger.info('excuted stmt')
-            
-            title_function = None
-            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
-                def title_function(key):
-                    if key in field_hash:
-                        return field_hash[key]['title']
-                    else:
-                        return key
-            rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB, False) or desired_format != JSON_MIMETYPE:
-                rowproxy_generator = \
-                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
-            if rowproxy_generator:
-                result = rowproxy_generator(result)
-                
             # Custom screen result serialization
             
             content_type = build_content_type(desired_format)
@@ -1071,59 +1056,79 @@ class ScreenResultResource(ApiResource):
                     or field.get('data_type', None) == 'list' ) ]
             value_templates = {key:field['value_template'] 
                 for key,field in field_hash.items() if field.get('value_template', None)}
-            data = cursor_generator(
-                result,ordered_keys,list_fields=list_fields,
-                value_templates=value_templates)
-            if desired_format == JSON_MIMETYPE:
-                # meta['fields'] = schema['fields']
-                meta = {
-                    'limit': param_hash.get('limit', 0),
-                    'offset': param_hash.get('offset',0),
-                    'screen_facility_id': screen_facility_id,
-                    'total_count': cachedQuery.count,
-                }    
-                # Note: is_excluded generator not needed for JSON - already
-                # part of the query, and no need to convert to col letters
-                data = image_generator(data, image_keys, request) 
-                response = StreamingHttpResponse(
-                    ChunkIterWrapper(
-                        json_generator(data, meta, is_for_detail=is_for_detail)))
-                response['Content-Type'] = content_type
-                return response
-            elif(desired_format == XLS_MIMETYPE or
-                desired_format == XLSX_MIMETYPE): 
-                data = is_excluded_gen(data)
-                response = get_xls_response(
-                    screen_result_importer.create_output_data(
-                        screen_facility_id, field_hash, data),
-                    filename, request=request, 
-                    title_function=title_function, image_keys=image_keys,
-                    list_brackets=list_brackets)
-                return response
-            elif desired_format == SDF_MIMETYPE:
-                data = image_generator(
-                    is_excluded_gen(data),image_keys, request)
-                response = StreamingHttpResponse(
-                    ChunkIterWrapper(
-                        sdf_generator(data, title_function=title_function)),
-                    content_type=content_type)
-                response['Content-Disposition'] = \
-                    'attachment; filename=%s.sdf' % filename
-                return response
-            elif desired_format == CSV_MIMETYPE:
-                data = image_generator(
-                    is_excluded_gen(data),image_keys, request)
-                response = StreamingHttpResponse(
-                    ChunkIterWrapper(
-                        csv_generator(
-                            data,title_function=title_function, 
-                            list_brackets=list_brackets)),
-                    content_type=content_type)
-                response['Content-Disposition'] = \
-                    'attachment; filename=%s.csv' % filename
-                return response
-            else: 
-                raise BadRequest('format not implemented: %r' % desired_format)
+
+            title_function = None
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                def title_function(key):
+                    if key in field_hash:
+                        return field_hash[key]['title']
+                    else:
+                        return key
+            rowproxy_generator = None
+            if param_hash.get(HTTP_PARAM_USE_VOCAB, False) or desired_format != JSON_MIMETYPE:
+                rowproxy_generator = \
+                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+
+            with self.bridge.get_engine().connect() as conn:
+                logger.info('excute stmt %r...',
+                    str(stmt.compile(compile_kwargs={"literal_binds": True})))
+                result = conn.execute(stmt)
+                logger.info('excuted stmt')
+                if rowproxy_generator:
+                    result = rowproxy_generator(result)
+
+                data = cursor_generator(
+                    result,ordered_keys,list_fields=list_fields,
+                    value_templates=value_templates)
+                if desired_format == JSON_MIMETYPE:
+                    meta = {
+                        'limit': limit,
+                        'offset': offset,
+                        'screen_facility_id': screen_facility_id,
+                        'total_count': cachedQuery.count,
+                    }    
+                    # Note: is_excluded generator not needed for JSON - already
+                    # part of the query, and no need to convert to col letters
+                    data = image_generator(data, image_keys, request) 
+                    response = StreamingHttpResponse(
+                        ChunkIterWrapper(
+                            json_generator(data, meta, is_for_detail=is_for_detail)))
+                    response['Content-Type'] = content_type
+                    return response
+                elif(desired_format == XLS_MIMETYPE or
+                    desired_format == XLSX_MIMETYPE): 
+                    data = is_excluded_gen(data)
+                    response = get_xls_response(
+                        screen_result_importer.create_output_data(
+                            screen_facility_id, field_hash, data),
+                        filename, request=request, 
+                        title_function=title_function, image_keys=image_keys,
+                        list_brackets=list_brackets)
+                    return response
+                elif desired_format == SDF_MIMETYPE:
+                    data = image_generator(
+                        is_excluded_gen(data),image_keys, request)
+                    response = StreamingHttpResponse(
+                        ChunkIterWrapper(
+                            sdf_generator(data, title_function=title_function)),
+                        content_type=content_type)
+                    response['Content-Disposition'] = \
+                        'attachment; filename=%s.sdf' % filename
+                    return response
+                elif desired_format == CSV_MIMETYPE:
+                    data = image_generator(
+                        is_excluded_gen(data),image_keys, request)
+                    response = StreamingHttpResponse(
+                        ChunkIterWrapper(
+                            csv_generator(
+                                data,title_function=title_function, 
+                                list_brackets=list_brackets)),
+                        content_type=content_type)
+                    response['Content-Disposition'] = \
+                        'attachment; filename=%s.csv' % filename
+                    return response
+                else: 
+                    raise BadRequest('format not implemented: %r' % desired_format)
         except Exception, e:
             logger.exception('on get list: %r', e)
             raise e  
@@ -1147,90 +1152,90 @@ class ScreenResultResource(ApiResource):
         # and aw0.screen_result_id = 941
         # and aw1.screen_result_id <> 941;
         try:
-            conn = self.bridge.get_engine().connect()
-            
-            _well_data_column_positive_index = \
-                self.bridge['well_data_column_positive_index']
-            _aw = self.bridge['assay_well']
-            _sr = self.bridge['screen_result']
-            _dc = self.bridge['data_column']
-            
-            # FIXME: recreating the well_data_column_positive_index:
-            # - now: this call is lazy recreating, when the screen_result 
-            #   resource is first called.
-            # - TODO: recreate this index when the screen_result is loaded.
-            # 
-            # Note: because this is lazy recreated, we are creating the whole 
-            # index each time; could just recreate for the specific screen
-            #  
-            # Example query:
-            # count_stmt = ( 
-            #     select([text('*')])
-            #     .select_from(_well_data_column_positive_index
-            #         .join(_dc, _dc.c.data_column_id
-            #             ==_well_data_column_positive_index.c.data_column_id))
-            #     .where(_dc.c.screen_result_id==screen_result_id))
-            count_stmt = _well_data_column_positive_index
-            count_stmt = select([func.count()]).select_from(count_stmt)
-            count = int(conn.execute(count_stmt).scalar())        
-            logger.info('well_data_column_positive_index count: %r', count)
-            if count == 0:
-                # the well_data_column_positive_index has been cleared, recreate
-                base_stmt = join(
-                    _aw, _dc, _aw.c.screen_result_id == _dc.c.screen_result_id)
-                base_stmt = select([
-                        literal_column("well_id"),
-                        literal_column('data_column_id')
-                    ]).select_from(base_stmt)            
-                base_stmt = base_stmt.where(_aw.c.is_positive)
-                base_stmt = base_stmt.where(
-                    _dc.c.data_type.in_([
-                        'boolean_positive_indicator',
-                        'partition_positive_indicator', 
-                        'confirmed_positive_indicator']))
-                base_stmt = base_stmt.order_by(
-                    _dc.c.data_column_id, _aw.c.well_id)
-                insert_statement = (
-                    insert(_well_data_column_positive_index)
-                        .from_select(['well_id', 'data_column_id'], base_stmt))
-                logger.info(
-                    'mutual pos insert statement: %r',
-                    str(insert_statement.compile(compile_kwargs={"literal_binds": True})))
-                conn.execute(insert_statement)
-    
-            # Query to find mutual positive data columns:
-            # select distinct(wdc.data_column_id)
-            # from
-            # well_data_column_positive_index wdc
-            # join data_column dc using(data_column_id)
-            # where 
-            # dc.screen_result_id <> 941
-            # and exists(
-            # select null 
-            # from well_data_column_positive_index wdc1 
-            # join data_column dc1 using(data_column_id) 
-            # where wdc1.well_id=wdc.well_id 
-            # and dc1.screen_result_id = 941 );        
-            _wdc = _well_data_column_positive_index.alias('wdc')
-            j = _wdc.join(_dc, _wdc.c.data_column_id == _dc.c.data_column_id)
-            stmt = select([distinct(_wdc.c.data_column_id)]).select_from(j)
-            stmt = stmt.where(_dc.c.screen_result_id != screen_result_id)
-            
-            _wdc1 = _well_data_column_positive_index.alias('wdc1')
-            _dc1 = _dc.alias('dc1')
-            j2 = _wdc1.join(_dc1, _wdc1.c.data_column_id == _dc1.c.data_column_id)
-            stmt2 = select([text('null')]).select_from(j2)
-            stmt2 = stmt2.where(_wdc.c.well_id == _wdc1.c.well_id)
-            stmt2 = stmt2.where(_dc1.c.screen_result_id == screen_result_id)
-            
-            stmt = stmt.where(exists(stmt2))
-            
-            logger.info('mutual positives statement: %r',
-                str(stmt.compile(compile_kwargs={"literal_binds": True})))
-            logger.info('execute mutual positives column query...')
-            cols =  [x.data_column_id for x in conn.execute(stmt)]
-            logger.info('done, cols %r', cols)
-            return cols
+            with self.bridge.get_engine().connect() as cursor:
+                _well_data_column_positive_index = \
+                    self.bridge['well_data_column_positive_index']
+                _aw = self.bridge['assay_well']
+                _sr = self.bridge['screen_result']
+                _dc = self.bridge['data_column']
+                
+                # FIXME: recreating the well_data_column_positive_index:
+                # - now: this call is lazy recreating, when the screen_result 
+                #   resource is first called.
+                # - TODO: recreate this index when the screen_result is loaded.
+                # 
+                # Note: because this is lazy recreated, we are creating the whole 
+                # index each time; could just recreate for the specific screen
+                #  
+                # Example query:
+                # count_stmt = ( 
+                #     select([text('*')])
+                #     .select_from(_well_data_column_positive_index
+                #         .join(_dc, _dc.c.data_column_id
+                #             ==_well_data_column_positive_index.c.data_column_id))
+                #     .where(_dc.c.screen_result_id==screen_result_id))
+                count_stmt = _well_data_column_positive_index
+                count_stmt = select([func.count()]).select_from(count_stmt)
+                count = int(cursor.execute(count_stmt).scalar())        
+                logger.info('well_data_column_positive_index count: %r', count)
+                if count == 0:
+                    # the well_data_column_positive_index has been cleared, recreate
+                    base_stmt = join(
+                        _aw, _dc, _aw.c.screen_result_id == _dc.c.screen_result_id)
+                    base_stmt = select([
+                            literal_column("well_id"),
+                            literal_column('data_column_id')
+                        ]).select_from(base_stmt)            
+                    base_stmt = base_stmt.where(_aw.c.is_positive)
+                    base_stmt = base_stmt.where(
+                        _dc.c.data_type.in_([
+                            'boolean_positive_indicator',
+                            'partition_positive_indicator', 
+                            'confirmed_positive_indicator']))
+                    base_stmt = base_stmt.order_by(
+                        _dc.c.data_column_id, _aw.c.well_id)
+                    insert_statement = (
+                        insert(_well_data_column_positive_index)
+                            .from_select(['well_id', 'data_column_id'], base_stmt))
+                    logger.info(
+                        'mutual pos insert statement: %r',
+                        str(insert_statement.compile(compile_kwargs={"literal_binds": True})))
+                    cursor.execute(insert_statement)
+                    logger.info('mutual pos insert statement, executed.')
+        
+                # Query to find mutual positive data columns:
+                # select distinct(wdc.data_column_id)
+                # from
+                # well_data_column_positive_index wdc
+                # join data_column dc using(data_column_id)
+                # where 
+                # dc.screen_result_id <> 941
+                # and exists(
+                # select null 
+                # from well_data_column_positive_index wdc1 
+                # join data_column dc1 using(data_column_id) 
+                # where wdc1.well_id=wdc.well_id 
+                # and dc1.screen_result_id = 941 );        
+                _wdc = _well_data_column_positive_index.alias('wdc')
+                j = _wdc.join(_dc, _wdc.c.data_column_id == _dc.c.data_column_id)
+                stmt = select([distinct(_wdc.c.data_column_id)]).select_from(j)
+                stmt = stmt.where(_dc.c.screen_result_id != screen_result_id)
+                
+                _wdc1 = _well_data_column_positive_index.alias('wdc1')
+                _dc1 = _dc.alias('dc1')
+                j2 = _wdc1.join(_dc1, _wdc1.c.data_column_id == _dc1.c.data_column_id)
+                stmt2 = select([text('null')]).select_from(j2)
+                stmt2 = stmt2.where(_wdc.c.well_id == _wdc1.c.well_id)
+                stmt2 = stmt2.where(_dc1.c.screen_result_id == screen_result_id)
+                
+                stmt = stmt.where(exists(stmt2))
+                
+                logger.info('mutual positives statement: %r',
+                    str(stmt.compile(compile_kwargs={"literal_binds": True})))
+                logger.info('execute mutual positives column query...')
+                cols =  [x.data_column_id for x in cursor.execute(stmt)]
+                logger.info('done, cols %r', cols)
+                return cols
         except Exception, e:
             logger.exception('on get mutual positives columns')
             raise e  
@@ -1662,7 +1667,6 @@ class ScreenResultResource(ApiResource):
         
         logger.info(
             'create result values for %r ...', screen_result.screen.facility_id)
-        conn = self.bridge.get_engine().connect()
 
         fieldnames = [
             'well_id', 'data_column_id',  # 'result_value_id',
@@ -1774,16 +1778,18 @@ class ScreenResultResource(ApiResource):
 
             logger.info('use copy_from to create %d assay_wells...', rows_created)
             assay_well_file.seek(0)
-            connection.cursor().copy_from(
-                assay_well_file, 'assay_well', sep=str(','), 
-                columns=assay_well_fieldnames, null=PSYCOPG_NULL)
-            logger.info('assay_wells created.')
             
-            logger.info('use copy_from to create %d result_values...', rvs_to_create)
-            f.seek(0)
-            connection.cursor().copy_from(
-                f, 'result_value', sep=str(','), columns=fieldnames, null=PSYCOPG_NULL)
-            logger.info('result_values created.')
+            with connection.cursor() as conn:
+                conn.copy_from(
+                    assay_well_file, 'assay_well', sep=str(','), 
+                    columns=assay_well_fieldnames, null=PSYCOPG_NULL)
+                logger.info('assay_wells created.')
+                
+                logger.info('use copy_from to create %d result_values...', rvs_to_create)
+                f.seek(0)
+                conn.copy_from(
+                    f, 'result_value', sep=str(','), columns=fieldnames, null=PSYCOPG_NULL)
+                logger.info('result_values created.')
         
         for dc in sheet_col_to_datacolumn.values():
             dc.save()
@@ -1876,90 +1882,97 @@ class ScreenResultResource(ApiResource):
     #     # in this screen result
         
 
+    @transaction.atomic()
     def create_data_loading_statistics(self, screen_result):
-        conn = self.bridge.get_engine().connect()
-        screen_facility_id = screen_result.screen.facility_id
-        sql_experimental_wells_loaded = (
-            'select count(*) '
-            'from screen s '
-            'join screen_result sr using(screen_id) '
-            'join assay_well aw using(screen_result_id) '
-            'join well w using(well_id) '
-            'where w.library_well_type = %s '
-            'and s.facility_id = %s; ')
-        screen_result.experimental_well_count = int(
-            conn.execute(
-                sql_experimental_wells_loaded,
-                ('experimental', screen_facility_id))
-            .scalar() or 0)
-        
-        sql_replicate_count = (
-             'select max(replicate_ordinal) '
-             'from data_column ' 
-             'join screen_result using(screen_result_id) ' 
-             'join screen using (screen_id) '
-             'where facility_id = %s;')
-        screen_result.replicate_count = int(
-            conn.execute(
-                sql_replicate_count, screen_facility_id)
-            .scalar() or 0)
-        if screen_result.replicate_count == 0:
-            screen_result.replicate_count = 1
+        with self.bridge.get_engine().begin() as conn:
+            # NOTE: mixing Django connection with SQA connection
+            # - thrown exceptions will rollback the nested SQA transaction
+            # see: http://docs.sqlalchemy.org/en/latest/core/connections.html
+            screen_facility_id = screen_result.screen.facility_id
+            sql_experimental_wells_loaded = (
+                'select count(*) '
+                'from screen s '
+                'join screen_result sr using(screen_id) '
+                'join assay_well aw using(screen_result_id) '
+                'join well w using(well_id) '
+                'where w.library_well_type = %s '
+                'and s.facility_id = %s; ')
+            screen_result.experimental_well_count = int(
+                conn.execute(
+                    sql_experimental_wells_loaded,
+                    ('experimental', screen_facility_id))
+                .scalar() or 0)
             
-        sql_channel_count = (
-             'select max(channel) '
-             'from data_column ' 
-             'join screen_result using(screen_result_id) ' 
-             'join screen using (screen_id) '
-             'where facility_id = %s;')
-        screen_result.channel_count = int(
-            conn.execute(
-                sql_channel_count, screen_facility_id)
-            .scalar() or 0)
-        if screen_result.channel_count == 0:
-            screen_result.channels_count = 1
+            sql_replicate_count = (
+                 'select max(replicate_ordinal) '
+                 'from data_column ' 
+                 'join screen_result using(screen_result_id) ' 
+                 'join screen using (screen_id) '
+                 'where facility_id = %s;')
+            screen_result.replicate_count = int(
+                conn.execute(
+                    sql_replicate_count, screen_facility_id)
+                .scalar() or 0)
+            if screen_result.replicate_count == 0:
+                screen_result.replicate_count = 1
+                
+            sql_channel_count = (
+                 'select max(channel) '
+                 'from data_column ' 
+                 'join screen_result using(screen_result_id) ' 
+                 'join screen using (screen_id) '
+                 'where facility_id = %s;')
+            screen_result.channel_count = int(
+                conn.execute(
+                    sql_channel_count, screen_facility_id)
+                .scalar() or 0)
+            if screen_result.channel_count == 0:
+                screen_result.channels_count = 1
+                
+            screen_result.save()
             
-        screen_result.save()
+            self.create_screen_screening_statistics(screen_result.screen)
         
-        self.create_screen_screening_statistics(screen_result.screen)
-        
-    
+    @transaction.atomic()    
     def create_screen_screening_statistics(self, screen):
         
-        conn = self.bridge.get_engine().connect()
-        screen_facility_id = screen.facility_id
-        sql = (
-            'select count(w.well_id) '
-            'from Well w, Screen s  '
-            'join assay_plate ap using(screen_id) '
-            'join plate p using(plate_id) '
-            'join library_screening ls on(ap.library_screening_id=ls.activity_id) '
-            'where   ap.replicate_ordinal = 0  '
-            'and w.plate_number = p.plate_number ' 
-            'and w.library_well_type = %s'
-            'and s.facility_id = %s;')
-        screen.screened_experimental_well_count = int(
-            conn.execute(
-                sql, ('experimental', screen_facility_id))
-            .scalar() or 0)
-        sql = (
-            'select count(distinct(w.well_id)) '
-            'from Well w, Screen s  '
-            'join assay_plate ap using(screen_id) '
-            'join plate p using(plate_id) '
-            'join library_screening ls on(ap.library_screening_id=ls.activity_id) '
-            'where   ap.replicate_ordinal = 0  '
-            'and w.plate_number = p.plate_number ' 
-            'and w.library_well_type = %s'
-            'and s.facility_id = %s;')
-        screen.unique_screened_experimental_well_count = int(
-            conn.execute(
-                sql, ('experimental', screen_facility_id))
-            .scalar() or 0)
-        
-        # Not used:
-        # library_plates_data_analyzed_count = models.IntegerField(null=False, default=0)
-        screen.save()
+        with self.bridge.get_engine().begin() as conn:
+            # NOTE: mixing Django connection with SQA connection
+            # - thrown exceptions will rollback the nested SQA transaction
+            # see: http://docs.sqlalchemy.org/en/latest/core/connections.html
+            screen_facility_id = screen.facility_id
+            sql = (
+                'select count(w.well_id) '
+                'from Well w, Screen s  '
+                'join assay_plate ap using(screen_id) '
+                'join plate p using(plate_id) '
+                'join library_screening ls on(ap.library_screening_id=ls.activity_id) '
+                'where   ap.replicate_ordinal = 0  '
+                'and w.plate_number = p.plate_number ' 
+                'and w.library_well_type = %s'
+                'and s.facility_id = %s;')
+            screen.screened_experimental_well_count = int(
+                conn.execute(
+                    sql, ('experimental', screen_facility_id))
+                .scalar() or 0)
+            sql = (
+                'select count(distinct(w.well_id)) '
+                'from Well w, Screen s  '
+                'join assay_plate ap using(screen_id) '
+                'join plate p using(plate_id) '
+                'join library_screening ls on(ap.library_screening_id=ls.activity_id) '
+                'where   ap.replicate_ordinal = 0  '
+                'and w.plate_number = p.plate_number ' 
+                'and w.library_well_type = %s'
+                'and s.facility_id = %s;')
+            screen.unique_screened_experimental_well_count = int(
+                conn.execute(
+                    sql, ('experimental', screen_facility_id))
+                .scalar() or 0)
+            
+            # Not used:
+            # library_plates_data_analyzed_count = models.IntegerField(null=False, default=0)
+            screen.save()
         
 
 class DataColumnResource(ApiResource):
@@ -4289,7 +4302,6 @@ class LibraryScreeningResource(ActivityResource):
                     .order_by(
                         _library.c.short_name, _cp.c.name, _ap.c.plate_number))
                 logger.debug('lcp_query: %r', str(lcp_query.compile()))
-                conn = self.bridge.get_engine().connect()
                 
                 def library_copy_plates_screened_generator(cursor):
                     if generator:
@@ -4299,31 +4311,32 @@ class LibraryScreeningResource(ActivityResource):
                             self.row = row
                             self.entries = []
                             activity_id = row['activity_id']
-                            query = conn.execute(
-                                lcp_query, activity_id=activity_id)
-                            copy = None
-                            start_plate = None
-                            end_plate = None
-                            for x in query:
-                                if not copy:
-                                    copy = x[1]
-                                    library = x[0]
-                                if not start_plate:
-                                    start_plate = end_plate = x[2]
-                                if (x[0] != library 
-                                    or x[1] != copy 
-                                    or x[2] > end_plate + 1):
-                                    # start a new range, save old range
+                            with self.bridge.get_engine().connect() as conn:
+                                query = conn.execute(
+                                    lcp_query, activity_id=activity_id)
+                                copy = None
+                                start_plate = None
+                                end_plate = None
+                                for x in query:
+                                    if not copy:
+                                        copy = x[1]
+                                        library = x[0]
+                                    if not start_plate:
+                                        start_plate = end_plate = x[2]
+                                    if (x[0] != library 
+                                        or x[1] != copy 
+                                        or x[2] > end_plate + 1):
+                                        # start a new range, save old range
+                                        self.entries.append('%s:%s:%s-%s'
+                                            % (library, copy, start_plate, end_plate))
+                                        start_plate = end_plate = x[2]
+                                        copy = x[1]
+                                        library = x[0]
+                                    else:
+                                        end_plate = x[2]
+                                if copy: 
                                     self.entries.append('%s:%s:%s-%s'
                                         % (library, copy, start_plate, end_plate))
-                                    start_plate = end_plate = x[2]
-                                    copy = x[1]
-                                    library = x[0]
-                                else:
-                                    end_plate = x[2]
-                            if copy: 
-                                self.entries.append('%s:%s:%s-%s'
-                                    % (library, copy, start_plate, end_plate))
                                     
                         def has_key(self, key):
                             if key == 'library_plates_screened': 
@@ -5523,10 +5536,10 @@ class ScreenResource(ApiResource):
                 order by facility_id::integer desc
                 limit 1;
             '''
-            conn = self.bridge.get_engine().connect()
-            max_facility_id = int(
-                conn.execute(max_facility_id_sql).scalar() or 0)
-            schema['fields']['facility_id']['default'] = max_facility_id + 1
+            with self.bridge.get_engine().connect() as conn:
+                max_facility_id = int(
+                    conn.execute(max_facility_id_sql).scalar() or 0)
+                schema['fields']['facility_id']['default'] = max_facility_id + 1
         
         temp = [ x.screen_type 
             for x in self.Meta.queryset.distinct('screen_type')]

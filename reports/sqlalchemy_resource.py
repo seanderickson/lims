@@ -498,12 +498,17 @@ class SqlAlchemyResource(IccblBaseResource):
                 if not field_name in schema['fields']:
                     logger.warn(str(('unknown filter field', field_name, filter_expr)))
                     continue
+                if DEBUG_FILTERS:
+                    logger.info('build filter expr: field_name, %r, '
+                        'filter_type: %r value: %r', 
+                        field_name, filter_type, value)
     
                 field = schema['fields'][field_name]
                 
                 value = SqlAlchemyResource.filter_value_to_python(
                     value, param_hash, filter_expr, filter_type)
-                
+                if DEBUG_FILTERS:
+                    logger.info('value : %r', value)
                 _values.append(value)
                 # TODO: all of the Django query terms:
                 # QUERY_TERMS = set([
@@ -526,10 +531,12 @@ class SqlAlchemyResource(IccblBaseResource):
                 elif field['data_type'] == 'boolean':
                     col = cast(col,sqlalchemy.sql.sqltypes.Boolean)
                 if field['data_type'] == 'string':
-                    col = func.trim(cast(col,sqlalchemy.sql.sqltypes.Text))
+                    col = cast(col,sqlalchemy.sql.sqltypes.Text)
 
                 if filter_type in ['exact','eq']:
                     expression = col == value
+                    if field['data_type'] == 'string':
+                        value = str(value)
                     if field['data_type'] == 'list':
                         expression = text(
                             "'%s'=any(string_to_array(%s,'%s'))"
@@ -544,8 +551,12 @@ class SqlAlchemyResource(IccblBaseResource):
                             filter_expr,
                             value,'decimals',decimals)))
                 elif filter_type == 'contains':
+                    if field['data_type'] == 'string':
+                        value = str(value)
                     expression = col.contains(value)
                 elif filter_type == 'icontains':
+                    if field['data_type'] == 'string':
+                        value = str(value)
                     expression = col.ilike('%{value}%'.format(
                         value=value))
                 elif filter_type == 'lt':
@@ -557,12 +568,16 @@ class SqlAlchemyResource(IccblBaseResource):
                 elif filter_type == 'gte':
                     expression = col >= value
                 elif filter_type == 'is_blank':
+                    if field['data_type'] == 'string':
+                        col = func.trim(col)
                     if value and str(value).lower() == 'true':
                         expression = col == None 
                         if field['data_type'] == 'string':
                             expression = col == ''
                     else:
                         expression = col != None
+                        if field['data_type'] == 'string':
+                            col = func.trim(col)
                         if ( field['data_type'] == 'string' 
                              or field['data_type'] == 'list' ):
                             expression = col != ''
@@ -583,6 +598,8 @@ class SqlAlchemyResource(IccblBaseResource):
                     else:
                         expression = col.in_(value)
                 elif filter_type == 'ne':
+                    if field['data_type'] == 'string':
+                        value = str(value)
                     expression = col != value
                 elif filter_type == 'range':
                     if len(value) != 2:

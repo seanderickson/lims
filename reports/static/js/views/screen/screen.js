@@ -1217,6 +1217,7 @@ define([
                  self.model.key].join('/');
 
       var _id = self.model.key;
+      var screen_facility_id = self.model.get('facility_id');
       
       // TODO: have to add the "extra_control" because the list rendering is delayed
       var show_positives_control = $([
@@ -1274,6 +1275,7 @@ define([
         if(_.has(initialSearchHash, 'show_mutual_positives')
             && initialSearchHash.show_mutual_positives.toLowerCase()=='true'){
           show_mutual_positives_control.find('input[type="checkbox"]').prop('checked',true);
+          view.show_mutual_positives(screen_facility_id, true);
         }
         
         show_positives_control.click(function(e){
@@ -1292,9 +1294,9 @@ define([
         });
         show_mutual_positives_control.click(function(e){
           if(e.target.checked){
-            view.show_mutual_positives(true);
+            view.show_mutual_positives(screen_facility_id, true);
           }else{
-            view.show_mutual_positives(false);
+            view.show_mutual_positives(screen_facility_id, false);
           }
         });
       };

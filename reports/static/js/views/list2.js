@@ -1016,7 +1016,7 @@ define([
     /**
      * Special function for screen result lists
      */
-    show_mutual_positives: function(show_mutual_positives){
+    show_mutual_positives: function(screen_facility_id, show_mutual_positives){
       var self = this;
       var _fields = this._options.schemaResult.fields;
 
@@ -1025,10 +1025,12 @@ define([
         _.each(_.pairs(_fields), function(pair){
           var key = pair[1]['key'];
           var prop = pair[1];
-          var fieldType = prop['scope'].split('.')[0]
-          if(fieldType == 'datacolumn'){
-            var currentColumn = self.grid.columns.findWhere(
-              { name: key });
+          var fieldType = prop['scope'].split('.')[0];
+          var field_screen_facility_id = _.result(prop,'screen_facility_id', '');
+          
+          if(fieldType == 'datacolumn' 
+            && field_screen_facility_id != screen_facility_id ){
+            var currentColumn = self.grid.columns.findWhere({ name: key });
             if(! currentColumn){
               self.grid.insertColumn(
                 Iccbl.createBackgridColumn(
@@ -1042,22 +1044,34 @@ define([
         searchHash['show_mutual_positives'] = 'true';
         self.listModel.set('search',searchHash);
       }else{
+        var searchHash = _.clone(self.listModel.get('search'));
+        var orderStack = self.listModel.get('order') || [];
         _.each(_.pairs(_fields), function(pair){
           var key = pair[1]['key'];
           var prop = pair[1];
           var fieldType = prop['scope'].split('.')[0]
-          if(fieldType == 'datacolumn'){
-            var currentColumn = self.grid.columns.findWhere(
-              { name: key });
+          var field_screen_facility_id = _.result(prop,'screen_facility_id', '');
+          // Note: if filtering/ordering on one of the mutual positive columns, 
+          // do not remove it here.
+          if(fieldType == 'datacolumn'
+              && field_screen_facility_id != screen_facility_id 
+              && ! _.findKey(searchHash, function(val,hashkey){
+                return hashkey.indexOf(key) > -1
+              })
+              && ! _.find(orderStack, function(orderkey){
+                return orderkey.indexOf(key) > -1
+              })
+            ){
+            console.log('remove: ', key);
+            var currentColumn = self.grid.columns.findWhere({ name: key });
             if(currentColumn){
               self.grid.removeColumn(currentColumn);
             }
           }
         });
-        var searchHash = _.clone(view.listModel.get('search'));
         if(_.has(searchHash,'show_mutual_positives')){
           delete searchHash['show_mutual_positives'];
-          view.listModel.set('search',searchHash);
+          self.listModel.set('search',searchHash);
         }        
       }
     },

@@ -173,3 +173,18 @@ LOGGING = {
         },        
     }
 }
+
+TEST_RUNNER='reports.tests.IccblTestRunner'
+
+# disable migrations while testing
+# see http://stackoverflow.com/questions/25161425/disable-migrations-when-running-unit-tests-in-django-1-7
+class DisableMigrations(object):
+
+    def __contains__(self, item):
+        return True
+
+    def __getitem__(self, item):
+        return "notmigrations"
+
+if 'test' in sys.argv[1:] or 'travis' in sys.argv[1:]:
+    MIGRATION_MODULES = DisableMigrations()

@@ -40,9 +40,19 @@ from reports.serialize.streaming_serializers import sdf_generator, \
 from reports.serializers import LimsSerializer
 from reports.utils.sqlalchemy_bridge import Bridge
 
+import django.core.signals 
 
 logger = logging.getLogger(__name__)
 
+unclosed_connections = []
+def connection_close_callback(sender, **kwargs):
+    logger.error("Request finished! %r, %r", sender, kwargs)
+    for c in unclosed_connections:
+        c.close()
+        unclosed_connections.remove(c)
+#     unclosed_connections.clear()
+
+django.core.signals.request_finished.connect(connection_close_callback)
 
 def _concat(*args):
     '''
@@ -882,94 +892,103 @@ class SqlAlchemyResource(IccblBaseResource):
         if offset < 0:    
             offset = -offset
         stmt = stmt.offset(offset)
-
+        
+        conn = self.bridge.get_engine().connect()
+        unclosed_connections.append(conn)
+#         def connection_close_callback1(sender, **kwargs):
+#             logger.error('1Request finished...')
+#             logger.error("1Request finished! %r", kwargs)
+#             conn.close()
+#         django.core.signals.request_finished.connect(connection_close_callback1)
         try:
-            with self.bridge.get_engine().connect() as conn:
-                logger.debug('offset: %s, limit: %s', offset, limit)
+#             with self.bridge.get_engine().connect() as conn:
+            logger.debug('offset: %s, limit: %s', offset, limit)
+        
+            if DEBUG_STREAMING:
+                logger.info('stmt: %s, param_hash: %s ', 
+                    str(stmt.compile(compile_kwargs={"literal_binds": True})), 
+                    param_hash)
+                logger.info(str(('count stmt', str(count_stmt))))
             
-                if DEBUG_STREAMING:
-                    logger.info('stmt: %s, param_hash: %s ', 
-                        str(stmt.compile(compile_kwargs={"literal_binds": True})), 
-                        param_hash)
-                    logger.info(str(('count stmt', str(count_stmt))))
-                
-                desired_format = self.get_serialize_format(request, **param_hash)
-                logger.debug('---- desired_format: %r, hash: %r', desired_format, param_hash)
-                result = None
-                if desired_format == 'application/json':
-                    logger.debug('streaming json')
-                    if not is_for_detail and use_caching and self.use_cache and limit > 0:
-                        cache_hit = self._cached_resultproxy(
-                            conn, stmt, count_stmt, param_hash, limit, offset)
-                        if cache_hit:
-                            logger.info('cache hit')
-                            result = cache_hit['cached_result']
-                            count = cache_hit['count']
-                        else:
-                            # cache routine should always return a cache object
-                            logger.error('error, cache not set: execute stmt')
-                            count = conn.execute(count_stmt).scalar()
-                            result = conn.execute(stmt)
-                        logger.info(str(('====count====', count)))
-                        
+            desired_format = self.get_serialize_format(request, **param_hash)
+            logger.debug('---- desired_format: %r, hash: %r', desired_format, param_hash)
+            result = None
+            if desired_format == 'application/json':
+                logger.debug('streaming json')
+                if not is_for_detail and use_caching and self.use_cache and limit > 0:
+                    cache_hit = self._cached_resultproxy(
+                        conn, stmt, count_stmt, param_hash, limit, offset)
+                    if cache_hit:
+                        logger.info('cache hit')
+                        result = cache_hit['cached_result']
+                        count = cache_hit['count']
                     else:
-                        if DEBUG_STREAMING:
-                            logger.info('execute count stmt...')
+                        # cache routine should always return a cache object
+                        logger.error('error, cache not set: execute stmt')
                         count = conn.execute(count_stmt).scalar()
-                        if DEBUG_STREAMING:
-                            logger.info('excuted count stmt: %d', count)
                         result = conn.execute(stmt)
-                        if DEBUG_STREAMING:
-                            logger.info('excuted stmt')
-        
-                    if not meta:
-                        meta = {
-                            'limit': limit,
-                            'offset': offset,
-                            'total_count': count
-                            }
-                    else:
-                        temp = {
-                            'limit': limit,
-                            'offset': offset,
-                            'total_count': count
-                            }
-                        temp.update(meta)    
-                        meta = temp
-                        
-                    if rowproxy_generator:
-                        result = rowproxy_generator(result)
-        
-                    # TODO: create a short-circuit if count==0
-                    # if count == 0:
-                    #    raise ImmediateHttpResponse(
-                    #        response=self.error_response(
-                    #            request, {'empty result': 'no records found'},
-                    #            response_class=HttpNotFound))
-                    if DEBUG_STREAMING:
-                        logger.info('json setup done, meta: %r', meta)
-        
-                else: # not json
-                
-                    logger.info('excute stmt')
-                    result = conn.execute(stmt)
-                    logger.info('excuted stmt')
+                    logger.info(str(('====count====', count)))
                     
-                    logger.info(str(('rowproxy_generator', rowproxy_generator)))
-                    if rowproxy_generator:
-                        result = rowproxy_generator(result)
-                        # FIXME: test this for generators other than json generator        
+                else:
+                    if DEBUG_STREAMING:
+                        logger.info('execute count stmt...')
+                    count = conn.execute(count_stmt).scalar()
+                    if DEBUG_STREAMING:
+                        logger.info('excuted count stmt: %d', count)
+                    result = conn.execute(stmt)
+                    if DEBUG_STREAMING:
+                        logger.info('excuted stmt')
     
-                return self.stream_response_from_cursor(request, result, output_filename, 
-                    field_hash=field_hash, 
-                    param_hash=param_hash, 
-                    is_for_detail=is_for_detail, 
-                    downloadID=downloadID, 
-                    title_function=title_function, 
-                    meta=meta)
+                if not meta:
+                    meta = {
+                        'limit': limit,
+                        'offset': offset,
+                        'total_count': count
+                        }
+                else:
+                    temp = {
+                        'limit': limit,
+                        'offset': offset,
+                        'total_count': count
+                        }
+                    temp.update(meta)    
+                    meta = temp
+                    
+                if rowproxy_generator:
+                    result = rowproxy_generator(result)
+    
+                # TODO: create a short-circuit if count==0
+                # if count == 0:
+                #    raise ImmediateHttpResponse(
+                #        response=self.error_response(
+                #            request, {'empty result': 'no records found'},
+                #            response_class=HttpNotFound))
+                if DEBUG_STREAMING:
+                    logger.info('json setup done, meta: %r', meta)
+    
+            else: # not json
+            
+                logger.info('excute stmt')
+                result = conn.execute(stmt)
+                logger.info('excuted stmt')
+                
+                logger.info(str(('rowproxy_generator', rowproxy_generator)))
+                if rowproxy_generator:
+                    result = rowproxy_generator(result)
+                    # FIXME: test this for generators other than json generator        
+
+            return self.stream_response_from_cursor(request, result, output_filename, 
+                field_hash=field_hash, 
+                param_hash=param_hash, 
+                is_for_detail=is_for_detail, 
+                downloadID=downloadID, 
+                title_function=title_function, 
+                meta=meta)
         except Exception, e:
             logger.exception('on stream response')
-            raise e          
+            raise e
+        finally:
+            conn.close()          
         
     def stream_response_from_cursor(self,request,result,output_filename,
             field_hash={}, param_hash={}, 

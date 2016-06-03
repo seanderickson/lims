@@ -766,7 +766,6 @@ class ScreenResultSerializerTest(TestCase):
         self.assertTrue(lookup_key in input_data, 
             '%r not in input_data: %r' % (lookup_key, input_data.keys()))
         result_values = input_data[lookup_key]
-        
         with open(filename_out, 'wb') as output_file:
             logger.info('write back out to %r', filename_out)
             data = screen_result_importer.create_output_data(
@@ -1286,9 +1285,9 @@ class ScreenResultResource(DBResourceTestCase):
             resp.status_code in [200,201,202], 
             (resp.status_code, self.get_content(resp)))
         output_data = self.deserialize(resp)
-        logger.debug('datacolumn output_data: %r', output_data )
+        logger.info('datacolumn output_data: %r', output_data )
         self.assertTrue(len(output_data['objects'])==2, 
-            ('should only show two positive indicator column', output_data))
+            ('should show two positive indicator columns', output_data))
 
         confirmed_positive_col = None
         partion_positive_col = None

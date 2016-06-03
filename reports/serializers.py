@@ -203,7 +203,6 @@ class PrettyJSONSerializer(BaseSerializer):
     json_indent = 2
 
     def to_json(self, data, options=None):
-        logger.info('json serializing...')
         data = self.to_simple(data, options)
         # NOTE, using "ensure_ascii" = True to force encoding of all 
         # chars to the ascii charset; otherwise, cStringIO has problems
@@ -306,7 +305,7 @@ class XLSSerializer(BaseSerializer):
         if not content:
             content = request.body
 
-        logger.info('deserializing for %r', desired_format)
+        logger.debug('deserializing for %r', desired_format)
         deserialized = getattr(self, "from_%s" % desired_format)(content)
         return deserialized
     
@@ -518,7 +517,7 @@ class ScreenResultSerializer(XLSSerializer,SDFSerializer,CSVSerializer):
         return screen_result_importer.read_workbook(wb)
 
     def to_json(self, data, options=None):
-        logger.info('serialize sr data...')
+        logger.info('serialize sr data...%r', data)
         return XLSSerializer.to_json(self, data, options=options)
 
 #     def from_json(self, content):

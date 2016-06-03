@@ -110,9 +110,8 @@ class IccblBaseResource(Resource):
                 filekeys.append(str(y))
                 if i == 10:
                     break
-                 
+        filekeys = [x for x in filekeys if x.strip() ]
         filekeys.insert(0,self._meta.resource_name)
-        logger.info('filekeys: %r', filekeys)
         filename = '_'.join(filekeys)
         filename = re.sub(r'[\W]+','_',filename)
         logger.debug('get_filename: %r, %r' % (filename, kwargs))
@@ -128,9 +127,7 @@ class IccblBaseResource(Resource):
 
     def build_response(self, request, data, response_class=HttpResponse, **kwargs):
         
-        logger.info('build response %r', request.path)
         serialized = self.serialize(request, data, **kwargs)
-        logger.info('build response %r, serialized', request.path)
         desired_format = self.get_serialize_format(request,**kwargs)
         return response_class(
             content=serialized, 

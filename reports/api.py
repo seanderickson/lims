@@ -967,7 +967,7 @@ class ApiResource(SqlAlchemyResource):
             logger.info('===id_attribute: %s', id_attribute)
         deleted_items = list(original_data)        
         for new_dict in new_data:
-            logger.info('new dict: %r', new_dict)
+            logger.debug('new dict: %r', new_dict)
             log = ApiLog()
             log.username = request.user.username 
             log.user_id = request.user.id 
@@ -1190,12 +1190,12 @@ class ApiLogResource(ApiResource):
             if filter_expression is None and 'parent_log_id' not in kwargs:
                 raise BadRequest('can only service requests with filter expressions')
                                   
+            order_params = param_hash.get('order_by',[])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
                 param_hash.get('visibilities'), 
-                exact_fields=set(param_hash.get('exact_fields',[])))
-              
-            order_params = param_hash.get('order_by',[])
+                exact_fields=set(param_hash.get('exact_fields', [])),
+                order_params=order_params)
             order_clauses = SqlAlchemyResource.\
                 build_sqlalchemy_ordering(order_params, field_hash)
              
@@ -2018,10 +2018,12 @@ class VocabulariesResource(ApiResource):
                     key:field for key, field in original_field_hash.items() 
                 if field.get('json_field_type',None) }
             
+            order_params = param_hash.get('order_by',[])
             field_hash = self.get_visible_fields(
                 fields_for_sql, filter_fields, manual_field_includes, 
                 param_hash.get('visibilities',[]), 
-                exact_fields=set(param_hash.get('exact_fields',[])))
+                exact_fields=set(param_hash.get('exact_fields', [])),
+                order_params=order_params)
             field_hash['json_field'] = {
                 'key': 'json_field',
                 'scope': 'fields.vocabularies',
@@ -2031,8 +2033,6 @@ class VocabulariesResource(ApiResource):
                 'ordering': 'false',
                 'visibilities': ['l','d']
                 }
-              
-            order_params = param_hash.get('order_by',[])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
                 order_params, field_hash)
             
@@ -2167,7 +2167,7 @@ class VocabulariesResource(ApiResource):
     def delete_obj(self, deserialized, **kwargs):
         
         id_kwargs = self.get_id(deserialized,**kwargs)
-        logger.info('delete: %r', id_kwargs)
+        logger.debug('delete: %r', id_kwargs)
         MetaHash.objects.get(**id_kwargs).delete()
     
     @transaction.atomic()    
@@ -2430,12 +2430,12 @@ class UserResource(ApiResource):
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
                   
+            order_params = param_hash.get('order_by',[])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
                 param_hash.get('visibilities'), 
-                exact_fields=set(param_hash.get('exact_fields',[])))
-              
-            order_params = param_hash.get('order_by',[])
+                exact_fields=set(param_hash.get('exact_fields', [])),
+                order_params=order_params)
             order_params.append('username')
             order_clauses = \
                 SqlAlchemyResource.build_sqlalchemy_ordering(
@@ -3030,13 +3030,13 @@ class UserGroupResource(ApiResource):
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-                  
+              
+            order_params = param_hash.get('order_by',[])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
                 param_hash.get('visibilities'), 
-                exact_fields=set(param_hash.get('exact_fields',[])))
-              
-            order_params = param_hash.get('order_by',[])
+                exact_fields=set(param_hash.get('exact_fields', [])),
+                order_params=order_params)
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
                 order_params, field_hash)
              
@@ -3371,12 +3371,12 @@ class PermissionResource(ApiResource):
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
                   
+            order_params = param_hash.get('order_by',[])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes, 
                 param_hash.get('visibilities'), 
-                exact_fields=set(param_hash.get('exact_fields',[])))
-              
-            order_params = param_hash.get('order_by',[])
+                exact_fields=set(param_hash.get('exact_fields', [])),
+                order_params=order_params)
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
                 order_params, field_hash)
              

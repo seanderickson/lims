@@ -159,7 +159,7 @@ class SqlAlchemyResource(IccblBaseResource):
     
     def get_visible_fields(self, 
         schema_fields, filter_fields, manual_field_includes,
-        visibilities, exact_fields=[]):
+        visibilities, exact_fields=[], order_params=[]):
         '''
         Construct an ordered dict of schema fields that are visible, based on
         - the field["visibility"] of each field on the resource,
@@ -213,7 +213,12 @@ class SqlAlchemyResource(IccblBaseResource):
             if filter_fields:
                 temp.update({ key:field 
                     for key,field in schema_fields.items() if key in filter_fields })
-             
+            # order params
+            if order_params:
+                temp.update({ key:field 
+                    for key,field in schema_fields.items() 
+                        if ( key in order_params or '-%s'%key in order_params) })
+            
             field_hash = OrderedDict(sorted(temp.iteritems(), 
                 key=lambda x: x[1].get('ordinal',999))) 
     
@@ -359,7 +364,6 @@ class SqlAlchemyResource(IccblBaseResource):
         '''
         returns a scalar or list of ClauseElement objects which will comprise 
         the ORDER BY clause of the resulting select.
-        This method borrows from tastypie.resources.ModelResource.apply_sorting
         @param order_params passed as list in the request.GET hash
         '''
         DEBUG_ORDERING = False or logger.isEnabledFor(logging.DEBUG)
@@ -534,9 +538,9 @@ class SqlAlchemyResource(IccblBaseResource):
                     col = cast(col,sqlalchemy.sql.sqltypes.Text)
 
                 if filter_type in ['exact','eq']:
-                    expression = col == value
                     if field['data_type'] == 'string':
                         value = str(value)
+                    expression = col == value
                     if field['data_type'] == 'list':
                         expression = text(
                             "'%s'=any(string_to_array(%s,'%s'))"

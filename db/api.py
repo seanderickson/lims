@@ -221,12 +221,12 @@ class LibraryCopyPlateResource(ApiResource):
                     and for_screen_id is None and loaded_for_screen_id is None):
                 raise BadRequest('Can only service requests with filter expressions')
                  
+            order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes,
                 param_hash.get('visibilities'),
-                exact_fields=set(param_hash.get('exact_fields', [])))
-              
-            order_params = param_hash.get('order_by', [])
+                exact_fields=set(param_hash.get('exact_fields', [])),
+                order_params=order_params)
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
                 order_params, field_hash)
              
@@ -678,11 +678,12 @@ class ScreenResultResource(ApiResource):
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
                               
+        order_params = param_hash.get('order_by', [])
         field_hash = self.get_visible_fields(
             schema['fields'], filter_fields, manual_field_includes,
             param_hash.get('visibilities'),
-            exact_fields=set(param_hash.get('exact_fields', [])))
-        order_params = param_hash.get('order_by', [])
+            exact_fields=set(param_hash.get('exact_fields', [])),
+            order_params=order_params )
         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
             order_params, field_hash)
     
@@ -1507,6 +1508,12 @@ class ScreenResultResource(ApiResource):
             derived_from_columns_map = {}
             errors = {}
             for sheet_column, column_info in columns.items():
+                if ( column_info.get('screen_facility_id',None)
+                    and column_info['screen_facility_id'] != screen_facility_id ):
+                    logger.info('skipping column for screen_facility_id: %r', 
+                        column_info.get('screen_facility_id') )
+                    continue;
+                    
                 column_info['screen_result'] = screen_result
                 try:
                     dc = DataColumnResource().patch_obj(column_info, **kwargs)
@@ -1531,6 +1538,7 @@ class ScreenResultResource(ApiResource):
                     errors[sheet_column] = col_errors
                 # TODO: save derived_from_columns
             if errors:
+                logger.warn('errors: %r', errors)
                 raise ValidationError( errors={ 'data_columns': errors })
 
             logger.debug(
@@ -1769,10 +1777,12 @@ class ScreenResultResource(ApiResource):
                     break
             
             if errors:
+                logger.warn('errors: %r', errors)
                 raise ValidationError( errors={ 'result_values': errors })
             
             if not rvs_to_create:
-                raise BadRequest('no result values were parsed')    
+                raise ValidationError( errors={ 'result_values': 'no result values were parsed' })
+
             logger.info('result_values: rows: %d, result_values to create: %d',
                 rows_created, rvs_to_create)
 
@@ -2039,12 +2049,12 @@ class DataColumnResource(ApiResource):
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
 
+            order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes,
                 param_hash.get('visibilities'),
-                exact_fields=set(param_hash.get('exact_fields', [])))
-              
-            order_params = param_hash.get('order_by', [])
+                exact_fields=set(param_hash.get('exact_fields', [])),
+                order_params=order_params)
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
                 order_params, field_hash)
              
@@ -2305,12 +2315,12 @@ class CopyWellResource(ApiResource):
             if filter_expression is None:
                 raise BadRequest('can only service requests with filter expressions')
                                   
+            order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes,
                 param_hash.get('visibilities'),
-                exact_fields=set(param_hash.get('exact_fields', [])))
-              
-            order_params = param_hash.get('order_by', [])
+                exact_fields=set(param_hash.get('exact_fields', [])),
+                order_params=order_params)
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
                 order_params, field_hash)
              
@@ -2446,12 +2456,12 @@ class CherryPickRequestResource(ApiResource):
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
                                   
+            order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes,
                 param_hash.get('visibilities'),
-                exact_fields=set(param_hash.get('exact_fields', [])))
-              
-            order_params = param_hash.get('order_by', [])
+                exact_fields=set(param_hash.get('exact_fields', [])),
+                order_params=order_params)
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
                 order_params, field_hash)
              
@@ -2694,12 +2704,12 @@ class CherryPickPlateResource(ApiResource):
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
                                   
+            order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes,
                 param_hash.get('visibilities'),
-                exact_fields=set(param_hash.get('exact_fields', [])))
-              
-            order_params = param_hash.get('order_by', [])
+                exact_fields=set(param_hash.get('exact_fields', [])),
+                order_params=order_params)
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
                 order_params, field_hash)
              
@@ -2929,12 +2939,12 @@ class LibraryCopyResource(ApiResource):
             if filter_expression is None:
                 raise BadRequest('can only service requests with filter expressions')
 
+            order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes,
                 param_hash.get('visibilities'),
-                exact_fields=set(param_hash.get('exact_fields', [])))
-              
-            order_params = param_hash.get('order_by', [])
+                exact_fields=set(param_hash.get('exact_fields', [])),
+                order_params=order_params)
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
                 order_params, field_hash)
              
@@ -3425,12 +3435,12 @@ class AttachedFileResource(ApiResource):
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
                   
+            order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes,
                 param_hash.get('visibilities'),
-                exact_fields=set(param_hash.get('exact_fields', [])))
-              
-            order_params = param_hash.get('order_by', [])
+                exact_fields=set(param_hash.get('exact_fields', [])),
+                order_params=order_params)
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
                 order_params, field_hash)
              
@@ -3747,12 +3757,12 @@ class ActivityResource(ApiResource):
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
               
+        order_params = param_hash.get('order_by', [])
         field_hash = self.get_visible_fields(
             schema['fields'], filter_fields, manual_field_includes,
             param_hash.get('visibilities'),
-            exact_fields=set(param_hash.get('exact_fields', [])))
-          
-        order_params = param_hash.get('order_by', [])
+            exact_fields=set(param_hash.get('exact_fields', [])),
+            order_params=order_params)
         order_params.append('date_of_activity')
         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
             order_params, field_hash)
@@ -3839,13 +3849,12 @@ class ActivityResource(ApiResource):
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
               
+        order_params = param_hash.get('order_by', [])
         field_hash = self.get_visible_fields(
             schema['fields'], filter_fields, manual_field_includes,
             param_hash.get('visibilities'),
-            exact_fields=set(param_hash.get('exact_fields', [])))
-
-        
-        order_params = param_hash.get('order_by', [])
+            exact_fields=set(param_hash.get('exact_fields', [])),
+            order_params=order_params)
         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
             order_params, field_hash)
          
@@ -3977,12 +3986,12 @@ class CherryPickLiquidTransferResource(ActivityResource):
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
               
+        order_params = param_hash.get('order_by', [])
         field_hash = self.get_visible_fields(
             schema['fields'], filter_fields, manual_field_includes,
             param_hash.get('visibilities'),
-            exact_fields=set(param_hash.get('exact_fields', [])))
-          
-        order_params = param_hash.get('order_by', [])
+            exact_fields=set(param_hash.get('exact_fields', [])),
+            order_params=order_params)
         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
             order_params, field_hash)
          
@@ -4071,12 +4080,12 @@ class CherryPickScreeningResource(ActivityResource):
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
               
+        order_params = param_hash.get('order_by', [])
         field_hash = self.get_visible_fields(
             schema['fields'], filter_fields, manual_field_includes,
             param_hash.get('visibilities'),
-            exact_fields=set(param_hash.get('exact_fields', [])))
-
-        order_params = param_hash.get('order_by', [])
+            exact_fields=set(param_hash.get('exact_fields', [])),
+            order_params=order_params)
         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
             order_params, field_hash)
          
@@ -4209,12 +4218,12 @@ class LibraryScreeningResource(ActivityResource):
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
               
+        order_params = param_hash.get('order_by', [])
         field_hash = self.get_visible_fields(
             schema['fields'], filter_fields, manual_field_includes,
             param_hash.get('visibilities'),
-            exact_fields=set(param_hash.get('exact_fields', [])))
-
-        order_params = param_hash.get('order_by', [])
+            exact_fields=set(param_hash.get('exact_fields', [])),
+            order_params=order_params)
         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
             order_params, field_hash)
          
@@ -4548,8 +4557,7 @@ class LibraryScreeningResource(ActivityResource):
                     key='library_plates_screened',
                     msg=('plate range not found: {start_plate}-{end_plate}'
                         ).format(**_data))
-        logger.info('plate keys: %r', plate_keys)
-        logger.info('plate_numbers: %r', plate_numbers)
+        logger.debug('plate keys: %r, plate_numbers: %r', plate_keys, plate_numbers)
 
         # find extant/deleted plates        
         extant_plates = set()
@@ -4770,14 +4778,14 @@ class ServiceActivityResource(ActivityResource):
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
               
+        order_params = param_hash.get('order_by', [])
         field_hash = self.get_visible_fields(
             schema['fields'], filter_fields, manual_field_includes,
             param_hash.get('visibilities'),
-            exact_fields=set(param_hash.get('exact_fields', [])))
+            exact_fields=set(param_hash.get('exact_fields', [])),
+            order_params=order_params)
         field_hash = { key:val for key, val in field_hash.items() 
             if val['scope'] == 'fields.serviceactivity'}  
-          
-        order_params = param_hash.get('order_by', [])
         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
             order_params, field_hash)
          
@@ -4961,12 +4969,12 @@ class ScreenResource(ApiResource):
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
               
+        order_params = param_hash.get('order_by', [])
         field_hash = self.get_visible_fields(
             schema['fields'], filter_fields, manual_field_includes,
             param_hash.get('visibilities'),
-            exact_fields=set(param_hash.get('exact_fields', [])))
-          
-        order_params = param_hash.get('order_by', [])
+            exact_fields=set(param_hash.get('exact_fields', [])),
+            order_params=order_params)
         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
             order_params, field_hash)
          
@@ -5793,12 +5801,12 @@ class UserChecklistItemResource(ApiResource):
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
                   
+            order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes,
                 param_hash.get('visibilities'),
-                exact_fields=set(param_hash.get('exact_fields', [])))
-              
-            order_params = param_hash.get('order_by', [])
+                exact_fields=set(param_hash.get('exact_fields', [])),
+                order_params=order_params)
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
                 order_params, field_hash)
              
@@ -6188,12 +6196,12 @@ class ScreensaverUserResource(ApiResource):
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
                   
+            order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes,
                 param_hash.get('visibilities'),
-                exact_fields=set(param_hash.get('exact_fields', [])))
-            
-            order_params = param_hash.get('order_by', [])
+                exact_fields=set(param_hash.get('exact_fields', [])),
+                order_params=order_params)
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
                 order_params, field_hash)
              
@@ -6392,9 +6400,12 @@ class ScreensaverUserResource(ApiResource):
                     raise ValidationError(errors)
                 try:
                     if username:
+#                         screensaver_user = \
+#                             ScreensaverUser.objects.get(
+#                                 user__username=username)
                         screensaver_user = \
                             ScreensaverUser.objects.get(
-                                user__username=username)
+                                username=username)
                     elif ecommons_id:
                         screensaver_user = \
                             ScreensaverUser.objects.get(
@@ -6976,10 +6987,12 @@ class ReagentResource(ApiResource):
             if filter_expression is None:
                 raise BadRequest('can only service requests with filter expressions')
                  
+            order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes,
                 param_hash.get('visibilities'),
-                exact_fields=set(param_hash.get('exact_fields', [])))
+                exact_fields=set(param_hash.get('exact_fields', [])),
+                order_params=order_params)
             logger.debug('field hash scopes: %r',
                 set([field.get('scope', None) 
                     for field in field_hash.values()]))
@@ -7000,7 +7013,6 @@ class ReagentResource(ApiResource):
                 # consider limiting fields available
                 pass
             
-            order_params = param_hash.get('order_by', [])
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
                 order_params, field_hash)
              
@@ -7703,12 +7715,12 @@ class LibraryResource(ApiResource):
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
                 
+            order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
                 schema['fields'], filter_fields, manual_field_includes,
                 param_hash.get('visibilities'),
-                exact_fields=set(param_hash.get('exact_fields', [])))
-             
-            order_params = param_hash.get('order_by', [])
+                exact_fields=set(param_hash.get('exact_fields', [])),
+                order_params=order_params)
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
                 order_params, field_hash)
             

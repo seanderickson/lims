@@ -1,5 +1,5 @@
 key,scope,table,field,resource_uri,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,data_type,display_type,display_options,edit_type,is_restricted,nested_resource
-activity_id,fields.labactivity,activity,,/reports/api/v1/field/fields.labactivity/activity_id/,0,,TRUE,"Activity ID","Activity ID",TRUE,,,[l;d],,string,link,"{ 'hrefTemplate': '#screensaveruser/{serviced_username}/serviceactivity/{activity_id}' }",,,
+activity_id,fields.labactivity,activity,,/reports/api/v1/field/fields.labactivity/activity_id/,0,,TRUE,"Activity ID","Activity ID",TRUE,,,[l;d],,integer,link,"{ 'hrefTemplate': '#screensaveruser/{serviced_username}/serviceactivity/{activity_id}' }",,,
 type,fields.labactivity,custom,,/reports/api/v1/field/fields.labactivity/type/,1,,TRUE,"The type of the activity",Type,TRUE,,activity.type,[],,string,,,,,
 screen_facility_id,fields.labactivity,screen,facility_id,/reports/api/v1/field/fields.labactivity/screen_facility_id/,2,,TRUE,"Screen Facility ID","Screen Facility ID",TRUE,,,[l;d;e],[c;u],string,link,"{ 'hrefTemplate': '#screensaveruser/{serviced_username}' }",,,
 screen_type,fields.labactivity,screen,,/reports/api/v1/field/fields.labactivity/screen_type/,3,,TRUE,"Screen Type","Screen Type",TRUE,,,[l;d;e],,string,link,"{ 'hrefTemplate': '#screensaveruser/{serviced_username}' }",,,

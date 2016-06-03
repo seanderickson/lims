@@ -741,8 +741,12 @@ class ApiResource(SqlAlchemyResource):
             raise e
 
         # get new state, for logging
-        new_data = [self._get_detail_response(request,**kwargs_for_log)]
-        self.log_patches(request, original_data,new_data,**kwargs)
+        try:
+            new_data = [self._get_detail_response(request,**kwargs_for_log)]
+            self.log_patches(request, original_data,new_data,**kwargs)
+        except Exception, e: 
+            logger.exception('exception when querying for new data for logging: %s', 
+                kwargs_for_log)
 
         if not self._meta.always_return_data:
             return http.HttpAccepted()

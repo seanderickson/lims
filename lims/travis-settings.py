@@ -139,7 +139,7 @@ LOGGING = {
         'db': {  # set a default handler
             'handlers': ['console'],
             'propagate': False,
-            'level': 'WARN',
+            'level': 'INFO',
         },        
         'db.tests': {  # set a default handler
             'handlers': ['console'],
@@ -154,7 +154,7 @@ LOGGING = {
         'reports': {  # set a default handler
             'handlers': ['console'],
             'propagate': False,
-            'level': 'WARN',
+            'level': 'INFO',
         },        
         'django.db': {  # for SQL
             'handlers': ['console'],

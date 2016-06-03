@@ -575,7 +575,7 @@ class ApiResource(SqlAlchemyResource):
                     LIST_DELIMITER_URL_PARAM.join(ids)
         try:
             logger.info('get original state, for logging...')
-            logger.debug('kwargs_for_log: %r', kwargs_for_log)
+            logger.info('kwargs_for_log: %r', kwargs_for_log)
             original_data = self._get_list_response(request,**kwargs_for_log)
         except Exception as e:
             logger.exception('original state not obtained')
@@ -606,7 +606,15 @@ class ApiResource(SqlAlchemyResource):
             if ids:
                 kwargs_for_log['%s__in'%id_field] = \
                     LIST_DELIMITER_URL_PARAM.join(ids)
-        new_data = self._get_list_response(request,**kwargs_for_log)
+        try:
+            logger.info('get new state, for logging...')
+            logger.info('kwargs_for_log: %r', kwargs_for_log)
+            new_data = self._get_list_response(request,**kwargs_for_log)
+        except Exception as e:
+            logger.exception('original state not obtained')
+            new_data = []
+
+#         new_data = self._get_list_response(request,**kwargs_for_log)
         
         logger.debug('new data: %s'% new_data)
         logger.debug('patch list done, new data: %d' 

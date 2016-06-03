@@ -854,7 +854,7 @@ class SqlAlchemyResource(IccblBaseResource):
             output_filename, field_hash={}, param_hash={}, 
             rowproxy_generator=None, is_for_detail=False,
             downloadID=None, title_function=None, use_caching=True, meta=None ):
-        DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_STREAMING = True or logger.isEnabledFor(logging.DEBUG)
 
         if DEBUG_STREAMING:
             logger.info('stream_response_from_statement: %r' % param_hash)

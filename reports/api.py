@@ -548,6 +548,9 @@ class ApiResource(SqlAlchemyResource):
         # TODO: enforce a policy that either objects are patched or deleted
         #         raise NotImplementedError('put_list must be implemented')
             
+        logger.info('put list, user: %r, resource: %r' 
+            % ( request.user.username, self._meta.resource_name))
+
         deserialized = self.deserialize(request)
         if not self._meta.collection_name in deserialized:
             raise BadRequest("Invalid data sent, must be nested in '%s'" 
@@ -566,7 +569,7 @@ class ApiResource(SqlAlchemyResource):
             if ids:
                 kwargs_for_log['%s__in'%id_field] = \
                     LIST_DELIMITER_URL_PARAM.join(ids)
-        # get original state, for logging
+        logger.info('get original state, for logging...')
         original_data = self._get_list_response(request,**kwargs_for_log)
 
         logger.debug('put list %s, %s',deserialized,kwargs)
@@ -584,7 +587,7 @@ class ApiResource(SqlAlchemyResource):
             logger.exception('Validation error: %r', e)
             raise e
 
-        # get new state, for logging
+        logger.info('get new state, for logging...')
         kwargs_for_log = kwargs.copy()
         for id_field in id_attribute:
             ids = set()
@@ -600,7 +603,8 @@ class ApiResource(SqlAlchemyResource):
         logger.debug('patch list done, new data: %d' 
             % (len(new_data)))
         self.log_patches(request, original_data,new_data,**kwargs)
-
+        
+        logger.info('put_list done.')
         if not self._meta.always_return_data:
             return http.HttpAccepted()
         else:
@@ -2093,6 +2097,7 @@ class VocabulariesResource(ApiResource):
             if param_hash.get(HTTP_PARAM_USE_TITLES, False):
                 title_function = lambda key: field_hash[key]['title']
             
+            logger.info('vocabularies done, stream response...')
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 
                 field_hash=original_field_hash, 

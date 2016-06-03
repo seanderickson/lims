@@ -910,10 +910,10 @@ class SqlAlchemyResource(IccblBaseResource):
                         
                     else:
                         if DEBUG_STREAMING:
-                            logger.info('execute count stmt')
+                            logger.info('execute count stmt...')
                         count = conn.execute(count_stmt).scalar()
                         if DEBUG_STREAMING:
-                            logger.info('excuted count stmt')
+                            logger.info('excuted count stmt: %d', count)
                         result = conn.execute(stmt)
                         if DEBUG_STREAMING:
                             logger.info('excuted stmt')
@@ -943,7 +943,7 @@ class SqlAlchemyResource(IccblBaseResource):
                     #            request, {'empty result': 'no records found'},
                     #            response_class=HttpNotFound))
                     if DEBUG_STREAMING:
-                        logger.info(str(('meta', meta)))
+                        logger.info('json setup done, meta: %r', meta)
         
                 else: # not json
                 

@@ -516,9 +516,13 @@ class ApiResource(SqlAlchemyResource):
             if ids:
                 kwargs_for_log['%s__in'%id_field] = \
                     LIST_DELIMITER_URL_PARAM.join(ids)
-        # get original state, for logging
-        logger.debug('kwargs_for_log: %r', kwargs_for_log)
-        original_data = self._get_list_response(request,**kwargs_for_log)
+        try:
+            logger.info('get original state, for logging...')
+            logger.debug('kwargs_for_log: %r', kwargs_for_log)
+            original_data = self._get_list_response(request,**kwargs_for_log)
+        except Exception as e:
+            logger.exception('original state not obtained')
+            original_data = []
         try:
             with transaction.atomic():
                 
@@ -569,8 +573,13 @@ class ApiResource(SqlAlchemyResource):
             if ids:
                 kwargs_for_log['%s__in'%id_field] = \
                     LIST_DELIMITER_URL_PARAM.join(ids)
-        logger.info('get original state, for logging...')
-        original_data = self._get_list_response(request,**kwargs_for_log)
+        try:
+            logger.info('get original state, for logging...')
+            logger.debug('kwargs_for_log: %r', kwargs_for_log)
+            original_data = self._get_list_response(request,**kwargs_for_log)
+        except Exception as e:
+            logger.exception('original state not obtained')
+            original_data = []
 
         logger.debug('put list %s, %s',deserialized,kwargs)
         try:
@@ -646,11 +655,17 @@ class ApiResource(SqlAlchemyResource):
             elif kwargs.get(id_field,None):
                 kwargs_for_log[id_field] = kwargs[id_field]
         logger.debug('put detail: %s, %s' %(deserialized,kwargs_for_log))
-        if not kwargs_for_log:
-            # then this is a create
+        try:
+            logger.info('get original state, for logging...')
+            logger.debug('kwargs_for_log: %r', kwargs_for_log)
+            if not kwargs_for_log:
+                # then this is a create
+                original_data = []
+            else:
+                original_data = self._get_list_response(request,**kwargs_for_log)
+        except Exception as e:
+            logger.exception('original state not obtained')
             original_data = []
-        else:
-            original_data = self._get_list_response(request,**kwargs_for_log)
         
         try:
             with transaction.atomic():
@@ -753,7 +768,11 @@ class ApiResource(SqlAlchemyResource):
         if not kwargs_for_log:
             raise Exception('required id keys %s' % id_attribute)
         else:
-            original_data = self._get_detail_response(request,**kwargs_for_log)
+            try:
+                original_data = self._get_detail_response(request,**kwargs_for_log)
+            except Exception as e:
+                logger.exception('original state not obtained')
+                original_data = {}
 
         with transaction.atomic():
             

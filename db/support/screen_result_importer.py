@@ -43,6 +43,7 @@ META_MAP = OrderedDict((
 DATA_COLUMN_FIELD_MAP = OrderedDict((
     ('"Data" Worksheet Column',  'data_worksheet_column'),
     ('name',  'name'),
+    ('title',  'title'),
     ('data type',  'data_type'),
     ('decimal places',  'decimal_places'),
     ('description',  'description'),
@@ -58,6 +59,7 @@ DATA_COLUMN_FIELD_MAP = OrderedDict((
     ('time point ordinal', 'time_point_ordinal'),
     ('zdepth ordinal', 'zdepth_ordinal'),
     ('clo id', 'clo_id'),
+    ('screen_facility_id', 'screen_facility_id'),
 ))
 DATA_TYPES = [
     'text', 'numeric', 'partition_positive_indicator',
@@ -176,7 +178,7 @@ def parse_result_values(parsed_columns, sheets):
                 parse_error.errors[str(sheet.name)] = {}
             parse_error.errors[sheet.name] = e.errors
             continue
-        
+        logger.info('output result values')
         for i,row in enumerate(rows):
             try:
                 result = parse_result_row(
@@ -514,9 +516,7 @@ def create_output_data(screen_facility_id, fields, result_values ):
             if sheet_key == 'data_type':
                 val = fields[key].get('assay_data_type',fields[key].get('data_type',None))
             if val:
-                if sheet_key == 'name':
-                    val = '%s [%s]' % (val,screen_facility_id)
-                elif sheet_key == 'is_follow_up_data':
+                if sheet_key == 'is_follow_up_data':
                     if val == True:
                         val = 'Follow up'
                     elif val == False:

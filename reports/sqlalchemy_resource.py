@@ -715,6 +715,10 @@ class SqlAlchemyResource(IccblBaseResource):
             return _data
         except Http404:
             return []
+        except Exception as e:
+            # FIXME: temporary travis debug
+            logger.exception('on get list')
+            return []
         
     def _get_detail_response(self,request,**kwargs):
         '''

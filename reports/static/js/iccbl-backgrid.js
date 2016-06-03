@@ -3875,14 +3875,10 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   var column = {};
   var visible = _.has(prop, 'visibility') && 
                     _.contains(prop['visibility'], 'l');
-
   var data_type = _.isEmpty(prop.data_type)?'string':prop.data_type.toLowerCase();
   var display_type = _.isEmpty(prop.display_type)?data_type:prop.display_type.toLowerCase();
-  console.log(key, 'data_type', data_type, 'display_type', display_type, prop);
-  
   var cell_options = prop.display_options || {};
   var edit_type = _.isEmpty(prop.edit_type)?display_type:prop.edit_type.toLowerCase();
-
   var backgridCellType = 'string';
   var typeMap = {
     'date': Iccbl.DateCell,
@@ -4006,11 +4002,12 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
 };
 
 var createBackgridColModel = Iccbl.createBackgridColModel = 
-  function(restFields, _orderStack, _manualIncludes) {
+  function(restFields, _orderStack, _searchHash, _manualIncludes) {
     
   console.log('--createBackgridColModel');
   var manualIncludes = _manualIncludes || [];
   var orderStack = _orderStack || [];
+  var searchHash = _searchHash || {};
 
   var colModel = [];
   var i = 0;
@@ -4030,6 +4027,17 @@ var createBackgridColModel = Iccbl.createBackgridColModel =
         i++;
       }
     } else {
+      if( 
+        _.findKey(searchHash, function(val,hashkey){
+            return hashkey.indexOf(key) > -1
+        })
+        ||  _.find(orderStack, function(orderkey){
+          return orderkey.indexOf(key) > -1
+        }))
+      {
+        colModel[i] = column;
+        i++;
+      }
         // console.log('field not visible in list view: ' + key)
     }
   });

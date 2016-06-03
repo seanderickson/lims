@@ -291,7 +291,7 @@ define([
       }
 
       var columns = Iccbl.createBackgridColModel(
-  		this._options.schemaResult, Iccbl.MyHeaderCell);
+        this._options.schemaResult.fields, [],{}, Iccbl.MyHeaderCell);
 
       var grid = this.grid = new Backgrid.Grid({
         columns: columns,

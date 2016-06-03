@@ -99,7 +99,7 @@ define([
           if(_.contains(this.LIST_ROUTE_ORDER, key)){
             
             if(key === 'search') {
-              var searchHash = {};
+              var searchHash = self.searchHash = {};
               var searches = value.split(this.SEARCH_DELIMITER);
               _.each(searches, function(search){
                 var parts = search.split('=');
@@ -135,7 +135,7 @@ define([
 
       var orderStack = self.listModel.get('order') || [];
       _state.orderStack = _.clone(orderStack);
-
+      
       var url = self._options.resource.apiUri + '/' + self.urlSuffix;
       if (_.has(self._options, 'url')) {
         url = self._options.url;
@@ -165,6 +165,7 @@ define([
         columns = Iccbl.createBackgridColModel(
             this._options.schemaResult.fields, 
             orderStack,
+            searchHash,
             listModel.get('includes'));
       }else{
         columns = _options.columns;

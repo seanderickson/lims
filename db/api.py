@@ -59,6 +59,7 @@ from db.support.screen_result_importer import PARTITION_POSITIVE_MAPPING, \
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB,  \
     LIST_BRACKETS, HTTP_PARAM_RAW_LISTS
+import reports.sqlalchemy_resource
 from reports import ValidationError, _now
 from reports.api import ApiLogResource, \
     UserGroupAuthorization, \
@@ -1069,67 +1070,69 @@ class ScreenResultResource(ApiResource):
             if param_hash.get(HTTP_PARAM_USE_VOCAB, False) or desired_format != JSON_MIMETYPE:
                 rowproxy_generator = \
                     ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+                    
+            
+            conn = self.get_connection()
+#             with self.bridge.get_engine().connect() as conn:
+            logger.info('excute stmt %r...',
+                str(stmt.compile(compile_kwargs={"literal_binds": True})))
+            result = conn.execute(stmt)
+            logger.info('excuted stmt')
+            if rowproxy_generator:
+                result = rowproxy_generator(result)
 
-            with self.bridge.get_engine().connect() as conn:
-                logger.info('excute stmt %r...',
-                    str(stmt.compile(compile_kwargs={"literal_binds": True})))
-                result = conn.execute(stmt)
-                logger.info('excuted stmt')
-                if rowproxy_generator:
-                    result = rowproxy_generator(result)
-
-                data = cursor_generator(
-                    result,ordered_keys,list_fields=list_fields,
-                    value_templates=value_templates)
-                if desired_format == JSON_MIMETYPE:
-                    meta = {
-                        'limit': limit,
-                        'offset': offset,
-                        'screen_facility_id': screen_facility_id,
-                        'total_count': cachedQuery.count,
-                    }    
-                    # Note: is_excluded generator not needed for JSON - already
-                    # part of the query, and no need to convert to col letters
-                    data = image_generator(data, image_keys, request) 
-                    response = StreamingHttpResponse(
-                        ChunkIterWrapper(
-                            json_generator(data, meta, is_for_detail=is_for_detail)))
-                    response['Content-Type'] = content_type
-                    return response
-                elif(desired_format == XLS_MIMETYPE or
-                    desired_format == XLSX_MIMETYPE): 
-                    data = is_excluded_gen(data)
-                    response = get_xls_response(
-                        screen_result_importer.create_output_data(
-                            screen_facility_id, field_hash, data),
-                        filename, request=request, 
-                        title_function=title_function, image_keys=image_keys,
-                        list_brackets=list_brackets)
-                    return response
-                elif desired_format == SDF_MIMETYPE:
-                    data = image_generator(
-                        is_excluded_gen(data),image_keys, request)
-                    response = StreamingHttpResponse(
-                        ChunkIterWrapper(
-                            sdf_generator(data, title_function=title_function)),
-                        content_type=content_type)
-                    response['Content-Disposition'] = \
-                        'attachment; filename=%s.sdf' % filename
-                    return response
-                elif desired_format == CSV_MIMETYPE:
-                    data = image_generator(
-                        is_excluded_gen(data),image_keys, request)
-                    response = StreamingHttpResponse(
-                        ChunkIterWrapper(
-                            csv_generator(
-                                data,title_function=title_function, 
-                                list_brackets=list_brackets)),
-                        content_type=content_type)
-                    response['Content-Disposition'] = \
-                        'attachment; filename=%s.csv' % filename
-                    return response
-                else: 
-                    raise BadRequest('format not implemented: %r' % desired_format)
+            data = cursor_generator(
+                result,ordered_keys,list_fields=list_fields,
+                value_templates=value_templates)
+            if desired_format == JSON_MIMETYPE:
+                meta = {
+                    'limit': limit,
+                    'offset': offset,
+                    'screen_facility_id': screen_facility_id,
+                    'total_count': cachedQuery.count,
+                }    
+                # Note: is_excluded generator not needed for JSON - already
+                # part of the query, and no need to convert to col letters
+                data = image_generator(data, image_keys, request) 
+                response = StreamingHttpResponse(
+                    ChunkIterWrapper(
+                        json_generator(data, meta, is_for_detail=is_for_detail)))
+                response['Content-Type'] = content_type
+                return response
+            elif(desired_format == XLS_MIMETYPE or
+                desired_format == XLSX_MIMETYPE): 
+                data = is_excluded_gen(data)
+                response = get_xls_response(
+                    screen_result_importer.create_output_data(
+                        screen_facility_id, field_hash, data),
+                    filename, request=request, 
+                    title_function=title_function, image_keys=image_keys,
+                    list_brackets=list_brackets)
+                return response
+            elif desired_format == SDF_MIMETYPE:
+                data = image_generator(
+                    is_excluded_gen(data),image_keys, request)
+                response = StreamingHttpResponse(
+                    ChunkIterWrapper(
+                        sdf_generator(data, title_function=title_function)),
+                    content_type=content_type)
+                response['Content-Disposition'] = \
+                    'attachment; filename=%s.sdf' % filename
+                return response
+            elif desired_format == CSV_MIMETYPE:
+                data = image_generator(
+                    is_excluded_gen(data),image_keys, request)
+                response = StreamingHttpResponse(
+                    ChunkIterWrapper(
+                        csv_generator(
+                            data,title_function=title_function, 
+                            list_brackets=list_brackets)),
+                    content_type=content_type)
+                response['Content-Disposition'] = \
+                    'attachment; filename=%s.csv' % filename
+                return response
+            else: 
+                raise BadRequest('format not implemented: %r' % desired_format)
         except Exception, e:
             logger.exception('on get list: %r', e)
             raise e  
@@ -1153,90 +1156,91 @@ class ScreenResultResource(ApiResource):
         # and aw0.screen_result_id = 941
         # and aw1.screen_result_id <> 941;
         try:
-            with self.bridge.get_engine().connect() as cursor:
-                _well_data_column_positive_index = \
-                    self.bridge['well_data_column_positive_index']
-                _aw = self.bridge['assay_well']
-                _sr = self.bridge['screen_result']
-                _dc = self.bridge['data_column']
-                
-                # FIXME: recreating the well_data_column_positive_index:
-                # - now: this call is lazy recreating, when the screen_result 
-                #   resource is first called.
-                # - TODO: recreate this index when the screen_result is loaded.
-                # 
-                # Note: because this is lazy recreated, we are creating the whole 
-                # index each time; could just recreate for the specific screen
-                #  
-                # Example query:
-                # count_stmt = ( 
-                #     select([text('*')])
-                #     .select_from(_well_data_column_positive_index
-                #         .join(_dc, _dc.c.data_column_id
-                #             ==_well_data_column_positive_index.c.data_column_id))
-                #     .where(_dc.c.screen_result_id==screen_result_id))
-                count_stmt = _well_data_column_positive_index
-                count_stmt = select([func.count()]).select_from(count_stmt)
-                count = int(cursor.execute(count_stmt).scalar())        
-                logger.info('well_data_column_positive_index count: %r', count)
-                if count == 0:
-                    # the well_data_column_positive_index has been cleared, recreate
-                    base_stmt = join(
-                        _aw, _dc, _aw.c.screen_result_id == _dc.c.screen_result_id)
-                    base_stmt = select([
-                            literal_column("well_id"),
-                            literal_column('data_column_id')
-                        ]).select_from(base_stmt)            
-                    base_stmt = base_stmt.where(_aw.c.is_positive)
-                    base_stmt = base_stmt.where(
-                        _dc.c.data_type.in_([
-                            'boolean_positive_indicator',
-                            'partition_positive_indicator', 
-                            'confirmed_positive_indicator']))
-                    base_stmt = base_stmt.order_by(
-                        _dc.c.data_column_id, _aw.c.well_id)
-                    insert_statement = (
-                        insert(_well_data_column_positive_index)
-                            .from_select(['well_id', 'data_column_id'], base_stmt))
-                    logger.info(
-                        'mutual pos insert statement: %r',
-                        str(insert_statement.compile(compile_kwargs={"literal_binds": True})))
-                    cursor.execute(insert_statement)
-                    logger.info('mutual pos insert statement, executed.')
-        
-                # Query to find mutual positive data columns:
-                # select distinct(wdc.data_column_id)
-                # from
-                # well_data_column_positive_index wdc
-                # join data_column dc using(data_column_id)
-                # where 
-                # dc.screen_result_id <> 941
-                # and exists(
-                # select null 
-                # from well_data_column_positive_index wdc1 
-                # join data_column dc1 using(data_column_id) 
-                # where wdc1.well_id=wdc.well_id 
-                # and dc1.screen_result_id = 941 );        
-                _wdc = _well_data_column_positive_index.alias('wdc')
-                j = _wdc.join(_dc, _wdc.c.data_column_id == _dc.c.data_column_id)
-                stmt = select([distinct(_wdc.c.data_column_id)]).select_from(j)
-                stmt = stmt.where(_dc.c.screen_result_id != screen_result_id)
-                
-                _wdc1 = _well_data_column_positive_index.alias('wdc1')
-                _dc1 = _dc.alias('dc1')
-                j2 = _wdc1.join(_dc1, _wdc1.c.data_column_id == _dc1.c.data_column_id)
-                stmt2 = select([text('null')]).select_from(j2)
-                stmt2 = stmt2.where(_wdc.c.well_id == _wdc1.c.well_id)
-                stmt2 = stmt2.where(_dc1.c.screen_result_id == screen_result_id)
-                
-                stmt = stmt.where(exists(stmt2))
-                
-                logger.info('mutual positives statement: %r',
-                    str(stmt.compile(compile_kwargs={"literal_binds": True})))
-                logger.info('execute mutual positives column query...')
-                cols =  [x.data_column_id for x in cursor.execute(stmt)]
-                logger.info('done, cols %r', cols)
-                return cols
+            conn = self.get_connection()
+#             with self.bridge.get_engine().connect() as cursor:
+            _well_data_column_positive_index = \
+                self.bridge['well_data_column_positive_index']
+            _aw = self.bridge['assay_well']
+            _sr = self.bridge['screen_result']
+            _dc = self.bridge['data_column']
+            
+            # FIXME: recreating the well_data_column_positive_index:
+            # - now: this call is lazy recreating, when the screen_result 
+            #   resource is first called.
+            # - TODO: recreate this index when the screen_result is loaded.
+            # 
+            # Note: because this is lazy recreated, we are creating the whole 
+            # index each time; could just recreate for the specific screen
+            #  
+            # Example query:
+            # count_stmt = ( 
+            #     select([text('*')])
+            #     .select_from(_well_data_column_positive_index
+            #         .join(_dc, _dc.c.data_column_id
+            #             ==_well_data_column_positive_index.c.data_column_id))
+            #     .where(_dc.c.screen_result_id==screen_result_id))
+            count_stmt = _well_data_column_positive_index
+            count_stmt = select([func.count()]).select_from(count_stmt)
+            count = int(cursor.execute(count_stmt).scalar())        
+            logger.info('well_data_column_positive_index count: %r', count)
+            if count == 0:
+                # the well_data_column_positive_index has been cleared, recreate
+                base_stmt = join(
+                    _aw, _dc, _aw.c.screen_result_id == _dc.c.screen_result_id)
+                base_stmt = select([
+                        literal_column("well_id"),
+                        literal_column('data_column_id')
+                    ]).select_from(base_stmt)            
+                base_stmt = base_stmt.where(_aw.c.is_positive)
+                base_stmt = base_stmt.where(
+                    _dc.c.data_type.in_([
+                        'boolean_positive_indicator',
+                        'partition_positive_indicator', 
+                        'confirmed_positive_indicator']))
+                base_stmt = base_stmt.order_by(
+                    _dc.c.data_column_id, _aw.c.well_id)
+                insert_statement = (
+                    insert(_well_data_column_positive_index)
+                        .from_select(['well_id', 'data_column_id'], base_stmt))
+                logger.info(
+                    'mutual pos insert statement: %r',
+                    str(insert_statement.compile(compile_kwargs={"literal_binds": True})))
+                cursor.execute(insert_statement)
+                logger.info('mutual pos insert statement, executed.')
+    
+            # Query to find mutual positive data columns:
+            # select distinct(wdc.data_column_id)
+            # from
+            # well_data_column_positive_index wdc
+            # join data_column dc using(data_column_id)
+            # where 
+            # dc.screen_result_id <> 941
+            # and exists(
+            # select null 
+            # from well_data_column_positive_index wdc1 
+            # join data_column dc1 using(data_column_id) 
+            # where wdc1.well_id=wdc.well_id 
+            # and dc1.screen_result_id = 941 );        
+            _wdc = _well_data_column_positive_index.alias('wdc')
+            j = _wdc.join(_dc, _wdc.c.data_column_id == _dc.c.data_column_id)
+            stmt = select([distinct(_wdc.c.data_column_id)]).select_from(j)
+            stmt = stmt.where(_dc.c.screen_result_id != screen_result_id)
+            
+            _wdc1 = _well_data_column_positive_index.alias('wdc1')
+            _dc1 = _dc.alias('dc1')
+            j2 = _wdc1.join(_dc1, _wdc1.c.data_column_id == _dc1.c.data_column_id)
+            stmt2 = select([text('null')]).select_from(j2)
+            stmt2 = stmt2.where(_wdc.c.well_id == _wdc1.c.well_id)
+            stmt2 = stmt2.where(_dc1.c.screen_result_id == screen_result_id)
+            
+            stmt = stmt.where(exists(stmt2))
+            
+            logger.info('mutual positives statement: %r',
+                str(stmt.compile(compile_kwargs={"literal_binds": True})))
+            logger.info('execute mutual positives column query...')
+            cols =  [x.data_column_id for x in cursor.execute(stmt)]
+            logger.info('done, cols %r', cols)
+            return cols
         except Exception, e:
             logger.exception('on get mutual positives columns')
             raise e  
@@ -4321,32 +4325,33 @@ class LibraryScreeningResource(ActivityResource):
                             self.row = row
                             self.entries = []
                             activity_id = row['activity_id']
-                            with bridge.get_engine().connect() as conn:
-                                query = conn.execute(
-                                    lcp_query, activity_id=activity_id)
-                                copy = None
-                                start_plate = None
-                                end_plate = None
-                                for x in query:
-                                    if not copy:
-                                        copy = x[1]
-                                        library = x[0]
-                                    if not start_plate:
-                                        start_plate = end_plate = x[2]
-                                    if (x[0] != library 
-                                        or x[1] != copy 
-                                        or x[2] > end_plate + 1):
-                                        # start a new range, save old range
-                                        self.entries.append('%s:%s:%s-%s'
-                                            % (library, copy, start_plate, end_plate))
-                                        start_plate = end_plate = x[2]
-                                        copy = x[1]
-                                        library = x[0]
-                                    else:
-                                        end_plate = x[2]
-                                if copy: 
+                            conn = self.get_connection()
+#                             with bridge.get_engine().connect() as conn:
+                            query = conn.execute(
+                                lcp_query, activity_id=activity_id)
+                            copy = None
+                            start_plate = None
+                            end_plate = None
+                            for x in query:
+                                if not copy:
+                                    copy = x[1]
+                                    library = x[0]
+                                if not start_plate:
+                                    start_plate = end_plate = x[2]
+                                if (x[0] != library 
+                                    or x[1] != copy 
+                                    or x[2] > end_plate + 1):
+                                    # start a new range, save old range
                                     self.entries.append('%s:%s:%s-%s'
                                         % (library, copy, start_plate, end_plate))
+                                    start_plate = end_plate = x[2]
+                                    copy = x[1]
+                                    library = x[0]
+                                else:
+                                    end_plate = x[2]
+                            if copy: 
+                                self.entries.append('%s:%s:%s-%s'
+                                    % (library, copy, start_plate, end_plate))
                                     
                         def has_key(self, key):
                             if key == 'library_plates_screened': 

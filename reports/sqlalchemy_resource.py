@@ -49,8 +49,7 @@ def connection_close_callback(sender, **kwargs):
     logger.error("Request finished! %r, %r", sender, kwargs)
     for c in unclosed_connections:
         c.close()
-        unclosed_connections.remove(c)
-#     unclosed_connections.clear()
+    del unclosed_connections[:]
 
 django.core.signals.request_finished.connect(connection_close_callback)
 
@@ -107,6 +106,11 @@ class SqlAlchemyResource(IccblBaseResource):
 #     def set_caching(self,use_cache):
 #         self.use_cache = use_cache
 
+    def get_connection(self):
+        conn = self.bridge.get_engine().connect()
+        unclosed_connections.append(conn)
+        return conn
+    
     @classmethod
     def wrap_statement(cls, stmt, order_clauses, filter_expression):
         '''
@@ -893,8 +897,7 @@ class SqlAlchemyResource(IccblBaseResource):
             offset = -offset
         stmt = stmt.offset(offset)
         
-        conn = self.bridge.get_engine().connect()
-        unclosed_connections.append(conn)
+        conn = self.get_connection()
 #         def connection_close_callback1(sender, **kwargs):
 #             logger.error('1Request finished...')
 #             logger.error("1Request finished! %r", kwargs)

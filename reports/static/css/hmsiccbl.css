@@ -160,6 +160,11 @@ dl dd {
 /*     padding:5px 0; */
 }
 
+.form-group.required .control-label:after {
+  content:" *";
+  color:red;
+}
+
 .form-horizontal .control-label{
   padding-top: 7px; 
 }

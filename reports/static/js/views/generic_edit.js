@@ -753,7 +753,11 @@ define([
         var fieldSchema = editSchema[key] = _.extend({}, defaultFieldSchema);
         
         fieldSchema['title'] = fi.title;
-        fieldSchema['fieldAttrs'] = { title: fi.description };
+        var tooltip = fi.description;
+        if (fi.required){
+          tooltip += ' (required)';
+        }
+        fieldSchema['fieldAttrs'] = { title: tooltip };
         
         if(!_.contains(self.editableKeys, key)){
         
@@ -1001,11 +1005,19 @@ define([
       this.initialValues = this.getValue();
       console.log('Editview initialized, initial values:', this.initialValues);
       
+      _.each(this.modelFields, function(field){
+        console.log('consider', field, field.key, field.required)
+        if (field.required){
+          var key = field.key;
+          $('[name="'+key +'"').parents('.form-group').addClass('required');
+        }
+      });
+      
+      
       console.log('afterRender finished');
     },
     
-//    template: _.template(editTemplate),
-    
+
     /**
      * Filter Backbone's changeAttributes:
      * - only include fields that were editable ('create' or 'update' edit_visibility)

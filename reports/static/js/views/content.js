@@ -146,7 +146,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         appModel.router.navigate(route, {trigger: true});
       });
       var extraControls = [];
-      if (appModel.hasPermission(resource, 'edit')){
+      if (appModel.hasPermission(resource, 'write')){
         extraControls.push(addNewResourceButton);
       }
       

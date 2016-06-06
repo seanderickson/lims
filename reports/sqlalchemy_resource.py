@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 unclosed_connections = []
 def connection_close_callback(sender, **kwargs):
-    logger.error("Request finished! %r, %r", sender, kwargs)
+    logger.debug("Request finished! %r, %r", sender, kwargs)
     for c in unclosed_connections:
         c.close()
     del unclosed_connections[:]

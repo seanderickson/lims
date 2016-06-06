@@ -12,7 +12,7 @@ install:
 before_script:
   - psql -c 'create database travis_ci_test;' -U postgres 
 script: 
-  - grunt bowercopy && grunt test --retry 1
+  - grunt bowercopy && grunt test --retries 1
   - cd ../../ 
   - python manage.py migrate contenttypes --settings=lims.travis-settings
   - python manage.py migrate sites --settings=lims.travis-settings

@@ -24,8 +24,10 @@ define([
   describe("load the Detail view test", function(){
     before(function () {
       this.$fixture = $("<div id='detail-fixture'></div>");
+      // TODO: should load the resource through the app_model, using mock
       this.resource = JSON.parse(resource_raw);
-      this.resource.schema = _.extend(this.resource.schema, new Iccbl.SchemaClass());
+      this.resource = _.extend(this.resource, new Iccbl.SchemaClass());
+      _.each(_.values(this.resource.fields), appModel.parseSchemaField );
       _.extend(appModel.get("vocabularies"), JSON.parse(test_vocabularies_raw));
       appModel.set("users", JSON.parse(test_users_raw));
     });
@@ -43,7 +45,7 @@ define([
 
     afterEach(function () {
       // Destroying the model also destroys the view.
-      this.view.model.destroy();
+      this.model.destroy();
     });
 
     it( "should load the Detail view with the model", function() {
@@ -53,25 +55,13 @@ define([
 
         var modelVal = self.model.get(key);
         var finalModelVal = modelVal
-        var fi = self.resource.schema.fields[key];
+        var fi = self.resource.fields[key];
         var data_type = fi['data_type'];
         var display_type = fi['display_type'];
         var vocabulary_scope_ref = fi['vocabulary_scope_ref'];
         var displayedVal,vocabulary,cell_options;
         var input = self.view.$('#'+key);
-        cell_options = fi.display_options;
-        
-        // TODO: use the app_state method to get the resource/parse the display_options
-        if (!_.isEmpty(fi.display_options)){
-          cell_options = fi['display_options'];
-          cell_options = cell_options.replace(/'/g,'"');
-          try{
-            cell_options = JSON.parse(cell_options);
-          }catch(e){
-            assert(false,'warn: display_options is not JSON parseable, column: ',
-                key,', options: ',cell_options);
-          }
-        }
+        var cell_options = fi.display_options;
         
         if (!_.isEmpty(vocabulary_scope_ref)){
           vocabulary = Iccbl.appModel.getVocabulary(vocabulary_scope_ref);
@@ -155,8 +145,10 @@ define([
       var self = this;
       console.log('edit, before');
       this.$fixture = $("<div id='detail-fixture'></div>");
+      // TODO: should load the resource through the app_model, using mock
       this.resource = JSON.parse(resource_raw);
-      this.resource.schema = _.extend(this.resource.schema, new Iccbl.SchemaClass());
+      this.resource = _.extend(this.resource, new Iccbl.SchemaClass());
+      _.each(_.values(this.resource.fields), appModel.parseSchemaField );
       _.extend(appModel.get("vocabularies"), JSON.parse(test_vocabularies_raw));
       try{
         if(appModel.has('users')){
@@ -167,7 +159,7 @@ define([
             JSON.parse(test_users_raw)));
         }
         appModel.getUserOptions(function(options){
-          self.resource.schema.fields['field13']['choices'] = options;
+          self.resource.fields['field13']['choices'] = options;
         });
       }catch(e){
         console.log('error reading users,',e);
@@ -177,19 +169,11 @@ define([
     });
 
     beforeEach(function () {
+      var self = this;
       this.$fixture.empty().appendTo($("#fixtures"));
       this.model = new Backbone.Model(JSON.parse(test_model_raw));
       this.model.resource = this.resource;
-      var self = this;
-//      var onEditCallBack = function(displayFunction){
-//        appModel.getUserOptions(function(options){
-//          self.model.resource.schema.fields['users']['choices'] = options;
-//          displayFunction();
-//        });
-//      };
-    
       this.view = new EditView({ 
-
         model: self.model
       });
       this.view.render();
@@ -198,7 +182,7 @@ define([
 
     afterEach(function () {
       // Destroying the model also destroys the view.
-      this.view.model.destroy();
+      this.model.destroy();
     });
   
     it( "should load the Edit view with the model", function() {
@@ -208,7 +192,7 @@ define([
       
         var searchEl = '[name="{field}"]'.replace(/{\w+}/,key);
         var input = self.view.$(searchEl);
-        var fi = self.resource.schema.fields[key];
+        var fi = self.resource.fields[key];
         var data_type = fi['data_type'];
         var edit_type = fi['edit_type'];
         var val,temp;

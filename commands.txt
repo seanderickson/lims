@@ -31,8 +31,9 @@ curl -k --cookie cookiefile  \
 # EXAMPLE interaction using "django_requests.py" utility to do the form authentication
 # NOTE: basic authentication is not set up on Orchestra; 
 # because the wsgi client does not communicate credentials with the apache server
-PYTTHONPATH=. python reports/utils/django_requests.py -u sde \
+PYTHONPATH=. python reports/utils/django_requests.py -u sde \
   -a GET "https://dev.screensaver2.med.harvard.edu/db/api/v1/screenresult/1158?page=1&limit=25&offset=0&library_well_type__eq=experimental"
+PYTHONPATH=. python reports/utils/django_requests.py -u sde -f lims/static/production_data/screensaver_users-prod-patch.csv -a PATCH https://dev.screensaver2.med.harvard.edu/reports/api/v1/user --header "Content-Type: text/csv" --header "HTTP-Accept: text/csv"
 
 
 #####

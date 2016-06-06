@@ -4317,6 +4317,7 @@ class LibraryScreeningResource(ActivityResource):
                         _library.c.short_name, _cp.c.name, _ap.c.plate_number))
                 logger.debug('lcp_query: %r', str(lcp_query.compile()))
                 
+                conn = self.get_connection()
                 def library_copy_plates_screened_generator(cursor):
                     if generator:
                         cursor = generator(cursor)
@@ -4325,7 +4326,6 @@ class LibraryScreeningResource(ActivityResource):
                             self.row = row
                             self.entries = []
                             activity_id = row['activity_id']
-                            conn = self.get_connection()
 #                             with bridge.get_engine().connect() as conn:
                             query = conn.execute(
                                 lcp_query, activity_id=activity_id)

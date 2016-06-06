@@ -1181,7 +1181,7 @@ class ScreenResultResource(ApiResource):
             #     .where(_dc.c.screen_result_id==screen_result_id))
             count_stmt = _well_data_column_positive_index
             count_stmt = select([func.count()]).select_from(count_stmt)
-            count = int(cursor.execute(count_stmt).scalar())        
+            count = int(conn.execute(count_stmt).scalar())        
             logger.info('well_data_column_positive_index count: %r', count)
             if count == 0:
                 # the well_data_column_positive_index has been cleared, recreate
@@ -1205,7 +1205,7 @@ class ScreenResultResource(ApiResource):
                 logger.info(
                     'mutual pos insert statement: %r',
                     str(insert_statement.compile(compile_kwargs={"literal_binds": True})))
-                cursor.execute(insert_statement)
+                conn.execute(insert_statement)
                 logger.info('mutual pos insert statement, executed.')
     
             # Query to find mutual positive data columns:
@@ -1238,7 +1238,7 @@ class ScreenResultResource(ApiResource):
             logger.info('mutual positives statement: %r',
                 str(stmt.compile(compile_kwargs={"literal_binds": True})))
             logger.info('execute mutual positives column query...')
-            cols =  [x.data_column_id for x in cursor.execute(stmt)]
+            cols =  [x.data_column_id for x in conn.execute(stmt)]
             logger.info('done, cols %r', cols)
             return cols
         except Exception, e:

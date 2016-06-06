@@ -29,8 +29,14 @@ define([
       this.consumedStack = [];
       
       _.each(_.keys(this.tabbed_resources), function(key){
-        if(key !== 'detail' && !appModel.hasPermission(self.tabbed_resources[key].resource)){
-          delete self.tabbed_resources[key];
+        if(key !== 'detail'){
+          var permission = self.tabbed_resources[key].permission;
+          if (_.isUndefined(permission)){
+            permission = self.tabbed_resources[key].resource;
+          }
+          if (!appModel.hasPermission(permission)){
+            delete self.tabbed_resources[key];
+          }
         }
       });
       _.bindAll(this, 'click_tab');
@@ -47,32 +53,38 @@ define([
       summary : {
         description : 'Screening Summary',
         title : 'Screening Summary',
-        invoke : 'setSummary'
+        invoke : 'setSummary',
+        permission: 'screensummary'
       },
       billingItems: {
         description : 'Billing information',
         title : 'Billing',
-        invoke : 'setBilling'
+        invoke : 'setBilling',
+        permission: 'screenbilling'
       },
       datacolumns : {
         description : 'Data Columns',
         title : 'Data Columns',
-        invoke : 'setDatacolumns'
+        invoke : 'setDatacolumns',
+        permission: 'screenresult'
       },
       results : {
         description : 'Screen Results',
         title : 'Screen Results',
-        invoke : 'setResults'
+        invoke : 'setResults',
+        permission: 'screenresult'
       },
       cherryPicks: {
         description : 'Cherry Pick Requests',
         title : 'Cherry Picks',
-        invoke : 'setCherryPicks'
+        invoke : 'setCherryPicks',
+        permission: 'cherrypick'
       },
       activities: {
         description : 'Activities',
         title : 'Activities',
-        invoke : 'setActivities'
+        invoke : 'setActivities',
+        permission: 'activities'
       },
     },
 
@@ -914,16 +926,22 @@ define([
     setSummary : function(delegateStack){
       var self = this;
       var key = 'summary';
-      var $addLibraryScreeningButton = $('<button>Add Library Screening</button>');
+      var $addLibraryScreeningButton = $(
+        '<a class="btn btn-default btn-sm" role="button" \
+        id="addLibraryScreening" href="#">Add Library Screening</a>');
       $addLibraryScreeningButton.click(function(e){
         self.addLibraryScreening();
       });
-      var $loadScreenResultsButton = $('<button>Load Screen Results</button>');
+      var $loadScreenResultsButton = $(
+        '<a class="btn btn-default btn-sm" role="button" \
+        id="loadScreenResults" href="#">Load Screen Results</a>');
       $loadScreenResultsButton.click(function(e){
         e.preventDefault();
         self.loadScreenResults_ver2_with_comments();
       });
-      var $deleteScreenResultsButton = $('<button>Delete Screen Results</button>');
+      var $deleteScreenResultsButton = $(
+        '<a class="btn btn-default btn-sm" role="button" \
+        id="deleteScreenResults" href="#">Delete Screen Results</a>');
       $deleteScreenResultsButton.click(function(e){
         e.preventDefault();
         self.deleteScreenResults();
@@ -961,12 +979,15 @@ define([
 
               self._createPositivesSummary(this.$el.find('#positives_summary'));
               
-              //this.$el.prepend($testButton);
-              if (self.model.get('has_screen_result')){
-                this.$el.prepend($deleteScreenResultsButton);
+              if (appModel.hasPermission('screenresult','write')){
+                if (self.model.get('has_screen_result')){
+                  this.$el.prepend($deleteScreenResultsButton);
+                }
+                this.$el.prepend($loadScreenResultsButton);
               }
-              this.$el.prepend($loadScreenResultsButton);
-              this.$el.prepend($addLibraryScreeningButton);
+              if (appModel.hasPermission('libraryscreening','write')){
+                this.$el.prepend($addLibraryScreeningButton);
+              }
             }
           });
           self.tabViews[key] = view;

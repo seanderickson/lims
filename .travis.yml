@@ -15,7 +15,7 @@ script:
   - grunt bowercopy
 #  - grunt test --verbose
   - cd ../../ 
-  - python manage.py migrate sites --settings=lims.travis-settings
+  - python manage.py migrate sites --settings=lims.travis-settings 2>&1
   - python manage.py migrate auth --settings=lims.travis-settings 
   - python manage.py migrate contenttypes --settings=lims.travis-settings
   - python manage.py migrate admin --settings=lims.travis-settings

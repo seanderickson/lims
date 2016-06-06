@@ -25,3 +25,4 @@ script:
 #  - python manage.py migrate db 0020 --fake --settings=lims.travis-settings
   - python manage.py test --settings=lims.travis-settings --verbosity=2
 
+

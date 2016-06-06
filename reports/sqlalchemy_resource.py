@@ -897,6 +897,7 @@ class SqlAlchemyResource(IccblBaseResource):
             offset = -offset
         stmt = stmt.offset(offset)
         
+#         from reports.serialize.streaming_serializers import closing_iterator_wrapper
         conn = self.get_connection()
 #         def connection_close_callback1(sender, **kwargs):
 #             logger.error('1Request finished...')
@@ -990,8 +991,8 @@ class SqlAlchemyResource(IccblBaseResource):
         except Exception, e:
             logger.exception('on stream response')
             raise e
-        finally:
-            conn.close()          
+#         finally:
+#             conn.close()          
         
     def stream_response_from_cursor(self,request,result,output_filename,
             field_hash={}, param_hash={}, 

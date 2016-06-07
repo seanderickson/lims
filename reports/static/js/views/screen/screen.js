@@ -795,6 +795,7 @@ define([
         '<a class="btn btn-default btn-sm" role="button" \
         id="addLibraryScreening" href="#">Add Library Screening</a>');
       $addLibraryScreeningButton.click(function(e){
+        e.preventDefault();
         self.addLibraryScreening();
       });
       var $loadScreenResultsButton = $(

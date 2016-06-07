@@ -24,7 +24,7 @@ script:
   - python manage.py migrate reports --settings=lims.travis-settings
   - python manage.py migrate db 0001 --settings=lims.travis-settings
 ##  - python manage.py migrate db 0020 --fake --settings=lims.travis-settings
-#  - python manage.py test --settings=lims.travis-settings --verbosity=2
+  - python manage.py test --settings=lims.travis-settings --verbosity=2
 
 
 

@@ -4512,7 +4512,7 @@ class LibraryScreeningResource(ActivityResource):
 
     def create_screen_screening_statistics(self, screen):
         
-        with self.bridge.get_engine().begin() as conn:
+        with self.bridge.get_engine().connect() as conn:
             # NOTE: mixing Django connection with SQA connection
             # - thrown exceptions will rollback the nested SQA transaction
             # see: http://docs.sqlalchemy.org/en/latest/core/connections.html

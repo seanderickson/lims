@@ -795,12 +795,13 @@ define([
      * will check if the user has *any* permission on the resource.
      */
     hasPermission: function(resource, permission){
-      
+      if (DEBUG) console.log('hasPermission', resource, permission);
       var self = this;
       if(self.getCurrentUser().is_superuser) return true;
       
       var r_perm = 'resource/'+ resource;
-      if(!_.isUndefined(permission)){
+      if(!_.isUndefined(permission) && permission == 'write' ){
+        // only check for 'write' permission; write implies read
         r_perm += '/'+ permission;
       }// otherwise, will return true if user has either permission
       var match = _.find(
@@ -810,6 +811,7 @@ define([
               return true;
             }
           });
+      console.log('permission', r_perm, !_.isUndefined(match));
       return !_.isUndefined(match);
     },
     

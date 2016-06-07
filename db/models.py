@@ -278,10 +278,7 @@ class AssayPlate(models.Model):
 
     library_screening = models.ForeignKey('LibraryScreening', null=True, blank=True)
     screen_result_data_loading = models.ForeignKey(AdministrativeActivity, null=True, blank=True)
-    
-    # TODO: this replaces screen_result_data_loading
-    is_loaded = models.NullBooleanField(null=True)
-    
+
     class Meta:
         db_table = 'assay_plate'
     def __unicode__(self):

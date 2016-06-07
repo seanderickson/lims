@@ -45,6 +45,15 @@ MOLDATAKEY = sdfutils.MOLDATAKEY
 
 DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
 
+def closing_iterator_wrapper(iterable, close):
+    try:
+        for item in iterable:
+            yield item
+    finally:
+        logger.warn('close connection...')
+        close()
+
+
 class ChunkIterWrapper(object):
     ''' 
     Iterate in "chunks" of chunk_size chars.

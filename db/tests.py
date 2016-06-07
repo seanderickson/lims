@@ -1701,6 +1701,24 @@ class ScreenResource(DBResourceTestCase):
             'end_plate': 2040,
             'screen_type': 'small_molecule' })
 
+        logger.info('set some experimental wells...')
+        plate = 1000
+        experimental_well_count = 20
+        input_data = [
+            self.create_small_molecule_test_well(
+                plate,i,library_well_type='experimental') 
+            for i in range(0,experimental_well_count)]
+        resource_name = 'well'
+        resource_uri = '/'.join([
+            BASE_URI_DB,'library', library1['short_name'],resource_name])
+        resp = self.api_client.put(
+            resource_uri, format='sdf', data={ 'objects': input_data } , 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+
         logger.info('create library copy...')
         input_data = {
             'library_short_name': library1['short_name'],
@@ -1750,8 +1768,9 @@ class ScreenResource(DBResourceTestCase):
         data_for_get = {
             'screen_facility_id__eq': screen['facility_id']
         }
-
-        # test validations
+        
+        # First try creating (failed) library_screening with invalid inputs
+        # 1. test validations
         key = 'screen_facility_id' 
         msg = 'input missing a %r should fail' % key
         logger.info('test %r', msg)
@@ -1763,7 +1782,7 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(find_in_dict(key, errors), 'test: %s, not in errors: %r' %(msg,errors))
         
         key = 'library_plates_screened' 
-        # create a library_plate_range with invalid library name:
+        # 2. create a library_plate_range with invalid library name:
         # even though the plate range is correct, this should fail,
         # and the transaction should cancel the creation of the libraryscreening
         value = [lps_format.format(library_short_name='**',name='A').format(**library1)]
@@ -1777,6 +1796,7 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(find_in_dict(key, errors), 
             'Error: response error not found: %r, obj: %r' %(key, errors))
 
+        # 3. Invalid plate range
         key = 'library_plates_screened' 
         value = [ lps_format.format(**library_copy1).format(**{
             'start_plate': library1['start_plate'],
@@ -1790,6 +1810,7 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(find_in_dict(key, errors), 
             'test: %s, not in errors: %r' %(key,errors))
 
+        # 4. Overlapping plate range
         key = 'library_plates_screened' 
         value = [ 
             lps_format.format(**library_copy1).format(**{
@@ -1809,9 +1830,44 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(find_in_dict(key, errors), 
             'test: %s, not in errors: %r' %(key,errors))
 
+        # Finally, create valid input
         logger.info('test valid input...')
         library_screening = self._create_resource(
             library_screening_input, resource_uri, resource_test_uri)
+
+        # Test Screen statistics
+        screen = self.get_screen(screen['facility_id'])
+
+        key = 'library_screenings'
+        expected_value = 1
+        self.assertTrue(screen[key] == expected_value,
+            (key,'expected_value',expected_value,
+                'returned value',screen[key]))
+
+        key = 'screened_experimental_well_count'
+        expected_value = experimental_well_count
+        self.assertTrue(screen[key] == expected_value,
+            (key,'expected_value',expected_value,
+                'returned value',screen[key]))
+        key = 'unique_screened_experimental_well_count'
+        expected_value = experimental_well_count
+        self.assertTrue(screen[key] == expected_value,
+            (key,'expected_value',expected_value,
+                'returned value',screen[key]))
+        key = 'library_plates_screened'
+        expected_value = 17 # 6 in library1, 11 in library2
+        self.assertTrue(screen[key] == expected_value,
+            (key,'expected_value',expected_value,
+                'returned value',screen[key]))
+        key = 'assay_plates_screened'
+        expected_value = 34 # lps * 2 replicates
+        self.assertTrue(screen[key] == expected_value,
+            (key,'expected_value',expected_value,
+                'returned value',screen[key]))
+
+
+
+
 
         # Test - add a plate_range
         input = { 

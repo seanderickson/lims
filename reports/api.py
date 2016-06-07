@@ -676,9 +676,9 @@ class ApiResource(SqlAlchemyResource):
             original_data = []
         
         try:
-            with transaction.atomic():
-                logger.debug('call put_obj')
-                obj = self.put_obj(deserialized, **kwargs)
+#             with transaction.atomic():
+            logger.debug('call put_obj')
+            obj = self.put_obj(deserialized, **kwargs)
         except ValidationError as e:
             logger.exception('Validation error: %r', e)
             raise e
@@ -730,12 +730,12 @@ class ApiResource(SqlAlchemyResource):
                     kwargs_for_log)
                 original_data = []
         try:
-            with transaction.atomic():
-                obj = self.patch_obj(deserialized, **kwargs)
-                for id_field in id_attribute:
-                    val = getattr(obj, id_field,None)
-                    if val:
-                        kwargs_for_log['%s' % id_field] = val
+#             with transaction.atomic():
+            obj = self.patch_obj(deserialized, **kwargs)
+            for id_field in id_attribute:
+                val = getattr(obj, id_field,None)
+                if val:
+                    kwargs_for_log['%s' % id_field] = val
         except ValidationError as e:
             logger.exception('Validation error: %r', e)
             raise e
@@ -830,6 +830,7 @@ class ApiResource(SqlAlchemyResource):
     def delete_obj(self, deserialized, **kwargs):
         raise NotImplementedError('delete obj must be implemented')
     
+    @transaction.atomic()
     def patch_obj(self,deserialized, **kwargs):
         raise NotImplementedError('patch obj must be implemented')
 

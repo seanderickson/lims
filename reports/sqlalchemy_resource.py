@@ -36,7 +36,7 @@ from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE
 from reports.serialize.csvutils import LIST_DELIMITER_CSV, csv_convert
 from reports.serialize.streaming_serializers import sdf_generator, \
     json_generator, get_xls_response, csv_generator, ChunkIterWrapper, \
-    cursor_generator, image_generator
+    cursor_generator, image_generator, closing_iterator_wrapper
 from reports.serializers import LimsSerializer
 from reports.utils.sqlalchemy_bridge import Bridge
 
@@ -46,12 +46,15 @@ logger = logging.getLogger(__name__)
 
 unclosed_connections = []
 def connection_close_callback(sender, **kwargs):
-    logger.debug("Request finished! %r, %r", sender, kwargs)
+    logger.error("Request finished! %r, %r", sender, kwargs)
     for c in unclosed_connections:
-        c.close()
+        try:
+            c.close()
+        except Exception as e:
+            logger.exception('on conn close...')
     del unclosed_connections[:]
 
-django.core.signals.request_finished.connect(connection_close_callback)
+# django.core.signals.request_finished.connect(connection_close_callback)
 
 def _concat(*args):
     '''
@@ -60,24 +63,6 @@ def _concat(*args):
     '''
     return func.array_to_string(array([x for x in args]),'')
         
-# def un_cache(_func):
-#     '''
-#     Wrapper function to disable caching for 
-#     SQLAlchemyResource.stream_response_from_statement
-#     ''' 
-#     @wraps(_func)
-#     def _inner(self, *args, **kwargs):
-#         logger.debug('decorator un_cache: %s, %s', self, _func )
-#         SqlAlchemyResource.clear_cache(self)
-#         SqlAlchemyResource.set_caching(self,False)
-#         result = _func(self, *args, **kwargs)
-#         SqlAlchemyResource.set_caching(self,True)
-#         logger.debug('decorator un_cache done: %s, %s', self, _func )
-#         return result
-# 
-#     return _inner
-
-
 class SqlAlchemyResource(IccblBaseResource):
     '''
     A resource that uses SqlAlchemy to facilitate the read queries:
@@ -86,10 +71,6 @@ class SqlAlchemyResource(IccblBaseResource):
     Note: write operations not implemented
     '''
     
-#     class Meta:
-#         queryset = Reagent.objects.all()
-#         serializer = LimsSerializer() # still have a serializer for error response
-
     # get a handle to the SqlAlchemy "bridge" for its table registry and 
     # connection handle
     bridge = Bridge()
@@ -103,9 +84,6 @@ class SqlAlchemyResource(IccblBaseResource):
         
         super(SqlAlchemyResource, self).__init__(*args, **kwargs)
     
-#     def set_caching(self,use_cache):
-#         self.use_cache = use_cache
-
     def get_connection(self):
         conn = self.bridge.get_engine().connect()
         unclosed_connections.append(conn)
@@ -767,11 +745,6 @@ class SqlAlchemyResource(IccblBaseResource):
             'get_list_response must be implemented for the SqlAlchemyResource', 
             self._meta.resource_name)) )
     
-#     def clear_cache(self):
-#         logger.debug('clearing the cache from resource: %s (all caches cleared)' 
-#             % self._meta.resource_name)
-#         cache.clear()
-
     def _cached_resultproxy(self, conn, stmt, count_stmt, param_hash, limit, offset):
         ''' 
         Cache for resultsets:
@@ -789,7 +762,9 @@ class SqlAlchemyResource(IccblBaseResource):
         
         prefetch_number = 5
         
-#         conn = self.bridge.get_engine().connect()
+        if limit==1:
+            prefetch_number = 1
+        
         try:
             # use a hexdigest because statements can contain problematic chars 
             # for the memcache
@@ -828,7 +803,10 @@ class SqlAlchemyResource(IccblBaseResource):
                 
 #                 if DEBUG_CACHE:
                 logger.info('no cache hit, execute count')
-                count = conn.execute(count_stmt).scalar()
+                if limit == 1:
+                    count = 1
+                else:
+                    count = conn.execute(count_stmt).scalar()
 #                 if DEBUG_CACHE:
                 logger.info('count: %s', count)
                 
@@ -885,6 +863,8 @@ class SqlAlchemyResource(IccblBaseResource):
                 % limit)
         if limit > 0:    
             stmt = stmt.limit(limit)
+        if is_for_detail:
+            limit = 1
 
         offset = param_hash.get('offset', 0 )
         try:
@@ -897,15 +877,10 @@ class SqlAlchemyResource(IccblBaseResource):
             offset = -offset
         stmt = stmt.offset(offset)
         
-#         from reports.serialize.streaming_serializers import closing_iterator_wrapper
-        conn = self.get_connection()
-#         def connection_close_callback1(sender, **kwargs):
-#             logger.error('1Request finished...')
-#             logger.error("1Request finished! %r", kwargs)
-#             conn.close()
-#         django.core.signals.request_finished.connect(connection_close_callback1)
+#         conn = self.get_connection()
+        conn = self.bridge.get_engine().connect()
+        
         try:
-#             with self.bridge.get_engine().connect() as conn:
             logger.debug('offset: %s, limit: %s', offset, limit)
         
             if DEBUG_STREAMING:
@@ -918,8 +893,9 @@ class SqlAlchemyResource(IccblBaseResource):
             logger.debug('---- desired_format: %r, hash: %r', desired_format, param_hash)
             result = None
             if desired_format == 'application/json':
-                logger.debug('streaming json')
-                if not is_for_detail and use_caching and self.use_cache and limit > 0:
+                logger.info('streaming json, use_caching: %r, limit: %d', use_caching, limit)
+#                 if not is_for_detail and use_caching and self.use_cache and limit > 0:
+                if use_caching and self.use_cache and limit > 0:
                     cache_hit = self._cached_resultproxy(
                         conn, stmt, count_stmt, param_hash, limit, offset)
                     if cache_hit:
@@ -980,7 +956,8 @@ class SqlAlchemyResource(IccblBaseResource):
                 if rowproxy_generator:
                     result = rowproxy_generator(result)
                     # FIXME: test this for generators other than json generator        
-
+            
+            result = closing_iterator_wrapper(result, conn.close)
             return self.stream_response_from_cursor(request, result, output_filename, 
                 field_hash=field_hash, 
                 param_hash=param_hash, 

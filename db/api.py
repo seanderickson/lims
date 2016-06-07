@@ -75,7 +75,7 @@ from reports.serialize import parse_val, XLSX_MIMETYPE, SDF_MIMETYPE, \
 from reports.serialize.csvutils import string_convert
 from reports.serialize.streaming_serializers import ChunkIterWrapper, \
     json_generator, cursor_generator, sdf_generator, generic_xlsx_response, \
-    csv_generator, get_xls_response, image_generator
+    csv_generator, get_xls_response, image_generator, closing_iterator_wrapper
 from reports.serializers import LimsSerializer, \
     XLSSerializer, ScreenResultSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource
@@ -186,7 +186,12 @@ class LibraryCopyPlateResource(ApiResource):
         schema = super(LibraryCopyPlateResource, self).build_schema()
         
         for_screen_id = param_hash.pop('for_screen_id', None)
+        # FIXME: copyplatesloaded no longer works - 20160607
+        # because we are not creating "assay_plates" for screen results anymore
+        # can this be modified to show virtual "plates" loaded?
         loaded_for_screen_id = param_hash.pop('loaded_for_screen_id', None)
+        
+        
         is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._get_filename(schema, kwargs)
         library_short_name = param_hash.pop('library_short_name',
@@ -1072,8 +1077,7 @@ class ScreenResultResource(ApiResource):
                     ApiResource.create_vocabulary_rowproxy_generator(field_hash)
                     
             
-            conn = self.get_connection()
-#             with self.bridge.get_engine().connect() as conn:
+            conn = self.bridge.get_engine().connect()
             logger.info('excute stmt %r...',
                 str(stmt.compile(compile_kwargs={"literal_binds": True})))
             result = conn.execute(stmt)
@@ -1084,6 +1088,7 @@ class ScreenResultResource(ApiResource):
             data = cursor_generator(
                 result,ordered_keys,list_fields=list_fields,
                 value_templates=value_templates)
+            data = closing_iterator_wrapper(data, conn.close)
             if desired_format == JSON_MIMETYPE:
                 meta = {
                     'limit': limit,
@@ -1156,91 +1161,90 @@ class ScreenResultResource(ApiResource):
         # and aw0.screen_result_id = 941
         # and aw1.screen_result_id <> 941;
         try:
-            conn = self.get_connection()
-#             with self.bridge.get_engine().connect() as cursor:
-            _well_data_column_positive_index = \
-                self.bridge['well_data_column_positive_index']
-            _aw = self.bridge['assay_well']
-            _sr = self.bridge['screen_result']
-            _dc = self.bridge['data_column']
-            
-            # FIXME: recreating the well_data_column_positive_index:
-            # - now: this call is lazy recreating, when the screen_result 
-            #   resource is first called.
-            # - TODO: recreate this index when the screen_result is loaded.
-            # 
-            # Note: because this is lazy recreated, we are creating the whole 
-            # index each time; could just recreate for the specific screen
-            #  
-            # Example query:
-            # count_stmt = ( 
-            #     select([text('*')])
-            #     .select_from(_well_data_column_positive_index
-            #         .join(_dc, _dc.c.data_column_id
-            #             ==_well_data_column_positive_index.c.data_column_id))
-            #     .where(_dc.c.screen_result_id==screen_result_id))
-            count_stmt = _well_data_column_positive_index
-            count_stmt = select([func.count()]).select_from(count_stmt)
-            count = int(conn.execute(count_stmt).scalar())        
-            logger.info('well_data_column_positive_index count: %r', count)
-            if count == 0:
-                # the well_data_column_positive_index has been cleared, recreate
-                base_stmt = join(
-                    _aw, _dc, _aw.c.screen_result_id == _dc.c.screen_result_id)
-                base_stmt = select([
-                        literal_column("well_id"),
-                        literal_column('data_column_id')
-                    ]).select_from(base_stmt)            
-                base_stmt = base_stmt.where(_aw.c.is_positive)
-                base_stmt = base_stmt.where(
-                    _dc.c.data_type.in_([
-                        'boolean_positive_indicator',
-                        'partition_positive_indicator', 
-                        'confirmed_positive_indicator']))
-                base_stmt = base_stmt.order_by(
-                    _dc.c.data_column_id, _aw.c.well_id)
-                insert_statement = (
-                    insert(_well_data_column_positive_index)
-                        .from_select(['well_id', 'data_column_id'], base_stmt))
-                logger.info(
-                    'mutual pos insert statement: %r',
-                    str(insert_statement.compile(compile_kwargs={"literal_binds": True})))
-                conn.execute(insert_statement)
-                logger.info('mutual pos insert statement, executed.')
-    
-            # Query to find mutual positive data columns:
-            # select distinct(wdc.data_column_id)
-            # from
-            # well_data_column_positive_index wdc
-            # join data_column dc using(data_column_id)
-            # where 
-            # dc.screen_result_id <> 941
-            # and exists(
-            # select null 
-            # from well_data_column_positive_index wdc1 
-            # join data_column dc1 using(data_column_id) 
-            # where wdc1.well_id=wdc.well_id 
-            # and dc1.screen_result_id = 941 );        
-            _wdc = _well_data_column_positive_index.alias('wdc')
-            j = _wdc.join(_dc, _wdc.c.data_column_id == _dc.c.data_column_id)
-            stmt = select([distinct(_wdc.c.data_column_id)]).select_from(j)
-            stmt = stmt.where(_dc.c.screen_result_id != screen_result_id)
-            
-            _wdc1 = _well_data_column_positive_index.alias('wdc1')
-            _dc1 = _dc.alias('dc1')
-            j2 = _wdc1.join(_dc1, _wdc1.c.data_column_id == _dc1.c.data_column_id)
-            stmt2 = select([text('null')]).select_from(j2)
-            stmt2 = stmt2.where(_wdc.c.well_id == _wdc1.c.well_id)
-            stmt2 = stmt2.where(_dc1.c.screen_result_id == screen_result_id)
-            
-            stmt = stmt.where(exists(stmt2))
-            
-            logger.info('mutual positives statement: %r',
-                str(stmt.compile(compile_kwargs={"literal_binds": True})))
-            logger.info('execute mutual positives column query...')
-            cols =  [x.data_column_id for x in conn.execute(stmt)]
-            logger.info('done, cols %r', cols)
-            return cols
+            with self.bridge.get_engine().connect() as conn:
+                _well_data_column_positive_index = \
+                    self.bridge['well_data_column_positive_index']
+                _aw = self.bridge['assay_well']
+                _sr = self.bridge['screen_result']
+                _dc = self.bridge['data_column']
+                
+                # FIXME: recreating the well_data_column_positive_index:
+                # - now: this call is lazy recreating, when the screen_result 
+                #   resource is first called.
+                # - TODO: recreate this index when the screen_result is loaded.
+                # 
+                # Note: because this is lazy recreated, we are creating the whole 
+                # index each time; could just recreate for the specific screen
+                #  
+                # Example query:
+                # count_stmt = ( 
+                #     select([text('*')])
+                #     .select_from(_well_data_column_positive_index
+                #         .join(_dc, _dc.c.data_column_id
+                #             ==_well_data_column_positive_index.c.data_column_id))
+                #     .where(_dc.c.screen_result_id==screen_result_id))
+                count_stmt = _well_data_column_positive_index
+                count_stmt = select([func.count()]).select_from(count_stmt)
+                count = int(conn.execute(count_stmt).scalar())        
+                logger.info('well_data_column_positive_index count: %r', count)
+                if count == 0:
+                    # the well_data_column_positive_index has been cleared, recreate
+                    base_stmt = join(
+                        _aw, _dc, _aw.c.screen_result_id == _dc.c.screen_result_id)
+                    base_stmt = select([
+                            literal_column("well_id"),
+                            literal_column('data_column_id')
+                        ]).select_from(base_stmt)            
+                    base_stmt = base_stmt.where(_aw.c.is_positive)
+                    base_stmt = base_stmt.where(
+                        _dc.c.data_type.in_([
+                            'boolean_positive_indicator',
+                            'partition_positive_indicator', 
+                            'confirmed_positive_indicator']))
+                    base_stmt = base_stmt.order_by(
+                        _dc.c.data_column_id, _aw.c.well_id)
+                    insert_statement = (
+                        insert(_well_data_column_positive_index)
+                            .from_select(['well_id', 'data_column_id'], base_stmt))
+                    logger.info(
+                        'mutual pos insert statement: %r',
+                        str(insert_statement.compile(compile_kwargs={"literal_binds": True})))
+                    conn.execute(insert_statement)
+                    logger.info('mutual pos insert statement, executed.')
+        
+                # Query to find mutual positive data columns:
+                # select distinct(wdc.data_column_id)
+                # from
+                # well_data_column_positive_index wdc
+                # join data_column dc using(data_column_id)
+                # where 
+                # dc.screen_result_id <> 941
+                # and exists(
+                # select null 
+                # from well_data_column_positive_index wdc1 
+                # join data_column dc1 using(data_column_id) 
+                # where wdc1.well_id=wdc.well_id 
+                # and dc1.screen_result_id = 941 );        
+                _wdc = _well_data_column_positive_index.alias('wdc')
+                j = _wdc.join(_dc, _wdc.c.data_column_id == _dc.c.data_column_id)
+                stmt = select([distinct(_wdc.c.data_column_id)]).select_from(j)
+                stmt = stmt.where(_dc.c.screen_result_id != screen_result_id)
+                
+                _wdc1 = _well_data_column_positive_index.alias('wdc1')
+                _dc1 = _dc.alias('dc1')
+                j2 = _wdc1.join(_dc1, _wdc1.c.data_column_id == _dc1.c.data_column_id)
+                stmt2 = select([text('null')]).select_from(j2)
+                stmt2 = stmt2.where(_wdc.c.well_id == _wdc1.c.well_id)
+                stmt2 = stmt2.where(_dc1.c.screen_result_id == screen_result_id)
+                
+                stmt = stmt.where(exists(stmt2))
+                
+                logger.info('mutual positives statement: %r',
+                    str(stmt.compile(compile_kwargs={"literal_binds": True})))
+                logger.info('execute mutual positives column query...')
+                cols =  [x.data_column_id for x in conn.execute(stmt)]
+                logger.info('done, cols %r', cols)
+                return cols
         except Exception, e:
             logger.exception('on get mutual positives columns')
             raise e  
@@ -1555,6 +1559,10 @@ class ScreenResultResource(ApiResource):
                 raise e
 
         self.create_data_loading_statistics(screen_result)
+        
+        logger.info('pre-generate the mutual positives index...')
+        self.get_mutual_positives_columns(screen_result.screen_result_id)
+        logger.info('done - pre-generate the mutual positives index')
             
         if not self._meta.always_return_data:
             response_message = {'success': {'result': 'screen result loaded'}}
@@ -1945,48 +1953,6 @@ class ScreenResultResource(ApiResource):
                 
             screen_result.save()
             
-            self.create_screen_screening_statistics(screen_result.screen)
-        
-    @transaction.atomic()    
-    def create_screen_screening_statistics(self, screen):
-        
-        with self.bridge.get_engine().begin() as conn:
-            # NOTE: mixing Django connection with SQA connection
-            # - thrown exceptions will rollback the nested SQA transaction
-            # see: http://docs.sqlalchemy.org/en/latest/core/connections.html
-            screen_facility_id = screen.facility_id
-            sql = (
-                'select count(w.well_id) '
-                'from Well w, Screen s  '
-                'join assay_plate ap using(screen_id) '
-                'join plate p using(plate_id) '
-                'join library_screening ls on(ap.library_screening_id=ls.activity_id) '
-                'where   ap.replicate_ordinal = 0  '
-                'and w.plate_number = p.plate_number ' 
-                'and w.library_well_type = %s'
-                'and s.facility_id = %s;')
-            screen.screened_experimental_well_count = int(
-                conn.execute(
-                    sql, ('experimental', screen_facility_id))
-                .scalar() or 0)
-            sql = (
-                'select count(distinct(w.well_id)) '
-                'from Well w, Screen s  '
-                'join assay_plate ap using(screen_id) '
-                'join plate p using(plate_id) '
-                'join library_screening ls on(ap.library_screening_id=ls.activity_id) '
-                'where   ap.replicate_ordinal = 0  '
-                'and w.plate_number = p.plate_number ' 
-                'and w.library_well_type = %s'
-                'and s.facility_id = %s;')
-            screen.unique_screened_experimental_well_count = int(
-                conn.execute(
-                    sql, ('experimental', screen_facility_id))
-                .scalar() or 0)
-            
-            # Not used:
-            # library_plates_data_analyzed_count = models.IntegerField(null=False, default=0)
-            screen.save()
         
 
 class DataColumnResource(ApiResource):
@@ -4291,7 +4257,7 @@ class LibraryScreeningResource(ActivityResource):
                 rowproxy_generator = ApiResource.\
                     create_vocabulary_rowproxy_generator(field_hash)
             
-            # wrap the cursor and expand the library_plates_screened
+            # create a generator to wrap the cursor and expand the library_plates_screened
             def create_lcp_gen(generator):
                 bridge = self.bridge
                 _library = self.bridge['library']
@@ -4317,7 +4283,7 @@ class LibraryScreeningResource(ActivityResource):
                         _library.c.short_name, _cp.c.name, _ap.c.plate_number))
                 logger.debug('lcp_query: %r', str(lcp_query.compile()))
                 
-                conn = self.get_connection()
+                engine = self.bridge.get_engine()
                 def library_copy_plates_screened_generator(cursor):
                     if generator:
                         cursor = generator(cursor)
@@ -4326,7 +4292,6 @@ class LibraryScreeningResource(ActivityResource):
                             self.row = row
                             self.entries = []
                             activity_id = row['activity_id']
-#                             with bridge.get_engine().connect() as conn:
                             query = conn.execute(
                                 lcp_query, activity_id=activity_id)
                             copy = None
@@ -4364,9 +4329,13 @@ class LibraryScreeningResource(ActivityResource):
                                 return self.entries
                             else:
                                 return self.row[key]
-                    for row in cursor:
-                        yield Row(row)
-
+                    conn = engine.connect()
+                    try:
+                        for row in cursor:
+                            yield Row(row)
+                    finally:
+                        conn.close()
+                        
                 return library_copy_plates_screened_generator
             
             if 'library_plates_screened' in field_hash:
@@ -4391,6 +4360,66 @@ class LibraryScreeningResource(ActivityResource):
     @un_cache        
     def put_detail(self, request, **kwargs):
         raise NotImplementedError('put_detail must be implemented')
+
+
+#     ## TODO: override; removing transaction block
+#     @write_authorization
+#     @un_cache        
+#     def patch_detail(self, request, **kwargs):
+# 
+#         deserialized = self.deserialize(request)
+# 
+#         logger.debug('patch detail %s, %s', deserialized,kwargs)
+# 
+#         # cache state, for logging
+#         # Look for id's kwargs, to limit the potential candidates for logging
+#         schema = self.build_schema()
+#         id_attribute = schema['id_attribute']
+#         kwargs_for_log = {}
+#         try:
+#             kwargs_for_log = self.get_id(deserialized,**kwargs)
+#             logger.debug('patch detail: %s, %s' %(deserialized,kwargs_for_log))
+#         except Exception:
+#             # this can be ok, if the ID is generated
+#             logger.info('object id not posted')
+#         if not kwargs_for_log:
+#             # then this is a create
+#             original_data = []
+#         else:
+#             original_data = []
+#             try:
+#                 item = self._get_detail_response(request,**kwargs_for_log)
+#                 if item:
+#                     original_data = [item]
+#             except Exception, e: 
+#                 logger.exception('exception when querying for existing obj: %s', 
+#                     kwargs_for_log)
+#                 original_data = []
+#         try:
+# #             with transaction.atomic():
+#             obj = self.patch_obj(deserialized, **kwargs)
+#             for id_field in id_attribute:
+#                 val = getattr(obj, id_field,None)
+#                 if val:
+#                     kwargs_for_log['%s' % id_field] = val
+#         except ValidationError as e:
+#             logger.exception('Validation error: %r', e)
+#             raise e
+# 
+#         # get new state, for logging
+#         try:
+#             new_data = [self._get_detail_response(request,**kwargs_for_log)]
+#             self.log_patches(request, original_data,new_data,**kwargs)
+#         except Exception, e: 
+#             logger.exception('exception when querying for new data for logging: %s', 
+#                 kwargs_for_log)
+# 
+#         if not self._meta.always_return_data:
+#             return http.HttpAccepted()
+#         else:
+#             response = self.get_detail(request,**kwargs_for_log)
+#             response.status_code = 201
+#             return response
     
     def validate(self, _dict, patch=False):
 
@@ -4449,37 +4478,85 @@ class LibraryScreeningResource(ActivityResource):
                     msg='does not exist: {val}'.format(val=_val))
         logger.debug('initializer_dict: %r', initializer_dict)
         try:
-            library_screening = None
-            if patch:
-                try:
-                    library_screening = LibraryScreening.objects.get(**id_kwargs)
-                except ObjectDoesNotExist:
-                    raise Http404(
-                        'library_screening does not exist for: %r', id_kwargs)
-            else:
-                library_screening = LibraryScreening()
-
-            model_field_names = [
-                x.name for x in library_screening._meta.get_fields()]
-            for key, val in initializer_dict.items():
-                if key in model_field_names:
-                    setattr(library_screening, key, val)
-
-            library_screening.save()
+            with transaction.atomic():
+                library_screening = None
+                if patch:
+                    try:
+                        library_screening = LibraryScreening.objects.get(**id_kwargs)
+                    except ObjectDoesNotExist:
+                        raise Http404(
+                            'library_screening does not exist for: %r', id_kwargs)
+                else:
+                    library_screening = LibraryScreening()
+    
+                model_field_names = [
+                    x.name for x in library_screening._meta.get_fields()]
+                for key, val in initializer_dict.items():
+                    if key in model_field_names:
+                        setattr(library_screening, key, val)
+    
+                library_screening.save()
+                
+                library_plates_screened = deserialized.get(
+                    'library_plates_screened', [])
+                if library_plates_screened:
+                    self._set_assay_plates(
+                        library_screening, library_plates_screened)
             
-            library_plates_screened = deserialized.get(
-                'library_plates_screened', [])
-            if library_plates_screened:
-                self._set_assay_plates(
-                    library_screening, library_plates_screened)
+            self.create_screen_screening_statistics(library_screening.screen)
                         
             return library_screening
         except Exception, e:
             logger.exception('on patch_obj')
             raise e
-    
-    def _set_assay_plates(self, library_screening, library_plates_screened):
 
+    def create_screen_screening_statistics(self, screen):
+        
+        with self.bridge.get_engine().begin() as conn:
+            # NOTE: mixing Django connection with SQA connection
+            # - thrown exceptions will rollback the nested SQA transaction
+            # see: http://docs.sqlalchemy.org/en/latest/core/connections.html
+            screen_facility_id = screen.facility_id
+            sql = (
+                'select count(w.well_id) '
+                'from Well w, Screen s  '
+                'join assay_plate ap using(screen_id) '
+                'join plate p using(plate_id) '
+                'join library_screening ls on(ap.library_screening_id=ls.activity_id) '
+                'where   ap.replicate_ordinal = 0  '
+                'and w.plate_number = p.plate_number ' 
+                'and w.library_well_type = %s'
+                'and s.facility_id = %s;')
+            screen.screened_experimental_well_count = int(
+                conn.execute(
+                    sql, ('experimental', screen_facility_id))
+                .scalar() or 0)
+            sql = (
+                'select count(distinct(w.well_id)) '
+                'from Well w, Screen s  '
+                'join assay_plate ap using(screen_id) '
+                'join plate p using(plate_id) '
+                'join library_screening ls on(ap.library_screening_id=ls.activity_id) '
+                'where   ap.replicate_ordinal = 0  '
+                'and w.plate_number = p.plate_number ' 
+                'and w.library_well_type = %s'
+                'and s.facility_id = %s;')
+            screen.unique_screened_experimental_well_count = int(
+                conn.execute(
+                    sql, ('experimental', screen_facility_id))
+                .scalar() or 0)
+            logger.info('screen_screening_statistics: %d, %d',
+                screen.screened_experimental_well_count, 
+                screen.unique_screened_experimental_well_count)
+            # Not used:
+            # library_plates_data_analyzed_count = models.IntegerField(null=False, default=0)
+            screen.save()
+
+    
+    @transaction.atomic()    
+    def _set_assay_plates(self, library_screening, library_plates_screened):
+        logger.info('set assay plates screened for: %r, %r', 
+            library_screening, library_plates_screened)
         # parse library_plate_ranges
         schema = self.build_schema()
         regex_string = schema['fields']['library_plates_screened']['regex']
@@ -4610,6 +4687,7 @@ class LibraryScreeningResource(ActivityResource):
                         created_plates.add(plate_key)
         logger.info('plates_created: %r', created_plates)
     
+    @transaction.atomic()    
     def delete_obj(self, deserialized, **kwargs):
 
         activity_id = kwargs.get('activity_id', None)
@@ -4668,6 +4746,7 @@ class ServiceActivityResource(ActivityResource):
     def build_schema(self):
         return ApiResource.build_schema(self)
 
+    @transaction.atomic()
     def patch_obj(self, deserialized, **kwargs):
 
         schema = self.build_schema()
@@ -4928,6 +5007,9 @@ class ScreenResource(ApiResource):
         return LibraryCopyPlateResource().dispatch('list', request, **kwargs)    
 
     def dispatch_screen_lcp_loadedview(self, request, **kwargs):
+        # FIXME: copyplatesloaded no longer works - 20160607
+        # because we are not creating "assay_plates" for screen results anymore
+        # can this be modified to show virtual "plates" loaded?
         kwargs['loaded_for_screen_id'] = kwargs.pop('facility_id')
         return LibraryCopyPlateResource().dispatch('list', request, **kwargs)    
 
@@ -5932,6 +6014,7 @@ class UserChecklistItemResource(ApiResource):
         raise NotImplementedError(
             'delete obj is not implemented for UserChecklistItem')
     
+    @transaction.atomic()
     def patch_obj(self, deserialized, **kwargs):
 
         schema = self.build_schema()

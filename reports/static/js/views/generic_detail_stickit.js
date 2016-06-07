@@ -263,7 +263,8 @@ define([
         binding.onGet = _.compose(binding.onGet, defaultGetter);
       }
       if(_.has(display_type_formatters, display_type)){
-        console.log('add getter for field: ', key, ', display_type: ', display_type);
+        if (appModel.DEBUG) 
+          console.log('add getter for field: ', key, ', display_type: ', display_type);
         if (display_type == 'linklist'){
           // for the linklist, run the listgetter first
           binding.onGet = _.compose(binding.onGet, display_type_formatters[display_type]);

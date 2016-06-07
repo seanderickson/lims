@@ -166,6 +166,7 @@ define([
         }
       }
       this.change_to_tab(viewId);
+      console.log('afterRender, done.');
     },
 
     /**
@@ -268,6 +269,7 @@ define([
     },
 
     change_to_tab: function(key){
+      console.log('change_to_tab', key);
       if(_.has(this.tabbed_resources, key)){
         this.$('li').removeClass('active');
         this.$('#' + key).addClass('active');
@@ -292,9 +294,6 @@ define([
     },
 
     render : function(){
-      console.log('render called');
-//      ScreenView.__super__.render.apply(this, arguments);
-      
       window.scrollTo(0, 0);
       return this;
     },
@@ -366,12 +365,6 @@ define([
       
       
       return view;
-
-//      if(!self.screen.get('has_screen_result')){
-//        self.$('#results').hide();
-//        self.$('#datacolumns').hide();
-//        console.log('no results');
-//      }
 
     },
       
@@ -549,109 +542,10 @@ define([
      * - because ajax cannot handle post response attachments (easily), set
      * the response type to 'application/json' and display the errors in a 
      * modal dialog.
+     * 
+     * NOTE: a "POST" form cannot be used - there is no standard way to signal
+     * the result of the post to JavaScript.
      */
-    loadScreenResults: function(){
-      console.log('load screen results');
-      var self=this;
-
-      function saveFile() {
-        var file = $('input[name="fileInput"]')[0].files[0]; 
-        var data = new FormData();
-        var url = [self.model.resource.apiUri,self.model.key,'screenresult'].join('/');
-        // NOTE: 'xls' is sent as the key to the FILE object in the upload.
-        // Use this as a non-standard way to signal the upload type to the 
-        // serializer. 
-        data.append('xls', file);
-        var headers = {
-          'Accept': 'application/json'
-        };
-        headers[appModel.HEADER_APILOG_COMMENT] = self.model.get('comment');
-        $.ajax({
-          url: url,    
-          data: data,
-          cache: false,
-          contentType: false,
-          processData: false,
-          type: 'POST',
-          headers: headers
-        })
-        .fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); })
-        .done(function(model, resp){
-            // FIXME: should be showing a regular message
-            appModel.error('success');
-            self.model.fetch();
-            self.setSummary([]);
-        });
-      }
-      appModel.showModal({
-          ok: saveFile,
-          body: '<input type="file" name="fileInput" />',
-          title: 'Select a Screen Result (xlsx workbook) file to upload'  });
-    
-    },
-    
-    deleteScreenResults: function(){
-      var self = this;
-      var formSchema = {};
-      formSchema['comments'] = {
-        title: 'Comments',
-        key: 'comments',
-        validators: ['required'],
-        type: 'TextArea'
-//        template: fieldTemplate
-      };
-
-      var FormFields = Backbone.Model.extend({
-        schema: formSchema
-      });
-      var formFields = new FormFields();
-      var form = new Backbone.Form({
-        model: formFields
-//        template: _.template(form_template)
-      });
-      var _form_el = form.render().el;
-      var dialog = appModel.showModal({
-          ok: function(){
-            var errors = form.commit({ validate: true }); 
-            if(!_.isEmpty(errors) ){
-              _.each(_.keys(errors), function(key){
-                $('[name="'+key +'"').parents('.form-group').addClass('has-error');
-              });
-              return false;
-            }else{
-              var url = [self.model.resource.apiUri,self.model.key,'screenresult'].join('/');
-              var values = form.getValue();
-              var headers = {
-                'Accept': 'application/json'
-              };
-              headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
-              $.ajax({
-                url: url,    
-                cache: false,
-                contentType: false,
-                processData: false,
-                type: 'DELETE',
-                headers: headers
-              })
-              .fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); })
-              .done(function(model, resp){
-                  appModel.error('success');
-                  self.model.fetch({
-                    success: function() {
-                      self.setSummary([]);
-                      console.log('call render...');
-                      self.render();
-                    }
-                  });
-              });
-            }        
-          },
-          view: _form_el,
-          title: 'Delete screen results for ' + self.model.get('facility_id')
-      });
-      
-    },
-    
     loadScreenResults_ver2_with_comments: function(){
       var self = this;
       var form_template = [
@@ -738,16 +632,22 @@ define([
           })
           .fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); })
           .done(function(model, resp){
-              // FIXME: should be showing a regular message
-              appModel.error('success');
-              self.model.fetch({
-                success: function() {
-                  self.setSummary([]);
-                  console.log('call render...');
-                  self.render();
-                }
-              });
-         });
+            // FIXME: should be showing a regular message
+            appModel.error('success');
+            // Must refetch and render, once for the containing tabbed layout,
+            // and then (during render), will refetch again for the summary view
+            self.model.fetch({
+              success: function() {
+                self.uriStack = ['summary'];
+                // remove the child view before calling render, to prevent
+                // it from being rendered twice, and calling afterRender twice
+                self.removeView('#tab_container');
+                self.render();
+              }
+            }).fail(function(){ 
+              Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+            });
+          });
         }        
       }
       
@@ -758,107 +658,71 @@ define([
       });
     },
     
-    
-    /**
-     * Loads the screen results using a post form - 
-     * - allows for the the "errors.xlsx" file to be downloaded to the hidden frame
-     * - problem: cannot retrieve the post response in ajax
-     */
-    loadScreenResults_using_post_form: function(){
-      console.log('load screen results');
-      var self=this;
-      var base_url = [self.model.resource.apiUri,self.model.key,'screenresult'].join('/');
-      var modalcontent = $('\
-        <div id="myModal" class="modal-dialog" tabindex="-1">\
-          <div id="loading" style="display: none;" ></div>\
-          <div class="modal-content">\
-          <div class="modal-header">\
-          </div>\
-          <div class="modal-body">\
-              <iframe id="innerframe" frameborder="0">\
-                </iframe>\
-          </div>\
-          <div class="modal-footer">\
-            <button class="btn" data-dismiss="modal">Cancel</button>\
-          </div>\
-          </div>\
-        </div>');
-      
-      formText = '\
-        <form id="innerform" action="/db/api/v1/screenresult/1356?format=xls"\
-         method="post" enctype="multipart/form-data" name="fileinfo" >\
-          <input type="file" name="xls" required />\
-          <input id="submitbutton" type="submit" value="press" />\
-        </form>\
-        ';
-      var $modal = $('#modal');
-      $modal.empty();
-      $modal.append(modalcontent);
-      $modal.modal({show:true, backdrop: 'static'});
-      
-      $innerframe = $modal.find('#innerframe');
-      $innerframe[0].contentWindow.document.open();
-      $innerframe[0].contentWindow.document.write(formText);
-      
-      $form = $('#innerform',$innerframe[0].contentWindow.document)
+    deleteScreenResults: function(){
+      var self = this;
+      var formSchema = {};
+      formSchema['comments'] = {
+        title: 'Comments',
+        key: 'comments',
+        validators: ['required'],
+        type: 'TextArea'
+      };
 
-      // When tracking the download, we're going to have
-      // the server echo back a cookie that will be set
-      // when the download Response has been received.
-      var url = base_url;
-      url += '?format=xls'
-      var downloadID = ( new Date() ).getTime();
-      // Add the "downloadID" parameter for the server
-      // Server will set a cookie on the response to signal download complete
-      url += "&downloadID=" + downloadID;
-      
-      $form.attr('action',url);
-      $form.find('#submitbutton').click(function(e){
-        console.log('submitted...');
-
-          $modal.find('#loading').fadeIn({duration:100});
-
-          // The local cookie cache is defined in the browser
-          // as one large string; we need to search for the
-          // name-value pattern with the above ID.
-          var cookiePattern = new RegExp( ( "downloadID=" + downloadID ), "i" );
-
-          // Now, we need to start watching the local Cookies to
-          // see when the download ID has been updated by the
-          // response headers.
-          var intervalCheckTime = 1000; // 1s
-          var maxIntervals = 3600;      // 3600s
-          var limitForDownload = 0;
-          var cookieTimer = setInterval( checkCookies, intervalCheckTime );
-
-          var i = 0;
-          function checkCookies() {
-            if ( document.cookie.search( cookiePattern ) >= 0 ) {
-              clearInterval( cookieTimer );
-              $('#loading').fadeOut({duration:100});
-              // delete the coookie
-              downloadID = ( new Date() ).getTime();
-              url = base_url + "?format=xls&downloadID=" + downloadID;
-              $form.attr('action',url);
-              document.cookie = "downloadID=";
-              return(
-                console.log( "Download complete!!" )
-              );
-            }else if(i >= maxIntervals){
-              clearInterval( cookieTimer );
-              window.alert('download abort after tries: ' + i);
-              return(
-                console.log( "Download abort!!" )
-              );
-            }
-            console.log(
-              "File still downloading...",
-              new Date().getTime()
-            );
-            i++;
-          }
+      var FormFields = Backbone.Model.extend({
+        schema: formSchema
       });
-    },    
+      var formFields = new FormFields();
+      var form = new Backbone.Form({
+        model: formFields
+      });
+      var _form_el = form.render().el;
+      var dialog = appModel.showModal({
+          ok: function(){
+            var errors = form.commit({ validate: true }); 
+            if(!_.isEmpty(errors) ){
+              _.each(_.keys(errors), function(key){
+                $('[name="'+key +'"').parents('.form-group').addClass('has-error');
+              });
+              return false;
+            }else{
+              var url = [self.model.resource.apiUri,self.model.key,'screenresult'].join('/');
+              var values = form.getValue();
+              var headers = {
+                'Accept': 'application/json'
+              };
+              headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
+              $.ajax({
+                url: url,    
+                cache: false,
+                contentType: false,
+                processData: false,
+                type: 'DELETE',
+                headers: headers
+              })
+              .fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); })
+              .done(function(model, resp){
+                appModel.error('success');
+                // Must refetch and render, once for the containing tabbed layout,
+                // and then (during render), will refetch again for the summary view
+                self.model.fetch({
+                  success: function() {
+                    self.uriStack = ['summary'];
+                    // remove the child view before calling render, to prevent
+                    // it from being rendered twice
+                    self.removeView('#tab_container');
+                    self.render();
+                  }
+                }).fail(function(){ 
+                  Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+                });
+              });
+            }        
+          },
+          view: _form_el,
+          title: 'Delete screen results for ' + self.model.get('facility_id')
+      });
+      
+    },
     
     addLibraryScreening: function(){
       console.log('add library screening');
@@ -924,6 +788,7 @@ define([
     },
     
     setSummary : function(delegateStack){
+      console.log('setSummary...', delegateStack);
       var self = this;
       var key = 'summary';
       var $addLibraryScreeningButton = $(
@@ -957,6 +822,7 @@ define([
             detailKeys: summaryKeys,
             buttons: ['history'],
             afterRender: function(){
+              console.log('setSummary, afterRender');
               DetailView.prototype.afterRender.apply(this);
               this.$el.find('#libraries_screened_count').click(function(e){
                 e.preventDefault();
@@ -1029,6 +895,7 @@ define([
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: dcResource.apiUri 
       });
+      
       var dcCollection = new CollectionClass();
       dcCollection.fetch({
         data: { 
@@ -1118,7 +985,7 @@ define([
           cell.html(positives_grid.render().$el);
           $target_el.append(cell);
         }
-      }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
+      }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });
       
     },
 
@@ -1152,15 +1019,14 @@ define([
     },
 
     setDatacolumns: function(delegateStack){
-      // pivot the datacolumn list
       
       var self = this;
       var datacolumnResource = appModel.getResource('datacolumn'); 
       var url = [self.model.resource.apiUri,self.model.key,'datacolumns'].join('/');
       
       // construct a collection-in-columns
+      // pivot the datacolumn list
       Iccbl.getCollectionOnClient(url, function(collection){
-        
         // create a colModel for the list
         var columns = [];
         var TextWrapCell = Backgrid.Cell.extend({
@@ -1240,28 +1106,26 @@ define([
       var _id = self.model.key;
       var screen_facility_id = self.model.get('facility_id');
       
-      // TODO: have to add the "extra_control" because the list rendering is delayed
-      var show_positives_control = $([
-        '<form>',
-        '<div class="checkbox">',
-        '<label>',
-        '  <input type="checkbox">positives',
-        '</label>',
-        '</div>',
-        '</form>'
-        ].join(''));
-      var show_mutual_positives_control = $([
-         '<form>',
-         '<div class="checkbox">',
-         '<label>',
-         '  <input type="checkbox">mutual positives',
-         '</label>',
-         '</div>',
-         '</form>'
-         ].join(''));      
       var createResults = function(schemaResult){
-        
-          
+        var show_positives_control = $([
+          '<form>',
+          '<div class="checkbox">',
+          '<label>',
+          '  <input type="checkbox">positives',
+          '</label>',
+          '</div>',
+          '</form>'
+          ].join(''));
+        var show_mutual_positives_control = $([
+           '<form>',
+           '<div class="checkbox">',
+           '<label>',
+           '  <input type="checkbox">mutual positives',
+           '</label>',
+           '</div>',
+           '</form>'
+           ].join(''));
+        // create an option vocab for the exclued col, if needed
         if (_.has(schemaResult['fields'], 'excluded')){
           var options = [];
           _.each(schemaResult['fields'],function(field){
@@ -1275,7 +1139,6 @@ define([
           schemaResult['fields']['excluded']['vocabulary'] = options;
           console.log('custom exclude options', options);
         }
-        
         var initialSearchHash;
         view = new ListView({ options: {
           uriStack: _.clone(delegateStack),

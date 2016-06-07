@@ -10,7 +10,7 @@ define([
   var REPORTS_API_URI = '/reports/' + API_VERSION;
   var DB_API_URI = '/db/' + API_VERSION;
   var SEARCH_DELIMITER = ';';
-  var DEBUG = true;
+  var DEBUG = false;
   
   var SchemaClass = Iccbl.SchemaClass = function() {};
   SchemaClass.prototype.detailKeys = function()

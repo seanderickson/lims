@@ -1006,7 +1006,6 @@ define([
       console.log('Editview initialized, initial values:', this.initialValues);
       
       _.each(this.modelFields, function(field){
-        console.log('consider', field, field.key, field.required)
         if (field.required){
           var key = field.key;
           $('[name="'+key +'"').parents('.form-group').addClass('required');

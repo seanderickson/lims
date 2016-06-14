@@ -57,6 +57,7 @@ def convert_django_autofields(apps, schema_editor):
     
     table_autofields = (
         ('result_value', 'result_value_id'),
+        ('assay_well', 'assay_well_id')
         ('reagent', 'reagent_id'),
         ('screen', 'screen_id'),
         ('library', 'library_id'),
@@ -279,6 +280,17 @@ class Migration(migrations.Migration):
                 'db_table': 'plate_screening_statistics',
             },
         ),
+        migrations.AlterField(
+            model_name='platescreeningstatistics',
+            name='copy',
+            field=models.ForeignKey(to='db.Copy'),
+        ),
+        migrations.AlterField(
+            model_name='platescreeningstatistics',
+            name='library',
+            field=models.ForeignKey(to='db.Library'),
+        ),
+ 
         migrations.AddField(
             model_name='library',
             name='version_number',
@@ -615,4 +627,27 @@ class Migration(migrations.Migration):
             model_name='assaywell',
             name='plate_number',
             field=models.IntegerField(null=False)),
+        migrations.AlterField(
+            model_name='screensaveruser',
+            name='ecommons_id',
+            field=models.TextField(null=True),
+        ),
+        migrations.AlterField(
+            model_name='screensaveruser',
+            name='email',
+            field=models.TextField(null=True),
+        ),
+        migrations.AddField(
+            model_name='labaffiliation',
+            name='title',
+            field=models.TextField(null=True),
+        ),
+        
+        # TODO: needed?
+#         migrations.AlterField(
+#             model_name='screensaveruser',
+#             name='lab_head',
+#             field=models.ForeignKey(related_name='lab_member', blank=True, to='db.ScreensaverUser', null=True),
+#         ),
+
     ]

@@ -6,6 +6,19 @@ import django.utils.timezone
 # import db.models
 # import django.db.models.deletion
 
+## Note: existing migrations are intended for migrating an existing screensaver 
+## database to the new database schema.
+## Therefore, these should not be used to create a new instance.
+## instead, the migrations directory should be removed and recreated with 
+## $> manage.py makemigrations db
+## which will generate an initial migration by inspecting the 
+## models.py file, and then run:
+## $> manage.py migrate --fake-initial
+
+## Developer note:
+## New models and fields to be added should not be included in the 0001 file, 
+## they should be applied in subsequent files, as migration 0001 is "faked" in
+## the migration.sh script.
 
 class Migration(migrations.Migration):
 
@@ -142,6 +155,8 @@ class Migration(migrations.Migration):
                 'db_table': 'attached_file_update_activity',
             },
         ),
+        
+        
 #         migrations.CreateModel(
 #             name='CachedQuery',
 #             fields=[

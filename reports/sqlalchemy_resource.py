@@ -46,15 +46,18 @@ logger = logging.getLogger(__name__)
 
 unclosed_connections = []
 def connection_close_callback(sender, **kwargs):
-    logger.error("Request finished! %r, %r", sender, kwargs)
-    for c in unclosed_connections:
-        try:
-            c.close()
-        except Exception as e:
-            logger.exception('on conn close...')
-    del unclosed_connections[:]
+    logger.debug("Request finished! %r, %r", sender, kwargs)
+    
+#     Bridge().get_engine().dispose()
+    
+#     for c in unclosed_connections:
+#         try:
+#             c.close()
+#         except Exception as e:
+#             logger.exception('on conn close...')
+#     del unclosed_connections[:]
 
-# django.core.signals.request_finished.connect(connection_close_callback)
+django.core.signals.request_finished.connect(connection_close_callback)
 
 def _concat(*args):
     '''
@@ -850,7 +853,7 @@ class SqlAlchemyResource(IccblBaseResource):
             output_filename, field_hash={}, param_hash={}, 
             rowproxy_generator=None, is_for_detail=False,
             downloadID=None, title_function=None, use_caching=True, meta=None ):
-        DEBUG_STREAMING = True or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
 
         if DEBUG_STREAMING:
             logger.info('stream_response_from_statement: %r' % param_hash)
@@ -910,14 +913,11 @@ class SqlAlchemyResource(IccblBaseResource):
                     logger.info(str(('====count====', count)))
                     
                 else:
-                    if DEBUG_STREAMING:
-                        logger.info('execute count stmt...')
+                    logger.info('execute count stmt...')
                     count = conn.execute(count_stmt).scalar()
-                    if DEBUG_STREAMING:
-                        logger.info('excuted count stmt: %d', count)
+                    logger.info('excuted count stmt: %d', count)
                     result = conn.execute(stmt)
-                    if DEBUG_STREAMING:
-                        logger.info('excuted stmt')
+                    logger.info('excuted stmt')
     
                 if not meta:
                     meta = {

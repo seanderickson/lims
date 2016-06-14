@@ -69,7 +69,7 @@ from reports.api import ApiLogResource, \
     write_authorization, read_authorization
 from reports.api_base import un_cache
 from reports.models import Vocabularies, ApiLog, UserProfile, \
-    API_ACTION_DELETE, API_ACTION_PUT
+    API_ACTION_DELETE, API_ACTION_PUT, API_ACTION_PATCH
 from reports.serialize import parse_val, XLSX_MIMETYPE, SDF_MIMETYPE, \
     XLS_MIMETYPE, JSON_MIMETYPE, CSV_MIMETYPE
 from reports.serialize.csvutils import string_convert
@@ -421,7 +421,6 @@ class ScreenResultResource(ApiResource):
             except Exception as e:
                 logger.info('creating the well_data_column_positive_index table')
                 self._create_well_data_column_positive_index_table(conn)
-            
         self.reagent_resource = None
 
     def get_reagent_resource(self):
@@ -486,81 +485,79 @@ class ScreenResultResource(ApiResource):
         _well_data_column_positive_index = self.bridge[
             'well_data_column_positive_index']
 
-        with self.bridge.get_engine().begin() as conn:
-            # NOTE: mixing Django connection with SQA connection
-            # - thrown exceptions will rollback the nested SQA transaction
-            # see: http://docs.sqlalchemy.org/en/latest/core/connections.html
-            try:
-                query = CachedQuery.objects.filter(uri__contains='/screenresult/')
-                if query.exists():
-                    logger.debug(
-                        'clear_cache: screenresult queries to consider %s',
-                        [(x.id, x.uri) for x in query])
-                ids = set()
-                if by_size:
-                    query = query.order_by('-datetime')
-                    cumulative_count = 0
-    
-                    for q in query:
-                        if q.count:
-                            cumulative_count += q.count
-                        if cumulative_count >= max_indexes_to_cache:
-                            last_id_to_save = q.id
-                            logger.info(
-                                'cumulative_count: %d, last_id_to_save: %d',
-                                cumulative_count, last_id_to_save)
-                            query = query.filter(id__lte=last_id_to_save)
-                            ids.update([q.id for q in query])
-                            break
-                    
-                if by_date:  # TODO: test
-                    query = query.filter(datetime__lte=by_date)
-                    ids.update([q.id for q in query])
-                if by_uri: 
-                    query = query.filter(uri__exact=by_uri)
-                    ids.update([q.id for q in query])
-                    
-                if ids or all:
-                    logger.info('clear cachedQueries: ids: %r, all: %r', ids, all)
-                    if all:
-                        stmt = delete(_wellQueryIndex)
-                        conn.execute(stmt)
-                        logger.info('cleared all cached wellQueryIndexes')
-                        CachedQuery.objects.all().delete()
-                        # # TODO: delete the well_data_column_positive_indexes
-                        # # related to this uri only
-                        # stmt = delete(_well_data_column_positive_index)
-                        # conn.execute(stmt)
-                        # logger.info(
-                        #     'cleared all cached well_data_column_positive_indexes')
-    
-                    else:
-                        stmt = delete(_wellQueryIndex).where(
-                            _wellQueryIndex.c.query_id.in_(ids))
-                        conn.execute(stmt)
-                        logger.info('cleared cached wellQueryIndexes: %r', ids)
-                        CachedQuery.objects.filter(id__in=ids).delete()
-    
-                        # stmt = delete(_well_data_column_positive_index)
-                        # conn.execute(stmt)
-                        # logger.info(
-                        #     'cleared all cached well_data_column_positive_indexes')
+        # NOTE: mixing Django connection with SQA connection
+        # - thrown exceptions will rollback the nested SQA transaction
+        # see: http://docs.sqlalchemy.org/en/latest/core/connections.html
+        try:
+            query = CachedQuery.objects.filter(uri__contains='/screenresult/')
+            if query.exists():
+                logger.debug(
+                    'clear_cache: screenresult queries to consider %s',
+                    [(x.id, x.uri) for x in query])
+            ids = set()
+            if by_size:
+                query = query.order_by('-datetime')
+                cumulative_count = 0
+
+                for q in query:
+                    if q.count:
+                        cumulative_count += q.count
+                    if cumulative_count >= max_indexes_to_cache:
+                        last_id_to_save = q.id
+                        logger.info(
+                            'cumulative_count: %d, last_id_to_save: %d',
+                            cumulative_count, last_id_to_save)
+                        query = query.filter(id__lte=last_id_to_save)
+                        ids.update([q.id for q in query])
+                        break
+                
+            if by_date:  # TODO: test
+                query = query.filter(datetime__lte=by_date)
+                ids.update([q.id for q in query])
+            if by_uri: 
+                query = query.filter(uri__exact=by_uri)
+                ids.update([q.id for q in query])
+                
+            if ids or all:
+                logger.info('clear cachedQueries: ids: %r, all: %r', ids, all)
+                if all:
+                    stmt = delete(_wellQueryIndex)
+                    self.bridge.get_engine().execute(stmt)
+                    logger.info('cleared all cached wellQueryIndexes')
+                    CachedQuery.objects.all().delete()
+                    # # TODO: delete the well_data_column_positive_indexes
+                    # # related to this uri only
+                    # stmt = delete(_well_data_column_positive_index)
+                    # conn.execute(stmt)
+                    # logger.info(
+                    #     'cleared all cached well_data_column_positive_indexes')
+
                 else:
-                    logger.info('no CachedQuery values to be cleared')
-    
-                # NOTE: for now, clear the wdcpi when a new screen_result is loaded:
-                # (when "all" or "by_uri" is set)
-                # TODO: incrementally clear the wdcpi for each set of ids, or all
-                if all is True or by_uri is not None:
-                    logger.info('all: %r, by_uri: %r', all, by_uri)
-                    stmt = delete(_well_data_column_positive_index)
-                    conn.execute(stmt)
-                    logger.info(
-                        'cleared all cached well_data_column_positive_indexes')
-    
-            except Exception, e:
-                logger.exception('on screenresult clear cache')
-                raise e  
+                    stmt = delete(_wellQueryIndex).where(
+                        _wellQueryIndex.c.query_id.in_(ids))
+                    self.bridge.get_engine().execute(stmt)
+                    logger.info('cleared cached wellQueryIndexes: %r', ids)
+                    CachedQuery.objects.filter(id__in=ids).delete()
+
+                    # stmt = delete(_well_data_column_positive_index)
+                    # conn.execute(stmt)
+                    # logger.info(
+                    #     'cleared all cached well_data_column_positive_indexes')
+            else:
+                logger.info('no CachedQuery values to be cleared')
+
+        except Exception, e:
+            logger.exception('on screenresult clear cache')
+            raise e  
+
+        # NOTE: for now, clear the wdcpi when a new screen_result is loaded:
+        # (when "all" or "by_uri" is set)
+        # TODO: incrementally clear the wdcpi for each set of ids, or all
+        if all is True or by_uri is not None:
+            logger.info('all: %r, by_uri: %r', all, by_uri)
+            self.bridge.get_engine().execute(delete(_well_data_column_positive_index))
+            logger.info(
+                'cleared all cached well_data_column_positive_indexes')
             
     def prepend_urls(self):
 
@@ -728,14 +725,13 @@ class ScreenResultResource(ApiResource):
         if filter_excluded:
             logger.info('filter excluded...')
             base_clause = _aw.join(
-                excluded_cols_select, _aw.c.well_id==excluded_cols_select.c.well_id,isouter=True)
+                excluded_cols_select, 
+                _aw.c.well_id==excluded_cols_select.c.well_id,isouter=True)
             base_custom_columns['exclude'] = literal_column('exclusions.exclude')
             
         # The base_fields are always included in the query: 
         # - all (screenresult) fields not part of result value lookup
         # - any result_value lookups that are used in sort or filtering
-        # TODO: if doing mutual positives query, 
-        # then need to grab those datacolumns also.
         base_fields = [ fi for fi in field_hash.values() 
             if (
                 fi['scope'] in ['fields.screenresult'] # everything except datacolumns
@@ -747,7 +743,7 @@ class ScreenResultResource(ApiResource):
                 if fi.get('is_datacolumn', None)]:
             rv_select = self._build_result_value_column(fi)
             base_custom_columns[fi['key']] = rv_select
-        # #USING cte           
+        # USING CTEs (shown to be slower)           
         # for fi in [fi for fi in base_fields 
         #         if fi.get('is_datacolumn', None)]:
         #     rv_select = self._build_result_value_cte(fi)
@@ -900,7 +896,7 @@ class ScreenResultResource(ApiResource):
                 if fi.get('is_datacolumn', None)]:
             custom_columns[fi['key']] = self._build_result_value_column(fi)
             
-        # # USING ctes
+        # Alternative: USING CTEs (shown to be slower)
         # for fi in [
         #     fi for fi in field_hash.values() 
         #         if fi.get('is_datacolumn', None)]:
@@ -990,7 +986,6 @@ class ScreenResultResource(ApiResource):
             screen__facility_id=screen_facility_id)              
 
         show_mutual_positives = param_hash.get('show_mutual_positives', False)
-        logger.info('show mutual positives: %r, %r, %r', show_mutual_positives, param_hash, request.GET.keys())
         schema = self.build_schema(
             screenresult=screenresult,
             show_mutual_positives=show_mutual_positives)
@@ -1006,7 +1001,6 @@ class ScreenResultResource(ApiResource):
         param_hash['includes'] = list(manual_field_includes)
 
         try:
-                
             (field_hash, columns, stmt, count_stmt, cachedQuery) = \
                 self.get_query(
                     request.user.username,
@@ -1015,7 +1009,6 @@ class ScreenResultResource(ApiResource):
                     schema,
                     limit,
                     offset)
-    
             # Custom screen result serialization
             
             content_type = build_content_type(desired_format)
@@ -1142,9 +1135,40 @@ class ScreenResultResource(ApiResource):
             logger.exception('on get list: %r', e)
             raise e  
 
+    def create_dc_positive_index(self, screen_result_id):
+        # the well_data_column_positive_index has been cleared, recreate
+        _well_data_column_positive_index = \
+            self.bridge['well_data_column_positive_index']
+        _aw = self.bridge['assay_well']
+        _sr = self.bridge['screen_result']
+        _dc = self.bridge['data_column']
+        base_stmt = join(
+            _aw, _dc, _aw.c.screen_result_id == _dc.c.screen_result_id)
+        base_stmt = select([
+                literal_column("well_id"),
+                literal_column('data_column_id')
+            ]).select_from(base_stmt)            
+        base_stmt = base_stmt.where(_aw.c.is_positive)
+        base_stmt = base_stmt.where(
+            _dc.c.data_type.in_([
+                'boolean_positive_indicator',
+                'partition_positive_indicator', 
+                'confirmed_positive_indicator']))
+        base_stmt = base_stmt.order_by(
+            _dc.c.data_column_id, _aw.c.well_id)
+        insert_statement = (
+            insert(_well_data_column_positive_index)
+                .from_select(['well_id', 'data_column_id'], base_stmt))
+        logger.info(
+            'mutual pos insert statement: %r',
+            str(insert_statement.compile(compile_kwargs={"literal_binds": True})))
+        self.bridge.get_engine().execute(insert_statement)
+        logger.info('mutual pos insert statement, executed.')
+
+    
     def get_mutual_positives_columns(self, screen_result_id):
-        
-        # TODO: cache this / clear cache when any screen_results referenced by 
+
+        # Note: cache is cleared when any screen_results referenced by 
         # a datacolumn are re-loaded
         # 
         # SS1 Methodology:
@@ -1160,94 +1184,88 @@ class ScreenResultResource(ApiResource):
         #       or dc.data_type = 'partition_positive_indicator' )
         # and aw0.screen_result_id = 941
         # and aw1.screen_result_id <> 941;
-        try:
-            with self.bridge.get_engine().connect() as conn:
-                _well_data_column_positive_index = \
-                    self.bridge['well_data_column_positive_index']
-                _aw = self.bridge['assay_well']
-                _sr = self.bridge['screen_result']
-                _dc = self.bridge['data_column']
                 
-                # FIXME: recreating the well_data_column_positive_index:
-                # - now: this call is lazy recreating, when the screen_result 
-                #   resource is first called.
-                # - TODO: recreate this index when the screen_result is loaded.
-                # 
-                # Note: because this is lazy recreated, we are creating the whole 
-                # index each time; could just recreate for the specific screen
-                #  
-                # Example query:
-                # count_stmt = ( 
-                #     select([text('*')])
-                #     .select_from(_well_data_column_positive_index
-                #         .join(_dc, _dc.c.data_column_id
-                #             ==_well_data_column_positive_index.c.data_column_id))
-                #     .where(_dc.c.screen_result_id==screen_result_id))
-                count_stmt = _well_data_column_positive_index
-                count_stmt = select([func.count()]).select_from(count_stmt)
-                count = int(conn.execute(count_stmt).scalar())        
-                logger.info('well_data_column_positive_index count: %r', count)
-                if count == 0:
-                    # the well_data_column_positive_index has been cleared, recreate
-                    base_stmt = join(
-                        _aw, _dc, _aw.c.screen_result_id == _dc.c.screen_result_id)
-                    base_stmt = select([
-                            literal_column("well_id"),
-                            literal_column('data_column_id')
-                        ]).select_from(base_stmt)            
-                    base_stmt = base_stmt.where(_aw.c.is_positive)
-                    base_stmt = base_stmt.where(
-                        _dc.c.data_type.in_([
-                            'boolean_positive_indicator',
-                            'partition_positive_indicator', 
-                            'confirmed_positive_indicator']))
-                    base_stmt = base_stmt.order_by(
-                        _dc.c.data_column_id, _aw.c.well_id)
-                    insert_statement = (
-                        insert(_well_data_column_positive_index)
-                            .from_select(['well_id', 'data_column_id'], base_stmt))
-                    logger.info(
-                        'mutual pos insert statement: %r',
-                        str(insert_statement.compile(compile_kwargs={"literal_binds": True})))
-                    conn.execute(insert_statement)
-                    logger.info('mutual pos insert statement, executed.')
+        _well_data_column_positive_index = \
+            self.bridge['well_data_column_positive_index']
+        _aw = self.bridge['assay_well']
+        _sr = self.bridge['screen_result']
+        _dc = self.bridge['data_column']
         
-                # Query to find mutual positive data columns:
-                # select distinct(wdc.data_column_id)
-                # from
-                # well_data_column_positive_index wdc
-                # join data_column dc using(data_column_id)
-                # where 
-                # dc.screen_result_id <> 941
-                # and exists(
-                # select null 
-                # from well_data_column_positive_index wdc1 
-                # join data_column dc1 using(data_column_id) 
-                # where wdc1.well_id=wdc.well_id 
-                # and dc1.screen_result_id = 941 );        
-                _wdc = _well_data_column_positive_index.alias('wdc')
-                j = _wdc.join(_dc, _wdc.c.data_column_id == _dc.c.data_column_id)
-                stmt = select([distinct(_wdc.c.data_column_id)]).select_from(j)
-                stmt = stmt.where(_dc.c.screen_result_id != screen_result_id)
-                
-                _wdc1 = _well_data_column_positive_index.alias('wdc1')
-                _dc1 = _dc.alias('dc1')
-                j2 = _wdc1.join(_dc1, _wdc1.c.data_column_id == _dc1.c.data_column_id)
-                stmt2 = select([text('null')]).select_from(j2)
-                stmt2 = stmt2.where(_wdc.c.well_id == _wdc1.c.well_id)
-                stmt2 = stmt2.where(_dc1.c.screen_result_id == screen_result_id)
-                
-                stmt = stmt.where(exists(stmt2))
-                
-                logger.info('mutual positives statement: %r',
-                    str(stmt.compile(compile_kwargs={"literal_binds": True})))
-                logger.info('execute mutual positives column query...')
-                cols =  [x.data_column_id for x in conn.execute(stmt)]
-                logger.info('done, cols %r', cols)
-                return cols
-        except Exception, e:
-            logger.exception('on get mutual positives columns')
-            raise e  
+        # FIXME: recreating the well_data_column_positive_index:
+        # - now: this call is lazy recreating, when the screen_result 
+        #   resource is first called.
+        # - TODO: recreate this index when the screen_result is loaded.
+        # 
+        # Note: because this is lazy recreated, we are creating the whole 
+        # index each time; could just recreate for the specific screen
+        count_stmt = _well_data_column_positive_index
+        count_stmt = select([func.count()]).select_from(count_stmt)
+        count = 0
+        with self.bridge.get_engine().begin() as conn:
+            count = int(conn.execute(count_stmt).scalar())        
+            logger.info('well_data_column_positive_index count: %r', count)
+        if count == 0:
+            self.create_dc_positive_index(screen_result_id)
+        
+        # Query to find mutual positive data columns:
+        
+        # OLD METHOD: USES EXISTS
+        # - THIS HANGS POSTGRES (8.4 & 9.2) 
+        # SELECT DISTINCT wdc.data_column_id 
+        # FROM well_data_column_positive_index AS wdc 
+        # JOIN data_column ON wdc.data_column_id = data_column.data_column_id 
+        # WHERE data_column.screen_result_id != 1090 
+        # AND (EXISTS (
+        #     SELECT null FROM well_data_column_positive_index AS wdc1 
+        #     JOIN data_column AS dc1 ON wdc1.data_column_id = dc1.data_column_id 
+        #     WHERE wdc.well_id = wdc1.well_id AND dc1.screen_result_id = 1090));
+        # 
+        # NEW METHOD: USES TEMPORARY TABLE
+        # with wdc1 as (
+        # SELECT distinct(well_id) 
+        #     FROM well_data_column_positive_index AS wdc1 
+        #     JOIN data_column AS dc1 ON wdc1.data_column_id = dc1.data_column_id 
+        #     WHERE dc1.screen_result_id = 1090
+        # order by well_id
+        # ) 
+        # SELECT DISTINCT wdc.data_column_id 
+        # FROM well_data_column_positive_index AS wdc 
+        # JOIN data_column ON wdc.data_column_id = data_column.data_column_id
+        # join wdc1 on wdc1.well_id=wdc.well_id 
+        # WHERE data_column.screen_result_id != 1090;
+
+        
+        
+        _well_data_column_positive_index = \
+            self.bridge['well_data_column_positive_index']
+        _aw = self.bridge['assay_well']
+        _sr = self.bridge['screen_result']
+        _dc = self.bridge['data_column']
+        _wdc = _well_data_column_positive_index.alias('wdc')
+        
+        _wdc1 = _well_data_column_positive_index.alias('wdc1')
+        _dc1 = _dc.alias('dc1')
+        
+        j2 = _wdc1.join(_dc1, _wdc1.c.data_column_id == _dc1.c.data_column_id)
+        stmt2 = select([distinct(_wdc1.c.well_id).label('well_id')]).select_from(j2)
+        stmt2 = stmt2.where(_dc1.c.screen_result_id == screen_result_id)
+        stmt2.order_by('well_id')
+        stmt2 = stmt2.cte('wdc1')
+
+        j = _wdc.join(_dc, _wdc.c.data_column_id == _dc.c.data_column_id)
+        j = j.join(stmt2, stmt2.c.well_id == _wdc.c.well_id)
+        stmt = select([distinct(_wdc.c.data_column_id)]).select_from(j)
+        stmt = stmt.where(_dc.c.screen_result_id != screen_result_id)
+        
+        sql = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+        logger.info('mutual positives statement: %r',sql)
+        logger.info('execute mutual positives column query...')
+        with self.bridge.get_engine().connect() as conn:
+            result = conn.execute(stmt)
+            logger.info('executed, not iterated')
+            cols =  [x[0] for x in result ]
+            logger.info('done, cols %r', cols)
+            return cols
 
     def get_schema(self, request, **kwargs):
 
@@ -1429,7 +1447,9 @@ class ScreenResultResource(ApiResource):
         if 'screen_facility_id' not in kwargs:
             raise BadRequest('screen_facility_id is required')
         screen_facility_id = kwargs['screen_facility_id']
-        self.clear_cache(by_uri='/screenresult/%s' % screen_facility_id)
+        # Clear cache: note "all" because mutual positive columns can change
+        # self.clear_cache(by_uri='/screenresult/%s' % screen_facility_id)
+        self.clear_cache(all=True)
         screen = Screen.objects.get(facility_id=screen_facility_id)
 
         logger.info('delete screen result for %r', screen_facility_id)
@@ -1471,21 +1491,31 @@ class ScreenResultResource(ApiResource):
                 'screen_facility_id in file %r does not match url: %r'
                 % (meta['screen_facility_id'], screen_facility_id))
         
-        self.clear_cache(by_uri='/screenresult/%s' % screen_facility_id)
+        # Clear cache: note "all" because mutual positive columns can change
+        # self.clear_cache(by_uri='/screenresult/%s' % screen_facility_id)
+        self.clear_cache(all=True)
         
         schema = self.build_schema()
         id_attribute = schema['id_attribute']
+
+        screen = Screen.objects.get(facility_id=screen_facility_id)
+        try:
+            adminuser = ScreensaverUser.objects.get(username=request.user.username)
+        except ObjectDoesNotExist as e:
+            logger.error('admin user: %r does not exist', request.user.username )
+            raise
+        screen_log = self.make_log(request, **{ 'action': API_ACTION_PATCH })
+        screen_log.ref_resource_name = 'screen'
+        screen_log.key = screen.facility_id
+        screen_log.uri = '/'.join(['screen', screen_log.key])
+        screenresult_log = self.make_log(request, **kwargs)
+        screenresult_log.ref_resource_name = 'screenresult'
+        screenresult_log.key = screen.facility_id
+        screenresult_log.uri = '/'.join(['screenresult', screen_log.key])
+        screenresult_log.diffs = {}
         
         with transaction.atomic():
 
-            screen = Screen.objects.get(facility_id=screen_facility_id)
-
-            screen_log = self.make_log(request, **kwargs)
-            screen_log.ref_resource_name = 'screen'
-            screen_log.key = screen.facility_id
-            screen_log.uri = '/'.join(['screen', screen_log.key])
-            screen_log.diff_keys = ['last_data_loading_date']
-            
             logger.info('Create screen result for %r', screen_facility_id)
             if hasattr(screen, 'screenresult'):
                 screen_result = screen.screenresult
@@ -1495,22 +1525,28 @@ class ScreenResultResource(ApiResource):
                 screen_result.assaywell_set.all().delete()
                 screen_result.screen.assayplate_set\
                     .filter(library_screening__isnull=True).delete()
-                screen_log.diffs = { 'last_data_loading_date': 
-                    [screen_result.date_loaded, screen_log.date_time]}
+                screen_log.diff_keys = ['last_data_loading_date']
+                screen_log.diffs = { 
+                    'last_data_loading_date': 
+                        [screen_result.date_loaded, screen_log.date_time]
+                }
                 screen_result.date_loaded = screen_log.date_time
+                screen_result.created_by = adminuser
             else:
                 screen_result = ScreenResult.objects.create(
                     screen=screen,
                     experimental_well_count=0,
                     replicate_count=0,
-                    date_loaded=screen_log.date_time)
+                    date_loaded=screen_log.date_time,
+                    created_by=adminuser)
                 screen_log.diffs = {
                     'last_data_loading_date': [None, screen_log.date_time] }
                 logger.info('created screen result: %r', screen_result)
             
             screen_log.save()
-            
+            screenresult_log.parent_log = screen_log
             logger.info('created log: %r', screen_log)
+            
             logger.info('Create screen result data columns for %r', screen_facility_id)
             sheet_col_to_datacolumn = {}
             derived_from_columns_map = {}
@@ -1553,17 +1589,26 @@ class ScreenResultResource(ApiResource):
                 'sheet_col_to_datacolumn: %r', sheet_col_to_datacolumn.keys())
             try:
                 self.create_result_values(
-                    screen_result, result_values, sheet_col_to_datacolumn)
+                    screen_result, result_values, sheet_col_to_datacolumn,
+                    screenresult_log)
             except ValidationError, e:
                 logger.exception('Validation error: %r', e)
                 raise e
-
+            # END of Transaction
+            
         self.create_data_loading_statistics(screen_result)
+        screenresult_log.diffs.update({ 
+            'created_by': adminuser.username,  
+            'experimental_well_count': screen_result.experimental_well_count,
+            'replicate_count': screen_result.replicate_count,
+            'channel_count': screen_result.channel_count,
+        })
+        screenresult_log.save()
         
         logger.info('pre-generate the mutual positives index...')
         self.get_mutual_positives_columns(screen_result.screen_result_id)
         logger.info('done - pre-generate the mutual positives index')
-            
+             
         if not self._meta.always_return_data:
             response_message = {'success': {'result': 'screen result loaded'}}
             response = self.build_response(request, response_message, **kwargs)
@@ -1683,7 +1728,8 @@ class ScreenResultResource(ApiResource):
     
     @transaction.atomic()
     def create_result_values(
-            self, screen_result, result_values, sheet_col_to_datacolumn):
+            self, screen_result, result_values, sheet_col_to_datacolumn,
+            screenresult_log):
         
         logger.info(
             'create result values for %r ...', screen_result.screen.facility_id)
@@ -1812,7 +1858,10 @@ class ScreenResultResource(ApiResource):
                 conn.copy_from(
                     f, 'result_value', sep=str(','), columns=fieldnames, null=PSYCOPG_NULL)
                 logger.info('result_values created.')
-        
+            screenresult_log.diffs.update({
+                'result_values_created': rvs_to_create,
+                'assay_wells_loaded': rows_created
+                })
         for dc in sheet_col_to_datacolumn.values():
             dc.save()
             
@@ -1906,7 +1955,7 @@ class ScreenResultResource(ApiResource):
 
     @transaction.atomic()
     def create_data_loading_statistics(self, screen_result):
-        with self.bridge.get_engine().begin() as conn:
+        with self.bridge.get_engine().connect() as conn:
             # NOTE: mixing Django connection with SQA connection
             # - thrown exceptions will rollback the nested SQA transaction
             # see: http://docs.sqlalchemy.org/en/latest/core/connections.html
@@ -1951,7 +2000,7 @@ class ScreenResultResource(ApiResource):
             if screen_result.channel_count == 0:
                 screen_result.channels_count = 1
                 
-            screen_result.save()
+        screen_result.save()
             
         
 

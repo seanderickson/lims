@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 
+from django.db import connection
 from django.contrib.auth.models import User
 from django.core.urlresolvers import resolve
 from django.test import TestCase
@@ -909,24 +910,33 @@ class ScreenResultResource(DBResourceTestCase):
         
         DBResourceTestCase.tearDown(self)
         logger.info('delete resources')
-        from django.db import connection
-        cursor = connection.cursor()
-        cursor.execute('delete from well_query_index;')
-        cursor.execute('delete from well_data_column_positive_index;')
-        cursor.execute('delete from cached_query;')
+        with connection.cursor() as cursor:
+            try:
+                cursor.execute('delete from well_query_index;')
+            except Exception as e:
+                logger.exception('on delete well_query_index')
+            try:
+                cursor.execute('delete from well_data_column_positive_index;')
+            except Exception as e:
+                logger.exception('on delete well_data_column_positive_index')
+            try:
+                cursor.execute('delete from cached_query;')
+            except Exception as e:
+                logger.exception('on delete cached_query')
         Screen.objects.all().delete()
         Library.objects.all().delete()
         ApiLog.objects.all().delete()
-        ScreensaverUser.objects.all().filter(username='adminuser').delete()
+#         ScreensaverUser.objects.all().filter(username='adminuser').delete()
 
     def _setup_test_config(self):
         # Setup ScreenResult dependencies
         
+        # Make a ScreensaverUser entry for the admin user
         self.admin_user = self.create_screensaveruser({ 
-            'username': 'adminuser',
+            'username': self.username,
             'is_superuser': True
         })
-        
+
         logger.info('create library...')
         library1 = self.create_library({
             'start_plate': 1, 
@@ -959,9 +969,10 @@ class ScreenResultResource(DBResourceTestCase):
         
         default_data_for_get = { 'limit': 0, 'includes': ['*'] }
         default_data_for_get['HTTP_AUTHORIZATION'] = self.get_credentials()
-
+        
+        # Make a ScreensaverUser entry for the admin user
         self.admin_user = self.create_screensaveruser({ 
-            'username': 'adminuser',
+            'username': self.username,
             'is_superuser': True
         })
         
@@ -1448,8 +1459,9 @@ class ScreenResultResource(DBResourceTestCase):
         
         
     def test4_result_value_errors_from_file(self):
+        # Make a ScreensaverUser entry for the admin user
         self.admin_user = self.create_screensaveruser({ 
-            'username': 'adminuser',
+            'username': self.username,
             'is_superuser': True
         })
         
@@ -1540,8 +1552,9 @@ class ScreenResultResource(DBResourceTestCase):
                 'error should be a conversion error: %r, %r' %(key,sheet_errors[key]) )
 
     def test5_data_column_errors(self):
+        # Make a ScreensaverUser entry for the admin user
         self.admin_user = self.create_screensaveruser({ 
-            'username': 'adminuser',
+            'username': self.username,
             'is_superuser': True
         })
         
@@ -1685,8 +1698,9 @@ class ScreenResource(DBResourceTestCase):
         self.screening_user = self.create_screensaveruser({ 
             'username': 'screening1'
         })
+        # Make a ScreensaverUser entry for the admin user
         self.admin_user = self.create_screensaveruser({ 
-            'username': 'adminuser',
+            'username': self.username,
             'is_superuser': True
         })
         

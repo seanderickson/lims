@@ -813,11 +813,28 @@ define([
         self.deleteScreenResults();
       });
       
+      function viewLoadHistory(e){
+        e.preventDefault();
+        console.log('history button...');
+        var newUriStack = ['apilog','order','-date_time', 'search'];
+        var search = {};
+        search['ref_resource_name'] = 'screenresult';
+        search['key'] = self.model.key;
+        newUriStack.push(appModel.createSearchString(search));
+        var route = newUriStack.join('/');
+        console.log('history route: ' + route);
+        appModel.router.navigate(route, {trigger: true});
+        self.remove();
+      }
+      
       var summaryKeys = self.model.resource.filterKeys('visibility', 'summary');
       var summaryModel = appModel.getModel(
         self.model.resource.key, self.model.key, 
         function(model){
           view = new DetailView({ 
+            events: {
+              'click button#history': viewLoadHistory
+            },
             model: model, 
             uriStack: _.clone(delegateStack),
             detailKeys: summaryKeys,
@@ -844,8 +861,9 @@ define([
                 self.showCopyPlatesLoaded(delegateStack);
               });
 
-              self._createPositivesSummary(this.$el.find('#positives_summary'));
-              
+              if (self.model.get('has_screen_result')){
+                self._createPositivesSummary(this.$el.find('#positives_summary'));
+              }
               if (appModel.hasPermission('screenresult','write')){
                 if (self.model.get('has_screen_result')){
                   this.$el.prepend($deleteScreenResultsButton);

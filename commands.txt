@@ -28,6 +28,7 @@ curl -k --cookie cookiefile  \
   -H "X-CSRFTOKEN: `grep csrftoken cookiefile | awk '{print $7}'`"  \
   --user sde -X POST  "https://dev.screensaver2.med.harvard.edu/accounts/login/?next=/lims/"
 
+
 # EXAMPLE interaction using "django_requests.py" utility to do the form authentication
 # NOTE: basic authentication is not set up on Orchestra; 
 # because the wsgi client does not communicate credentials with the apache server
@@ -38,6 +39,11 @@ PYTHONPATH=. python reports/utils/django_requests.py -u sde -f lims/static/produ
 
 #####
 screen result upload test:
+# EXAMPLE post screenresult: canonical use of the API
+
+curl -v --dump-header - -H "Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" -H "Accept: application/json" --user sde -X POST http://localhost:8000/db/api/v1/screenresult/1379 --data-binary @db/static/test_data/screens/ScreenResultTest_1_valid.xlsx
+
+# Other patterns:
 $ curl -v --user sde -F xls=@db/static/test_data/screens/ScreenResultTest_115.xls \
    http://localhost:8000/db/api/v1/screenresult/1356
 

@@ -80,13 +80,16 @@ class BaseSerializer(Serializer):
         elif request.META.get('CONTENT_TYPE', '*/*') != '*/*':
             format = request.META.get('CONTENT_TYPE', '*/*')
         else:
+            logger.debug('deserialize format: CONTENT_TYPE not specified,'
+                ' fallback to HTTP_ACCEPT')
             format = self.get_serialize_format(request)
             
         logger.debug('get_deserialize_format returns: %r', format)
         return format
 
     def get_serialize_format(self, request, **kwargs):
-        
+        logger.debug('get serialize format: %r, %r', 
+            kwargs, request.META);
         format = None
         if kwargs and 'format' in kwargs:
             format = kwargs['format']
@@ -102,7 +105,8 @@ class BaseSerializer(Serializer):
                         % (format, self.content_types.keys()))
                 raise BadRequest(msg)
         elif request.META.get('HTTP_ACCEPT', '*/*') != '*/*':
-            logger.debug('get_format: Try to fallback on the Accepts header')
+            logger.debug('get_format: Try to HTTP_ACCEPT header %r',
+                request.META.get('HTTP_ACCEPT', '*/*'))
             try:
                 format = mimeparse.best_match(
                     self.content_types.values(), 
@@ -128,6 +132,8 @@ class BaseSerializer(Serializer):
                 raise BadRequest('Invalid Accept header: %r',
                     request.META['HTTP_ACCEPT'])
         elif request.META.get('CONTENT_TYPE', '*/*') != '*/*':
+            logger.debug('serialize format: HTTP_ACCEPT not specified,'
+                ' fallback to CONTENT_TYPE')
             format = request.META.get('CONTENT_TYPE', '*/*')
 
         logger.debug('get_serialize_format returns: %r', format)
@@ -517,7 +523,6 @@ class ScreenResultSerializer(XLSSerializer,SDFSerializer,CSVSerializer):
         return screen_result_importer.read_workbook(wb)
 
     def to_json(self, data, options=None):
-        logger.info('serialize sr data...%r', data)
         return XLSSerializer.to_json(self, data, options=options)
 
 #     def from_json(self, content):

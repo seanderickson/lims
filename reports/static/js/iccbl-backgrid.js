@@ -101,12 +101,12 @@ var getISODateString = Iccbl.getISODateString = function(jsDate){
  * - for display of dates in the UI
  * @param jsDate a JavaScript Date object
  */
-var getIccblUTCDateString = Iccbl.getDateString = function(jsDate){
+var getIccblDateString = Iccbl.getDateString = function(jsDate){
   if (!jsDate) return jsDate;
   return ( 
-      lpad(jsDate.getUTCMonth() + 1, 2, 0) 
-      + '/' + lpad(jsDate.getUTCDate(), 2, 0) 
-      + '/' + lpad(jsDate.getUTCFullYear(), 4, 0) );
+      lpad(jsDate.getMonth() + 1, 2, 0) 
+      + '/' + lpad(jsDate.getDate(), 2, 0) 
+      + '/' + lpad(jsDate.getFullYear(), 4, 0) );
 }
 
 /**
@@ -3709,16 +3709,22 @@ _.extend(DatetimeFormatter.prototype, {
 
     if(this.ICCBL_DATE_RE.test(rawData)){
       var DDMMYYYY = this.ICCBL_DATE_RE.exec(rawData) || [];
-      var jsDate = new Date(Date.UTC(DDMMYYYY[3] * 1 || 0,
+      var jsDate = new Date(
+        DDMMYYYY[3] * 1 || 0,
         DDMMYYYY[2] * 1 - 1 || 0,
-        DDMMYYYY[1] * 1 || 0));
-      return getIccblDateString(jsDate);
+        DDMMYYYY[1] * 1 || 0);
+      var temp = getIccblDateString(jsDate);
+      console.log('date: raw: ', rawData, 'converted', temp);
+      return temp;
     }else{
       var temp = rawData.split('T')[0];
       if(this.DATE_RE.test(temp)){
         var YYYYMMDD = this.DATE_RE.exec(temp);
-        var jsDate = new Date(Date.UTC(YYYYMMDD[1]*1, YYYYMMDD[2]*1-1, YYYYMMDD[3]*1 ))
-        return getIccblDateString(jsDate);
+        console.log('YYYYMMDD', YYYYMMDD);
+        var jsDate = new Date(YYYYMMDD[1]*1, YYYYMMDD[2]*1-1, YYYYMMDD[3]*1 )
+        var temp1 = getIccblDateString(jsDate);
+        console.log('date: raw: ', rawData, 'converted', temp1);
+        return temp1;
       }else{
         Iccbl.appModel.error('unrecognized date: ' + rawData );
       }
@@ -3730,9 +3736,10 @@ _.extend(DatetimeFormatter.prototype, {
     if ((formattedData + '').trim() === '') return null;
     if(this.ICCBL_DATE_RE.test(formattedData)){
       var DDMMYYYY = this.ICCBL_DATE_RE.exec(formattedData) || [];
-      var jsDate = new Date(Date.UTC(DDMMYYYY[3] * 1 || 0,
+      var jsDate = new Date(
+        DDMMYYYY[3] * 1 || 0,
         DDMMYYYY[2] * 1 - 1 || 0,
-        DDMMYYYY[1] * 1 || 0));
+        DDMMYYYY[1] * 1 || 0);
       var temp = getISODateString(jsDate);
       return temp;
     }else{
@@ -3742,7 +3749,9 @@ _.extend(DatetimeFormatter.prototype, {
   
   
   /**
-   * Use Backgrid DatetimeFormatter convert, add in ICCBL_DATE_RE
+   * Use Backgrid DatetimeFormatter convert:
+   * - add in ICCBL_DATE_RE
+   * - remove UTC conversion
    */
   _convert: function (data, validate) {
     if ((data + '').trim() === '') return null;
@@ -3750,8 +3759,8 @@ _.extend(DatetimeFormatter.prototype, {
     var date, time = null;
     if (_.isNumber(data)) {
       var jsDate = new Date(data);
-      date = lpad(jsDate.getUTCFullYear(), 4, 0) + '-' + lpad(jsDate.getUTCMonth() + 1, 2, 0) + '-' + lpad(jsDate.getUTCDate(), 2, 0);
-      time = lpad(jsDate.getUTCHours(), 2, 0) + ':' + lpad(jsDate.getUTCMinutes(), 2, 0) + ':' + lpad(jsDate.getUTCSeconds(), 2, 0);
+      date = lpad(jsDate.getFullYear(), 4, 0) + '-' + lpad(jsDate.getMonth() + 1, 2, 0) + '-' + lpad(jsDate.getDate(), 2, 0);
+      time = lpad(jsDate.getHours(), 2, 0) + ':' + lpad(jsDate.getMinutes(), 2, 0) + ':' + lpad(jsDate.getSeconds(), 2, 0);
       // modified 20150831 - use local date/time
       //date = lpad(jsDate.getFullYear(), 4, 0) + '-' + lpad(jsDate.getMonth() + 1, 2, 0) + '-' + lpad(jsDate.getDate(), 2, 0);
       //time = lpad(jsDate.getHours(), 2, 0) + ':' + lpad(jsDate.getMinutes(), 2, 0) + ':' + lpad(jsDate.getUTCSeconds(), 2, 0);
@@ -3773,13 +3782,13 @@ _.extend(DatetimeFormatter.prototype, {
       if (!this.includeTime && time) return;
     }
 
-    var jsDate = new Date(Date.UTC(DDMMYYYY[3] * 1 || 0,
+    var jsDate = new Date(DDMMYYYY[3] * 1 || 0,
                                    DDMMYYYY[2] * 1 - 1 || 0,
                                    DDMMYYYY[1] * 1 || 0,
                                    HHmmssSSS[1] * 1 || null,
                                    HHmmssSSS[2] * 1 || null,
                                    HHmmssSSS[3] * 1 || null,
-                                   HHmmssSSS[5] * 1 || null));
+                                   HHmmssSSS[5] * 1 || null);
 
     var result = '';
 
@@ -3799,13 +3808,13 @@ _.extend(DatetimeFormatter.prototype, {
     if (this.includeTime) {
       result = ( result 
           + (this.includeDate ? 'T' : '') 
-          + lpad(jsDate.getUTCHours(), 2, 0) 
-          + ':' + lpad(jsDate.getUTCMinutes(), 2, 0) 
-          + ':' + lpad(jsDate.getUTCSeconds(), 2, 0)
+          + lpad(jsDate.getHours(), 2, 0) 
+          + ':' + lpad(jsDate.getMinutes(), 2, 0) 
+          + ':' + lpad(jsDate.getSeconds(), 2, 0)
           );
 
       if (this.includeMilli) {
-        result = result + '.' + lpad(jsDate.getUTCMilliseconds(), 3, 0);
+        result = result + '.' + lpad(jsDate.getMilliseconds(), 3, 0);
       }
     }
 

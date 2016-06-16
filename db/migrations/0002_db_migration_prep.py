@@ -57,7 +57,7 @@ def convert_django_autofields(apps, schema_editor):
     
     table_autofields = (
         ('result_value', 'result_value_id'),
-        ('assay_well', 'assay_well_id')
+        ('assay_well', 'assay_well_id'),
         ('reagent', 'reagent_id'),
         ('screen', 'screen_id'),
         ('library', 'library_id'),

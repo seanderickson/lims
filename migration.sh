@@ -57,9 +57,12 @@ RUN_DB_TESTS=${RUN_DB_TESTS:-false}
 
 # PATH TO node, npm, leave blank if part of the env path already
 NODE_PATH=${NODE_PATH:-""}
-
 if [[ -n "$NODE_PATH" ]]; then
   export PATH=${PATH}:$NODE_PATH
+fi
+GIT_PATH=${GIT_PATH:-""}
+if [[ -n "$GIT_PATH" ]]; then
+  export PATH=$GIT_PATH:${PATH}
 fi
 
 if $DEBUG; then

@@ -35,6 +35,25 @@ def create_vocab(vocab_writer, attr, scope, query):
         vocab_writer.writerow(row)
         logger.info('updated vocab: %r' % row)
 
+def create_serviceactivity_vocab(vocab_writer, attr, scope, query):
+    resource_uri = '/reports/api/v1/vocabularies/%s/%s/'
+    logger.info('create simple vocab: %s, %s', attr,scope)
+    vocabs = []
+    for ordinal, attr_value in (enumerate(
+        query.values_list(attr, flat=True)
+            .distinct(attr).order_by(attr))):
+        if not attr_value: continue
+        key = default_converter(attr_value)
+        title = attr_value
+        _resource_uri = resource_uri % (scope, key)
+        vocabs.append([_resource_uri, key, scope, ordinal, title])
+    for row in vocabs:
+        title = row[4]
+        key = row[1]
+#         query.filter(**{ '%s__exact' % attr: title }).update(**{ attr: key })
+        vocab_writer.writerow(row)
+        logger.info('updated vocab: %r' % row)
+
 
 def create_simple_vocabularies(apps):
 
@@ -50,6 +69,11 @@ def create_simple_vocabularies(apps):
         vocab_writer = csv.writer(_file)
         header = ['resource_uri', 'key', 'scope', 'ordinal', 'title'] 
         vocab_writer.writerow(header)
+        # Run it twice for service activities, so that they can be separated
+        # from the vanilla activities; 
+        create_serviceactivity_vocab(
+            vocab_writer, 'service_activity_type', 'serviceactivity.type',
+            apps.get_model('db', 'ServiceActivity').objects.all())
         
         input_args = [
                 ['species', 'screen.species',

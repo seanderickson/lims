@@ -124,6 +124,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
                 ('name', models.TextField(unique=True)),
+                ('title',models.TextField(unique=True, null=True, blank=True)),
                 ('permissions', models.ManyToManyField(to='reports.Permission')),
                 ('super_groups', models.ManyToManyField(related_name='sub_groups', to='reports.UserGroup')),
             ],

@@ -78,7 +78,7 @@ class UserGroupAuthorization(Authorization):
     
     def _is_resource_authorized(self, resource_name, user, permission_type):
         
-        DEBUG_AUTHORIZATION = False or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_AUTHORIZATION = True or logger.isEnabledFor(logging.DEBUG)
         
         if DEBUG_AUTHORIZATION:
             logger.info("_is_resource_authorized: %s, user: %s, type: %s",
@@ -125,7 +125,7 @@ class UserGroupAuthorization(Authorization):
                 for permission in group.get_all_permissions(
                     scope=scope, key=resource_name, type__in=permission_types)]
         if permissions_group:
-            if(logger.isEnabledFor(logging.DEBUG)):
+            if DEBUG_AUTHORIZATION:
                 logger.info(
                     'user: %r, auth query: %r, found usergroup permissions: %r'
                     ,user, permission_str, permissions_group)
@@ -2080,7 +2080,10 @@ class VocabulariesResource(ApiResource):
                 class Row:
                     def __init__(self, row):
                         self.row = row
-                        self.json_content = json.loads(row['json_field'])
+                        if row.has_key('json_field') and row['json_field']:
+                            self.json_content = json.loads(row['json_field'])
+                        else:
+                            self.json_content = None
                     def has_key(self, key):
                         return (key in fields_for_json or self.row.has_key(key))
                     def keys(self):
@@ -2095,13 +2098,15 @@ class VocabulariesResource(ApiResource):
                                 'vocabularies', row['scope'], row['key']])
                         elif key not in row:
                             if key in fields_for_json:
-                                if key not in self.json_content:
+                                if self.json_content and key not in self.json_content:
                                     logger.debug(
                                         'key %r not found in json content %r', 
                                         key, self.json_content)
                                     return None
-                                else:
+                                elif self.json_content:
                                     return self.json_content[key]
+                                else:
+                                    return None
                             else:
                                 return None
                         else:
@@ -2373,6 +2378,11 @@ class UserResource(ApiResource):
             select_from(_p.join(_upp,_upp.c.permission_id==_p.c.id)).\
             group_by(_upp.c.userprofile_id)).alias('uap')
         
+        # FIXME: ICCB-L specific data sharing groups
+        small_molecule_usergroups = set([
+            'smDsl1MutualScreens','smDsl2MutualPositives','smDsl3SharedScreens'])
+        rna_usergroups = set([
+            'rnaiDsl1MutualScreens','rnaiDsl2MutualPositives','rnaiDsl3SharedScreens'])
                          
         _ugu1=_ugu.alias('ugu1')
         _ugx = _ug.alias('ugx')
@@ -2399,6 +2409,17 @@ class UserResource(ApiResource):
                     select_from(
                         _ugx.join(_ugu1,_ugx.c.id==_ugu1.c.usergroup_id)).
                     where(_ugu1.c.userprofile_id==text('reports_userprofile.id')).
+                    order_by('name').alias('inner_groups')),
+            'data_sharing_levels': 
+                select([func.array_to_string(
+                        func.array_agg(text('inner_groups.name')), 
+                        LIST_DELIMITER_SQL_ARRAY)]).\
+                select_from(
+                    select([_ugx.c.name]).
+                    select_from(
+                        _ugx.join(_ugu1,_ugx.c.id==_ugu1.c.usergroup_id)).
+                    where(_ugu1.c.userprofile_id==text('reports_userprofile.id')).
+                    where(_ugx.c.name.in_(small_molecule_usergroups|rna_usergroups)).
                     order_by('name').alias('inner_groups')),
             'all_permissions':
                 select([func.array_to_string(func.array_agg(
@@ -2654,6 +2675,7 @@ class UserResource(ApiResource):
                                     userprofile.save()
                     elif key == 'usergroups':
                         # FIXME: first check if groups have changed
+                        logger.info('patch usergroups: %r', val)
                         userprofile.usergroup_set.clear()
                         if val:
                             ugr = self.get_usergroup_resource()
@@ -3349,7 +3371,8 @@ class PermissionResource(ApiResource):
                 for ptype in permissionTypes:
                     p = Permission.objects.create(
                         scope=r.scope, key=r.key, type=ptype.key)
-                    logger.info('bootstrap created permission %s' % p)
+                    p.save()
+                    logger.debug('bootstrap created permission %s' % p)
 
     def prepend_urls(self):
         return [

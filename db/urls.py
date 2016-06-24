@@ -13,7 +13,8 @@ from db.api import ScreensaverUserResource, ScreenResource, \
     CopyWellResource, UserChecklistItemResource, \
     CherryPickRequestResource, CherryPickPlateResource, \
     AttachedFileResource, ServiceActivityResource, LibraryScreeningResource,\
-    CherryPickLiquidTransferResource, CherryPickScreeningResource
+    CherryPickLiquidTransferResource, CherryPickScreeningResource, \
+    UserAgreementResource
 
 
 v1_api = Api(api_name='v1')
@@ -44,6 +45,7 @@ v1_api.register(CopyWellResource())
 v1_api.register(LibraryScreeningResource())
 v1_api.register(CherryPickLiquidTransferResource())
 v1_api.register(CherryPickScreeningResource())
+v1_api.register(UserAgreementResource())
 
 urlpatterns = patterns('',
     url(r'^$', views.main, name="home"),

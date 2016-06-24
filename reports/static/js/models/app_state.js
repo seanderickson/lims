@@ -445,6 +445,8 @@ define([
     
     /**
      * Cache an "options" array for all permissions, for the editor UI
+     * "options" are:
+     * { val: 'key', label: 'label' }
      */
     setPermissionsOptions: function(resources){
       var self = this;
@@ -800,6 +802,9 @@ define([
       if(self.getCurrentUser().is_superuser) return true;
       
       var r_perm = 'resource/'+ resource;
+      if( permission=='edit'){
+        permission = 'write';
+      }
       if(!_.isUndefined(permission) && permission == 'write' ){
         // only check for 'write' permission; write implies read
         r_perm += '/'+ permission;
@@ -813,6 +818,24 @@ define([
           });
       console.log('permission', r_perm, !_.isUndefined(match));
       return !_.isUndefined(match);
+    },
+    
+    
+    /**
+     * @return the SmallMoleculeUserAgreementLevel (group) assigned to this user
+     */
+    getSMUALevel: function(user){
+      return _.find(user.get('usergroups'), function(usergroup){
+        if(usergroup.toLowerCase().indexOf('smdsl') > -1) return true;
+      });
+    },
+    /**
+     * @return the SmallMoleculeUserAgreementLevel (group) assigned to this user
+     */
+    getRNAUALevel: function(user){
+      return _.find(user.get('usergroups'), function(usergroup){
+        if(usergroup.toLowerCase().indexOf('rnaidsl') > -1) return true;
+      });
     },
     
     /**
@@ -859,25 +882,32 @@ define([
         ui_resource = uiResources[resourceId];
       }
       
-      var ModelClass = Backbone.Model.extend({
-        url : schemaUrl,
-        defaults : {}
-      });
-      var instance = new ModelClass();
-      instance.fetch({
-          success : function(model) {
-            console.log('resource schema model', model.toJSON());
-            schema = model.toJSON();
-            _.each(_.values(schema.fields), self.parseSchemaField );
-
-            ui_resource = _.extend({}, ui_resource, schema);
-            var schemaClass = new SchemaClass();
-            ui_resource = _.extend(ui_resource, schemaClass);
-            
-            callback(ui_resource)
-          }
-      }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
-      
+      if (_.isEmpty(ui_resource) || _.contains(['screenresult'], resourceId)){
+        // Re-fetch the specific resource schema from the Resource endpoint:
+        // - if the Resource has customizations of the schema
+        // - i.e. "extraSelectorOptions
+        
+        var ModelClass = Backbone.Model.extend({
+          url : schemaUrl,
+          defaults : {}
+        });
+        var instance = new ModelClass();
+        instance.fetch({
+            success : function(model) {
+              console.log('resource schema model', model.toJSON());
+              schema = model.toJSON();
+              _.each(_.values(schema.fields), self.parseSchemaField );
+  
+              ui_resource = _.extend({}, ui_resource, schema);
+              var schemaClass = new SchemaClass();
+              ui_resource = _.extend(ui_resource, schemaClass);
+              
+              callback(ui_resource)
+            }
+        }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
+      } else {
+        callback(ui_resource);
+      }      
     },
     
     /**

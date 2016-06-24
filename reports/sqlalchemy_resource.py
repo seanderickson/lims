@@ -31,7 +31,7 @@ from tastypie.utils.mime import build_content_type
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     LIST_BRACKETS, MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE, \
     HTTP_PARAM_RAW_LISTS
-from reports.api_base import IccblBaseResource
+from reports.api_base import IccblBaseResource, un_cache
 from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE
 from reports.serialize.csvutils import LIST_DELIMITER_CSV, csv_convert
 from reports.serialize.streaming_serializers import sdf_generator, \
@@ -41,6 +41,7 @@ from reports.serializers import LimsSerializer
 from reports.utils.sqlalchemy_bridge import Bridge
 
 import django.core.signals 
+from django.http.request import HttpRequest
 
 logger = logging.getLogger(__name__)
 
@@ -715,6 +716,20 @@ class SqlAlchemyResource(IccblBaseResource):
             logger.exception('on get list')
             return []
         
+    @un_cache
+    def _get_detail_response_internal(self, **kwargs):
+        request = HttpRequest()
+        class User:
+            @staticmethod
+            def is_superuser():
+                return true
+        request.user = User
+#         temp = self.use_cache
+#         self.use_cache = False
+        result = self._get_detail_response(request, **kwargs)
+#         self.use_cache = temp
+        return result
+    
     def _get_detail_response(self,request,**kwargs):
         '''
         Return the detail response as a dict
@@ -976,9 +991,6 @@ class SqlAlchemyResource(IccblBaseResource):
             is_for_detail=False,
             downloadID=None, title_function=None, meta=None):
           
-        logger.debug('meta %s, session key: %s', 
-            meta,request.session.session_key)
-
         try:
                     
             list_brackets = LIST_BRACKETS

@@ -20,7 +20,7 @@ import db.models
 from db.support import lims_utils, screen_result_importer
 from db.test.factories import LibraryFactory, ScreenFactory, \
     ScreensaverUserFactory
-from reports import ValidationError
+from reports import ValidationError, HEADER_APILOG_COMMENT
 from reports.models import ApiLog, UserProfile, UserGroup
 from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, JSON_MIMETYPE
 from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer, \
@@ -28,6 +28,7 @@ from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer, \
 from reports.tests import IResourceTestCase, equivocal
 from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, \
     find_obj_in_list, find_in_dict
+import filecmp
 
 
 logger = logging.getLogger(__name__)
@@ -2186,8 +2187,256 @@ class ScreensaverUserResource(DBResourceTestCase):
         # TODO: 2. test attached file from file system
         # TODO: delete attached file
         # TODO: attachedfile logs
+    
+    def test4_user_agreement_updator(self):
 
-    def test4_service_activity(self):
+        self.test0_create_user();
+        group_patch = { 'objects': [
+            { 'name': 'smDsl1MutualScreens' },
+            { 'name': 'smDsl2MutualPositives' },
+            { 'name': 'smDsl3SharedScreens' },
+            { 'name': 'rnaiDsl1MutualScreens' },
+            { 'name': 'rnaiDsl2MutualPositives' },
+            { 'name': 'rnaiDsl3SharedScreens' },
+        ]}
+        resource_uri = BASE_REPORTS_URI + '/usergroup/'
+        resp = self.api_client.put(resource_uri, 
+            format='json', data=group_patch, authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200,201,202], 
+            (resp.status_code, self.get_content(resp)))
+        
+        test_username = self.user1['username']
+        admin_username = self.admin_user['username']
+        first_usergroup_to_add = 'smDsl2MutualPositives'
+        # TEST 1 - Try adding a SM dsl
+        
+        useragreement_item_post = {
+            'admin_user': admin_username,
+            'created_by_username': admin_username, 
+            'type': '2009_iccb_l_nsrb_small_molecule_user_agreement', 
+            'usergroup': first_usergroup_to_add
+            }
+        test_comment = 'test update comment for user agreement'
+        content_type = MULTIPART_CONTENT
+        resource_uri = BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_username
+        
+        authentication=self.get_credentials()
+        kwargs = { 'limit': 0, 'includes': ['*'] }
+        kwargs['HTTP_AUTHORIZATION'] = authentication
+        kwargs[HEADER_APILOG_COMMENT] = test_comment
+        
+        file = 'iccbl_sm_user_agreement_march2015.pdf'
+        filename = '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,file)
+        with open(filename) as input_file:
+
+            logger.info('PUT user agreement to the server...')
+            useragreement_item_post['attached_file'] = input_file
+            
+            django_test_client = self.api_client.client
+            resp = django_test_client.post(
+                resource_uri, content_type=MULTIPART_CONTENT, 
+                data=useragreement_item_post, **kwargs)
+            if resp.status_code not in [201]:
+                logger.info('resp code: %d, resp: %r, content: %r', resp.status_code, resp, resp.content)
+            self.assertTrue(
+                resp.status_code in [201], 
+                (resp.status_code))
+        
+        # Tests: 
+        
+        # - check that the user agreement is an attached file to the user
+        
+        data_for_get = { 'limit': 0, 'includes': ['*'] }
+        resp = self.api_client.get(
+            resource_uri,
+            authentication=self.get_credentials(), data=data_for_get )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        logger.info('new obj: %s ' % new_obj)
+        af = new_obj['objects'][0]
+        uri = '/db/attachedfile/content/%s' % af['attached_file_id']
+        try:
+            admin_user = User.objects.get(username=admin_username)
+            view, args, kwargs = resolve(uri)
+            kwargs['request'] = self.api_client.client.request()
+            kwargs['request'].user=admin_user
+            result = view(*args, **kwargs)
+            output_filename = '%s.out.%s' % tuple(filename.split('.'))
+            logger.info('write %s to %r', filename, output_filename)
+            with open(output_filename, 'w') as out_file:
+                out_file.write(self.get_content(result))
+            self.assertTrue(filecmp.cmp(filename,output_filename), 
+                'input file: %r, not equal to output file: %r' 
+                % (filename, output_filename))    
+        except Exception, e:
+            logger.exception('no file found at: %r', uri)
+            raise
+        
+        # - check that the data sharing level group is assigned to the user
+        
+        resource_uri = BASE_URI_DB + '/screensaveruser'
+        resource_uri = '/'.join([resource_uri,self.user1['username']])
+        user_data = self.get_single_resource(resource_uri)
+        logger.info('new user: %r', user_data)
+        self.assertTrue('usergroups' in user_data)
+        self.assertTrue(first_usergroup_to_add in user_data['usergroups'], 
+            'usergroups returned: %r does not contain %r' 
+            % (user_data['usergroups'], first_usergroup_to_add))
+
+        # - check that a checklist item has been created for the user agreement
+        
+        resource_uri = BASE_URI_DB + '/userchecklistitem'
+        resource_uri = '/'.join([resource_uri,self.user1['username']])
+        checklist_items = self.get_list_resource(resource_uri, {'status__eq': 'completed'})
+        logger.info('checklist_items: %r', checklist_items)
+        self.assertTrue(len(checklist_items)==1)
+        val = 'current_small_molecule_user_agreement_active'
+        self.assertTrue(checklist_items[0]['item_name'] == val,
+            'wrong checklist item - expected name: %r, %r'
+            %(val, checklist_items[0]))
+        
+        # - check logs
+        
+        resource_uri = BASE_REPORTS_URI + '/apilog'
+        data_for_get={ 
+            'limit': 0, 
+            'ref_resource_name': 'screensaveruser', 
+            'key': self.user1['username'],
+            'diff_keys__contains': 'data_sharing_level' 
+        }
+        apilogs = self.get_list_resource(resource_uri, data_for_get=data_for_get )
+        logger.info('logs: %r', apilogs)
+        self.assertTrue(len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
+        apilog = apilogs[0]
+        self.assertTrue(apilog['comment']==test_comment,
+            'comment %r should be: %r' % (apilog['comment'], test_comment))
+        self.assertTrue('data_sharing_level' in apilog['diff_keys'])
+        self.assertTrue(first_usergroup_to_add in apilog['diffs'])
+
+        # TEST 2 - Try adding an RNAi dsl
+        second_usergroup_to_add = 'rnaiDsl1MutualScreens'
+        useragreement_item_post = {
+            'admin_user': admin_username,
+            'created_by_username': admin_username, 
+            'type': 'iccb_l_nsrb_rnai_user_agreement', 
+            'usergroup': second_usergroup_to_add
+            }
+        test_comment = 'test update rna comment for user agreement'
+        content_type = MULTIPART_CONTENT
+        resource_uri = BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_username
+        
+        authentication=self.get_credentials()
+        kwargs = { 'limit': 0, 'includes': ['*'] }
+        kwargs['HTTP_AUTHORIZATION'] = authentication
+        kwargs[HEADER_APILOG_COMMENT] = test_comment
+        
+        file = 'iccbl_rnai_ua_march2015.pdf'
+        filename = '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,file)
+        with open(filename) as input_file:
+
+            logger.info('PUT user agreement to the server...')
+            useragreement_item_post['attached_file'] = input_file
+            
+            django_test_client = self.api_client.client
+            resp = django_test_client.post(
+                resource_uri, content_type=MULTIPART_CONTENT, 
+                data=useragreement_item_post, **kwargs)
+            if resp.status_code not in [201]:
+                logger.info('resp code: %d, resp: %r, content: %r', resp.status_code, resp, resp.content)
+            self.assertTrue(
+                resp.status_code in [201], 
+                (resp.status_code))
+        
+        # TEST 2 - check that the user agreement is an attached file to the user
+        
+        data_for_get = { 
+            'limit': 0, 'includes': ['*'], 
+            'type__eq': useragreement_item_post['type']}
+        resp = self.api_client.get(
+            resource_uri,
+            authentication=self.get_credentials(), data=data_for_get )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        logger.info('new obj: %s ' % new_obj)
+        self.assertTrue(len(new_obj['objects'])==1)
+        
+        af = new_obj['objects'][0]
+        uri = '/db/attachedfile/content/%s' % af['attached_file_id']
+        try:
+            admin_user = User.objects.get(username=admin_username)
+            view, args, kwargs = resolve(uri)
+            kwargs['request'] = self.api_client.client.request()
+            kwargs['request'].user=admin_user
+            result = view(*args, **kwargs)
+            output_filename = '%s.out.%s' % tuple(filename.split('.'))
+            logger.info('write %s to %r', filename, output_filename)
+            with open(output_filename, 'w') as out_file:
+                out_file.write(self.get_content(result))
+            self.assertTrue(filecmp.cmp(filename,output_filename), 
+                'input file: %r, not equal to output file: %r' 
+                % (filename, output_filename))    
+        except Exception, e:
+            logger.exception('no file found at: %r', uri)
+            raise
+
+        # TEST 2 - check that the data sharing level group is assigned to the user
+        
+        resource_uri = BASE_URI_DB + '/screensaveruser'
+        resource_uri = '/'.join([resource_uri,self.user1['username']])
+        user_data = self.get_single_resource(resource_uri)
+        logger.info('user: %r', user_data)
+        self.assertTrue('usergroups' in user_data)
+        self.assertTrue(first_usergroup_to_add in user_data['usergroups'], 
+            'usergroups returned: %r does not contain %r' 
+            % (user_data['usergroups'], first_usergroup_to_add))
+
+        self.assertTrue(second_usergroup_to_add in user_data['usergroups'], 
+            'usergroups returned: %r does not contain %r' 
+            % (user_data['usergroups'], second_usergroup_to_add))
+
+        # TEST 2 - check that a checklist item has been created for the user agreement
+        
+        resource_uri = BASE_URI_DB + '/userchecklistitem'
+        resource_uri = '/'.join([resource_uri,self.user1['username']])
+        checklist_items = self.get_list_resource(resource_uri, 
+            {'status__eq': 'completed',
+             'item_name__eq': u'current_rnai_user_agreement_active'})
+        logger.info('checklist_items: %r', checklist_items)
+        self.assertTrue(len(checklist_items)==1)
+        val = 'current_rnai_user_agreement_active'
+        self.assertTrue(checklist_items[0]['item_name'] == val,
+            'wrong checklist item - expected name: %r, %r'
+            %(val, checklist_items[0]))
+        
+        # TEST 2 - check logs
+        
+        resource_uri = BASE_REPORTS_URI + '/apilog'
+        data_for_get={ 
+            'limit': 0, 
+            'ref_resource_name': 'screensaveruser', 
+            'key': self.user1['username'],
+            'diff_keys__contains': 'data_sharing_level',
+            'order_by': 'date_created' 
+        }
+        apilogs = self.get_list_resource(resource_uri, data_for_get=data_for_get )
+        logger.info('logs: %r', apilogs)
+        self.assertTrue(len(apilogs) == 2, 'too many apilogs found: %r' % apilogs)
+        apilog = apilogs[1]
+        self.assertTrue(apilog['comment']==test_comment,
+            'comment %r should be: %r' % (apilog['comment'], test_comment))
+        self.assertTrue('data_sharing_level' in apilog['diff_keys'])
+        self.assertTrue(first_usergroup_to_add in apilog['diffs'])
+        self.assertTrue(second_usergroup_to_add in apilog['diffs'])
+    
+    # TODO: test remove dsl: create a "UserAgreementResource.delete_detail"
+    
+    
+    def test5_service_activity(self):
         
         self.test0_create_user();
         

@@ -373,6 +373,7 @@ class Permission(models.Model):
     
 class UserGroup(models.Model):
     name = models.TextField(unique=True, blank=False)
+    title = models.TextField(unique=True, blank=True, null=True)
     users = models.ManyToManyField('reports.UserProfile')
     permissions = models.ManyToManyField('reports.Permission')
     

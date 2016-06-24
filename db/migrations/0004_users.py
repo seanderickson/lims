@@ -198,111 +198,6 @@ def create_screensaver_users(apps, schema_editor):
             logger.exception('unable to save the converted user: %r', su.username )
     logger.info(str(( 'Converted ', i , ' users, skipped: ', skip_count)))
     
-# FIXME: 20150722 - NOT FINISHED ROLES
-def create_roles(apps, schema_editor):
-    '''
-    Create the needed Usergroups and Permissions to implement the legacy
-    ScreensaverUserRoles
-    '''
-    
-    AuthUserClass = apps.get_model('auth', 'User')
-    UserProfileClass = apps.get_model('reports','UserProfile')
-    UserGroupClass = apps.get_model('reports','UserGroup')
-    ScreensaverUser = apps.get_model('db', 'ScreensaverUser')
-    ScreensaverUserRole = apps.get_model('db', 'ScreensaverUserRole')
-    role_group_map = {}
-
-    # Create UserGroups
-    # - Group permissions are set using /lims/static/production_data/screensaver_usergroups-prod.csv    
-    for ssrole in ( ScreensaverUserRole.objects.all()
-        .distinct('screensaver_user_role')
-        .values_list('screensaver_user_role', flat=True) ):
-        role_group_map[ssrole] = UserGroupClass.objects.get_or_create(name=ssrole)[0]
-        logger.info('created user group: %s',ssrole)
-    
-    roles_assigned = 0
-    users_assigned = 0
-    for su in ScreensaverUser.objects.all():
-        up = su.user
-        if su.screensaveruserrole_set.exists(): 
-            users_assigned += 1
-        for role in su.screensaveruserrole_set.all():
-            if role.screensaver_user_role in role_group_map:
-                ug = role_group_map[role.screensaver_user_role]
-                ug.users.add(up)
-                ug.save()
-                roles_assigned += 1
-            else:
-                logger.error('unknown group: %s',role.screensaver_user_role)
-            
-    logger.info(str(('created',roles_assigned,'roles for',users_assigned,'users')))
-    
-    
-#     
-#     role_group_map['screensaverUser'] = \
-#         UserGroupClass.objects.get_or_create(name='screensaverUser')[0]
-#     role_group_map['smDsl1MutualScreens'] = \
-#         UserGroupClass.objects.get_or_create(name='smallMoleculeLevel1')[0]
-#     role_group_map['smDsl2MutualPositives'] = \
-#         UserGroupClass.objects.get_or_create(name='smallMoleculeLevel2')[0]
-#     role_group_map['smDsl3SharedScreens'] = \
-#         UserGroupClass.objects.get_or_create(name='smallMoleculeLevel3')[0]
-#     role_group_map['rnaiDsl1MutualScreens'] = \
-#         UserGroupClass.objects.get_or_create(name='rnaiDsl1MutualScreens')[0]
-#     role_group_map['rnaiDsl2MutualPositives'] = \
-#         UserGroupClass.objects.get_or_create(name='rnaiDsl2MutualPositives')[0]
-#     role_group_map['rnaiDsl3SharedScreens'] = \
-#         UserGroupClass.objects.get_or_create(name='rnaiDsl3SharedScreens')[0]
-#         
-#         
-# #      screensaver_user_role     
-# # -------------------------------
-# #  billingAdmin
-# #  cherryPickRequestsAdmin
-# #  developer
-# #  labHeadsAdmin
-# #  librariesAdmin
-# #  libraryCopiesAdmin
-# #  marcusAdmin
-# #  readEverythingAdmin
-# #  rnaiDsl1MutualScreens
-# #  rnaiDsl2MutualPositives
-# #  rnaiDsl3SharedScreens
-# #  screenDataSharingLevelsAdmin
-# #  screenDslExpirationNotify
-# #  screenResultsAdmin
-# #  screensAdmin
-# #  screensaverUser
-# #  serviceActivityAdmin
-# #  smDsl1MutualScreens
-# #  smDsl2MutualPositives
-# #  smDsl3SharedScreens
-# #  userAgreementExpirationNotify
-# #  userChecklistItemsAdmin
-# #  userRolesAdmin
-# #  usersAdmin
-# 
-#     i = j = 0
-#     roles_assigned = 0
-#     for up in UserProfileClass.objects.all():
-#         su_query = ScreensaverUser.objects.all().filter(user=up)
-#         if su_query.exists():
-#             su = su_query[0]
-#             
-#             for role in su.screensaveruserrole_set.all():
-#                  logger.debug(str(( 'user', up.username , 
-#                      'found role', role.screensaver_user_role)))
-#                  if j==0: i += 1
-#                  j += 1
-#                  if role.screensaver_user_role in role_group_map:
-#                      ug = role_group_map[role.screensaver_user_role]
-#                      ug.users.add(up)
-#                      ug.save()
-#                  else:
-#                     logger.error(str(('unknown group',role.screensaver_user_role)) )
-#             roles_assigned += j
-#             j = 0
-#     logger.info(str(('created',roles_assigned,'roles for',i,'users')))
 
 
 def create_user_checklist_items(apps, schema_editor):
@@ -506,5 +401,4 @@ class Migration(migrations.Migration):
         #     completed
 
         migrations.RunPython(create_screensaver_users),
-        migrations.RunPython(create_roles),
     ]

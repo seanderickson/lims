@@ -1063,6 +1063,23 @@ class IResourceTestCase(SimpleTestCase):
         logger.debug('item created: %r', new_obj)
         return new_obj
     
+    def get_list_resource(self, resource_uri, data_for_get=None):
+        _data_for_get = { 
+            'limit': 0,
+            'includes': '*'
+        }
+        if data_for_get:
+            _data_for_get.update(data_for_get)
+        logger.info('get from %r... %r', resource_uri, _data_for_get)
+        resp = self.api_client.get(
+            resource_uri, format='json', 
+            authentication=self.get_credentials(), data=_data_for_get)
+        self.assertTrue(
+            resp.status_code in [200,201], 
+            (resp.status_code,self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        return new_obj['objects']
+    
     def get_single_resource(self, resource_uri, data_for_get=None):
         _data_for_get = { 
             'limit': 0,

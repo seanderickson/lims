@@ -57,7 +57,7 @@ def library_screen_vocab_conversion(apps,schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0005_screen_status'),
+        ('db', '0006_screen_status'),
     ]
 
     operations = [

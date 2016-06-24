@@ -80,6 +80,7 @@ from reports.serializers import LimsSerializer, \
     XLSSerializer, ScreenResultSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.sqlalchemy_resource import _concat
+from django.utils import timezone
 
 
 PLATE_NUMBER_SQL_FORMAT = 'FM9900000'
@@ -3293,9 +3294,10 @@ class AttachedFileResource(ApiResource):
             contents = param_hash.get('contents', None)
             filename = param_hash.get('filename', None)
             if not (contents and filename):
-                raise NotImplementedError(
-                    'must provide either "attached_file" '
-                    'or "contents+filename" parameters')
+                raise ValidationError(
+                    key = 'attached_file',
+                    msg = ('must provide either "attached_file" '
+                           'or "contents+filename" parameters'))
             contents = contents.encode('utf-8')
             
         else:
@@ -3306,16 +3308,17 @@ class AttachedFileResource(ApiResource):
 
         username = param_hash.pop('username', None)
         if not username:
-            raise NotImplementedError('must provide a username parameter')
+            raise ValidationError(
+                key='username', msg='must provide a username parameter')
         try:
             user = ScreensaverUser.objects.get(username=username)
         except ObjectDoesNotExist:
             logger.exception('username does not exist: %s' % username)
-            raise
+            raise Http404('username %r does not exist' % username)
         # TODO: refactor, use validation properties to validate
         type = param_hash.pop('type', None)
         if not type:
-            raise NotImplementedError('must provide a type parameter')
+            raise ValidationError(key='type', msg='required')
         created_by_username = param_hash.pop('created_by_username', None)
         if not created_by_username:
             created_by_username = request.user.username
@@ -3522,6 +3525,180 @@ class AttachedFileResource(ApiResource):
         except Exception, e:
             logger.exception('on get_list %s' % self._meta.resource_name)
             raise e  
+
+
+class UserAgreementResource(AttachedFileResource):
+
+    class Meta:
+
+        queryset = AttachedFile.objects.all()
+        authentication = MultiAuthentication(BasicAuthentication(),
+                                             SessionAuthentication())
+        authorization = UserGroupAuthorization()
+        serializer = LimsSerializer()
+        resource_name = 'useragreement'
+
+    def __init__(self, **kwargs):
+        
+        self.screensaveruser_resource = None
+        self.userchecklistitem_resource = None
+        super(UserAgreementResource, self).__init__(**kwargs)
+
+    def get_screensaveruser_resource(self):
+        if not self.screensaveruser_resource:
+            self.screensaveruser_resource = ScreensaverUserResource()
+        return self.screensaveruser_resource
+    
+    def get_userchecklistitem_resource(self):
+        if not self.userchecklistitem_resource:
+            self.userchecklistitem_resource = UserChecklistItemResource()
+        return self.userchecklistitem_resource
+
+    def prepend_urls(self):
+        
+        return [
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('get_schema'), name="api_get_schema"),
+            url((r"^(?P<resource_name>%s)/" 
+                 r"(?P<attached_file_id>([\d]+))%s$")
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)/user/(?P<username>([\w\d_]+))%s$" 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+            url((r"^(?P<resource_name>%s)/user/(?P<username>([\w\d_]+))" 
+                 r"/(?P<attached_file_id>([\d]+))%s$")
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ] 
+        
+    def put_list(self, request, **kwargs):
+        raise NotImplementedError(
+            "Put list is not implemented for AttachedFiles")
+    
+    def put_detail(self, request, **kwargs):
+        raise NotImplementedError(
+            "Post detail is not implemented for AttachedFiles")
+    
+    def patch_list(self, request, **kwargs):
+        raise NotImplementedError(
+            "Patch list is not implemented for AttachedFiles")
+    
+    def patch_detail(self, request, **kwargs):
+        raise NotImplementedError(
+            "Patch detail is not implemented for AttachedFiles")
+    
+    def get_detail(self, request, **kwargs):
+
+        attached_file_id = kwargs.get('attached_file_id', None)
+        if not attached_file_id:
+            raise NotImplementedError(
+                'must provide a attached_file_id parameter')
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+        kwargs['is_for_detail'] = True
+        return self.build_list_response(request, **kwargs)
+
+    @read_authorization
+    def get_list(self, request, **kwargs):
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+        kwargs['file_type__in'] = ['iccb_l_nsrb_rnai_user_agreement',
+            '2010_iccb_l_nsrb_small_molecule_user_agreement']
+        return self.build_list_response(request, **kwargs)
+    
+    @write_authorization
+    @un_cache        
+    @transaction.atomic
+    def post_detail(self, request, **kwargs):
+                
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+        logger.info('post user agreement: %s' % param_hash)
+        
+        type = param_hash.pop('type', None)
+        if not type:
+            raise ValidationError(key='type', msg='required')
+        
+        if type == 'sm':
+            type = '2010_iccb_l_nsrb_small_molecule_user_agreement'
+        else:
+            type = 'iccb_l_nsrb_rnai_user_agreement'
+        kwargs['type'] = type
+        
+        username = param_hash.pop('username', None)
+        if not username:
+            raise NotImplementedError('must provide a username parameter')
+        
+        admin_username = param_hash.get('admin_user', None)
+        if not admin_username:
+            admin_username = request.user.username
+        admin_user = ScreensaverUser.objects.get(username=admin_username)
+        
+        dsl_usergroup = param_hash.pop('usergroup', None)
+        if not dsl_usergroup:
+            raise ValidationError(key='usergroup', msg='must be set')
+
+        user_resource = self.get_screensaveruser_resource()
+        kwargs_for_user = {
+            'username': username,
+            'exact_fields': ['username', 'usergroups'] 
+        }
+
+        user_data = user_resource._get_detail_response_internal(**kwargs_for_user)
+        current_groups = user_data.get('usergroups',[]) or []
+        current_groups = set(current_groups)
+        small_molecule_usergroups = set([
+            'smDsl1MutualScreens','smDsl2MutualPositives','smDsl3SharedScreens'])
+        rna_usergroups = set([
+            'rnaiDsl1MutualScreens','rnaiDsl2MutualPositives','rnaiDsl3SharedScreens'])
+        if (dsl_usergroup not in small_molecule_usergroups and 
+                dsl_usergroup not in rna_usergroups):
+            raise ValidationError(key='usergroup',
+                msg='must be in %r or %r' % (small_molecule_usergroups,rna_usergroups))
+        apilog = self.make_log(request)
+        apilog.ref_resource_name = 'screensaveruser'
+        apilog.uri = [apilog.ref_resource_name, username]
+        apilog.key = username
+        apilog.diff_keys = ['data_sharing_level']
+        
+        # - the user agreement is an attached file to the user
+        super(UserAgreementResource,self).post_detail(request, **kwargs)
+
+        # - the data sharing level group is assigned to the user
+        
+        current_val = current_groups & (small_molecule_usergroups | rna_usergroups)
+        if dsl_usergroup in small_molecule_usergroups:
+            current_groups = current_groups - small_molecule_usergroups
+            checklist_item_name = 'current_small_molecule_user_agreement_active'
+        if dsl_usergroup in rna_usergroups:
+            current_groups = current_groups - rna_usergroups
+            checklist_item_name = 'current_rnai_user_agreement_active'
+        current_groups.add(dsl_usergroup)
+        new_val = current_groups & (small_molecule_usergroups | rna_usergroups)
+        apilog.diffs = { 'data_sharing_level': [','.join(current_val), ','.join(new_val)] }
+        apilog.save()
+        
+        user_data['usergroups'] = list(current_groups)
+        logger.info('patch user with data: %r', user_data)
+        user_resource.patch_obj(user_data)
+
+        # create a checklist item for the user agreement
+        user_checklist_item_resource = self.get_userchecklistitem_resource()
+        checklist_data = {
+            'username': username, 
+            'item_name': checklist_item_name,
+            'item_group': 'forms',
+            'admin_username': admin_user.username,
+            'status': 'completed',
+            'status_date': timezone.now().strftime("%Y%m%d") 
+            }
+        
+        user_checklist_item_resource.patch_obj(checklist_data)
+
+        return tastypie.http.HttpCreated()
+
+    # TODO: create a "UserAgreementResource.delete_detail"
+
 
 # 
 # select
@@ -6065,7 +6242,7 @@ class UserChecklistItemResource(ApiResource):
     
     @transaction.atomic()
     def patch_obj(self, deserialized, **kwargs):
-
+        logger.info('patch checklist item: %r', deserialized)
         schema = self.build_schema()
         fields = schema['fields']
         initializer_dict = {}
@@ -6170,6 +6347,10 @@ class ScreensaverUserResource(ApiResource):
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_user_attachedfileview'),
                 name="api_dispatch_user_attachedfileview"),
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))/useragreement%s$" 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_useragreement_view'),
+                name="api_dispatch_useragreement_view"),
             url((r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))"
                  r"/attachedfiles/(?P<attached_file_id>([\d]+))%s$") 
                     % (self._meta.resource_name, trailing_slash()),
@@ -6202,6 +6383,13 @@ class ScreensaverUserResource(ApiResource):
             # if put is used, force to "put_detail"
             method = 'detail'
         return AttachedFileResource().dispatch(method, request, **kwargs)    
+
+    def dispatch_useragreement_view(self, request, **kwargs):
+        method = 'list'
+        if request.method.lower() == 'put':
+            # if put is used, force to "put_detail"
+            method = 'detail'
+        return UserAgreementResource().dispatch(method, request, **kwargs)    
 
     def dispatch_user_attachedfiledetailview(self, request, **kwargs):
         return AttachedFileResource().dispatch('detail', request, **kwargs)    
@@ -6413,13 +6601,6 @@ class ScreensaverUserResource(ApiResource):
                     .select_from(_fur)
                     .where(_fur.c.screensaver_user_id 
                         == _su.c.screensaver_user_id)),
-                # TODO: remove: replace with usergroups
-                'data_access_roles': literal_column("null"),
-                # select([func.array_to_string(
-                #         func.array_agg(_su_r.c.screensaver_user_role),
-                #             LIST_DELIMITER_SQL_ARRAY)]).\
-                #     select_from(_su_r).\
-                #     where(_su_r.c.screensaver_user_id==_su.c.screensaver_user_id),
                 }
 
             # delegate to the user resource

@@ -108,7 +108,7 @@ def migrate_screen_status(apps,schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0004_users'),
+        ('db', '0005_usergroups'),
     ]
 
     operations = [

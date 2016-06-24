@@ -2247,7 +2247,10 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         # - check that the user agreement is an attached file to the user
         
-        data_for_get = { 'limit': 0, 'includes': ['*'] }
+        data_for_get = { 
+            'limit': 0, 'includes': ['*'],
+            'type__eq': useragreement_item_post['type']
+        }
         resp = self.api_client.get(
             resource_uri,
             authentication=self.get_credentials(), data=data_for_get )
@@ -2363,7 +2366,9 @@ class ScreensaverUserResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
         logger.info('new obj: %s ' % new_obj)
-        self.assertTrue(len(new_obj['objects'])==1)
+        self.assertTrue(
+            len(new_obj['objects'])==1, 
+            'too many UAs returned: %r' % new_obj)
         
         af = new_obj['objects'][0]
         uri = '/db/attachedfile/content/%s' % af['attached_file_id']

@@ -3621,7 +3621,7 @@ class UserAgreementResource(AttachedFileResource):
         
         if type == 'sm':
             type = '2010_iccb_l_nsrb_small_molecule_user_agreement'
-        else:
+        elif type == 'rna':
             type = 'iccb_l_nsrb_rnai_user_agreement'
         kwargs['type'] = type
         

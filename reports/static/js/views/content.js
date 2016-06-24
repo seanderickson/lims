@@ -317,9 +317,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         throw msg;
       }
 
-      // Re-fetch the specific resource schema from the Resource endpoint:
-      // - if the Resource has customizations of the schema
-      // - i.e. "extraSelectorOptions
       appModel.getResourceFromUrl(uiResourceId, resource.apiUri + '/schema', function(resource){
         // Test for list args, if not found, then it's a detail view
         if (!_.isEmpty(uriStack) && 

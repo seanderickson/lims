@@ -321,7 +321,7 @@ define([
     tagName: 'p',
 
     initialize: function(options) {
-        Backbone.Form.editors.Base.prototype.initialize.call(this, options);
+        Backbone.Form.editors.Text.prototype.initialize.call(this, options);
     },
 
     getValue: function() {
@@ -1189,6 +1189,7 @@ define([
 	});
   EditView.ChosenSelect = ChosenSelect;
   EditView.DatePicker = DatePicker;
+  EditView.DisabledField = DisabledField;
   
 	return EditView;
 });

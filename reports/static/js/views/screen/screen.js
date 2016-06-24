@@ -124,6 +124,7 @@ define([
      * Layoutmanager hook
      */
     afterRender: function(){
+      var self = this;
       console.log('afterRender called...');
       var viewId = 'detail';
       if (!_.isEmpty(this.uriStack)){
@@ -133,6 +134,7 @@ define([
           this.$('ul.nav-tabs > li').addClass('disabled');
           this.uriStack.unshift(viewId);
           viewId = 'detail';
+          delete self.tabbed_resources['summary'];
         }else if (viewId == 'edit'){
           this.uriStack.unshift(viewId); 
           viewId = 'detail';
@@ -546,7 +548,7 @@ define([
      * NOTE: a "POST" form cannot be used - there is no standard way to signal
      * the result of the post to JavaScript.
      */
-    loadScreenResults_ver2_with_comments: function(){
+    loadScreenResults: function(){
       var self = this;
       var form_template = [
          "<div class='form-horizontal container' id='screenresult_form' >",
@@ -803,7 +805,7 @@ define([
         id="loadScreenResults" href="#">Load Screen Results</a>');
       $loadScreenResultsButton.click(function(e){
         e.preventDefault();
-        self.loadScreenResults_ver2_with_comments();
+        self.loadScreenResults();
       });
       var $deleteScreenResultsButton = $(
         '<a class="btn btn-default btn-sm" role="button" \
@@ -1062,9 +1064,10 @@ define([
         };
         // setup the first column - schema field titles (that are visible)
         var col0 = _.extend({},colTemplate,{
-          'name' : 'label',
-          'label' : 'labels',
+          'name' : 'fieldname',
+          'label' : 'Data Column',
           'description' : 'Datacolumn field',
+          'cell': TextWrapCell
         });
         columns.push(col0);
         
@@ -1088,7 +1091,7 @@ define([
         var pivotCollection = new Backbone.Collection();
         _.each(orderedFields, function(field){
           if(_.contains(field.visibility, 'l') && field.key != 'name' ){
-            var row = {'key': field.key, 'label': field.title };
+            var row = {'key': field.key, 'fieldname': field.title };
             collection.each(function(datacolumn){
               row[datacolumn.get('key')] = datacolumn.get(field.key);
             });

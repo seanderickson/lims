@@ -8,12 +8,14 @@ define([
     'views/generic_detail_layout',
     'views/list2',
     'views/user/user2',
+    'views/screen/screen',
     'views/generic_edit',
+    'views/generic_detail_stickit',
     'text!templates/generic-tabbed.html',
     'bootstrap-datepicker'
 ], function($, _, Backbone, Iccbl, layoutmanager, 
             appModel, DetailLayout, 
-            ListView, ReportsUserView, EditView, layout) {
+            ListView, ReportsUserView, ScreenView, EditView, DetailView, layout) {
 
   var UserView = ReportsUserView.extend({
 
@@ -60,23 +62,21 @@ define([
 
     setDetail: function(delegateStack){
       var key = 'detail';
-      var self,outerSelf = self = this;
+      var self,outerSelf;
+      outerSelf = self = this;
       console.log('setDetail: ', delegateStack);
         
       // Create model validation rules based on classification
       // FIXME: attach model validation on showAdd as well
       this.model.validate = function(attrs) {
         var errs = {};
-
         if ( attrs.classification == 'principal_investigator' &&
             _.isEmpty(attrs.lab_head_affiliation) ){
           errs.lab_head_affiliation = 'Required if PI';
         }
-        
         if (!attrs.username && !attrs.ecommons_id){
           errs.username = errs.ecommons_id = 'Either Ecommons or Username must be entered'
         }
-        
         if (!_.isEmpty(errs)) return errs;
       };
       
@@ -124,20 +124,74 @@ define([
         }
       });
 
-      var view = this.tabViews[key];
-      if (view) {
-        // remove the view to refresh the page form
-        this.removeView(this.tabViews[key]);
-      }
+//      var view = this.tabViews[key];
+//      if (view) {
+//        // remove the view to refresh the page form
+//        this.removeView(this.tabViews[key]);
+//      }
+      
+      var detailView = DetailView.extend({
+        afterRender: function(){
+          DetailView.prototype.afterRender.call(this,arguments);
+          if(appModel.hasPermission('screen', 'write')){
+            var addSMScreenButton = $([
+              '<a class="btn btn-default btn-sm pull-down" ',
+                'role="button" id="add_smscreen" href="#">',
+                'Add Small Molecule Screen</a>'
+              ].join(''));
+            addSMScreenButton.click(function(e){
+              e.preventDefault();
+              self.addScreen({ screen_type: 'small_molecule' });
+            });
+            var addRnaiScreenButton = $([
+              '<a class="btn btn-default btn-sm pull-down" ',
+                'role="button" id="add_rnaiscreen" href="#">',
+                'Add RNAi Screen</a>'
+              ].join(''));
+            addRnaiScreenButton.click(function(e){
+              e.preventDefault();
+              self.addScreen({ screen_type: 'rnai' });
+            });
+            var updateSMUAButton = $([
+              '<a class="btn btn-default btn-sm pull-down" ',
+                'role="button" id="update_smua" href="#">',
+                'Update SM User Agreement</a>'
+              ].join(''));
+            updateSMUAButton.click(function(e){
+              e.preventDefault();
+              self.updateUserAgreement('sm');
+            });
+            var updateRNAUAButton = $([
+              '<a class="btn btn-default btn-sm pull-down" ',
+                'role="button" id="update_rnaua" href="#">',
+                'Update RNAi User Agreement</a>'
+              ].join(''));
+            updateRNAUAButton.click(function(e){
+              e.preventDefault();
+              self.updateUserAgreement('rnai');
+            });
+            this.$el.prepend(addSMScreenButton);
+            this.$el.prepend(addRnaiScreenButton);
+            this.$el.prepend(updateRNAUAButton);
+            this.$el.prepend(updateSMUAButton);
+          }
+        }
+      });
+      
       view = new DetailLayout({ 
         model: this.model, 
         uriStack: delegateStack,
-        EditView: editView
+        EditView: editView,
+        DetailView: detailView
       });
       view.showEdit = function(){
         this.model.resource.fields['permissions']['choices'] = (
             appModel.get('permissionOptions'));
-        
+        //        this.model.resource.fields['data_sharing_levels']['choices'] = [
+        //        { val: 'smDsl1MutualScreens', label: 'smDsl1MutualScreens' },
+        //        { val: 'smDsl2MutualPositives', label: 'smDsl2MutualPositives' },
+        //        { val: 'smDsl3SharedScreens', label: 'smDsl3SharedScreens' }
+        //        ];        
         appModel.getPrincipalInvestigatorOptions(function(options){
 
           self.model.resource.fields['lab_head_username']['choices'] = options;
@@ -160,13 +214,14 @@ define([
         });  
       };
 
+      
       this.tabViews[key] = view;
       
       // NOTE: have to re-listen after removing a view
       this.listenTo(view , 'uriStack:change', this.reportUriStack);
       // Note: since detail_layout reports the tab, the consumedStack is empty here
       this.consumedStack = []; 
-      this.setView("#tab_container", view ).render();
+      view = this.setView("#tab_container", view ).render();
       return view;
     },
 
@@ -354,8 +409,49 @@ define([
       UserView.__super__.change_to_tab.apply(this, arguments);      
     },
     
+    addScreen: function(extra_defaults){
+      var self = this;
+      console.log('add screen for ls: ', self.model.get('username'));
+      var defaults = _.extend({
+        lead_screener_username: self.model.get('username'),
+        lab_head_username: self.model.get('lab_head_username')
+      }, extra_defaults);
+      var newModel = appModel.createNewModel('screen', defaults);
+
+      var view = new ScreenView({ 
+        model: newModel, 
+        uriStack: ['+add']
+      });
+      
+      Backbone.Layout.setupView(view);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView("#tab_container", view ).render();
+
+      
+      this.consumedStack = ['screen','+add'];
+      self.reportUriStack([]);
+    },
+        
     setScreens: function(delegateStack) {
       var self = this;
+      var addSMScreenButton = $([
+        '<a class="btn btn-default btn-sm pull-down" ',
+          'role="button" id="add_smscreen" href="#">',
+          'Add Small Molecule Screen</a>'
+        ].join(''));
+      addSMScreenButton.click(function(e){
+        e.preventDefault();
+        self.addScreen({ screen_type: 'small_molecule' });
+      });
+      var addRnaiScreenButton = $([
+        '<a class="btn btn-default btn-sm pull-down" ',
+          'role="button" id="add_rnaiscreen" href="#">',
+          'Add RNAi Screen</a>'
+        ].join(''));
+      addRnaiScreenButton.click(function(e){
+        e.preventDefault();
+        self.addScreen({ screen_type: 'rnai' });
+      });
       var key = 'screens';
       var originalResource = appModel.getResource('screen');
       var resource = _.extend({},originalResource);
@@ -365,27 +461,15 @@ define([
          'date_of_last_activity','date_created']);
       resource.fields['screen_type']['visibility'] = ['l'];
       resource.fields['screensaver_user_role']['visibility'] = ['l'];
-
       var url = [self.model.resource.apiUri, 
                  self.model.key,
                  'screens'].join('/');
-      var addScreenButton = $([
-        '<a class="btn btn-default btn-sm pull-down" ',
-          'role="button" id="add_button" href="#">',
-          'Add</a>'
-        ].join(''));
-      addScreenButton.click(function(e){
-        e.preventDefault();
-        var route = 'screen/+add';
-        appModel.router.navigate(route, {trigger: true});
-      });
-      
       var view = new ListView({ options: {
           uriStack: _.clone(delegateStack),
           schemaResult: resource,
           resource: resource,
           url: url,
-          extraControls: [addScreenButton]
+          extraControls: [addRnaiScreenButton,addSMScreenButton]
       }});
       Backbone.Layout.setupView(view);
       self.consumedStack = [key]; 
@@ -576,7 +660,6 @@ define([
             cell: Iccbl.DeleteCell, sortable: false });
         }
       });
-
       Backbone.Layout.setupView(view);
       self.consumedStack = [key]; 
       self.reportUriStack([]);
@@ -746,6 +829,236 @@ define([
       
     },
     
+    updateUserAgreement: function(type){
+      var self = this;
+      // TODO: generate these from the appModel, should be vocabulary like
+      var choiceHashes = {
+        'sm': {
+          'smDsl1MutualScreens': 'Small Molecule Screens Level 1',
+          'smDsl2MutualPositives': 'Small Molecule Screens Level 2',
+          'smDsl3SharedScreens': 'Small Molecule Screens Level 3'
+        },
+        'rnai': {
+          'rnaiDsl1MutualScreens': 'RNAi Screens Level 1',
+          //'rnaiDsl2MutualPositives': 'RNAi Screens Level 2',
+          'rnaiDsl3SharedScreens': 'RNAi Screens Level 3'
+        }
+      };
+      var choiceHash = choiceHashes[type];
+      
+      var form_template = [
+         "<div class='form-horizontal container' id='uploadUAButton_form' >",
+         "<form class='form-horizontal container' >",
+         "<div data-fieldsets ></div>",
+//         "<div class='form-group' ><input type='file' name='fileInput' /></div>",
+         "</form>",
+         "</div>"].join('');      
+      var fieldTemplate = _.template([
+        '<div class="form-group" >',
+        '    <label class="control-label col-sm-6" for="<%= editorId %>"><%= title %></label>',
+        '    <div class="col-sm-6" >',
+        '      <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
+        '      <div data-error class="text-danger" ></div>',
+        '      <div><%= help %></div>',
+        '    </div>',
+        '  </div>',
+      ].join(''));
+      
+      var DisabledField = EditView.DisabledField.extend({
+        tagName: 'p',
+        className: 'form-control-static'
+      });
+      var formSchema = {};
+      formSchema['user_fullname'] = {
+        title: 'User',
+        key: 'user_fullname',
+        type: DisabledField, 
+        template: fieldTemplate
+      };
+      formSchema['current_value'] = {
+        title: 'Current Data Sharing Level',
+        key: 'current_value',
+        type: DisabledField, 
+        template: fieldTemplate
+      };
+      formSchema['lab_head_dsl'] = {
+        title: 'Lab Head Data Sharing Level',
+        key: 'lab_head_dsl',
+        type: DisabledField, 
+        template: fieldTemplate
+      };
+      
+      formSchema['user_has_login'] = {
+        title: 'User has login privileges',
+        key: 'user_has_login',
+        type: DisabledField, 
+        template: fieldTemplate
+      };
+      
+      formSchema['usergroup'] = {
+        title: 'New Data Sharing Level',
+        key: 'usergroup',
+        type: Backbone.Form.editors.Select.extend({
+            className: 'form-control'
+          }),
+        options: choiceHash,
+        template: fieldTemplate,
+        validators: ['required']
+      };
+      
+      formSchema['fileInputPlaceholder'] = {
+        title: 'File',
+        key: 'file_input',
+        type: DisabledField, 
+        template: fieldTemplate
+      };
+      
+
+      var FormFields = Backbone.Model.extend({
+        schema: formSchema,
+        validate: function(attrs){
+          console.log('form validate', attrs);
+          var errs = {};
+          var file = $('input[name="fileInput"]')[0].files[0]; 
+          if (file) {
+          } else {
+            errs.fileInputPlaceholder = 'Must specify a User Agreement File to upload';
+          }
+          if (!_.isEmpty(errs)) return errs;
+        }
+      });
+      var formFields = new FormFields();
+      
+      if (type == 'sm'){
+        formFields.set('current_value', appModel.getSMUALevel(self.model));
+        formFields.set('usergroup', appModel.getSMUALevel(self.model));
+      } else {
+        formFields.set('current_value', appModel.getRNAUALevel(self.model));
+        formFields.set('usergroup', appModel.getRNAUALevel(self.model));
+      }
+      formFields.set(
+        'user_fullname',self.model.get('last_name') + ', ' 
+        + self.model.get('first_name'));
+      
+      if(_.contains(self.model.get('usergroups'), 'screensaverUser')){
+        formFields.set('user_has_login', 'yes');
+      } else {
+        formFields.set('user_has_login', 'no');
+      }
+      
+      function buildForm(){
+      var form = new Backbone.Form({
+        model: formFields,
+        template: _.template(form_template)
+      });
+      var _form_el = form.render().el;
+      
+      form.$el.find("[name='fileInputPlaceholder']").append(
+        '<label class="btn btn-default btn-file">' + 
+        'Browse<input type="file" name="fileInput" style="display: none;"></label>'+ 
+        '<p id="filechosen" class="form-control-static" ></p>');
+      form.$el.on('change', ':file', function() {
+          var input = $(this),
+              numFiles = input.get(0).files ? input.get(0).files.length : 1,
+              label = input.val().replace(/\\/g, '/').replace(/.*\//, '');
+          form.$el.find('#filechosen').html(label);
+      });
+      
+      var dialog = appModel.showModal({
+          okText: 'upload',
+          ok: function(e){
+            e.preventDefault();
+            var errors = form.commit({ validate: true }); // runs schema and model validation
+            if(!_.isEmpty(errors) ){
+              console.log('form errors, abort submit: ',errors);
+              _.each(_.keys(errors), function(key){
+                $('[name="'+key +'"').parents('.form-group').addClass('has-error');
+              });
+              if (_.has(errors,'_others')){
+                $form = $('#uploadUAButton_form');
+                $errorDiv = $('<div class="panel text-danger" />');
+                _.each(errors['_others'], function(otherError){
+                  _.each(_.values(otherError), function(errMsg){
+                    $errorDiv.append('Error: ' + errMsg );
+                  });
+                });
+                $form.append($errorDiv);
+              }
+              return false;
+            }else{
+              var values = form.getValue();
+              var comments = values['comments'];
+              var headers = {};
+              headers[appModel.HEADER_APILOG_COMMENT] = comments;
+              
+              var data = new FormData();
+              _.each(_.keys(values), function(key){
+                data.append(key,values[key])
+              });
+              data.append('type', type);
+              // NOTE: admin user defaults to the current logged in user:
+              // - attached_file.created_by_username
+              // - userchecklistitem.admin_user
+              // - apilog.username
+              
+              var file = $('input[name="fileInput"]')[0].files[0];
+              data.append('attached_file',file);
+
+              var url = [self.model.resource.apiUri, 
+                         self.model.key,
+                         'useragreement'].join('/');
+              $.ajax({
+                url: url,    
+                data: data,
+                cache: false,
+                contentType: false,
+                processData: false,
+                type: 'POST',
+                headers: headers, 
+                success: function(data){
+                  self.model.fetch({ reset: true });
+                  appModel.showModalMessage({
+                    title: 'Updated User Agreement',
+                    okText: 'ok',
+                    body: 'data sharing level: ' + values['usergroup'] +
+                      '<br>file: ' + file.name + ' '
+                  });
+                },
+                done: function(model, resp){
+                  // TODO: done replaces success as of jq 1.8
+                  console.log('done');
+                }
+              }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });
+            
+              return true;
+            }
+          },
+          view: _form_el,
+          title: 'Update User Agreement'  });
+        
+      };
+      
+      
+      var lab_head_username = self.model.get('lab_head_username');
+      if (lab_head_username == self.model.get('username')){
+        formFields.set('lab_head_dsl', '&lt;user is lab head&gt;');
+        buildForm();
+      }else{
+        appModel.getModel('screensaveruser',lab_head_username,
+          function(model){
+            console.log('got model: ', model);
+            if (type == 'sm'){
+              formFields.set('lab_head_dsl', appModel.getSMUALevel(model));
+            } else {
+              formFields.set('lab_head_dsl', appModel.getRNAUALevel(model));
+            }
+            buildForm();
+          }
+        );
+      }
+      
+    },
+
     setUserChecklistItems: function(delegateStack) {
       var self = this;
       var key = 'userchecklistitem';

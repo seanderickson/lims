@@ -5,9 +5,9 @@ define([
 //  'backbone_pageable',
   'backgrid',
   'iccbl_backgrid',
-  'text!templates/rows-per-page.html',
-  'text!templates/list.html',
-  'text!templates/modal_ok_cancel.html',
+  'templates/rows-per-page.html',
+  'templates/list.html',
+  'templates/modal_ok_cancel.html',
 ], function($, _, Backbone, Backgrid,  Iccbl, 
 	rowsPerPageTemplate, listTemplate, modalTemplate ){
 

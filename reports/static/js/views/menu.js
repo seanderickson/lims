@@ -5,7 +5,7 @@ define([
     'layoutmanager',
     'iccbl_backgrid',
     'models/app_state',
-    'text!templates/menu.html'
+    'templates/menu.html'
 ], function($, _, Backbone, layoutmanager, Iccbl, appModel, menuTemplate) {
   
     var MenuView = Backbone.Layout.extend({

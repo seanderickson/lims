@@ -1,12 +1,12 @@
 define([
         'sinon', 'fakeServer', 'chai',
         'models/app_state',
-        'text!test/models/ui_resources_fixture.json',
-        'text!test/models/resource_from_server.js',
-        'text!test/models/vocabulary_from_server.js',
-        'text!test/models/user_resource_from_server.js',
-        'text!test/models/test_user.json',
-        'text!test/models/menu_fixture.json'
+        'test/models/ui_resources_fixture.json',
+        'test/models/resource_from_server.json',
+        'test/models/vocabulary_from_server.json',
+        'test/models/user_resource_from_server.json',
+        'test/models/test_user.json',
+        'test/models/menu_fixture.json'
         ], function(sinon, fakeServer, chai, 
             appModel, ui_resources_raw, resource_raw, vocabulary_raw, 
             user_resource_raw, test_user_raw, menu_raw) {

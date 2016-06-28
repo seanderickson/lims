@@ -1,7 +1,7 @@
 define(['models/app_state',
-        'text!test/models/ui_resources_fixture.json',
-        'text!test/models/resource_from_server.js',
-        'text!test/models/menu_fixture.json'
+        'test/models/ui_resources_fixture.json',
+        'test/models/resource_from_server.json',
+        'test/models/menu_fixture.json'
         ], function(appModel, ui_resources_raw, resource_raw, menu_raw) {
     
   var run = function() {

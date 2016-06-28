@@ -8,7 +8,7 @@ define([
     'models/app_state',
     'views/generic_detail_stickit',
     'views/generic_edit',
-    'text!templates/generic-detail-layout.html',
+    'templates/generic-detail-layout.html',
 
 ], function($, _, Backbone, stickit, backbone_forms, Iccbl, appModel,
             DetailView, EditView, layoutTemplate ) {

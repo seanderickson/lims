@@ -11,7 +11,7 @@ define([
     'views/screen/screen',
     'views/generic_edit',
     'views/generic_detail_stickit',
-    'text!templates/generic-tabbed.html',
+    'templates/generic-tabbed.html',
     'bootstrap-datepicker'
 ], function($, _, Backbone, Iccbl, layoutmanager, 
             appModel, DetailLayout, 

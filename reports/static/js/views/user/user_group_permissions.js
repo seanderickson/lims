@@ -9,7 +9,7 @@ define([
     'views/generic_edit',
     'views/list2',
     'views/simple-list',
-    'text!templates/user-groups-permissions-layout.html',
+    'templates/user-groups-permissions-layout.html',
 
 ], function($, _, Backbone, stickit, Iccbl, appModel,
             DetailView, EditView, ListView, SimpleListView, layoutTemplate ) {

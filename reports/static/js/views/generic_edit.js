@@ -8,7 +8,7 @@ define([
     'iccbl_backgrid',
     'models/app_state',
     'views/generic_detail_stickit',
-    'text!templates/generic-edit.html',
+    'templates/generic-edit.html',
     'bootstrap',
     'bootstrap-datepicker',
     'chosen'

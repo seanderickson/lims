@@ -6,9 +6,9 @@ define([
   'iccbl_backgrid',
   'models/app_state',
   'views/generic_selector',
-  'text!templates/rows-per-page.html',
-  'text!templates/list2.html',
-  'text!templates/modal_ok_cancel.html'
+  'templates/rows-per-page.html',
+  'templates/list2.html',
+  'templates/modal_ok_cancel.html'
 ], function(
       $, _, Backbone, Backgrid,  
       Iccbl, appModel, genericSelector,

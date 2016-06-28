@@ -7,10 +7,10 @@ define([
         'models/app_state',
         'views/generic_detail_stickit',
         'views/generic_edit',
-        'text!test/models/detail_test_model.json',
-        'text!test/models/detail_test_resource.json', 
-        'text!test/models/detail_test_vocabularies.json',    
-        'text!test/models/detail_test_users.json'    
+        'test/models/detail_test_model.json',
+        'test/models/detail_test_resource.json', 
+        'test/models/detail_test_vocabularies.json',    
+        'test/models/detail_test_users.json'    
 ], function($, _, Backbone, 
             sinon, fakeServer, chai, 
             Iccbl, appModel, DetailView, EditView,

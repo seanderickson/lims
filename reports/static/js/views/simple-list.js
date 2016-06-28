@@ -6,8 +6,8 @@ define([
   'iccbl_backgrid',
   'models/app_state',
   'views/generic_selector',
-  'text!templates/simple-list.html',
-  'text!templates/modal_ok_cancel.html'
+  'templates/simple-list.html',
+  'templates/modal_ok_cancel.html'
 ], function(
     $, _, Backbone, Backgrid, Iccbl, appModel, 
     genericSelector, listTemplate, modalTemplate ){

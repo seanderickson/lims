@@ -3,7 +3,7 @@ define([
     'underscore',
     'backbone',
     'layoutmanager',
-    'text!templates/messages.html'
+    'templates/messages.html'
 ], function($, _, Backbone, layoutmanager, layout ) {
     
   var MessageView = Backbone.Layout.extend({

@@ -9,7 +9,7 @@ define([
     'models/app_state',
     'views/generic_detail_stickit',
     'views/simple-list',
-    'text!templates/generic-detail-stickit.html'
+    'templates/generic-detail-stickit.html'
 ], function( $, _, Backbone, stickit, BackGrid, Iccbl, layoutmanager, 
       appModel, DetailView, SimpleListView, detailTemplate) {
 	
@@ -139,7 +139,6 @@ define([
       
       function dateGetter(value){
         if (value && !_.isEmpty(value)) {
-          console.log('date',value, new Date(value));
           try {
             return Iccbl.getDateString(new Date(value));
           } catch(e) {

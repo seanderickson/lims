@@ -8,7 +8,7 @@ define([
     'views/user/user_group_permissions',
     'views/generic_detail_layout',
     'views/list2',
-    'text!templates/generic-tabbed.html',
+    'templates/generic-tabbed.html',
 ], function($, _, Backbone, Iccbl, layoutmanager, 
             appModel, UserGroupPermissionView, DetailLayout, 
             ListView, layout) {

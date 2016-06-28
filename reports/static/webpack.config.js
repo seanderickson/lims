@@ -29,13 +29,13 @@ module.exports = {
 //          new webpack.ResolverPlugin.DirectoryDescriptionFilePlugin(".bower.json", ["main"])
 //      )
 //  ],
-//  module: {
-//    loaders: [
-//      { test: /\.html$|\.json$/, loaders: ['raw'], exclude: /node_modules/ }
-//      // TODO: follows is experimental - to help load the jquery obj to the global namespace
-//      //{ test: /vendor\/.+\.(jsx|js)$/,
-//      //  loader: 'imports?jQuery=jquery,$=jquery,this=>window'
-//      //}
-//    ]
-//  }
+  module: {
+    loaders: [
+      { test: /\.(html|json)$/, loaders: ['raw'], exclude: /node_modules/ }
+      // TODO: follows is experimental - to help load the jquery obj to the global namespace
+      //{ test: /vendor\/.+\.(jsx|js)$/,
+      //  loader: 'imports?jQuery=jquery,$=jquery,this=>window'
+      //}
+    ]
+  }
 };

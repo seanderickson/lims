@@ -8,7 +8,7 @@ define([
   'views/list2',
   'views/generic_detail_layout',
   'views/library/library',
-  'text!templates/genericResource.html'
+  'templates/genericResource.html'
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
          LibraryView, layout) {

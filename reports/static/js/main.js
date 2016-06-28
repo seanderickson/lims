@@ -13,10 +13,10 @@ require([ // now load application code
     'models/app_state',
     'views/app_view',
     'router',
-    'text!models/reports_ui_resources_fixture', 
-    'text!models/reports_menu_fixture', 
-    'text!models/ui_resources_fixture', 
-    'text!models/menu_fixture', 
+    'models/reports_ui_resources_fixture.json', 
+    'models/reports_menu_fixture.json', 
+    'models/ui_resources_fixture.json', 
+    'models/menu_fixture.json', 
     // TODO: verify this: Bootstrap does not return an object; it modifies the 
     // Jquery object with new methods
     'bootstrap'

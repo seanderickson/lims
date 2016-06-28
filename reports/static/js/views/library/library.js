@@ -13,11 +13,11 @@ define([
   'views/generic_detail_layout',
   'views/generic_edit',
   'views/list2',
-  'text!templates/generic-tabbed.html'
+  'templates/generic-tabbed.html'
 ], function($, _, Backbone, Iccbl, layoutmanager, appModel, LibraryCopyView, 
             LibraryWellsView, DetailLayout, EditView, ListView, 
             libraryTemplate) {
-  
+  console.log('libraryTemplate', libraryTemplate);
   var LibraryView = Backbone.Layout.extend({
     
     initialize: function(args) {

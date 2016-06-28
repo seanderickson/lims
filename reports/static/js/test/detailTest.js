@@ -8,11 +8,11 @@ define([
     'views/generic_detail_layout',
     'views/generic_edit',
     'views/list2',
-    'text!templates/generic-tabbed.html',
-    'text!test/models/detail_test_resource.json', 
-    'text!test/models/detail_test_model.json',
-    'text!test/models/detail_test_vocabularies.json',    
-    'text!test/models/detail_test_users.json'    
+    'templates/generic-tabbed.html',
+    'test/models/detail_test_resource.json', 
+    'test/models/detail_test_model.json',
+    'test/models/detail_test_vocabularies.json',    
+    'test/models/detail_test_users.json'    
     
 ], function($, _, Backbone, Iccbl, layoutmanager, 
             appModel, DetailLayout,EditView, 

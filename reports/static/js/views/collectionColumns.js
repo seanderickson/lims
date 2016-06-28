@@ -3,7 +3,7 @@ define([
     'jquery',
     'underscore',
     'backbone',
-    'text!templates/generic-collection-columns.html',
+    'templates/generic-collection-columns.html',
 ], function($, _, Backbone, collectionColumnsTemplate) {
 
   /**

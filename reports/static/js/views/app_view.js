@@ -9,7 +9,7 @@ define([
     'views/content',
     'views/message',
     'views/search_box',
-    'text!templates/app_layout.html'
+    'templates/app_layout.html'
 ], function($, _, Backbone, layoutmanager, Iccbl, appModel, MenuView, 
             ContentView, MessageView, SearchView, layout) {
 

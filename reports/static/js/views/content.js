@@ -15,9 +15,9 @@ define([
   'views/user/screensaveruser',
   'views/usergroup/usergroup2',
   'test/detailTest',
-  'text!templates/content.html',
-  'text!templates/welcome.html',
-  'text!templates/about.html'
+  'templates/content.html',
+  'templates/welcome.html',
+  'templates/about.html'
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
          EditView, LibraryView, ScreenView, LibraryScreeningView, UserAdminView, 

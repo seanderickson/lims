@@ -15,7 +15,7 @@ define([
   'views/generic_edit',
   'views/list2', 
   'views/collectionColumns',
-  'text!templates/generic-tabbed.html'
+  'templates/generic-tabbed.html'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, 
             LibraryScreening, DetailLayout, DetailView, EditView, ListView, 
             CollectionColumnView, tabbedTemplate){
@@ -56,6 +56,12 @@ define([
         invoke : 'setSummary',
         permission: 'screensummary'
       },
+      attachedfile: {
+        description: "Attached Files",
+        title: "Attached Files",
+        invoke: "setAttachedFiles",
+        resource: 'attachedfile'
+      },      
       billingItems: {
         description : 'Billing information',
         title : 'Billing',
@@ -369,6 +375,219 @@ define([
       return view;
 
     },
+    
+    
+    
+    
+    setAttachedFiles: function(delegateStack) {
+      var self = this;
+      var key = 'attachedfile';
+      var resource = appModel.getResource('attachedfile');
+      var url = [self.model.resource.apiUri, 
+                 self.model.key,
+                 'attachedfiles'].join('/');
+      var uploadAttachedFileButton = $([
+        '<a class="btn btn-default btn-sm pull-down" ',
+          'role="button" id="save_button" href="#">',
+          'Add</a>'
+        ].join(''));
+      var showDeleteButton = $([
+          '<a class="btn btn-default btn-sm pull-down" ',
+            'role="button" id="showDeleteButton" href="#">',
+            'Delete</a>'
+          ].join(''));
+      
+      var view = new ListView({ options: {
+        uriStack: _.clone(delegateStack),
+        schemaResult: resource,
+        resource: resource,
+        url: url,
+        extraControls: [uploadAttachedFileButton, showDeleteButton]
+      }});
+      uploadAttachedFileButton.click(function(e){
+        e.preventDefault();
+        self.upload(view.collection)
+      });
+      showDeleteButton.click(function(e){
+        e.preventDefault();
+        if (! view.grid.columns.findWhere({name: 'deletor'})){
+          view.grid.columns.unshift({ 
+            name: 'deletor', label: 'Delete', text:'X', 
+            description: 'delete record', 
+            cell: Iccbl.DeleteCell, sortable: false });
+        }
+      });
+      Backbone.Layout.setupView(view);
+      self.consumedStack = [key]; 
+      self.reportUriStack([]);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView("#tab_container", view ).render();
+      
+    },
+        
+    upload: function(attachedfileCollection){
+      var self = this;
+      var form_template = [
+         "<div class='form-horizontal container' id='uploadAttachedFileButton_form' >",
+         "<form data-fieldsets class='form-horizontal container' >",
+         "<div class='form-group' ><input type='file' name='fileInput' /></div>",
+         "</form>",
+         "</div>"].join('');      
+      var choiceHash = {}
+      try{
+        var vocabulary = Iccbl.appModel.getVocabulary('attachedfiletype.user');
+          _.each(_.keys(vocabulary),function(choice){
+            choiceHash[choice] = vocabulary[choice].title;
+          });
+      }catch(e){
+        console.log('on get vocabulary', e);
+        self.appModel.error('Error locating vocabulary: ' + 'attachedfiletype.user');
+      }
+      
+      var fieldTemplate = _.template([
+        '<div class="form-group" >',
+        '    <label class="control-label " for="<%= editorId %>"><%= title %></label>',
+        '    <div class="" >',
+        '      <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
+        '      <div data-error class="text-danger" ></div>',
+        '      <div><%= help %></div>',
+        '    </div>',
+        '  </div>',
+      ].join(''));
+      
+      var formSchema = {};
+      formSchema['type'] = {
+        title: 'File Type',
+        key: 'type',
+        type: 'Select',
+        options: choiceHash,
+        template: fieldTemplate
+      };
+      formSchema['file_date'] = {
+        title: 'File Date',
+        key: 'file_date',
+        type: EditView.DatePicker,
+        template: fieldTemplate
+      };
+      formSchema['filename'] = {
+        title: 'Option 2: Name',
+        key: 'filename',
+        type: 'TextArea',
+        template: fieldTemplate
+      };
+      formSchema['contents'] = {
+        title: 'Option 2: Contents',
+        key: 'contents',
+        type: 'TextArea',
+        template: fieldTemplate
+      };
+      formSchema['comments'] = {
+        title: 'Comments',
+        key: 'comments',
+        validators: ['required'],
+        type: 'TextArea',
+        template: fieldTemplate
+      };
+
+      var FormFields = Backbone.Model.extend({
+        schema: formSchema,
+        validate: function(attrs){
+          console.log('form validate', attrs);
+          var errs = {};
+          var file = $('input[name="fileInput"]')[0].files[0]; 
+          if (file) {
+            if (!_.isEmpty(attrs.contents)){
+              console.log('error, multiple file uploads specified');
+              errs.contents = 'Specify either file or contents, not both';
+            }
+          } else {
+            if (_.isEmpty(attrs.contents)){
+              errs.contents = 'Specify either file or contents';
+            }else{
+              if (_.isEmpty(attrs.filename)){
+                errs.filename = 'Must specify a filename with the file contents';
+              }
+            }
+          }
+          if (!_.isEmpty(errs)) return errs;
+        }
+      });
+      var formFields = new FormFields();
+      var form = new Backbone.Form({
+        model: formFields,
+        template: _.template(form_template)
+      });
+      var _form_el = form.render().el;
+
+      var dialog = appModel.showModal({
+          okText: 'upload',
+          ok: function(e){
+            e.preventDefault();
+            var errors = form.commit({ validate: true }); // runs schema and model validation
+            if(!_.isEmpty(errors) ){
+              console.log('form errors, abort submit: ',errors);
+              _.each(_.keys(errors), function(key){
+                $('[name="'+key +'"').parents('.form-group').addClass('has-error');
+              });
+              return false;
+            }else{
+              var values = form.getValue();
+              var comments = values['comments'];
+              var headers = {};
+              headers[appModel.HEADER_APILOG_COMMENT] = comments;
+              
+              var data = new FormData();
+              _.each(_.keys(values), function(key){
+                data.append(key,values[key])
+              });
+
+              var file = $('input[name="fileInput"]')[0].files[0];
+              var filename;
+              if(file){
+                data.append('attached_file',file);
+                filename = file.name;
+                if(!_.isEmpty(values['filename'])){
+                  filename = values['filename'];
+                }
+              }else{
+                filename = values['filename'];
+              }
+              
+              var url = [self.model.resource.apiUri, 
+                         self.model.key,
+                         'attachedfiles'].join('/');
+              $.ajax({
+                url: url,    
+                data: data,
+                cache: false,
+                contentType: false,
+                processData: false,
+                type: 'POST',
+                headers: headers, 
+                success: function(data){
+                  attachedfileCollection.fetch({ reset: true });
+                  appModel.showModalMessage({
+                    title: 'Attached File uploaded',
+                    okText: 'ok',
+                    body: '"' + filename + '"'
+                  });
+                },
+                done: function(model, resp){
+                  // TODO: done replaces success as of jq 1.8
+                  console.log('done');
+                }
+              }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });
+            
+              return true;
+            }
+          },
+          view: _form_el,
+          title: 'Upload an Attached File'  });
+      
+    },
+    
+    
+    
       
     /**
      * Update the screen status with a status history table: populate
@@ -395,7 +614,6 @@ define([
           }
           collection.each(function(model){
             var diffs = JSON.parse(model.get('diffs'));
-            console.log('diffs', diffs);
             model.set('status', diffs.status[1]);
           });
           var TextWrapCell = Backgrid.Cell.extend({

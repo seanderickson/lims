@@ -2,7 +2,7 @@ define([
     'jquery',
     'underscore',
     'backbone',
-    'text!templates/generic-selector.html'
+    'templates/generic-selector.html'
 ], function($, _, Backbone, genericSelectorTemplate) {
 
   var GenericSelector = Backbone.View.extend({

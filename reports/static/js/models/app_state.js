@@ -3,7 +3,7 @@ define([
   'underscore',
   'backbone',
   'iccbl_backgrid',
-  'text!templates/modal_ok_cancel.html'    
+  'templates/modal_ok_cancel.html'    
 ], function($, _, Backbone, Iccbl, modalOkCancelTemplate ){
   
   var API_VERSION = 'api/v1';
@@ -882,7 +882,8 @@ define([
         ui_resource = uiResources[resourceId];
       }
       
-      if (_.isEmpty(ui_resource) || _.contains(['screenresult'], resourceId)){
+      if (_.isEmpty(ui_resource) 
+          || _.contains(['screenresult','well'], resourceId)){
         // Re-fetch the specific resource schema from the Resource endpoint:
         // - if the Resource has customizations of the schema
         // - i.e. "extraSelectorOptions

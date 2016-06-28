@@ -3,7 +3,6 @@ define([
     'underscore',
     'backbone',
     'backbone_forms',
-    'backbone_forms_list',
     'multiselect',
     'quicksearch',
     'iccbl_backgrid',
@@ -13,7 +12,7 @@ define([
     'bootstrap',
     'bootstrap-datepicker',
     'chosen'
-], function( $, _, Backbone, backbone_forms, backbone_forms_list, 
+], function( $, _, Backbone, backbone_forms, 
             multiselect, quicksearch, Iccbl, appModel,
             DetailView, editTemplate ) {
   var SIunitEditor = Backbone.Form.editors.Base.extend({

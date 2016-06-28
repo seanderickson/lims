@@ -2,7 +2,7 @@ define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
         'backgrid_filter', 'backgrid_paginator', //'lunr', // 'backgrid_select_all',
         'layoutmanager'],
     function($, _, Backbone, Backgrid, BackboneForms,
-             BackgridFilter, BackgridPaginator, //lunr, // BackgridSelectAll,
+             BackgridFilter, //BackgridPaginator, //lunr, // BackgridSelectAll,
              layoutmanager ) {
 
 var root = window;

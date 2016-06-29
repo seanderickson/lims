@@ -751,7 +751,7 @@ define([
       var fieldCheckboxTemplate =  _.template('\
           <div class="form-group" style="margin-bottom: 0px;" > \
             <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
-              <label title="<%= help %>" for="<%= editorId %>"><span data-editor\><%= title %></label>\
+              <label title="<%= help %>" for="<%= editorId %>"><div><span data-editor\></div><%= title %></label>\
             </div>\
           </div>\
         ');      
@@ -759,7 +759,7 @@ define([
           <div class="form-group sub-resource-field" style="margin-bottom: 0px;" > \
             <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
             <label for="<%= editorId %>" > - </label>\
-              <label for="<%= editorId %>"><span data-editor\><%= title %></label>\
+              <label for="<%= editorId %>"><div><span data-editor\></div><%= title %></label>\
             </div>\
           </div>\
         ');

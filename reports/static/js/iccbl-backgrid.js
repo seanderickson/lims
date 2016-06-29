@@ -1663,10 +1663,13 @@ var BackgridFormFilter = Backbone.Form.extend({
     "<div data-fieldsets   />",
     "</div>",
     "</form>"].join('')),
-  checkboxTemplate: [
-    '<label data-editor title="<%= help %>" class="checkbox-inline" >',
-    '<%= title %></label>'      
-    ].join(''),
+   checkboxTemplate: _.template([
+      '<div class="form-group" style="margin-bottom: 0px;" >',
+      '    <div class="checkbox" style="text-align: left; min-height: 0px; padding-top: 0px;" > ',
+      '      <label for="<%= editorId %>"><div><span data-editor\></div><%= title %></label>',
+      '    </div>',
+      '  </div>'
+      ].join('')),
    
   initialize : function(options) {
     var self = this;
@@ -1821,7 +1824,7 @@ var TextFormFilter = CriteriumFormFilter.extend({
         title: 'invert',
         help: 'select this to invert the criteria',
         type: 'Checkbox',
-        template: _.template(self.checkboxTemplate),
+        template: self.checkboxTemplate,
         editorClass: ''
     };    
 
@@ -2025,7 +2028,7 @@ var DateFormFilter = CriteriumFormFilter.extend({
         title: 'invert',
         help: 'select this to invert the criteria',
         type: 'Checkbox',
-        template: _.template(self.checkboxTemplate),
+        template: self.checkboxTemplate,
         editorClass: ''
     };    
 
@@ -2644,8 +2647,8 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
 
    altFieldTemplate: _.template([
       '<div class="form-group" style="margin-bottom: 0px;" >',
-      '    <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > ',
-      '      <label for="<%= editorId %>"><span data-editor\><%= title %></label>',
+      '    <div class="checkbox" style="text-align: left; min-height: 0px; padding-top: 0px;" > ',
+      '      <label for="<%= editorId %>"><div><span data-editor\></div><%= title %></label>',
       '    </div>',
       '  </div>'
       ].join('')),
@@ -2687,7 +2690,7 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
         title: 'invert',
         help: 'select this to invert the criteria',
         type: 'Checkbox',
-        template: _.template(self.checkboxTemplate),
+        template: self.checkboxTemplate,
         editorClass: ''
     };    
     selectedFields.push('invert_field');
@@ -3007,7 +3010,7 @@ var NumberFormFilter = CriteriumFormFilter.extend({
         title: 'invert',
         help: 'select this to invert the criteria',
         type: 'Checkbox',
-        template: _.template(self.checkboxTemplate),
+        template: self.checkboxTemplate,
         editorClass: ''
     };    
 

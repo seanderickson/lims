@@ -5,7 +5,7 @@ module.exports = {
   entry: './main',
   output: {
     filename: 'bundle.js',
-    publicPath: '../static/'
+    publicPath: '../_static/'
   },
   resolve: {
     modulesDirectories: ['.', 'node_modules'],
@@ -20,7 +20,7 @@ module.exports = {
       backgrid_filter: 'backgrid-filter',
       chosen: 'jquery-chosen/chosen.jquery.min',
       quicksearch: 'jquery.quicksearch/dist/jquery.quicksearch.min.js',
-      layoutmanager: 'backbone.layoutmanager'
+      layoutmanager: 'layoutmanager/backbone.layoutmanager'
     },
     extensions: ['', '.js', '.json'] 
   },

@@ -31,11 +31,20 @@ module.exports = {
 //  ],
   module: {
     loaders: [
-      { test: /\.(html|json)$/, loaders: ['raw'], exclude: /node_modules/ }
-      // TODO: follows is experimental - to help load the jquery obj to the global namespace
-      //{ test: /vendor\/.+\.(jsx|js)$/,
-      //  loader: 'imports?jQuery=jquery,$=jquery,this=>window'
-      //}
+      { test: require.resolve('jquery'), loader: 'expose?jQuery!expose?$' },
+      { test: /\.(html|json)$/, loaders: ['raw'], exclude: /node_modules/ },
+      { test: /\.css$/, loaders: ['style', 'css'] },
+      {
+        test: /\.(jpe?g|png|gif|svg)$/i,
+        loaders: [
+          'file?hash=sha512&digest=hex&name=[hash].[ext]',
+          'image-webpack?bypassOnDebug&optimizationLevel=7&interlaced=false'
+        ]
+      },
+      {
+        test: /\.(eot|svg|ttf|woff|woff2)$/,
+        loader: 'file?name=css/fonts/[name].[ext]'
+      }    
     ]
   }
 };

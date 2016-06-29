@@ -3,7 +3,17 @@
  */
 
 // workaround for libraries that need jquery $ in webpack
-window.$ = window.jQuery = require('jquery');  
+//window.$ = window.jQuery = require('jquery');  
+
+require('bootstrap/dist/css/bootstrap.css');
+require('backgrid/lib/backgrid.css');
+require('backgrid-paginator/backgrid-paginator.css');
+require('backgrid-filter/backgrid-filter.css');
+require('css/hmsiccbl.css')
+require('multiselect/css/multi-select.css');
+require('bootstrap-datepicker/dist/css/bootstrap-datepicker3.css');
+require('jquery-chosen/chosen.min.css');
+require('bootstrap-chosen/bootstrap-chosen.css');
 
 require([ // now load application code
     'jquery',
@@ -37,7 +47,7 @@ function($, _, Backbone, Iccbl, appModel, AppView, AppRouter,
   $.ajaxSettings.traditional = true;
 
   /**
-   * For ajax POST operations, we need to send the session id as a request
+   * For ajax POST operations: send the session id as a request
    * header (CSRF protection in SessionAuthentication requires).
    * (the other option is to use Basic Authentication)
    * see:

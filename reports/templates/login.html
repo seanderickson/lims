@@ -1,9 +1,11 @@
 {% extends "base.html" %}
+
 {% comment %}
 Login page to authenticate users.
 {% endcomment %}
 
 {% block head %}
+    <link rel="stylesheet" media="screen" href="{{ STATIC_URL }}css/external/bootstrap.min.css" />
     <title>HMS LINCS DB | Login</title>
     <style type="text/css">
       body {

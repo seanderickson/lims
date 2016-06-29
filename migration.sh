@@ -419,12 +419,19 @@ function frontend_setup {
   
   # TODO: frontend tests
   
+  # add bootstrap to external folder - needed for the login template 
+  mkdir css/external
+  cp node_modules/bootstrap/dist/css/bootstrap.min.css css/external
+  
+  cd ../..
+  
   if [[ $IS_DEV_SERVER -ne 1 ]]; then
-    $DJANGO_CMD collectstatic --noinput \
+    $DJANGO_CMD collectstatic --noinput --clear \
         --ignore="*node_modules*" \
         --ignore="*bower_components*" \
         --ignore="*test_data*" \
         --ignore="*.json" \
+        --ignore="Gruntfile.js" \
         --ignore="*api_init*" || error "collectstatic failed: $?"
   fi
   

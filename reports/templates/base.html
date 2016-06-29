@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
 
-    <link rel="stylesheet" media="screen" href="{{ STATIC_URL }}css/external/bootstrap.css" />
+<!--     <link rel="stylesheet" media="screen" href="{{ STATIC_URL }}css/external/bootstrap.css" /> -->
 
   {% load admin_urls %}
 
@@ -19,28 +19,30 @@
   -------------------------------------------------- **/
   #wrap > .container-fluid {
     padding-top: 50px;
-/*     padding-bottom: 60px; */
     margin-left: inherit;
     margin-right: inherit;
   }
   
-@media (min-width: 568px) {
-  .container {
-    width: inherit;
+  /** container width settings
+  -------------------------------------------------- **/
+  @media (min-width: 568px) {
+    .container {
+      width: inherit;
+    }
   }
-}
-@media (min-width: 992px) {
-  .container {
-    width: inherit;
+  @media (min-width: 992px) {
+    .container {
+      width: inherit;
+    }
   }
-}
-@media (min-width: 1200px) {
-  .container {
-    width: ;
-  }
-}  
+  @media (min-width: 1200px) {
+    .container {
+      width: inherit;
+    }
+  }  
 
-  /** Sticky footer styles **/
+  /** sticky footer
+  -------------------------------------------------- **/
   html {
     position: relative;
     min-height: 100%;
@@ -58,14 +60,14 @@
     background-color: #f5f5f5;
   }
   /** end Sticky footer styles **/
-
+  
   /** 
   FIXME: remove this or the clause in the base.html
   Loading indicator
       - loading style requires STATIC_URL - (not available from css stylesheets?) **/
-	.loading1 {
-	    background:rgba(0,0,0,0.3);
-	}
+  .loading1 {
+      background:rgba(0,0,0,0.3);
+  }
   #loading{
       position:fixed;
       z-index:999;

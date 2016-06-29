@@ -29,7 +29,6 @@
     "grunt-contrib-watch": ">=0.2.0",
     "grunt-mocha": ">=0.4.11",
     "grunt-qunit-cov": "~0.3.2",
-    "image-webpack-loader": "^1.8.0",
     "imports-loader": "^0.6.5",
     "jquery": "~2.1.0",
     "jquery-chosen": "^1.1.0",
@@ -42,6 +41,7 @@
     "style-loader": "^0.13.1",
     "text-loader": "0.0.1",
     "underscore": "^1.8.3",
+    "url-loader": "^0.5.7",
     "webpack": "^1.13.1"
   }
 }

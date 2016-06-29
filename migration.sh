@@ -411,6 +411,31 @@ function frontend_setup {
   echo "frontend_setup: $(ts) ..." >> "$LOGFILE"
 
   cd reports/static >>"$LOGFILE" 2>&1
+  npm --version 2>&1 || error "npm not found: $?"
+  rm -rf ./node_modules 
+  npm install >>"$LOGFILE" 2>&1 || error "npm install failed: $?"
+  
+  npm run build 2>&1 || error "npm run build failed: $?"
+  
+  # TODO: frontend tests
+  
+  if [[ $IS_DEV_SERVER -ne 1 ]]; then
+    $DJANGO_CMD collectstatic --noinput \
+        --ignore="*node_modules*" \
+        --ignore="*bower_components*" \
+        --ignore="*test_data*" \
+        --ignore="*.json" \
+        --ignore="*api_init*" || error "collectstatic failed: $?"
+  fi
+  
+  echo "frontend_setup done: $(ts)" >> "$LOGFILE"
+
+}
+
+function frontend_setup_bak {
+  echo "frontend_setup: $(ts) ..." >> "$LOGFILE"
+
+  cd reports/static >>"$LOGFILE" 2>&1
   
   npm --version 2>&1 || error "npm not found: $?"
   

@@ -928,12 +928,13 @@ define([
         if (jqXHR.status){
           msg += ':\n status:' + jqXHR.status;
         }
-        if ( _.has(jqXHR,'responseJSON') && !_.isEmpty(jqXHR.responseJSON) ) {
-          Iccbl.appModel.showJsonMessages(jqXHR.responseJSON);
-        }
       }
       $(document).trigger('ajaxComplete');
-      Iccbl.appModel.error(msg);
+      if (jqXHR && _.has(jqXHR,'responseJSON') && !_.isEmpty(jqXHR.responseJSON) ) {
+        Iccbl.appModel.showJsonMessages(jqXHR.responseJSON);
+      } else {
+        Iccbl.appModel.error(msg);
+      }
     },
     
     /**
@@ -980,7 +981,7 @@ define([
       
       var msg_rows = dict_to_rows(jsonObj);
       var bodyMsg = msg_rows;
-      if (_.isArray(msg_rows)){
+      if (_.isArray(msg_rows) && msg_rows.length > 1){
         bodyMsg = _.map(msg_rows, function(msg_row){
           return msg_row.join(' - ');
         }).join('<br>');
@@ -1148,7 +1149,8 @@ define([
           var errors = form.commit({ validate: true }); // runs schema and model validation
           if(!_.isEmpty(errors) ){
             _.each(_.keys(errors), function(key){
-              $('[name="'+key +'"').parents('.form-group').addClass('has-error');
+              $('[name="'+key +'"]').parents('.form-group,.input-group').addClass('has-error');
+              $('[name="'+key +'"]').parents('.form-group,.input-group').append(errors[key].message);
             });
             return false;
           }else{
@@ -1246,6 +1248,7 @@ define([
         key: 'content_type',
         options: _.without(resource.content_types, 'json'), // never json
         type: 'Select',
+        validators: ['required'],
         template: _.template([
           '<div class="input-group col-xs-6">',
           '   <label class="input-group-addon" for="<%= editorId %>" ',
@@ -1263,7 +1266,7 @@ define([
       formFields.set('use_vocabularies', true);
       formFields.set('use_titles', true);
       formFields.set('raw_lists', true);
-
+      formFields.set('content_type', formSchema['content_type'].options[0]);
       var form = new Backbone.Form({
         model: formFields,
         template: _.template([
@@ -1271,7 +1274,8 @@ define([
           "<form data-fieldsets class='form-horizontal container' >",
           "</form>",
           // tmpFrame is a target for the download
-          '<iframe name="tmpFrame" id="tmpFrame" width="1" height="1" style="visibility:hidden;position:absolute;display:none"></iframe>',
+          '<iframe name="tmpFrame" id="tmpFrame" width="1" height="1" ',
+          ' style="visibility:hidden;position:absolute;display:none"></iframe>',
           "</div>"
           ].join(''))
       });
@@ -1279,7 +1283,6 @@ define([
       form.listenTo(form, "change", function(e){
         console.log('change');
         var content_type = form.getValue('content_type');
-        console.log('content_type: ' + content_type );
         if(content_type == 'sdf'){
           form.$el.find('[name="use_vocabularies"]').prop('disabled', false);
           form.$el.find('[name="use_titles"]').prop('disabled', false);
@@ -1309,7 +1312,14 @@ define([
           var maxIntervals = 3600;      // 3600s
           var limitForDownload = 0;
           
-          form.commit();
+          var errors = form.commit({ validate: true }); // runs schema and model validation
+          if(!_.isEmpty(errors) ){
+            console.log('errors', errors);
+            _.each(_.keys(errors), function(key){
+              form.$el.find('[name="'+key +'"]').parents('.form-group,.input-group').addClass('has-error');
+            });
+            return false;
+          }
           var values = form.getValue();
 
           url += '&format=' + values['content_type']

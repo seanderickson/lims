@@ -17,7 +17,7 @@ define([
 ], function($, _, Backbone, Iccbl, layoutmanager, appModel, LibraryCopyView, 
             LibraryWellsView, DetailLayout, EditView, ListView, 
             libraryTemplate) {
-  console.log('libraryTemplate', libraryTemplate);
+
   var LibraryView = Backbone.Layout.extend({
     
     initialize: function(args) {

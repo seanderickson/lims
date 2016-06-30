@@ -60,7 +60,7 @@ from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB,  \
     LIST_BRACKETS, HTTP_PARAM_RAW_LISTS
 import reports.sqlalchemy_resource
-from reports import ValidationError, _now
+from reports import ValidationError, InformationError, _now
 from reports.api import ApiLogResource, \
     UserGroupAuthorization, \
     VocabulariesResource, \
@@ -226,7 +226,9 @@ class LibraryCopyPlateResource(ApiResource):
                 filter_expression, loaded_for_screen_id, for_screen_id)
             if (filter_expression is None
                     and for_screen_id is None and loaded_for_screen_id is None):
-                raise BadRequest('Can only service requests with filter expressions')
+                raise InformationError(
+                    key='Input filters ',
+                    msg='can only service requests with filter expressions')
                  
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
@@ -2333,7 +2335,9 @@ class CopyWellResource(ApiResource):
                     schema, param_hash=param_hash)
 
             if filter_expression is None:
-                raise BadRequest('can only service requests with filter expressions')
+                raise InformationError(
+                    key='Input filters ',
+                    msg='can only service requests with filter expressions')
                                   
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
@@ -2957,7 +2961,9 @@ class LibraryCopyResource(ApiResource):
                     schema, param_hash=param_hash)
 
             if filter_expression is None:
-                raise BadRequest('can only service requests with filter expressions')
+                raise InformationError(
+                    key='Input filters ',
+                    msg='can only service requests with filter expressions')
 
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
@@ -7303,7 +7309,9 @@ class ReagentResource(ApiResource):
                     schema, param_hash=param_hash)
             
             if filter_expression is None:
-                raise BadRequest('can only service requests with filter expressions')
+                raise InformationError(
+                    key='Input filters ',
+                    msg='can only service requests with filter expressions')
                  
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(

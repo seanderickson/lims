@@ -37,7 +37,10 @@ class ValidationError(Exception):
      
     def __repr__(self, *args, **kwargs):
         return 'validation errors: %r' % self.errors
-    
+
+class InformationError(ValidationError):
+    pass
+
 class ParseError(ValidationError):
     pass
 

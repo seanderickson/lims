@@ -16,7 +16,7 @@ from tastypie.http import HttpBadRequest, HttpNotImplemented, HttpNoContent,\
 from tastypie.resources import Resource, convert_post_to_put, sanitize
 from tastypie.utils.mime import build_content_type
 
-from reports import HEADER_APILOG_COMMENT, ValidationError, _now
+from reports import HEADER_APILOG_COMMENT, ValidationError, InformationError, _now
 from reports.models import ApiLog
 from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE, \
     CSV_MIMETYPE, JSON_MIMETYPE
@@ -220,10 +220,10 @@ class IccblBaseResource(Resource):
                 # for BadRequest, the message is the first/only arg
                 data = {"error": sanitize(e.args[0]) if getattr(e, 'args') else ''}
                 return self.build_error_response(request, data, **kwargs)
-            except ValidationError as e:
-                logger.info('validation error: %r', e)
+            except InformationError as e:
+                logger.info('information error: %r', e)
                 response = self.build_error_response(
-                    request, { 'errors': e.errors }, **kwargs)
+                    request, { 'Messages': e.errors }, **kwargs)
                 if 'xls' in response['Content-Type']:
                     response['Content-Disposition'] = \
                         'attachment; filename=%s.xlsx' % 'errors'
@@ -235,6 +235,19 @@ class IccblBaseResource(Resource):
                         logger.debug('no downloadID: %s' % request.GET )
                 return response
             
+            except ValidationError as e:
+                response = self.build_error_response(
+                    request, { 'Errors': e.errors }, **kwargs)
+                if 'xls' in response['Content-Type']:
+                    response['Content-Disposition'] = \
+                        'attachment; filename=%s.xlsx' % 'errors'
+                    downloadID = request.GET.get('downloadID', None)
+                    if downloadID:
+                        logger.info('set cookie "downloadID" %r', downloadID )
+                        response.set_cookie('downloadID', downloadID)
+                    else:
+                        logger.debug('no downloadID: %s' % request.GET )
+                return response
             except Exception as e:
                 if hasattr(e, 'response'):
                     # A specific response was specified

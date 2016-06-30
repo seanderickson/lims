@@ -6,13 +6,14 @@ define([
     'iccbl_backgrid',
     'views/list2',
     'models/app_state',
-], function($, _, Backbone, backbone_forms, Iccbl, ListView, appModel) {
+    'views/generic_edit'
+], function($, _, Backbone, backbone_forms, Iccbl, ListView, appModel, EditView) {
     
   
   var SearchView = Backbone.Form.extend({
     
     template: _.template([
-        "<form class='iccbl-headerfield-form form-group' ",
+        "<form class='iccbl-headerfield-form' ",
         "title='Look up items by plate number(s), plate range(s) and copy name(s);",
         "separate lists by commas and separate lookup types by spaces,",
         " use a newline to separate into subgroups'",
@@ -21,14 +22,24 @@ define([
         '<div id="data-error" class="has-error" ></div>',
         "</form>"].join('')),
 
-    fieldTemplate: [
+    fieldTemplate: _.template([
         '<div>',
         '<label title="<%= help %>" for="<%= editorId %>"><%= title %></label>',
         '<div>',
         '  <span placeholder="testing.." data-editor></span>',
         '</div>',
         '</div>'
-        ].join(''),
+        ].join('')),
+    
+    choiceFieldTemplate: _.template([
+      '<div class="form-group" key="form-group-<%=key%>" >',
+      '    <div class="" >',
+      '      <div data-editor  key="<%=key%>" style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
+      '      <div data-error class="text-danger" ></div>',
+      '      <div><%= help %></div>',
+      '    </div>',
+      '  </div>',
+    ].join('')),
    
     initialize: function(args) {
       
@@ -41,8 +52,8 @@ define([
       var Select2 = Backbone.Form.editors.Select.extend({
         render: function() {
           Select2.__super__.render.apply(this,arguments);
-          this.$el.css('position', 'relative'); // kludgy; brings it on top
-          this.$el.css('z-index', 10000); // brings it on top
+//          this.$el.css('position', 'relative'); // kludgy; brings it on top
+//          this.$el.css('z-index', 10000); // brings it on top
           return this;
         },        
       });
@@ -50,24 +61,54 @@ define([
       var TextArea2 = Backbone.Form.editors.TextArea.extend({
         render: function() {
           TextArea2.__super__.render.apply(this,arguments);
-          this.$el.css('position', 'relative'); // kludgy; brings it on top
-          this.$el.css('z-index', 10000); // kludgy; brings it on top
+          //this.$el.css('position', 'relative'); // kludgy; brings it on top
+          //this.$el.css('z-index', 10000); // kludgy; brings it on top
           return this;
         },        
       });
       
+      formSchema['username'] = {
+          title: '',
+          key: 'username',
+          type: EditView.ChosenSelect,
+          editorClass: 'chosen-select',
+          placeholder: 'Find a User...',
+          options: appModel.getUserOptions(),
+          template: self.choiceFieldTemplate 
+        };
+      
+      formSchema['screen_facility_id'] = {
+          title: '',
+          key: 'screen_facility_id',
+          type: EditView.ChosenSelect,
+          editorClass: 'chosen-select',
+          placeholder: 'Find a Screen...',
+          options: appModel.getScreenOptions(),
+          template: self.choiceFieldTemplate
+        };
+      
+      formSchema['library_short_name'] = {
+          title: '',
+          key: 'library_short_name',
+          type: EditView.ChosenSelect,
+          editorClass: 'chosen-select',
+          placeholder: 'Find a Library...',
+          options: appModel.getLibraryOptions(),
+          template: self.choiceFieldTemplate
+        };
+      
       formSchema['search_target'] = {
         title: 'Search', 
-        help: 'Select the area of the system to search on',
         key:  'search_target', // TODO: "key" not needed>?
-        type: Select2,
+        type: EditView.ChosenSelect,
+        placeholder: 'Search by...',
         options: [{ val: 'reagent', label: 'Wells'},
                   { val: 'librarycopyplate', label: 'Plate copies'},
                   { val: 'librarycopy', label: 'Copies'},
                   { val: 'copywell', label: 'Copy Wells'},
                   ],
-        template: _.template(self.fieldTemplate),
-        editorClass: 'form-control'
+        template: self.choiceFieldTemplate,
+        editorClass: 'chosen-select'
       };
       
       formSchema['search_value'] = {
@@ -75,7 +116,7 @@ define([
         help: 'enter a comma separated list',
         key:  'search_value', // TODO: "key" not needed>?
         type: TextArea2,
-        template: _.template(self.fieldTemplate),
+        template: self.fieldTemplate,
         editorClass: 'form-control'
       };
       
@@ -89,6 +130,32 @@ define([
       this.model = new FormFields();
 
       this.listenTo(appModel, 'change:uriStack' , this.uriStackChange );
+      this.on("change", function(){
+        var username = self.getValue('username');
+        var screen_facility_id = self.getValue('screen_facility_id');
+        var library_short_name = self.getValue('library_short_name');
+        if(username){
+          var route = 'screensaveruser/' + username;
+          self.setValue('username',null);
+          self.$el.find('[key="username"]')
+              .find('.chosen-select').trigger("chosen:updated");
+          appModel.router.navigate(route, {trigger: true});
+        }
+        else if(screen_facility_id){
+          var route = 'screen/' + screen_facility_id;
+          self.setValue('screen_facility_id',null);
+          self.$el.find('[key="screen_facility_id"]')
+              .find('.chosen-select').trigger("chosen:updated");
+          appModel.router.navigate(route, {trigger: true});
+        }
+        else if(library_short_name){
+          var route = 'library/' + library_short_name;
+          self.setValue('library_short_name',null);
+          self.$el.find('[key="library_short_name"]')
+              .find('.chosen-select').trigger("chosen:updated");
+          appModel.router.navigate(route, {trigger: true});
+        }
+      });
 
       SearchView.__super__.initialize.apply(this, args);
       console.log('initialize SearchView');
@@ -186,7 +253,15 @@ define([
         e.preventDefault();
         self._submit();
       });
-
+      
+      console.log('setup single selects using chosen...');
+      // See http://harvesthq.github.io/chosen/
+      this.$el.find('.chosen-select').chosen({
+        disable_search_threshold: 3,
+        width: '100%',
+        allow_single_deselect: true,
+        search_contains: true
+        });
     },
     
     /**

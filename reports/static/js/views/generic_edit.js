@@ -493,6 +493,9 @@ define([
       Backbone.Form.editors.Select.prototype.render.apply(this);
       
       this.setOptions(this.schema.options);
+      if(this.schema.placeholder){
+        this.$el.attr('data-placeholder', this.schema.placeholder);
+      }
       
       // if the current value is not in the options, then display it as the placeholder
       var currVal = this.model.get(this.key);
@@ -1010,7 +1013,6 @@ define([
           $('[name="'+key +'"').parents('.form-group').addClass('required');
         }
       });
-      
       
       console.log('afterRender finished');
     },

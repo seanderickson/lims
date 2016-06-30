@@ -232,13 +232,17 @@ ul.chosen-choices {
   padding-left: 5px;
 }
 
+.form-control-disabled {
+  padding-top: 5px;
+  min-height: 1eM;
+}
+
 .iccbl-headerfield-form * {
 	padding: 0 0 0 0;
 }
 
-.form-control-disabled {
-  padding-top: 5px;
-  min-height: 1eM;
+.iccbl-headerfield-form .form-group{
+  margin-bottom: 5px;
 }
 
 .iccbl-headerfield-form input[type=number]{

@@ -113,7 +113,8 @@ define([
       _.bindAll(this,'error',
         'setCurrentUser','getResources','getVocabularies',
         'getAdminUserOptions','getUserOptions','getUserGroupOptions',
-        'getPrincipalInvestigatorOptions','getLibraries','getLibraryOptions');
+        'getPrincipalInvestigatorOptions','getLibraries','getLibraryOptions',
+        'getScreens','getScreenOptions');
     },
         
     start: function(callBack) {
@@ -186,7 +187,28 @@ define([
           libraries.each(function(library){
             var short_name = library.get('short_name');
             var library_name = library.get('library_name');
-            options.push({ val: short_name, label: library_name });
+            options.push({ val: short_name, label: short_name + ': ' + library_name });
+          });
+          self.set(prop,options);
+          if (callBack) callBack(options);
+        });
+      }else{
+        if (callBack) callBack(options);
+      }
+      return options;
+    },
+
+    getScreenOptions: function(callBack){
+      var self = this;
+      var prop = 'screenOptions';
+      var options = this.get(prop);
+      if(!options){
+        this.getScreens(function(screens){
+          options = [];
+          screens.each(function(screen){
+            var facility_id = screen.get('facility_id');
+            var title = screen.get('title');
+            options.push({ val: facility_id, label: facility_id + ': ' + title });
           });
           self.set(prop,options);
           if (callBack) callBack(options);
@@ -271,6 +293,7 @@ define([
       }
       return options;
     },
+    
     getPrincipalInvestigatorOptions: function(callBack){
       var self = this;
       var prop = 'piOptions';
@@ -326,6 +349,14 @@ define([
       };
       return this.getCachedResourceCollection(
         'libraries', this.dbApiUri + '/library', data_for_get, callback );
+    },
+    
+    getScreens: function(callback){
+      data_for_get = { 
+        exact_fields: ['title','facility_id'] 
+      };
+      return this.getCachedResourceCollection(
+        'screens', this.dbApiUri + '/screen', data_for_get, callback );
     },
 
     getCachedResourceCollection: function(
@@ -1492,10 +1523,10 @@ define([
      "</form>",
      "</div>"].join(''));      
   appState._field_template = _.template([
-    '<div class="form-group" >',
+    '<div class="form-group" key="form-group-<%=key%>" >',
     '    <label class="control-label " for="<%= editorId %>"><%= title %></label>',
     '    <div class="" >',
-    '      <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
+    '      <div data-editor  key="<%=key%>" style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
     '      <div data-error class="text-danger" ></div>',
     '      <div><%= help %></div>',
     '    </div>',

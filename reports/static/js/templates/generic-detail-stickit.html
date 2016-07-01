@@ -1,3 +1,21 @@
+<% 
+// add only the edit button on the top for now
+if (buttons) {
+%>
+  <form id='generic-form-top' class="form-horizontal" >
+    <% 
+    buttons.each(function(key) {
+      if (key=="edit"){
+    %>
+        <button type="button" class="btn btn-default btn-sm" id="<%=key %>" name="<%=key %>" ></button>
+    <% 
+      }
+    }); 
+    %>
+  </form>
+<% 
+}  
+%>
 <table class='table table-condensed data-list'>
 <% 
   (groupedKeys).each(function(key) { 

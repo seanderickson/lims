@@ -3723,10 +3723,10 @@ _.extend(DatetimeFormatter.prototype, {
       var temp = rawData.split('T')[0];
       if(this.DATE_RE.test(temp)){
         var YYYYMMDD = this.DATE_RE.exec(temp);
-        console.log('YYYYMMDD', YYYYMMDD);
+        if (Iccbl.appModel.DEBUG) console.log('YYYYMMDD', YYYYMMDD);
         var jsDate = new Date(YYYYMMDD[1]*1, YYYYMMDD[2]*1-1, YYYYMMDD[3]*1 )
         var temp1 = getIccblDateString(jsDate);
-        console.log('date: raw: ', rawData, 'converted', temp1);
+        if (Iccbl.appModel.DEBUG) console.log('date: raw: ', rawData, 'converted', temp1);
         return temp1;
       }else{
         Iccbl.appModel.error('unrecognized date: ' + rawData );

@@ -134,16 +134,13 @@ define([
     initializeAdminMode: function(callback) {
       var self = this;
       console.log('start app_state.js');
-      // TODO: use jquery.queue() as in libraryscreening.js
-      self.getAdminUserOptions(function(options){
-        self.getUserOptions(function(options){
-          self.getPrincipalInvestigatorOptions(function(options){
-            self.getUserGroupOptions(function(options){
-              callback();
-            });
-          });
-        });
-      });
+      // Pre-fetch options for the search_box
+      $(this).queue([
+         self.getAdminUserOptions,
+         self.getUserOptions,
+         self.getPrincipalInvestigatorOptions,
+         self.getUserGroupOptions,
+         callback]);
     },
     
     setCurrentUser: function(callBack) {
@@ -477,7 +474,12 @@ define([
     /**
      * Cache an "options" array for all permissions, for the editor UI
      * "options" are:
-     * { val: 'key', label: 'label' }
+     * [ 
+     *   group: "user",
+     *   options: [
+     *     { val: 'key', label: 'label' }, { val: ... }
+     *   ]
+     * ]
      */
     setPermissionsOptions: function(resources){
       var self = this;

@@ -9,6 +9,7 @@ define([
   'views/generic_detail_layout',
   'views/generic_edit',
   'views/library/library',
+  'views/library/libraryWells',
   'views/screen/screen',
   'views/screen/libraryScreening',
   'views/user/user2',
@@ -20,7 +21,7 @@ define([
   'templates/about.html'
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
-         EditView, LibraryView, ScreenView, LibraryScreeningView, UserAdminView, 
+         EditView, LibraryView, LibraryWellView, ScreenView, LibraryScreeningView, UserAdminView, 
          UserView, UserGroupAdminView, DetailTestView, layout, welcomeLayout, 
          aboutLayout) {
   
@@ -28,6 +29,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     'ListView': ListView, 
     'DetailView': DetailLayout, 
     'LibraryView': LibraryView,
+    'LibraryWellView': LibraryWellView,
     'ScreenView': ScreenView,
     'LibraryScreeningView': LibraryScreeningView,
     'UserView': UserView,
@@ -133,22 +135,23 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       self.cleanup();
       self.off();
       
-      var addNewResourceButton = $([
-        '<a class="btn btn-default btn-sm pull-down" ',
-          'role="button" id="add_button" href="#">',
-          'Add</a>'
-        ].join(''));
-      addNewResourceButton.click(function(e){
-        e.preventDefault();
-        newUriStack = [resource.key,'+add'];
-        var route = newUriStack.join('/');
-        console.log('history route: ' + route);
-        appModel.router.navigate(route, {trigger: true});
-      });
-      var extraControls = [];
-      if (appModel.hasPermission(resource, 'write')){
-        extraControls.push(addNewResourceButton);
-      }
+      // Disable add button - prefer explicit add controls
+      //var addNewResourceButton = $([
+      //  '<a class="btn btn-default btn-sm pull-down" ',
+      //    'role="button" id="add_button" href="#">',
+      //    'Add</a>'
+      //  ].join(''));
+      //addNewResourceButton.click(function(e){
+      //  e.preventDefault();
+      //  newUriStack = [resource.key,'+add'];
+      //  var route = newUriStack.join('/');
+      //  console.log('history route: ' + route);
+      //  appModel.router.navigate(route, {trigger: true});
+      //});
+      //var extraControls = [];
+      //if (appModel.hasPermission(resource, 'write')){
+      //  extraControls.push(addNewResourceButton);
+      //}
       
       var uriStack = _.clone(uriStack);
       var viewClass = ListView;
@@ -219,8 +222,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             schemaResult: schemaResult, 
             resource: resource, 
             collection: collection, 
-            search_data: search_data,
-            extraControls: extraControls
+            search_data: search_data
           }
         });
       }else{ // normal list view
@@ -228,8 +230,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           options: { 
             uriStack: uriStack,
             schemaResult: schemaResult, 
-            resource: resource,
-            extraControls: extraControls
+            resource: resource
           }
         });
       }

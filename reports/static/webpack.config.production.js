@@ -5,9 +5,7 @@ module.exports = {
   entry: './main',
   output: {
     filename: 'bundle.js',
-    // with css?sourceMap; the public path must be a full URL for fonts to load
-    // see: https://github.com/webpack/css-loader/issues/29
-    publicPath: 'http://localhost:8000/_static/'
+    publicPath: '../_static/'
   },
   devtool: 'inline-source-map',
   resolve: {
@@ -31,7 +29,7 @@ module.exports = {
     loaders: [
       { test: require.resolve('jquery'), loader: 'expose?jQuery!expose?$' },
       { test: /\.(html|json)$/, loaders: ['raw'], exclude: /node_modules/ },
-      { test: /\.css$/, loaders: ['style', 'css?sourceMap'] },
+      { test: /\.css$/, loaders: ['style', 'css'] },
       // image-webpack-loader has dependency issues on orchestra
       //{
       //  test: /\.(jpe?g|png|gif|svg)$/i,

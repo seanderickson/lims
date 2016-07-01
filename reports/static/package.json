@@ -4,7 +4,7 @@
   "description": "Node/NPM - Javascript build environment for the ICCBL-LIMS",
   "author": "Sean Erickson <sean_erickson @ hms.harvard.edu>",
   "scripts": {
-    "build": "webpack --display-error-details",
+    "build": "webpack --config ./webpack.config.production.js --display-error-details",
     "build-watch": "webpack --display-error-details --watch"
   },
   "devDependencies": {

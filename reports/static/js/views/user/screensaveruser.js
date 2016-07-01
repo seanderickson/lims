@@ -123,16 +123,10 @@ define([
           EditView.prototype.afterRender.call(this,arguments);
         }
       });
-
-//      var view = this.tabViews[key];
-//      if (view) {
-//        // remove the view to refresh the page form
-//        this.removeView(this.tabViews[key]);
-//      }
       
       var detailView = DetailView.extend({
         afterRender: function(){
-          DetailView.prototype.afterRender.call(this,arguments);
+            DetailView.prototype.afterRender.call(this,arguments);
           if(appModel.hasPermission('screen', 'write')){
             var addSMScreenButton = $([
               '<a class="btn btn-default btn-sm pull-down" ',
@@ -170,10 +164,8 @@ define([
               e.preventDefault();
               self.updateUserAgreement('rnai');
             });
-            this.$el.prepend(addSMScreenButton);
-            this.$el.prepend(addRnaiScreenButton);
-            this.$el.prepend(updateRNAUAButton);
-            this.$el.prepend(updateSMUAButton);
+            this.$el.find('#generic-form-top').append([
+               addSMScreenButton,addRnaiScreenButton,updateRNAUAButton,updateSMUAButton]);
           }
         }
       });
@@ -185,17 +177,15 @@ define([
         DetailView: detailView
       });
       view.showEdit = function(){
-        this.model.resource.fields['permissions']['choices'] = (
-            appModel.get('permissionOptions'));
-        //        this.model.resource.fields['data_sharing_levels']['choices'] = [
-        //        { val: 'smDsl1MutualScreens', label: 'smDsl1MutualScreens' },
-        //        { val: 'smDsl2MutualPositives', label: 'smDsl2MutualPositives' },
-        //        { val: 'smDsl3SharedScreens', label: 'smDsl3SharedScreens' }
-        //        ];        
-        appModel.getPrincipalInvestigatorOptions(function(options){
-
-          self.model.resource.fields['lab_head_username']['choices'] = options;
+        appModel.initializeAdminMode(function(){
           
+          self.model.resource.fields['permissions']['choices'] = 
+            appModel.getPermissionsOptions();
+          self.model.resource.fields['usergroups']['choices'] = 
+            appModel.getUserGroupOptions();
+          self.model.resource.fields['lab_head_username']['choices'] = 
+            appModel.getPrincipalInvestigatorOptions();
+
           // Set up the dynamic add lab_affiliation form
           // with the edit view available, set up the lab_head_affiliation rules
           // - add listener to update options dynamically
@@ -210,10 +200,34 @@ define([
               appModel.unset('principal_investigators');
             }
           });
+          
           DetailLayout.prototype.showEdit.call(view,arguments);
-        });  
+        });
       };
-
+//      view.showEdit = function(){
+//        this.model.resource.fields['permissions']['choices'] = (
+//            appModel.get('permissionOptions'));
+//        appModel.getPrincipalInvestigatorOptions(function(options){
+//
+//          self.model.resource.fields['lab_head_username']['choices'] = options;
+//          
+//          // Set up the dynamic add lab_affiliation form
+//          // with the edit view available, set up the lab_head_affiliation rules
+//          // - add listener to update options dynamically
+//          // - attach the "add lab affiliation" button to the view
+//          
+//          // - add listener to update view options when classification changes
+//          //    - note we want to replace this with model-driven events (backbone.stickit)
+//          self.model.on('sync', function(){
+//            // TODO: should only need to do this if the classification has changed
+//            // to "PI"; but the changedAttributes are unreliable for detecting this
+//            if(self.model.get('classification')=='principal_investigator'){
+//              appModel.unset('principal_investigators');
+//            }
+//          });
+//          DetailLayout.prototype.showEdit.call(view,arguments);
+//        });  
+//      };
       
       this.tabViews[key] = view;
       
@@ -581,7 +595,8 @@ define([
       var resource = Iccbl.appModel.getResource('serviceactivity');
       var defaults = {};
       appModel.initializeAdminMode(function(){
-        resource.fields['performed_by_username']['choices'] = appModel.getAdminUserOptions();
+        resource.fields['performed_by_username']['choices'] = 
+          appModel.getAdminUserOptions();
 
         _.each(resource.fields, function(value, key){
             if (key == 'resource_uri') {
@@ -601,10 +616,6 @@ define([
           resource: resource,
           urlRoot: resource.apiUri, 
           defaults: defaults
-//          save: function(){
-//            console.log('save',arguments);
-//            return NewModel.__super__.save.apply(this,arguments);
-//          }
         });
         var view = new DetailLayout({
           model: new NewModel(), 

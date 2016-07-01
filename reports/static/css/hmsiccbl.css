@@ -103,6 +103,12 @@ div#application_div > .one-space {
 }
 
 /** menu list styling from bootstrap 2.3.2 **/
+.well  {
+ margin-bottom: 5px;
+}
+.panel {
+ margin-bottom: 5px;
+}
 
 .menu {
   list-style: none;
@@ -162,9 +168,10 @@ td.dl-title {
   background: #dddddd;
   font-weight:bold;
 /*   padding-bottom: 4px !important; */
-  border-width: 4px;
+/*   border-width: 4px; */
+/*   padding: 1px !important; */
   border-style: solid;
-  border-color: transparent;  
+  border-color: #f5f5f5;  
 }
 .table > tbody > tr > td.dl-title {
   border-top: 1px solid transparent;
@@ -304,4 +311,12 @@ td.text-wrap-cell {
 
 .multiselect2 .ms-container {
   width: auto;
+}
+
+/* Turn off chosen height for multi-select so that the bootstrap height 
+   can be applied */
+@media screen {
+ .chosen-container-multi .chosen-choices li.search-field input[type="text"] {
+    height: 32px; 
+  }
 }

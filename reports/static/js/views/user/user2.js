@@ -39,21 +39,11 @@ define([
           description: 'User Details', 
           title: 'User Details', 
           invoke: 'setDetail' },
-//        usergroup: { 
-//          description: 'User Groups', 
-//          title: 'User Groups', 
-//          invoke: 'setGroups', 
-//          resource: 'usergroup' },
         usergrouppermissions: { 
           description: 'User Groups and Permissions', 
           title: 'User Groups and Permissions', 
           invoke: 'setGroupsPermissions'
         },
-//        permission: { 
-//          description: 'User Permissions', 
-//          title: 'User Permissions', 
-//          invoke: 'setPermissions',
-//          resource: 'permission' },
     },
     
     events: {
@@ -104,7 +94,7 @@ define([
       var actualStack = consumedStack.concat(reportedUriStack);
       this.trigger('uriStack:change', actualStack );
       
-      console.log('++++hack remove disabled state');
+      // ++++hack remove disabled state
       this.$('ul.nav-tabs > li').removeClass('disabled');
     },
     
@@ -164,14 +154,21 @@ define([
     setDetail: function(delegateStack){
       var key = 'detail';
  
-      this.model.resource.fields['permissions']['choices'] = appModel.get('permissionOptions');
-      
-      console.log('setDetail: delegateStack: ', delegateStack);
-        var view = new DetailLayout({ 
-          model: this.model, 
-          uriStack: delegateStack
+      var view = new DetailLayout({ 
+        model: this.model, 
+        uriStack: delegateStack
+      });
+      view.showEdit = function(){
+        appModel.initializeAdminMode(function(){
+          
+          self.model.resource.fields['permissions']['choices'] = 
+            appModel.getPermissionsOptions();
+          self.model.resource.fields['usergroups']['choices'] = 
+            appModel.getUserGroupOptions();
+          DetailLayout.prototype.showEdit.call(view,arguments);
         });
-        this.tabViews[key] = view;
+      };
+      
       // NOTE: have to re-listen after removing a view
       this.listenTo(view , 'uriStack:change', this.reportUriStack);
       // Note: since detail_layout reports the tab, the consumedStack is empty here
@@ -213,28 +210,6 @@ define([
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
     },
-
-//    setGroups: function(delegateStack){
-//      var self = this;
-//      var key = 'usergroup';
-//      var resource = appModel.getResource('usergroup');
-//      var url = [self.model.resource.apiUri, 
-//                 self.model.key,
-//                 'groups'].join('/');
-//      var view = new ListView({ options: {
-//        uriStack: _.clone(delegateStack),
-//        schemaResult: resource,
-//        resource: resource,
-//        url: url
-//      }});
-//      Backbone.Layout.setupView(view);
-//      this.consumedStack = [key]; 
-//      self.reportUriStack([]);
-//      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-//      this.setView("#tab_container", view ).render();
-//    },    
-    
-    
     onClose: function() {
       // TODO: is this necessary when using Backbone LayoutManager
       this.tabViews = {};

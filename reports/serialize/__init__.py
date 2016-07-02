@@ -54,6 +54,7 @@ def parse_val(value, key, data_type):
             or value == '' 
             or value == 'None' 
             or value == u'None' 
+            or value == 'null'
             or value == u'n/a'):
             if data_type == 'string': 
                 return ''

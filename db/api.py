@@ -3313,19 +3313,35 @@ class AttachedFileResource(ApiResource):
                 filename = param_hash.get('filename', None)
 
         username = param_hash.pop('username', None)
-        if not username:
+        screen_facility_id = param_hash.pop('screen_facility_id', None)
+        if not username and not screen_facility_id:
             raise ValidationError(
-                key='username', msg='must provide a username parameter')
-        try:
-            user = ScreensaverUser.objects.get(username=username)
-        except ObjectDoesNotExist:
-            logger.exception('username does not exist: %s' % username)
-            raise Http404('username %r does not exist' % username)
+                key='username', msg='must provide a username or screen_facility_id parameter')
+        if username is not None and screen_facility_id is not None:
+            raise ValidationError(
+                key='username', msg='either "username" or "screen"')
+        user = None
+        screen = None
+        if username:
+            try:
+                user = ScreensaverUser.objects.get(username=username)
+            except ObjectDoesNotExist:
+                logger.exception('username does not exist: %s' % username)
+                raise Http404('username %r does not exist' % username)
+        elif screen_facility_id:
+            try:
+                screen = Screen.objects.get(facility_id=screen_facility_id)
+            except ObjectDoesNotExist:
+                logger.exception('screen_facility_id does not exist: %s' % screen_facility_id)
+                raise Http404('screen_facility_id %r does not exist' % screen_facility_id)
+
         # TODO: refactor, use validation properties to validate
-        type = param_hash.pop('type', None)
+        type = parse_val(param_hash.pop('type', None),'type','string')
         if not type:
             raise ValidationError(key='type', msg='required')
-        created_by_username = param_hash.pop('created_by_username', None)
+        created_by_username = parse_val(
+            param_hash.pop('created_by_username', None),
+            'created_by_username', 'string')
         if not created_by_username:
             created_by_username = request.user.username
         try:
@@ -3336,10 +3352,10 @@ class AttachedFileResource(ApiResource):
             logger.exception('created_by_username does not exist: %s',
                 created_by_username)
             raise
-        file_date = param_hash.pop('file_date', None)
-        if file_date:
-            logger.debug('file_date %r', file_date)
-            file_date = parse_val(file_date, 'file_date', 'date')
+        
+        file_date = parse_val(
+            param_hash.pop('file_date', None),
+            'file_date', 'date')
             
         af = AttachedFile.objects.create(
             contents=contents,
@@ -3347,6 +3363,7 @@ class AttachedFileResource(ApiResource):
             type=type,
             created_by=admin_user,
             screensaver_user=user,
+            screen=screen
             )
         if file_date:
             af.file_date = file_date
@@ -3371,7 +3388,8 @@ class AttachedFileResource(ApiResource):
         if(logger.isEnabledFor(logging.DEBUG)):
             logger.debug(str(('create, api log', log)))
 
-        logger.info('attached file created: %s for user %s' % (af, user))
+        logger.info('attached file created: %s for user %s, screen: %s',
+            af, user, screen)
         
         return tastypie.http.HttpAccepted()
         
@@ -3449,6 +3467,9 @@ class AttachedFileResource(ApiResource):
         username = param_hash.pop('username', None)
         if username:
             param_hash['username__eq'] = username
+        screen_facility_id = param_hash.pop('screen_facility_id', None)
+        if screen_facility_id:
+            param_hash['screen_facility_id__eq'] = screen_facility_id
         attached_file_id = param_hash.pop('attached_file_id', None)
         if attached_file_id:
             param_hash['attached_file_id__eq'] = attached_file_id
@@ -3480,6 +3501,7 @@ class AttachedFileResource(ApiResource):
             # specific setup
             _af = self.bridge['attached_file']
             _su = self.bridge['screensaver_user']
+            _screen = self.bridge['screen']
             _up = self.bridge['reports_userprofile']
             
             j = _af
@@ -3489,7 +3511,13 @@ class AttachedFileResource(ApiResource):
                 isouter = True
             j = j.join(
                 _su, _af.c.screensaver_user_id == _su.c.screensaver_user_id,
-                isouter=isouter)
+                isouter=True)
+#             screen_facility_id = param_hash.pop('screen_facility_id', None)
+#             if screen_facility_id:
+#                 isouter = True # why
+            j = j.join(
+                _screen, _af.c.screen_id == _screen.c.screen_id,
+                isouter=True)
             
             # This entire query doesn't fit the pattern, construct it manually
             # bleah
@@ -3502,7 +3530,7 @@ class AttachedFileResource(ApiResource):
                     ' where au.screensaver_user_id=attached_file.created_by_id )'),
                 }
 
-            base_query_tables = ['attached_file', 'screensaver_user'] 
+            base_query_tables = ['attached_file', 'screensaver_user', 'screen'] 
             columns = self.build_sqlalchemy_columns(
                 field_hash.values(), base_query_tables=base_query_tables,
                 custom_columns=custom_columns)
@@ -3515,6 +3543,7 @@ class AttachedFileResource(ApiResource):
              
             (stmt, count_stmt) = self.wrap_statement(
                 stmt, order_clauses, filter_expression)
+            stmt = stmt.order_by('-attached_file_id')
             
             title_function = None
             if param_hash.get(HTTP_PARAM_USE_TITLES, False):
@@ -5211,8 +5240,31 @@ class ScreenResource(ApiResource):
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_screen_screenresultview'),
                 name="api_dispatch_screen_screenresultview"),
+                
+            url(r"^(?P<resource_name>%s)/(?P<facility_id>([\w\d_]+))/attachedfiles%s$" 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_screen_attachedfileview'),
+                name="api_dispatch_screen_attachedfileview"),
+            url((r"^(?P<resource_name>%s)/(?P<facility_id>([\w\d_]+))"
+                 r"/attachedfiles/(?P<attached_file_id>([\d]+))%s$") 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_screen_attachedfiledetailview'),
+                name="api_dispatch_screen_attachedfiledetailview"),
         ]    
         
+    def dispatch_screen_attachedfileview(self, request, **kwargs):
+        kwargs['screen_facility_id'] = kwargs.pop('facility_id')
+        method = 'list'
+        if request.method.lower() == 'put':
+            # if put is used, force to "put_detail"
+            method = 'detail'
+        return AttachedFileResource().dispatch(method, request, **kwargs)    
+
+    def dispatch_screen_attachedfiledetailview(self, request, **kwargs):
+        kwargs['screen_facility_id'] = kwargs.pop('facility_id')
+        return AttachedFileResource().dispatch('detail', request, **kwargs)    
+                
+
     def dispatch_screen_activityview(self, request, **kwargs):
         kwargs['screen_facility_id__eq'] = kwargs.pop('facility_id')
         return ActivityResource().dispatch('list', request, **kwargs)    

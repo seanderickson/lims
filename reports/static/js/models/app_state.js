@@ -350,7 +350,8 @@ define([
     
     getScreens: function(callback){
       data_for_get = { 
-        exact_fields: ['title','facility_id'] 
+        exact_fields: ['title','facility_id'], 
+        project_phase__ne: 'annotation'
       };
       return this.getCachedResourceCollection(
         'screens', this.dbApiUri + '/screen', data_for_get, callback );
@@ -824,6 +825,10 @@ define([
       return menu;
     },
         
+    isEditable: function(resourceId){
+      return _.contains(this.getResource(resourceId).visibility, 'e');
+    },
+    
     /**
      * Test if the current user has the resource/permission - 
      * - if permission is unset, 

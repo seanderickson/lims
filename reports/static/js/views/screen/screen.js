@@ -62,6 +62,12 @@ define([
         invoke: "setAttachedFiles",
         resource: 'attachedfile'
       },      
+      publication: {
+        description: "Publications",
+        title: "Publications",
+        invoke: "setPublications",
+        resource: 'publication'
+      },      
       billingItems: {
         description : 'Billing information',
         title : 'Billing',
@@ -384,40 +390,44 @@ define([
       var url = [self.model.resource.apiUri, 
                  self.model.key,
                  'attachedfiles'].join('/');
-      var uploadAttachedFileButton = $([
-        '<a class="btn btn-default btn-sm pull-down" ',
-          'role="button" id="save_button" href="#">',
-          'Add</a>'
-        ].join(''));
-      var showDeleteButton = $([
+      extraControls = []
+      if (appModel.hasPermission('screen','write')){
+        var uploadAttachedFileButton = $([
           '<a class="btn btn-default btn-sm pull-down" ',
-            'role="button" id="showDeleteButton" href="#">',
-            'Delete</a>'
+            'role="button" id="save_button" href="#">',
+            'Add</a>'
           ].join(''));
+        var showDeleteButton = $([
+            '<a class="btn btn-default btn-sm pull-down" ',
+              'role="button" id="showDeleteButton" href="#">',
+              'Delete</a>'
+            ].join(''));
+        uploadAttachedFileButton.click(function(e){
+          e.preventDefault();
+          var url = [self.model.resource.apiUri, 
+             self.model.key,
+             'attachedfiles'].join('/');
+          EditView.uploadAttachedFileDialog(url, view.collection, 'attachedfiletype.screen');
+        });
+        showDeleteButton.click(function(e){
+          e.preventDefault();
+          if (! view.grid.columns.findWhere({name: 'deletor'})){
+            view.grid.columns.unshift({ 
+              name: 'deletor', label: 'Delete', text:'X', 
+              description: 'delete record', 
+              cell: Iccbl.DeleteCell, sortable: false });
+          }
+        });
+        extraControls = extraControls.concat(uploadAttachedFileButton, showDeleteButton);
+      }      
       
       var view = new ListView({ options: {
         uriStack: _.clone(delegateStack),
         schemaResult: resource,
         resource: resource,
         url: url,
-        extraControls: [uploadAttachedFileButton, showDeleteButton]
+        extraControls: extraControls
       }});
-      uploadAttachedFileButton.click(function(e){
-        e.preventDefault();
-        var url = [self.model.resource.apiUri, 
-           self.model.key,
-           'attachedfiles'].join('/');
-        EditView.uploadAttachedFileDialog(url, view.collection, 'attachedfiletype.screen');
-      });
-      showDeleteButton.click(function(e){
-        e.preventDefault();
-        if (! view.grid.columns.findWhere({name: 'deletor'})){
-          view.grid.columns.unshift({ 
-            name: 'deletor', label: 'Delete', text:'X', 
-            description: 'delete record', 
-            cell: Iccbl.DeleteCell, sortable: false });
-        }
-      });
       Backbone.Layout.setupView(view);
       self.consumedStack = [key]; 
       self.reportUriStack([]);
@@ -426,7 +436,247 @@ define([
       
     },
         
+    setPublications: function(delegateStack) {
+      var self = this;
+      var key = 'publication';
+      var resource = appModel.getResource(key);
+      var url = [self.model.resource.apiUri, 
+                 self.model.key,
+                 'publications'].join('/');
+      extraControls = []
+      if (appModel.hasPermission('screen','write')){
+        var showDeleteButton = $([
+            '<a class="btn btn-default btn-sm pull-down" ',
+              'role="button" id="showDeleteButton" href="#">',
+              'Delete</a>'
+            ].join(''));
+        
+        var showAddButton = $([
+            '<a class="btn btn-default btn-sm pull-down" ',
+              'role="button" id="showAddButton" href="#">',
+              'Add</a>'
+            ].join(''));
+        showDeleteButton.click(function(e){
+          e.preventDefault();
+          if (! view.grid.columns.findWhere({name: 'deletor'})){
+            view.grid.columns.unshift({ 
+              name: 'deletor', label: 'Delete', text:'X', 
+              description: 'delete record', 
+              cell: Iccbl.DeleteCell, sortable: false });
+          }
+        });
+        showAddButton.click(function(e){
+          e.preventDefault();
+          self.addPublicationDialog(view.collection);
+        });
+        extraControls = extraControls.concat(showAddButton, showDeleteButton)
+      }      
+      var view = new ListView({ options: {
+        uriStack: _.clone(delegateStack),
+        schemaResult: resource,
+        resource: resource,
+        url: url,
+        extraControls: extraControls
+      }});
+      Backbone.Layout.setupView(view);
+      self.consumedStack = [key]; 
+      self.reportUriStack([]);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView("#tab_container", view ).render();
       
+    },
+    
+    addPublicationDialog: function(collection){
+      var self = this;
+      var url = [self.model.resource.apiUri, 
+         self.model.key,
+         'publications'].join('/');
+      var form_template = [
+         "<div class='form-horizontal container' id='uploadAttachedFileButton_form' >",
+         "<form data-fieldsets class='form-horizontal container' >",
+         //"<div class='form-group' ><input type='file' name='fileInput' /></div>",
+         "</form>",
+         "</div>"].join('');      
+      var fieldTemplate = _.template([
+        '<div class="form-group" >',
+        '    <label class="control-label " for="<%= editorId %>"><%= title %></label>',
+        '    <div class="" >',
+        '      <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
+        '      <div data-error class="text-danger" ></div>',
+        '      <div><%= help %></div>',
+        '    </div>',
+        '  </div>',
+      ].join(''));
+      var DisabledField = EditView.DisabledField.extend({
+        tagName: 'p',
+        className: 'form-control-static'
+      });
+      
+      var formSchema = {};
+      formSchema['pubmed_id'] = {
+        title: 'Pubmed ID',
+        key: 'pubmed_id',
+        type: 'Text',
+        template: fieldTemplate
+      };
+      formSchema['pubmed_central_id'] = {
+        title: 'Pubmed Central ID',
+        key: 'pubmed_central_id',
+        type: 'Text',
+        template: fieldTemplate
+      };
+      formSchema['title'] = {
+        title: 'Title',
+        key: 'title',
+        type: 'TextArea',
+        validators: ['required'],
+        template: fieldTemplate
+      };
+      formSchema['authors'] = {
+        title: 'Authors',
+        key: 'authors',
+        type: 'TextArea',
+        validators: ['required'],
+        template: fieldTemplate
+      };
+      formSchema['journal'] = {
+        title: 'Journal',
+        key: 'journal',
+        type: 'TextArea',
+        validators: ['required'],
+        template: fieldTemplate
+      };
+      formSchema['volume'] = {
+        title: 'Volume',
+        key: 'volume',
+        type: 'Text',
+        template: fieldTemplate
+      };
+      formSchema['year_published'] = {
+        title: 'Year Published',
+        key: 'year_published',
+        type: 'Text',
+        template: fieldTemplate
+      };
+      formSchema['pages'] = {
+        title: 'Pages',
+        key: 'pages',
+        type: 'Text',
+        template: fieldTemplate
+      };
+      formSchema['fileInputPlaceholder'] = {
+        title: 'Upload File',
+        key: 'file_input',
+        type: DisabledField, 
+        template: fieldTemplate
+      };
+
+      var FormFields = Backbone.Model.extend({
+        schema: formSchema,
+        validate: function(attrs){
+          console.log('form validate', attrs);
+          var errs = {};
+          if (_.isEmpty(attrs.pubmed_central_id) 
+              && _.isEmpty(attrs.pubmed_id)){
+            var msg = 'must specify either "Pubmed ID" or "Pubmed CID"';
+            errs['pubmed_id'] = msg;
+            errs['pubmed_central_id'] = msg;
+          }
+          if (!_.isEmpty(errs)) return errs;
+        }
+      });
+      var formFields = new FormFields();
+      var form = new Backbone.Form({
+        model: formFields,
+        template: _.template(form_template)
+      });
+      var _form_el = form.render().el;
+      form.$el.find("[name='fileInputPlaceholder']").append(
+        '<label class="btn btn-default btn-file">' + 
+        'Browse<input type="file" name="fileInput" style="display: none;"></label>'+ 
+        '<p id="filechosen" class="form-control-static" ></p>');
+      form.$el.on('change', ':file', function() {
+        var input = $(this),
+            numFiles = input.get(0).files ? input.get(0).files.length : 1,
+            label = input.val().replace(/\\/g, '/').replace(/.*\//, '');
+        form.$el.find('#filechosen').html(label);
+      });
+
+      var dialog = appModel.showModal({
+          okText: 'ok',
+          ok: function(e){
+            e.preventDefault();
+            var errors = form.commit({ validate: true }); // runs schema and model validation
+            if(!_.isEmpty(errors) ){
+              console.log('form errors, abort submit: ',errors);
+              _.each(_.keys(errors), function(key){
+                $('[name="'+key +'"').parents('.form-group').addClass('has-error');
+              });
+              return false;
+            }else{
+              var values = form.getValue();
+              var comments = _.result(values,'comments','');
+              var publication_id = _.result(values,'pubmed_id', _.result(values,'pubmed_central_id'));
+              var headers = {};
+              headers[appModel.HEADER_APILOG_COMMENT] = comments;
+              
+              var data = new FormData();
+              _.each(_.keys(values), function(key){
+                if(values[key]){
+                  data.append(key,values[key]);
+                }
+              });
+              
+              var file = $('input[name="fileInput"]')[0].files[0];
+              var filename;
+              if(file){
+                data.append('attached_file',file);
+                filename = file.name;
+                if (!_.isEmpty(values['filename'])){
+                  filename = values['filename'];
+                }
+                if (_.isEmpty(values['file_date'])){
+                  data.append(
+                    'file_date',
+                    Iccbl.getISODateString(_.result(file,'lastModifiedDate', null)));
+                }
+              }else{
+                filename = values['filename'];
+              }
+              for(var pair of data.entries()) {
+                 console.log(pair[0]+ ', '+ pair[1]); 
+              }
+              
+              $.ajax({
+                url: url,    
+                data: data,
+                cache: false,
+                contentType: false,
+                processData: false,
+                type: 'POST',
+                headers: headers, 
+                success: function(data){
+                  collection.fetch({ reset: true });
+                  appModel.showModalMessage({
+                    title: 'Publication added',
+                    okText: 'ok',
+                    body: '"' + publication_id + '"'
+                  });
+                },
+                done: function(model, resp){
+                  // TODO: done replaces success as of jq 1.8
+                  console.log('done');
+                }
+              }).fail(function(){ appModel.jqXHRfail.apply(this,arguments); });
+            
+              return true;
+            }
+          },
+          view: _form_el,
+          title: 'Upload an Attached File'  });
+      
+    },
+    
     /**
      * Update the screen status with a status history table: populate
      * using the apilog history of the status attribute

@@ -30,7 +30,11 @@ define([
       var nestedModels = this.nestedModels = {};
       var nestedLists = this.nestedLists = {};
       var buttons = this.buttons = args.buttons || ['download','history','back','edit','delete'];
-      if(! appModel.hasPermission(self.model.resource.key, 'write')){
+      if (! appModel.isEditable(self.model.resource.key)){
+          this.buttons = _.without(this.buttons,'edit');
+          this.buttons = _.without(this.buttons,'delete');
+      }
+      if (! appModel.hasPermission(self.model.resource.key, 'write')){
         this.buttons = _.without(this.buttons,'edit');
       }
       if(! appModel.getCurrentUser().is_superuser){

@@ -461,7 +461,11 @@ function frontend_setup_bak {
     $DJANGO_CMD collectstatic --noinput --ignore="*node_modules*" \
         --ignore="*bower_components*" --ignore="*api_init*" || error "collectstatic failed: $?"
   fi
-  
+
+  if [ -e ../wsgi/app.wsgi ]; then
+    touch ../wsgi/app.wsgi
+  fi
+    
   echo "frontend_setup done: $(ts)" >> "$LOGFILE"
   
 }

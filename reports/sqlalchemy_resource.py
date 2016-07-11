@@ -741,9 +741,14 @@ class SqlAlchemyResource(IccblBaseResource):
                 format='json',
                 includes='*',
                 **kwargs)
-            _data = self._meta.serializer.deserialize(
-                request,
-                LimsSerializer.get_content(response), format='application/json')
+            _data = []
+            if response.status_code == 200:
+                _data = self._meta.serializer.deserialize(
+                    request,
+                    LimsSerializer.get_content(response), format='application/json')
+            else:
+                logger.info(
+                    'no data found for %r, %r', self._meta.resource_name, kwargs)
             logger.debug(' data: %s'% _data)
             return _data
         except Http404:
@@ -819,13 +824,11 @@ class SqlAlchemyResource(IccblBaseResource):
                 prefetched_result = [dict(row) for row in resultset] if resultset else []
                 logger.info('executed stmt')
                 
-#                 if DEBUG_CACHE:
                 logger.info('no cache hit, execute count')
                 if limit == 1:
                     count = 1
                 else:
                     count = conn.execute(count_stmt).scalar()
-#                 if DEBUG_CACHE:
                 logger.info('count: %s', count)
                 
                 # now fill in the cache with the prefetched sets or rows
@@ -856,7 +859,7 @@ class SqlAlchemyResource(IccblBaseResource):
                         break
                 logger.info('store cached iterations: %s', y+1)
             else:
-                logger.info(str(('cache hit')))   
+                logger.info('cache hit for key: %r', key)   
                 
             return cache_hit
  
@@ -895,7 +898,6 @@ class SqlAlchemyResource(IccblBaseResource):
             offset = -offset
         stmt = stmt.offset(offset)
         
-#         conn = self.get_connection()
         conn = self.bridge.get_engine().connect()
         
         try:
@@ -911,8 +913,10 @@ class SqlAlchemyResource(IccblBaseResource):
             logger.debug('---- desired_format: %r, hash: %r', desired_format, param_hash)
             result = None
             if desired_format == 'application/json':
-                logger.info('streaming json, use_caching: %r, limit: %d', use_caching, limit)
-#                 if not is_for_detail and use_caching and self.use_cache and limit > 0:
+                logger.info(
+                    'streaming json, use_caching: %r, limit: %d, %r', 
+                    use_caching, limit, is_for_detail)
+                # if not is_for_detail and use_caching and self.use_cache and limit > 0:
                 if use_caching and self.use_cache and limit > 0:
                     cache_hit = self._cached_resultproxy(
                         conn, stmt, count_stmt, param_hash, limit, offset)
@@ -951,13 +955,13 @@ class SqlAlchemyResource(IccblBaseResource):
                     
                 if rowproxy_generator:
                     result = rowproxy_generator(result)
-    
-                # TODO: create a short-circuit if count==0
-                # if count == 0:
-                #    raise ImmediateHttpResponse(
-                #        response=self.error_response(
-                #            request, {'empty result': 'no records found'},
-                #            response_class=HttpNotFound))
+                    
+                logger.info('%r, %r', is_for_detail, count)
+                if is_for_detail and count == 0:
+                    logger.info('detail not found')
+                    conn.close()
+                    return HttpResponse(status=404)
+                
                 if DEBUG_STREAMING:
                     logger.info('json setup done, meta: %r', meta)
     
@@ -967,7 +971,7 @@ class SqlAlchemyResource(IccblBaseResource):
                 result = conn.execute(stmt)
                 logger.info('excuted stmt')
                 
-                logger.info(str(('rowproxy_generator', rowproxy_generator)))
+                logger.debug(str(('rowproxy_generator', rowproxy_generator)))
                 if rowproxy_generator:
                     result = rowproxy_generator(result)
                     # FIXME: test this for generators other than json generator        

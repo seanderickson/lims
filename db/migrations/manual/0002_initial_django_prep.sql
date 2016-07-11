@@ -338,6 +338,52 @@ DROP TABLE collaborator_link;
 
 /** done - collaborator_link table **/
 
+/**
+  Create a foreignkey for the publication.screen field, then
+  populate it using the legacy table (todo: remove the legacy table)
+**/
+
+ALTER TABLE "publication" ADD COLUMN "screen_id" integer NULL;
+ALTER TABLE "publication" ADD CONSTRAINT "publication_screen_id_fk_screen_screen_id" 
+  FOREIGN KEY ("screen_id") REFERENCES "screen" ("screen_id") DEFERRABLE INITIALLY DEFERRED;
+UPDATE publication set screen_id = spl.screen_id
+  FROM screen_publication_link spl
+  where publication.publication_id=spl.publication_id;
+CREATE INDEX "publication_screen_id_index" ON "publication" ("screen_id");
+DROP TABLE screen_publication_link;
+
+/** done - screen_publication_link table **/
+
+/** Reverse the publication->attached_file link, so that on_delete CASCADE works
+    when deleting the publication 
+**/
+ALTER TABLE "attached_file" ADD COLUMN "publication_id" integer NULL UNIQUE;
+CREATE INDEX "attached_file_publication" ON "attached_file" ("publication_id");
+ALTER TABLE "attached_file" ADD CONSTRAINT "attached_file_publication_id_fk_publication_publication_id" 
+  FOREIGN KEY ("publication_id") 
+  REFERENCES "publication" ("publication_id") DEFERRABLE INITIALLY DEFERRED;
+UPDATE attached_file set publication_id = p.publication_id
+  FROM publication p
+  where p.attached_file_id = attached_file.attached_file_id;
+ALTER TABLE publication DROP COLUMN attached_file_id;
+
+/**
+  Create a foreignkey for the publication.reagent field, then
+  populate it using the legacy table.
+  TODO: this appears to be unused?
+**/
+
+ALTER TABLE "publication" ADD COLUMN "reagent_id" integer NULL;
+ALTER TABLE "publication" ADD CONSTRAINT "publication_reagent_id_fk_reagent_reagent_id" 
+  FOREIGN KEY ("reagent_id") REFERENCES "reagent" ("reagent_id") DEFERRABLE INITIALLY DEFERRED;
+UPDATE publication set reagent_id = rpl.reagent_id
+  FROM reagent_publication_link rpl
+  where publication.publication_id=rpl.publication_id;
+CREATE INDEX "publication_reagent_id_index" ON "publication" ("reagent_id");
+DROP TABLE reagent_publication_link;
+
+/** done - reagent_publication_link table **/
+
 
 /**
   Create a many-to-many join table for the datacolumn.derived_from field, then

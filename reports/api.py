@@ -59,7 +59,7 @@ URI_VERSION = 'v1'
 BASE_URI = '/reports/api/' + URI_VERSION
 
     
-class UserGroupAuthorization(Authorization):
+class UserGroupAuthorization():
     
     @staticmethod
     def get_authorized_resources(user, permission_type):
@@ -78,7 +78,7 @@ class UserGroupAuthorization(Authorization):
     
     def _is_resource_authorized(self, resource_name, user, permission_type):
         
-        DEBUG_AUTHORIZATION = True or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_AUTHORIZATION = False or logger.isEnabledFor(logging.DEBUG)
         
         if DEBUG_AUTHORIZATION:
             logger.info("_is_resource_authorized: %s, user: %s, type: %s",
@@ -136,52 +136,54 @@ class UserGroupAuthorization(Authorization):
         logger.info(
             'user: %r, auth query: %r, not found in usergroup permissions: %r'
             ,user, permission_str, permissions_group)
-        
-        # Note: the TP framework raises the "Unauthorized" error: it then 
-        # translates this into the (incorrect) HttpUnauthorized (401) response
-        # Instead, raise an immediate exception with the correct 403 error code
-        raise ImmediateHttpResponse(response=HttpForbidden(
-            'user: %s, permission: %r not found' % (user,permission_str)))
+        return False
     
-    def read_list(self, object_list, bundle):
-        if self._is_resource_authorized(
-            self.resource_meta.resource_name, bundle.request.user, 'read'):
-            return object_list
-
-    def read_detail(self, object_list, bundle):
-        if self._is_resource_authorized(
-            self.resource_meta.resource_name, bundle.request.user, 'read'):
-            return True
-
-    def create_list(self, object_list, bundle):
-        if self._is_resource_authorized(
-            self.resource_meta.resource_name, bundle.request.user, 'write'):
-            return object_list
-
-    def create_detail(self, object_list, bundle):
-        if self._is_resource_authorized(
-            self.resource_meta.resource_name, bundle.request.user, 'write'):
-            return True
-
-    def update_list(self, object_list, bundle):
-        if self._is_resource_authorized(
-            self.resource_meta.resource_name, bundle.request.user, 'write'):
-            return object_list
-
-    def update_detail(self, object_list, bundle):
-        if self._is_resource_authorized(
-            self.resource_meta.resource_name, bundle.request.user, 'write'):
-            return True
-
-    def delete_list(self, object_list, bundle):
-        if self._is_resource_authorized(
-            self.resource_meta.resource_name, bundle.request.user, 'write'):
-            return object_list
-
-    def delete_detail(self, object_list, bundle):
-        if self._is_resource_authorized(
-            self.resource_meta.resource_name, bundle.request.user, 'write'):
-            return True
+#         # Note: the TP framework raises the "Unauthorized" error: it then 
+#         # translates this into the (incorrect) HttpUnauthorized (401) response
+#         # Instead, raise an immediate exception with the correct 403 error code
+#         raise ImmediateHttpResponse(
+#             response=HttpForbidden(
+#                 'user: %s, permission: %r not found' % (user,permission_str)))
+    
+#     def read_list(self, object_list, bundle):
+#         if self._is_resource_authorized(
+#             self.resource_meta.resource_name, bundle.request.user, 'read'):
+#             return object_list
+# 
+#     def read_detail(self, object_list, bundle):
+#         if self._is_resource_authorized(
+#             self.resource_meta.resource_name, bundle.request.user, 'read'):
+#             return True
+# 
+#     def create_list(self, object_list, bundle):
+#         if self._is_resource_authorized(
+#             self.resource_meta.resource_name, bundle.request.user, 'write'):
+#             return object_list
+# 
+#     def create_detail(self, object_list, bundle):
+#         if self._is_resource_authorized(
+#             self.resource_meta.resource_name, bundle.request.user, 'write'):
+#             return True
+# 
+#     def update_list(self, object_list, bundle):
+#         if self._is_resource_authorized(
+#             self.resource_meta.resource_name, bundle.request.user, 'write'):
+#             return object_list
+# 
+#     def update_detail(self, object_list, bundle):
+#         if self._is_resource_authorized(
+#             self.resource_meta.resource_name, bundle.request.user, 'write'):
+#             return True
+# 
+#     def delete_list(self, object_list, bundle):
+#         if self._is_resource_authorized(
+#             self.resource_meta.resource_name, bundle.request.user, 'write'):
+#             return object_list
+# 
+#     def delete_detail(self, object_list, bundle):
+#         if self._is_resource_authorized(
+#             self.resource_meta.resource_name, bundle.request.user, 'write'):
+#             return True
 
 def write_authorization(_func):
     '''
@@ -190,8 +192,14 @@ def write_authorization(_func):
     @wraps(_func)
     def _inner(self, *args, **kwargs):
         request = args[0]
-        self._meta.authorization._is_resource_authorized(
-            self._meta.resource_name,request.user,'write')
+        
+        if not self._meta.authorization._is_resource_authorized(
+                self._meta.resource_name,request.user,'write'):
+            raise ImmediateHttpResponse(
+                response=HttpForbidden(
+                    'user: %s, permission: %s/%s not found' 
+                    % (request.user,self._meta.resource_name,'write')))
+            
         return _func(self, *args, **kwargs)
 
     return _inner
@@ -203,8 +211,12 @@ def read_authorization(_func):
     @wraps(_func)
     def _inner(self, *args, **kwargs):
         request = args[0]
-        self._meta.authorization._is_resource_authorized(
-            self._meta.resource_name,request.user,'read')
+        if not self._meta.authorization._is_resource_authorized(
+                self._meta.resource_name,request.user,'read'):
+            raise ImmediateHttpResponse(
+                response=HttpForbidden(
+                    'user: %s, permission: %s/%s not found' 
+                    % (request.user,self._meta.resource_name,'read')))
         return _func(self, *args, **kwargs)
 
     return _inner
@@ -215,46 +227,49 @@ class SuperUserAuthorization(ReadOnlyAuthorization):
     def _is_resource_authorized(self, resource_name, user, permission_type):
         if user.is_superuser:
             return True
-        # Note: the TP framework raises the "Unauthorized" error: it then 
-        # translates this into the (incorrect) HttpUnauthorized (401) response
-        # Instead, raise an immediate exception with the correct 403 error code
-        # https://tools.ietf.org/html/rfc7231#section-6.5.3
         
-        uri_separator = '/'
-        permission_str =  uri_separator.join([resource_name,permission_type])       
-        raise ImmediateHttpResponse(response=HttpForbidden(
-            'user: %s, permission: %r not found' % (user,permission_str)))
-        
-    def delete_list(self, object_list, bundle):
-        if bundle.request.user.is_superuser:
-            return object_list
-        raise Unauthorized("Only superuser may delete lists.")
-
-    def delete_detail(self, object_list, bundle):
-        if bundle.request.user.is_superuser:
-            return object_list
-        raise Unauthorized("Only superuser may delete.")
- 
-    def create_list(self, object_list, bundle):
-        if bundle.request.user.is_superuser:
-            return object_list
-        raise Unauthorized("Only superuser may create lists.")
-
-    def create_detail(self, object_list, bundle):
-        if bundle.request.user.is_superuser:
-            return True
-        raise Unauthorized("Only superuser may create.")
-
-    def update_list(self, object_list, bundle):
-        if bundle.request.user.is_superuser:
-            return object_list
-        raise Unauthorized("Only superuser may update lists.")
-
-    def update_detail(self, object_list, bundle):
-        logger.info('update detail authorization for %r', bundle.request.user)
-        if bundle.request.user.is_superuser:
-            return True
-        raise Unauthorized("Only superuser may update.")
+        return False
+    
+#         # Note: the TP framework raises the "Unauthorized" error: it then 
+#         # translates this into the (incorrect) HttpUnauthorized (401) response
+#         # Instead, raise an immediate exception with the correct 403 error code
+#         # https://tools.ietf.org/html/rfc7231#section-6.5.3
+#         
+#         uri_separator = '/'
+#         permission_str =  uri_separator.join([resource_name,permission_type])       
+#         raise ImmediateHttpResponse(response=HttpForbidden(
+#             'user: %s, permission: %r not found' % (user,permission_str)))
+#         
+#     def delete_list(self, object_list, bundle):
+#         if bundle.request.user.is_superuser:
+#             return object_list
+#         raise Unauthorized("Only superuser may delete lists.")
+# 
+#     def delete_detail(self, object_list, bundle):
+#         if bundle.request.user.is_superuser:
+#             return object_list
+#         raise Unauthorized("Only superuser may delete.")
+#  
+#     def create_list(self, object_list, bundle):
+#         if bundle.request.user.is_superuser:
+#             return object_list
+#         raise Unauthorized("Only superuser may create lists.")
+# 
+#     def create_detail(self, object_list, bundle):
+#         if bundle.request.user.is_superuser:
+#             return True
+#         raise Unauthorized("Only superuser may create.")
+# 
+#     def update_list(self, object_list, bundle):
+#         if bundle.request.user.is_superuser:
+#             return object_list
+#         raise Unauthorized("Only superuser may update lists.")
+# 
+#     def update_detail(self, object_list, bundle):
+#         logger.info('update detail authorization for %r', bundle.request.user)
+#         if bundle.request.user.is_superuser:
+#             return True
+#         raise Unauthorized("Only superuser may update.")
 
 def compare_dicts(dict1, dict2, excludes=['resource_uri'], full=False):
     '''
@@ -372,21 +387,21 @@ class ApiLogAuthorization(UserGroupAuthorization):
     Specialized authorization, allows users to read logs for resources they are 
     authorized for.
     '''
-    
-    def read_list(self, object_list, bundle, ref_resource_name=None, **kwargs):
-        if not ref_resource_name:
-            ref_resource_name = self.resource_meta.resource_name;
-        if self._is_resource_authorized(
-            ref_resource_name, bundle.request.user, 'read'):
-            return object_list
-
-    def read_detail(
-            self, object_list, bundle, ref_resource_name=None, **kwargs):
-        if not ref_resource_name:
-            ref_resource_name = self.resource_meta.resource_name;
-        if self._is_resource_authorized(
-            ref_resource_name, bundle.request.user, 'read'):
-            return True
+    pass
+#     def read_list(self, object_list, bundle, ref_resource_name=None, **kwargs):
+#         if not ref_resource_name:
+#             ref_resource_name = self.resource_meta.resource_name;
+#         if self._is_resource_authorized(
+#             ref_resource_name, bundle.request.user, 'read'):
+#             return object_list
+# 
+#     def read_detail(
+#             self, object_list, bundle, ref_resource_name=None, **kwargs):
+#         if not ref_resource_name:
+#             ref_resource_name = self.resource_meta.resource_name;
+#         if self._is_resource_authorized(
+#             ref_resource_name, bundle.request.user, 'read'):
+#             return True
 
 
 class ApiResource(SqlAlchemyResource):
@@ -997,18 +1012,24 @@ class ApiResource(SqlAlchemyResource):
         if DEBUG_PATCH_LOG:
             logger.info('log patches original: %s, =====new data===== %s',
                 original_data,new_data)
+        
+        logger.info('kwargs for log: %r', kwargs)
+        
         schema = self.build_schema()
         id_attribute = schema['id_attribute']
         if DEBUG_PATCH_LOG:
             logger.info('===id_attribute: %s', id_attribute)
         deleted_items = list(original_data)        
         for new_dict in new_data:
-            logger.debug('new dict: %r', new_dict)
+            if not new_dict:
+                continue
+            if DEBUG_PATCH_LOG:
+                logger.info('new dict: %r, %r', new_dict, id_attribute)
             log = ApiLog()
+            log.ref_resource_name = self._meta.resource_name
             log.username = request.user.username 
             log.user_id = request.user.id 
             log.date_time = _now()
-            log.ref_resource_name = self._meta.resource_name
             log.key = '/'.join([str(new_dict[x]) for x in id_attribute])
             log.uri = '/'.join([self._meta.resource_name,log.key])
             
@@ -1065,12 +1086,13 @@ class ApiResource(SqlAlchemyResource):
                     logger.info('create, api log: %s', log)
                 
         for deleted_dict in deleted_items:
+            
             log = ApiLog()
+            log.ref_resource_name = self._meta.resource_name
             log.comment = log_comment
             log.username = request.user.username 
             log.user_id = request.user.id 
             log.date_time = _now()
-            log.ref_resource_name = self._meta.resource_name
             log.key = '/'.join([str(deleted_dict[x]) for x in id_attribute])
             log.uri = '/'.join([self._meta.resource_name,log.key])
         
@@ -1656,7 +1678,6 @@ class ResourceResource(ApiResource):
             return [resource for resource in resources if resource['key']==key]
         else:
             return resources
-
 
     @read_authorization
     def get_list(self,request,**kwargs):
@@ -2762,9 +2783,8 @@ class UserGroupResource(ApiResource):
         
         return self.patch_obj(deserialized, **kwargs)
     
+    @write_authorization
     def delete_detail(self,deserialized, **kwargs):
-        self._meta.authorization._is_resource_authorized(
-            self._meta.resource_name, request.user, 'write')
         deserialized = self._meta.serializer.deserialize(request)
         try:
             self.delete_obj(deserialized, **kwargs)

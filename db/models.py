@@ -303,22 +303,29 @@ class AssayWell(models.Model):
 class AttachedFile(models.Model):
     attached_file_id = models.AutoField(primary_key=True) 
     date_created = models.DateTimeField(default=timezone.now)
-    # REMOVED in manual migration 0002
+    # REMOVED in manual migration 0002: using BinaryField instead
     # file_contents = models.BinaryField(null=True) 
     contents = models.BinaryField()
     filename = models.TextField()
     # version = models.IntegerField()
-    screen = models.ForeignKey('Screen', null=True, blank=True)
-    screensaver_user = models.ForeignKey('ScreensaverUser', null=True, blank=True)
     # REMOVED in migration 0003
     # attached_file_type = models.ForeignKey('AttachedFileType')
     type = models.TextField()
+    # Fixme: created_by should be non-null
     created_by = models.ForeignKey(
         'ScreensaverUser', null=True, related_name='attachedfilecreated')
-    reagent = models.ForeignKey('Reagent', null=True, blank=True)
     file_date = models.DateField(null=True, blank=True)
     date_loaded = models.DateTimeField(null=True, blank=True)
     date_publicly_available = models.DateTimeField(null=True, blank=True)
+
+    publication = models.OneToOneField(
+        'Publication', null=True, on_delete=models.CASCADE)
+    reagent = models.ForeignKey('Reagent', null=True, on_delete=models.CASCADE)
+    screen = models.ForeignKey('Screen', null=True, on_delete=models.CASCADE)
+    screensaver_user = models.ForeignKey(
+        'ScreensaverUser', null=True, on_delete=models.CASCADE)
+
+    
     class Meta:
         db_table = 'attached_file'
     
@@ -486,8 +493,13 @@ class Publication(models.Model):
     # version = models.IntegerField()
     volume = models.TextField(blank=True)
     year_published = models.TextField(blank=True)
-    attached_file = models.OneToOneField(AttachedFile, unique=True, null=True, blank=True)
+    # REVERSED relationship in manual migration 0002
+    # attached_file = models.OneToOneField(
+    #     AttachedFile, unique=True, null=True, on_delete=models.CASCADE)
     pubmed_central_id = models.IntegerField(null=True, blank=True)
+    screen = models.ForeignKey('Screen', null=True, on_delete=models.CASCADE)
+    reagent = models.ForeignKey('Reagent', null=True, on_delete=models.CASCADE)
+    
     class Meta:
         db_table = 'publication'
 
@@ -595,14 +607,14 @@ class Screen(models.Model):
     well_studied = models.ForeignKey('Well', null=True, blank=True)
     species = models.TextField(blank=True)
 
-#     cell_line = models.ForeignKey('CellLine', null=True, blank=True) 
-    
-#     transfection_agent = models.ForeignKey('TransfectionAgent', null=True, blank=True)
     transfection_agent = models.TextField(null=True);
     
     date_created = models.DateTimeField(default=timezone.now)
     date_loaded = models.DateTimeField(null=True, blank=True)
     date_publicly_available = models.DateTimeField(null=True, blank=True)
+    
+    # cell_line = models.ForeignKey('CellLine', null=True, blank=True) 
+    # transfection_agent = models.ForeignKey('TransfectionAgent', null=True, blank=True)
     
     class Meta:
         db_table = 'screen'
@@ -655,12 +667,13 @@ class CellLine(models.Model):
     # version = models.IntegerField()
     class Meta:
         db_table = 'cell_line'
-        
-class ScreenPublicationLink(models.Model):
-    screen = models.ForeignKey(Screen)
-    publication_id = models.IntegerField(unique=True)
-    class Meta:
-        db_table = 'screen_publication_link'
+
+# Removed in manual migrations
+# class ScreenPublicationLink(models.Model):
+#     screen = models.ForeignKey(Screen)
+#     publication_id = models.IntegerField(unique=True)
+#     class Meta:
+#         db_table = 'screen_publication_link'
 
 class ScreenResult(models.Model):
     screen_result_id = models.AutoField(primary_key=True)
@@ -1031,11 +1044,12 @@ class Reagent(models.Model):
     class Meta:
         db_table = 'reagent'
 
-class ReagentPublicationLink(models.Model):
-    reagent = models.ForeignKey(Reagent)
-    publication_id = models.IntegerField(unique=True)
-    class Meta:
-        db_table = 'reagent_publication_link'
+# REMOVED in manual migration 0002: using BinaryField instead
+# class ReagentPublicationLink(models.Model):
+#     reagent = models.ForeignKey(Reagent)
+#     publication_id = models.IntegerField(unique=True)
+#     class Meta:
+#         db_table = 'reagent_publication_link'
 
 class SilencingReagent(Reagent):
     reagentlink = models.OneToOneField(
@@ -1199,8 +1213,6 @@ class TransfectionAgent(models.Model):
     # version = models.IntegerField()
     class Meta:
         db_table = 'transfection_agent'
-
-
 
 
 class Library(models.Model):

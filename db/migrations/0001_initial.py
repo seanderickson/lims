@@ -616,7 +616,8 @@ class Migration(migrations.Migration):
                 ('volume', models.TextField(blank=True)),
                 ('year_published', models.TextField(blank=True)),
                 ('pubmed_central_id', models.IntegerField(null=True, blank=True)),
-                ('attached_file', models.OneToOneField(null=True, blank=True, to='db.AttachedFile', unique=True)),
+#                 ('attached_file', models.OneToOneField(
+#                     null=True, to='db.AttachedFile', unique=True, on_delete=models.CASCADE)),
             ],
             options={
                 'db_table': 'publication',
@@ -636,16 +637,16 @@ class Migration(migrations.Migration):
                 'db_table': 'reagent',
             },
         ),
-        migrations.CreateModel(
-            name='ReagentPublicationLink',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('publication_id', models.IntegerField(unique=True)),
-            ],
-            options={
-                'db_table': 'reagent_publication_link',
-            },
-        ),
+#         migrations.CreateModel(
+#             name='ReagentPublicationLink',
+#             fields=[
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+#                 ('publication_id', models.IntegerField(unique=True)),
+#             ],
+#             options={
+#                 'db_table': 'reagent_publication_link',
+#             },
+#         ),
         migrations.CreateModel(
             name='ResultValue',
             fields=[
@@ -812,17 +813,17 @@ class Migration(migrations.Migration):
                 'db_table': 'screen_keyword',
             },
         ),
-        migrations.CreateModel(
-            name='ScreenPublicationLink',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('publication_id', models.IntegerField(unique=True)),
-                ('screen', models.ForeignKey(to='db.Screen')),
-            ],
-            options={
-                'db_table': 'screen_publication_link',
-            },
-        ),
+#         migrations.CreateModel(
+#             name='ScreenPublicationLink',
+#             fields=[
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+#                 ('publication_id', models.IntegerField(unique=True)),
+#                 ('screen', models.ForeignKey(to='db.Screen')),
+#             ],
+#             options={
+#                 'db_table': 'screen_publication_link',
+#             },
+#         ),
         migrations.CreateModel(
             name='ScreenResult',
             fields=[
@@ -1168,6 +1169,16 @@ class Migration(migrations.Migration):
             field=models.ForeignKey(related_name='reagent_well', blank=True, to='db.Reagent', null=True),
         ),
         migrations.AddField(
+            model_name='publication',
+            name='screen',
+            field=models.ForeignKey(to='db.Screen', null=True, on_delete=models.CASCADE),
+        ),
+        migrations.AddField(
+            model_name='publication',
+            name='reagent',
+            field=models.ForeignKey(to='db.Reagent', null=True, on_delete=models.CASCADE),
+        ),
+        migrations.AddField(
             model_name='well',
             name='library',
             field=models.ForeignKey(to='db.Library'),
@@ -1273,11 +1284,11 @@ class Migration(migrations.Migration):
             name='well',
             field=models.ForeignKey(blank=True, to='db.Well', null=True),
         ),
-        migrations.AddField(
-            model_name='reagentpublicationlink',
-            name='reagent',
-            field=models.ForeignKey(to='db.Reagent'),
-        ),
+#         migrations.AddField(
+#             model_name='reagentpublicationlink',
+#             name='reagent',
+#             field=models.ForeignKey(to='db.Reagent'),
+#         ),
         migrations.AddField(
             model_name='reagent',
             name='library_contents_version',
@@ -1392,17 +1403,22 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='attachedfile',
             name='reagent',
-            field=models.ForeignKey(blank=True, to='db.Reagent', null=True),
+            field=models.ForeignKey(to='db.Reagent', null=True),
         ),
         migrations.AddField(
             model_name='attachedfile',
             name='screen',
-            field=models.ForeignKey(blank=True, to='db.Screen', null=True),
+            field=models.ForeignKey(to='db.Screen', null=True),
         ),
         migrations.AddField(
             model_name='attachedfile',
             name='screensaver_user',
-            field=models.ForeignKey(blank=True, to='db.ScreensaverUser', null=True),
+            field=models.ForeignKey(to='db.ScreensaverUser', null=True),
+        ),
+        migrations.AddField(
+            model_name='attachedfile',
+            name='publication',
+            field=models.OneToOneField(to='db.Publication', null=True),
         ),
         migrations.AddField(
             model_name='attachedfile',

@@ -14,7 +14,7 @@ from db.api import ScreensaverUserResource, ScreenResource, \
     CherryPickRequestResource, CherryPickPlateResource, \
     AttachedFileResource, ServiceActivityResource, LibraryScreeningResource,\
     CherryPickLiquidTransferResource, CherryPickScreeningResource, \
-    UserAgreementResource
+    UserAgreementResource, PublicationResource
 
 
 v1_api = Api(api_name='v1')
@@ -46,12 +46,14 @@ v1_api.register(LibraryScreeningResource())
 v1_api.register(CherryPickLiquidTransferResource())
 v1_api.register(CherryPickScreeningResource())
 v1_api.register(UserAgreementResource())
-
+v1_api.register(PublicationResource())
 urlpatterns = patterns('',
     url(r'^$', views.main, name="home"),
     url(r'^smiles_image/(?P<well_id>\S+)$','db.views.smiles_image', name="smiles_image" ),
     url(r'^well_image/(?P<well_id>\S+)$','db.views.well_image', name="well_image" ),
-    url(r'^attachedfile/content/(?P<attached_file_id>\d+)$',
+    url(r'^attachedfile/(?P<attached_file_id>\d+)/content$',
         'db.views.attached_file', name="attached_file" ),
+    url(r'^publication/(?P<publication_id>\d+)/attached_file$',
+        'db.views.publication_attached_file', name="publication_attached_file" ),
     (r'^api/', include(v1_api.urls)),
 )

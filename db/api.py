@@ -51,14 +51,15 @@ from db.models import ScreensaverUser, Screen, \
     ServiceActivity, LabActivity, Screening, LibraryScreening, AssayPlate, \
     SmallMoleculeChembankId, SmallMoleculePubchemCid, SmallMoleculeChemblId, \
     SmallMoleculeCompoundName, ScreenCellLines, ScreenFundingSupports, \
-    ScreenKeyword, ResultValue, AssayWell, DataColumnDerivedFromLink
+    ScreenKeyword, ResultValue, AssayWell, DataColumnDerivedFromLink,\
+    Publication
 from db.support import lims_utils, screen_result_importer
 from db.support.data_converter import default_converter
 from db.support.screen_result_importer import PARTITION_POSITIVE_MAPPING, \
     CONFIRMED_POSITIVE_MAPPING
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB,  \
-    LIST_BRACKETS, HTTP_PARAM_RAW_LISTS
+    LIST_BRACKETS, HTTP_PARAM_RAW_LISTS, HEADER_APILOG_COMMENT
 import reports.sqlalchemy_resource
 from reports import ValidationError, InformationError, _now
 from reports.api import ApiLogResource, \
@@ -81,6 +82,7 @@ from reports.serializers import LimsSerializer, \
 from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.sqlalchemy_resource import _concat
 from django.utils import timezone
+from django.http.request import HttpRequest
 
 
 PLATE_NUMBER_SQL_FORMAT = 'FM9900000'
@@ -676,6 +678,7 @@ class ScreenResultResource(ApiResource):
     
     def get_query(self, username, screenresult, param_hash, schema, limit, offset):
 
+        DEBUG_SCREENRESULT = False or logger.isEnabledFor(logging.DEBUG)
         manual_field_includes = set(param_hash.get('includes', []))
         manual_field_includes.add('assay_well_control_type')
             
@@ -726,7 +729,6 @@ class ScreenResultResource(ApiResource):
                 and '-exclude' not in order_params):
             filter_excluded = False
         if filter_excluded:
-            logger.info('filter excluded...')
             base_clause = _aw.join(
                 excluded_cols_select, 
                 _aw.c.well_id==excluded_cols_select.c.well_id,isouter=True)
@@ -788,7 +790,7 @@ class ScreenResultResource(ApiResource):
                 .label('plate_number'))
         for key,col in sub_columns.items():
             if key not in base_columns:
-                logger.info('adding reagent column: %r...', key)
+                if DEBUG_SCREENRESULT: logger.info('adding reagent column: %r...', key)
                 base_columns[key] = col
         
         base_stmt = select(base_columns.values()).select_from(base_clause)
@@ -804,15 +806,15 @@ class ScreenResultResource(ApiResource):
         compiled_stmt = str(base_stmt.compile(
             compile_kwargs={"literal_binds": True}))
         
-        logger.info('base_stmt: %r', compiled_stmt)
+        if DEBUG_SCREENRESULT: logger.info('base_stmt: %r', compiled_stmt)
         
         m.update(compiled_stmt)
         key = m.hexdigest()
-        logger.info('cached query key: %r', key)
+        if DEBUG_SCREENRESULT: logger.info('cached query key: %r', key)
         _wellQueryIndex = self.bridge['well_query_index']
         (cachedQuery, create_new_well_index_cache) = \
             CachedQuery.objects.all().get_or_create(key=key)
-        logger.info('create_new_well_index_cache: %r', create_new_well_index_cache)
+        if DEBUG_SCREENRESULT: logger.info('create_new_well_index_cache: %r', create_new_well_index_cache)
         if create_new_well_index_cache:
             with self.bridge.get_engine().begin() as conn:
                 # NOTE: mixing Django connection with SQA connection
@@ -834,10 +836,11 @@ class ScreenResultResource(ApiResource):
                                 literal_column(
                                     str(cachedQuery.id)).label('query_id')
                                 ]).select_from(base_stmt))
-                    logger.info(
-                        'insert stmt: %r',
-                        str(insert_statement.compile(
-                            compile_kwargs={"literal_binds": True})))
+                    if DEBUG_SCREENRESULT:
+                        logger.info(
+                            'insert stmt: %r',
+                            str(insert_statement.compile(
+                                compile_kwargs={"literal_binds": True})))
                     conn.execute(insert_statement)
                     
                     count_stmt = _wellQueryIndex
@@ -935,7 +938,7 @@ class ScreenResultResource(ApiResource):
 
         # Force the query to use well_query_index.well_id
         columns['well_id'] = literal_column('wqx.well_id').label('well_id')
-        logger.info('columns: %r', columns.keys())
+        if DEBUG_SCREENRESULT: logger.info('columns: %r', columns.keys())
         ######
         
         stmt = select(columns.values()).select_from(j)
@@ -943,9 +946,10 @@ class ScreenResultResource(ApiResource):
             _aw.c.screen_result_id == screenresult.screen_result_id)
         stmt = stmt.order_by(_wqx.c.id)
 
-        logger.info(
-            'stmt: %s',
-            str(stmt.compile(compile_kwargs={"literal_binds": True})))
+        if DEBUG_SCREENRESULT: 
+            logger.info(
+                'stmt: %s',
+                str(stmt.compile(compile_kwargs={"literal_binds": True})))
           
         return (field_hash, columns, stmt, count_stmt, cachedQuery)
     
@@ -3230,6 +3234,324 @@ class LibraryCopyResource(ApiResource):
             raise e  
 
 
+class PublicationResource(ApiResource):
+
+    class Meta:
+
+        queryset = Publication.objects.all()
+        authentication = MultiAuthentication(BasicAuthentication(),
+                                             SessionAuthentication())
+        authorization = UserGroupAuthorization()
+        serializer = LimsSerializer()
+        resource_name = 'publication'
+        always_return_data = True
+
+    def __init__(self, **kwargs):
+        
+        self.attached_file_resource = None
+        super(PublicationResource, self).__init__(**kwargs)
+        
+    def get_attached_file_resource(self):
+        if not self.attached_file_resource:
+            self.attached_file_resource = AttachedFileResource()
+        return self.attached_file_resource
+
+    def prepend_urls(self):
+        
+        return [
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('get_schema'), name="api_get_schema"),
+            url((r"^(?P<resource_name>%s)/" 
+                 r"(?P<publication_id>([\d]+))%s$")
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ] 
+    def get_detail(self, request, **kwargs):
+
+        publication_id = kwargs.get('publication_id', None)
+        if not publication_id:
+            raise NotImplementedError(
+                'must provide a publication_id parameter')
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+        kwargs['is_for_detail'] = True
+        return self.build_list_response(request, **kwargs)
+        
+    @read_authorization
+    def get_list(self, request, **kwargs):
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+        return self.build_list_response(request, **kwargs)
+
+    @read_authorization
+    def build_list_response(self, request, **kwargs):
+
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        schema = self.build_schema()
+        
+        logger.info('params: %r', param_hash.keys())
+        
+        is_for_detail = kwargs.pop('is_for_detail', False)
+        filename = self._get_filename(schema, kwargs)
+        screen_facility_id = param_hash.pop('screen_facility_id', None)
+        if screen_facility_id:
+            param_hash['screen_facility_id__eq'] = screen_facility_id
+        publication_id = param_hash.pop('publication_id', None)
+        if publication_id:
+            param_hash['publication_id__eq'] = publication_id
+        
+        try:
+            
+            # general setup
+          
+            manual_field_includes = set(param_hash.get('includes', []))
+            
+            (filter_expression, filter_fields) = \
+                SqlAlchemyResource.build_sqlalchemy_filters(
+                    schema, param_hash=param_hash)
+                  
+            order_params = param_hash.get('order_by', [])
+            field_hash = self.get_visible_fields(
+                schema['fields'], filter_fields, manual_field_includes,
+                param_hash.get('visibilities'),
+                exact_fields=set(param_hash.get('exact_fields', [])),
+                order_params=order_params)
+            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+                order_params, field_hash)
+             
+            rowproxy_generator = None
+            if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
+                rowproxy_generator = ApiResource.\
+                    create_vocabulary_rowproxy_generator(field_hash)
+ 
+            # specific setup
+            _publication = self.bridge['publication']
+            _af = self.bridge['attached_file']
+            _screen = self.bridge['screen']
+            
+            j = _publication
+            j = j.join(
+                _af, _publication.c.publication_id==_af.c.publication_id, 
+                isouter=True)
+            j = j.join(
+                _screen, _publication.c.screen_id==_screen.c.screen_id,
+                isouter=True)
+            
+            custom_columns = {
+                'lookup_pmid': literal_column("'lookup_pmid'"),
+                }
+
+            base_query_tables = ['publication', 'attached_file', 'screen' ] 
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                custom_columns=custom_columns)
+            
+            stmt = select(columns.values()).select_from(j)
+            # general setup
+             
+            (stmt, count_stmt) = self.wrap_statement(
+                stmt, order_clauses, filter_expression)
+            if not order_clauses and filter_expression is None:
+                _alias = Alias(stmt)
+                stmt = select([text('*')]).select_from(_alias)
+            stmt = stmt.order_by('-publication_id')
+            
+            title_function = None
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                title_function = lambda key: field_hash[key]['title']
+            
+            return self.stream_response_from_statement(
+                request, stmt, count_stmt, filename,
+                field_hash=field_hash,
+                param_hash=param_hash,
+                is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function)
+             
+        except Exception, e:
+            logger.exception('on get_list %s' % self._meta.resource_name)
+            raise e  
+
+    def put_list(self, request, **kwargs):
+        raise NotImplementedError(
+            "Put list is not implemented for Publications")
+    
+    def put_detail(self, request, **kwargs):
+        raise NotImplementedError(
+            "Post detail is not implemented for Publications")
+    
+    def patch_list(self, request, **kwargs):
+        raise NotImplementedError(
+            "Patch list is not implemented for Publications")
+    
+    def patch_detail(self, request, **kwargs):
+        raise NotImplementedError(
+            "Patch detail is not implemented for Publications")
+    
+    @write_authorization
+    @un_cache        
+    def post_detail(self, request, **kwargs):
+                
+        param_hash = self._convert_request_to_dict(request)
+        param_hash.update(kwargs)
+        logger.info('create publication: %s' % param_hash)
+        
+        schema = self.build_schema()
+        fields = schema['fields']
+        id_attribute = resource = schema['id_attribute']
+
+        initializer_dict = {}
+        for key in fields.keys():
+            if key in param_hash:
+                initializer_dict[key] = parse_val(
+                    param_hash.get(key, None), key, fields[key]['data_type']) 
+
+        parent_fields = set(['screen_facility_id', 'reagent_id'])
+        initializer_keys = set(initializer_dict.keys())
+        if ( parent_fields.isdisjoint(initializer_keys) ):
+            msg='must provide one of: %r' % parent_fields
+            raise ValidationError({
+                'screen_facility_id': msg,
+                'reagent_id': msg 
+            })
+        if (len(parent_fields & initializer_keys)>1):
+            logger.warn('too many parent_fields: %r', 
+                (parent_fields & initializer_keys))
+            msg='Only one of parent fields allowed: %r' % parent_fields
+            raise ValidationError({
+                'screen_facility_id': msg,
+                'reagent_id': msg
+            })
+        
+        screen_facility_id = initializer_dict.pop('screen_facility_id', None)
+        if screen_facility_id:
+            try:
+                screen = Screen.objects.get(
+                    facility_id=screen_facility_id)
+                initializer_dict['screen'] = screen
+            except ObjectDoesNotExist:
+                raise Http404('screen_facility_id %r does not exist' 
+                    % screen_facility_id)
+        reagent_id = initializer_dict.pop('reagent_id', None)
+        if reagent_id: 
+            try: 
+                reagent = Reagent.objects.get(
+                    reagent_id=reagent_id)
+                initializer_dict['reagent'] = reagent
+            except ObjectDoesNotExist:
+                raise Http404('reagent_id does not exist: %s' % reagent_id)
+        
+        if ( 'pubmed_id' not in initializer_dict 
+                and 'pubmed_central_id' not in initializer_dict):
+            msg = 'must specify either "Pubmed ID" or "Pubmed CID"'
+            raise ValidationError({
+                'pubmed_id': msg,
+                'pubmed_central_id': msg })
+
+        with transaction.atomic():
+            publication = Publication.objects.create()
+            for key, val in initializer_dict.items():
+                if hasattr(publication, key):
+                    setattr(publication, key, val)
+                else:
+                    logger.warn(
+                        'no such attribute on publication: %s:%r' % (key, val))
+            publication.save()
+
+            # create a "parent_log" for the attached_file log            
+            log = self.make_log(request)
+            log.save()
+
+            attached_file = request.FILES.get('attached_file', None)
+            if attached_file:
+                logger.info('create attached file for publication: %r', publication)
+                
+                af_request = HttpRequest()
+                af_request.user = request.user
+                self.get_attached_file_resource().post_detail(
+                    af_request, **{ 
+                        'attached_file': attached_file,
+                        'publication_id': publication.publication_id,
+                        'type': 'publication',
+                        'parent_log': log })
+                
+        # get new state, for logging
+        # TODO: hack: have to log after transaction closed; FIXME: use sqlaldjemy wrapper
+        kwargs_for_log = { }
+        for id_field in id_attribute:
+            val = getattr(publication, id_field,None)
+            if val:
+                kwargs_for_log['%s' % id_field] = val
+        try:
+            new_data = [self._get_detail_response(request,**kwargs_for_log)]
+            self.log_patches(request, [],new_data,**kwargs_for_log)
+        except Exception, e: 
+            logger.exception('exception when querying for new data for logging: %s', 
+                kwargs_for_log)
+        
+        logger.info('publication created: %s for screen: %s',
+            publication, screen)
+        
+        return tastypie.http.HttpCreated(location=publication.publication_id)
+        
+
+    @write_authorization
+    @un_cache        
+    def delete_detail(self, request, **kwargs):
+        logger.info('delete publication...')
+        schema = self.build_schema()
+        id_attribute = schema['id_attribute']
+    
+        try:
+            publication_id = kwargs.get('publication_id', None)
+            if not publication_id:
+                NotImplementedError('must provide a publication_id parameter')
+            
+            publication = Publication.objects.get(publication_id=publication_id)
+
+            kwargs_for_log = {}
+            for id_field in id_attribute:
+                if kwargs.get(id_field,None):
+                    kwargs_for_log[id_field] = kwargs[id_field]
+            logger.debug('delete detail: %s' %(kwargs_for_log))
+            if not kwargs_for_log:
+                raise Exception('required id keys %s' % id_attribute)
+            else:
+                try:
+                    original_data = self._get_detail_response(request,**kwargs_for_log)
+                except Exception as e:
+                    logger.exception('original state not obtained')
+                    original_data = {}
+    
+            with transaction.atomic():
+                publication.delete()
+    
+            logger.info('deleted: %s' %kwargs_for_log)
+            log_comment = None
+            if HEADER_APILOG_COMMENT in request.META:
+                log_comment = request.META[HEADER_APILOG_COMMENT]
+            
+            log = self.make_log(request)
+            log.ref_resource_name = self._meta.resource_name
+            log.key = '/'.join([str(original_data[x]) for x in id_attribute])
+            log.uri = '/'.join([self._meta.resource_name,log.key])
+        
+            if 'parent_log' in kwargs:
+                log.parent_log = kwargs.get('parent_log', None)
+        
+            log.api_action = API_ACTION_DELETE
+            log.added_keys = json.dumps(original_data.keys(),cls=DjangoJSONEncoder)
+            log.diffs = json.dumps(original_data,cls=DjangoJSONEncoder)
+            log.save()
+            logger.info('delete, api log: %r', log)
+
+            return tastypie.http.HttpNoContent()
+        except NotFound:
+            return tastypie.http.HttpNotFound()
+        
+
 class AttachedFileResource(ApiResource):
 
     class Meta:
@@ -3238,17 +3560,12 @@ class AttachedFileResource(ApiResource):
         authentication = MultiAuthentication(BasicAuthentication(),
                                              SessionAuthentication())
         authorization = UserGroupAuthorization()
-        ordering = []
-        filtering = {}
         serializer = LimsSerializer()
-        excludes = ['digested_password']
         resource_name = 'attachedfile'
-        max_limit = 10000
         always_return_data = True
 
     def __init__(self, **kwargs):
         
-        self.user_resource = None
         super(AttachedFileResource, self).__init__(**kwargs)
 
     def prepend_urls(self):
@@ -3288,14 +3605,26 @@ class AttachedFileResource(ApiResource):
     
     @write_authorization
     @un_cache        
-    @transaction.atomic
     def post_detail(self, request, **kwargs):
-                
+        ''' 
+        Custom post_detail: 
+            - attached file is not editable, so no logging of former state
+            - custom deserialization of the attached file from form parameters
+        '''
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        logger.info('create attached file: %s' % param_hash)
-        
+        schema = self.build_schema()
+        fields = schema['fields']
+        id_attribute = schema['id_attribute']
+        initializer_dict = {}
+        for key in fields.keys():
+            if param_hash.get(key, None) is not None:
+                initializer_dict[key] = parse_val(
+                    param_hash.get(key, None), key, fields[key]['data_type']) 
+
         attached_file = request.FILES.get('attached_file', None)
+        if not attached_file:
+            attached_file = param_hash.get('attached_file', None)
         if not attached_file:
             contents = param_hash.get('contents', None)
             filename = param_hash.get('filename', None)
@@ -3305,105 +3634,104 @@ class AttachedFileResource(ApiResource):
                     msg = ('must provide either "attached_file" '
                            'or "contents+filename" parameters'))
             contents = contents.encode('utf-8')
-            
+            initializer_dict['contents'] = contents
+            initializer_dict['filename'] = filename
         else:
             contents = attached_file.read()
             filename = attached_file.name
             if param_hash.get('filename', None):
                 filename = param_hash.get('filename', None)
+            initializer_dict['contents'] = contents
+            initializer_dict['filename'] = filename
 
-        username = param_hash.pop('username', None)
-        screen_facility_id = param_hash.pop('screen_facility_id', None)
-        if not username and not screen_facility_id:
-            raise ValidationError(
-                key='username', msg='must provide a username or screen_facility_id parameter')
-        if username is not None and screen_facility_id is not None:
-            raise ValidationError(
-                key='username', msg='either "username" or "screen"')
-        user = None
-        screen = None
-        if username:
-            try:
-                user = ScreensaverUser.objects.get(username=username)
-            except ObjectDoesNotExist:
-                logger.exception('username does not exist: %s' % username)
-                raise Http404('username %r does not exist' % username)
-        elif screen_facility_id:
-            try:
-                screen = Screen.objects.get(facility_id=screen_facility_id)
-            except ObjectDoesNotExist:
-                logger.exception('screen_facility_id does not exist: %s' % screen_facility_id)
-                raise Http404('screen_facility_id %r does not exist' % screen_facility_id)
-
-        # TODO: refactor, use validation properties to validate
-        type = parse_val(param_hash.pop('type', None),'type','string')
-        if not type:
-            raise ValidationError(key='type', msg='required')
-        created_by_username = parse_val(
-            param_hash.pop('created_by_username', None),
-            'created_by_username', 'string')
-        if not created_by_username:
-            created_by_username = request.user.username
+        if not 'created_by_username' in initializer_dict:
+            initializer_dict['created_by_username'] = request.user.username
         try:
             admin_user = ScreensaverUser.objects.get(
-                username=created_by_username)
+                username=initializer_dict['created_by_username'])
             logger.debug('using admin_user %s' % admin_user)
+            initializer_dict['created_by'] = admin_user
         except ObjectDoesNotExist:
             logger.exception('created_by_username does not exist: %s',
-                created_by_username)
+                initializer_dict['created_by_username'])
             raise
-        
-        file_date = parse_val(
-            param_hash.pop('file_date', None),
-            'file_date', 'date')
-            
-        af = AttachedFile.objects.create(
-            contents=contents,
-            filename=filename,
-            type=type,
-            created_by=admin_user,
-            screensaver_user=user,
-            screen=screen
-            )
-        if file_date:
-            af.file_date = file_date
-        af.save()
-        
-        schema = self.build_schema()
-        id_attribute = resource = schema['id_attribute']
 
-        new_dict = model_to_dict(af)
-        log = self.make_log(request, **kwargs)
-        log.ref_resource_name = self._meta.resource_name
-        log.key = '/'.join([str(new_dict[x]) for x in id_attribute])
-        log.uri = '/'.join([self._meta.resource_name, log.key])
-    
-        if 'parent_log' in kwargs:
-            log.parent_log = kwargs.get('parent_log', None)
-    
-        log.api_action = API_ACTION_PUT
-        log.added_keys = json.dumps(new_dict.keys())
-        log.diffs = json.dumps(new_dict, cls=DjangoJSONEncoder)
-        log.save()
-        if(logger.isEnabledFor(logging.DEBUG)):
-            logger.debug(str(('create, api log', log)))
+        parent_fields = set(['username', 'publication_id', 'screen_facility_id', 'reagent_id'])
+        initializer_keys = set(initializer_dict.keys())
+        if ( parent_fields.isdisjoint(initializer_keys) ):
+            msg='must provide one of: %r' % parent_fields
+            raise ValidationError({
+                'username': msg, 'screen_facility_id': msg,
+                'publication_id': msg, 'reagent_id': msg 
+            })
+        if (len(parent_fields & initializer_keys)>1):
+            logger.warn('too many parent_fields: %r', 
+                (parent_fields & initializer_keys))
+            msg='Only one of parent fields allowed: %r' % parent_fields
+            raise ValidationError({
+                'username': msg, 'screen_facility_id': msg,
+                'publication_id': msg, 'reagent_id': msg
+            })
+        if 'username' in initializer_dict:
+            try:
+                user = ScreensaverUser.objects.get(
+                    username=initializer_dict['username'])
+                initializer_dict['screensaver_user'] = user
+            except ObjectDoesNotExist:
+                raise Http404('username %r does not exist' 
+                    % initializer_dict['username'])
+        elif 'screen_facility_id' in initializer_dict:
+            try:
+                screen = Screen.objects.get(
+                    facility_id=initializer_dict['screen_facility_id'])
+                initializer_dict['screen'] = screen
+            except ObjectDoesNotExist:
+                raise Http404('screen_facility_id %r does not exist' 
+                    % initializer_dict['screen_facility_id'])
+        elif 'publication_id' in initializer_dict: 
+            try: 
+                publication = Publication.objects.get(
+                    publication_id=initializer_dict['publication_id'])
+                initializer_dict['publication'] = publication
+            except ObjectDoesNotExist:
+                raise Http404('publication_id does not exist: %s' 
+                    % initializer_dict['publication_id'])
+        elif 'reagent_id' in initializer_dict: 
+            try: 
+                reagent = Reagent.objects.get(
+                    reagent_id=initializer_dict['reagent_id'])
+                initializer_dict['reagent'] = reagent
+            except ObjectDoesNotExist:
+                raise Http404('reagent_id does not exist: %s' 
+                    % initializer_dict['reagent_id'])
+        
+        with transaction.atomic():
+            af = AttachedFile()
+            for key, val in initializer_dict.items():
+                if hasattr(af, key):
+                    setattr(af, key, val)
+                else:
+                    logger.warn('no such attribute on attached_file: %s:%r' 
+                        % (key, val))
+            af.save()
 
-        logger.info('attached file created: %s for user %s, screen: %s',
-            af, user, screen)
+        logger.info('attached file created: %r',af)
+        
+        # get new state, for logging
+        # FIXME: Note: nested transactions are not visible to the sqlalchemy 
+        # engine connection until outermost transaction is committed
+        # TODO: use SqlAldjemy - will wrap the Django connection
+        kwargs_for_log = { 'attached_file_id': af.attached_file_id }
+        try:
+            logger.info('kwargs for log: %r', kwargs_for_log)
+            new_data = self._get_detail_response(request,**kwargs_for_log)
+            self.log_patches(request, [],new_data,**kwargs_for_log)
+        except Exception, e: 
+            logger.exception('exception when querying for new data for logging: %s', 
+                kwargs_for_log)
         
         return tastypie.http.HttpAccepted()
         
-        # NOTE: return data - multipart/form - what format?
-        # if not self._meta.always_return_data:
-        #     return http.HttpAccepted(status_code=204)
-        # else:
-        #     kwargs = { 'attached_file_id': af.attached_file_id }        
-        #     kwargs['is_for_detail'] = True
-        #     response = self.get_list(request, **kwargs)             
-        #     response.status_code = 202
-        #     return response
-        
-
     @write_authorization
     @un_cache        
     @transaction.atomic
@@ -3502,6 +3830,8 @@ class AttachedFileResource(ApiResource):
             _af = self.bridge['attached_file']
             _su = self.bridge['screensaver_user']
             _screen = self.bridge['screen']
+            _publication = self.bridge['publication']
+            _reagent = self.bridge['reagent']
             _up = self.bridge['reports_userprofile']
             
             j = _af
@@ -3512,11 +3842,14 @@ class AttachedFileResource(ApiResource):
             j = j.join(
                 _su, _af.c.screensaver_user_id == _su.c.screensaver_user_id,
                 isouter=True)
-#             screen_facility_id = param_hash.pop('screen_facility_id', None)
-#             if screen_facility_id:
-#                 isouter = True # why
             j = j.join(
                 _screen, _af.c.screen_id == _screen.c.screen_id,
+                isouter=True)
+            j = j.join(
+                _publication, _af.c.publication_id == _publication.c.publication_id,
+                isouter=True)
+            j = j.join(
+                _reagent, _af.c.reagent_id == _reagent.c.reagent_id,
                 isouter=True)
             
             # This entire query doesn't fit the pattern, construct it manually
@@ -3530,7 +3863,8 @@ class AttachedFileResource(ApiResource):
                     ' where au.screensaver_user_id=attached_file.created_by_id )'),
                 }
 
-            base_query_tables = ['attached_file', 'screensaver_user', 'screen'] 
+            base_query_tables = [
+                'attached_file', 'screensaver_user', 'screen','publication','reagent'] 
             columns = self.build_sqlalchemy_columns(
                 field_hash.values(), base_query_tables=base_query_tables,
                 custom_columns=custom_columns)
@@ -3544,6 +3878,9 @@ class AttachedFileResource(ApiResource):
             (stmt, count_stmt) = self.wrap_statement(
                 stmt, order_clauses, filter_expression)
             stmt = stmt.order_by('-attached_file_id')
+            
+            # compiled_stmt = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+            # logger.info('compiled_stmt %s', compiled_stmt)
             
             title_function = None
             if param_hash.get(HTTP_PARAM_USE_TITLES, False):
@@ -5173,6 +5510,21 @@ class ServiceActivityResource(ActivityResource):
         return (field_hash, columns, stmt, count_stmt)
 
 
+class ScreenAuthorization(UserGroupAuthorization):
+    
+    def _is_screen_authorized(self, screen, screensaver_user, permission_type):
+        
+        authorized = super(ScreenAuthentication,self)._is_resource_authorized(
+            'screen', screensaver_user.user.user, permission_type)
+        if not authorized and permission_type == 'read':
+            if screensaver_user in screen.collaborators:
+                authorized = True
+            elif screensaver_user == screen.lead_screener:
+                authorized = True
+            elif screensaver_user == screen.lab_head:
+                authorized = True
+        return authorized
+    
 class ScreenResource(ApiResource):
     
     class Meta:
@@ -5180,7 +5532,7 @@ class ScreenResource(ApiResource):
         queryset = Screen.objects.all()  # .order_by('facility_id')
         authentication = MultiAuthentication(BasicAuthentication(),
                                              SessionAuthentication())
-        authorization = UserGroupAuthorization()
+        authorization = ScreenAuthorization()
         resource_name = 'screen'
         ordering = []
         filtering = {}
@@ -5250,6 +5602,15 @@ class ScreenResource(ApiResource):
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_screen_attachedfiledetailview'),
                 name="api_dispatch_screen_attachedfiledetailview"),
+            url(r"^(?P<resource_name>%s)/(?P<facility_id>([\w\d_]+))/publications%s$" 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_screen_publicationview'),
+                name="api_dispatch_screen_publicationview"),
+            url((r"^(?P<resource_name>%s)/(?P<facility_id>([\w\d_]+))"
+                 r"/publications/(?P<publication_id>([\d]+))%s$") 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_screen_publicationdetailview'),
+                name="api_dispatch_screen_publicationdetailview"),
         ]    
         
     def dispatch_screen_attachedfileview(self, request, **kwargs):
@@ -5264,7 +5625,18 @@ class ScreenResource(ApiResource):
         kwargs['screen_facility_id'] = kwargs.pop('facility_id')
         return AttachedFileResource().dispatch('detail', request, **kwargs)    
                 
+    def dispatch_screen_publicationview(self, request, **kwargs):
+        kwargs['screen_facility_id'] = kwargs.pop('facility_id')
+        method = 'list'
+        if request.method.lower() == 'put':
+            # if put is used, force to "put_detail"
+            method = 'detail'
+        return PublicationResource().dispatch(method, request, **kwargs)    
 
+    def dispatch_screen_publicationdetailview(self, request, **kwargs):
+        kwargs['screen_facility_id'] = kwargs.pop('facility_id')
+        return PublicationResource().dispatch('detail', request, **kwargs)    
+                
     def dispatch_screen_activityview(self, request, **kwargs):
         kwargs['screen_facility_id__eq'] = kwargs.pop('facility_id')
         return ActivityResource().dispatch('list', request, **kwargs)    
@@ -5318,7 +5690,8 @@ class ScreenResource(ApiResource):
         return self.build_list_response(request, **kwargs)
 
     def get_query(self, param_hash):
-
+        
+        DEBUG_SCREEN = False or logger.isEnabledFor(logging.DEBUG)
         schema = self.build_schema()
         screens_for_username = param_hash.get('screens_for_username', None)
         # general setup
@@ -5555,224 +5928,227 @@ class ScreenResource(ApiResource):
             
         affiliation_table = ScreensaverUserResource.get_lab_affiliation_cte()
         affiliation_table = affiliation_table.cte('la')
-# TODO:  
-#         activities = ( 
-#             select([]))
 
-        custom_columns = {
-            'collaborator_usernames': (
-                select([
-                    func.array_to_string(
-                        func.array_agg(collaborators.c.username),
-                        LIST_DELIMITER_SQL_ARRAY)])
-                .select_from(collaborators)
-                .where(collaborators.c.screen_id 
-                    == literal_column('screen.screen_id'))),
-            'collaborator_names': (
-                select([
-                    func.array_to_string(
-                        func.array_agg(collaborators.c.fullname),
-                        LIST_DELIMITER_SQL_ARRAY)])
-                .select_from(collaborators)
-                .where(collaborators.c.screen_id 
-                    == literal_column('screen.screen_id'))),
-            'lab_affiliation': (
-                select([
-                    _concat(
-                        affiliation_table.c.title, ' (',
-                        affiliation_table.c.category, ')')])
-                .select_from(
-                    _lhsu.join(affiliation_table,
-                        affiliation_table.c.affiliation_name 
-                            == _lhsu.c.lab_head_affiliation))
-                .where(_lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
-            'lab_name': (
-                select([
-                    _concat(
-                        _lhsu.c.last_name, ', ', _lhsu.c.first_name, ' - ',
-                        affiliation_table.c.title,
-                        ' (', affiliation_table.c.category, ')')])
-                .select_from(
-                    _lhsu.join(affiliation_table,
-                        affiliation_table.c.affiliation_name 
-                            == _lhsu.c.lab_head_affiliation))
-                .where(_lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
-            'lab_head_username': (
-                select([_lhsu.c.username])
-                .select_from(_lhsu)
-                .where(_lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
-            'lead_screener_name': (
-                select([_concat(_su.c.first_name, ' ', _su.c.last_name)])
-                .select_from(_su)
-                .where(_su.c.screensaver_user_id == _screen.c.lead_screener_id)),
-            'lead_screener_username': (
-                select([_su.c.username])
-                .select_from(_su)
-                .where(_su.c.screensaver_user_id == _screen.c.lead_screener_id)),
-            'has_screen_result': literal_column(
-                '(select dc.data_column_id is not null '
-                '     from data_column dc join screen_result using(screen_result_id) '
-                '     where screen_id=screen.screen_id limit 1 ) '
-                ),
-            'cell_lines': (
-                select([
-                    func.array_to_string(
-                        func.array_agg(_screen_cell_lines.c.cell_line),
-                        LIST_DELIMITER_SQL_ARRAY)])
-                .select_from(_screen_cell_lines)
-                .where(_screen_cell_lines.c.screen_id 
-                    == literal_column('screen.screen_id'))),
-            'date_of_first_activity': literal_column(
-                '( select date_of_activity '
-                '  from activity '
-                '  join lab_activity la using(activity_id) '
-                '  where la.screen_id=screen.screen_id '
-                '  order by date_of_activity asc LIMIT 1 )'
-                ),
-            'date_of_last_activity': literal_column(
-                '( (select date_of_activity '
-                '  from activity '
-                '  join lab_activity la using(activity_id) '
-                '  where la.screen_id=screen.screen_id '
-                '  UNION ALL'
-                '  select date_of_activity '
-                '  from activity '
-                '  join service_activity sa using(activity_id) '
-                '  where sa.serviced_screen_id=screen.screen_id )'
-                '  order by date_of_activity desc LIMIT 1 )'
-                ),
-#             # TODO: rework the update activity
-#             'screenresult_last_imported': (
-#                 select([screen_result_update_activity.c.date_of_activity])
-#                 .select_from(screen_result_update_activity)
-#                 .where(screen_result_update_activity.c.screen_id 
-#                     == literal_column('screen.screen_id'))),
-            'funding_supports': (
-                select([
-                    func.array_to_string(
-                        func.array_agg(literal_column('funding_support')),
-                        LIST_DELIMITER_SQL_ARRAY)])
-                .select_from(
-                    select([_sfs.c.funding_support])
-                    .select_from(_sfs)
-                    .order_by(_sfs.c.funding_support)
-                    .where(_sfs.c.screen_id == literal_column('screen.screen_id'))
-                .alias('inner'))),
-            'total_plated_lab_cherry_picks': (
-                select([tplcps.c.count])
-                .select_from(tplcps)
-                .where(tplcps.c.screen_id == _screen.c.screen_id)),
-            
-            # TODO: convert to vocabulary
-            'assay_readout_types': literal_column(
-                "(select array_to_string(array_agg(f1.assay_readout_type),'%s') "
-                '    from ( select distinct(assay_readout_type) '
-                '        from data_column ds '
-                '        join screen_result using(screen_result_id) '
-                '        where screen_id=screen.screen_id'
-                "        and (assay_readout_type = '') is false  ) as f1 ) " 
-                % LIST_DELIMITER_SQL_ARRAY),
-            'library_plates_screened': (
-                select([lps.c.count])
-                .select_from(lps).where(lps.c.screen_id == _screen.c.screen_id)),
-            'library_screenings': (
-                select([func.count(_library_screening.c.activity_id)])
-                .select_from(
-                    _lab_activity.join(
-                        _library_screening,
-                        _library_screening.c.activity_id 
-                            == _lab_activity.c.activity_id))
-                .where(_lab_activity.c.screen_id == _screen.c.screen_id)),
-            'cherry_pick_screenings': (
-                select([func.count(_cp_screening.c.activity_id)])
-                .select_from(
-                    _lab_activity.join(
-                        _cp_screening,
-                        _cp_screening.c.activity_id 
-                            == _lab_activity.c.activity_id))
-                .where(_lab_activity.c.screen_id == _screen.c.screen_id)),
-            # Altered - 20160408 
-            # per discussion with JS, no need to try to link presumed assay_plates
-            # from the screen_result to (screening visit) assay_plates;
-            # Instead, we can infer replicate loading from the screen_result import
-            # where the data_column shows the replicate
-            # 'library_plates_data_loaded': (
-            #     select([lpdl.c.count])
-            #     .select_from(lpdl)
-            #     .where(lpdl.c.screen_id == _screen.c.screen_id)),
-            'library_plates_data_loaded': (
-                select([func.count(distinct(_aw.c.plate_number))])
-                .select_from(
-                    _aw.join(_screen_result,
-                        _aw.c.screen_result_id
-                            == _screen_result.c.screen_result_id))
-                .where(_screen_result.c.screen_id == _screen.c.screen_id)
-                ),
-            'assay_plates_screened': (
-                select([aps.c.count]).select_from(aps)
-                .where(aps.c.screen_id == _screen.c.screen_id)),
-            # Altered - 20160408 
-            # per discussion with JS, no need to try to link presumed assay_plates
-            # from the screen_result to (screening visit) assay_plates;
-            # Instead, we can infer replicate loading from the screen_result import
-            # where the data_column shows the replicate
-            # 'assay_plates_data_loaded': ( 
-            #     select([apdl.c.count])
-            #     .select_from(apdl)
-            #     .where(apdl.c.screen_id == _screen.c.screen_id)),
-            'libraries_screened_count': (
-                select([libraries_screened.c.count])
-                .select_from(libraries_screened)
-                .where(libraries_screened.c.screen_id == _screen.c.screen_id)),
-            
-            # FIXME: update extant records
-            # # FIXME: use administrative activity vocabulary
-            # 'last_data_loading_date': literal_column(
-            #     '( select activity.date_created '
-            #     '  from activity '
-            #     '  join administrative_activity aa using(activity_id) '
-            #     '  join screen_update_activity on update_activity_id=activity_id  '
-            #     "  where administrative_activity_type = 'Screen Result Data Loading' " 
-            #     '  and screen_id=screen.screen_id '
-            #     '  order by date_created desc limit 1 )'
-            #     ),
-            'min_screened_replicate_count': (
-                select([func.min(apsrc.c.max_per_plate) + 1])
-                .select_from(apsrc)
-                .where(apsrc.c.screen_id == _screen.c.screen_id)),
-            'max_screened_replicate_count': (
-                select([func.max(apsrc.c.max_per_plate) + 1])
-                .select_from(apsrc)
-                .where(apsrc.c.screen_id == _screen.c.screen_id)),
-            # Altered - 20160408 
-            # per discussion with JS, no need to try to link presumed assay_plates
-            # from the screen_result to (screening visit) assay_plates;
-            # Instead, we can infer replicate loading from the screen_result import
-            # where the data_column shows the replicate
-            # 'min_data_loaded_replicate_count': (
-            #     select([func.min(apdlrc.c.max_per_plate) + 1])
-            #     .select_from(apdlrc)
-            #     .where(apdlrc.c.screen_id == _screen.c.screen_id)),
-            # 'max_data_loaded_replicate_count': (
-            #     select([func.max(apdlrc.c.max_per_plate) + 1])
-            #     .select_from(apdlrc)
-            #     .where(apdlrc.c.screen_id == _screen.c.screen_id)),
-            'last_data_loading_date':
-                new_screen_result.c.date_loaded,
-            'experimental_well_count': 
-                literal_column('screen_result.experimental_well_count'),
-            'pin_transfer_approved_by_username': literal_column("'tbd'"),
-            'pin_transfer_date_approved': literal_column("'tbd'"),
-            'pin_transfer_comments': literal_column("'tbd'"),
-            'keywords': (
-                select([
-                    func.array_to_string(
-                        func.array_agg(_screen_keyword.c.keyword),
-                        LIST_DELIMITER_SQL_ARRAY)])
-               .select_from(_screen_keyword)
-               .where(_screen_keyword.c.screen_id == _screen.c.screen_id)),
-            'screen_id': _screen.c.screen_id,
-        }
+        try:
+            custom_columns = {
+                'collaborator_usernames': (
+                    select([
+                        func.array_to_string(
+                            func.array_agg(collaborators.c.username),
+                            LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(collaborators)
+                    .where(collaborators.c.screen_id 
+                        == literal_column('screen.screen_id'))),
+                'collaborator_names': (
+                    select([
+                        func.array_to_string(
+                            func.array_agg(collaborators.c.fullname),
+                            LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(collaborators)
+                    .where(collaborators.c.screen_id 
+                        == literal_column('screen.screen_id'))),
+                'lab_affiliation': (
+                    select([
+                        _concat(
+                            affiliation_table.c.title, ' (',
+                            affiliation_table.c.category, ')')])
+                    .select_from(
+                        _lhsu.join(affiliation_table,
+                            affiliation_table.c.affiliation_name 
+                                == _lhsu.c.lab_head_affiliation))
+                    .where(_lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
+                'lab_name': (
+                    select([
+                        _concat(
+                            _lhsu.c.last_name, ', ', _lhsu.c.first_name, ' - ',
+                            affiliation_table.c.title,
+                            ' (', affiliation_table.c.category, ')')])
+                    .select_from(
+                        _lhsu.join(affiliation_table,
+                            affiliation_table.c.affiliation_name 
+                                == _lhsu.c.lab_head_affiliation))
+                    .where(_lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
+                'lab_head_username': (
+                    select([_lhsu.c.username])
+                    .select_from(_lhsu)
+                    .where(_lhsu.c.screensaver_user_id == _screen.c.lab_head_id)),
+                'lead_screener_name': (
+                    select([_concat(_su.c.first_name, ' ', _su.c.last_name)])
+                    .select_from(_su)
+                    .where(_su.c.screensaver_user_id == _screen.c.lead_screener_id)),
+                'lead_screener_username': (
+                    select([_su.c.username])
+                    .select_from(_su)
+                    .where(_su.c.screensaver_user_id == _screen.c.lead_screener_id)),
+                'has_screen_result': literal_column(
+                    '(select dc.data_column_id is not null '
+                    '     from data_column dc join screen_result using(screen_result_id) '
+                    '     where screen_id=screen.screen_id limit 1 ) '
+                    ),
+                'cell_lines': (
+                    select([
+                        func.array_to_string(
+                            func.array_agg(_screen_cell_lines.c.cell_line),
+                            LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(_screen_cell_lines)
+                    .where(_screen_cell_lines.c.screen_id 
+                        == literal_column('screen.screen_id'))),
+                'date_of_first_activity': literal_column(
+                    '( select date_of_activity '
+                    '  from activity '
+                    '  join lab_activity la using(activity_id) '
+                    '  where la.screen_id=screen.screen_id '
+                    '  order by date_of_activity asc LIMIT 1 )'
+                    ),
+                'date_of_last_activity': literal_column(
+                    '( (select date_of_activity '
+                    '  from activity '
+                    '  join lab_activity la using(activity_id) '
+                    '  where la.screen_id=screen.screen_id '
+                    '  UNION ALL'
+                    '  select date_of_activity '
+                    '  from activity '
+                    '  join service_activity sa using(activity_id) '
+                    '  where sa.serviced_screen_id=screen.screen_id )'
+                    '  order by date_of_activity desc LIMIT 1 )'
+                    ),
+                # # TODO: rework the update activity
+                # 'screenresult_last_imported': (
+                #     select([screen_result_update_activity.c.date_of_activity])
+                #     .select_from(screen_result_update_activity)
+                #     .where(screen_result_update_activity.c.screen_id 
+                #         == literal_column('screen.screen_id'))),
+                'funding_supports': (
+                    select([
+                        func.array_to_string(
+                            func.array_agg(literal_column('funding_support')),
+                            LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(
+                        select([_sfs.c.funding_support])
+                        .select_from(_sfs)
+                        .order_by(_sfs.c.funding_support)
+                        .where(_sfs.c.screen_id == literal_column('screen.screen_id'))
+                    .alias('inner'))),
+                'total_plated_lab_cherry_picks': (
+                    select([tplcps.c.count])
+                    .select_from(tplcps)
+                    .where(tplcps.c.screen_id == _screen.c.screen_id)),
+                
+                # TODO: convert to vocabulary
+                'assay_readout_types': literal_column(
+                    "(select array_to_string(array_agg(f1.assay_readout_type),'%s') "
+                    '    from ( select distinct(assay_readout_type) '
+                    '        from data_column ds '
+                    '        join screen_result using(screen_result_id) '
+                    '        where screen_id=screen.screen_id'
+                    "        and (assay_readout_type = '') is false  ) as f1 ) " 
+                    % LIST_DELIMITER_SQL_ARRAY),
+                'library_plates_screened': (
+                    select([lps.c.count])
+                    .select_from(lps).where(lps.c.screen_id == _screen.c.screen_id)),
+                'library_screenings': (
+                    select([func.count(_library_screening.c.activity_id)])
+                    .select_from(
+                        _lab_activity.join(
+                            _library_screening,
+                            _library_screening.c.activity_id 
+                                == _lab_activity.c.activity_id))
+                    .where(_lab_activity.c.screen_id == _screen.c.screen_id)),
+                'cherry_pick_screenings': (
+                    select([func.count(_cp_screening.c.activity_id)])
+                    .select_from(
+                        _lab_activity.join(
+                            _cp_screening,
+                            _cp_screening.c.activity_id 
+                                == _lab_activity.c.activity_id))
+                    .where(_lab_activity.c.screen_id == _screen.c.screen_id)),
+
+                # Altered - 20160408 
+                # per discussion with JS, no need to try to link presumed assay_plates
+                # from the screen_result to (screening visit) assay_plates;
+                # Instead, we can infer replicate loading from the screen_result import
+                # where the data_column shows the replicate
+                # 'library_plates_data_loaded': (
+                #     select([lpdl.c.count])
+                #     .select_from(lpdl)
+                #     .where(lpdl.c.screen_id == _screen.c.screen_id)),
+                'library_plates_data_loaded': (
+                    select([func.count(distinct(_aw.c.plate_number))])
+                    .select_from(
+                        _aw.join(_screen_result,
+                            _aw.c.screen_result_id
+                                == _screen_result.c.screen_result_id))
+                    .where(_screen_result.c.screen_id == _screen.c.screen_id)
+                    ),
+                'assay_plates_screened': (
+                    select([aps.c.count]).select_from(aps)
+                    .where(aps.c.screen_id == _screen.c.screen_id)),
+                # Altered - 20160408 
+                # per discussion with JS, no need to try to link presumed assay_plates
+                # from the screen_result to (screening visit) assay_plates;
+                # Instead, we can infer replicate loading from the screen_result import
+                # where the data_column shows the replicate
+                # 'assay_plates_data_loaded': ( 
+                #     select([apdl.c.count])
+                #     .select_from(apdl)
+                #     .where(apdl.c.screen_id == _screen.c.screen_id)),
+                'libraries_screened_count': (
+                    select([libraries_screened.c.count])
+                    .select_from(libraries_screened)
+                    .where(libraries_screened.c.screen_id == _screen.c.screen_id)),
+                
+                # FIXME: update extant records
+                # # FIXME: use administrative activity vocabulary
+                # 'last_data_loading_date': literal_column(
+                #     '( select activity.date_created '
+                #     '  from activity '
+                #     '  join administrative_activity aa using(activity_id) '
+                #     '  join screen_update_activity on update_activity_id=activity_id  '
+                #     "  where administrative_activity_type = 'Screen Result Data Loading' " 
+                #     '  and screen_id=screen.screen_id '
+                #     '  order by date_created desc limit 1 )'
+                #     ),
+                'min_screened_replicate_count': (
+                    select([func.min(apsrc.c.max_per_plate) + 1])
+                    .select_from(apsrc)
+                    .where(apsrc.c.screen_id == _screen.c.screen_id)),
+                'max_screened_replicate_count': (
+                    select([func.max(apsrc.c.max_per_plate) + 1])
+                    .select_from(apsrc)
+                    .where(apsrc.c.screen_id == _screen.c.screen_id)),
+                # Altered - 20160408 
+                # per discussion with JS, no need to try to link presumed assay_plates
+                # from the screen_result to (screening visit) assay_plates;
+                # Instead, we can infer replicate loading from the screen_result import
+                # where the data_column shows the replicate
+                # 'min_data_loaded_replicate_count': (
+                #     select([func.min(apdlrc.c.max_per_plate) + 1])
+                #     .select_from(apdlrc)
+                #     .where(apdlrc.c.screen_id == _screen.c.screen_id)),
+                # 'max_data_loaded_replicate_count': (
+                #     select([func.max(apdlrc.c.max_per_plate) + 1])
+                #     .select_from(apdlrc)
+                #     .where(apdlrc.c.screen_id == _screen.c.screen_id)),
+                'last_data_loading_date':
+                    new_screen_result.c.date_loaded,
+                'experimental_well_count': 
+                    literal_column('screen_result.experimental_well_count'),
+                'pin_transfer_approved_by_username': literal_column("'tbd'"),
+                'pin_transfer_date_approved': literal_column("'tbd'"),
+                'pin_transfer_comments': literal_column("'tbd'"),
+                'keywords': (
+                    select([
+                        func.array_to_string(
+                            func.array_agg(_screen_keyword.c.keyword),
+                            LIST_DELIMITER_SQL_ARRAY)])
+                   .select_from(_screen_keyword)
+                   .where(_screen_keyword.c.screen_id == _screen.c.screen_id)),
+                'screen_id': _screen.c.screen_id,
+            }
+        except Exception, e:
+            logger.exception('on custom columns creation')
+            raise 
+        
         if screens_for_username:
             custom_columns['screensaver_user_role'] = \
                 screener_role_cte.c.screensaver_user_role
@@ -5802,9 +6178,10 @@ class ScreenResource(ApiResource):
         (stmt, count_stmt) = self.wrap_statement(
             stmt, order_clauses, filter_expression)
         stmt = stmt.order_by('facility_id')
-        logger.info(
-            'stmt: %s',
-            str(stmt.compile(compile_kwargs={"literal_binds": True})))
+        if DEBUG_SCREEN: 
+            logger.info(
+                'stmt: %s',
+                str(stmt.compile(compile_kwargs={"literal_binds": True})))
           
         return (field_hash, columns, stmt, count_stmt)
 
@@ -6940,6 +7317,7 @@ class NaturalProductReagentResource(ApiResource):
             if hasattr(reagent, key):
                 setattr(reagent, key, val)
         reagent.save()
+        logger.debug('patch natural product reagent: %r', reagent)
 
         logger.debug(
             'patched natural product reagent: %r',
@@ -7108,7 +7486,7 @@ class SilencingReagentResource(ApiResource):
         initializer_dict = self.parse(deserialized)
         
         id_kwargs = self.get_id(deserialized, **kwargs)
-        
+
         patch = False
         if not well.reagent_set.exists():
             reagent = SilencingReagent(well=well)
@@ -7137,6 +7515,7 @@ class SilencingReagentResource(ApiResource):
             if hasattr(reagent, key):
                 setattr(reagent, key, val)
         reagent.save()
+        logger.debug('patch silencing reagent: %r', reagent)
 
         
         # Now do the gene tables
@@ -7256,6 +7635,7 @@ class SmallMoleculeReagentResource(ApiResource):
         for key, val in initializer_dict.items():
             if hasattr(reagent, key):
                 setattr(reagent, key, val)
+        logger.debug('patch small molecule reagent: %r', reagent)
         reagent.save()
         
         if 'compound_name' in initializer_dict:
@@ -7352,9 +7732,6 @@ class ReagentResource(ApiResource):
             
             # general setup
             manual_field_includes = set(param_hash.get('includes', []))
-#             desired_format = self.get_serialize_format(request, **kwargs)
-#             if desired_format == SDF_MIMETYPE:
-#                 manual_field_includes.add('molfile')
    
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
@@ -7466,7 +7843,7 @@ class ReagentResource(ApiResource):
 
             compiled_stmt = str(stmt.compile(
                 compile_kwargs={"literal_binds": True}))
-            logger.info('compiled_stmt %s', compiled_stmt)
+            logger.debug('compiled_stmt %s', compiled_stmt)
     
             return (field_hash, columns, stmt, count_stmt)
                         
@@ -7622,7 +7999,6 @@ class ReagentResource(ApiResource):
 
     @transaction.atomic()    
     def patch_obj(self, deserialized, **kwargs):
-
         well = kwargs.get('well', None)
         if not well:
             raise ValidationError(key='well', msg='required')
@@ -7825,18 +8201,6 @@ class WellResource(ApiResource):
         if 'library_short_name' not in kwargs:
             raise BadRequest('library_short_name is required')
         
-#         logger.info('1...: %r', deserialized.keys())
-#         if self._meta.collection_name in deserialized:
-#             deserialized = deserialized[self._meta.collection_name]
-#         elif isinstance(deserialized, OrderedDict):
-#             logger.info(
-#                 'Only reading the first sheet %r of the workbook at this time', 
-#                 deserialized.keys()[0])
-#             deserialized = deserialized.values()[0]
-#         else:
-#             raise BadRequest(
-#                 "Invalid data sent, must be nested in '%s', or must be an OrderedDict" 
-#                 % self._meta.collection_name)
         deserialized = self.deserialize(request)
         if not self._meta.collection_name in deserialized:
             raise BadRequest("Invalid data sent, must be nested in '%s'" 
@@ -7945,7 +8309,7 @@ class WellResource(ApiResource):
                     new_data_patches_only.append(new_item)
         
         logger.debug('new data: %s' % new_data_patches_only)
-        logger.debug('patch list done, new data: %d' 
+        logger.info('patch list done, new data: %d' 
             % (len(new_data_patches_only)))
         self.log_patches(
             request, original_data_patches_only, new_data_patches_only,

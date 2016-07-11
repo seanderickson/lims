@@ -76,13 +76,16 @@ class BaseSerializer(Serializer):
             else:
                 msg = ( 'unknown format: %r, options: %r'
                         % (format, self.content_types.keys()))
-                raise BadRequest(msg)
-        elif request.META.get('CONTENT_TYPE', '*/*') != '*/*':
-            format = request.META.get('CONTENT_TYPE', '*/*')
-        else:
-            logger.debug('deserialize format: CONTENT_TYPE not specified,'
-                ' fallback to HTTP_ACCEPT')
-            format = self.get_serialize_format(request)
+                # raise BadRequest(msg)
+                logger.warn(msg)
+                format = None
+        if not format:
+            if request.META.get('CONTENT_TYPE', '*/*') != '*/*':
+                format = request.META.get('CONTENT_TYPE', '*/*')
+            else:
+                logger.debug('deserialize format: CONTENT_TYPE not specified,'
+                    ' fallback to HTTP_ACCEPT')
+                format = self.get_serialize_format(request)
             
         logger.debug('get_deserialize_format returns: %r', format)
         return format
@@ -103,38 +106,41 @@ class BaseSerializer(Serializer):
             else:
                 msg = ( 'unknown format: %r, options: %r' 
                         % (format, self.content_types.keys()))
-                raise BadRequest(msg)
-        elif request.META.get('HTTP_ACCEPT', '*/*') != '*/*':
-            logger.debug('get_format: Try to HTTP_ACCEPT header %r',
-                request.META.get('HTTP_ACCEPT', '*/*'))
-            try:
-                format = mimeparse.best_match(
-                    self.content_types.values(), 
-                    request.META['HTTP_ACCEPT'])
-                if format == 'text/javascript':
-                    # NOTE - 
-                    # if the HTTP_ACCEPT header contains multiple entries 
-                    # with equal weighting, mimeparse.best_match returns
-                    # the last match. This results in the request header:
-                    # "application/json, text/javascript, */*; q=0.01"
-                    # (sent from jquery ajax call) returning 'text/javascript'
-                    # because the tastypie wrapper interprets this as 
-                    # a JSONP request, override here and set to 
-                    # 'application/json' 
-                    if 'application/json' in  request.META['HTTP_ACCEPT']:
-                        format = 'application/json'
-
-                if not format:
-                    raise BadRequest(
-                        "no best match format for HTTP_ACCEPT: %r"
-                        % request.META['HTTP_ACCEPT'])
-            except ValueError:
-                raise BadRequest('Invalid Accept header: %r',
-                    request.META['HTTP_ACCEPT'])
-        elif request.META.get('CONTENT_TYPE', '*/*') != '*/*':
-            logger.debug('serialize format: HTTP_ACCEPT not specified,'
-                ' fallback to CONTENT_TYPE')
-            format = request.META.get('CONTENT_TYPE', '*/*')
+                # raise BadRequest(msg)
+                logger.warn(msg)
+                format = None
+        if not format:
+            if request.META.get('HTTP_ACCEPT', '*/*') != '*/*':
+                logger.debug('get_format: Try to HTTP_ACCEPT header %r',
+                    request.META.get('HTTP_ACCEPT', '*/*'))
+                try:
+                    format = mimeparse.best_match(
+                        self.content_types.values(), 
+                        request.META['HTTP_ACCEPT'])
+                    if format == 'text/javascript':
+                        # NOTE - 
+                        # if the HTTP_ACCEPT header contains multiple entries 
+                        # with equal weighting, mimeparse.best_match returns
+                        # the last match. This results in the request header:
+                        # "application/json, text/javascript, */*; q=0.01"
+                        # (sent from jquery ajax call) returning 'text/javascript'
+                        # because the tastypie wrapper interprets this as 
+                        # a JSONP request, override here and set to 
+                        # 'application/json' 
+                        if 'application/json' in  request.META['HTTP_ACCEPT']:
+                            format = 'application/json'
+    
+                    if not format:
+                        raise BadRequest(
+                            "no best match format for HTTP_ACCEPT: %r"
+                            % request.META['HTTP_ACCEPT'])
+                except ValueError:
+                    raise BadRequest('Invalid Accept header: %r',
+                        request.META['HTTP_ACCEPT'])
+            elif request.META.get('CONTENT_TYPE', '*/*') != '*/*':
+                logger.debug('serialize format: HTTP_ACCEPT not specified,'
+                    ' fallback to CONTENT_TYPE')
+                format = request.META.get('CONTENT_TYPE', '*/*')
 
         logger.debug('get_serialize_format returns: %r', format)
 

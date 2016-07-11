@@ -28,3 +28,4 @@ patch,field,metahash_fields_libraryscreening.csv
 patch,field,metahash_fields_cherrypickscreening.csv
 patch,vocabularies,vocabularies_lab_affiliations_data.csv
 patch,field,metahash_fields_cplt.csv
+patch,field,metahash_fields_publication.csv

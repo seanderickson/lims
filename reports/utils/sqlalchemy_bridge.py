@@ -60,6 +60,8 @@ class Bridge(object):
                 self._meta.bind = create_engine(self.connection_url(), 
                     poolclass=settings.SQLALCHEMY_POOL_CLASS)
             else:
+                # TODO: Not reusing the Django connection:
+                # Consider using Sqlaldjemy which does reuse the Django connection
                 self._meta.bind = create_engine(self.connection_url())
         return self._meta
 

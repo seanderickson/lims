@@ -7,9 +7,10 @@ billing,field.visibility,/reports/api/v1/vocabularies/field.visibility/billing/,
 c,field.editability,/reports/api/v1/vocabularies/field.editability/c/,1,,"Visible on creation","Visible on creation"
 u,field.editability,/reports/api/v1/vocabularies/field.editability/u/,2,,"Visible on update","Visible on update"
 l,field.editability,/reports/api/v1/vocabularies/field.editability/l/,3,,"Allow visibility in the lists in edit mode","Visible in edit list view"
-list,resource.visibility,/reports/api/v1/vocabularies/resource.visibility/list/,1,,"Allow visibility in list views","Visible in list views"
-detail,resource.visibility,/reports/api/v1/vocabularies/resource.visibility/detail/,3,,"Allow visibility in detail views","Visible in detail views"
-create,resource.visibility,/reports/api/v1/vocabularies/resource.visibility/create/,4,,"Allow visibility in the edit form when creating.","Visible when creating"
+l,resource.visibility,/reports/api/v1/vocabularies/resource.visibility/list/,1,,"Allow visibility in list views","Visible in list views"
+d,resource.visibility,/reports/api/v1/vocabularies/resource.visibility/detail/,3,,"Allow visibility in detail views","Visible in detail views"
+c,resource.visibility,/reports/api/v1/vocabularies/resource.visibility/create/,4,,"Allow visibility in the edit form when creating.","Visible when creating"
+e,resource.visibility,/reports/api/v1/vocabularies/resource.visibility/edit/,5,,"Allow edit visibility","Visible in edit views"
 string,field.data_type,/reports/api/v1/vocabularies/field.data_type/string/,1,,"String fields may contain any characters",String
 boolean,field.data_type,/reports/api/v1/vocabularies/field.data_type/boolean/,2,,"One of ['true','false','t','f'] - case insensitive",Boolean
 date,field.data_type,/reports/api/v1/vocabularies/field.data_type/date/,3,,Date,Date

@@ -66,7 +66,7 @@ def parse_val(value, key, data_type):
             # todo: this is a kludge, create an integer from values like "5.0"
             return int(float(value))
         elif data_type == 'date':
-            return dateutil.parser.parse(value)
+            return dateutil.parser.parse(value).date()
         elif data_type == 'datetime':
             return dateutil.parser.parse(value)
         elif data_type == 'boolean':

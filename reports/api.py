@@ -1952,7 +1952,7 @@ class VocabulariesResource(ApiResource):
             raise NotImplementedError('must provide a key parameter')
         
         scope = kwargs.get('scope', None)
-        if not item_group:
+        if not scope:
             logger.info('no scope provided')
             raise NotImplementedError('must provide a scope parameter')
         

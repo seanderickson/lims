@@ -247,7 +247,8 @@ define([
           if(vocabulary){
             finalValues = Iccbl.sortOnOrdinal(modelValues,vocabulary);
           }
-          return _.map(finalValues, linkGetter).join(', ');
+          // NOTE: hack in the defaultGetter for vocabularies
+          return _.map(finalValues, _.compose(linkGetter,defaultGetter)).join(', ');
         }
         return finalValues;
       }
@@ -269,8 +270,8 @@ define([
         if (appModel.DEBUG) 
           console.log('add getter for field: ', key, ', display_type: ', display_type);
         if (display_type == 'linklist'){
-          // for the linklist, run the listgetter first
-          binding.onGet = _.compose(binding.onGet, display_type_formatters[display_type]);
+          // for the linklist, have to hack in the defaultGetter
+          binding.onGet = display_type_formatters[display_type];
         }else if (display_type == 'siunit'){
           // for siunit, skip other (i.e. decimalGetter)
           binding.onGet = _.compose(baseGetter, display_type_formatters[display_type]);

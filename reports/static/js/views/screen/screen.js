@@ -348,6 +348,30 @@ define([
           self.createStatusHistoryTable(this.$el.find('#status'));
         }
       });
+      
+      var ScreenModel = Backbone.Model.extend({
+        key: self.model.key,
+        resource: self.model.resource,
+        url: self.model.url,
+        parse: self.model.parse,
+        validate: function(attrs, options) {
+          console.log('custom validation... ', attrs);
+          errs = {};
+          if (!_.isEmpty(_.result(attrs,'data_privacy_expiration_notified_date'))){
+            if (!_.isEmpty(_.result(attrs,'max_allowed_data_privacy_expiration_date'))){
+              errs['max_allowed_data_privacy_expiration_date'] = (
+                'can not be set if the expiration notified date is set');
+            }
+            if (!_.isEmpty(_.result(attrs,'min_allowed_data_privacy_expiration_date'))){
+              errs['min_allowed_data_privacy_expiration_date'] = (
+                'can not be set if the expiration notified date is set');
+            }
+          }
+          return _.isEmpty(errs) ? null : errs;
+        }
+      });
+      this.model = new ScreenModel(this.model.attributes);
+      
       view = new DetailLayout({ 
         model: this.model, 
         uriStack: delegateStack,

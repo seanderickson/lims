@@ -6,6 +6,7 @@ import re
 
 from django.conf import settings
 from django.core.cache import cache
+import django.core.exceptions
 from django.http.response import HttpResponseBase, HttpResponse,\
     HttpResponseNotFound, Http404
 from django.utils.cache import patch_cache_control, patch_vary_headers
@@ -237,7 +238,7 @@ class IccblBaseResource(Resource):
             
             except ValidationError as e:
                 response = self.build_error_response(
-                    request, { 'Errors': e.errors }, **kwargs)
+                    request, { 'errors': e.errors }, **kwargs)
                 if 'xls' in response['Content-Type']:
                     response['Content-Disposition'] = \
                         'attachment; filename=%s.xlsx' % 'errors'
@@ -248,6 +249,21 @@ class IccblBaseResource(Resource):
                     else:
                         logger.debug('no downloadID: %s' % request.GET )
                 return response
+            except django.core.exceptions.ValidationError as e:
+                logger.exception('django validation error: %r, %r', e, e.message_dict)
+                response = self.build_error_response(
+                    request, { 'errors': e.message_dict }, **kwargs)
+                if 'xls' in response['Content-Type']:
+                    response['Content-Disposition'] = \
+                        'attachment; filename=%s.xlsx' % 'errors'
+                    downloadID = request.GET.get('downloadID', None)
+                    if downloadID:
+                        logger.info('set cookie "downloadID" %r', downloadID )
+                        response.set_cookie('downloadID', downloadID)
+                    else:
+                        logger.debug('no downloadID: %s' % request.GET )
+                return response
+                
             except Exception as e:
                 if hasattr(e, 'response'):
                     # A specific response was specified

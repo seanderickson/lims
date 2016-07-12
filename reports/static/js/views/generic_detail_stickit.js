@@ -227,10 +227,6 @@ define([
 
         if(value && !_.isNull(value) && value != '-' ){
           var interpolatedVal = Iccbl.formatString(_options.hrefTemplate,self.model, value);
-          var vocabulary = getVocabulary();
-          if(vocabulary){
-            value = getTitle(vocabulary,value);
-          }
           var _html = '<a ' + 
             'id="' + key + '" ' + 
             'href="' + interpolatedVal + '" ' +

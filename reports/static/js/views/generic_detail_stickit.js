@@ -70,7 +70,6 @@ define([
 	  
 	  createBinding: function(key, fi){
 	    var self = this;
-	    var vocabulary;
       var binding;
       var data_type = _.isEmpty(fi.data_type) ? 'string' : fi.data_type.toLowerCase();
       var display_type = _.isEmpty(fi.display_type) ? data_type : fi.display_type.toLowerCase();
@@ -96,19 +95,20 @@ define([
         if( data_type == 'list') display_type = 'linklist';
       }
 
-      if(!_.isEmpty(fi.vocabulary_scope_ref)){
-        // replace the fi.choices with the vocabulary, if available
-        try{
-          vocabulary = Iccbl.appModel.getVocabulary(fi.vocabulary_scope_ref);
-        }catch(e){
-          var msg = 'Vocabulary unavailable: field: ' + fi.key +  
-            ', vocabulary_scope_ref: ' + fi.vocabulary_scope_ref;
-          console.log(msg,e);
-          appModel.error(msg);
+      function getVocabulary(){
+        if( fi.vocabulary ){
+          return fi.vocabulary;
+        }else if(!_.isEmpty(fi.vocabulary_scope_ref)){
+          // replace the fi.choices with the vocabulary, if available
+          try{
+            return Iccbl.appModel.getVocabulary(fi.vocabulary_scope_ref);
+          }catch(e){
+            var msg = 'Vocabulary unavailable: field: ' + key +  
+              ', vocabulary_scope_ref: ' + fi.vocabulary_scope_ref;
+            console.log(msg,e);
+            appModel.error(msg);
+          }
         }
-      }
-      if( fi.vocabulary ){
-        vocabulary = fi.vocabulary;
       }
       
       function getTitle(vocabulary,value){
@@ -132,7 +132,8 @@ define([
       
       // define "data_type" getters
       function defaultGetter(value){
-        if(value && vocabulary){
+        var vocabulary = getVocabulary();
+        if(!_.isUndefined(value) && !_.isNull(value) && vocabulary){
           value = getTitle(vocabulary,value);
         }
         if(value && _.isString(value)){
@@ -144,7 +145,7 @@ define([
       function dateGetter(value){
         if (value && !_.isEmpty(value)) {
           try {
-            return Iccbl.getDateString(new Date(value));
+            return Iccbl.getDateString(value);
           } catch(e) {
             var msg = Iccbl.formatString(
               'unable to parse date value: {value}, for field: {field}',
@@ -159,6 +160,7 @@ define([
       function listGetter(value){
         var finalValue = value;
         if(_.isArray(value)){
+          var vocabulary = getVocabulary();
           if(vocabulary){
             finalValue = Iccbl.sortOnOrdinal(value,vocabulary);
             finalValue = _.map(finalValue,function(value){ 
@@ -225,6 +227,7 @@ define([
 
         if(value && !_.isNull(value) && value != '-' ){
           var interpolatedVal = Iccbl.formatString(_options.hrefTemplate,self.model, value);
+          var vocabulary = getVocabulary();
           if(vocabulary){
             value = getTitle(vocabulary,value);
           }
@@ -244,6 +247,7 @@ define([
         var modelValues = values;
         var finalValues = values;
         if(values){
+          var vocabulary = getVocabulary();
           if(vocabulary){
             finalValues = Iccbl.sortOnOrdinal(modelValues,vocabulary);
           }

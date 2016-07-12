@@ -435,39 +435,12 @@ function frontend_setup {
         --ignore="*api_init*" || error "collectstatic failed: $?"
   fi
   
-  echo "frontend_setup done: $(ts)" >> "$LOGFILE"
-
-}
-
-function frontend_setup_bak {
-  echo "frontend_setup: $(ts) ..." >> "$LOGFILE"
-
-  cd reports/static >>"$LOGFILE" 2>&1
-  
-  npm --version 2>&1 || error "npm not found: $?"
-  
-  rm -rf ./node_modules # untested 20150923
-  npm install >>"$LOGFILE" 2>&1 || error "npm install failed: $?"
-  npm install bower
-  ./node_modules/.bin/bower cache clean
-  rm -rf ./bower_components # untested
-  ./node_modules/.bin/grunt bowercopy >>"$LOGFILE" 2>&1 || error "grunt bowercopy failed: $?"
-  
-  ./node_modules/.bin/grunt test >>"$LOGFILE" 2>&1 || warn "grunt test failed, see logfile: $?"
-  
-  cd ../..
-  
-  if [[ $IS_DEV_SERVER -ne 1 ]]; then
-    $DJANGO_CMD collectstatic --noinput --ignore="*node_modules*" \
-        --ignore="*bower_components*" --ignore="*api_init*" || error "collectstatic failed: $?"
-  fi
-
   if [ -e ../wsgi/app.wsgi ]; then
     touch ../wsgi/app.wsgi
   fi
     
   echo "frontend_setup done: $(ts)" >> "$LOGFILE"
-  
+
 }
 
 function main {
@@ -606,3 +579,35 @@ main "$@"
 
 
 echo "migration finished: $(ts)"
+
+
+function frontend_setup_grunt {
+  echo "frontend_setup: $(ts) ..." >> "$LOGFILE"
+
+  cd reports/static >>"$LOGFILE" 2>&1
+  
+  npm --version 2>&1 || error "npm not found: $?"
+  
+  rm -rf ./node_modules # untested 20150923
+  npm install >>"$LOGFILE" 2>&1 || error "npm install failed: $?"
+  npm install bower
+  ./node_modules/.bin/bower cache clean
+  rm -rf ./bower_components # untested
+  ./node_modules/.bin/grunt bowercopy >>"$LOGFILE" 2>&1 || error "grunt bowercopy failed: $?"
+  
+  ./node_modules/.bin/grunt test >>"$LOGFILE" 2>&1 || warn "grunt test failed, see logfile: $?"
+  
+  cd ../..
+  
+  if [[ $IS_DEV_SERVER -ne 1 ]]; then
+    $DJANGO_CMD collectstatic --noinput --ignore="*node_modules*" \
+        --ignore="*bower_components*" --ignore="*api_init*" || error "collectstatic failed: $?"
+  fi
+
+  if [ -e ../wsgi/app.wsgi ]; then
+    touch ../wsgi/app.wsgi
+  fi
+    
+  echo "frontend_setup done: $(ts)" >> "$LOGFILE"
+  
+}

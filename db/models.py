@@ -15,6 +15,7 @@ from django.utils import timezone
 from django.utils.encoding import python_2_unicode_compatible
 
 from reports.utils.gray_codes import create_substance_id
+from django.core.exceptions import ValidationError
 
 
 logger = logging.getLogger(__name__)
@@ -615,6 +616,40 @@ class Screen(models.Model):
     
     # cell_line = models.ForeignKey('CellLine', null=True, blank=True) 
     # transfection_agent = models.ForeignKey('TransfectionAgent', null=True, blank=True)
+    
+    def clean(self):
+        if ( self.min_allowed_data_privacy_expiration_date is not None
+            or self.max_allowed_data_privacy_expiration_date is not None):
+            if ( self.min_allowed_data_privacy_expiration_date 
+                    > self.max_allowed_data_privacy_expiration_date):
+                temp = self.max_allowed_data_privacy_expiration_date
+                self.max_allowed_data_privacy_expiration_date = \
+                    self.min_allowed_data_privacy_expiration_date
+                self.min_allowed_data_privacy_expiration_date = temp
+            if self.data_privacy_expiration_date is not None:
+                if ( self.data_privacy_expiration_date 
+                        > self.max_allowed_data_privacy_expiration_date ):
+                    self.data_privacy_expiration_date = \
+                        self.max_allowed_data_privacy_expiration_date
+                if ( self.data_privacy_expiration_date 
+                        < self.min_allowed_data_privacy_expiration_date ):
+                    self.data_privacy_expiration_date = \
+                        self.min_allowed_data_privacy_expiration_date
+            elif self.min_allowed_data_privacy_expiration_date is not None:
+                self.data_privacy_expiration_date = \
+                    self.min_allowed_data_privacy_expiration_date
+            else:
+                self.data_privacy_expiration_date = \
+                    self.max_allowed_data_privacy_expiration_date
+
+        errs = {}
+        if not self.data_privacy_expiration_date:
+            if self.min_allowed_data_privacy_expiration_date:
+                errs['data_privacy_expiration_date'] = \
+                    'can not be null if min/max dates are set'
+        
+        if errs:
+            raise ValidationError(errs)
     
     class Meta:
         db_table = 'screen'

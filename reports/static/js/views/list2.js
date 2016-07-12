@@ -622,8 +622,8 @@ define([
 
       var clearSearchesButton = $([
         '<div class="pull-right pull-down">',
-        '<div class="col-xs-1">',
-        '<a id="clear-searches" >clear searches</a>',
+        '<div class="">',
+        '<a class="btn btn-default btn-sm pull-down" id="clear-searches" >clear search</a>',
         '</div>',
         '</div>'
         ].join(''));
@@ -635,8 +635,8 @@ define([
       
       var clearSortsButton = $([
         '<div class="pull-right pull-down">',
-        '<div class="col-xs-1">',
-        '<a id="clear-sorts" >clear sorts</a>',
+        '<div class="">',
+        '<a class="btn btn-default btn-sm pull-down" id="clear-sorts" >clear sort</a>',
         '</div>',
         '</div>'
         ].join(''));

@@ -2,6 +2,7 @@ define([
   'jquery',
   'underscore',
   'backbone',
+  'backgrid',
   'layoutmanager',
   'iccbl_backgrid',
   'models/app_state',
@@ -9,7 +10,7 @@ define([
   'views/generic_edit',
   'views/generic_detail_layout'
 ], 
-function($, _, Backbone, layoutmanager, Iccbl, appModel, 
+function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, 
          DetailView, EditView, DetailLayout) {
   
   var nested_library_plate_pattern = '{library}:{copy}:{start_plate}-{end_plate}';

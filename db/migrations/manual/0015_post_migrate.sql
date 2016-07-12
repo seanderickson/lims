@@ -72,7 +72,7 @@ delete from natural_product_reagent r
 /** 
  FIXME: these will all be broken:
  study_reagent_link
- reagent_publication_link
+ publication
  attached_file
  annotation_value
 **/
@@ -80,9 +80,9 @@ delete from study_reagent_link r
   using temp_reagents_to_delete d
   where r.reagent_id=d.reagent_id; 
 
-delete from reagent_publication_link r 
+delete from publication p 
   using temp_reagents_to_delete d
-  where r.reagent_id=d.reagent_id; 
+  where p.reagent_id=d.reagent_id; 
 
 delete from attached_file r 
   using temp_reagents_to_delete d
@@ -98,7 +98,7 @@ alter table annotation_value  drop constraint fk_annotation_value_to_reagent ;
 
 alter table attached_file  drop constraint fk_attached_file_to_reagent ;
 
-alter table reagent_publication_link  drop constraint fk_reagent_publication_link_to_reagent ;
+alter table publication  drop constraint publication_reagent_id_fk_reagent_reagent_id ;
 
 alter table small_molecule_reagent drop CONSTRAINT "fkf5a7b431161ea629" ;
 
@@ -120,7 +120,7 @@ alter table annotation_value add constraint fk_annotation_value_to_reagent
 alter table attached_file add constraint fk_attached_file_to_reagent
   FOREIGN KEY (reagent_id) REFERENCES reagent(reagent_id);       
 
-alter table reagent_publication_link  add constraint fk_reagent_publication_link_to_reagent
+alter table publication  add constraint publication_reagent_id_fk_reagent_reagent_id
   FOREIGN KEY (reagent_id) REFERENCES reagent(reagent_id);       
   
 alter table small_molecule_reagent add CONSTRAINT fkf5a7b431161ea629

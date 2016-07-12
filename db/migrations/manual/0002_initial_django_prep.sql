@@ -353,6 +353,9 @@ UPDATE attached_file set publication_id = p.publication_id
   where p.attached_file_id = attached_file.attached_file_id;
 ALTER TABLE publication DROP COLUMN attached_file_id;
 
+/** Must commit attached_file changes **/
+COMMIT;
+BEGIN;
 
 /** convert attached_file file_contents into a "contents" field of type bytea **/
 

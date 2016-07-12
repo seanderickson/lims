@@ -81,6 +81,44 @@ var stringToFunction = Iccbl.stringToFunction = function(str) {
   return fn;
 };
 
+var ICCBL_DATE_RE = Iccbl.ICCBL_DATE_RE =  /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/;
+var DATE_RE = Iccbl.DATE_RE = /^([+\-]?\d{4})-(\d{2})-(\d{2})$/;
+var TIME_RE = Iccbl.TIME_RE = /^(\d{2}):(\d{2}):(\d{2})(\.(\d{3}))?$/;
+var ISO_SPLITTER_RE = Iccbl.ISO_SPLITTER_RE = /T|Z| +/;
+
+/**
+ * Parse a string date value, ignoring the time and timezone.
+ * TODO: see Backgrid.DateFormatter.convert() method and refactor
+ */
+var dateParse = Iccbl.dateParse = function dateParse(rawData){
+
+  if (_.isNull(rawData) || _.isUndefined(rawData)) return '';
+  rawData = rawData.trim();
+  if ((rawData + '').trim() === '') return null;
+
+  if(ICCBL_DATE_RE.test(rawData)){
+    var DDMMYYYY = ICCBL_DATE_RE.exec(rawData) || [];
+    var jsDate = new Date(
+      DDMMYYYY[3] * 1 || 0,
+      DDMMYYYY[2] * 1 - 1 || 0,
+      DDMMYYYY[1] * 1 || 0);
+    console.log('date: raw: ', rawData, 'converted', jsDate);
+    return jsDate;
+  }else{
+    // ISO date format, ignore timezone / time
+    var temp = rawData.split(ISO_SPLITTER_RE)[0];
+    if(DATE_RE.test(temp)){
+      var YYYYMMDD = DATE_RE.exec(temp);
+      if (Iccbl.appModel.DEBUG) console.log('YYYYMMDD', YYYYMMDD);
+      var jsDate = new Date(YYYYMMDD[1]*1, YYYYMMDD[2]*1-1, YYYYMMDD[3]*1 )
+      if (Iccbl.appModel.DEBUG) console.log('date: raw: ', rawData, 'converted', jsDate);
+      return jsDate;
+    }else{
+      throw new Error('unrecognized date: ' + rawData );
+    }
+  }
+};
+
 /**
  * Returns the ISO string date part of the Date object, ignoring the timezone.
  * - for internal representation of dates and communicating dates to the server.
@@ -93,7 +131,7 @@ var getISODateString = Iccbl.getISODateString = function(jsDate){
   //    + '-' + lpad(jsDate.getUTCMonth() + 1, 2, 0) 
   //    + '-' + lpad(jsDate.getUTCDate(), 2, 0);
   //  return date;
-}
+};
 
 /**
  * Returns the "ICCBL" formatted date part of the Date object, ignoring the timezone.
@@ -103,25 +141,15 @@ var getISODateString = Iccbl.getISODateString = function(jsDate){
  */
 var getIccblDateString = Iccbl.getDateString = function(jsDate){
   if (!jsDate) return jsDate;
+  if (!_.isDate(jsDate)){
+    // attempt to parse the date
+    jsDate = Iccbl.dateParse(jsDate);
+  }
   return ( 
       lpad(jsDate.getMonth() + 1, 2, 0) 
       + '/' + lpad(jsDate.getDate(), 2, 0) 
       + '/' + lpad(jsDate.getFullYear(), 4, 0) );
-}
-
-/**
- * Returns the "ICCBL" formatted date part of the Date object, ignoring the timezone.
- * "ICCBL" format is "MM/DD/YYYY"
- * - for display of dates in the UI
- * @param jsDate a JavaScript Date object
- */
-var getIccblDateString = Iccbl.getDateString = function(jsDate){
-  if (!jsDate) return jsDate;
-  return ( 
-      lpad(jsDate.getMonth() + 1, 2, 0) 
-      + '/' + lpad(jsDate.getDate(), 2, 0) 
-      + '/' + lpad(jsDate.getFullYear(), 4, 0) );
-}
+};
 
 var UrlStack = Iccbl.UrlStack = Backbone.Model.extend({
   defaults: {
@@ -3685,6 +3713,7 @@ function lpad(str, length, padstr) {
   return padding + str;
 }
 
+
 /**
  * Override Backgrid DateTimeFormatter
  * - recognize user input in the format MM/DD/YYYY
@@ -3699,46 +3728,20 @@ var DatetimeFormatter = Iccbl.DatetimeFormatter = function (options) {
 };
 DatetimeFormatter.prototype = new Backgrid.DatetimeFormatter();
 _.extend(DatetimeFormatter.prototype, {
-  ICCBL_DATE_RE:  /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/,
-  // ISO DATE/TIME regex, from Backgrid
-  DATE_RE: /^([+\-]?\d{4})-(\d{2})-(\d{2})$/,
-  TIME_RE: /^(\d{2}):(\d{2}):(\d{2})(\.(\d{3}))?$/,
-  ISO_SPLITTER_RE: /T|Z| +/,
 
   fromRaw: function (rawData, model) {
     if (_.isNull(rawData) || _.isUndefined(rawData)) return '';
     rawData = rawData.trim();
     if ((rawData + '').trim() === '') return null;
-
-    if(this.ICCBL_DATE_RE.test(rawData)){
-      var DDMMYYYY = this.ICCBL_DATE_RE.exec(rawData) || [];
-      var jsDate = new Date(
-        DDMMYYYY[3] * 1 || 0,
-        DDMMYYYY[2] * 1 - 1 || 0,
-        DDMMYYYY[1] * 1 || 0);
-      var temp = getIccblDateString(jsDate);
-      console.log('date: raw: ', rawData, 'converted', temp);
-      return temp;
-    }else{
-      var temp = rawData.split('T')[0];
-      if(this.DATE_RE.test(temp)){
-        var YYYYMMDD = this.DATE_RE.exec(temp);
-        if (Iccbl.appModel.DEBUG) console.log('YYYYMMDD', YYYYMMDD);
-        var jsDate = new Date(YYYYMMDD[1]*1, YYYYMMDD[2]*1-1, YYYYMMDD[3]*1 )
-        var temp1 = getIccblDateString(jsDate);
-        if (Iccbl.appModel.DEBUG) console.log('date: raw: ', rawData, 'converted', temp1);
-        return temp1;
-      }else{
-        Iccbl.appModel.error('unrecognized date: ' + rawData );
-      }
-    }
+    
+    return getIccblDateString(Iccbl.dateParse(rawData));
   },
 
   toRaw: function(formattedData, model){
     if (_.isNull(formattedData) || _.isUndefined(formattedData)) return '';
     if ((formattedData + '').trim() === '') return null;
-    if(this.ICCBL_DATE_RE.test(formattedData)){
-      var DDMMYYYY = this.ICCBL_DATE_RE.exec(formattedData) || [];
+    if(ICCBL_DATE_RE.test(formattedData)){
+      var DDMMYYYY = ICCBL_DATE_RE.exec(formattedData) || [];
       var jsDate = new Date(
         DDMMYYYY[3] * 1 || 0,
         DDMMYYYY[2] * 1 - 1 || 0,
@@ -3750,11 +3753,11 @@ _.extend(DatetimeFormatter.prototype, {
     }
   },
   
-  
   /**
-   * Use Backgrid DatetimeFormatter convert:
+   * Modify Backgrid DatetimeFormatter convert:
+   * - ignore timezone - remove UTC conversion
    * - add in ICCBL_DATE_RE
-   * - remove UTC conversion
+   * TODO: refactor, using Iccbl.dateParse
    */
   _convert: function (data, validate) {
     if ((data + '').trim() === '') return null;
@@ -3770,13 +3773,13 @@ _.extend(DatetimeFormatter.prototype, {
     }
     else {
       data = data.trim();
-      var parts = data.split(this.ISO_SPLITTER_RE) || [];
-      date = this.ICCBL_DATE_RE.test(parts[0]) ? parts[0] : '';
-      time = date && parts[1] ? parts[1] : this.TIME_RE.test(parts[0]) ? parts[0] : '';
+      var parts = data.split(ISO_SPLITTER_RE) || [];
+      date = ICCBL_DATE_RE.test(parts[0]) ? parts[0] : '';
+      time = date && parts[1] ? parts[1] : TIME_RE.test(parts[0]) ? parts[0] : '';
     }
     // FIXME: review this 
-    var DDMMYYYY = this.ICCBL_DATE_RE.exec(date) || [];
-    var HHmmssSSS = this.TIME_RE.exec(time) || [];
+    var DDMMYYYY = ICCBL_DATE_RE.exec(date) || [];
+    var HHmmssSSS = TIME_RE.exec(time) || [];
 
     if (validate) {
       if (this.includeDate && _.isUndefined(DDMMYYYY[0])) return;
@@ -3796,16 +3799,7 @@ _.extend(DatetimeFormatter.prototype, {
     var result = '';
 
     if (this.includeDate) {
-      // Override:
-      // result = (
-      //    lpad(jsDate.getUTCFullYear(), 4, 0) 
-      //    + '-' + lpad(jsDate.getUTCMonth() + 1, 2, 0) 
-      //    + '-' + lpad(jsDate.getUTCDate(), 2, 0);
       result = ( getIccblDateString(jsDate) );
-      //          lpad(jsDate.getUTCMonth() + 1, 2, 0) 
-      //          + '/' + lpad(jsDate.getUTCDate(), 2, 0) 
-      //          + '/' + lpad(jsDate.getUTCFullYear(), 4, 0)
-      //          );
     }
 
     if (this.includeTime) {

@@ -265,9 +265,10 @@ define([
     },
 
     getValue: function() {
-      var input = $('input', this.el),
-      date = input.datepicker('getDate');
-      return Iccbl.getISODateString(date);
+      var input = $('input', this.el);
+      var date = input.datepicker('getDate');
+      var val = Iccbl.getISODateString(date);
+      return val;
     },
 
     setValue: function(value) {
@@ -1123,8 +1124,6 @@ define([
       
       options['key'] = Iccbl.getIdFromIdAttribute( self.model,self.model.resource );
       if (!_.contains(this.uriStack, '+add') && options['key'] ){
-//        // options['patch'] = false;
-//      }else{
         self.model.idAttribute = self.model.resource['id_attribute'];
         options['patch'] = true;
         // TODO: check if creating new or updating here
@@ -1155,12 +1154,30 @@ define([
               var key = Iccbl.getIdFromIdAttribute( model,self.model.resource );
               appModel.router.navigate(self.model.resource.key + '/' + key, {trigger:true});
             }
+            console.log('trigger remove');
+            self.trigger('remove');
           })
           .done(function(model, resp) {
             // TODO: done replaces success as of jq 1.8
             console.log('model saved');
           })
-          .fail(function(){ 
+          .fail(function(jqXHR, textStatus, errorThrown){ 
+            
+            if (jqXHR && _.has(jqXHR,'responseJSON') && !_.isEmpty(jqXHR.responseJSON) ) {
+              var errors = _.result(jqXHR.responseJSON,'errors',null);
+              if(errors){
+                console.log('errors in response:', errors);
+                _.each(_.keys(errors), function(key){
+                  var error = errors[key];
+                  if (_.has(self.fields, key)){
+                    self.fields[key].setError(error);
+                  }
+                  $('[name="'+key +'"').parents('.form-group').addClass('has-error');
+                  console.log('added error for: "', key, '", val: "', self.fields[key].getValue(), '"');
+                });
+                return;
+              }
+            }
             if (options['patch']){
               self.model.fetch();
             }else{
@@ -1168,11 +1185,11 @@ define([
               appModel.router.back();
             }
             Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+            console.log('trigger remove');
+            self.trigger('remove');
           })
           .always(function() {
             // always replaces complete as of jquery 1.8
-            console.log('trigger remove');
-            self.trigger('remove');
           });
       }
       

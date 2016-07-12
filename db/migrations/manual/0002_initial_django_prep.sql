@@ -295,23 +295,6 @@ create sequence screensaver_user_role_sequence;
 update screensaver_user_role set id=nextval('screensaver_user_role_sequence');
 
 
-/** convert attached_file file_contents into a "contents" field of type bytea **/
-
-ALTER TABLE attached_file ADD COLUMN contents bytea;
-
-UPDATE attached_file SET contents = loread(lo_open(file_contents, 262144), 10000000) 
-  WHERE attached_file.file_contents IS NOT NULL;
-  
-ALTER TABLE attached_file ALTER COLUMN file_contents DROP NOT NULL;
-
-/**
- *** TODO: pg_largeobject is owned by user "postgres" on orchestra and cannot 
- *** be deleted.
-DELETE FROM pg_largeobject USING attached_file WHERE loid=file_contents;
-ALTER TABLE attached_file DROP COLUMN file_contents;
-**/
-
-
 /**
   Create a many-to-many join table for the screen.collaborators field, then
   populate it using the legacy table (todo: remove the legacy table)
@@ -352,8 +335,11 @@ UPDATE publication set screen_id = spl.screen_id
 CREATE INDEX "publication_screen_id_index" ON "publication" ("screen_id");
 DROP TABLE screen_publication_link;
 
+/** Must commit publication changes **/
+COMMIT;
 /** done - screen_publication_link table **/
 
+BEGIN;
 /** Reverse the publication->attached_file link, so that on_delete CASCADE works
     when deleting the publication 
 **/
@@ -366,6 +352,23 @@ UPDATE attached_file set publication_id = p.publication_id
   FROM publication p
   where p.attached_file_id = attached_file.attached_file_id;
 ALTER TABLE publication DROP COLUMN attached_file_id;
+
+
+/** convert attached_file file_contents into a "contents" field of type bytea **/
+
+ALTER TABLE attached_file ADD COLUMN contents bytea;
+
+UPDATE attached_file SET contents = loread(lo_open(file_contents, 262144), 10000000) 
+  WHERE attached_file.file_contents IS NOT NULL;
+  
+ALTER TABLE attached_file ALTER COLUMN file_contents DROP NOT NULL;
+
+/**
+ *** TODO: pg_largeobject is owned by user "postgres" on orchestra and cannot 
+ *** be deleted.
+DELETE FROM pg_largeobject USING attached_file WHERE loid=file_contents;
+ALTER TABLE attached_file DROP COLUMN file_contents;
+**/
 
 /**
   Create a foreignkey for the publication.reagent field, then

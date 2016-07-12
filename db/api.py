@@ -6310,6 +6310,27 @@ class ScreenResource(ApiResource):
         id_kwargs = self.get_id(deserialized, **kwargs)
         Screen.objects.get(**id_kwargs).delete()
     
+    def validate(self, _dict, patch=False, current_object=None):
+        errors = ApiResource.validate(self, _dict, patch=patch)
+        # if not errors:
+        #     errors = {}
+        #     dped = _dict.get('data_privacy_expiration_date', None)
+        #     dped_notified = _dict.get('data_privacy_expiration_notified_date', None)
+        #     min_dped = _dict.get('min_allowed_data_privacy_expiration_date', None)
+        #     max_dped = _dict.get('max_allowed_data_privacy_expiration_date', None)
+        #     if not dped:
+        #         if min_dped or max_dped:
+        #             errs['data_privacy_expiration_date'] = \
+        #                 'can not be null if min/max dates are set'
+        #     if dped_notified:
+        #         if min_dped:
+        #             errs['min_allowed_data_privacy_expiration_date'] = \
+        #                 'can not be set if the expiration notified date is set'
+        #         if self.max_allowed_data_privacy_expiration_date:
+        #             errs['min_allowed_data_privacy_expiration_date'] = \
+        #                 'can not be set if the expiration notified date is set'
+        return errors
+    
     @transaction.atomic()    
     def patch_obj(self, deserialized, **kwargs):
         
@@ -6321,8 +6342,8 @@ class ScreenResource(ApiResource):
                 initializer_dict[key] = parse_val(
                     deserialized.get(key, None), key, fields[key]['data_type']) 
         
-        logger.debug('deserialized: %r', deserialized)
-        logger.debug('initializer_dict: %r', initializer_dict)
+        logger.info('deserialized: %r', deserialized)
+        logger.info('initializer_dict: %r', initializer_dict)
         id_kwargs = self.get_id(deserialized, **kwargs)
         
         # create/update the screen
@@ -6400,10 +6421,11 @@ class ScreenResource(ApiResource):
                 initializer_dict.pop('keywords', None)
                 
             for key, val in initializer_dict.items():
-                if val is not None and hasattr(screen, key):
+                if hasattr(screen, key):
                     logger.debug('set: %r:%r', key, val)
                     setattr(screen, key, val)
             
+            screen.clean()
             screen.save()
                     
             # related objects

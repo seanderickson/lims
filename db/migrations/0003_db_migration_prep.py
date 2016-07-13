@@ -25,7 +25,7 @@ def create_vocab(vocab_writer, attr, scope, query):
             .distinct(attr).order_by(attr))):
         if not attr_value: continue
         key = default_converter(attr_value)
-        title = attr_value
+        title = attr_value.title()
         _resource_uri = resource_uri % (scope, key)
         vocabs.append([_resource_uri, key, scope, ordinal, title])
     for row in vocabs:

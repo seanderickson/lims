@@ -108,6 +108,11 @@ update assay_well set assay_well_control_type = 'assay_control' where assay_well
 update assay_well set assay_well_control_type = 'assay_positive_control' where assay_well_control_type = 'assay positive control';
 update assay_well set assay_well_control_type = 'library_control' where assay_well_control_type = 'library control';
 
+/** remove legacy values **/
+update assay_well set assay_well_control_type = null where assay_well_control_type = 'experimental';
+update assay_well set assay_well_control_type = null where assay_well_control_type = 'empty';
+update assay_well set assay_well_control_type = null where assay_well_control_type = 'buffer';
+
 /**
           data_type           
 ------------------------------

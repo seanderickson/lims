@@ -547,9 +547,14 @@ def create_output_data(screen_facility_id, fields, result_values ):
             row.extend(result_value['well_id'].split(':'))
             if ( result_value.has_key('assay_well_control_type')
                  and result_value['assay_well_control_type'] ):
-                row.append(
-                    control_type_mapping[default_converter(
-                        result_value['assay_well_control_type'])])
+                control_type = default_converter(result_value['assay_well_control_type'])
+                # note: "empty", "experimental", "buffer" are values that can be
+                # found in this column, due to legacy data entry, but they are 
+                # not valid
+                if control_type in control_type_mapping:
+                    row.append(control_type_mapping[control_type])
+                else:
+                    row.append(None)
             else:
                 row.append(None)
             excluded_cols = []

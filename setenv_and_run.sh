@@ -110,6 +110,5 @@ maybe_activate_virtualenv
 export DJANGO_SETTINGS_MODULE=lims.settings-server-commandline
 
 if [[ ! -z $@ ]]; then
-  echo "executing $@"
   exec $@
 fi

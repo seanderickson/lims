@@ -1728,8 +1728,8 @@ class ScreenResource(DBResourceTestCase):
         kwargs['HTTP_AUTHORIZATION'] = authentication
 
         # Add an attached file and post the publication
-        file = 'iccbl_sm_user_agreement_march2015.pdf'
-        filename = '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,file)
+        base_filename = 'iccbl_sm_user_agreement_march2015.pdf'
+        filename = '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,base_filename)
         with open(filename) as input_file:
 
             logger.info('POST publication with attached_file to the server')
@@ -1782,6 +1782,20 @@ class ScreenResource(DBResourceTestCase):
         except Exception, e:
             logger.info('no file found at: %r', uri)
             raise
+        
+        # Test apilog
+        resource_uri = BASE_REPORTS_URI + '/apilog'
+        data_for_get={ 
+            'limit': 0, 
+            'ref_resource_name': 'publication', 
+        }
+        apilogs = self.get_list_resource(resource_uri, data_for_get=data_for_get )
+        self.assertTrue(len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
+        apilog = apilogs[0]
+        logger.debug('publication log: %r', apilog)
+        self.assertTrue(apilog['api_action'] == 'CREATE')
+        self.assertTrue('attached_filename' in apilog['added_keys'])
+        self.assertTrue(base_filename in apilog['diffs'])
         
         return publication_received
         

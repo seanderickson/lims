@@ -994,6 +994,61 @@ class ApiResource(SqlAlchemyResource):
             for row in cursor:
                 yield Row(row)
         return vocabulary_rowproxy_generator
+    
+    def log_patch(self, request, prev_dict, new_dict, log=None, **kwargs):
+        DEBUG_PATCH_LOG = False
+        
+        schema = self.build_schema()
+        id_attribute = schema['id_attribute']
+        log_comment = None
+        if HEADER_APILOG_COMMENT in request.META:
+            log_comment = request.META[HEADER_APILOG_COMMENT]
+        
+        if DEBUG_PATCH_LOG:
+            logger.info(
+                'prev_dict: %s, ======new_dict====: %s', 
+                prev_dict, new_dict)
+
+        if log is None:
+            log = ApiLog()
+        log.ref_resource_name = self._meta.resource_name
+        log.username = request.user.username 
+        log.user_id = request.user.id 
+        log.date_time = _now()
+        log.key = '/'.join([str(new_dict[x]) for x in id_attribute])
+        log.uri = '/'.join([self._meta.resource_name,log.key])
+        
+        # user can specify any valid, escaped json for this field
+        # if 'apilog_json_field' in bundle.data:
+        #     log.json_field = bundle.data['apilog_json_field']
+        
+        log.comment = log_comment
+
+        if 'parent_log' in kwargs:
+            log.parent_log = kwargs.get('parent_log', None)
+        if prev_dict:
+            difflog = compare_dicts(prev_dict,new_dict)
+            if 'diff_keys' in difflog:
+                # log = ApiLog.objects.create()
+                log.api_action = str((request.method)).upper()
+                log.diff_dict_to_api_log(difflog)
+                log.save()
+                if DEBUG_PATCH_LOG:
+                    logger.info('update, api log: %r' % log)
+            else:
+                # don't save the log
+                if DEBUG_PATCH_LOG:
+                    logger.info('no diffs found: %r, %r, %r' 
+                        % (prev_dict,new_dict,difflog))
+        else: # creating
+            log.api_action = API_ACTION_CREATE
+            log.added_keys = json.dumps(new_dict.keys())
+            log.diffs = json.dumps(new_dict,cls=DjangoJSONEncoder)
+            log.save()
+            if DEBUG_PATCH_LOG:
+                logger.info('create, api log: %s', log)
+        
+        return log
 
     def log_patches(self,request, original_data, new_data, **kwargs):
         '''
@@ -1004,45 +1059,25 @@ class ApiResource(SqlAlchemyResource):
         value.
         '''
         DEBUG_PATCH_LOG = False or logger.isEnabledFor(logging.DEBUG)
-        if DEBUG_PATCH_LOG:
-            logger.info('log patches: %s' %kwargs)
+
         log_comment = None
         if HEADER_APILOG_COMMENT in request.META:
             log_comment = request.META[HEADER_APILOG_COMMENT]
         
         if DEBUG_PATCH_LOG:
+            logger.info('log patches: %s' %kwargs)
             logger.info('log patches original: %s, =====new data===== %s',
                 original_data,new_data)
         
-        logger.info('kwargs for log: %r', kwargs)
-        
         schema = self.build_schema()
         id_attribute = schema['id_attribute']
-        if DEBUG_PATCH_LOG:
-            logger.info('===id_attribute: %s', id_attribute)
+        
         deleted_items = list(original_data)        
         for new_dict in new_data:
             if not new_dict:
                 continue
             if DEBUG_PATCH_LOG:
                 logger.info('new dict: %r, %r', new_dict, id_attribute)
-            log = ApiLog()
-            log.ref_resource_name = self._meta.resource_name
-            log.username = request.user.username 
-            log.user_id = request.user.id 
-            log.date_time = _now()
-            log.key = '/'.join([str(new_dict[x]) for x in id_attribute])
-            log.uri = '/'.join([self._meta.resource_name,log.key])
-            
-            # user can specify any valid, escaped json for this field
-            # if 'apilog_json_field' in bundle.data:
-            #     log.json_field = bundle.data['apilog_json_field']
-            
-            log.comment = log_comment
-    
-            if 'parent_log' in kwargs:
-                log.parent_log = kwargs.get('parent_log', None)
-            
             prev_dict = None
             for c_dict in original_data:
                 if c_dict:
@@ -1055,36 +1090,13 @@ class ApiResource(SqlAlchemyResource):
                             break
                     if prev_dict:
                         break # found
-            if DEBUG_PATCH_LOG:
-                logger.info(
-                    'prev_dict: %s, ======new_dict====: %s', 
-                    prev_dict, new_dict)
             if prev_dict:
                 # if found, then it is modified, not deleted
                 logger.debug('remove from deleted dict %r, %r',
                     prev_dict, deleted_items)
                 deleted_items.remove(prev_dict)
                 
-                difflog = compare_dicts(prev_dict,new_dict)
-                if 'diff_keys' in difflog:
-                    # log = ApiLog.objects.create()
-                    log.api_action = str((request.method)).upper()
-                    log.diff_dict_to_api_log(difflog)
-                    log.save()
-                    if DEBUG_PATCH_LOG:
-                        logger.info('update, api log: %r' % log)
-                else:
-                    # don't save the log
-                    if DEBUG_PATCH_LOG:
-                        logger.info('no diffs found: %r, %r, %r' 
-                            % (prev_dict,new_dict,difflog))
-            else: # creating
-                log.api_action = API_ACTION_CREATE
-                log.added_keys = json.dumps(new_dict.keys())
-                log.diffs = json.dumps(new_dict,cls=DjangoJSONEncoder)
-                log.save()
-                if DEBUG_PATCH_LOG:
-                    logger.info('create, api log: %s', log)
+            self.log_patch(request, prev_dict, new_dict, **kwargs)    
                 
         for deleted_dict in deleted_items:
             
@@ -1112,7 +1124,6 @@ class ApiResource(SqlAlchemyResource):
             log.save()
             if DEBUG_PATCH_LOG:
                 logger.info('delete, api log: %r',log)
-
 
 
 class ApiLogResource(ApiResource):

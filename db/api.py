@@ -3287,6 +3287,7 @@ class PublicationResource(ApiResource):
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ] 
+        
     def get_detail(self, request, **kwargs):
 
         publication_id = kwargs.get('publication_id', None)
@@ -3497,25 +3498,23 @@ class PublicationResource(ApiResource):
                         'type': 'publication',
                         'parent_log': log })
                 
-        # get new state, for logging
-        # TODO: hack: have to log after transaction closed; FIXME: use sqlaldjemy wrapper
-        kwargs_for_log = { }
-        for id_field in id_attribute:
-            val = getattr(publication, id_field,None)
-            if val:
-                kwargs_for_log['%s' % id_field] = val
-        try:
-            new_data = [self._get_detail_response(request,**kwargs_for_log)]
-            self.log_patches(request, [],new_data,**kwargs_for_log)
-        except Exception, e: 
-            logger.exception('exception when querying for new data for logging: %s', 
-                kwargs_for_log)
+            kwargs_for_log = { 'parent_log': param_hash.get('parent_log', None) }
+            for id_field in id_attribute:
+                val = getattr(publication, id_field,None)
+                if val:
+                    kwargs_for_log['%s' % id_field] = val
+            try:
+                new_data = self._get_detail_response(request,**kwargs_for_log)
+                self.log_patch(request, None, new_data, log=log, **kwargs_for_log)
+            except Exception, e: 
+                logger.exception(
+                    'exception when querying for new data for logging: %s', 
+                    kwargs_for_log)
         
         logger.info('publication created: %s for screen: %s',
             publication, screen)
         
         return tastypie.http.HttpCreated(location=publication.publication_id)
-        
 
     @write_authorization
     @un_cache        
@@ -3738,14 +3737,12 @@ class AttachedFileResource(ApiResource):
         logger.info('attached file created: %r',af)
         
         # get new state, for logging
-        # FIXME: Note: nested transactions are not visible to the sqlalchemy 
-        # engine connection until outermost transaction is committed
-        # TODO: use SqlAldjemy - will wrap the Django connection
-        kwargs_for_log = { 'attached_file_id': af.attached_file_id }
+        kwargs_for_log = { 
+            'attached_file_id': af.attached_file_id,
+            'parent_log': param_hash.get('parent_log', None) }
         try:
-            logger.info('kwargs for log: %r', kwargs_for_log)
             new_data = self._get_detail_response(request,**kwargs_for_log)
-            self.log_patches(request, [],new_data,**kwargs_for_log)
+            self.log_patch(request, None,new_data,**kwargs_for_log)
         except Exception, e: 
             logger.exception('exception when querying for new data for logging: %s', 
                 kwargs_for_log)

@@ -40,6 +40,7 @@ from tastypie.http import HttpForbidden, HttpNotFound, \
 from tastypie.utils.timezone import make_naive
 from tastypie.utils.urls import trailing_slash
 
+from aldjemy.core import get_tables, get_engine
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT
 from reports import ValidationError, _now
@@ -2534,8 +2535,9 @@ class UserResource(ApiResource):
                 field_hash.values(),custom_columns=custom_columns )
 
             # build the query statement
-            _au = self.bridge['auth_user']
-            _up = self.bridge['reports_userprofile']
+            
+            _au = get_tables()['auth_user']
+            _up = get_tables()['reports_userprofile']
 
             j = _up
             j = j.join(_au,_up.c.user_id==_au.c.id, isouter=True)

@@ -9,13 +9,16 @@ import re
 import sys
 import urllib
 
+from aldjemy.core import get_engine, get_tables
 from django.core.cache import cache
+import django.core.signals 
 import django.db.models.constants
 import django.db.models.sql.constants
+from django.http.request import HttpRequest
 from django.http.response import StreamingHttpResponse, HttpResponse, Http404
 from sqlalchemy import select, asc, text
 import sqlalchemy
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.sql import and_, or_, not_          
 from sqlalchemy.sql import asc, desc, alias, Alias
@@ -38,27 +41,9 @@ from reports.serialize.streaming_serializers import sdf_generator, \
     json_generator, get_xls_response, csv_generator, ChunkIterWrapper, \
     cursor_generator, image_generator, closing_iterator_wrapper
 from reports.serializers import LimsSerializer
-from reports.utils.sqlalchemy_bridge import Bridge
 
-import django.core.signals 
-from django.http.request import HttpRequest
 
 logger = logging.getLogger(__name__)
-
-unclosed_connections = []
-def connection_close_callback(sender, **kwargs):
-    logger.debug("Request finished! %r, %r", sender, kwargs)
-    
-#     Bridge().get_engine().dispose()
-    
-#     for c in unclosed_connections:
-#         try:
-#             c.close()
-#         except Exception as e:
-#             logger.exception('on conn close...')
-#     del unclosed_connections[:]
-
-django.core.signals.request_finished.connect(connection_close_callback)
 
 def _concat(*args):
     '''
@@ -75,23 +60,15 @@ class SqlAlchemyResource(IccblBaseResource):
     Note: write operations not implemented
     '''
     
-    # get a handle to the SqlAlchemy "bridge" for its table registry and 
-    # connection handle
-    bridge = Bridge()
     
     def __init__(self, *args, **kwargs):
-        # get a handle to the SqlAlchemy "bridge" for its table registry and 
-        # connection handle
-        self.bridge = SqlAlchemyResource.bridge
+        # store the Aldjemy tables in a "bridge" object, for legacy reasons
+        self.bridge = get_tables()
         
         self.use_cache = True
         
         super(SqlAlchemyResource, self).__init__(*args, **kwargs)
     
-    def get_connection(self):
-        conn = self.bridge.get_engine().connect()
-        unclosed_connections.append(conn)
-        return conn
     
     @classmethod
     def wrap_statement(cls, stmt, order_clauses, filter_expression):
@@ -287,8 +264,8 @@ class SqlAlchemyResource(IccblBaseResource):
                 if field_table in base_query_tables:
                     # simple case: table.fields already selected in the base query:
                     # just need to specify them
-                    if field_name in self.bridge[field_table].c:
-                        col = self.bridge[field_table].c[field_name]
+                    if field_name in get_tables()[field_table].c:
+                        col = get_tables()[field_table].c[field_name]
                     else:
                         raise Exception(str(('field', field_name, 
                             'not found in table', field_table)))
@@ -297,7 +274,7 @@ class SqlAlchemyResource(IccblBaseResource):
                     
                 elif field.get('linked_field_value_field', None):
                     link_table = field['table']
-                    link_table_def = self.bridge[link_table]
+                    link_table_def = get_tables()[link_table]
                     linked_field_parent = field['linked_field_parent']
                     link_field = linked_field_parent + '_id'
                     join_args = { 
@@ -314,7 +291,7 @@ class SqlAlchemyResource(IccblBaseResource):
                             linked_field_meta_field = field['linked_field_meta_field']
                             meta_field_obj = MetaHash.objects.get(
                                 key=field['key'], scope=field['scope'])
-                            meta_table_def = self.bridge['metahash']
+                            meta_table_def = get_tables()['metahash']
                             join_stmt.join(meta_table_def, 
                                 link_table_def.c[linked_field_meta_field]==
                                     getattr(meta_field_obj,'pk') )
@@ -330,7 +307,7 @@ class SqlAlchemyResource(IccblBaseResource):
                             linked_field_meta_field = field['linked_field_meta_field']
                             meta_field_obj = MetaHash.objects.get(
                                 key=field['key'], scope=field['scope'])
-                            meta_table_def = self.bridge['metahash']
+                            meta_table_def = get_tables()['metahash']
                             join_stmt.join(meta_table_def, 
                                 link_table_def.c[linked_field_meta_field]==
                                     getattr(meta_field_obj,'pk') )
@@ -792,7 +769,8 @@ class SqlAlchemyResource(IccblBaseResource):
             # use a hexdigest because statements can contain problematic chars 
             # for the memcache
             m = hashlib.md5()
-            compiled_stmt = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+            compiled_stmt = str(stmt.compile(
+                dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
             logger.debug('compiled_stmt %s',compiled_stmt)
             if 'limit' in compiled_stmt.lower():
                 # remove limit and offset; will calculate
@@ -872,7 +850,7 @@ class SqlAlchemyResource(IccblBaseResource):
             rowproxy_generator=None, is_for_detail=False,
             downloadID=None, title_function=None, use_caching=True, meta=None ):
         DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
-
+        
         if DEBUG_STREAMING:
             logger.info('stream_response_from_statement: %r' % param_hash)
         limit = param_hash.get('limit', 0)        
@@ -898,16 +876,19 @@ class SqlAlchemyResource(IccblBaseResource):
             offset = -offset
         stmt = stmt.offset(offset)
         
-        conn = self.bridge.get_engine().connect()
+        conn = get_engine().connect()
         
         try:
             logger.debug('offset: %s, limit: %s', offset, limit)
         
             if DEBUG_STREAMING:
                 logger.info('stmt: %s, param_hash: %s ', 
-                    str(stmt.compile(compile_kwargs={"literal_binds": True})), 
+                    str(stmt.compile(
+                            dialect=postgresql.dialect(), 
+                            compile_kwargs={"literal_binds": True})), 
                     param_hash)
-                logger.info(str(('count stmt', str(count_stmt))))
+                logger.info(str(('count stmt', str(count_stmt.compile(
+                    dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})))))
             
             desired_format = self.get_serialize_format(request, **param_hash)
             logger.debug('---- desired_format: %r, hash: %r', desired_format, param_hash)
@@ -956,7 +937,7 @@ class SqlAlchemyResource(IccblBaseResource):
                 if rowproxy_generator:
                     result = rowproxy_generator(result)
                     
-                logger.info('%r, %r', is_for_detail, count)
+                logger.info('is for detail: %r, count: %r', is_for_detail, count)
                 if is_for_detail and count == 0:
                     logger.info('detail not found')
                     conn.close()
@@ -996,7 +977,7 @@ class SqlAlchemyResource(IccblBaseResource):
             downloadID=None, title_function=None, meta=None):
           
         try:
-                    
+
             list_brackets = LIST_BRACKETS
             if request.GET.get(HTTP_PARAM_RAW_LISTS, False):
                 list_brackets = None

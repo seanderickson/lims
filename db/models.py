@@ -5,6 +5,7 @@ import datetime
 import logging
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import connection
 from django.db import models
 from django.db.models.fields import FloatField
@@ -15,7 +16,6 @@ from django.utils import timezone
 from django.utils.encoding import python_2_unicode_compatible
 
 from reports.utils.gray_codes import create_substance_id
-from django.core.exceptions import ValidationError
 
 
 logger = logging.getLogger(__name__)
@@ -36,31 +36,6 @@ class AbaseTestset(models.Model):
     testset_date = models.DateField()
     class Meta:
         db_table = 'abase_testset'
-
-# class Service(models.Model):
-#     '''
-#     TODO: replaces Activity:ServiceActivty/LabActivity
-#     '''
-#     date_time_created = models.DateTimeField(default=timezone.now)
-#     date_performed = models.DateField()
-# 
-#     created_by = models.ForeignKey(
-#         'ScreensaverUser', null=True, blank=True, related_name='services_created')
-#     performed_by = models.ForeignKey(
-#         'ScreensaverUser',related_name='services_performed')
-# 
-#     type = models.TextField()
-#     comments = models.TextField(null=True,blank=True)
-#     
-#     screen = models.ForeignKey('Screen', null=True)
-#     user = models.ForeignKey('ScreensaverUser', null=True)
-# 
-#     funding_support = models.TextField(null=True)
-#     
-#     date_loaded = models.DateTimeField(null=True, blank=True)
-#     date_publicly_available = models.DateTimeField(null=True, blank=True)
-#     class Meta:
-#         db_table = 'service'
 
 class Activity(models.Model):
     activity_id = models.AutoField(primary_key=True) 
@@ -1005,9 +980,6 @@ class Well(models.Model):
     
     molar_concentration = models.DecimalField(null=True, max_digits=13, decimal_places=12, blank=True)
     mg_ml_concentration = models.DecimalField(null=True, max_digits=5, decimal_places=3, blank=True)
-#     molar_concentration = models.FloatField(null=True, blank=True)
-####     micro_molar_concentration = models.FloatField(null=True, blank=True)
-#     mg_ml_concentration = models.FloatField(null=True, blank=True)
     
     barcode = models.TextField(null=True, unique=True)
     
@@ -1039,14 +1011,13 @@ class CachedQuery(models.Model):
     def __unicode__(self):
         return unicode(str((self.id, self.uri,self.username,self.count))) 
 
-# Note: this model is not in the Django models, as it does not have the id field needed
-# class WellQueryIndex(models.Model):
-#     ''' For caching large resultvalue queries '''
-#     
-#     well = models.ForeignKey('Well', null=False)
-#     query = models.ForeignKey('CachedQuery', null=False)
-#     class Meta:
-#         db_table = 'well_query_index'
+class WellQueryIndex(models.Model):
+    ''' For caching large resultvalue queries '''
+     
+    well = models.ForeignKey('Well', null=False)
+    query = models.ForeignKey('CachedQuery', null=False)
+    class Meta:
+        db_table = 'well_query_index'
         
 # create a substance table, as an easy way of creating the substance_id_seq
 class Substance(models.Model):
@@ -1069,12 +1040,11 @@ class Reagent(models.Model):
     vendor_identifier = models.TextField(blank=True)
     vendor_name = models.TextField(blank=True)
     library_contents_version = models.ForeignKey('LibraryContentsVersion', null=True)
-#     library = models.ForeignKey('Library', null=True)
+    #     library = models.ForeignKey('Library', null=True)
 
     # FIXME: need to create a migration script that will invalidate all of the
     # reagent.well_id's for reagents other than the "latest released reagent"
     well = models.ForeignKey('Well', null=True) # , related_name='well_reagent')
-#     facility_batch_id = models.IntegerField(null=True, blank=True)
     vendor_batch_id = models.TextField(blank=True)
     class Meta:
         db_table = 'reagent'

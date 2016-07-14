@@ -2,6 +2,7 @@
 Django >=1.8,<1.9 #=1.8.5
 Pillow >=3.0.0,<3.1
 SQLAlchemy >=1.0.9,<1.1
+aldjemy #==0.6.0
 argparse #1.2.1
 # distribute>=0.6.24
 django-tastypie >=0.12.2,<0.13

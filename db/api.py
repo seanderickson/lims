@@ -13,6 +13,10 @@ import sys
 from tempfile import SpooledTemporaryFile
 from wsgiref.util import FileWrapper
 
+import aldjemy.core
+import sqlalchemy
+import sqlalchemy.sql.schema
+from aldjemy.core import get_engine, get_tables
 from django.conf import settings
 from django.conf.urls import url
 from django.contrib.auth.models import User
@@ -23,8 +27,11 @@ from django.db import connection
 from django.db import transaction
 from django.forms.models import model_to_dict
 from django.http import Http404
+from django.http.request import HttpRequest
 from django.http.response import StreamingHttpResponse
+from django.utils import timezone
 from sqlalchemy import select, text, case
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.sql import and_, or_, not_, asc, desc, alias, Alias, func
 from sqlalchemy.sql.elements import literal_column
@@ -51,16 +58,15 @@ from db.models import ScreensaverUser, Screen, \
     ServiceActivity, LabActivity, Screening, LibraryScreening, AssayPlate, \
     SmallMoleculeChembankId, SmallMoleculePubchemCid, SmallMoleculeChemblId, \
     SmallMoleculeCompoundName, ScreenCellLines, ScreenFundingSupports, \
-    ScreenKeyword, ResultValue, AssayWell, DataColumnDerivedFromLink,\
+    ScreenKeyword, ResultValue, AssayWell, DataColumnDerivedFromLink, \
     Publication
 from db.support import lims_utils, screen_result_importer
 from db.support.data_converter import default_converter
 from db.support.screen_result_importer import PARTITION_POSITIVE_MAPPING, \
     CONFIRMED_POSITIVE_MAPPING
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
-    HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB,  \
+    HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, \
     LIST_BRACKETS, HTTP_PARAM_RAW_LISTS, HEADER_APILOG_COMMENT
-import reports.sqlalchemy_resource
 from reports import ValidationError, InformationError, _now
 from reports.api import ApiLogResource, \
     UserGroupAuthorization, \
@@ -81,8 +87,7 @@ from reports.serializers import LimsSerializer, \
     XLSSerializer, ScreenResultSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.sqlalchemy_resource import _concat
-from django.utils import timezone
-from django.http.request import HttpRequest
+import reports.sqlalchemy_resource
 
 
 PLATE_NUMBER_SQL_FORMAT = 'FM9900000'
@@ -356,10 +361,11 @@ class LibraryCopyPlateResource(ApiResource):
 
     @classmethod
     def get_screen_librarycopyplate_subquery(cls, for_screen_id):
-
-        _screen = cls.bridge['screen']
-        _assay_plate = cls.bridge['assay_plate']
-        _plate = cls.bridge['plate']
+        
+        bridge = get_tables()
+        _screen = bridge['screen']
+        _assay_plate = bridge['assay_plate']
+        _plate = bridge['plate']
         
         j = _plate
         j = j.join(_assay_plate, _plate.c.plate_id == _assay_plate.c.plate_id)
@@ -376,7 +382,7 @@ class LibraryCopyPlateResource(ApiResource):
     def get_screen_loaded_librarycopyplate_subquery(cls, for_screen_id):
         
         subquery = cls.get_screen_librarycopyplate_subquery(for_screen_id)
-        _assay_plate = cls.bridge['assay_plate']
+        _assay_plate = get_tables()['assay_plate']
         subquery = subquery.where(
             _assay_plate.c.screen_result_data_loading_id != None)
         return subquery
@@ -412,7 +418,7 @@ class ScreenResultResource(ApiResource):
         self.scope = 'fields.screenresult'
         super(ScreenResultResource, self).__init__(**kwargs)
         
-        with self.bridge.get_engine().connect() as conn:
+        with get_engine().connect() as conn:
             try:
                 conn.execute(text('select * from "well_query_index"; '));
                 logger.debug('The well_query_index table exists')
@@ -427,6 +433,20 @@ class ScreenResultResource(ApiResource):
                 logger.info('creating the well_data_column_positive_index table')
                 self._create_well_data_column_positive_index_table(conn)
         self.reagent_resource = None
+        self._well_data_column_positive_index = None
+        
+    def get_well_query_index_table(self):
+        ''' Work around method; create the well_data_column_positive_index 
+        table for the Aldjemy bridge '''
+        if not 'well_data_column_positive_index' in get_tables():
+            if not self._well_data_column_positive_index:
+                self._well_data_column_positive_index = sqlalchemy.sql.schema.Table(
+                    'well_data_column_positive_index', 
+                    aldjemy.core.get_meta(),
+                    sqlalchemy.Column('well_id', sqlalchemy.String),
+                    sqlalchemy.Column('data_column_id', sqlalchemy.Integer))
+            return self._well_data_column_positive_index
+        return get_tables()['well_data_column_positive_index']
 
     def get_reagent_resource(self):
         if not self.reagent_resource:
@@ -487,8 +507,6 @@ class ScreenResultResource(ApiResource):
         logger.debug('max_indexes_to_cache %s' % max_indexes_to_cache)
 
         _wellQueryIndex = self.bridge['well_query_index']
-        _well_data_column_positive_index = self.bridge[
-            'well_data_column_positive_index']
 
         # NOTE: mixing Django connection with SQA connection
         # - thrown exceptions will rollback the nested SQA transaction
@@ -527,7 +545,7 @@ class ScreenResultResource(ApiResource):
                 logger.info('clear cachedQueries: ids: %r, all: %r', ids, all)
                 if all:
                     stmt = delete(_wellQueryIndex)
-                    self.bridge.get_engine().execute(stmt)
+                    get_engine().execute(stmt)
                     logger.info('cleared all cached wellQueryIndexes')
                     CachedQuery.objects.all().delete()
                     # # TODO: delete the well_data_column_positive_indexes
@@ -540,7 +558,7 @@ class ScreenResultResource(ApiResource):
                 else:
                     stmt = delete(_wellQueryIndex).where(
                         _wellQueryIndex.c.query_id.in_(ids))
-                    self.bridge.get_engine().execute(stmt)
+                    get_engine().execute(stmt)
                     logger.info('cleared cached wellQueryIndexes: %r', ids)
                     CachedQuery.objects.filter(id__in=ids).delete()
 
@@ -560,7 +578,7 @@ class ScreenResultResource(ApiResource):
         # TODO: incrementally clear the wdcpi for each set of ids, or all
         if all is True or by_uri is not None:
             logger.info('all: %r, by_uri: %r', all, by_uri)
-            self.bridge.get_engine().execute(delete(_well_data_column_positive_index))
+            get_engine().execute(delete(self.get_well_query_index_table()))
             logger.info(
                 'cleared all cached well_data_column_positive_indexes')
             
@@ -804,6 +822,7 @@ class ScreenResultResource(ApiResource):
         
         m = hashlib.md5()
         compiled_stmt = str(base_stmt.compile(
+            dialect=postgresql.dialect(),
             compile_kwargs={"literal_binds": True}))
         
         if DEBUG_SCREENRESULT: logger.info('base_stmt: %r', compiled_stmt)
@@ -816,7 +835,7 @@ class ScreenResultResource(ApiResource):
             CachedQuery.objects.all().get_or_create(key=key)
         if DEBUG_SCREENRESULT: logger.info('create_new_well_index_cache: %r', create_new_well_index_cache)
         if create_new_well_index_cache:
-            with self.bridge.get_engine().begin() as conn:
+            with get_engine().begin() as conn:
                 # NOTE: mixing Django connection with SQA connection
                 # - thrown exceptions will rollback the nested SQA transaction
                 # see: http://docs.sqlalchemy.org/en/latest/core/connections.html
@@ -840,6 +859,7 @@ class ScreenResultResource(ApiResource):
                         logger.info(
                             'insert stmt: %r',
                             str(insert_statement.compile(
+                                dialect=postgresql.dialect(),
                                 compile_kwargs={"literal_binds": True})))
                     conn.execute(insert_statement)
                     
@@ -949,7 +969,9 @@ class ScreenResultResource(ApiResource):
         if DEBUG_SCREENRESULT: 
             logger.info(
                 'stmt: %s',
-                str(stmt.compile(compile_kwargs={"literal_binds": True})))
+                str(stmt.compile(
+                    dialect=postgresql.dialect(),
+                    compile_kwargs={"literal_binds": True})))
           
         return (field_hash, columns, stmt, count_stmt, cachedQuery)
     
@@ -1077,9 +1099,11 @@ class ScreenResultResource(ApiResource):
                     ApiResource.create_vocabulary_rowproxy_generator(field_hash)
                     
             
-            conn = self.bridge.get_engine().connect()
+            conn = get_engine().connect()
             logger.info('excute stmt %r...',
-                str(stmt.compile(compile_kwargs={"literal_binds": True})))
+                str(stmt.compile(
+                    dialect=postgresql.dialect(),
+                    compile_kwargs={"literal_binds": True})))
             result = conn.execute(stmt)
             logger.info('excuted stmt')
             if rowproxy_generator:
@@ -1144,8 +1168,6 @@ class ScreenResultResource(ApiResource):
 
     def create_dc_positive_index(self, screen_result_id):
         # the well_data_column_positive_index has been cleared, recreate
-        _well_data_column_positive_index = \
-            self.bridge['well_data_column_positive_index']
         _aw = self.bridge['assay_well']
         _sr = self.bridge['screen_result']
         _dc = self.bridge['data_column']
@@ -1164,12 +1186,14 @@ class ScreenResultResource(ApiResource):
         base_stmt = base_stmt.order_by(
             _dc.c.data_column_id, _aw.c.well_id)
         insert_statement = (
-            insert(_well_data_column_positive_index)
+            insert(self.get_well_query_index_table())
                 .from_select(['well_id', 'data_column_id'], base_stmt))
         logger.info(
             'mutual pos insert statement: %r',
-            str(insert_statement.compile(compile_kwargs={"literal_binds": True})))
-        self.bridge.get_engine().execute(insert_statement)
+            str(insert_statement.compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True})))
+        get_engine().execute(insert_statement)
         logger.info('mutual pos insert statement, executed.')
 
     
@@ -1192,8 +1216,6 @@ class ScreenResultResource(ApiResource):
         # and aw0.screen_result_id = 941
         # and aw1.screen_result_id <> 941;
                 
-        _well_data_column_positive_index = \
-            self.bridge['well_data_column_positive_index']
         _aw = self.bridge['assay_well']
         _sr = self.bridge['screen_result']
         _dc = self.bridge['data_column']
@@ -1205,10 +1227,10 @@ class ScreenResultResource(ApiResource):
         # 
         # Note: because this is lazy recreated, we are creating the whole 
         # index each time; could just recreate for the specific screen
-        count_stmt = _well_data_column_positive_index
+        count_stmt = self.get_well_query_index_table()
         count_stmt = select([func.count()]).select_from(count_stmt)
         count = 0
-        with self.bridge.get_engine().begin() as conn:
+        with get_engine().begin() as conn:
             count = int(conn.execute(count_stmt).scalar())        
             logger.info('well_data_column_positive_index count: %r', count)
         if count == 0:
@@ -1242,15 +1264,11 @@ class ScreenResultResource(ApiResource):
         # WHERE data_column.screen_result_id != 1090;
 
         
-        
-        _well_data_column_positive_index = \
-            self.bridge['well_data_column_positive_index']
         _aw = self.bridge['assay_well']
         _sr = self.bridge['screen_result']
         _dc = self.bridge['data_column']
-        _wdc = _well_data_column_positive_index.alias('wdc')
-        
-        _wdc1 = _well_data_column_positive_index.alias('wdc1')
+        _wdc = self.get_well_query_index_table().alias('wdc')
+        _wdc1 = self.get_well_query_index_table().alias('wdc1')
         _dc1 = _dc.alias('dc1')
         
         j2 = _wdc1.join(_dc1, _wdc1.c.data_column_id == _dc1.c.data_column_id)
@@ -1264,10 +1282,12 @@ class ScreenResultResource(ApiResource):
         stmt = select([distinct(_wdc.c.data_column_id)]).select_from(j)
         stmt = stmt.where(_dc.c.screen_result_id != screen_result_id)
         
-        sql = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+        sql = str(stmt.compile(
+            dialect=postgresql.dialect(),
+            compile_kwargs={"literal_binds": True}))
         logger.info('mutual positives statement: %r',sql)
         logger.info('execute mutual positives column query...')
-        with self.bridge.get_engine().connect() as conn:
+        with get_engine().connect() as conn:
             result = conn.execute(stmt)
             logger.info('executed, not iterated')
             cols =  [x[0] for x in result ]
@@ -1962,7 +1982,7 @@ class ScreenResultResource(ApiResource):
 
     @transaction.atomic()
     def create_data_loading_statistics(self, screen_result):
-        with self.bridge.get_engine().connect() as conn:
+        with get_engine().connect() as conn:
             # NOTE: mixing Django connection with SQA connection
             # - thrown exceptions will rollback the nested SQA transaction
             # see: http://docs.sqlalchemy.org/en/latest/core/connections.html
@@ -4368,6 +4388,7 @@ class ActivityResource(ApiResource):
         stmt_la = stmt_la.cte('labactivities')
         stmt2 = select(la_columns).select_from(stmt_la)
         compiled_stmt = str(stmt2.compile(
+            dialect=postgresql.dialect(),
             compile_kwargs={"literal_binds": True}))
         logger.info('compiled_stmt %s', compiled_stmt)
 
@@ -4458,7 +4479,9 @@ class ActivityResource(ApiResource):
          
         (stmt, count_stmt) = self.wrap_statement(
             stmt, order_clauses, filter_expression)
-        compiled_stmt = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+        compiled_stmt = str(stmt.compile(
+            dialect=postgresql.dialect(),
+            compile_kwargs={"literal_binds": True}))
         logger.info('compiled_stmt %s', compiled_stmt)
         
         return (field_hash, columns, stmt, count_stmt)
@@ -4594,7 +4617,9 @@ class CherryPickLiquidTransferResource(ActivityResource):
             custom_columns=custom_columns)
         
         stmt = select(columns.values()).select_from(j)
-        compiled_stmt = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+        compiled_stmt = str(stmt.compile(
+            dialect=postgresql.dialect(),
+            compile_kwargs={"literal_binds": True}))
         logger.info('compiled_stmt %s', compiled_stmt)
         # general setup
          
@@ -4688,7 +4713,9 @@ class CherryPickScreeningResource(ActivityResource):
             custom_columns=custom_columns)
         
         stmt = select(columns.values()).select_from(j)
-        compiled_stmt = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+        compiled_stmt = str(stmt.compile(
+            dialect=postgresql.dialect(),
+            compile_kwargs={"literal_binds": True}))
         logger.info('compiled_stmt %s', compiled_stmt)
          
         (stmt, count_stmt) = self.wrap_statement(
@@ -4824,7 +4851,9 @@ class LibraryScreeningResource(ActivityResource):
             custom_columns=custom_columns)
         
         stmt = select(columns.values()).select_from(j)
-        compiled_stmt = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+        compiled_stmt = str(stmt.compile(
+            dialect=postgresql.dialect(),
+            compile_kwargs={"literal_binds": True}))
         logger.info('compiled_stmt %s', compiled_stmt)
         # general setup
          
@@ -4881,7 +4910,6 @@ class LibraryScreeningResource(ActivityResource):
                         _library.c.short_name, _cp.c.name, _ap.c.plate_number))
                 logger.debug('lcp_query: %r', str(lcp_query.compile()))
                 
-                engine = self.bridge.get_engine()
                 def library_copy_plates_screened_generator(cursor):
                     if generator:
                         cursor = generator(cursor)
@@ -4927,7 +4955,7 @@ class LibraryScreeningResource(ActivityResource):
                                 return self.entries
                             else:
                                 return self.row[key]
-                    conn = engine.connect()
+                    conn = get_engine().connect()
                     try:
                         for row in cursor:
                             yield Row(row)
@@ -5110,7 +5138,7 @@ class LibraryScreeningResource(ActivityResource):
 
     def create_screen_screening_statistics(self, screen):
         
-        with self.bridge.get_engine().connect() as conn:
+        with get_engine().connect() as conn:
             # NOTE: mixing Django connection with SQA connection
             # - thrown exceptions will rollback the nested SQA transaction
             # see: http://docs.sqlalchemy.org/en/latest/core/connections.html
@@ -5674,7 +5702,6 @@ class ScreenResource(ApiResource):
         return self.dispatch('detail', request, **kwargs)    
 
     def get_detail(self, request, **kwargs):
-
         facility_id = kwargs.get('facility_id', None)
         if not facility_id:
             raise NotImplementedError('must provide a facility_id parameter')
@@ -6181,7 +6208,9 @@ class ScreenResource(ApiResource):
         if DEBUG_SCREEN: 
             logger.info(
                 'stmt: %s',
-                str(stmt.compile(compile_kwargs={"literal_binds": True})))
+                str(stmt.compile(
+                    dialect=postgresql.dialect(),
+                    compile_kwargs={"literal_binds": True})))
           
         return (field_hash, columns, stmt, count_stmt)
 
@@ -6190,7 +6219,8 @@ class ScreenResource(ApiResource):
         ''' 
         ScreenResource
         '''
- 
+        logger.info('2 - build_list_response')
+
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
@@ -6226,10 +6256,11 @@ class ScreenResource(ApiResource):
 
     @classmethod
     def get_screener_role_cte(cls):
-
-        _su = cls.bridge['screensaver_user']
-        _screen = cls.bridge['screen']
-        _screen_collab = cls.bridge['screen_collaborators']
+        
+        bridge = get_tables()
+        _su = bridge['screensaver_user']
+        _screen = bridge['screen']
+        _screen_collab = bridge['screen_collaborators']
         collab = _su.alias('collab')
         ls = _su.alias('ls')
         pi = _su.alias('pi')
@@ -6293,7 +6324,7 @@ class ScreenResource(ApiResource):
                 order by facility_id::integer desc
                 limit 1;
             '''
-            with self.bridge.get_engine().connect() as conn:
+            with get_engine().connect() as conn:
                 max_facility_id = int(
                     conn.execute(max_facility_id_sql).scalar() or 0)
                 schema['fields']['facility_id']['default'] = max_facility_id + 1
@@ -6880,7 +6911,7 @@ class ScreensaverUserResource(ApiResource):
     @classmethod
     def get_lab_affiliation_cte(cls):
         
-        _vocab = cls.bridge['reports_vocabularies']
+        _vocab = get_tables()['reports_vocabularies']
         affiliation_category_table = (
             select([
                 _vocab.c.ordinal,
@@ -6906,10 +6937,11 @@ class ScreensaverUserResource(ApiResource):
     
     @classmethod
     def get_user_cte(cls):
-
-        _su = cls.bridge['screensaver_user']
-        _up = cls.bridge['reports_userprofile']
-        _au = cls.bridge['auth_user']
+        
+        bridge = get_tables()
+        _su = bridge['screensaver_user']
+        _up = bridge['reports_userprofile']
+        _au = bridge['auth_user']
         
         j = _su
         j = j.join(_up, _up.c.id == _su.c.user_id)
@@ -7093,7 +7125,9 @@ class ScreensaverUserResource(ApiResource):
                 stmt, order_clauses, filter_expression)
             logger.debug(
                 'stmt: %s',
-                str(stmt.compile(compile_kwargs={"literal_binds": True})))
+                str(stmt.compile(
+                    dialect=postgresql.dialect(),
+                    compile_kwargs={"literal_binds": True})))
             title_function = None
             if param_hash.get(HTTP_PARAM_USE_TITLES, False):
                 title_function = lambda key: field_hash[key]['title']
@@ -7864,6 +7898,7 @@ class ReagentResource(ApiResource):
                 stmt = stmt.order_by("plate_number", "well_name")
 
             compiled_stmt = str(stmt.compile(
+                dialect=postgresql.dialect(),
                 compile_kwargs={"literal_binds": True}))
             logger.debug('compiled_stmt %s', compiled_stmt)
     
@@ -8569,12 +8604,13 @@ class LibraryResource(ApiResource):
     @classmethod
     def get_screen_library_subquery(cls, for_screen_id):
         
-        _screen = cls.bridge['screen']
-        _lab_activity = cls.bridge['lab_activity']
-        _library_screening = cls.bridge['library_screening']
-        _assay_plate = cls.bridge['assay_plate']
-        _plate = cls.bridge['plate']
-        _copy = cls.bridge['copy']
+        bridge = get_tables()
+        _screen = bridge['screen']
+        _lab_activity = bridge['lab_activity']
+        _library_screening = bridge['library_screening']
+        _assay_plate = bridge['assay_plate']
+        _plate = bridge['plate']
+        _copy = bridge['copy']
         
         j = _screen
         j = j.join(

@@ -1100,10 +1100,12 @@ class ScreenResultResource(ApiResource):
                     
             
             conn = get_engine().connect()
-            logger.info('excute stmt %r...',
-                str(stmt.compile(
-                    dialect=postgresql.dialect(),
-                    compile_kwargs={"literal_binds": True})))
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.info(
+                    'excute stmt %r...',
+                    str(stmt.compile(
+                        dialect=postgresql.dialect(),
+                        compile_kwargs={"literal_binds": True})))
             result = conn.execute(stmt)
             logger.info('excuted stmt')
             if rowproxy_generator:
@@ -4848,10 +4850,11 @@ class LibraryScreeningResource(ActivityResource):
             custom_columns=custom_columns)
         
         stmt = select(columns.values()).select_from(j)
-        compiled_stmt = str(stmt.compile(
-            dialect=postgresql.dialect(),
-            compile_kwargs={"literal_binds": True}))
-        logger.info('compiled_stmt %s', compiled_stmt)
+        if logger.isEnabledFor(logging.DEBUG):
+            compiled_stmt = str(stmt.compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True}))
+            logger.info('compiled_stmt %s', compiled_stmt)
         # general setup
          
         (stmt, count_stmt) = self.wrap_statement(

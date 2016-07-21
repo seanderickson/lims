@@ -2146,7 +2146,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
             (resp.status_code, self.get_content(resp)))
         
         # now create a new group, with previous user's group as a member,
-        # then add permissions to this new group to read (vocabularies)
+        # then add permissions to this new group to read (vocabulary)
         # note: double nest the groups also as a test
         usergroup_patch = { 'objects': [
             {
@@ -2196,7 +2196,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
                      'in testGroup6 permissions', testGroup6['all_permissions']))
         
         # 2 read test - user has permissions through inherited permissions,
-        resource_uri = BASE_URI + '/vocabularies'
+        resource_uri = BASE_URI + '/vocabulary'
         resp = self.api_client.get(
             resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password ))

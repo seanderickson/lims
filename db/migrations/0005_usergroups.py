@@ -14,7 +14,6 @@ import pytz
 
 from db.support.data_converter import default_converter
 from lims.base_settings import PROJECT_ROOT
-from reports.models import Vocabularies, ApiLog
 
 
 logger = logging.getLogger(__name__)

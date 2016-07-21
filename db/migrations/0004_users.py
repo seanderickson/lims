@@ -13,7 +13,7 @@ import pytz
 
 from db.support.data_converter import default_converter
 from lims.base_settings import PROJECT_ROOT
-from reports.models import Vocabularies, ApiLog
+from reports.models import ApiLog
 from datetime import timedelta
 
 

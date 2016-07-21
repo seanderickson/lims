@@ -13,7 +13,7 @@ def library_screen_vocab_conversion(apps,schema_editor):
     Performs the vocabulary conversion for the library and screen entities.
     - we are converting from the stored, display values, to a key value;
     this key will reference the entry for the respective vocab in the 
-    reports_vocabularies table.  (Referencing by scope, key).
+    reports_vocabulary table.  (Referencing by scope, key).
     Note: some conversions are also being done in SQL (manual scripts)
     '''
     # NOTE: migration 0003 shows a newer way of generating the vocabs

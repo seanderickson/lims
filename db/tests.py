@@ -846,7 +846,7 @@ class ScreenResultSerializerTest(TestCase):
                 val2 = output_field[column_field]
                 if val and column_field == 'derived_from_columns':
                     val = set([x.upper() for x in re.split(r'[,\s]+', val)])
-                    val2 = set(re.split(r'[,\s]+', val2))
+                    val2 = set([x.upper() for x in re.split(r'[,\s]+', val2)])
                     
                 result,msg = equivocal(val, val2)
                 testinstance.assertTrue(

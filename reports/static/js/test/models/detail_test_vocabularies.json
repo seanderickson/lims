@@ -6,7 +6,7 @@
           "description": "First choice", 
           "key": "choice_1", 
           "ordinal": 1, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field4/choice_1", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field4/choice_1", 
           "scope": "test_resource.field4", 
           "title": "Choice 1"
     },
@@ -15,7 +15,7 @@
           "description": "Second choice", 
           "key": "choice_2", 
           "ordinal": 2, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field4/choice_2", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field4/choice_2", 
           "scope": "test_resource.field4", 
           "title": "Choice 2"
     },
@@ -24,7 +24,7 @@
           "description": "Third choice", 
           "key": "choice_3", 
           "ordinal": 3, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field4/choice_3", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field4/choice_3", 
           "scope": "test_resource.field4", 
           "title": "Choice 3"
     },
@@ -33,7 +33,7 @@
           "description": "Fourth choice", 
           "key": "choice_4a", 
           "ordinal": 4, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field4/choice_4a", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field4/choice_4a", 
           "scope": "test_resource.field4", 
           "title": "Choice 4"
     }
@@ -45,7 +45,7 @@
           "description": "First choice", 
           "key": "choice_1", 
           "ordinal": 1, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field50/choice_1", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field50/choice_1", 
           "scope": "test_resource.field50", 
           "title": "Choice 1"
     },
@@ -54,7 +54,7 @@
           "description": "Second choice", 
           "key": "choice_2", 
           "ordinal": 2, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field50/choice_2", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field50/choice_2", 
           "scope": "test_resource.field50", 
           "title": "Choice 2"
     },
@@ -63,7 +63,7 @@
           "description": "Third choice", 
           "key": "choice_3", 
           "ordinal": 3, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field50/choice_3", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field50/choice_3", 
           "scope": "test_resource.field50", 
           "title": "Choice 3"
     },
@@ -72,7 +72,7 @@
           "description": "Fourth choice", 
           "key": "choice_4", 
           "ordinal": 4, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field50/choice_4", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field50/choice_4", 
           "scope": "test_resource.field50", 
           "title": "Choice 4"
     },
@@ -81,7 +81,7 @@
           "description": "Fifth choice", 
           "key": "choice_5", 
           "ordinal": 5, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field50/choice_5", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field50/choice_5", 
           "scope": "test_resource.field50", 
           "title": "Choice 5"
     },
@@ -90,7 +90,7 @@
           "description": "Sixth choice", 
           "key": "choice_6", 
           "ordinal": 6, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field50/choice_6", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field50/choice_6", 
           "scope": "test_resource.field50", 
           "title": "Choice 6"
     },
@@ -99,7 +99,7 @@
           "description": "7th", 
           "key": "choice_7", 
           "ordinal": 7, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field50/choice_7", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field50/choice_7", 
           "scope": "test_resource.field50", 
           "title": "Choice 7"
     },
@@ -108,7 +108,7 @@
           "description": "8th", 
           "key": "choice_8", 
           "ordinal": 8, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field50/choice_8", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field50/choice_8", 
           "scope": "test_resource.field50", 
           "title": "Choice 8"
     },
@@ -117,7 +117,7 @@
           "description": "9th", 
           "key": "choice_9", 
           "ordinal": 9, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field50/choice_9", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field50/choice_9", 
           "scope": "test_resource.field50", 
           "title": "Choice 9"
     },
@@ -126,7 +126,7 @@
           "description": "10th", 
           "key": "choice_10", 
           "ordinal": 10, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field50/choice_10", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field50/choice_10", 
           "scope": "test_resource.field50", 
           "title": "Choice 10"
     },
@@ -135,7 +135,7 @@
           "description": "11th", 
           "key": "choice_11", 
           "ordinal": 11, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field50/choice_11", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field50/choice_11", 
           "scope": "test_resource.field50", 
           "title": "Choice 11"
     },
@@ -144,7 +144,7 @@
           "description": "12th", 
           "key": "choice_12", 
           "ordinal": 12, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field50/choice_12", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field50/choice_12", 
           "scope": "test_resource.field50", 
           "title": "Choice 12"
     },
@@ -153,7 +153,7 @@
           "description": "13th", 
           "key": "choice_13", 
           "ordinal": 13, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field50/choice_13", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field50/choice_13", 
           "scope": "test_resource.field50", 
           "title": "Choice 13"
     },
@@ -162,7 +162,7 @@
           "description": "14th", 
           "key": "choice_14", 
           "ordinal": 14, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field50/choice_14", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field50/choice_14", 
           "scope": "test_resource.field50", 
           "title": "Choice 14"
     },
@@ -171,7 +171,7 @@
           "description": "15th", 
           "key": "choice_15", 
           "ordinal": 15, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field50/choice_15", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field50/choice_15", 
           "scope": "test_resource.field50", 
           "title": "Choice 15"
     },
@@ -180,7 +180,7 @@
           "description": "16th", 
           "key": "choice_16", 
           "ordinal": 16, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field50/choice_16", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field50/choice_16", 
           "scope": "test_resource.field50", 
           "title": "Choice 16"
     },
@@ -189,7 +189,7 @@
           "description": "17th", 
           "key": "choice_17", 
           "ordinal": 17, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field50/choice_17", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field50/choice_17", 
           "scope": "test_resource.field50", 
           "title": "Choice 17"
     },
@@ -198,7 +198,7 @@
           "description": "18th", 
           "key": "choice_18", 
           "ordinal": 18, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field50/choice_18", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field50/choice_18", 
           "scope": "test_resource.field50", 
           "title": "Choice 18"
     },
@@ -207,7 +207,7 @@
           "description": "19th", 
           "key": "choice_19", 
           "ordinal": 19, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field50/choice_19", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field50/choice_19", 
           "scope": "test_resource.field50", 
           "title": "Choice 19"
     },
@@ -216,7 +216,7 @@
           "description": "20th", 
           "key": "choice_20", 
           "ordinal": 20, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field50/choice_20", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field50/choice_20", 
           "scope": "test_resource.field50", 
           "title": "Choice 20"
     },
@@ -225,7 +225,7 @@
           "description": "21st", 
           "key": "choice_21", 
           "ordinal": 21, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field50/choice_21", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field50/choice_21", 
           "scope": "test_resource.field50", 
           "title": "Choice 21"
     }
@@ -238,7 +238,7 @@
           "description": "First choice", 
           "key": "choice_1", 
           "ordinal": 1, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field5/choice_1", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field5/choice_1", 
           "scope": "test_resource.field5", 
           "title": "Choice 1"
     },
@@ -247,7 +247,7 @@
           "description": "Second choice", 
           "key": "choice_2", 
           "ordinal": 2, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field5/choice_2", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field5/choice_2", 
           "scope": "test_resource.field5", 
           "title": "Choice 2"
     },
@@ -256,7 +256,7 @@
           "description": "Third choice", 
           "key": "choice_3", 
           "ordinal": 3, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field5/choice_3", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field5/choice_3", 
           "scope": "test_resource.field5", 
           "title": "Choice 3"
     },
@@ -265,7 +265,7 @@
           "description": "Fourth choice", 
           "key": "choice_4", 
           "ordinal": 4, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field5/choice_4", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field5/choice_4", 
           "scope": "test_resource.field5", 
           "title": "Choice 4"
     },
@@ -274,7 +274,7 @@
           "description": "Fifth choice", 
           "key": "choice_5", 
           "ordinal": 5, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field5/choice_5", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field5/choice_5", 
           "scope": "test_resource.field5", 
           "title": "Choice 5"
     },
@@ -283,7 +283,7 @@
           "description": "Sixth choice", 
           "key": "choice_6", 
           "ordinal": 6, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field5/choice_6", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field5/choice_6", 
           "scope": "test_resource.field5", 
           "title": "Choice 6"
     },
@@ -292,7 +292,7 @@
           "description": "7th", 
           "key": "choice_7", 
           "ordinal": 7, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field5/choice_7", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field5/choice_7", 
           "scope": "test_resource.field5", 
           "title": "Choice 7"
     },
@@ -301,7 +301,7 @@
           "description": "8th", 
           "key": "choice_8", 
           "ordinal": 8, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field5/choice_8", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field5/choice_8", 
           "scope": "test_resource.field5", 
           "title": "Choice 8"
     },
@@ -310,7 +310,7 @@
           "description": "9th", 
           "key": "choice_9", 
           "ordinal": 9, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field5/choice_9", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field5/choice_9", 
           "scope": "test_resource.field5", 
           "title": "Choice 9"
     },
@@ -319,7 +319,7 @@
           "description": "10th", 
           "key": "choice_10", 
           "ordinal": 10, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field5/choice_10", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field5/choice_10", 
           "scope": "test_resource.field5", 
           "title": "Choice 10"
     },
@@ -328,7 +328,7 @@
           "description": "11th", 
           "key": "choice_11", 
           "ordinal": 11, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field5/choice_11", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field5/choice_11", 
           "scope": "test_resource.field5", 
           "title": "Choice 11"
     },
@@ -337,7 +337,7 @@
           "description": "12th", 
           "key": "choice_12", 
           "ordinal": 12, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field5/choice_12", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field5/choice_12", 
           "scope": "test_resource.field5", 
           "title": "Choice 12"
     },
@@ -346,7 +346,7 @@
           "description": "13th", 
           "key": "choice_13", 
           "ordinal": 13, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field5/choice_13", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field5/choice_13", 
           "scope": "test_resource.field5", 
           "title": "Choice 13"
     },
@@ -355,7 +355,7 @@
           "description": "14th", 
           "key": "choice_14", 
           "ordinal": 14, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field5/choice_14", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field5/choice_14", 
           "scope": "test_resource.field5", 
           "title": "Choice 14"
     },
@@ -364,7 +364,7 @@
           "description": "15th", 
           "key": "choice_15", 
           "ordinal": 15, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field5/choice_15", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field5/choice_15", 
           "scope": "test_resource.field5", 
           "title": "Choice 15"
     },
@@ -373,7 +373,7 @@
           "description": "16th", 
           "key": "choice_16", 
           "ordinal": 16, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field5/choice_16", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field5/choice_16", 
           "scope": "test_resource.field5", 
           "title": "Choice 16"
     },
@@ -382,7 +382,7 @@
           "description": "17th", 
           "key": "choice_17", 
           "ordinal": 17, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field5/choice_17", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field5/choice_17", 
           "scope": "test_resource.field5", 
           "title": "Choice 17"
     },
@@ -391,7 +391,7 @@
           "description": "18th", 
           "key": "choice_18", 
           "ordinal": 18, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field5/choice_18", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field5/choice_18", 
           "scope": "test_resource.field5", 
           "title": "Choice 18"
     },
@@ -400,7 +400,7 @@
           "description": "19th", 
           "key": "choice_19", 
           "ordinal": 19, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field5/choice_19", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field5/choice_19", 
           "scope": "test_resource.field5", 
           "title": "Choice 19"
     },
@@ -409,7 +409,7 @@
           "description": "20th", 
           "key": "choice_20", 
           "ordinal": 20, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field5/choice_20", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field5/choice_20", 
           "scope": "test_resource.field5", 
           "title": "Choice 20"
     },
@@ -418,7 +418,7 @@
           "description": "21st", 
           "key": "choice_21", 
           "ordinal": 21, 
-          "resource_uri": "/reports/api/v1/vocabularies/test_resource.field5/choice_21", 
+          "resource_uri": "/reports/api/v1/vocabulary/test_resource.field5/choice_21", 
           "scope": "test_resource.field5", 
           "title": "Choice 21"
     }

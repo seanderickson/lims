@@ -51,6 +51,13 @@ define([
     return detailKeys;
   };  
   
+  /**
+   * Groups the keys by the display_options "group":
+   * {
+   *    group: name,
+   *    fields: [fieldkey1, fieldkey2, fieldkey3... ]
+   * 
+   */
   SchemaClass.prototype.groupedKeys = function(keys){
     var self = this;
     var groupedKeys = [];
@@ -457,7 +464,7 @@ define([
       console.log('getVocabularies from the server...');
       var self = this;
       
-      var resourceUrl = self.reportsApiUri + '/vocabularies'
+      var resourceUrl = self.reportsApiUri + '/vocabulary'
       Iccbl.getCollectionOnClient(resourceUrl, function(collection){
         var vocabularies = {};
         collection.each(function(vModel){
@@ -761,7 +768,7 @@ define([
       if(_.isArray(key)){
         key = key.join('/');
       }
-      var url = resource.apiUri + '/' + key;
+      var url = options.url || resource.apiUri + '/' + key;
       console.log('fetch model', url);
       var ModelClass = Backbone.Model.extend({
         url : url,
@@ -1039,7 +1046,7 @@ define([
         msgs.push(msg);
         
         if(msgs.length > 5){
-          msgs = msgs.splice(4, msgs.length-5);
+          msgs = msgs.splice(1, msgs.length-1);
         }
         // FIXME: consider a model attribute on app_state for messages, as this
         // pattern is needed for additions to the array

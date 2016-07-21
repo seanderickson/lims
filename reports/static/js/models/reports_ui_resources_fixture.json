@@ -46,13 +46,13 @@
         "description": "Control resource information"
     },
 
-    "vocabularies": {
+    "vocabulary": {
         "header_message": "Define controlled vocabularies",
         "title": "Application Vocabularies",
-        "route": "list/vocabularies",
+        "route": "list/vocabulary",
         "list_view": "ListView",
         "detailView": "DetailView",
-        "api_resource": "vocabularies",
+        "api_resource": "vocabulary",
         "url_root": "/reports/api/v1",
         "description": "Enter controlled vocabularies"
     },

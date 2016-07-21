@@ -11,7 +11,7 @@
         "resource":{
             "view": "list"
         },
-        "vocabularies":{
+        "vocabulary":{
             "view": "list"
         },
         "apilog":{

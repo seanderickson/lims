@@ -28,7 +28,7 @@ define([
             [200, { "Content-Type": "application/json" }, 
                   '{ "objects": [' + resource_raw + "] }" ]);
         this.server.respondWith(
-            "GET", "/reports/api/v1/vocabularies?limit=0", 
+            "GET", "/reports/api/v1/vocabulary?limit=0", 
             [200, { "Content-Type": "application/json" }, 
                   '{ "objects": [' + vocabulary_raw + "] }" ]);
         // Second, for the getUser call

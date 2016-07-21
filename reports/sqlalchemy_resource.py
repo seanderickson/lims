@@ -951,7 +951,7 @@ class SqlAlchemyResource(IccblBaseResource):
                     conn.close()
                     return HttpResponse(status=404)
                 
-                if kSTREAMING:
+                if DEBUG_STREAMING:
                     logger.info('json setup done, meta: %r', meta)
     
             else: # not json

@@ -25,8 +25,8 @@ define([
 	    console.log('initialize generic_detail_stickit view');
 	    var self = this;
 	    var schema = this.schema = args.schema || this.model.resource;
-      this.detailKeys = args.detailKeys || schema.detailKeys(); 
-      this.groupedKeys = schema.groupedKeys(this.detailKeys);
+      var detailKeys = this.detailKeys = args.detailKeys || schema.detailKeys(); 
+      var groupedKeys = this.groupedKeys = schema.groupedKeys(this.detailKeys);
       var nestedModels = this.nestedModels = {};
       var nestedLists = this.nestedLists = {};
       var buttons = this.buttons = args.buttons || ['download','history','back','edit','delete'];
@@ -40,6 +40,24 @@ define([
       if(! appModel.getCurrentUser().is_superuser){
         this.buttons = _.without(this.buttons,'delete');
       }
+      
+      // If "hideIfEmpty" then remove null attributes
+      _.each(self.model.keys(), function(key){
+        if(! self.model.has(key)){
+          var fi = schema.fields[key];
+          if (fi.display_options && fi.display_options.hideIfEmpty === true){
+            self.detailKeys = _.without(detailKeys, key);
+            _.each(self.groupedKeys, function(groupedKey){
+              if(_.isObject(groupedKey)){
+                groupedKey.fields = _.without(groupedKey.fields, key);
+              }else{
+                self.groupedKeys = _.without(self.groupedKeys, key);
+              }
+            });
+          }
+        }
+      });
+      console.log('final detailKeys', self.detailKeys, self.groupedKeys);
       this.createBindings();
 	  },
 	  
@@ -123,7 +141,8 @@ define([
               fi.vocabulary_scope_ref + ', field: ' + fi.key + ': ' + value);
           }
         }else{
-          console.log('error: ' + fi.vocabulary_scope_ref + ', key: ' + key, fi);
+          console.log('error: ' + fi.vocabulary_scope_ref + ', key: ' + key 
+            + ', value:' + value, fi);
           appModel.error('vocabulary not found for: ' + 
             fi.vocabulary_scope_ref + ', field: ' + fi.key + ': ' + value);
         }
@@ -385,7 +404,7 @@ define([
     },    
     
     template: _.template(detailTemplate)
-
+    
 	});
 
 	return DetailView;

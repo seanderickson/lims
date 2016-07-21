@@ -1163,6 +1163,12 @@ class Migration(migrations.Migration):
                 'db_table': 'small_molecule_cherry_pick_request',
             },
         ),
+        # New datacolumn_derived_from_columns table, see manual/0002 sql for creation
+        migrations.AddField(
+            model_name='datacolumn',
+            name='derived_from_columns',
+            field=models.ManyToManyField(related_name='derived_columns', to='db.DataColumn'),
+        ),
         migrations.AddField(
             model_name='well',
             name='latest_released_reagent',

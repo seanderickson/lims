@@ -746,18 +746,18 @@ class DataColumn(models.Model):
     medium_positives_count = models.IntegerField(null=True, blank=True)
     weak_positives_count = models.IntegerField(null=True, blank=True)
 
-# FIXME: migrate derived from columns link    
-#     derived_from_columns = models.ManyToManyField('DataColumn', 
-#         related_name='derived_columns')
+    derived_from_columns = models.ManyToManyField(
+        'DataColumn', related_name='derived_columns')
     
     class Meta:
         db_table = 'data_column'
 
-class DataColumnDerivedFromLink(models.Model):
-    derived_data_column = models.ForeignKey(DataColumn)
-    derived_from_data_column = models.ForeignKey(DataColumn, related_name='derived_from')
-    class Meta:
-        db_table = 'data_column_derived_from_link'
+# Removed - see manual migration 0002
+# class DataColumnDerivedFromLink(models.Model):
+#     derived_data_column = models.ForeignKey(DataColumn)
+#     derived_from_data_column = models.ForeignKey(DataColumn, related_name='derived_from')
+#     class Meta:
+#         db_table = 'data_column_derived_from_link'
 
 
 # TODO: this table is obsoleted after migration scripts 0002,0003 and 

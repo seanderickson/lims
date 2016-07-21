@@ -28,7 +28,7 @@ from django.db import transaction
 from django.forms.models import model_to_dict
 from django.http import Http404
 from django.http.request import HttpRequest
-from django.http.response import StreamingHttpResponse
+from django.http.response import StreamingHttpResponse, HttpResponse
 from django.utils import timezone
 from sqlalchemy import select, text, case
 from sqlalchemy.dialects import postgresql
@@ -58,8 +58,7 @@ from db.models import ScreensaverUser, Screen, \
     ServiceActivity, LabActivity, Screening, LibraryScreening, AssayPlate, \
     SmallMoleculeChembankId, SmallMoleculePubchemCid, SmallMoleculeChemblId, \
     SmallMoleculeCompoundName, ScreenCellLines, ScreenFundingSupports, \
-    ScreenKeyword, ResultValue, AssayWell, DataColumnDerivedFromLink, \
-    Publication
+    ScreenKeyword, ResultValue, AssayWell, Publication
 from db.support import lims_utils, screen_result_importer
 from db.support.data_converter import default_converter
 from db.support.screen_result_importer import PARTITION_POSITIVE_MAPPING, \
@@ -70,12 +69,12 @@ from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
 from reports import ValidationError, InformationError, _now
 from reports.api import ApiLogResource, \
     UserGroupAuthorization, \
-    VocabulariesResource, \
+    VocabularyResource, \
     UserResource, compare_dicts, \
     UserGroupResource, ApiLogResource, ApiResource, \
     write_authorization, read_authorization
 from reports.api_base import un_cache
-from reports.models import Vocabularies, ApiLog, UserProfile, \
+from reports.models import Vocabulary, ApiLog, UserProfile, \
     API_ACTION_DELETE, API_ACTION_PUT, API_ACTION_PATCH
 from reports.serialize import parse_val, XLSX_MIMETYPE, SDF_MIMETYPE, \
     XLS_MIMETYPE, JSON_MIMETYPE, CSV_MIMETYPE
@@ -696,7 +695,7 @@ class ScreenResultResource(ApiResource):
     
     def get_query(self, username, screenresult, param_hash, schema, limit, offset):
 
-        DEBUG_SCREENRESULT = False or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_SCREENRESULT = True or logger.isEnabledFor(logging.DEBUG)
         manual_field_includes = set(param_hash.get('includes', []))
         manual_field_includes.add('assay_well_control_type')
             
@@ -1436,6 +1435,7 @@ class ScreenResultResource(ApiResource):
         _dict['scope'] = 'datacolumn.screenresult-%s' % screen_facility_id
         _dict['screen_facility_id'] = screen_facility_id
         _dict['assay_data_type'] = dc.data_type
+        _dict['derived_from_columns'] = [x.name for x in dc.derived_from_columns.all()]
         if dc.data_type == 'numeric':
             if _dict.get('decimal_places', 0) > 0:
                 _dict['data_type'] = 'decimal'
@@ -1595,13 +1595,13 @@ class ScreenResultResource(ApiResource):
                         'derived_from_columns', None)
                     if derived_from_columns:
                         derived_from_columns = [
-                            x.strip() for x in derived_from_columns.split(',')] 
+                            x.strip().upper() for x in derived_from_columns.split(',')] 
                         derived_from_columns_map[sheet_column] = \
                             derived_from_columns
                 except ValidationError, e:
                     errors.update({ sheet_column: e.errors }) 
-            logger.info('TODO: create derived_from_columns: %r',
-                derived_from_columns_map)
+            logger.info(
+                'create derived_from_columns: %r',derived_from_columns_map)
             for sheet_column,derived_cols in derived_from_columns_map.items():
                 if not set(derived_cols).issubset(columns.keys()):
                     col_errors = errors.get(sheet_column, {})
@@ -1609,7 +1609,12 @@ class ScreenResultResource(ApiResource):
                         '%s are not in available columns: %s'
                         % (string_convert(derived_cols),string_convert(columns.keys())))
                     errors[sheet_column] = col_errors
-                # TODO: save derived_from_columns
+                else:
+                    parent_column = sheet_col_to_datacolumn[sheet_column]
+                    for colname in derived_cols:
+                        parent_column.derived_from_columns.add(sheet_col_to_datacolumn[colname])
+                    parent_column.save()
+                
             if errors:
                 logger.warn('errors: %r', errors)
                 raise ValidationError( errors={ 'data_columns': errors })
@@ -1650,8 +1655,9 @@ class ScreenResultResource(ApiResource):
             response.status_code = 200
             return response 
     
-    def create_result_value(self, colname, value, dc, well, initializer_dict, 
-                            assay_well_initializer):
+    def create_result_value(
+            self, colname, value, dc, well, initializer_dict, 
+            assay_well_initializer):
         
         positive_types = [
             'confirmed_positive_indicator',
@@ -2092,7 +2098,11 @@ class DataColumnResource(ApiResource):
             # general setup
           
             manual_field_includes = set(param_hash.get('includes', []))
-  
+            # Add fields required to build the system representation
+            manual_field_includes.update([
+                'name','data_type','decimal_places','ordinal',
+                'screen_facility_id'])
+            
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
@@ -2177,20 +2187,37 @@ class DataColumnResource(ApiResource):
             
             rowproxy_generator = create_dc_generator(rowproxy_generator)
             # specific setup 
+
+            _dc = self.bridge['data_column']
+            _sr = self.bridge['screen_result']
+            _screen = self.bridge['screen']
+            _dc_derived_link = self.bridge['data_column_derived_from_columns']
+            _dc_derived = _dc.alias('dc_derived')
+            
             base_query_tables = [
                 'data_column', 'screen']
             
-            custom_columns = {}
+            custom_columns = {
+                'derived_from_columns': (
+                    select([func.array_to_string(
+                        func.array_agg(literal_column('name')), LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(
+                        select([_dc_derived.c.name])
+                        .select_from(_dc_derived.join(
+                            _dc_derived_link,
+                            _dc_derived_link.c.to_datacolumn_id
+                                ==_dc_derived.c.data_column_id))
+                        .where(_dc_derived_link.c.from_datacolumn_id
+                            ==literal_column('data_column.data_column_id'))
+                        .order_by(_dc_derived.c.ordinal).alias('inner'))
+                    )
+                }
             
             columns = self.build_sqlalchemy_columns(
                 field_hash.values(), base_query_tables=base_query_tables,
                 custom_columns=custom_columns)
 
             # build the query statement
-
-            _dc = self.bridge['data_column']
-            _sr = self.bridge['screen_result']
-            _screen = self.bridge['screen']
             
             j = _dc
             j = j.join(_sr, _dc.c.screen_result_id == _sr.c.screen_result_id)
@@ -5569,7 +5596,25 @@ class ScreenResource(ApiResource):
         
     def __init__(self, **kwargs):
         super(ScreenResource, self).__init__(**kwargs)
-
+        self.apilog_resource = None
+        self.cpr_resource = None
+        self.activity_resource = None
+            
+    def get_apilog_resource(self):
+        if self.apilog_resource is None:
+            self.apilog_resource = ApiLogResource()
+        return self.apilog_resource
+    
+    def get_cpr_resource(self):
+        if self.cpr_resource is None:
+            self.cpr_resource = CherryPickRequestResource()
+        return self.cpr_resource
+    
+    def get_activity_resource(self):
+        if self.activity_resource is None:
+            self.activity_resource = ActivityResource()
+        return self.activity_resource
+    
     def prepend_urls(self):
 
         return [
@@ -5580,6 +5625,11 @@ class ScreenResource(ApiResource):
                  r"(?P<facility_id>([\w\d_]+))%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url((r"^(?P<resource_name>%s)/"
+                 r"(?P<facility_id>([\w\d_]+))/ui%s$") 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_screen_detail_uiview'), 
+                name="api_dispatch_screen_detail_uiview"),
             url((r"^(?P<resource_name>%s)/"
                  r"(?P<facility_id>([\w\d_]+))/libraries%s$") 
                     % (self._meta.resource_name, trailing_slash()),
@@ -5620,7 +5670,6 @@ class ScreenResource(ApiResource):
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_screen_screenresultview'),
                 name="api_dispatch_screen_screenresultview"),
-                
             url(r"^(?P<resource_name>%s)/(?P<facility_id>([\w\d_]+))/attachedfiles%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_screen_attachedfileview'),
@@ -5640,6 +5689,51 @@ class ScreenResource(ApiResource):
                 self.wrap_view('dispatch_screen_publicationdetailview'),
                 name="api_dispatch_screen_publicationdetailview"),
         ]    
+        
+    def dispatch_screen_detail_uiview(self, request, **kwargs):
+        ''' Special method to populate nested entities for the UI '''
+        response = self.dispatch('detail', request, **kwargs )
+        if response.status_code == 200:
+            _data = self._meta.serializer.deserialize(
+                request,
+                LimsSerializer.get_content(response), format='application/json')
+            
+            _status_data = \
+                self.get_apilog_resource()._get_list_response_internal(**{
+                    'key': _data['facility_id'],
+                    'ref_resource_name': 'screen',
+                    'diff_keys__icontains': '"status"',
+                    'order_by': ['-date_time'],
+                    })
+            _data['status_data'] = _status_data
+            
+            _cpr_data = \
+                self.get_cpr_resource()._get_list_response_internal(**{
+                    'limit': 10,
+                    'screen_facility_id__eq': _data['facility_id'],
+                    'order_by': ['-date_requested'],
+                    'exact_fields': [
+                        'cherry_pick_request_id','date_requested', 'requested_by_name'],
+                    })
+            _data['cherry_pick_request_data'] = _cpr_data
+            
+            _latest_activities_data = \
+                self.get_activity_resource()._get_list_response_internal(**{
+                    'screen_facility_id__eq': _data['facility_id'],
+                    'limit': 1,
+                    'order_by': ['-date_of_activity'],
+                    'exact_fields': ['activity_id','type', 'performed_by_name'],
+                    })
+            _data['latest_activities_data'] = _latest_activities_data
+
+            return HttpResponse(
+                content=self._meta.serializer.serialize(
+                    _data, self.get_serialize_format(request,**kwargs)),
+                content_type=build_content_type(
+                    self.get_serialize_format(request,**kwargs)))
+        
+        return response;
+        
         
     def dispatch_screen_attachedfileview(self, request, **kwargs):
         kwargs['screen_facility_id'] = kwargs.pop('facility_id')
@@ -5667,7 +5761,7 @@ class ScreenResource(ApiResource):
                 
     def dispatch_screen_activityview(self, request, **kwargs):
         kwargs['screen_facility_id__eq'] = kwargs.pop('facility_id')
-        return ActivityResource().dispatch('list', request, **kwargs)    
+        return self.get_activity_resource().dispatch('list', request, **kwargs)    
     
     def dispatch_screen_screenresultview(self, request, **kwargs):
         logger.info('dispatch screenresultview...')
@@ -5680,7 +5774,7 @@ class ScreenResource(ApiResource):
         
     def dispatch_screen_cherrypickview(self, request, **kwargs):
         kwargs['screen_facility_id__eq'] = kwargs.pop('facility_id')
-        return CherryPickRequestResource().dispatch('list', request, **kwargs)    
+        return self.get_cpr_resource().dispatch('list', request, **kwargs)    
         
     def dispatch_screen_libraryview(self, request, **kwargs):
         kwargs['for_screen_id'] = kwargs.pop('facility_id')
@@ -5769,12 +5863,13 @@ class ScreenResource(ApiResource):
         _user_cte = ScreensaverUserResource.get_user_cte().cte('users_s1')
         _collaborator = _user_cte.alias('collaborator')
         _activity = self.bridge['activity']
-        _srua = self.bridge['screen_result_update_activity']
+        # _srua = self.bridge['screen_result_update_activity']
         _screen_keyword = self.bridge['screen_keyword']
         _screen_cell_lines = self.bridge['screen_cell_lines']
         _library_screening = self.bridge['library_screening']
         _cp_screening = self.bridge['cherry_pick_screening']
         _lab_activity = self.bridge['lab_activity']
+        _service_activity = self.bridge['service_activity']
         
         # create CTEs -  Common Table Expressions for the intensive queries:
         
@@ -5794,28 +5889,6 @@ class ScreenResource(ApiResource):
                 .order_by(_collaborator.c.username))
         collaborators = collaborators.cte('collaborators')
 
-        screen_result_update_activity = (
-            select([ 
-                func.max(_activity.c.date_of_activity).label('date_of_activity'),
-                _screen.c.screen_id
-                ])
-                .select_from(
-                    _activity
-                        .join(_srua,
-                            _srua.c.update_activity_id == _activity.c.activity_id)
-                        .join(
-                            _screen_result,
-                            _screen_result.c.screen_result_id 
-                                == _srua.c.screen_result_id)
-                        .join(
-                            _screen,
-                            _screen.c.screen_id 
-                                == _screen_result.c.screen_id)
-                    )
-                .group_by(_screen.c.screen_id)
-                .order_by(_screen.c.screen_id)
-            ).cte('screen_result_update_activity')
-        
         # create a cte for the max screened replicates_per_assay_plate
         # - cross join version:
         # select 
@@ -6039,6 +6112,22 @@ class ScreenResource(ApiResource):
                     '  where sa.serviced_screen_id=screen.screen_id )'
                     '  order by date_of_activity desc LIMIT 1 )'
                     ),
+                'activity_count': (
+                    select([func.count(_activity.c.activity_id)])
+                    .select_from(
+                        _activity
+                            .join(_service_activity, _activity.c.activity_id
+                                ==_service_activity.c.activity_id,
+                                isouter=True)
+                            .join(_lab_activity, _activity.c.activity_id
+                                == _lab_activity.c.activity_id,
+                                isouter=True))
+                    .where(or_(
+                        _service_activity.c.serviced_screen_id
+                            == literal_column('screen.screen_id'),
+                        _lab_activity.c.screen_id
+                            == literal_column('screen.screen_id')))
+                    ),
                 # # TODO: rework the update activity
                 # 'screenresult_last_imported': (
                 #     select([screen_result_update_activity.c.date_of_activity])
@@ -6237,7 +6326,7 @@ class ScreenResource(ApiResource):
             if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
                 rowproxy_generator = ApiResource.\
                     create_vocabulary_rowproxy_generator(field_hash)
-  
+                    
             title_function = None
             if param_hash.get(HTTP_PARAM_USE_TITLES, False):
                 title_function = lambda key: field_hash[key]['title']
@@ -6621,7 +6710,7 @@ class UserChecklistItemResource(ApiResource):
             _admin = _su.alias('admin')
             _up = self.bridge['reports_userprofile']
             _uci = self.bridge['user_checklist_item']
-            _vocab = self.bridge['reports_vocabularies']
+            _vocab = self.bridge['reports_vocabulary']
             
             # get the checklist items & groups
             cig_table = (
@@ -6911,7 +7000,7 @@ class ScreensaverUserResource(ApiResource):
     @classmethod
     def get_lab_affiliation_cte(cls):
         
-        _vocab = get_tables()['reports_vocabularies']
+        _vocab = get_tables()['reports_vocabulary']
         affiliation_category_table = (
             select([
                 _vocab.c.ordinal,
@@ -7827,22 +7916,9 @@ class ReagentResource(ApiResource):
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
                 order_params, field_hash)
              
-#             rowproxy_generator = None
-#             if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
-#                 rowproxy_generator = \
-#                     ApiResource.create_vocabulary_rowproxy_generator(
-#                         field_hash)
- 
             # specific setup 
         
             base_query_tables = ['well', 'reagent', 'library']
-            
-#             columns = []
-#             sub_columns = self.get_sr_resource().build_sqlalchemy_columns(
-#                 field_hash.values())
-#             sub_columns['plate_number'] = (literal_column(
-#                 "to_char(well.plate_number,'%s')" % PLATE_NUMBER_SQL_FORMAT)
-#                 .label('plate_number'))
             
             columns = self.build_sqlalchemy_columns(
                 field_hash.values(), base_query_tables=base_query_tables,
@@ -7873,11 +7949,6 @@ class ReagentResource(ApiResource):
             #         custom_columns=sub_columns)
             #      
                 
-#                 # Note: excludes smr,rnai,np,... tables if library not specified
-#                 logger.info(str(('build generic resource columns')))
-#                 columns = self.build_sqlalchemy_columns(
-#                     field_hash.values(), base_query_tables=base_query_tables)
-            
             # Start building a query; use the sqlalchemy.sql.schema.Table API:
             _well = self.bridge['well']
             _reagent = self.bridge['reagent']
@@ -8209,7 +8280,7 @@ class WellResource(ApiResource):
         temp = [ 
             x.title.lower() 
                 for x in 
-                Vocabularies.objects.all().filter(scope='library.well_type')]
+                Vocabulary.objects.all().filter(scope='library.well_type')]
         data['extraSelectorOptions'] = { 
             'label': 'Type',
             'searchColumn': 'library_well_type',

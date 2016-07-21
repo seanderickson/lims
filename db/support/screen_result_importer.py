@@ -484,17 +484,22 @@ def create_output_data(screen_facility_id, fields, result_values ):
     
     datacolumn_labels = DATA_COLUMN_FIELD_MAP.keys()
     data_columns = []
+    data_column_names = []
     other_columns = []
     for key,field in fields.items(): 
         if ( field.get('is_datacolumn',False) 
             or field.get('data_worksheet_column', None)):
             data_columns.append(key)
+            data_column_names.append(field['name'])
         elif ( key not in ['well_id', 'plate_number','well_name',
                            'screen_facility_id', 'assay_well_control_type']
                and key not in RESULT_VALUE_FIELD_MAP.keys() ):
             other_columns.append(key)
     data_columns = sorted(data_columns, key=lambda x: fields[x]['ordinal'])
     other_columns = sorted(other_columns, key=lambda x: fields[x]['ordinal'])
+    data_column_names_to_col_letter = { 
+        dc:xl_col_to_name(len(RESULT_VALUE_FIELD_MAP)+i) 
+            for (i,dc) in enumerate(data_column_names) }
     logger.info('data columns: %r, other_columns: %r', data_columns, other_columns)
     
     # Transpose the field definitions into the output data_column sheet:
@@ -514,13 +519,27 @@ def create_output_data(screen_facility_id, fields, result_values ):
         for j,key in enumerate(data_columns):
             val = fields[key].get(sheet_key, None)
             if sheet_key == 'data_type':
-                val = fields[key].get('assay_data_type',fields[key].get('data_type',None))
+                val = fields[key].get(
+                    'assay_data_type',fields[key].get('data_type',None))
             if val:
                 if sheet_key == 'is_follow_up_data':
                     if val == True:
                         val = 'Follow up'
                     elif val == False:
                         val = 'Primary'
+                elif sheet_key == 'derived_from_columns':
+                    if fields[key].get('screen_facility_id', None) == screen_facility_id:
+                        logger.info('Translate derived_from_columns: %r', val)
+                        if not set(data_column_names_to_col_letter.keys()).issuperset(set(val)):
+                            raise ValidationError(
+                                key='derived_from_columns', 
+                                msg=('col: %r, values: %r are not in %r'
+                                    %(key,val,data_column_names_to_col_letter.keys())))
+                        val = ', '.join(
+                            [data_column_names_to_col_letter[dc_name] for dc_name in val])
+                    else:
+                        # Manually serialize using commas
+                        val = ', '.join(val)
                 row.append(val)
             else:
                 row.append(None)

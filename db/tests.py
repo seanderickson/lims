@@ -1,14 +1,15 @@
 from __future__ import unicode_literals
 
 from collections import OrderedDict
+import filecmp
 import json
 import logging
 import os
 import sys
 
-from django.db import connection
 from django.contrib.auth.models import User
 from django.core.urlresolvers import resolve
+from django.db import connection
 from django.test import TestCase
 from django.test.client import MULTIPART_CONTENT
 from django.utils.timezone import now
@@ -28,7 +29,7 @@ from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer, \
 from reports.tests import IResourceTestCase, equivocal
 from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, \
     find_obj_in_list, find_in_dict
-import filecmp
+import re
 
 
 logger = logging.getLogger(__name__)
@@ -843,6 +844,10 @@ class ScreenResultSerializerTest(TestCase):
             for column_field, val in input_field.items():
                 val = input_field[column_field]
                 val2 = output_field[column_field]
+                if val and column_field == 'derived_from_columns':
+                    val = set([x.upper() for x in re.split(r'[,\s]+', val)])
+                    val2 = set(re.split(r'[,\s]+', val2))
+                    
                 result,msg = equivocal(val, val2)
                 testinstance.assertTrue(
                     result,
@@ -1284,6 +1289,7 @@ class ScreenResultResource(DBResourceTestCase):
         resource_uri = '/'.join([BASE_URI_DB,resource_name])
         data_for_get = {
             'screen_facility_id__eq': screen_facility_id,
+            'includes': '*',
             'data_type__in': [
               'partition_positive_indicator','boolean_positive_indicator',
               'confirmed_positive_indicator'],
@@ -1297,7 +1303,7 @@ class ScreenResultResource(DBResourceTestCase):
             resp.status_code in [200,201,202], 
             (resp.status_code, self.get_content(resp)))
         output_data = self.deserialize(resp)
-        logger.info('datacolumn output_data: %r', output_data )
+        logger.debug('datacolumn output_data: %r', output_data )
         self.assertTrue(len(output_data['objects'])==2, 
             ('should show two positive indicator columns', output_data))
 

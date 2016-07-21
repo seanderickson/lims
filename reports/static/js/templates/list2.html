@@ -1,27 +1,34 @@
 <div class="" style="" id="list-container" >
+  <div class="row">
     <div id="list-title" class='col-sm-12' style="display:none; " />
-    <div class="message col-sm-12" id="header_message"></div>
-    <div  class="col-sm-12" id='list_controls'>
-        <div class='pull-left pull-up' id='extra_controls'></div>
-        <div class='col-sm-6 pull-down' id="paginator-div"></div>
-        <div id='list-header' class='col-sm-6 pull-right'>
-          <div class="pull-right pull-down">
-            <a class="btn btn-default btn-sm pull-down" role="button" id="select_columns" >
-            columns</a>
-          </div>
-          <div class="pull-right pull-down">
-            <a class="btn btn-default btn-sm pull-down" role="button" id="download_link" href="#">
-            download</a>
-          </div>
-<!--           <div id='downloadselector' href='#'></div> -->
+  </div>
+  <div class="row">
+    <div class='col-sm-6' id='extra_controls'></div>
+    <div  class="col-sm-6" id='list_controls'>
+      <div class="row pull-down">
+        <div class="col-xs-12 pull-right">
           <div id='extraselector'></div>
-          <div id='rppselector'></div>
+          <button class="btn btn-default btn-sm pull-right" id="download_link" href="#">Download</button>
+          <button class="btn btn-default btn-sm pull-right" id="clear_sorts" >Clear sorting</button>
+          <button class="btn btn-default btn-sm pull-right" id="clear_searches" >Clear searches</button>
+          <button class="btn btn-default btn-sm pull-right" id="select_columns" >Select columns</button>
         </div>
+      </div>
     </div>
-    <div id="example-table" class='' ></div>
+  </div>
+  <div class="row">
+    <div class='col-sm-6 pull-down' >
+      <div id="paginator-div" class="pull-right"></div>
+    </div>
+    <div class="col-sm-6  pull-down">
+      <div class="message pull-left" id="pagination_message"></div>
+      <div id='rppselector'></div>
+    </div>
+  </div>
+  <div class="row">
+    <div id="table-div" class='col-xs-12' ></div>
+  </div>
+  <div class="row">
     <div id="table-footer-div" class='col-sm-12'></div>
+  </div>
 </div>
-
-<!--
-  div id="modal" class="modal hide fade" ></div
-  -->

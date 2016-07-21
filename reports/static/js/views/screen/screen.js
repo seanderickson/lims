@@ -15,10 +15,11 @@ define([
   'views/generic_edit',
   'views/list2', 
   'views/collectionColumns',
-  'templates/generic-tabbed.html'
+  'templates/generic-tabbed.html',
+  'templates/generic-detail-screen.html'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, 
             LibraryScreening, DetailLayout, DetailView, EditView, ListView, 
-            CollectionColumnView, tabbedTemplate){
+            CollectionColumnView, tabbedTemplate, screenTemplate){
 
   var ScreenView = Backbone.Layout.extend({
 
@@ -86,7 +87,7 @@ define([
         invoke : 'setResults',
         permission: 'screenresult'
       },
-      cherryPicks: {
+      cherrypicks: {
         description : 'Cherry Pick Requests',
         title : 'Cherry Picks',
         invoke : 'setCherryPicks',
@@ -96,7 +97,7 @@ define([
         description : 'Activities',
         title : 'Activities',
         invoke : 'setActivities',
-        permission: 'activities'
+        permission: 'activity'
       },
     },
 
@@ -284,6 +285,7 @@ define([
 
     change_to_tab: function(key){
       console.log('change_to_tab', key);
+      
       if(_.has(this.tabbed_resources, key)){
         this.$('li').removeClass('active');
         this.$('#' + key).addClass('active');
@@ -345,8 +347,43 @@ define([
       var detailView = DetailView.extend({
         afterRender: function(){
           DetailView.prototype.afterRender.apply(this,arguments);
-          self.createStatusHistoryTable(this.$el.find('#status'));
-        }
+          self.createStatusHistoryTable($('#screen_extra_information'));
+          self.createActivitySummary($('#screen_extra_information'));
+          self.createCprTable($('#screen_extra_information'));
+          
+          // TODO: create a metadata setting for "show if present"
+          if (!self.model.has('perturbagen_molar_concentration')){
+            $('#perturbagen_molar_concentration').closest('tr').remove();
+          }
+          if (!self.model.has('perturbagen_ug_ml_concentration')){
+            $('#perturbagen_ug_ml_concentration').closest('tr').remove();
+          }
+          if (!self.model.has('transfection_agent')){
+            $('#transfection_agent').closest('tr').remove();
+          }
+        },
+        
+        serialize: function() {
+          console.log('serialize...');
+          var data = DetailView.prototype.serialize.apply(this,arguments);
+          var informationKeys = [];
+          var groupedKeys = [];
+          data['groupedKeys'].each(function(groupKey){
+            console.log('groupkey', groupKey);
+            if(_.result(groupKey,'title',null) == 'Information'){
+              informationKeys = informationKeys.concat(groupKey.fields);
+            }else{
+              groupedKeys.push(groupKey);
+            }
+          });
+          console.log('groupedKeys', groupedKeys, informationKeys);
+          data['groupedKeys'] = _.chain(groupedKeys);
+          data['informationKeys'] = _.chain(informationKeys);
+          return data;
+        },
+        
+        template: _.template(screenTemplate)
+        
       });
       
       var ScreenModel = Backbone.Model.extend({
@@ -396,16 +433,11 @@ define([
       };
 
       this.tabViews[key] = view;
-      
       this.listenTo(view , 'uriStack:change', this.reportUriStack);
       this.consumedStack = []; 
       this.setView("#tab_container", view ).render();
-      
-      
       return view;
-
     },
-    
     
     setAttachedFiles: function(delegateStack) {
       var self = this;
@@ -701,6 +733,163 @@ define([
       
     },
     
+    createActivitySummary: function($target_el){
+      var self = this;
+      var url = [self.model.resource.apiUri,self.model.key,'activities'].join('/');
+      var CollectionClass = Iccbl.CollectionOnClient.extend({
+        url: url
+      });
+      var cell = $('<div id="activity_summary" class="row"/>');
+      $target_el.append(cell);
+
+      function build_table(collection){
+          if (collection.isEmpty()){
+            return;
+          }
+          var activity = collection.at(0);
+          
+          cell.append($([
+            '<div class="col-xs-12"><strong>Activity Summary</strong></div>',
+            '<div id="" class="col-xs-12" >',
+            '<table id="activity_summary" class="table-condensed data-list">',
+            '<tr>',
+            '<td class="dl-title small">Activities</td>', 
+            '<td class="dl-data small">',
+            Iccbl.formatString(
+              '<a href="#screen/{facility_id}/activities">{activity_count}</a>', 
+              self.model),
+            '</td>', 
+            '</tr>',
+            '<tr>',
+            '<td class="dl-title small">Last Activity</td>', 
+            '<td class="dl-data small">',
+            '<table id="last_activity" class="table-condensed data-list">',
+            '<tr>',
+            '<td class="dl-title ">Date</td>', 
+            '<td class="dl-data ">' + activity.get('date_of_activity') + '</td>',
+            '</tr>',
+            '<tr>',
+            '<td class="dl-title ">Activity Type</td>', 
+            '<td class="dl-data ">',
+            appModel.getVocabularyTitle('activity.type',activity.get('type')),
+            '</td>',
+            '</tr>',
+            '<tr>',
+            '<td class="dl-title col-xs-6">Performed By</td>', 
+            '<td class="dl-data ">' + activity.get('performed_by_name') + '</td>',
+            '</tr>',
+            '</table>',
+            '</td>',
+            '</tr>',
+            '</table>',
+            '</div>'
+            ].join('')));
+
+          $('#activity_count').closest('tr').remove();
+      }      
+      if(self.model.has('latest_activities_data')){
+        build_table(new CollectionClass(self.model.get('latest_activities_data')));
+      }else{
+        var cpr_collection = new CollectionClass();
+        cpr_collection.fetch({
+          data: { 
+            limit: 1,
+            order_by: ['-date_of_activity']
+          },
+          success: build_table
+        }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
+      }
+    },
+    
+    createCprTable: function($target_el){
+      var self = this;
+      var cprResource = appModel.getResource('cherrypickrequest');
+      var CollectionClass = Iccbl.CollectionOnClient.extend({
+        url: cprResource.apiUri 
+      });
+      var cell = $('<div id="cpr_table" class="row"/>');
+      $target_el.append(cell);
+      
+      function build_table(collection){
+        if (collection.isEmpty()){
+          return;
+        }
+        collection.each(function(model){
+        });
+        var TextWrapCell = Backgrid.Cell.extend({
+          className: 'text-wrap-cell'
+        });
+        var colTemplate = {
+          'cell' : 'string',
+          'order' : -1,
+          'sortable': false,
+          'searchable': false,
+          'editable' : false,
+          'visible': true,
+          'headerCell': Backgrid.HeaderCell
+        };
+        var columns = [
+          _.extend({},colTemplate,{
+            'name' : 'cherry_pick_request_id',
+            'label' : '#',
+            'description' : 'Cherry Pick Request ID',
+            'order': 1,
+            'sortable': true,
+            'cell': Iccbl.LinkCell.extend({
+              hrefTemplate: '#cherrypickrequest/{cherry_pick_request_id}'
+            })
+          }),
+          _.extend({},colTemplate,{
+            'name' : 'date_requested',
+            'label' : 'Date Requested',
+            'description' : 'Date',
+            'order': 1,
+            'sortable': true,
+            'cell': 'Date'
+          }),
+          _.extend({},colTemplate,{
+            'name' : 'requested_by_name',
+            'label' : 'Requested By',
+            'description' : 'Requested By',
+            'order': 1,
+            'sortable': true,
+            'cell': TextWrapCell
+          })
+        ];
+        var colModel = new Backgrid.Columns(columns);
+        colModel.comparator = 'order';
+        colModel.sort();
+
+        cell.append($([
+          '<div class="col-xs-12"><strong>',
+          'Recent <a href="#screen/' + self.model.get('facility_id'),
+          '/cherrypicks">Cherry Pick Requests</a></strong></div>',
+          '<div class="col-xs-12" id="cprs"/>'].join('')));
+        
+        var _grid = new Backgrid.Grid({
+          columns: colModel,
+          collection: collection,
+          className: 'backgrid table-striped table-condensed table-hover '
+        });
+        cell.find('#cprs').html(_grid.render().$el);
+        
+      }
+      
+      if(self.model.has('cherry_pick_request_data')){
+        build_table(new CollectionClass(self.model.get('cherry_pick_request_data')));
+      }else{
+        var cpr_collection = new CollectionClass();
+        cpr_collection.fetch({
+          data: { 
+            limit: 10,
+            screen_facility_id__eq: self.model.key,
+            order_by: ['-date_requested']
+          },
+          success: build_table
+        }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
+      }
+    },
+    
     /**
      * Update the screen status with a status history table: populate
      * using the apilog history of the status attribute
@@ -711,68 +900,81 @@ define([
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: apilogResource.apiUri 
       });
-      var status_collection = new CollectionClass();
-      status_collection.fetch({
-        data: { 
-          limit: 0,
-          key: self.model.get('facility_id'),
-          ref_resource_name: self.model.resource.key,
-          diff_keys__icontains: '"status"',
-          order_by: ['date_time']
-        },
-        success: function(collection, response) {
-          if (collection.isEmpty()){
-            return;
-          }
-          collection.each(function(model){
-            var diffs = JSON.parse(model.get('diffs'));
-            model.set('status', diffs.status[1]);
-          });
-          var TextWrapCell = Backgrid.Cell.extend({
-            className: 'text-wrap-cell'
-          });
-          var colTemplate = {
-            'cell' : 'string',
-            'order' : -1,
-            'sortable': false,
-            'searchable': false,
-            'editable' : false,
-            'visible': true,
-            'headerCell': Backgrid.HeaderCell
-          };
-          var columns = [
-              _.extend({},colTemplate,{
-                'name' : 'status',
-                'label' : 'Status',
-                'description' : 'Screen status',
-                'order': 1,
-                'sortable': true,
-                'cell': TextWrapCell
-              }),
-              _.extend({},colTemplate,{
-                'name' : 'date_time',
-                'label' : 'Date',
-                'description' : 'Date',
-                'order': 1,
-                'sortable': true,
-                'cell': 'Date'
-              })];
-          var colModel = new Backgrid.Columns(columns);
-          colModel.comparator = 'order';
-          colModel.sort();
-
-          $target_el.empty();
-          var cell = $('<div>',{ class: 'col-sm-4' });
-          
-          var status_grid = new Backgrid.Grid({
-            columns: colModel,
-            collection: collection,
-            className: 'backgrid table-striped table-condensed table-hover'
-          });
-          cell.html(status_grid.render().$el);
-          $target_el.append(cell);
+      var cell = $('<div id="status_table" class="row"/>');
+      $target_el.append(cell);
+      
+      function build_table(collection){
+        if (collection.isEmpty()){
+          return;
         }
-      }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
+        collection.each(function(model){
+          var diffs = JSON.parse(model.get('diffs'));
+          model.set('status', appModel.getVocabularyTitle('screen.status', diffs.status[1]));
+        });
+        var TextWrapCell = Backgrid.Cell.extend({
+          className: 'text-wrap-cell'
+        });
+        var colTemplate = {
+          'cell' : 'string',
+          'order' : -1,
+          'sortable': false,
+          'searchable': false,
+          'editable' : false,
+          'visible': true,
+          'headerCell': Backgrid.HeaderCell
+        };
+        var columns = [
+            _.extend({},colTemplate,{
+              'name' : 'status',
+              'label' : 'Status',
+              'description' : 'Screen status',
+              'order': 1,
+              'sortable': true,
+              'cell': TextWrapCell
+            }),
+            _.extend({},colTemplate,{
+              'name' : 'date_time',
+              'label' : 'Date',
+              'description' : 'Date',
+              'order': 1,
+              'sortable': true,
+              'cell': 'Date'
+            })];
+        var colModel = new Backgrid.Columns(columns);
+        colModel.comparator = 'order';
+        colModel.sort();
+
+        $('#status').closest('tr').remove();
+        $('#status_date').closest('tr').remove();
+        cell.append($([
+          '<div class="col-xs-12"><strong>Status Items</strong></div>',
+          '<div class="col-xs-12" id="status_items"/>'].join('')));
+        
+        var status_grid = new Backgrid.Grid({
+          columns: colModel,
+          collection: collection,
+          className: 'backgrid table-striped table-condensed table-hover '
+        });
+        cell.find('#status_items').html(status_grid.render().$el);
+        
+      }
+      
+      if(self.model.has('status_data')){
+        build_table(new CollectionClass(self.model.get('status_data')));
+      }else{
+        var status_collection = new CollectionClass();
+        status_collection.fetch({
+          data: { 
+            limit: 0,
+            key: self.model.get('facility_id'),
+            ref_resource_name: self.model.resource.key,
+            diff_keys__icontains: '"status"',
+            order_by: ['-date_time']
+          },
+          success: build_table
+        }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
+      }
+      
     },
     
     _addVocabularyButton: function(
@@ -1132,14 +1334,14 @@ define([
       });
       var $loadScreenResultsButton = $(
         '<a class="btn btn-default btn-sm" role="button" \
-        id="loadScreenResults" href="#">Load Screen Results</a>');
+        id="loadScreenResults" href="#">Load Data</a>');
       $loadScreenResultsButton.click(function(e){
         e.preventDefault();
         self.loadScreenResults();
       });
       var $deleteScreenResultsButton = $(
         '<a class="btn btn-default btn-sm" role="button" \
-        id="deleteScreenResults" href="#">Delete Screen Results</a>');
+        id="deleteScreenResults" href="#">Delete Data</a>');
       $deleteScreenResultsButton.click(function(e){
         e.preventDefault();
         self.deleteScreenResults();
@@ -1147,14 +1349,12 @@ define([
       
       function viewLoadHistory(e){
         e.preventDefault();
-        console.log('history button...');
         var newUriStack = ['apilog','order','-date_time', 'search'];
         var search = {};
         search['ref_resource_name'] = 'screenresult';
         search['key'] = self.model.key;
         newUriStack.push(appModel.createSearchString(search));
         var route = newUriStack.join('/');
-        console.log('history route: ' + route);
         appModel.router.navigate(route, {trigger: true});
         self.remove();
       }
@@ -1211,8 +1411,6 @@ define([
           
           self.setView("#tab_container", view ).render();
           
-          // TODO: fixup the detaillayout & detail view so that well is on detailview
-          view.$el.addClass('well');
           self.reportUriStack([]);
           
         },{ data_for_get: { visibilities: ['summary']} }
@@ -1332,7 +1530,7 @@ define([
           });
           
           $target_el.empty();
-          var cell = $('<div>',{ class: 'col-sm-4' });
+          var cell = $('<div>',{ class: 'col-xs-4' });
           cell.html(positives_grid.render().$el);
           $target_el.append(cell);
         }
@@ -1390,14 +1588,24 @@ define([
           'searchable': false,
           'editable' : false,
           'visible': true,
-          'headerCell': Backgrid.HeaderCell
+          'headerCell': Backgrid.HeaderCell.extend({
+            render: function(){
+              this.$el.empty();
+              var label = Iccbl.createLabel(
+                this.column.get("label"), 10);
+              this.$el.append(label);
+              return this;
+            }
+          })
         };
         // setup the first column - schema field titles (that are visible)
         var col0 = _.extend({},colTemplate,{
           'name' : 'fieldname',
-          'label' : 'Data Column',
+          'label' : '',
           'description' : 'Datacolumn field',
-          'cell': TextWrapCell
+          'cell': TextWrapCell.extend({
+            className: '150_width'
+          })
         });
         columns.push(col0);
         
@@ -1411,6 +1619,11 @@ define([
             'cell': TextWrapCell
           });
           columns.push(col);
+          if (datacolumn.has('derived_from_columns')){
+            datacolumn.set(
+              'derived_from_columns', 
+              datacolumn.get('derived_from_columns').join(', '));
+          }
         });
         var colModel = new Backgrid.Columns(columns);
         colModel.comparator = 'order';
@@ -1420,7 +1633,8 @@ define([
         orderedFields = _.sortBy(datacolumnResource.fields,'ordinal');
         var pivotCollection = new Backbone.Collection();
         _.each(orderedFields, function(field){
-          if(_.contains(field.visibility, 'l') && field.key != 'name' ){
+          if(_.contains(field.visibility, 'l') 
+              && !_.contains(['name','title','key'],field.key )){
             var row = {'key': field.key, 'fieldname': field.title };
             collection.each(function(datacolumn){
               row[datacolumn.get('key')] = datacolumn.get(field.key);
@@ -1460,22 +1674,14 @@ define([
       
       var createResults = function(schemaResult){
         var show_positives_control = $([
-          '<form>',
-          '<div class="checkbox">',
-          '<label>',
+          '<label class="checkbox-inline">',
           '  <input type="checkbox">positives',
-          '</label>',
-          '</div>',
-          '</form>'
+          '</label>'
           ].join(''));
         var show_mutual_positives_control = $([
-           '<form>',
-           '<div class="checkbox">',
-           '<label>',
+          '<label class="checkbox-inline">',
            '  <input type="checkbox">mutual positives',
-           '</label>',
-           '</div>',
-           '</form>'
+           '</label>'
            ].join(''));
         // create an option vocab for the exclued col, if needed
         if (_.has(schemaResult['fields'], 'excluded')){

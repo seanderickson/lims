@@ -52,8 +52,6 @@ define([
       var Select2 = Backbone.Form.editors.Select.extend({
         render: function() {
           Select2.__super__.render.apply(this,arguments);
-//          this.$el.css('position', 'relative'); // kludgy; brings it on top
-//          this.$el.css('z-index', 10000); // brings it on top
           return this;
         },        
       });
@@ -61,8 +59,6 @@ define([
       var TextArea2 = Backbone.Form.editors.TextArea.extend({
         render: function() {
           TextArea2.__super__.render.apply(this,arguments);
-          //this.$el.css('position', 'relative'); // kludgy; brings it on top
-          //this.$el.css('z-index', 10000); // kludgy; brings it on top
           return this;
         },        
       });
@@ -97,17 +93,45 @@ define([
           template: self.choiceFieldTemplate
         };
       
+      //multisearchOptions = [
+      //  {
+      //    group: 'User',
+      //    options: appModel.getUserOptions()
+      //  },
+      //  {
+      //    group: 'Screen',
+      //    options: appModel.getScreenOptions()
+      //  },
+      //  {
+      //    group: 'Library',
+      //    options: appModel.getLibraryOptions()
+      //  }
+      //];
+      //formSchema['multisearch'] = {
+      //    title: '',
+      //    key: 'multisearch',
+      //    type: EditView.ChosenSelect,
+      //    editorClass: 'chosen-select',
+      //    placeholder: 'Search...',
+      //    options: multisearchOptions,
+      //    template: self.choiceFieldTemplate
+      //  };
+      
       formSchema['search_target'] = {
         title: 'Search', 
         key:  'search_target', // TODO: "key" not needed>?
         type: EditView.ChosenSelect,
-        placeholder: 'Search by...',
+        placeholder: 'Search For:',
         options: [{ val: 'reagent', label: 'Wells'},
                   { val: 'librarycopyplate', label: 'Plate copies'},
                   { val: 'librarycopy', label: 'Copies'},
                   { val: 'copywell', label: 'Copy Wells'},
                   ],
         template: self.choiceFieldTemplate,
+        validators: [{ 
+          type: 'required', 
+          message: 'Select Search For: Wells, Plate copies, Copies, or Copy Wells' 
+        }],
         editorClass: 'chosen-select'
       };
       
@@ -243,10 +267,6 @@ define([
           '<div class="col-xs-3">',
           '<button type="submit" class="btn btn-default btn-xs" style="width: 3em; " >ok</input>',
           '</div>',
-          '<div class="col-xs-3">',
-          '<a class="backgrid-filter clear" data-backgrid-action="clear"',
-          ' href="#">&times;</a></div>',
-          '</div>',
           ].join(''));
 
       this.$el.find('[ type="submit" ]').click(function(e){
@@ -257,7 +277,6 @@ define([
       console.log('setup single selects using chosen...');
       // See http://harvesthq.github.io/chosen/
       this.$el.find('.chosen-select').chosen({
-        disable_search_threshold: 3,
         width: '100%',
         allow_single_deselect: true,
         search_contains: true
@@ -317,6 +336,7 @@ define([
       if(!search_target ||
           _.isUndefined(search_target)||_.isEmpty(search_target.trim())){
         console.log('cancelling submit with nothing entered');
+        $('[name="search_target"').parents('.form-group').addClass('has-error');
         return;
       }
       search_target = search_target.trim();
@@ -448,12 +468,6 @@ define([
             if(matching_hash[entity].type) type = matching_hash[entity].type;
             
             var search_entry = entity + '__' + type;
-//            // Hack because pattern for library_short_name is equivalent to the copy_name pattern
-//            if( search_entry == 'library_short_name__icontains'){
-//              if(!_.has(and_hash, 'copy_name__in')){
-//                search_entry = 'copy_name__in';
-//              }
-//            }
             
             if(type == 'range'){
               and_hash[search_entry] = terms[0].split('-').join(',');
@@ -466,11 +480,13 @@ define([
       
       var data_el = this.$el.find('#data-error');
       if(!_.isEmpty(errors)){
-          data_el.html('<div class="help-block"><h5>Unparseable search values:</h5>"' + 
+          data_el.html('<div class="help-block"><h5>Search term not recognized:</h5>"' + 
               errors.join('" ,"') + '"</br>' +
               "<h5>Allowed patterns:</h5>" + 
               _.map(matching_hash, function(val,key){
-                return '<dt>' + val.title + '</dt><dd>' + val.help + '</dd>'; 
+                if (val.title){
+                  return '<dt>' + val.title + '</dt><dd>' + val.help + '</dd>'; 
+                }
               }).join('') + "</dl></div>");
           data_el.show();
           return;

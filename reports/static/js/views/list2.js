@@ -17,22 +17,21 @@ define([
   
   var ListView = Backbone.View.extend({
 
-    //LIST_ROUTE_ORDER: ['rpp', 'page', 'includes', 'order','search'],
     LIST_ROUTE_ORDER: appModel.LIST_ARGS,
     SEARCH_DELIMITER: appModel.SEARCH_DELIMITER,
     
     events: {
-      'click .btn#select_columns': 'select_columns',
-      'click .btn#download_link': 'download'
+      'click button#select_columns': 'select_columns',
+      'click button#download_link': 'download',
+      'click button#clear_sorts': 'clear_sorts',
+      'click button#clear_searches': 'clear_searches'
     },
 
     initialize : function(args) {
       
-      console.log('initialize ListView: ');
       var self = this;
       var _options = self._options = args.options;
       var resource = self._options.resource;
-      
       var ListModel = Backbone.Model.extend({
         defaults: {
             rpp: 25,
@@ -40,7 +39,6 @@ define([
             order: {},
             search: {}}
         });
-      
       var preset_searches = {};
       if(!_.isUndefined(resource.options)
           && ! _.isUndefined(resource.options.search)){
@@ -48,7 +46,6 @@ define([
           preset_searches[key] = resource.options.search[key];
         });
       }
-      
       var urlSuffix = self.urlSuffix = "";
       var listInitial = {};
 
@@ -71,7 +68,6 @@ define([
       // set with the uriStack values
       if(_.has(self._options,'uriStack')){
         var stack = self._options.uriStack;
-        console.log('initialize ListView: ',stack);
         for (var i=0; i<stack.length; i++){
           var key = stack[i];
           i = i+1;
@@ -415,7 +411,6 @@ define([
                   success: function(model,response){
                     console.log('model removed successfully', model, response);
                   }
-//                  error: appModel.backboneFetchError
                 }).fail(function(){ appModel.jqXHRfail.apply(this,arguments); });      
               }
             },
@@ -424,11 +419,9 @@ define([
         });
       });
       
-      // Rows-per-page selector
       var rppModel = self.rppModel = new Backbone.Model({ 
           selection: String(self.listModel.get('rpp')) 
         });
-      
       var rpp_selections = ['25','50','200','500','1000'];
       if(!_.isUndefined(self._options.resource.options)
           && ! _.isUndefined(self._options.resource.options.rpp_selections)){
@@ -454,22 +447,8 @@ define([
 
       if(self.collection instanceof Backbone.PageableCollection){
         var paginator = self.paginator = new Backgrid.Extension.Paginator({
-      	  // If you anticipate a large number of pages, you can adjust
-      	  // the number of page handles to show. The sliding window
-      	  // will automatically show the next set of page handles when
-      	  // you click next at the end of a window.
-      	  // windowSize: 20, // Default is 10
-  
-      	  // Used to multiple windowSize to yield a number of pages to slide,
-      	  // in the case the number is 5
-      	  //slideScale: 0.25, // Default is 0.5
-  
-      	  // Whether sorting should go back to the first page
-      	  // from https://github.com/wyuenho/backgrid/issues/432
       	  goBackFirstOnSort: false, // Default is true
-  
-      	  collection: self.collection,
-      	  
+      	  collection: self.collection      	  
       	});            
         this.objects_to_destroy.push(paginator);
       }
@@ -478,8 +457,6 @@ define([
         // TODO: this listener should be set in the collection initializer
         var searchHash = _.clone(self.listModel.get('search'));
         self.collection.setSearch(searchHash);
-
-//        self.collection.fetch();
       });
       // Extraselector
       if( _.has(schemaResult, 'extraSelectorOptions')){
@@ -582,7 +559,6 @@ define([
 
       this.objects_to_destroy = null; // critical for memory mgt
       this.paginator = null; // critical for memory mgt
-
       this.finalGrid = null;
       this.grid = null;
       this.collection = null;
@@ -606,7 +582,7 @@ define([
 
       var finalGrid = self.finalGrid = this.grid.render();
       self.objects_to_destroy.push(finalGrid);
-      self.$("#example-table").append(finalGrid.el);
+      self.$("#table-div").append(finalGrid.el);
       // FIXME: move css classes out to templates
       finalGrid.$el.addClass("col-sm-12 table-striped table-condensed table-hover");
 
@@ -620,32 +596,6 @@ define([
             self.extraSelectorInstance.render().$el);
       }
 
-      var clearSearchesButton = $([
-        '<div class="pull-right pull-down">',
-        '<div class="">',
-        '<a class="btn btn-default btn-sm pull-down" id="clear-searches" >clear search</a>',
-        '</div>',
-        '</div>'
-        ].join(''));
-      clearSearchesButton.click(function(e){
-        e.preventDefault();
-        self.clear_searches();
-      });
-      self.$('#list-header').append(clearSearchesButton);
-      
-      var clearSortsButton = $([
-        '<div class="pull-right pull-down">',
-        '<div class="">',
-        '<a class="btn btn-default btn-sm pull-down" id="clear-sorts" >clear sort</a>',
-        '</div>',
-        '</div>'
-        ].join(''));
-      clearSortsButton.click(function(e){
-        e.preventDefault();
-        self.clear_sorts();
-      });
-      self.$('#list-header').append(clearSortsButton);
-                               
       if(_.has(self._options,'extraControls')){
         _.each(self._options.extraControls, function(control){
           self.$('#extra_controls').append(control);
@@ -679,15 +629,15 @@ define([
                ' of ' + ( self.collection.state.lastPage ? self.collection.state.lastPage:1 ) + 
                ' pages, ' + self.collection.state.totalRecords + 
                ' ' + self._options.resource.title  + ' records';
-        self.$('#header_message').html(msg);
+        self.$('#pagination_message').html(msg);
       });
       
       if ( !fetched ) {
-        var fetchOptions = { 
-          reset: false };
+        var fetchOptions = { reset: false };
         self.collection.fetch(
           fetchOptions
-        ).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
+        ).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); }
+        ).done(function(){ });      
       }
       
       // Note: replace: true - to suppress router history:
@@ -730,7 +680,6 @@ define([
             self._options.resource);
       }
     },
-     
     
     /** Build the select columns dialog **/
     select_columns: function(event){
@@ -738,8 +687,10 @@ define([
       var self = this;
       var form_template = [
         "<form  class='form-horizontal container' >",
-        "<div class='btn btn-default btn-sm ' id='select-all' >select all</div>",
-        "<div class='btn btn-default btn-sm ' id='clear-all' >clear all</div>"
+        "<div class='btn btn-default btn-sm ' id='select-all' >Select All</div>",
+        "<div class='btn btn-default btn-sm ' id='clear-all' >Clear All</div>",
+        "<button class='btn btn-default btn-sm ' id='modal-cancel'>Cancel</button>",
+        "<button class='btn btn-default btn-sm ' id='modal-ok'>Ok</button>"
       ];
       var field_template = '<div data-fields="<%= name %>" ></div>';
       var optgroupSelectionTemplate = [
@@ -956,7 +907,8 @@ define([
       });
       
       appModel.showModal({
-
+        cancelText: 'Cancel',
+        okText: 'Ok',
         ok: function(){
         
           form.commit();

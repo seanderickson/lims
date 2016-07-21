@@ -331,7 +331,7 @@ define([
             return false;
           }else{
             var values = form.getValue();
-            var resource = appModel.getResource('vocabularies');
+            var resource = appModel.getResource('vocabulary');
             var key = values['affiliation_name'].toLowerCase().replace(/\W+/g, '_');
             var ordinal = currentAffiliationNames.length + 1;
             var max_item = _.max(currentAffiliationNames, function(affil){ return affil.ordinal });

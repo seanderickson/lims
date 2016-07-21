@@ -41,7 +41,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
   var ContentView = Iccbl.UriContainerView.extend({
     
     template: _.template(layout),
-    className: "col-sm-10 col-md-10 col-lg-10",
+    //className: "col-sm-10 col-md-10 col-lg-10",
     
     initialize: function() {
       console.log('initialize content.js', arguments);
@@ -330,10 +330,15 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           }else{ 
             try{
               var _key = Iccbl.popKeyFromStack(resource, uriStack, consumedStack );
+              var options = {};
+              if (uiResourceId == 'screen'){
+                // Use the special "ui" url for screen
+                options.url = [resource.apiUri, _key, 'ui'].join('/');
+              }
               appModel.getModel(uiResourceId, _key, function(model){
                 model.resource = resource;
                 self.showDetail(uriStack, model);
-              });
+              }, options);
             }catch(e){
               var msg = 'Unable to display resource: ' + uiResourceId;
               console.log(msg,e);

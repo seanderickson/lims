@@ -12,22 +12,6 @@ var Iccbl = root.Iccbl = {
     appModel : "This value will be initialized on app start"
 };
 
-// TODO: remove this
-var assertIccbl = Iccbl.assert = function(condition, message) {
-    if (!condition) {
-        throw message || "Assertion failed";
-    }
-};
-
-// TODO: deprecated
-requireOptions = Iccbl.requireOptions = function(options,requireOptionKeys){
-    for (var i = 0; i < requireOptionKeys.length; i++) {
-      var key = requireOptionKeys[i];
-      if (_.isUndefined(options[key])) {
-        throw new TypeError("'" + key  + "' is required");
-      }
-    }
-};
 
 /**
  * Format a string of containing "replacement fields" surrounded by 
@@ -396,14 +380,19 @@ var containsByMatch = Iccbl.containsByMatch = function(array, matchstring){
  */
 var createLabel = Iccbl.createLabel = function(original_label, max_line_length, break_char){
   var lines = [];
-  var labelParts = original_label.split(/([\s_\-\.,])/);
+  var labelParts = original_label.split(/([\s_\-\.,]+)/);
   var line = '';
   _.each(labelParts, function(part){
     if(line.length > 0){
-      if(line.length+part.length <= max_line_length){
-        line += part;
+      var temp = line + part;
+      console.log('linetemp:'+temp.trim()+'|', temp.trim().length <= max_line_length);
+      if(temp.trim().length <= max_line_length){
+        line = temp;
       }else{
-        lines.push(line);
+        line = line.trim();
+        if (line.length > 0) {
+          lines.push(line);
+        }
         line = part;
       }
     }else{
@@ -412,6 +401,7 @@ var createLabel = Iccbl.createLabel = function(original_label, max_line_length, 
       }
     }
   });
+  line = line.trim();
   lines.push(line);
   
   if(_.isUndefined(break_char)){
@@ -1676,11 +1666,11 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
     this.$el.append(label);
     this.$el.addClass(column.get("direction"));
     this.$el.addClass(column.get("name"));
-      this.delegateEvents();
-      return this;
-    }
-   
-  });
+    this.delegateEvents();
+    return this;
+  }
+    
+});
 
 
 var BackgridFormFilter = Backbone.Form.extend({

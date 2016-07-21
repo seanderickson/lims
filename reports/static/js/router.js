@@ -12,11 +12,14 @@ function($, _, Backbone, appModel) {
       // send all routes to URIstack processing function
       this.route(/(.*)/, "toPath", this.toPath);
       this.routesHit = 0;
-      Backbone.history.on('route', function(router, route, params) {
-              this.routesHit++;
-              console.log('detected route: ' + route + ', params: ' 
-                  + JSON.stringify(params) + ', routesHit:' + this.routesHit);
-           }, this);
+      Backbone.history.on(
+        'route', 
+        function(router, route, params)
+        {
+          this.routesHit++;
+          console.log('detected route: ' + route + ', params: ' 
+              + JSON.stringify(params) + ', routesHit:' + this.routesHit);
+        }, this);
 
       this.listenTo(appModel, 'change:uriStack', this.uriStackChange);
       console.log('router initialized...');
@@ -42,13 +45,13 @@ function($, _, Backbone, appModel) {
     back: function() {  
       if(this.routesHit >= 1) {
         console.log('back, routesHit: ' + this.routesHit);
-        //more than one route hit -> user did not land to current page directly
+        // More than one route hit -> user did not land to current page directly
         this.routesHit--;
         window.history.back();
       } else {
         console.log('first route in site, back to home...');
-        //otherwise go to the home page. Use replaceState if available so
-        //the navigation doesn't create an extra history entry
+        // Otherwise go to the home page. Use replaceState if available so
+        // the navigation doesn't create an extra history entry
         this.navigate('/', {trigger:true, replace:true});
       }
     },
@@ -77,14 +80,18 @@ function($, _, Backbone, appModel) {
       // TODO: this mirrors the handler for route match in main.js
       document.title = 'Screensaver LIMS' + ': ' + route;
 
-      // trigger false to suppress further parsing, 
-      // replace false (default) to create browser history
+      // Trigger false to suppress further parsing, 
+      // Replace false (default) to create browser history
       var options = { trigger: false, replace:false }; // , replace:false
       var routing_options = appModel.get('routing_options');
       appModel.set({ routing_options: {} });
       if(!_.isUndefined(routing_options)){
           options = _.extend(options, routing_options);
       }
+      
+      // Clear out error messages after navigating away from page
+      appModel.unset('messages');
+      
       this.navigate( route, options );
     }
 

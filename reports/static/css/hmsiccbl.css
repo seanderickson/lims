@@ -1,8 +1,11 @@
 body {
 /* 	background-color: #e3e3e3; */
-  background-color: #c5d2db;
+/*   background-color: #c5d2db; */
 }
 
+#menu {
+  background-color: rgba(197, 210, 219, 0.3);
+}
 @media (min-width: 568px) {
   .container {
     width: inherit;
@@ -131,13 +134,18 @@ padding: 3px 15px;
 .menu > li > a:hover,
 .menu > li > a:focus {
   text-decoration: none;
-  background-color: #eeeeee;
+  background-color: #dddddd;
 }
 
 .hover  li > a:hover,
 .hover  li > a:focus {
   text-decoration: none;
   background-color: #eeeeee !important;
+}
+
+.nav-tabs > li.active > a {
+  text-decoration: none;
+  background-color: rgba(197, 210, 219, 0.3);
 }
 
 /** backgrid.css overrides **/
@@ -155,11 +163,9 @@ div.backgrid-paginator {
 /*  text-align: left; */
 }
 
-ul.backgrid-paginator {
+.backgrid-paginator ul{
   display: inline;
-  text-align: left;
 }
-
 
 /** Styles for using a table for detail view (may use data-list style instead, below)*/
 
@@ -167,9 +173,6 @@ td.dl-title {
   text-align: left;
   background: #dddddd;
   font-weight:bold;
-/*   padding-bottom: 4px !important; */
-/*   border-width: 4px; */
-/*   padding: 1px !important; */
   border-style: solid;
   border-color: #f5f5f5;  
 }
@@ -320,3 +323,8 @@ td.text-wrap-cell {
     height: 32px; 
   }
 }
+
+.150_width {
+ width: 150px;
+}
+

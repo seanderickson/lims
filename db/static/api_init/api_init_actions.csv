@@ -1,6 +1,6 @@
 command,resource,file
 patch,resource,metahash_resource_data.csv
-patch,vocabularies,vocabularies_data.csv
+patch,vocabulary,vocabulary_data.csv
 patch,field,metahash_fields_screensaveruser.csv
 patch,field,metahash_fields_screeningroomuser.csv
 patch,field,metahash_fields_screen.csv
@@ -19,13 +19,13 @@ patch,field,metahash_fields_cherrypickrequest.csv
 patch,field,metahash_fields_cherrypickassayplate.csv
 patch,field,metahash_fields_userchecklistitem.csv
 patch,field,metahash_fields_attachedfile.csv
-patch,vocabularies,vocabularies_data_generated.csv
-patch,vocabularies,vocabularies_attachedfiletype_data.csv
-patch,vocabularies,vocabularies_checklists_data.csv
+patch,vocabulary,vocabulary_data_generated.csv
+patch,vocabulary,vocabulary_attachedfiletype_data.csv
+patch,vocabulary,vocabulary_checklists_data.csv
 patch,field,metahash_fields_activity.csv
 patch,field,metahash_fields_serviceactivity.csv
 patch,field,metahash_fields_libraryscreening.csv
 patch,field,metahash_fields_cherrypickscreening.csv
-patch,vocabularies,vocabularies_lab_affiliations_data.csv
+patch,vocabulary,vocabulary_lab_affiliations_data.csv
 patch,field,metahash_fields_cplt.csv
 patch,field,metahash_fields_publication.csv

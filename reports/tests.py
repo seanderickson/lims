@@ -1679,8 +1679,8 @@ class TestApiInit(IResourceTestCase):
                 'metahash_fields_initial_patch.csv',
                 'metahash_fields_resource.csv',
                 'metahash_resource_data.csv',
-                'metahash_fields_vocabularies.csv',
-                'vocabularies_data.csv']
+                'metahash_fields_vocabulary.csv',
+                'vocabulary_data.csv']
             for action in api_init_actions:
                 
                 logger.debug('\n++++=========== processing action', json.dumps(action))
@@ -2137,7 +2137,7 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         user.save()
 
         # 1 read test - user, user's group don't have the permission
-        resource_uri = BASE_URI + '/vocabularies'
+        resource_uri = BASE_URI + '/vocabulary'
         resp = self.api_client.get(
             resource_uri, format='json', data={}, 
             authentication=self.create_basic(username, password ))

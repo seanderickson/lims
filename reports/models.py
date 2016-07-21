@@ -46,7 +46,7 @@ class MetaManager(GetOrNoneManager):
             e.g. "fields.screensaveruser", or "fields.screen"
         field_definition_scope - also defines what is in the the json_field for
         this hash;
-            e.g. "fields.field", or "fields.resource, or fields.vocabularies"
+            e.g. "fields.field", or "fields.resource, or fields.vocabulary"
         '''
         metahash = {}
         if not clear:
@@ -73,7 +73,7 @@ class MetaManager(GetOrNoneManager):
             e.g. "fields.screensaveruser", or "fields.screen"
         field_definition_scope - also defines what is in the the json_field for 
         this hash;
-            e.g. "fields.field", or "fields.resource, or fields.vocabularies"
+            e.g. "fields.field", or "fields.resource, or fields.vocabulary"
         '''
         logger.debug('get_and_parse table field definitions for scope: %r, fds: %r',
             scope, field_definition_scope)
@@ -108,7 +108,7 @@ class MetaManager(GetOrNoneManager):
                 vocab_ref = parsed_object['vocabulary_scope_ref']
                 logger.debug(str(('vocab_ref', vocab_ref)))
                 parsed_object['choices'] = [
-                    x.key for x in Vocabularies.objects.all().filter(
+                    x.key for x in Vocabulary.objects.all().filter(
                         scope=vocab_ref)]
             
             parsed_objects[unparsed_object.key] = dict_strip_unicode_keys(parsed_object)
@@ -312,7 +312,7 @@ class MetaHash(models.Model):
         return unicode(str((self.scope, self.key, self.id, self.alias)))
     
     
-class Vocabularies(models.Model):
+class Vocabulary(models.Model):
     
     objects                 = MetaManager()
     #    objects                 = models.Manager() # default manager

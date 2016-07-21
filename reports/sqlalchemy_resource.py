@@ -693,7 +693,7 @@ class SqlAlchemyResource(IccblBaseResource):
             logger.exception('on get list')
             return []
         
-    @un_cache
+    #@un_cache
     def _get_detail_response_internal(self, **kwargs):
         request = HttpRequest()
         class User:
@@ -701,10 +701,18 @@ class SqlAlchemyResource(IccblBaseResource):
             def is_superuser():
                 return true
         request.user = User
-#         temp = self.use_cache
-#         self.use_cache = False
         result = self._get_detail_response(request, **kwargs)
-#         self.use_cache = temp
+        return result
+
+    # @un_cache
+    def _get_list_response_internal(self, **kwargs):
+        request = HttpRequest()
+        class User:
+            @staticmethod
+            def is_superuser():
+                return true
+        request.user = User
+        result = self._get_list_response(request, **kwargs)
         return result
     
     def _get_detail_response(self,request,**kwargs):
@@ -756,7 +764,7 @@ class SqlAlchemyResource(IccblBaseResource):
         
         TODO: cache clearing on database writes
         '''
-        DEBUG_CACHE = True or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_CACHE = False or logger.isEnabledFor(logging.DEBUG)
         if limit == 0:
             raise Exception('limit for caching must be >0')
         
@@ -895,8 +903,8 @@ class SqlAlchemyResource(IccblBaseResource):
             result = None
             if desired_format == 'application/json':
                 logger.info(
-                    'streaming json, use_caching: %r, limit: %d, %r', 
-                    use_caching, limit, is_for_detail)
+                    'streaming json, use_caching: %r, %r, limit: %d, %r', 
+                    use_caching, self.use_cache, limit, is_for_detail)
                 # if not is_for_detail and use_caching and self.use_cache and limit > 0:
                 if use_caching and self.use_cache and limit > 0:
                     cache_hit = self._cached_resultproxy(
@@ -913,7 +921,7 @@ class SqlAlchemyResource(IccblBaseResource):
                     logger.info(str(('====count====', count)))
                     
                 else:
-                    logger.info('execute count stmt...')
+                    logger.info('not cached, execute count stmt...')
                     count = conn.execute(count_stmt).scalar()
                     logger.info('excuted count stmt: %d', count)
                     result = conn.execute(stmt)
@@ -943,7 +951,7 @@ class SqlAlchemyResource(IccblBaseResource):
                     conn.close()
                     return HttpResponse(status=404)
                 
-                if DEBUG_STREAMING:
+                if kSTREAMING:
                     logger.info('json setup done, meta: %r', meta)
     
             else: # not json

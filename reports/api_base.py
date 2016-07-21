@@ -192,9 +192,17 @@ class IccblBaseResource(Resource):
 
         @csrf_exempt
         def wrapper(request, *args, **kwargs):
+            DEBUG_WRAPPER = True
             try:
                 callback = getattr(self, view)
-                logger.info('callback: %r, %r', callback, view)
+                if DEBUG_WRAPPER:
+                    msg = ()
+                    if kwargs:
+                        msg = [ (key,kwargs[key]) for key in kwargs.keys() if len(str(kwargs[key]))<50]
+                    logger.info('callback: %r, %r', view, msg)
+                else:
+                    logger.info('callback: %r, %r', callback, view)
+
                 response = callback(request, *args, **kwargs)
                 # Our response can vary based on a number of factors, use
                 # the cache class to determine what we should ``Vary`` on so

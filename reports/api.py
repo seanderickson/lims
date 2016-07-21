@@ -45,7 +45,7 @@ from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT
 from reports import ValidationError, _now
 from reports.api_base import IccblBaseResource, un_cache
-from reports.models import MetaHash, Vocabularies, ApiLog, ListLog, Permission, \
+from reports.models import MetaHash, Vocabulary, ApiLog, ListLog, Permission, \
                            UserGroup, UserProfile, Record, API_ACTION_DELETE, \
                            API_ACTION_CREATE
 from reports.serialize import parse_val, parse_json_field, XLSX_MIMETYPE, \
@@ -437,8 +437,8 @@ class ApiResource(SqlAlchemyResource):
             self._meta.resource_name)
 
     def deserialize(self, request, data=None, format=None):
-        logger.info('apiResource deserialize: %r, format: %r', 
-            self._meta.resource_name, format)
+        logger.debug('apiResource deserialize: %r, format: %r', 
+                     self._meta.resource_name, format)
         return self._meta.serializer.deserialize(
             request,
             data, 
@@ -533,7 +533,7 @@ class ApiResource(SqlAlchemyResource):
                 kwargs_for_log['%s__in'%id_field] = \
                     LIST_DELIMITER_URL_PARAM.join(ids)
         try:
-            logger.info('get original state, for logging...')
+            logger.debug('get original state, for logging...')
             logger.debug('kwargs_for_log: %r', kwargs_for_log)
             original_data = self._get_list_response(request,**kwargs_for_log)
         except Exception as e:
@@ -967,7 +967,7 @@ class ApiResource(SqlAlchemyResource):
             if field.get('vocabulary_scope_ref', None):
                 scope = field.get('vocabulary_scope_ref')
                 vocabularies[key] = \
-                    VocabulariesResource()._get_vocabularies_by_scope(scope)
+                    VocabularyResource()._get_vocabularies_by_scope(scope)
         def vocabulary_rowproxy_generator(cursor):
             class Row:
                 def __init__(self, row):
@@ -1930,15 +1930,15 @@ class ResourceResource(ApiResource):
             raise e  
 
 
-class VocabulariesResource(ApiResource):
+class VocabularyResource(ApiResource):
     '''
     '''
     def __init__(self, **kwargs):
-        super(VocabulariesResource,self).__init__(**kwargs)
+        super(VocabularyResource,self).__init__(**kwargs)
 
     class Meta:
         bootstrap_fields = ['scope', 'key', 'ordinal', 'json_field']
-        queryset = Vocabularies.objects.all().order_by(
+        queryset = Vocabulary.objects.all().order_by(
             'scope', 'ordinal', 'key')
         authentication = MultiAuthentication(
             BasicAuthentication(), SessionAuthentication())
@@ -1947,11 +1947,25 @@ class VocabulariesResource(ApiResource):
         serializer = LimsSerializer()
         excludes = [] #['json_field']
         always_return_data = True 
-        resource_name = 'vocabularies'
+        resource_name = 'vocabulary'
         max_limit = 10000
-    
+
+    def prepend_urls(self):
+        return [
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('get_schema'), name="api_get_schema"),            
+            url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url((r"^(?P<resource_name>%s)/(?P<scope>[\w\d_.\-:]+)/"
+                 r"(?P<key>[\w\d_.\-\+:]+)%s$" ) 
+                        % (self._meta.resource_name, trailing_slash()), 
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            ]
+
     def build_schema(self):
-        schema = super(VocabulariesResource,self).build_schema()
+        schema = super(VocabularyResource,self).build_schema()
         temp = [ x.scope for x in self.Meta.queryset.distinct('scope')]
         schema['extraSelectorOptions'] = { 
             'label': 'Vocabulary', 'searchColumn': 'scope', 'options': temp }
@@ -2058,7 +2072,7 @@ class VocabulariesResource(ApiResource):
             # Add convenience fields "1" and "2", which aid with json viewers
             original_field_hash['1'] = {
                 'key': '1',
-                'scope': 'fields.vocabularies',
+                'scope': 'fields.vocabulary',
                 'data_type': 'string',
                 'json_field_type': 'convenience_field',
                 'ordering': 'false',
@@ -2066,7 +2080,7 @@ class VocabulariesResource(ApiResource):
                 }
             original_field_hash['2'] = {
                 'key': '2',
-                'scope': 'fields.vocabularies',
+                'scope': 'fields.vocabulary',
                 'data_type': 'string',
                 'json_field_type': 'convenience_field',
                 'ordering': 'false',
@@ -2074,7 +2088,7 @@ class VocabulariesResource(ApiResource):
                 }
             original_field_hash['resource_uri'] = {
                 'key': 'resource_uri',
-                'scope': 'fields.vocabularies',
+                'scope': 'fields.vocabulary',
                 'data_type': 'string',
                 'json_field_type': 'convenience_field',
                 'ordering': 'false',
@@ -2095,9 +2109,9 @@ class VocabulariesResource(ApiResource):
                 order_params=order_params)
             field_hash['json_field'] = {
                 'key': 'json_field',
-                'scope': 'fields.vocabularies',
+                'scope': 'fields.vocabulary',
                 'data_type': 'string',
-                'table': 'reports_vocabularies',
+                'table': 'reports_vocabulary',
                 'field': 'json_field',
                 'ordering': 'false',
                 'visibilities': ['l','d']
@@ -2148,11 +2162,11 @@ class VocabulariesResource(ApiResource):
                     yield Row(row)
                     
             # specific setup
-            _vocab = self.bridge['reports_vocabularies']
+            _vocab = self.bridge['reports_vocabulary']
             custom_columns = {
                 'json_field' : literal_column('json_field')
                 }
-            base_query_tables = ['reports_vocabularies'] 
+            base_query_tables = ['reports_vocabulary'] 
             columns = self.build_sqlalchemy_columns(
                 field_hash.values(), base_query_tables=base_query_tables,
                 custom_columns=custom_columns )
@@ -2223,18 +2237,18 @@ class VocabulariesResource(ApiResource):
             return {}
     
     def clear_cache(self):
-        super(VocabulariesResource,self).clear_cache()
+        super(VocabularyResource,self).clear_cache()
         cache.delete('vocabularies');
 
     @write_authorization
     @un_cache        
     def delete_list(self, request, **kwargs):
-        Vocabularies.objects.all().delete()
+        Vocabulary.objects.all().delete()
 
     @un_cache
     def put_list(self, request, **kwargs):
         self.suppress_errors_on_bootstrap = True
-        result = super(VocabulariesResource, self).put_list(request, **kwargs)
+        result = super(VocabularyResource, self).put_list(request, **kwargs)
         self.suppress_errors_on_bootstrap = False
         return result
     
@@ -2262,13 +2276,13 @@ class VocabulariesResource(ApiResource):
         try:
             vocab = None
             try:
-                vocab = Vocabularies.objects.get(**id_kwargs)
+                vocab = Vocabulary.objects.get(**id_kwargs)
                 errors = self.validate(deserialized, patch=True)
                 if errors:
                     raise ValidationError(errors)
             except ObjectDoesNotExist, e:
                 logger.debug('Vocab %s does not exist, creating', id_kwargs)
-                vocab = Vocabularies(**id_kwargs)
+                vocab = Vocabulary(**id_kwargs)
                 errors = self.validate(deserialized, patch=False)
                 if errors:
                     raise ValidationError(errors)
@@ -3391,7 +3405,7 @@ class PermissionResource(ApiResource):
         resources = MetaHash.objects.filter(
             Q(scope='resource')|Q(scope__contains='fields.'))
         query = self._meta.queryset._clone()
-        permissionTypes = Vocabularies.objects.all().filter(
+        permissionTypes = Vocabulary.objects.all().filter(
             scope='permission.type')
         for r in resources:
             found = False

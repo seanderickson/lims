@@ -151,7 +151,7 @@ class Migration(migrations.Migration):
             ],
         ),
         migrations.CreateModel(
-            name='Vocabularies',
+            name='Vocabulary',
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
                 ('scope', models.CharField(max_length=128, blank=True)),
@@ -163,7 +163,7 @@ class Migration(migrations.Migration):
             ],
         ),
         migrations.AlterUniqueTogether(
-            name='vocabularies',
+            name='vocabulary',
             unique_together=set([('scope', 'key')]),
         ),
         migrations.AddField(

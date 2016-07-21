@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def create_vocab(vocab_writer, attr, scope, query):
-    resource_uri = '/reports/api/v1/vocabularies/%s/%s/'
+    resource_uri = '/reports/api/v1/vocabulary/%s/%s/'
     logger.info('create simple vocab: %s, %s', attr,scope)
     vocabs = []
     for ordinal, attr_value in (enumerate(
@@ -36,7 +36,7 @@ def create_vocab(vocab_writer, attr, scope, query):
         logger.info('updated vocab: %r' % row)
 
 def create_serviceactivity_vocab(vocab_writer, attr, scope, query):
-    resource_uri = '/reports/api/v1/vocabularies/%s/%s/'
+    resource_uri = '/reports/api/v1/vocabulary/%s/%s/'
     logger.info('create simple vocab: %s, %s', attr,scope)
     vocabs = []
     for ordinal, attr_value in (enumerate(
@@ -61,7 +61,7 @@ def create_simple_vocabularies(apps):
     
     vocab_file = os.path.join(
         lims.settings.PROJECT_ROOT, '..',
-        'db', 'static', 'api_init', 'vocabularies_data_generated.csv')
+        'db', 'static', 'api_init', 'vocabulary_data_generated.csv')
 
     logger.info('write vocabularies to %s' % vocab_file)
     
@@ -104,7 +104,7 @@ def create_simple_vocabularies(apps):
         'db', 'static', 'api_init', 'api_init_actions.csv')
     logger.info('write %s entry to %s' % (vocab_file, api_init_actions_file))
     with open(api_init_actions_file, 'a+') as _file:
-        new_row = ['patch', 'vocabularies', os.path.basename(vocab_file)]
+        new_row = ['patch', 'vocabulary', os.path.basename(vocab_file)]
         reader = csv.reader(_file)
         found = False
         for row in reader:
@@ -150,9 +150,9 @@ def create_lab_affiliation_vocab(apps):
         for [x,y] in replace_phrases ]
     vocab_file = os.path.join(
         lims.settings.PROJECT_ROOT, '..',
-        'db', 'static', 'api_init', 'vocabularies_lab_affiliations_data.csv')
+        'db', 'static', 'api_init', 'vocabulary_lab_affiliations_data.csv')
     logger.info('write vocabularies to %s' % vocab_file)
-    resource_uri = 'vocabularies/%s/%s/'
+    resource_uri = 'vocabulary/%s/%s/'
     with open(vocab_file, 'a+') as _file:
          
         header = ['resource_uri', 'key', 'scope', 'ordinal', 'title', 'comment'] 
@@ -234,34 +234,45 @@ def create_attached_file_type_vocab(apps):
     
     vocab_file = os.path.join(
         lims.settings.PROJECT_ROOT, '..',
-        'db', 'static', 'api_init', 'vocabularies_attachedfiletype_data.csv')
+        'db', 'static', 'api_init', 'vocabulary_attachedfiletype_data.csv')
     logger.info('write vocabularies to %s' % vocab_file)
-    resource_uri = '/reports/api/v1/vocabularies/%s/%s/'
+    resource_uri = '/reports/api/v1/vocabulary/%s/%s/'
     with open(vocab_file, 'w') as _file:
         vocab_writer = csv.writer(_file)
-        header = ['resource_uri', 'key', 'scope', 'ordinal', 'title'] 
+        header = ['resource_uri', 'key', 'scope', 'ordinal', 'title', 'is_retired'] 
         vocab_writer.writerow(header)
 
         _scope = 'attachedfiletype.%s'
         for i, obj in enumerate(apps.get_model('db', 'AttachedFileType')
                 .objects.all().order_by('value')):
+            key = obj.value.lower()
+            key = key.replace('nsrb','') # For Jen Smith
             key = default_converter(obj.value)
             scope = _scope % obj.for_entity_type
             title = obj.value
             ordinal = i
-            row = [resource_uri % (scope, key), key, scope, ordinal, title] 
+            is_retired = key in [
+                'marcus_application','miare_document',
+                'nerce_screener_supplies_list']
+            row = [resource_uri % (scope, key), key, scope, ordinal, title, is_retired] 
             vocab_writer.writerow(row)
             logger.info(str(('created', row)))
             
             (apps.get_model('db', 'AttachedFile').objects
                 .filter(attached_file_type=obj).update(type=key))
+        # For Jen Smith - 20160720
+        # /reports/api/v1/vocabulary/attachedfiletype.screen/material_transfer_agreement    material_transfer_agreement    attachedfiletype.screen    21    Material Transfer Agreement
+        # /reports/api/v1/vocabulary/attachedfiletype.screen/other    other    attachedfiletype.screen    22    Other
+        # /reports/api/v1/vocabulary/attachedfiletype.user/other    other    attachedfiletype.user    22    Other
+        # row = [resource_uri % (scope, key), key, scope, ordinal, title, is_retired] 
+        # vocab_writer.writerow(row)
 
     api_init_actions_file = os.path.join(
         lims.settings.PROJECT_ROOT, '..',
         'db', 'static', 'api_init', 'api_init_actions.csv')
     logger.info('write %s entry to %s' % (vocab_file, api_init_actions_file))
     with open(api_init_actions_file, 'a+') as _file:
-        new_row = ['patch', 'vocabularies', os.path.basename(vocab_file)]
+        new_row = ['patch', 'vocabulary', os.path.basename(vocab_file)]
         reader = csv.reader(_file)
         found = False
         for row in reader:
@@ -282,9 +293,9 @@ def create_checklist_vocabularies(apps):
     # output vocabs into a vocabulary patch file
     vocab_file = os.path.join(
         PROJECT_ROOT, '..',
-        'db', 'static', 'api_init', 'vocabularies_checklists_data.csv')
+        'db', 'static', 'api_init', 'vocabulary_checklists_data.csv')
     logger.info('write vocabularies to %s' % vocab_file)
-    resource_uri = '/reports/api/v1/vocabularies/%s/%s/'
+    resource_uri = '/reports/api/v1/vocabulary/%s/%s/'
     with open(vocab_file, 'w') as _file:
         vocab_writer = csv.writer(_file)
         header = ['resource_uri', 'key', 'scope', 'ordinal', 'title', 
@@ -376,7 +387,7 @@ def create_checklist_vocabularies(apps):
         'db', 'static', 'api_init', 'api_init_actions.csv')
     logger.info('write %s entry to %s' % (vocab_file, api_init_actions_file))
     with open(api_init_actions_file, 'a+') as _file:
-        new_row = ['patch', 'vocabularies', os.path.basename(vocab_file)]
+        new_row = ['patch', 'vocabulary', os.path.basename(vocab_file)]
         reader = csv.reader(_file)
         found = False
         for row in reader:

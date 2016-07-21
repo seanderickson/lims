@@ -315,8 +315,8 @@ ALTER TABLE "screen_collaborators" ADD CONSTRAINT "screen_collaborators_screen_i
 ALTER TABLE "screen_collaborators" ADD CONSTRAINT "screen_collaborators_screensaver_user_id_fk" 
   FOREIGN KEY ("screensaveruser_id") 
   REFERENCES "screensaver_user" ("screensaver_user_id") DEFERRABLE INITIALLY DEFERRED;
-CREATE INDEX "screen_collaborators_e4ec8585" ON "screen_collaborators" ("screen_id");
-CREATE INDEX "screen_collaborators_ad850f96" ON "screen_collaborators" ("screensaveruser_id");
+CREATE INDEX "screen_collaborators_screen_idx" ON "screen_collaborators" ("screen_id");
+CREATE INDEX "screen_collaborators_screensaver_user_idx" ON "screen_collaborators" ("screensaveruser_id");
 DROP TABLE collaborator_link;
 
 /** done - collaborator_link table **/
@@ -369,7 +369,13 @@ BEGIN;
 ALTER TABLE attached_file ALTER COLUMN file_contents DROP NOT NULL;
 
 /**
- *** TODO: pg_largeobject is owned by user "postgres" on orchestra and cannot 
+  TODO:
+  use "\lo_list"
+  and
+  "\lo_unlink" to drop largeobjects
+
+ *** TODO: cannot do following:
+ *** pg_largeobject is owned by user "postgres" on orchestra and cannot 
  *** be deleted.
 DELETE FROM pg_largeobject USING attached_file WHERE loid=file_contents;
 ALTER TABLE attached_file DROP COLUMN file_contents;
@@ -396,18 +402,30 @@ DROP TABLE reagent_publication_link;
 /**
   Create a many-to-many join table for the datacolumn.derived_from field, then
   populate it using the legacy table (todo: remove the legacy table)
-CREATE TABLE "datacolumn_derived_from_columns" (
-  "id" serial NOT NULL PRIMARY KEY, 
-  "data_column_id" integer NOT NULL, 
-  "derived_from_id" integer NOT NULL, 
-  UNIQUE ("data_column_id", "derived_from_id")
-  );
-INSERT into datacolumn_derived_from_columns 
-  ( select nextval('datacolumn_derived_from_columns_id_seq'), 
-      derived_data_column_id, derived_from_data_column_id 
-      from data_column_derived_from_link );
-        
 **/
+CREATE TABLE "data_column_derived_from_columns" (
+  "id" serial NOT NULL PRIMARY KEY, 
+  "from_datacolumn_id" integer NOT NULL, 
+  "to_datacolumn_id" integer NOT NULL, 
+  UNIQUE ("from_datacolumn_id", "to_datacolumn_id")
+);
+INSERT into data_column_derived_from_columns 
+  ( select nextval('data_column_derived_from_columns_id_seq'), 
+      derived_from_data_column_id, derived_data_column_id 
+      from data_column_derived_from_link );
+
+ALTER TABLE "data_column_derived_from_columns" 
+  ADD CONSTRAINT "fk_from_datacolumn_id_data_column_id" 
+  FOREIGN KEY ("from_datacolumn_id") 
+  REFERENCES "data_column" ("data_column_id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "data_column_derived_from_columns" 
+  ADD CONSTRAINT "fk_to_datacolumn_id_data_column_id" 
+  FOREIGN KEY ("to_datacolumn_id") 
+  REFERENCES "data_column" ("data_column_id") DEFERRABLE INITIALLY DEFERRED;
+CREATE INDEX "data_column_derived_from_columns_from_dc_idx" 
+  ON "data_column_derived_from_columns" ("from_datacolumn_id");
+CREATE INDEX "data_column_derived_from_columns_to_dc_idx" 
+  ON "data_column_derived_from_columns" ("to_datacolumn_id");
 
 /**
 20160408

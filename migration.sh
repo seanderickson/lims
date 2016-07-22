@@ -437,7 +437,12 @@ function frontend_setup {
         --ignore="*test_data*" \
         --ignore="*.json" \
         --ignore="Gruntfile.js" \
-        --ignore="*api_init*" || error "collectstatic failed: $?"
+        --ignore="*api_init*" \
+        --ignore="js*" || error "collectstatic failed: $?"
+    # FIXME: image and css files must be copied still
+    # --ignore="css*"
+    # --ignroe="images*"      
+        
   fi
   
   if [ -e ../wsgi/app.wsgi ]; then

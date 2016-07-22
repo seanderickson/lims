@@ -233,6 +233,8 @@ function django_syncdb {
   _adminemail="'"$adminemail"'"
   echo "from django.contrib.auth.models import User; User.objects.create_superuser($_adminuser, $_adminemail , $_adminpass)" | $DJANGO_CMD shell
 
+  # TODO: remove if memcached is installed
+  $DJANGO_CMD createcachetable
 }
 
 function premigratedb {

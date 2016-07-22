@@ -12,8 +12,9 @@ install:
 before_script:
   - psql -c 'create database travis_ci_test;' -U postgres 
 script: 
-  - grunt bowercopy
-  - grunt test --verbose || echo 'unresolved spurious test failure 20160606'
+##  - grunt bowercopy
+##  - grunt test --verbose || echo 'unresolved spurious test failure 20160606'
+  - npm run build
   - cd ../../ 
   - python manage.py migrate sites --settings=lims.travis-settings || echo 'expected error on first migration...'
   - python manage.py migrate auth --settings=lims.travis-settings 

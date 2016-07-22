@@ -1,0 +1,158 @@
+<% 
+// Specialization of generic-detail-stickit for Screen.
+if (buttons) {
+%>
+    <% 
+    buttons.each(function(key) {
+    %>
+        <button type="button" class="btn btn-default btn-sm" id="<%=key %>" name="<%=key %>" ></button>
+    <% 
+    }); 
+    %>
+<% 
+}  
+%>
+<div class='row'>
+  <div class='col-sm-9'>
+    <table class='table table-condensed data-list' style='margin-bottom: 2px;'>
+<% 
+_   (informationKeys).each(function(key){
+      console.log('information-key', key);
+%>
+     <tr>
+        <td class='col-xs-4 dl-title small' id="title-<%=key %>" title='' />
+        <td class='col-xs-8 dl-data small' id="<%=key %>">&nbsp;</td>
+     </tr>
+<%
+    });
+%>
+  </table>
+  </div>
+  <div class='col-sm-3' >
+    <div class='row small' id='screen_extra_information'></div>
+  </div>
+</div>
+
+<div class='row'>
+  <div class='col-xs-12'>
+    <table class='table table-condensed data-list'>
+<% 
+  (groupedKeys).each(function(key) { 
+%>
+<% 
+    if(! _.isObject(key)) 
+    {
+%>
+     <tr>
+        <td class='col-xs-2 dl-title small' id="title-<%=key %>" title='' />
+        <td class='col-xs-6 dl-data small' id="<%=key %>">&nbsp;</td>
+     </tr>
+<% 
+    }else{
+      var group = key;
+%>
+      <tr>
+<% 
+        if(group.title == 'Publishable Protocol'){
+          // TODO: create a template to insert for publishable protocol
+%>
+        <td class='col-xs-2 dl-title small' title='' ><%=group.title %></td>
+        <td class='col-xs-10 dl-data small' >
+        <div class='row'>
+          <div class='col-xs-12'>
+          <table class='table-condensed data-list'>
+            <tr>
+              <td>
+              <div id='publishable_protocol'></div>
+              </td>
+            </tr>
+            <tr>
+              <td>
+              <table class='table-condensed data-list'>
+                <tr>
+                  <td class='dl-title' id='title-publishable_protocol_comments'/>
+                  <td class='dl-data' id='publishable_protocol_comments'/>
+                </tr>
+                <tr>
+                  <td class='dl-title' id='title-publishable_protocol_date_entered'/>
+                  <td class='dl-data' id='publishable_protocol_date_entered'/>
+                </tr>
+                <tr>
+                  <td class='dl-title' id='title-publishable_protocol_entered_by'/>
+                  <td class='dl-data' id='publishable_protocol_entered_by'/>
+                </tr>
+              </table>
+              </td>
+            </tr>
+          </table>
+          </div>
+        </div>
+        </td>
+<% 
+        }else if (group.title == 'Information'){
+%>
+        <td class='col-xs-4 small' style='border: none;' >
+          <table class=' table-condensed data-list'>
+<% 
+        _   .each(group.fields, function(groupKey){
+              console.log('group-key', groupKey);
+%>
+            <tr>
+              <td class='col-xs-4 dl-title' id="title-<%=groupKey %>" title='' />
+              <td class='col-xs-6 dl-data' id="<%=groupKey %>">&nbsp;</td>
+            </tr>
+<%
+            });
+%>
+          </table>
+        </td>
+        <td class='col-xs-6 dl-data small' >
+          <div class='row' id='screen_extra_information'></div>
+        </td>        
+<%
+        }else{
+%>
+        <td class='col-xs-2 dl-title small' title='' ><%=group.title %></td>
+        <td class='col-xs-10 dl-data small' >
+        <div class='row'>
+          <div class='col-xs-12'>
+          <table class='table-condensed data-list'>
+<% 
+        _   .each(group.fields, function(groupKey){
+              console.log('group-key', groupKey);
+%>
+            <tr>
+              <td class='dl-title' id="title-<%=groupKey %>" title='' />
+              <td class='dl-data' id="<%=groupKey %>">&nbsp;</td>
+            </tr>
+<%
+            });
+%>
+          </table>
+          </div>
+        </div>
+        </td>
+<%
+        }
+%>
+      </tr>
+<% 
+    }
+  }); 
+%>
+    </table>
+  </div>
+</div>
+<form id='generic-form' class="form-horizontal" >
+    <div class="controls">
+        <% 
+        if (buttons) {
+          buttons.each(function(key) {
+        %>
+          <button type="button" class="btn btn-default btn-sm" id="<%=key %>" name="<%=key %>" ></button>
+       <% 
+          }); 
+        }  
+        %>
+    </div>
+</form>

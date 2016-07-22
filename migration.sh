@@ -113,6 +113,9 @@ function gitpull {
     mv db/static/api_init/vocabularies_data_generated.csv db/static/api_init/vocabularies_data_generated.old.csv
   fi
   
+  mkdir bak
+  mv db/static/api_init/vocabularies_* bak  
+  
   git pull --ff-only $REMOTE $BRANCH >>"$LOGFILE" 2>&1 || error "git-pull failed: $?"
 
   #  mv -f $SAVEPATH $SCRIPTPATH

@@ -20,12 +20,12 @@ def create_vocab(vocab_writer, attr, scope, query):
     resource_uri = '/reports/api/v1/vocabulary/%s/%s/'
     logger.info('create simple vocab: %s, %s', attr,scope)
     vocabs = []
-    for ordinal, attr_value in (enumerate(
-        query.values_list(attr, flat=True)
-            .distinct(attr).order_by(attr))):
+    for ordinal, attr_value in (
+            enumerate(query.values_list(attr, flat=True)
+                .distinct(attr).order_by(attr))):
         if not attr_value: continue
         key = default_converter(attr_value)
-        title = attr_value.title()
+        title = attr_value
         _resource_uri = resource_uri % (scope, key)
         vocabs.append([_resource_uri, key, scope, ordinal, title])
     for row in vocabs:

@@ -1123,6 +1123,9 @@ define([
         }
         self.showModal(options);
       }
+
+      // Clear out error messages after navigating away from page
+      self.unset('messages');
     },
     
     /** Add a vocabulary term to the editForm & to the server:
@@ -1517,6 +1520,9 @@ define([
       $modal = $('#modal');
       $modal.empty();
       $modal.html(modalDialog.$el);
+      $modal.on('show.bs.modal', function () {
+        $('.modal-content').css('height',$( window ).height()*0.95);
+      });      
       $modal.modal({show:true, backdrop: 'static'});
       return modalDialog;
     },

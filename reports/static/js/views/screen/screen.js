@@ -1453,6 +1453,8 @@ define([
           data_type__in: [
             'partition_positive_indicator','boolean_positive_indicator',
             'confirmed_positive_indicator'],
+          includes: ['positives_count', 'strong_positives_count',
+                     'medium_positives_count','weak_positives_count'],
           order_by: ['ordinal']
         },
         success: function(collection, response) {
@@ -1736,9 +1738,13 @@ define([
         });
         show_mutual_positives_control.click(function(e){
           if(e.target.checked){
-            view.show_mutual_positives(screen_facility_id, true);
+            window.setTimeout(function(){
+              view.show_mutual_positives(screen_facility_id, true);
+            });
           }else{
-            view.show_mutual_positives(screen_facility_id, false);
+            window.setTimeout(function(){
+              view.show_mutual_positives(screen_facility_id, false);
+            });
           }
         });
       };

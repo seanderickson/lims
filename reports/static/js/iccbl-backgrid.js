@@ -1,9 +1,8 @@
 define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms', 
-        'backgrid_filter', 'backgrid_paginator', //'lunr', // 'backgrid_select_all',
+        'backgrid_filter', 'backgrid_paginator', 
         'layoutmanager'],
     function($, _, Backbone, Backgrid, BackboneForms,
-             BackgridFilter, //BackgridPaginator, //lunr, // BackgridSelectAll,
-             layoutmanager ) {
+             BackgridFilter, layoutmanager ) {
 
 var root = window;
   
@@ -11,11 +10,15 @@ var Iccbl = root.Iccbl = {
     VERSION : "0.0.1",
     appModel : "This value will be initialized on app start"
 };
+var ICCBL_DATE_RE = Iccbl.ICCBL_DATE_RE =  /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/;
+var DATE_RE = Iccbl.DATE_RE = /^([+\-]?\d{4})-(\d{2})-(\d{2})$/;
+var TIME_RE = Iccbl.TIME_RE = /^(\d{2}):(\d{2}):(\d{2})(\.(\d{3}))?$/;
+var ISO_SPLITTER_RE = Iccbl.ISO_SPLITTER_RE = /T|Z| +/;
 
 
 /**
  * Format a string of containing "replacement fields" surrounded by 
- * curly braces '{}'. Replacment fields are used as keys to lookup the 
+ * curly braces '{}'. Replacement fields are used as keys to lookup the 
  * replacement values in the valueHash.
  * 
  * Replace all {tokens} in the string with model/object attributes. - fallback to
@@ -50,6 +53,9 @@ var formatString = Iccbl.formatString = function(
   return interpolatedString;
 }
 
+/**
+ * Returns the instance of the function referred to by the string.
+ */
 var stringToFunction = Iccbl.stringToFunction = function(str) {
   if (!str) return;
   
@@ -64,11 +70,6 @@ var stringToFunction = Iccbl.stringToFunction = function(str) {
   }
   return fn;
 };
-
-var ICCBL_DATE_RE = Iccbl.ICCBL_DATE_RE =  /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/;
-var DATE_RE = Iccbl.DATE_RE = /^([+\-]?\d{4})-(\d{2})-(\d{2})$/;
-var TIME_RE = Iccbl.TIME_RE = /^(\d{2}):(\d{2}):(\d{2})(\.(\d{3}))?$/;
-var ISO_SPLITTER_RE = Iccbl.ISO_SPLITTER_RE = /T|Z| +/;
 
 /**
  * Parse a string date value, ignoring the time and timezone.
@@ -216,17 +217,15 @@ var getKey = Iccbl.getKey = function(options) {
             return Iccbl.getKey(options.key);
         }
     }
-
     return route_fragment;
 };
 
 /**
- * Get the key off the URI stack: - we don't know if the key is composite or
- * not; so we don't know how many items to pop off the stack; So look at the
- * resource definition id_attribute; which lists the keys.
+ * Get the key off the URI stack: 
+ * - the key may composite single-value; use the list of key fields from the 
+ * resource definition id_attribute.
  * 
- * @param resource -
- *          a resource definition as defined by the API
+ * @param resource - a resource definition as defined by the API
  * @param urlStack -
  *          array representation of the current unprocessed URI elements.
  * @param consumedStack -
@@ -271,6 +270,13 @@ var popKeyFromStack = Iccbl.popKeyFromStack = function(resource, urlStack, consu
   return id;
 };
 
+/**
+ * Get the keys as an array from the model: 
+ * - the key may composite single-value; use the list of key fields from the 
+ * resource definition id_attribute.
+ * 
+ * @param schema - a resource definition as defined by the API
+ */
 var getIdKeys = Iccbl.getIdKeys = function(model,schema) {
   if (_.has(schema, 'id_attribute')) {
     var id_attribute = schema['id_attribute'];
@@ -385,7 +391,6 @@ var createLabel = Iccbl.createLabel = function(original_label, max_line_length, 
   _.each(labelParts, function(part){
     if(line.length > 0){
       var temp = line + part;
-      console.log('linetemp:'+temp.trim()+'|', temp.trim().length <= max_line_length);
       if(temp.trim().length <= max_line_length){
         line = temp;
       }else{
@@ -1475,8 +1480,29 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
   initialize : function(options) {
     this.options = options;
     MultiSortHeaderCell.__super__.initialize.apply(this, arguments);
+
+    this.fieldinformation = _.clone(this.column.get('fieldinformation'));
+    this.filterIcon = $(this.filtericon_text);
+    
     this.listenTo(this.collection,"sort",this.collectionSorted);
     this.listenTo(this.collection,"Iccbl:clearSorts", this.removeCellDirection);
+
+    this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
+    this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
+    _.bindAll(this, '_submit', 'clearSearch');
+  
+  },
+  
+  _search: function(){
+    throw '_search must be implemented';
+  },
+  
+  clearSearch: function(){
+    throw 'clearSearch must be implemented';
+  },
+  
+  _submit: function(){
+    throw '_submit must be implemented';
   },
  
   // Original onClick, for reference, from Backgrid
@@ -1667,6 +1693,13 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
     this.$el.addClass(column.get("direction"));
     this.$el.addClass(column.get("name"));
     this.delegateEvents();
+    
+    var mouseover = this.options['column']['attributes']["description"];  
+    if (this.options['column'].has('mouseover')){
+      mouseover = this.options['column'].get('mouseover');
+    }
+    this.$el.prop('title', mouseover);
+    
     return this;
   }
     
@@ -1753,8 +1786,8 @@ var BackgridFormFilter = Backbone.Form.extend({
       return values[key]>0 || !_.isEmpty(values[key]);
     });
     return !_.isEmpty(found);
-  }
-
+  },
+  
 });
 
 
@@ -1794,6 +1827,13 @@ var CriteriumFormFilter = Iccbl.CriteriumFormFilter = BackgridFormFilter.extend(
       return values[key]>0 || !_.isEmpty(values[key]);
     });
     return !_.isEmpty(found);
+  },
+  
+  clear: function(){
+    var self = this;
+    _.each(_.keys(self.getValue()), function(key){
+      self.setValue(key, null);
+    });
   }
   
 });
@@ -2216,18 +2256,11 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
 
   initialize : function(options) {
     var self = this;
-    
-    this.options = options;
     TextHeaderCell.__super__.initialize.apply(this, arguments);
-    this.fieldinformation = _.clone(this.column.get('fieldinformation'));
-  
+
     this._serverSideFilter = new TextFormFilter({
-      columnName: this.column.get('name')
+      columnName: self.column.get('name')
     });
-    this.filterIcon = $(self.filtericon_text);
-    this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
-    this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
-    _.bindAll(this, '_submit', 'clearSearch');
   },
 
   
@@ -2278,6 +2311,7 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
    */
   clearSearch: function(options){
     var self=this;
+    self._serverSideFilter.clear();
     self._serverSideFilter.$el.hide();
     self.filterIcon.show();
     
@@ -2318,8 +2352,6 @@ var TextHeaderCell = MultiSortHeaderCell.extend({
       self._submit();
     });
   
-    this.$el.prop('title', this.options['column']['attributes']["description"]);
-    
     return this;
   },  
 });
@@ -2329,19 +2361,11 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
 
   initialize : function(options) {
     var self = this;
-    
-    this.options = options;
     DateHeaderCell.__super__.initialize.apply(this, arguments);
-    this.fieldinformation = _.clone(this.column.get('fieldinformation'));
     
     this._serverSideFilter = new DateFormFilter({
-      columnName: this.column.get('name')
+      columnName: self.column.get('name')
     });
-    this.filterIcon = $(self.filtericon_text);
-    
-    this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
-    this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
-    _.bindAll(this, '_submit', 'clearSearch');
   },
   
   
@@ -2391,6 +2415,7 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
    */
   clearSearch: function(options){
     var self=this;
+    self._serverSideFilter.clear();
     self._serverSideFilter.$el.hide();
     self.filterIcon.show();
     
@@ -2425,8 +2450,6 @@ var DateHeaderCell = MultiSortHeaderCell.extend({
       e.preventDefault();
       self._submit();
     });
-  
-    this.$el.prop('title', this.options['column']['attributes']["description"]);
     
     return this;
   },  
@@ -2551,18 +2574,11 @@ var BooleanHeaderCell = MultiSortHeaderCell.extend({
 
   initialize : function(options) {
     var self = this;
-    
-    this.options = options;
     BooleanHeaderCell.__super__.initialize.apply(this, arguments);
-    this.fieldinformation = _.clone(this.column.get('fieldinformation'));
   
     this._serverSideFilter = new BooleanFormFilter({
-      columnName: this.column.get('name')
+      columnName: self.column.get('name')
     });
-    this.filterIcon = $(self.filtericon_text);
-    this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
-    this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
-    _.bindAll(this, '_submit', 'clearSearch');
   },
 
   
@@ -2613,6 +2629,7 @@ var BooleanHeaderCell = MultiSortHeaderCell.extend({
   clearSearch: function(options){
     var self=this;
     var possibleSearches = self._serverSideFilter.getPossibleSearches();
+    self._serverSideFilter.clear();
     self._serverSideFilter.$el.hide();
     self.filterIcon.show();
     self.collection.clearSearch(possibleSearches);
@@ -2646,8 +2663,6 @@ var BooleanHeaderCell = MultiSortHeaderCell.extend({
       self._submit();
     });
   
-    this.$el.prop('title', this.options['column']['attributes']["description"]);
-    
     return this;
   },  
 });
@@ -2829,18 +2844,15 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
 var SelectorHeaderCell = MultiSortHeaderCell.extend({
 
   initialize : function(options) {
+    var self = this;
     SelectorHeaderCell.__super__.initialize.apply(this, arguments);
 
-    var self = this;
     var choiceHash = {}
     var vocabulary;
-    
-    this.fieldinformation = _.clone(this.column.get('fieldinformation'));
-    this.options = options;
-
     if(_.isUndefined(this.fieldinformation.choices)){
-      console.log([
-         'error: fieldinformation for a selection field type must define a ',
+      if (Iccbl.appModel.DEBUG)
+        console.log([
+         'Warn: fieldinformation for a selection field type must define a ',
          '"choices" list: field key: ' + this.column.get('name')].join(''));
       this.fieldinformation.choices = [];
     }
@@ -2862,15 +2874,10 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
     }
     this._serverSideFilter = new SelectorFormFilter({
         choiceHash: choiceHash,
-        columnName: this.column.get('name'),
-        selectedFields: _.clone(this.fieldinformation.choices)
+        columnName: self.column.get('name'),
+        selectedFields: _.clone(self.fieldinformation.choices)
       });
     
-    this.filterIcon = $(self.filtericon_text);
-    
-    this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
-    this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
-    _.bindAll(this, '_submit', 'clearSearch');
   },
   
   /**
@@ -2919,6 +2926,7 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
    */
   clearSearch: function(options){
     var self=this;
+    self._serverSideFilter.clear();
     self._serverSideFilter.$el.hide();
     self.filterIcon.show();
     
@@ -2955,9 +2963,6 @@ var SelectorHeaderCell = MultiSortHeaderCell.extend({
       self._submit();
     });
 
-    this.$el.prop('title', 
-            this.options['column']['attributes']["description"]);
-    
     return this;
   }
   
@@ -3187,18 +3192,10 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
   initialize : function(options) {
     var self = this;
     NumberHeaderCell.__super__.initialize.apply(this, arguments);
-    this.options = options;
-
-    this.fieldinformation = _.clone(this.column.get('fieldinformation'));
     
     this._serverSideFilter = new NumberFormFilter({
-      columnName: this.column.get('name')
+      columnName: self.column.get('name')
     });
-    this.filterIcon = $(self.filtericon_text);
-    
-    this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
-    this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
-    _.bindAll(this, '_submit', 'clearSearch');
   },
   
   
@@ -3247,6 +3244,7 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
    */
   clearSearch: function(options){
     var self=this;
+    self._serverSideFilter.clear();
     self._serverSideFilter.$el.hide();
     self.filterIcon.show();
     self.collection.clearSearch(self._serverSideFilter.getPossibleSearches());
@@ -3281,8 +3279,6 @@ var NumberHeaderCell = MultiSortHeaderCell.extend({
       self._submit();
     });
   
-    this.$el.prop('title', this.options['column']['attributes']["description"]);
-    
     return this;
   },  
 });
@@ -3489,26 +3485,18 @@ var SIUnitHeaderCell = MultiSortHeaderCell.extend({
   symbol: "",
   
   initialize: function(options){
-
+    var self = this;
     SIUnitHeaderCell.__super__.initialize.apply(this,arguments);
 
-    var self = this;
     var name = this.column.get('name');
-    // FIXME: cannot pass initialization params, so sending them on the column
-    var fi = this.fieldinformation = _.clone(this.column.get('fieldinformation'));
-    this.options = options;
     var cell_options = fi['display_options'];
     if(!cell_options || !cell_options.symbol)
     {
       throw new Error('SIUnitHeaderCell: field information requires the '+
           '"symbol" option');
     }
-    
     this._serverSideFilter = new SIUnitFormFilter(_.extend({
-      columnName: this.column.get('name')}, cell_options ));
-    this.filterIcon = $(self.filtericon_text);
-    this.listenTo(this.collection,"MyServerSideFilter:search",this._search);
-    this.listenTo(this.collection,"Iccbl:clearSearches",this.clearSearch);
+      columnName: self.column.get('name')}, cell_options ));
   },
 
   
@@ -3558,6 +3546,7 @@ var SIUnitHeaderCell = MultiSortHeaderCell.extend({
    */
   clearSearch: function(options){
     var self=this;
+    self._serverSideFilter.clear();
     self._serverSideFilter.$el.hide();
     self.filterIcon.show();
     
@@ -3577,8 +3566,8 @@ var SIUnitHeaderCell = MultiSortHeaderCell.extend({
     this._serverSideFilter.$el.hide();
     
     this._serverSideFilter.clearButton().click(function(e){
-      e.preventDefault();
       e.stopPropagation();
+      e.preventDefault();
       self.clearSearch();
     });
     
@@ -3594,9 +3583,6 @@ var SIUnitHeaderCell = MultiSortHeaderCell.extend({
       self._submit();
     });
 
-    this.$el.prop('title', 
-            this.options['column']['attributes']["description"]);
-    
     // TODO: customize the default units values
     this._serverSideFilter.setValue('lower_siunit',1);
     this._serverSideFilter.setValue('upper_siunit',1);
@@ -3886,19 +3872,22 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   }
   
   if(_.has(typeMap,display_type)){
-    console.log('field', key, display_type, 'typemap',typeMap[display_type])
+    if (Iccbl.appModel.DEBUG)
+      console.log('field', key, display_type, 'typemap',typeMap[display_type])
     var backgridCellType = typeMap[display_type];
     if(!_.isEmpty(cell_options)){
       backgridCellType = backgridCellType.extend(cell_options);
     }
   }else{
-    console.log('no special cell type for', display_type, 'data_type',data_type);
+    if (Iccbl.appModel.DEBUG)
+      console.log('no special cell type for', display_type, 'data_type',data_type);
   }
   
   column = _.extend(column, {
     'name' : key,
     'label' : prop['title'],
     'description' : prop['description'],
+    'mouseover' : _.result(prop, 'mouseover', prop['description']),
     'cell' : backgridCellType,
     'order' : prop['ordinal'],
     'sortable': prop['ordering'],

@@ -10,6 +10,7 @@ import sys
 import urllib
 
 from aldjemy.core import get_engine, get_tables
+from django.conf import settings
 from django.core.cache import cache
 import django.core.signals 
 import django.db.models.constants
@@ -765,12 +766,13 @@ class SqlAlchemyResource(IccblBaseResource):
         TODO: cache clearing on database writes
         '''
         DEBUG_CACHE = False or logger.isEnabledFor(logging.DEBUG)
-        if limit == 0:
-            raise Exception('limit for caching must be >0')
+        # Limit check removed with the use of "use_caching" flag
+        # if limit == 0:
+        #    raise Exception('limit for caching must be >0')
         
         prefetch_number = 5
         
-        if limit==1:
+        if limit <= 1:
             prefetch_number = 1
         
         try:
@@ -785,27 +787,30 @@ class SqlAlchemyResource(IccblBaseResource):
                 compiled_stmt = compiled_stmt[:compiled_stmt.lower().rfind('limit')]
             logger.debug('compiled_stmt for hash key: %s', compiled_stmt)
             key_digest = '%s_%s_%s' %(compiled_stmt, str(limit), str(offset))
+            logger.debug('key_digest: %r', key_digest)
             m.update(key_digest)
             key = m.hexdigest()
             logger.debug('hash key: digest: %s, key: %s, limit: %s, offset: %s', 
                 key_digest, key, limit, offset)
             cache_hit = cache.get(key)
-            if cache_hit:
+            if cache_hit is not None:
                 if ('stmt' not in cache_hit or
                         cache_hit['stmt'] != compiled_stmt):
                     cache_hit = None
                     logger.warn(str(('cache collision for key', key, stmt)))
             
-            if not cache_hit:
+            if cache_hit is None:
+                logger.info('no cache hit for key: %r, executing stmt', key)
                 # Note: if no cache hit, then retrive limit*n results, and 
                 # cache several iterations at once.
                 new_limit = limit * prefetch_number 
                 if DEBUG_CACHE:
-                    logger.info('no cache hit, create cache, limit: %s, new limit for caching: %s',
+                    logger.info(
+                        'no cache hit, create cache, limit: %s, '
+                        'new limit for caching: %s',
                         limit, new_limit)
                 if new_limit > 0:
                     stmt = stmt.limit(new_limit)
-                logger.info('no cache hit, executing stmt')
                 resultset = conn.execute(stmt)
                 prefetched_result = [dict(row) for row in resultset] if resultset else []
                 logger.info('executed stmt')
@@ -815,7 +820,14 @@ class SqlAlchemyResource(IccblBaseResource):
                     count = 1
                 else:
                     count = conn.execute(count_stmt).scalar()
+                    
                 logger.info('count: %s', count)
+                
+                if limit==0 and count > settings.MAX_ROWS_FOR_CACHE_RESULTPROXY:
+                    logger.warn('too many rows to cache: %r, limit: %r, '
+                        'see setting"MAX_ROWS_FOR_CACHE_RESULTPROXY"',
+                        count, settings.MAX_ROWS_FOR_CACHE_RESULTPROXY)
+                    return None
                 
                 # now fill in the cache with the prefetched sets or rows
                 for y in range(prefetch_number):
@@ -828,14 +840,17 @@ class SqlAlchemyResource(IccblBaseResource):
                         m = hashlib.md5()
                         m.update(key_digest)
                         key = m.hexdigest()
-                        _result = prefetched_result[_start:_start+limit]
+                        rows_to_fetch = limit
+                        if limit==0:
+                            rows_to_fetch = count+1
+                        _result = prefetched_result[_start:_start+rows_to_fetch]
                         _cache = {
                             'stmt': compiled_stmt,
                             'cached_result': _result,
                             'count': count }
-                        if DEBUG_CACHE:
-                            logger.info('add to cache, key: %s, limit: %s, offset: %s',
-                                key, limit, new_offset)
+#                         if DEBUG_CACHE:
+                        logger.info('add to cache, key: %s, limit: %s, offset: %s',
+                            key, limit, new_offset)
                         cache.set( key, _cache, None)
                         if y == 0:
                             cache_hit = _cache
@@ -856,11 +871,23 @@ class SqlAlchemyResource(IccblBaseResource):
     def stream_response_from_statement(self, request, stmt, count_stmt, 
             output_filename, field_hash={}, param_hash={}, 
             rowproxy_generator=None, is_for_detail=False,
-            downloadID=None, title_function=None, use_caching=True, meta=None ):
+            downloadID=None, title_function=None, use_caching=None, meta=None ):
+        '''
+        Execute the SQL stmt provided and stream the results to the response:
+        
+        Caching (for json responses only): resources will be cached if:
+        - self.use_caching is True and use_caching is not False and limit > 0
+        - limit == 0 and use_caching is True
+        
+        '''
+        
+        
         DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
         
+        logger.info('stream_response_from_statement: %r', self._meta.resource_name )
         if DEBUG_STREAMING:
-            logger.info('stream_response_from_statement: %r' % param_hash)
+            logger.info('stream_response_from_statement: %r, %r', 
+                self._meta.resource_name, param_hash)
         limit = param_hash.get('limit', 0)        
         try:
             limit = int(limit)
@@ -905,8 +932,8 @@ class SqlAlchemyResource(IccblBaseResource):
                 logger.info(
                     'streaming json, use_caching: %r, %r, limit: %d, %r', 
                     use_caching, self.use_cache, limit, is_for_detail)
-                # if not is_for_detail and use_caching and self.use_cache and limit > 0:
-                if use_caching and self.use_cache and limit > 0:
+                if ((self.use_cache is True and use_caching is not False)
+                        and ( use_caching is True or limit > 0)):
                     cache_hit = self._cached_resultproxy(
                         conn, stmt, count_stmt, param_hash, limit, offset)
                     if cache_hit:

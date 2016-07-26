@@ -162,6 +162,8 @@ WELL_STRUCTURE_IMAGE_DIR=''
 # see db/api.ScreenResultResource
 MAX_WELL_INDEXES_TO_CACHE=3e+08
 
+MAX_ROWS_FOR_CACHE_RESULTPROXY=10e+4
+
 # set SQLALCHEMY_POOL_CLASS=sqlalchemy.pool.NullPool for testing
 # environments, so that the test database can be destroyed
 # import sqlalchemy.pool

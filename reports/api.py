@@ -1342,7 +1342,8 @@ class ApiLogResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function  )
+                title_function=title_function,
+                use_caching=True  )
              
         except Exception, e:
             logger.exception('on get_list')
@@ -1684,6 +1685,7 @@ class ResourceResource(ApiResource):
             resources = super(ResourceResource,self)._get_list_response(
                 request, **kwargs)
         else: 
+            logger.debug('using cached resources...')
             resources = cached['objects']
 
         if key:
@@ -2188,7 +2190,8 @@ class VocabularyResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=json_field_rowproxy_generator,
-                title_function=title_function  )
+                title_function=title_function,
+                use_caching=True  )
              
         except Exception, e:
             logger.exception('on get list')
@@ -2583,7 +2586,8 @@ class UserResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function  )
+                title_function=title_function,
+                use_caching=True  )
              
         except Exception, e:
             logger.exception('on get_list')
@@ -3325,7 +3329,8 @@ class UserGroupResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function  )
+                title_function=title_function,
+                use_caching=True  )
              
         except Exception, e:
             logger.exception('on get_list')
@@ -3551,7 +3556,8 @@ class PermissionResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function  )
+                title_function=title_function,
+                use_caching=True  )
              
         except Exception, e:
             logger.exception('on get list')

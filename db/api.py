@@ -87,6 +87,7 @@ from reports.serializers import LimsSerializer, \
 from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.sqlalchemy_resource import _concat
 import reports.sqlalchemy_resource
+from __builtin__ import None
 
 
 PLATE_NUMBER_SQL_FORMAT = 'FM9900000'
@@ -507,9 +508,6 @@ class ScreenResultResource(ApiResource):
 
         _wellQueryIndex = self.bridge['well_query_index']
 
-        # NOTE: mixing Django connection with SQA connection
-        # - thrown exceptions will rollback the nested SQA transaction
-        # see: http://docs.sqlalchemy.org/en/latest/core/connections.html
         try:
             query = CachedQuery.objects.filter(uri__contains='/screenresult/')
             if query.exists():
@@ -683,7 +681,8 @@ class ScreenResultResource(ApiResource):
             select([
                 _rv.c.well_id,
                 func.array_to_string(
-                    func.array_agg(func.lower(_dc.c.name)), LIST_DELIMITER_SQL_ARRAY).label('exclude')
+                    func.array_agg(func.lower(_dc.c.name)), 
+                    LIST_DELIMITER_SQL_ARRAY).label('exclude')
                 ])
             .select_from(excl_join)
             .where(_dc.c.screen_result_id == screenresult.screen_result_id)
@@ -695,7 +694,7 @@ class ScreenResultResource(ApiResource):
     
     def get_query(self, username, screenresult, param_hash, schema, limit, offset):
 
-        DEBUG_SCREENRESULT = True or logger.isEnabledFor(logging.DEBUG)
+        DEBUG_SCREENRESULT = False or logger.isEnabledFor(logging.DEBUG)
         manual_field_includes = set(param_hash.get('includes', []))
         manual_field_includes.add('assay_well_control_type')
             
@@ -731,10 +730,13 @@ class ScreenResultResource(ApiResource):
         # the base query uses only columns: well_id, +filters, +orderings
         base_clause = _aw
         base_clause = base_clause.join(_w, _aw.c.well_id == _w.c.well_id)
-        base_clause = base_clause.join(_sr, _aw.c.screen_result_id == _sr.c.screen_result_id)
+        base_clause = base_clause.join(
+            _sr, _aw.c.screen_result_id == _sr.c.screen_result_id)
         base_clause = base_clause.join(_s, _sr.c.screen_id == _s.c.screen_id)
-        base_clause = base_clause.join(_reagent,_w.c.well_id==_reagent.c.well_id, isouter=True)
-        base_clause = base_clause.join(_library,_w.c.library_id==_library.c.library_id)
+        base_clause = base_clause.join(
+            _reagent,_w.c.well_id==_reagent.c.well_id, isouter=True)
+        base_clause = base_clause.join(
+            _library,_w.c.library_id==_library.c.library_id)
 
         base_custom_columns = {
             'well_id': literal_column('assay_well.well_id'),
@@ -755,8 +757,8 @@ class ScreenResultResource(ApiResource):
         # - all (screenresult) fields not part of result value lookup
         # - any result_value lookups that are used in sort or filtering
         base_fields = [ fi for fi in field_hash.values() 
-            if (
-                fi['scope'] in ['fields.screenresult'] # everything except datacolumns
+            if ( # everything except datacolumns
+                fi['scope'] in ['fields.screenresult'] 
                  or fi['key'] in order_params
                  or '-%s' % fi['key'] in order_params
                  or fi['key'] in filter_fields)]
@@ -807,7 +809,8 @@ class ScreenResultResource(ApiResource):
                 .label('plate_number'))
         for key,col in sub_columns.items():
             if key not in base_columns:
-                if DEBUG_SCREENRESULT: logger.info('adding reagent column: %r...', key)
+                if DEBUG_SCREENRESULT: 
+                    logger.info('adding reagent column: %r...', key)
                 base_columns[key] = col
         
         base_stmt = select(base_columns.values()).select_from(base_clause)
@@ -832,7 +835,9 @@ class ScreenResultResource(ApiResource):
         _wellQueryIndex = self.bridge['well_query_index']
         (cachedQuery, create_new_well_index_cache) = \
             CachedQuery.objects.all().get_or_create(key=key)
-        if DEBUG_SCREENRESULT: logger.info('create_new_well_index_cache: %r', create_new_well_index_cache)
+        if DEBUG_SCREENRESULT: 
+            logger.info('create_new_well_index_cache: %r', 
+                create_new_well_index_cache)
         if create_new_well_index_cache:
             with get_engine().begin() as conn:
                 # NOTE: mixing Django connection with SQA connection
@@ -1052,10 +1057,12 @@ class ScreenResultResource(ApiResource):
                 excluded_well_to_datacolumn_map = {}
                 for key,field in schema['fields'].items():
                     if ( field.get('is_datacolumn', False) 
-                        and field['scope'] == 'datacolumn.screenresult-%s' % screen_facility_id):
+                        and field['scope'] 
+                            == 'datacolumn.screenresult-%s' % screen_facility_id):
                         
                         for well_id in (
-                            ResultValue.objects.filter(data_column_id=field['data_column_id'])
+                            ResultValue.objects.filter(
+                                    data_column_id=field['data_column_id'])
                                 .filter(is_exclude=True)
                                 .values_list('well_id', flat=True)):
                             excluded_cols = excluded_well_to_datacolumn_map.get(well_id,[])
@@ -1083,7 +1090,8 @@ class ScreenResultResource(ApiResource):
                     or field.get('linked_field_type',None) == 'fields.ListField'
                     or field.get('data_type', None) == 'list' ) ]
             value_templates = {key:field['value_template'] 
-                for key,field in field_hash.items() if field.get('value_template', None)}
+                for key,field in field_hash.items() 
+                    if field.get('value_template', None)}
 
             title_function = None
             if param_hash.get(HTTP_PARAM_USE_TITLES, False):
@@ -1093,10 +1101,10 @@ class ScreenResultResource(ApiResource):
                     else:
                         return key
             rowproxy_generator = None
-            if param_hash.get(HTTP_PARAM_USE_VOCAB, False) or desired_format != JSON_MIMETYPE:
+            if (param_hash.get(HTTP_PARAM_USE_VOCAB, False) 
+                    or desired_format != JSON_MIMETYPE):
                 rowproxy_generator = \
                     ApiResource.create_vocabulary_rowproxy_generator(field_hash)
-                    
             
             conn = get_engine().connect()
             if logger.isEnabledFor(logging.DEBUG):
@@ -1199,101 +1207,105 @@ class ScreenResultResource(ApiResource):
 
     
     def get_mutual_positives_columns(self, screen_result_id):
-
-        # Note: cache is cleared when any screen_results referenced by 
-        # a datacolumn are re-loaded
-        # 
-        # SS1 Methodology:
-        # select distinct(dc.data_column_id) 
-        # from assay_well aw0
-        # cross join assay_well aw1
-        # inner join screen_result sr on aw1.screen_result_id=sr.screen_result_id
-        # inner join data_column dc on sr.screen_result_id=dc.screen_result_id
-        # where aw0.well_id=aw1.well_id
-        # and aw0.is_positive
-        # and aw1.is_positive
-        # and ( dc.data_type = 'boolean_positive_indicator' 
-        #       or dc.data_type = 'partition_positive_indicator' )
-        # and aw0.screen_result_id = 941
-        # and aw1.screen_result_id <> 941;
-                
-        _aw = self.bridge['assay_well']
-        _sr = self.bridge['screen_result']
-        _dc = self.bridge['data_column']
         
-        # FIXME: recreating the well_data_column_positive_index:
-        # - now: this call is lazy recreating, when the screen_result 
-        #   resource is first called.
-        # - TODO: recreate this index when the screen_result is loaded.
-        # 
-        # Note: because this is lazy recreated, we are creating the whole 
-        # index each time; could just recreate for the specific screen
-        count_stmt = self.get_well_query_index_table()
-        count_stmt = select([func.count()]).select_from(count_stmt)
-        count = 0
-        with get_engine().begin() as conn:
-            count = int(conn.execute(count_stmt).scalar())        
-            logger.info('well_data_column_positive_index count: %r', count)
-        if count == 0:
-            self.create_dc_positive_index(screen_result_id)
+        cache_key = '%s_mutual_positive_columns' % screen_result_id
+        cached_ids = cache.get(cache_key)
         
-        # Query to find mutual positive data columns:
+        if not cached_ids:
         
-        # OLD METHOD: USES EXISTS
-        # - THIS HANGS POSTGRES (8.4 & 9.2) 
-        # SELECT DISTINCT wdc.data_column_id 
-        # FROM well_data_column_positive_index AS wdc 
-        # JOIN data_column ON wdc.data_column_id = data_column.data_column_id 
-        # WHERE data_column.screen_result_id != 1090 
-        # AND (EXISTS (
-        #     SELECT null FROM well_data_column_positive_index AS wdc1 
-        #     JOIN data_column AS dc1 ON wdc1.data_column_id = dc1.data_column_id 
-        #     WHERE wdc.well_id = wdc1.well_id AND dc1.screen_result_id = 1090));
-        # 
-        # NEW METHOD: USES TEMPORARY TABLE
-        # with wdc1 as (
-        # SELECT distinct(well_id) 
-        #     FROM well_data_column_positive_index AS wdc1 
-        #     JOIN data_column AS dc1 ON wdc1.data_column_id = dc1.data_column_id 
-        #     WHERE dc1.screen_result_id = 1090
-        # order by well_id
-        # ) 
-        # SELECT DISTINCT wdc.data_column_id 
-        # FROM well_data_column_positive_index AS wdc 
-        # JOIN data_column ON wdc.data_column_id = data_column.data_column_id
-        # join wdc1 on wdc1.well_id=wdc.well_id 
-        # WHERE data_column.screen_result_id != 1090;
-
-        
-        _aw = self.bridge['assay_well']
-        _sr = self.bridge['screen_result']
-        _dc = self.bridge['data_column']
-        _wdc = self.get_well_query_index_table().alias('wdc')
-        _wdc1 = self.get_well_query_index_table().alias('wdc1')
-        _dc1 = _dc.alias('dc1')
-        
-        j2 = _wdc1.join(_dc1, _wdc1.c.data_column_id == _dc1.c.data_column_id)
-        stmt2 = select([distinct(_wdc1.c.well_id).label('well_id')]).select_from(j2)
-        stmt2 = stmt2.where(_dc1.c.screen_result_id == screen_result_id)
-        stmt2.order_by('well_id')
-        stmt2 = stmt2.cte('wdc1')
-
-        j = _wdc.join(_dc, _wdc.c.data_column_id == _dc.c.data_column_id)
-        j = j.join(stmt2, stmt2.c.well_id == _wdc.c.well_id)
-        stmt = select([distinct(_wdc.c.data_column_id)]).select_from(j)
-        stmt = stmt.where(_dc.c.screen_result_id != screen_result_id)
-        
-        sql = str(stmt.compile(
-            dialect=postgresql.dialect(),
-            compile_kwargs={"literal_binds": True}))
-        logger.info('mutual positives statement: %r',sql)
-        logger.info('execute mutual positives column query...')
-        with get_engine().connect() as conn:
-            result = conn.execute(stmt)
-            logger.info('executed, not iterated')
-            cols =  [x[0] for x in result ]
-            logger.info('done, cols %r', cols)
-            return cols
+            # Note: cache is cleared when any screen_results referenced by 
+            # a datacolumn are re-loaded
+            # 
+            # SS1 Methodology:
+            # select distinct(dc.data_column_id) 
+            # from assay_well aw0
+            # cross join assay_well aw1
+            # inner join screen_result sr on aw1.screen_result_id=sr.screen_result_id
+            # inner join data_column dc on sr.screen_result_id=dc.screen_result_id
+            # where aw0.well_id=aw1.well_id
+            # and aw0.is_positive
+            # and aw1.is_positive
+            # and ( dc.data_type = 'boolean_positive_indicator' 
+            #       or dc.data_type = 'partition_positive_indicator' )
+            # and aw0.screen_result_id = 941
+            # and aw1.screen_result_id <> 941;
+                    
+            _aw = self.bridge['assay_well']
+            _sr = self.bridge['screen_result']
+            _dc = self.bridge['data_column']
+            
+            # Recreate the well_data_column_positive_index:
+            # Note: because this is lazy recreated, we are creating the whole 
+            # index each time; could just recreate for the specific screen
+            count_stmt = self.get_well_query_index_table()
+            count_stmt = select([func.count()]).select_from(count_stmt)
+            count = 0
+            with get_engine().begin() as conn:
+                count = int(conn.execute(count_stmt).scalar())        
+                logger.info('well_data_column_positive_index count: %r', count)
+            if count == 0:
+                self.create_dc_positive_index(screen_result_id)
+            
+            # Query to find mutual positive data columns:
+            
+            # OLD METHOD: USES EXISTS
+            # - THIS HANGS POSTGRES (8.4 & 9.2) 
+            # SELECT DISTINCT wdc.data_column_id 
+            # FROM well_data_column_positive_index AS wdc 
+            # JOIN data_column ON wdc.data_column_id = data_column.data_column_id 
+            # WHERE data_column.screen_result_id != 1090 
+            # AND (EXISTS (
+            #     SELECT null FROM well_data_column_positive_index AS wdc1 
+            #     JOIN data_column AS dc1 ON wdc1.data_column_id = dc1.data_column_id 
+            #     WHERE wdc.well_id = wdc1.well_id AND dc1.screen_result_id = 1090));
+            # 
+            # NEW METHOD: USES TEMPORARY TABLE
+            # with wdc1 as (
+            # SELECT distinct(well_id) 
+            #     FROM well_data_column_positive_index AS wdc1 
+            #     JOIN data_column AS dc1 ON wdc1.data_column_id = dc1.data_column_id 
+            #     WHERE dc1.screen_result_id = 1090
+            # order by well_id
+            # ) 
+            # SELECT DISTINCT wdc.data_column_id 
+            # FROM well_data_column_positive_index AS wdc 
+            # JOIN data_column ON wdc.data_column_id = data_column.data_column_id
+            # join wdc1 on wdc1.well_id=wdc.well_id 
+            # WHERE data_column.screen_result_id != 1090;
+    
+            
+            _aw = self.bridge['assay_well']
+            _sr = self.bridge['screen_result']
+            _dc = self.bridge['data_column']
+            _wdc = self.get_well_query_index_table().alias('wdc')
+            _wdc1 = self.get_well_query_index_table().alias('wdc1')
+            _dc1 = _dc.alias('dc1')
+            
+            j2 = _wdc1.join(_dc1, _wdc1.c.data_column_id == _dc1.c.data_column_id)
+            stmt2 = select([distinct(_wdc1.c.well_id).label('well_id')]).select_from(j2)
+            stmt2 = stmt2.where(_dc1.c.screen_result_id == screen_result_id)
+            stmt2.order_by('well_id')
+            stmt2 = stmt2.cte('wdc1')
+    
+            j = _wdc.join(_dc, _wdc.c.data_column_id == _dc.c.data_column_id)
+            j = j.join(stmt2, stmt2.c.well_id == _wdc.c.well_id)
+            stmt = select([distinct(_wdc.c.data_column_id)]).select_from(j)
+            stmt = stmt.where(_dc.c.screen_result_id != screen_result_id)
+    
+            if logger.isEnabledFor(logging.DEBUG):        
+                sql = str(stmt.compile(
+                    dialect=postgresql.dialect(),
+                    compile_kwargs={"literal_binds": True}))
+                logger.info('mutual positives statement: %r',sql)
+            logger.info('execute mutual positives column query...')
+            with get_engine().connect() as conn:
+                result = conn.execute(stmt)
+                cached_ids =  [x[0] for x in result ]
+                logger.info('done, cols %r', cached_ids)
+                cache.set(cache_key, cached_ids)
+        else:
+            logger.info('using cached mutual positive columns')
+        return cached_ids
 
     def get_schema(self, request, **kwargs):
 
@@ -1329,106 +1341,126 @@ class ScreenResultResource(ApiResource):
             
     def build_schema(self, screenresult=None, show_mutual_positives=False):
         
-        try:
+        screen_facility_id = None
+        if screenresult:
+            screen_facility_id = screenresult.screen.facility_id
+        cache_key = 'screenresult_schema_%s_mutual_pos_%s' \
+            % (screen_facility_id, show_mutual_positives)
+        logger.info('build screenresult schema: %s', cache_key)
+        data = cache.get(cache_key)
+        
+        if data is None:
+            logger.info('not cached: %s', cache_key)
             data = super(ScreenResultResource, self).build_schema()
             
             if screenresult:
-                well_schema = self.get_reagent_resource().build_schema(
-                    screenresult.screen.screen_type)
-                newfields = {}
-                newfields.update(well_schema['fields'])
-                for key,field in newfields.items():
-                    field['visibility'] = []
-                newfields.update(data['fields'])
-                
-                if screenresult.screen.screen_type == 'small_molecule':
-                    if 'compound_name' in newfields:
-                        newfields['compound_name']['visibility'] = ['l','d']
-                        newfields['compound_name']['ordinal'] = 12
-
-                logger.info('find the highest ordinal in the non-data_column fields...')
-                max_ordinal = 0
-                for fi in newfields.values():
-                    if fi.get('ordinal', 0) > max_ordinal:
-                        max_ordinal = fi['ordinal']
-                logger.info('map datacolumn definitions into field information definitions...')
-                field_defaults = {
-                    'visibility': ['l', 'd'],
-                    'data_type': 'string',
-                    'filtering': True,
-                    'is_datacolumn': True,
-                    'scope': (
-                        'datacolumn.screenresult-%s' 
-                        % screenresult.screen.facility_id)
-                    }
-                for i, dc in enumerate(
-                    DataColumn.objects
-                        .filter(screen_result=screenresult)
-                        .order_by('ordinal')):
+                try:
+                    well_schema = self.get_reagent_resource().build_schema(
+                        screenresult.screen.screen_type)
+                    newfields = {}
+                    newfields.update(well_schema['fields'])
+                    for key,field in newfields.items():
+                        field['visibility'] = []
+                    newfields.update(data['fields'])
                     
-                    (columnName, _dict) = (
-                        self.create_datacolumn_schema(
-                            dc, field_defaults=field_defaults))
-                    _dict['ordinal'] = max_ordinal + dc.ordinal + 1
-                    newfields[columnName] = _dict
-                
-                max_ordinal += dc.ordinal + 1
-                field_defaults = {
-                    'visibility': ['api'],
-                    'data_type': 'string',
-                    'filtering': True,
-                    }
-                
-                _current_sr = None
-                _ordinal = max_ordinal
-                logger.info('get mutual positives columns...')
-                mutual_positives_columns = \
-                    self.get_mutual_positives_columns(
-                        screenresult.screen_result_id)
-                logger.info('iterate mutual positives columns %r...',
-                    show_mutual_positives)
-                for i, dc in enumerate(DataColumn.objects
-                    .filter(data_column_id__in=mutual_positives_columns)
-                    .order_by('screen_result__screen__facility_id', 'ordinal')):
-
-                    if _current_sr != dc.screen_result.screen_result_id:
-                        _current_sr = dc.screen_result.screen_result_id
-                        max_ordinal = _ordinal
-                    _ordinal = max_ordinal + dc.ordinal + 1
+                    if screenresult.screen.screen_type == 'small_molecule':
+                        if 'compound_name' in newfields:
+                            newfields['compound_name']['visibility'] = ['l','d']
+                            newfields['compound_name']['ordinal'] = 12
+                    elif screenresult.screen.screen_type == 'rnai':
+                        if 'vendor_entrezgene_id' in newfields:
+                            newfields['vendor_entrezgene_id']['visibility'] = ['l','d']
+                            newfields['vendor_entrezgene_id']['ordinal'] = 10
+                        if 'vendor_entrezgene_symbols' in newfields:
+                            newfields['vendor_entrezgene_symbols']['visibility'] = ['l','d']
+                            newfields['vendor_entrezgene_symbols']['ordinal'] = 11
+                    logger.info('find the highest ordinal in the non-data_column fields...')
+                    max_ordinal = 0
+                    for fi in newfields.values():
+                        if fi.get('ordinal', 0) > max_ordinal:
+                            max_ordinal = fi['ordinal']
+                    logger.info('map datacolumn definitions into field information definitions...')
+                    field_defaults = {
+                        'visibility': ['l', 'd'],
+                        'data_type': 'string',
+                        'filtering': True,
+                        'is_datacolumn': True,
+                        'scope': (
+                            'datacolumn.screenresult-%s' 
+                            % screenresult.screen.facility_id)
+                        }
+                    for i, dc in enumerate(
+                        DataColumn.objects
+                            .filter(screen_result=screenresult)
+                            .order_by('ordinal')):
+                        
+                        (columnName, _dict) = (
+                            self.create_datacolumn_schema(
+                                dc, field_defaults=field_defaults))
+                        _dict['ordinal'] = max_ordinal + dc.ordinal + 1
+                        newfields[columnName] = _dict
                     
-                    field_defaults['scope'] = (
-                        'mutual_positive.%s' 
-                        % dc.screen_result.screen.facility_id)
-                    (columnName, _dict) = (
-                        self.create_datacolumn_schema(
-                            dc, field_defaults=field_defaults))
-                    _dict['ordinal'] = _ordinal
+                    max_ordinal += dc.ordinal + 1
+                    field_defaults = {
+                        'visibility': ['api'],
+                        'data_type': 'string',
+                        'filtering': True,
+                        }
                     
-                    newfields[columnName] = _dict
-                    
-                    if show_mutual_positives:
-                        _visibility = set(_dict['visibility'])
-                        _visibility.update(['l', 'd'])
-                        _dict['visibility'] = list(_visibility)
-                    
-                    logger.debug('created mutual positive column: %r', _dict)    
-                data['fields'] = newfields
+                    _current_sr = None
+                    _ordinal = max_ordinal
+                    logger.info('get mutual positives columns...')
+                    mutual_positives_columns = \
+                        self.get_mutual_positives_columns(
+                            screenresult.screen_result_id)
+                    logger.info('iterate mutual positives columns %r...',
+                        show_mutual_positives)
+                    for i, dc in enumerate(DataColumn.objects
+                        .filter(data_column_id__in=mutual_positives_columns)
+                        .order_by('screen_result__screen__facility_id', 'ordinal')):
+    
+                        if _current_sr != dc.screen_result.screen_result_id:
+                            _current_sr = dc.screen_result.screen_result_id
+                            max_ordinal = _ordinal
+                        _ordinal = max_ordinal + dc.ordinal + 1
+                        
+                        field_defaults['scope'] = (
+                            'mutual_positive.%s' 
+                            % dc.screen_result.screen.facility_id)
+                        (columnName, _dict) = (
+                            self.create_datacolumn_schema(
+                                dc, field_defaults=field_defaults))
+                        _dict['ordinal'] = _ordinal
+                        
+                        newfields[columnName] = _dict
+                        
+                        if show_mutual_positives:
+                            _visibility = set(_dict['visibility'])
+                            _visibility.update(['l', 'd'])
+                            _dict['visibility'] = list(_visibility)
+                        
+                        logger.debug('created mutual positive column: %r', _dict)    
+                    data['fields'] = newfields
+                except Exception, e:
+                    logger.exception('on build schema')
+                    raise e  
                 
             logger.info('build screenresult schema done')
-            return data
+            cache.set(cache_key, data)
+        else:
+            logger.info('using cached: %s', cache_key)
+        return data
 
-        except Exception, e:
-            logger.exception('on build schema')
-            raise e  
-    
     def create_datacolumn_schema(self, dc, field_defaults={}):
 
         screen_facility_id = dc.screen_result.screen.facility_id
+        screen = Screen.objects.get(facility_id=screen_facility_id)
         columnName = "dc_%s_%s" % (screen_facility_id, default_converter(dc.name))
         _dict = field_defaults.copy()
         _dict.update(model_to_dict(dc))
         _dict['title'] = '%s [%s]' % (dc.name, screen_facility_id) 
         _dict['description'] = _dict['description'] or _dict['title']
+        _dict['mouseover'] = '%s: %s - %s' % (screen_facility_id, screen.summary, dc.name)
         _dict['comment'] = dc.comments
         _dict['is_datacolumn'] = True
         _dict['key'] = columnName
@@ -1440,7 +1472,7 @@ class ScreenResultResource(ApiResource):
             if _dict.get('decimal_places', 0) > 0:
                 _dict['data_type'] = 'decimal'
                 _dict['display_options'] = \
-                    '{ "decimals": %s }' % _dict['decimal_places']
+                    '{ "decimals": %s, "orderSeparator": "" }' % _dict['decimal_places']
             else:
                 _dict['data_type'] = 'integer'
         if dc.data_type in self.data_type_lookup:
@@ -2239,7 +2271,8 @@ class DataColumnResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function)
+                title_function=title_function,
+                use_caching=True )
              
         except Exception, e:
             logger.exception('on get list')
@@ -2686,7 +2719,8 @@ class CherryPickRequestResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function)
+                title_function=title_function,
+                use_caching=True)
              
         except Exception, e:
             logger.exception('on get list')
@@ -3192,7 +3226,8 @@ class LibraryCopyResource(ApiResource):
                 field_hash=field_hash, param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function)
+                title_function=title_function,
+                use_caching=True)
             
         except Exception, e:
             logger.exception('on get list')
@@ -3418,7 +3453,8 @@ class PublicationResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function)
+                title_function=title_function,
+                use_caching=True)
              
         except Exception, e:
             logger.exception('on get_list %s' % self._meta.resource_name)
@@ -3938,7 +3974,8 @@ class AttachedFileResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function)
+                title_function=title_function,
+                use_caching=True)
              
         except Exception, e:
             logger.exception('on get_list %s' % self._meta.resource_name)
@@ -4413,10 +4450,12 @@ class ActivityResource(ApiResource):
                 la_columns.append(literal_column(key))
         stmt_la = stmt_la.cte('labactivities')
         stmt2 = select(la_columns).select_from(stmt_la)
-        compiled_stmt = str(stmt2.compile(
-            dialect=postgresql.dialect(),
-            compile_kwargs={"literal_binds": True}))
-        logger.info('compiled_stmt %s', compiled_stmt)
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            compiled_stmt = str(stmt2.compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True}))
+            logger.info('compiled_stmt %s', compiled_stmt)
 
         stmt = stmt1.union_all(stmt2)
         (stmt, count_stmt) = self.wrap_statement(
@@ -4505,10 +4544,12 @@ class ActivityResource(ApiResource):
          
         (stmt, count_stmt) = self.wrap_statement(
             stmt, order_clauses, filter_expression)
-        compiled_stmt = str(stmt.compile(
-            dialect=postgresql.dialect(),
-            compile_kwargs={"literal_binds": True}))
-        logger.info('compiled_stmt %s', compiled_stmt)
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            compiled_stmt = str(stmt.compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True}))
+            logger.info('compiled_stmt %s', compiled_stmt)
         
         return (field_hash, columns, stmt, count_stmt)
 
@@ -4542,7 +4583,8 @@ class ActivityResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function)
+                title_function=title_function,
+                use_caching=True)
              
         except Exception, e:
             logger.exception('on get list')
@@ -4779,7 +4821,8 @@ class CherryPickScreeningResource(ActivityResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function)
+                title_function=title_function,
+                use_caching=True)
               
         except Exception, e:
             logger.exception('on get list')
@@ -5004,7 +5047,8 @@ class LibraryScreeningResource(ActivityResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function)
+                title_function=title_function,
+                use_caching=True)
               
         except Exception, e:
             logger.exception('on get list')
@@ -6337,7 +6381,8 @@ class ScreenResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function)
+                title_function=title_function,
+                use_caching=True)
               
         except Exception, e:
             logger.exception('on get list')
@@ -6807,7 +6852,8 @@ class UserChecklistItemResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function)
+                title_function=title_function,
+                use_caching=True)
              
         except Exception, e:
             logger.exception('on get list')
@@ -7227,7 +7273,8 @@ class ScreensaverUserResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function)
+                title_function=title_function,
+                use_caching=True)
              
         except Exception, e:
             logger.exception('on get_list')
@@ -7867,7 +7914,6 @@ class ReagentResource(ApiResource):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
-        
 
     def get_query(self, param_hash, library_classification=None, library=None):
 
@@ -8104,7 +8150,8 @@ class ReagentResource(ApiResource):
                 'no library found for short_name', library_short_name)))
                 
     def build_schema(self, library_classification=None):
-        logger.info('build reagent schema for library_classification: %r', library_classification)
+        logger.info('build reagent schema for library_classification: %r',
+            library_classification)
         schema = deepcopy(super(ReagentResource, self).build_schema())
         if library_classification:
             sub_data = self.get_reagent_resource(
@@ -8546,6 +8593,125 @@ class LibraryResource(ApiResource):
             self.reagent_resource = ReagentResource()
         return self.reagent_resource
 
+    def prepend_urls(self):
+
+        return [
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('get_schema'), name="api_get_schema"),
+            url(r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/copy/(?P<copy_name>[^/]+)"
+                 r"/plate/(?P<plate_number>[^/]+)%s$") 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_library_copyplateview'),
+                name="api_dispatch_library_copyplateview"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/copy/(?P<copy_name>[^/]+)"
+                 r"/plate%s$") % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_library_copyplateview'),
+                name="api_dispatch_library_copyplateview"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/copy/(?P<copy_name>[^/]+)"
+                 r"/copywell/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$") 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_library_copywellview'),
+                name="api_dispatch_library_copywellview"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/copy/(?P<copy_name>[^/]+)"
+                 r"/copywellhistory/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$") 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_library_copywellhistoryview'),
+                name="api_dispatch_library_copywellhistoryview"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/copy/(?P<copy_name>[^/]+)"
+                 r"/copywell%s$") % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_library_copywellview'),
+                name="api_dispatch_library_copywellview"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/copy/(?P<name>[^/]+)%s$") 
+                 % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_library_copyview'),
+                name="api_dispatch_library_copyview"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/copy%s$") % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_library_copyview'),
+                name="api_dispatch_library_copyview"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/plate%s$") % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_library_copyplateview'),
+                name="api_dispatch_library_copyplateview"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/plate/(?P<plate_number>[^/]+)%s$") 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_library_copyplateview'),
+                name="api_dispatch_library_copyplateview"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/well%s$") % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_library_wellview'),
+                name="api_dispatch_library_wellview"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/reagent%s$") % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_library_reagentview'),
+                name="api_dispatch_library_reagentview"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/reagent/schema%s$") 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('get_reagent_schema'),
+                name="api_get_reagent_schema"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/well/schema%s$") 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('get_well_schema'),
+                name="api_get_well_schema"),
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+                 r"/version%s$") % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_libraryversionview'),
+                name="api_dispatch_libraryversionview"),
+        ]    
+    
+    def get_well_schema(self, request, **kwargs):
+        if not 'short_name' in kwargs:
+            raise Http404(str((
+                'The well schema requires a library short name'
+                ' in the URI, as in /library/[short_name]/well/schema/')))
+        kwargs['library_short_name'] = kwargs.pop('short_name')
+        return self.get_well_resource().get_schema(request, **kwargs)    
+  
+    def get_reagent_schema(self, request, **kwargs):
+        if not 'short_name' in kwargs:
+            raise Http404(
+                'The reagent schema requires a library short name'
+                ' in the URI, as in /library/[short_name]/well/schema/')
+        kwargs['library_short_name'] = kwargs.pop('short_name')
+        return self.get_reagent_resource().get_schema(request, **kwargs)    
+  
+    def dispatch_library_copyview(self, request, **kwargs):
+        kwargs['library_short_name'] = kwargs.pop('short_name')
+        return LibraryCopyResource().dispatch('list', request, **kwargs)    
+ 
+    def dispatch_library_copyplateview(self, request, **kwargs):
+        kwargs['library_short_name'] = kwargs.pop('short_name')
+        return LibraryCopyPlateResource().dispatch('list', request, **kwargs)   
+
+    def dispatch_library_copywellview(self, request, **kwargs):
+        kwargs['library_short_name'] = kwargs.pop('short_name')
+        return CopyWellResource().dispatch('list', request, **kwargs)   
+
+    def dispatch_library_copywellhistoryview(self, request, **kwargs):
+        kwargs['library_short_name'] = kwargs.pop('short_name')
+        return CopyWellHistoryResource().dispatch('list', request, **kwargs)   
+
+    def dispatch_library_wellview(self, request, **kwargs):
+        kwargs['library_short_name'] = kwargs.pop('short_name')
+        return self.get_well_resource().dispatch('list', request, **kwargs)    
+                    
+    def dispatch_library_reagentview(self, request, **kwargs):
+        kwargs['library_short_name'] = kwargs.pop('short_name')
+        return self.get_reagent_resource().dispatch('list', request, **kwargs)    
+
     def get_detail(self, request, **kwargs):
 
         library_short_name = kwargs.pop('short_name', None)
@@ -8666,7 +8832,8 @@ class LibraryResource(ApiResource):
                 param_hash=param_hash,
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
-                title_function=title_function)
+                title_function=title_function,
+                use_caching=True)
              
         except Exception, e:
             logger.exception('on get list')
@@ -8704,125 +8871,6 @@ class LibraryResource(ApiResource):
             .where(_screen.c.facility_id == for_screen_id)
             .cte('screen_libraries'))
         return screen_libraries
-
-    def prepend_urls(self):
-
-        return [
-            url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('get_schema'), name="api_get_schema"),
-            url(r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
-                 r"/copy/(?P<copy_name>[^/]+)"
-                 r"/plate/(?P<plate_number>[^/]+)%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_library_copyplateview'),
-                name="api_dispatch_library_copyplateview"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
-                 r"/copy/(?P<copy_name>[^/]+)"
-                 r"/plate%s$") % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_library_copyplateview'),
-                name="api_dispatch_library_copyplateview"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
-                 r"/copy/(?P<copy_name>[^/]+)"
-                 r"/copywell/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_library_copywellview'),
-                name="api_dispatch_library_copywellview"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
-                 r"/copy/(?P<copy_name>[^/]+)"
-                 r"/copywellhistory/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_library_copywellhistoryview'),
-                name="api_dispatch_library_copywellhistoryview"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
-                 r"/copy/(?P<copy_name>[^/]+)"
-                 r"/copywell%s$") % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_library_copywellview'),
-                name="api_dispatch_library_copywellview"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
-                 r"/copy/(?P<name>[^/]+)%s$") 
-                 % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_library_copyview'),
-                name="api_dispatch_library_copyview"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
-                 r"/copy%s$") % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_library_copyview'),
-                name="api_dispatch_library_copyview"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
-                 r"/plate%s$") % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_library_copyplateview'),
-                name="api_dispatch_library_copyplateview"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
-                 r"/plate/(?P<plate_number>[^/]+)%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_library_copyplateview'),
-                name="api_dispatch_library_copyplateview"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
-                 r"/well%s$") % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_library_wellview'),
-                name="api_dispatch_library_wellview"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
-                 r"/reagent%s$") % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_library_reagentview'),
-                name="api_dispatch_library_reagentview"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
-                 r"/reagent/schema%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('get_reagent_schema'),
-                name="api_get_reagent_schema"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
-                 r"/well/schema%s$") 
-                    % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('get_well_schema'),
-                name="api_get_well_schema"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
-                 r"/version%s$") % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_libraryversionview'),
-                name="api_dispatch_libraryversionview"),
-        ]    
-    
-    def get_well_schema(self, request, **kwargs):
-        if not 'short_name' in kwargs:
-            raise Http404(str((
-                'The well schema requires a library short name'
-                ' in the URI, as in /library/[short_name]/well/schema/')))
-        kwargs['library_short_name'] = kwargs.pop('short_name')
-        return self.get_well_resource().get_schema(request, **kwargs)    
-  
-    def get_reagent_schema(self, request, **kwargs):
-        if not 'short_name' in kwargs:
-            raise Http404(
-                'The reagent schema requires a library short name'
-                ' in the URI, as in /library/[short_name]/well/schema/')
-        kwargs['library_short_name'] = kwargs.pop('short_name')
-        return self.get_reagent_resource().get_schema(request, **kwargs)    
-  
-    def dispatch_library_copyview(self, request, **kwargs):
-        kwargs['library_short_name'] = kwargs.pop('short_name')
-        return LibraryCopyResource().dispatch('list', request, **kwargs)    
- 
-    def dispatch_library_copyplateview(self, request, **kwargs):
-        kwargs['library_short_name'] = kwargs.pop('short_name')
-        return LibraryCopyPlateResource().dispatch('list', request, **kwargs)   
-
-    def dispatch_library_copywellview(self, request, **kwargs):
-        kwargs['library_short_name'] = kwargs.pop('short_name')
-        return CopyWellResource().dispatch('list', request, **kwargs)   
-
-    def dispatch_library_copywellhistoryview(self, request, **kwargs):
-        kwargs['library_short_name'] = kwargs.pop('short_name')
-        return CopyWellHistoryResource().dispatch('list', request, **kwargs)   
-
-    def dispatch_library_wellview(self, request, **kwargs):
-        kwargs['library_short_name'] = kwargs.pop('short_name')
-        return self.get_well_resource().dispatch('list', request, **kwargs)    
-                    
-    def dispatch_library_reagentview(self, request, **kwargs):
-        kwargs['library_short_name'] = kwargs.pop('short_name')
-        return self.get_reagent_resource().dispatch('list', request, **kwargs)    
        
     def build_schema(self):
 

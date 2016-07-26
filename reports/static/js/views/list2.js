@@ -49,7 +49,7 @@ define([
       var urlSuffix = self.urlSuffix = "";
       var listInitial = {};
 
-      // first set presets
+      // Presets
       
       if(!_.isUndefined(resource.options)
           && ! _.isUndefined(resource.options.rpp)){
@@ -65,7 +65,7 @@ define([
         listInitial['search'] = _.clone(resource.options.search);
       }
       
-      // set with the uriStack values
+      // Update with the uriStack values
       if(_.has(self._options,'uriStack')){
         var stack = self._options.uriStack;
         for (var i=0; i<stack.length; i++){
@@ -335,14 +335,10 @@ define([
 
       self.listenTo(self.collection, "MyCollection:link", 
     		function(model, column) {
-          console.log('---- process link for '+ column);
-  
           var fieldDef = schemaResult.fields[column];
           if( _.has(fieldDef,'backgrid_cell_options')) {
-            // NOTE: format for backgrid cell options is "/{attribute_key}/"
             var backgrid_cell_options = fieldDef['backgrid_cell_options'];
             var _route = Iccbl.formatString(backgrid_cell_options, model);
-            console.log('route: ' + _route);
             appModel.router.navigate(_route, {trigger:true});
           }else{
             console.log('no options defined for link cell');
@@ -350,25 +346,24 @@ define([
         });
 
       self.listenTo(
-          self.collection, "MyCollection:detail", 
-          function (model) {
-            console.log('detail handler for' + model.get('toString'));
-            if(!_.isUndefined(self._options.detailHandler)){
-              self._options.detailHandler(model);
-            }else{
-              var id = Iccbl.getIdFromIdAttribute( model, schemaResult );
-              model.resource = self._options.resource;
-              appModel.router.navigate(model.resource.key + '/' + id, {trigger:true});
-            }
-          });
-
+        self.collection, "MyCollection:detail", 
+        function (model) {
+          console.log('detail handler for' + model.get('toString'));
+          if(!_.isUndefined(self._options.detailHandler)){
+            self._options.detailHandler(model);
+          }else{
+            var id = Iccbl.getIdFromIdAttribute( model, schemaResult );
+            model.resource = self._options.resource;
+            appModel.router.navigate(model.resource.key + '/' + id, {trigger:true});
+          }
+        });
       
       self.listenTo(self.collection, "MyCollection:delete", function (model) {
         var form_template = [
-           "<div class='form-horizontal container' id='delete_form' >",
-           "<form data-fieldsets class='form-horizontal container' >",
-           "</form>",
-           "</div>"].join('');      
+          "<div class='form-horizontal container' id='delete_form' >",
+          "<form data-fieldsets class='form-horizontal container' >",
+          "</form>",
+          "</div>"].join('');      
         var formSchema = {};
         formSchema['comments'] = {
           title: 'Comments',
@@ -458,6 +453,7 @@ define([
         var searchHash = _.clone(self.listModel.get('search'));
         self.collection.setSearch(searchHash);
       });
+
       // Extraselector
       if( _.has(schemaResult, 'extraSelectorOptions')){
         var searchHash = self.listModel.get('search');
@@ -468,12 +464,12 @@ define([
         
         if ( !_.isEmpty(searchHash)){
           _.each(_.keys(searchHash), function(key){
-              console.log('key: ' + key + ', extrSelectorKey: ' + extraSelectorKey);
-              if( key == extraSelectorKey 
-                  || key  === extraSelectorKey+ '__exact'
-                  || key  === extraSelectorKey+ '__ne'){
-                  extraSelectorModel.set({ selection: searchHash[key] });
-              }
+            console.log('key: ' + key + ', extrSelectorKey: ' + extraSelectorKey);
+            if( key == extraSelectorKey 
+                || key  === extraSelectorKey+ '__exact'
+                || key  === extraSelectorKey+ '__ne'){
+              extraSelectorModel.set({ selection: searchHash[key] });
+            }
           });
         }
         var selectorOptions = _.clone(schemaResult.extraSelectorOptions);
@@ -487,47 +483,48 @@ define([
         this.objects_to_destroy.push(extraSelectorInstance);
 
         self.listenTo(self.listModel, 'change:search', function(){
-            var searchHash = _.clone(self.listModel.get('search'));
-            console.log('extraselector, search changed: ' + JSON.stringify(searchHash));
-            _.each(_.keys(searchHash), function(key){
-                console.log('key: ' + key + ', extrSelectorKey: ' + extraSelectorKey);
-                if( key === extraSelectorKey || key  === extraSelectorKey+ '__exact'){
-                    extraSelectorModel.set({ selection: searchHash[key] });
-                }
-            });
+          var searchHash = _.clone(self.listModel.get('search'));
+          console.log('extraselector, search changed: ' + JSON.stringify(searchHash));
+          _.each(_.keys(searchHash), function(key){
+            console.log('key: ' + key + ', extrSelectorKey: ' + extraSelectorKey);
+            if( key === extraSelectorKey || key  === extraSelectorKey+ '__exact'){
+                extraSelectorModel.set({ selection: searchHash[key] });
+            }
+          });
         });
         this.listenTo(extraSelectorModel, 'change', function() {
-            var searchHash = _.clone(self.listModel.get('search'));
-            var val = extraSelectorModel.get('selection');
-            var value =  _.isUndefined(val.value) ? val: val.value ;
-            
-            console.log('extra selector change:' + value);
+          var searchHash = _.clone(self.listModel.get('search'));
+          var val = extraSelectorModel.get('selection');
+          var value =  _.isUndefined(val.value) ? val: val.value ;
+          
+          console.log('extra selector change:' + value);
 
-            delete searchHash[extraSelectorKey + '__exact']
-            delete searchHash[extraSelectorKey + '__ne']
-            delete searchHash[extraSelectorKey]
-            
-            if(!_.isEmpty(value) && !_.isEmpty(value.trim())){
-              var field = self._options.schemaResult.fields[extraSelectorKey];
-              if(field.data_type=='boolean'){
-                searchHash[extraSelectorKey] = value;
+          delete searchHash[extraSelectorKey + '__exact']
+          delete searchHash[extraSelectorKey + '__ne']
+          delete searchHash[extraSelectorKey]
+          
+          if(!_.isEmpty(value) && !_.isEmpty(value.trim())){
+            var field = self._options.schemaResult.fields[extraSelectorKey];
+            if(field.data_type=='boolean'){
+              searchHash[extraSelectorKey] = value;
+            }else{
+              // Convert the !negated values to value__ne 
+              // (this is better for the URL)
+              if(value.indexOf('!')==0){
+                searchHash[extraSelectorKey + '__ne'] = value.substring(1);
               }else{
-                // Convert the !negated values to value__ne 
-                // (this is better for the URL)
-                if(value.indexOf('!')==0){
-                  searchHash[extraSelectorKey + '__ne'] = value.substring(1);
-                }else{
-                  searchHash[extraSelectorKey + '__exact'] = value;
-                }
+                searchHash[extraSelectorKey + '__exact'] = value;
               }
             }
-            self.listModel.set('search', searchHash);
+          }
+          self.listModel.set('search', searchHash);
         });
       }
       var grid = this.grid = new Backgrid.Grid({
         columns: columns,
         body: Iccbl.MultiSortBody,
         collection: self.collection,
+        className: "backgrid col-sm-12 table-striped table-condensed table-hover"
       });
       this.objects_to_destroy.push(grid);
 
@@ -583,8 +580,6 @@ define([
       var finalGrid = self.finalGrid = this.grid.render();
       self.objects_to_destroy.push(finalGrid);
       self.$("#table-div").append(finalGrid.el);
-      // FIXME: move css classes out to templates
-      finalGrid.$el.addClass("col-sm-12 table-striped table-condensed table-hover");
 
       if(self.collection instanceof Backbone.PageableCollection){
         self.$("#paginator-div").append(self.paginator.render().$el);
@@ -649,7 +644,9 @@ define([
     
     clear_searches: function(){
       this.collection.trigger("Iccbl:clearSearches");
-      this.collection.getFirstPage({reset: true, fetch: true});
+      // FIXME: any call to getFirstPage results in a fetch, disabled for now
+      //this.collection.getFirstPage({reset: true, fetch: true});
+      //this.collection.getFirstPage();
     },
     
     clear_sorts: function(){
@@ -983,6 +980,7 @@ define([
           
           if(fieldType == 'datacolumn' 
             && field_screen_facility_id != screen_facility_id ){
+            prop['visibility'].push('l');
             var currentColumn = self.grid.columns.findWhere({ name: key });
             if(! currentColumn){
               self.grid.insertColumn(
@@ -1016,6 +1014,7 @@ define([
               })
             ){
             console.log('remove: ', key);
+            prop['visibility'] = _.without(prop['visibility'], 'l');
             var currentColumn = self.grid.columns.findWhere({ name: key });
             if(currentColumn){
               self.grid.removeColumn(currentColumn);

@@ -147,39 +147,3 @@ define([
 	
 	return DetailLayout;
 });
-
-
-
-
-//    delete: function(event){
-//      event.preventDefault();
-//      var self = this;
-//      console.log('delete: ' + JSON.stringify(this.model));
-//      var model = this.model;
-//      var modalDialog = new Backbone.View({
-//        el: _.template(
-//            modalOkCancel, { body: "Please confirm deletion of record: '" + 
-//            model.get('toString') + "'", title: "Please confirm deletion" } ),
-//        events: {
-//          'click #modal-cancel':function(event) {
-//              event.preventDefault();
-//              $('#modal').modal('hide'); // TODO: read-up on modal!
-//                                          // this is not ideal with
-//                                          // the reference to template
-//                                          // elements!
-//          },
-//          'click #modal-ok':function(event) {
-//              event.preventDefault();
-//              model.destroy();
-//              $('#modal').modal('hide');
-//              self.$el.empty();
-//              self.trigger('remove');
-//              self._router.back();
-//          }
-//        },
-//      });
-//      modalDialog.render();
-//      $('#modal').empty();
-//      $('#modal').html(modalDialog.$el);
-//      $('#modal').modal();
-//    },

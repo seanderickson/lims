@@ -17,7 +17,6 @@ if (buttons) {
     <table class='table table-condensed data-list' style='margin-bottom: 2px;'>
 <% 
 _   (informationKeys).each(function(key){
-      console.log('information-key', key);
 %>
      <tr>
         <td class='col-xs-4 dl-title small' id="title-<%=key %>" title='' />
@@ -95,7 +94,6 @@ _   (informationKeys).each(function(key){
           <table class=' table-condensed data-list'>
 <% 
         _   .each(group.fields, function(groupKey){
-              console.log('group-key', groupKey);
 %>
             <tr>
               <td class='col-xs-4 dl-title' id="title-<%=groupKey %>" title='' />
@@ -119,7 +117,6 @@ _   (informationKeys).each(function(key){
           <table class='table-condensed data-list'>
 <% 
         _   .each(group.fields, function(groupKey){
-              console.log('group-key', groupKey);
 %>
             <tr>
               <td class='dl-title' id="title-<%=groupKey %>" title='' />

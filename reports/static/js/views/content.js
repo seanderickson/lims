@@ -109,7 +109,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       }
       
       var titleFunc = function setContentTitle(val){
-        console.log('update title',val);
         self.$('#content_title').html(val);
       }
       

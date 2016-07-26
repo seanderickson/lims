@@ -186,6 +186,9 @@ define([
         $('.nav').children('li').removeClass('active');
         this.$('#' + ui_resource_id).addClass('active');
         this.updateTopMenu(ui_resource_id);
+
+        // Clear out error messages after navigating away from page
+        appModel.unset('messages');
       }
    
     });

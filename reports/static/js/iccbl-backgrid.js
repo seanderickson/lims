@@ -3489,7 +3489,7 @@ var SIUnitHeaderCell = MultiSortHeaderCell.extend({
     SIUnitHeaderCell.__super__.initialize.apply(this,arguments);
 
     var name = this.column.get('name');
-    var cell_options = fi['display_options'];
+    var cell_options = this.fieldinformation['display_options'];
     if(!cell_options || !cell_options.symbol)
     {
       throw new Error('SIUnitHeaderCell: field information requires the '+

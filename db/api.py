@@ -433,7 +433,7 @@ class ScreenResultResource(ApiResource):
         self.reagent_resource = None
         self._well_data_column_positive_index = None
         
-    def get_well_query_index_table(self):
+    def get_well_data_column_positive_index_table(self):
         ''' Work around method; create the well_data_column_positive_index 
         table for the Aldjemy bridge '''
         if not 'well_data_column_positive_index' in get_tables():
@@ -573,7 +573,7 @@ class ScreenResultResource(ApiResource):
         # TODO: incrementally clear the wdcpi for each set of ids, or all
         if all is True or by_uri is not None:
             logger.info('all: %r, by_uri: %r', all, by_uri)
-            get_engine().execute(delete(self.get_well_query_index_table()))
+            get_engine().execute(delete(self.get_well_data_column_positive_index_table()))
             logger.info(
                 'cleared all cached well_data_column_positive_indexes')
             
@@ -1193,7 +1193,7 @@ class ScreenResultResource(ApiResource):
         base_stmt = base_stmt.order_by(
             _dc.c.data_column_id, _aw.c.well_id)
         insert_statement = (
-            insert(self.get_well_query_index_table())
+            insert(self.get_well_data_column_positive_index_table())
                 .from_select(['well_id', 'data_column_id'], base_stmt))
         logger.info(
             'mutual pos insert statement: %r',
@@ -1235,7 +1235,7 @@ class ScreenResultResource(ApiResource):
             # Recreate the well_data_column_positive_index:
             # Note: because this is lazy recreated, we are creating the whole 
             # index each time; could just recreate for the specific screen
-            count_stmt = self.get_well_query_index_table()
+            count_stmt = self.get_well_data_column_positive_index_table()
             count_stmt = select([func.count()]).select_from(count_stmt)
             count = 0
             with get_engine().begin() as conn:
@@ -1275,8 +1275,8 @@ class ScreenResultResource(ApiResource):
             _aw = self.bridge['assay_well']
             _sr = self.bridge['screen_result']
             _dc = self.bridge['data_column']
-            _wdc = self.get_well_query_index_table().alias('wdc')
-            _wdc1 = self.get_well_query_index_table().alias('wdc1')
+            _wdc = self.get_well_data_column_positive_index_table().alias('wdc')
+            _wdc1 = self.get_well_data_column_positive_index_table().alias('wdc1')
             _dc1 = _dc.alias('dc1')
             
             j2 = _wdc1.join(_dc1, _wdc1.c.data_column_id == _dc1.c.data_column_id)
@@ -1366,12 +1366,12 @@ class ScreenResultResource(ApiResource):
                             newfields['compound_name']['visibility'] = ['l','d']
                             newfields['compound_name']['ordinal'] = 12
                     elif screenresult.screen.screen_type == 'rnai':
-                        if 'vendor_entrezgene_id' in newfields:
-                            newfields['vendor_entrezgene_id']['visibility'] = ['l','d']
-                            newfields['vendor_entrezgene_id']['ordinal'] = 10
-                        if 'vendor_entrezgene_symbols' in newfields:
-                            newfields['vendor_entrezgene_symbols']['visibility'] = ['l','d']
-                            newfields['vendor_entrezgene_symbols']['ordinal'] = 11
+                        if 'facility_entrezgene_id' in newfields:
+                            newfields['facility_entrezgene_id']['visibility'] = ['l','d']
+                            newfields['facility_entrezgene_id']['ordinal'] = 10
+                        if 'facility_entrezgene_symbols' in newfields:
+                            newfields['facility_entrezgene_symbols']['visibility'] = ['l','d']
+                            newfields['facility_entrezgene_symbols']['ordinal'] = 11
                     logger.info('find the highest ordinal in the non-data_column fields...')
                     max_ordinal = 0
                     for fi in newfields.values():
@@ -7721,29 +7721,6 @@ class SilencingReagentResource(ApiResource):
                 
         return reagent        
         
-
-    def obj_create_old(self, bundle, **kwargs):
-        
-        bundle = super(SilencingReagentResource, self).obj_create(
-            bundle, **kwargs)
-        
-        if 'duplex_wells' in kwargs:
-            bundle.obj.silencingreagent.duplex_wells = kwargs['duplex_wells']
-        
-        # Now do the gene tables
-        # # nastiness ensues!
-        
-        gene_key = 'entrezgene_id'
-        if bundle.data.get('vendor_%s' % gene_key, None):
-            bundle.obj.silencingreagent.vendor_gene = \
-                self._create_gene(bundle.data, 'vendor')
-        if bundle.data.get('facility_%s' % gene_key, None):
-            bundle.obj.silencingreagent.facility_gene = \
-                self._create_gene(bundle.data, 'facility')
-        bundle.obj.silencingreagent.save()
-        
-        return bundle
-    
     def _create_gene(self, data, source_type):
         
         gene_keys = ['entrezgene_id', 'gene_name', 'species_name']
@@ -7757,7 +7734,7 @@ class SilencingReagentResource(ApiResource):
         
         _key = 'entrezgene_symbols'
         if data.get('%s_%s' % (source_type, _key), None):
-            symbol_list = data['%s_%s' % (source_type, _key)]  # .split(';')
+            symbol_list = data['%s_%s' % (source_type, _key)]
             for i, symbol in enumerate(symbol_list):
                 gene_symbol = GeneSymbol()
                 setattr(gene_symbol, 'entrezgene_symbol', symbol)
@@ -7767,7 +7744,7 @@ class SilencingReagentResource(ApiResource):
     
         _key = 'genbank_accession_numbers'
         if data.get('%s_%s' % (source_type, _key), None):
-            _list = data['%s_%s' % (source_type, _key)]  # .split(';')
+            _list = data['%s_%s' % (source_type, _key)]
             for i, num in enumerate(_list):
                 accession_number = GeneGenbankAccessionNumber()
                 setattr(accession_number, 'genbank_accession_number', num)
@@ -8267,17 +8244,6 @@ class WellResource(ApiResource):
             self.npr_resource = NaturalProductReagentResource()
         return self.npr_resource
     
-#     def get_reagent_resource(self, library_screen_type=None):
-#         # FIXME: we should store the "type" on the entity
-#         
-#         if library_screen_type == 'rnai':
-#             return self.get_sr_resource()
-#         else:
-#             if library_screen_type == 'natural_products':
-#                 return self.get_npr_resource()
-#             else:
-#                 return self.get_smr_resource()
-    
     def get_reagent_resource(self):
         if not self.reagent_resource:
             self.reagent_resource = ReagentResource()
@@ -8296,8 +8262,71 @@ class WellResource(ApiResource):
             url(r"^(?P<resource_name>%s)/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url((r"^(?P<resource_name>%s)"
+                 r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})"
+                 r"/duplex_wells%s$" )
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_well_duplex_view'), 
+                name="api_dispatch_well_duplex_view"),
         ]
+
+    @read_authorization
+    def dispatch_well_duplex_view(self, request, **kwargs):
+        
+        well_id = kwargs.get('well_id', None)
+        if not well_id:
+            raise NotImplementedError('must provide a well_id parameter')
+        
+        sr = SilencingReagent.objects.get(reagent_well__well_id=well_id)
+        
+        _aw = self.bridge['assay_well']
+        _sr = self.bridge['screen_result']
+        _s = self.bridge['screen']
+        srr = ScreenResultResource()
+        
+        stmt = (
+            select([_s.c.facility_id, _aw.c.confirmed_positive_value, 
+                    _aw.c.is_positive])
+                .select_from(_aw
+                    .join(_sr, _aw.c.screen_result_id==_sr.c.screen_result_id)
+                    .join(_s, _sr.c.screen_id==_s.c.screen_id)))
+        fields = ['facility_id', 'confirmed_positive_value', 'is_positive']
+
+        with get_engine().connect()as conn:
+            
+            data_per_screen = {}
+            well_info = {}
+            for dw in sr.duplex_wells.all():
                 
+                item = { 'well_id': dw.well_id }
+                sr = SilencingReagent.objects.get(reagent_well__well_id=dw.well_id)
+                
+                item['sequence'] = sr.sequence
+                item['vendor_id'] = '%s %s' %(sr.vendor_name,sr.vendor_identifier)
+                well_info[dw.well_id] = item
+                
+                result = conn.execute(stmt.where(_aw.c.well_id==dw.well_id))
+                compiled_stmt = str(stmt.where(_aw.c.well_id==dw.well_id).compile(
+                    dialect=postgresql.dialect(),
+                    compile_kwargs={"literal_binds": True}))
+                
+                logger.info('stmt: %r', compiled_stmt)
+                
+                for x in cursor_generator(result, fields):
+                    screen_row = data_per_screen.setdefault(
+                        x['facility_id'],
+                        { 'screen_facility_id': x['facility_id']})
+                    screen_row[dw.well_id] = x['confirmed_positive_value']
+                            
+            data = { 'duplex_wells': well_info,
+                     'confirmed_positive_values': data_per_screen.values() }
+                
+        return HttpResponse(
+            content=self._meta.serializer.serialize(
+                data, self.get_serialize_format(request,**kwargs)),
+            content_type=build_content_type(
+                self.get_serialize_format(request,**kwargs)))
+        
     def get_schema(self, request, **kwargs):
         if not 'library_short_name' in kwargs:
             return self.build_response(request, self.build_schema(),**kwargs)

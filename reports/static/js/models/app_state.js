@@ -672,37 +672,6 @@ define([
       console.log('finished getResources')
     },
 
-    
-    /**
-     * Note that schema now comes from resource.schema
-     * 
-     * A schema: (for ResourceResource)
-     * 
-     * schema: {
-        extraSelectorOptions: {},
-        fields: {
-          api_name,
-          comment,
-          description,
-          id,
-          id_attribute,
-          is_restricted,
-          key,
-          ordinal,
-          resource_uri,
-          scope,
-          title,
-          title_attribute,
-          visibility
-        },
-        resource_definition: {}
-        },
-     * 
-     */
-    getSchema: function(resourceId) {
-      return this.getResource(resourceId);
-    },
-    
     createNewModel: function(resourceId, defaults) {
       console.log('create new model for: ',resourceId, defaults );
       var self = this;
@@ -758,12 +727,10 @@ define([
      * Get a model from the server
      */
     getModel: function(resourceId, key, callBack, options) {
-      console.log('getModel', resourceId, key);
       var self = this;
       var options = options || {};
       var failCallback = options.failCallback;
       var data_for_get = _.extend({ includes: '*' }, options.data_for_get );
-      
       var resource = this.getResource(resourceId);
       if(_.isArray(key)){
         key = key.join('/');
@@ -906,7 +873,10 @@ define([
           visibility: [
             "l",
             "d"
-          ]
+          ],
+          fields: {
+            field1: {}
+          }
         }
      *    
      */
@@ -919,41 +889,23 @@ define([
       return uiResources[resourceId];
     },
         
-    getResourceFromUrl: function(resourceId, schemaUrl, callback){
+    getResourceFromUrl: function(schemaUrl, callback){
       var self = this;
-      var uiResources = this.get('ui_resources');
-      var ui_resource = {};
-      if(_.has(uiResources, resourceId)) {
-        ui_resource = uiResources[resourceId];
-      }
-      
-      if (_.isEmpty(ui_resource) 
-          || _.contains(['screenresult','well'], resourceId)){
-        // Re-fetch the specific resource schema from the Resource endpoint:
-        // - if the Resource has customizations of the schema
-        // - i.e. "extraSelectorOptions
-        
-        var ModelClass = Backbone.Model.extend({
-          url : schemaUrl,
-          defaults : {}
-        });
-        var instance = new ModelClass();
-        instance.fetch({
-            success : function(model) {
-              console.log('resource schema model', model.toJSON());
-              schema = model.toJSON();
-              _.each(_.values(schema.fields), self.parseSchemaField );
-  
-              ui_resource = _.extend({}, ui_resource, schema);
-              var schemaClass = new SchemaClass();
-              ui_resource = _.extend(ui_resource, schemaClass);
-              
-              callback(ui_resource)
-            }
-        }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
-      } else {
-        callback(ui_resource);
-      }      
+      var ModelClass = Backbone.Model.extend({
+        url : schemaUrl,
+        defaults : {}
+      });
+      var instance = new ModelClass();
+      instance.fetch({
+        success : function(model) {
+          schema = model.toJSON();
+          _.each(_.values(schema.fields), self.parseSchemaField );
+          var schemaClass = new SchemaClass();
+          var ui_resource = _.extend(schema, schemaClass);
+          ui_resource.apiUri = '/' + [ui_resource.api_name,self.apiVersion,ui_resource.key].join('/');
+          callback(ui_resource)
+        }
+      }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
     },
     
     /**

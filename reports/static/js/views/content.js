@@ -9,7 +9,6 @@ define([
   'views/generic_detail_layout',
   'views/generic_edit',
   'views/library/library',
-  'views/library/libraryWells',
   'views/screen/screen',
   'views/screen/libraryScreening',
   'views/user/user2',
@@ -21,7 +20,7 @@ define([
   'templates/about.html'
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
-         EditView, LibraryView, LibraryWellView, ScreenView, LibraryScreeningView, UserAdminView, 
+         EditView, LibraryView, ScreenView, LibraryScreeningView, UserAdminView, 
          UserView, UserGroupAdminView, DetailTestView, layout, welcomeLayout, 
          aboutLayout) {
   
@@ -29,7 +28,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     'ListView': ListView, 
     'DetailView': DetailLayout, 
     'LibraryView': LibraryView,
-    'LibraryWellView': LibraryWellView,
     'ScreenView': ScreenView,
     'LibraryScreeningView': LibraryScreeningView,
     'UserView': UserView,
@@ -317,40 +315,36 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         throw msg;
       }
 
-      appModel.getResourceFromUrl(uiResourceId, resource.apiUri + '/schema', function(resource){
-        // Test for list args, if not found, then it's a detail view
-        if (!_.isEmpty(uriStack) && 
-              !_.contains(appModel.LIST_ARGS, uriStack[0]) &&
-              uriStack[0] != 'search') {
-          // DETAIL VIEW
-          
-          if(uriStack[0] == '+add'){
-            self.showAdd(resource, uriStack);
-          }else{ 
-            try{
-              var _key = Iccbl.popKeyFromStack(resource, uriStack, consumedStack );
-              var options = {};
-              if (uiResourceId == 'screen'){
-                // Use the special "ui" url for screen
-                options.url = [resource.apiUri, _key, 'ui'].join('/');
-              }
-              appModel.getModel(uiResourceId, _key, function(model){
-                model.resource = resource;
-                self.showDetail(uriStack, model);
-              }, options);
-            }catch(e){
-              var msg = 'Unable to display resource: ' + uiResourceId;
-              console.log(msg,e);
-              this.error(msg);
-            }
-          }
-        } else {
-          // LIST VIEW
-          self.showList(resource, uriStack,resource);
-        }
+      // Test for list args, if not found, then it's a detail view
+      if (!_.isEmpty(uriStack) && 
+            !_.contains(appModel.LIST_ARGS, uriStack[0]) &&
+            uriStack[0] != 'search') {
+        // DETAIL VIEW
         
-      });
-
+        if(uriStack[0] == '+add'){
+          self.showAdd(resource, uriStack);
+        }else{ 
+          try{
+            var _key = Iccbl.popKeyFromStack(resource, uriStack, consumedStack );
+            var options = {};
+            if (uiResourceId == 'screen'){
+              // Use the special "ui" url for screen
+              options.url = [resource.apiUri, _key, 'ui'].join('/');
+            }
+            appModel.getModel(uiResourceId, _key, function(model){
+              model.resource = resource;
+              self.showDetail(uriStack, model);
+            }, options);
+          }catch(e){
+            var msg = 'Unable to display resource: ' + uiResourceId;
+            console.log(msg,e);
+            this.error(msg);
+          }
+        }
+      } else {
+        // LIST VIEW
+        self.showList(resource, uriStack,resource);
+      }
     }
   });
 

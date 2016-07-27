@@ -33,7 +33,6 @@ from reports.serialize.streaming_serializers import generic_xlsx_response, \
     get_xls_response
 from reports.serialize.xlsutils import LIST_DELIMITER_XLS
 import reports.serialize.xlsutils as xlsutils
-from reports.dump_obj import dumpObj
 
 
 logger = logging.getLogger(__name__)
@@ -354,15 +353,6 @@ class XLSSerializer(BaseSerializer):
         else:
             wb = xlrd.open_workbook(cStringIO.StringIO(content))
             
-#         datastructure =  xlsutils.workbook_as_datastructure(wb)
-#         
-#         # deserialize into static datastructure
-#         for key,sheet_rows in datastructure.items():
-#             datastructure[key] = [[y for y in x.items()] for x in sheet_rows]
-#         
-#         return datastructure
-        
-        
         if wb.nsheets > 1:
             logger.warn('only first page of workbooks supported')
          

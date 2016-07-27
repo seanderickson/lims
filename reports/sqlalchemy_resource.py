@@ -848,7 +848,6 @@ class SqlAlchemyResource(IccblBaseResource):
                             'stmt': compiled_stmt,
                             'cached_result': _result,
                             'count': count }
-#                         if DEBUG_CACHE:
                         logger.info('add to cache, key: %s, limit: %s, offset: %s',
                             key, limit, new_offset)
                         cache.set( key, _cache, None)

@@ -157,8 +157,6 @@
       "header_message": "Wells",
       "title": "Well",
       "route": "list/well",
-      "list_view": "ListView",
-      "detailView": "LibraryWellView",
       "api_resource": "well",
       "url_root": "/db/api/v1",
       "description": "Well information",

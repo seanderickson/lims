@@ -9,13 +9,13 @@ define([
   'layoutmanager',
   'models/app_state',
   'views/library/libraryCopy', 
-  'views/library/libraryWells', 
+  'views/library/libraryWell', 
   'views/generic_detail_layout',
   'views/generic_edit',
   'views/list2',
   'templates/generic-tabbed.html'
 ], function($, _, Backbone, Iccbl, layoutmanager, appModel, LibraryCopyView, 
-            LibraryWellsView, DetailLayout, EditView, ListView, 
+            LibraryWellView, DetailLayout, EditView, ListView, 
             libraryTemplate) {
 
   var LibraryView = Backbone.Layout.extend({
@@ -144,9 +144,7 @@ define([
     
     click_tab : function(event){
       event.preventDefault();
-      // Block clicks from the wrong elements
-      // TODO: how to make this specific to this view? (is it still also catching
-      // clicks on the table paginator?)
+      event.stopPropagation();
       var key = event.currentTarget.id;
       if(_.isEmpty(key)) return;
       this.change_to_tab(key);
@@ -264,18 +262,51 @@ define([
 
     setWells: function(delegateStack) {
       var self = this;
-      var key = 'well';
-      var view = new LibraryWellsView({
-        library: self.model,
-        uriStack: delegateStack
-      });
-      self.tabViews[key] = view;
-      Backbone.Layout.setupView(view);
-      self.reportUriStack([]);
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      this.setView("#tab_container", view ).render();
-    },
+      var schemaUrl = [self.model.resource.apiUri,self.model.key,'well',
+                       'schema'].join('/');
+      var wellResource = appModel.getResource('well'); 
 
+      function createWellView(schemaResult){
+        if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
+            !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
+          // Detail view
+          var well_id = delegateStack.shift();
+          self.consumedStack.push(well_id);
+          var _key = [self.model.key,well_id].join('/');
+          appModel.getModel(wellResource.key, well_id, function(model){
+            model.resource = schemaResult;
+            view = new LibraryWellView({
+              model: model, 
+              uriStack: _.clone(delegateStack),
+              library: self.model
+            });
+            Backbone.Layout.setupView(view);
+            self.listenTo(view , 'uriStack:change', self.reportUriStack);
+            self.setView("#tab_container", view ).render();
+          });        
+          return;
+        }else{
+          // List view
+          var url = [self.model.resource.apiUri, 
+                     self.model.key,
+                     'well'].join('/');
+          view = new ListView({ options: {
+            uriStack: _.clone(delegateStack),
+            schemaResult: schemaResult,
+            resource: schemaResult,
+            url: url
+          }});
+          Backbone.Layout.setupView(view);
+          self.reportUriStack([]);
+          self.listenTo(view , 'uriStack:change', self.reportUriStack);
+          self.setView("#tab_container", view ).render();
+        }
+        
+      }
+      appModel.getResourceFromUrl(schemaUrl, createWellView);
+
+    },
+        
     setPlates: function(delegateStack) {
       var self = this;
       var copyPlateResource = appModel.getResource('librarycopyplate'); 

@@ -85,8 +85,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var view = new viewClass({ model: model, uriStack: uriStack });
 
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      this.$('#content_title').html("");
-      self.setView('#content', view).render();
+      this.$('#resource_content_title').html("");
+      self.setView('#resource_content', view).render();
       
     },
     
@@ -103,15 +103,15 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       }});
       self.listenTo(view, 'update_title', function(val){
         if(val) {
-          this.$('#content_title').html('<small>' + val + '</small>');
+          this.$('#resource_content_title').html('<small>' + val + '</small>');
         }else{
-          this.$('#content_title').html("");
+          this.$('#resource_content_title').html("");
         }
       });
     
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       Backbone.Layout.setupView(view);
-      self.setView('#content', view ).render();
+      self.setView('#resource_content', view ).render();
     }
   });
 

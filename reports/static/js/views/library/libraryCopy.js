@@ -19,23 +19,28 @@ define([
   
   var LibraryCopyView = Backbone.Layout.extend({
     
+    template: _.template(libraryCopyTemplate),
+
     initialize: function(args) {
       var self = this;
       this.library = args.library;
-      
       this.tabViews = {}; // view cache
       this.uriStack = args.uriStack;
       this.consumedStack = [];
       
       _.each(_.keys(this.tabbed_resources), function(key){
-        if(key !== 'detail' && !appModel.hasPermission(self.tabbed_resources[key].resource)){
-          delete self.tabbed_resources[key];
+        if(key !== 'detail'){
+          var permission = self.tabbed_resources[key].permission;
+          if (_.isUndefined(permission)){
+            permission = self.tabbed_resources[key].resource;
+          }
+          if (!appModel.hasPermission(permission)){
+            delete self.tabbed_resources[key];
+          }
         }
       });
       _.bindAll(this, 'click_tab');
     },
-    
-    template: _.template(libraryCopyTemplate),
 
     tabbed_resources: {
       detail: { 
@@ -54,7 +59,7 @@ define([
     },      
     
     events: {
-        'click li': 'click_tab',
+        'click ul.nav-tabs >li': 'click_tab',
     },
 
     /**
@@ -72,7 +77,9 @@ define([
     serialize: function() {
       var self = this;
       return {
-        'base_url': self.model.resource.key + '/' + self.model.key,
+        'base_url': [
+           self.library.resource.key,self.library.key,self.model.resource.key,
+           self.model.key].join('/'),
         'tab_resources': this.tabbed_resources
       }      
     }, 
@@ -106,32 +113,11 @@ define([
     click_tab : function(event){
       event.preventDefault();
       event.stopPropagation();
-      // Block clicks from the wrong elements
-      // TODO: how to make this specific to this view? (is it still also catching
-      // clicks on the table paginator?)
       var key = event.currentTarget.id;
       if(_.isEmpty(key)) return;
       this.change_to_tab(key);
     },
 
-    
-    showEdit: function() {
-      var self = this;
-      var delegateStack = _.clone(this.uriStack);
-      var view = new DetailLayout({
-        model: self.model,
-        uriStack: delegateStack, 
-        buttons: ['download', 'upload','history']
-      });
-      Backbone.Layout.setupView(view);
-
-      // NOTE: have to re-listen after removing a view
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      this.setView("#tab_container", view ).render();
-      this.$('li').removeClass('active');
-      this.$('#detail').addClass('active');
-    },
-    
     change_to_tab: function(key){
       if(_.has(this.tabbed_resources, key)){
         this.$('li').removeClass('active');
@@ -172,6 +158,23 @@ define([
       // NOTE: if subview doesn't report stack, report it here
       //      this.reportUriStack([]);
       this.setView("#tab_container", view ).render();
+    },
+    
+    showEdit: function() {
+      var self = this;
+      var delegateStack = _.clone(this.uriStack);
+      var view = new DetailLayout({
+        model: self.model,
+        uriStack: delegateStack, 
+        buttons: ['download', 'upload','history']
+      });
+      Backbone.Layout.setupView(view);
+
+      // NOTE: have to re-listen after removing a view
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      this.setView("#tab_container", view ).render();
+      this.$('li').removeClass('active');
+      this.$('#detail').addClass('active');
     },
     
     setCopyPlates: function(delegateStack){

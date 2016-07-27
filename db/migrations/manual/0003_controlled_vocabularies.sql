@@ -129,6 +129,12 @@ update data_column set data_type = 'text' where data_type = 'Text';
 update data_column set data_type = 'confirmed_positive_indicator' where data_type = 'Confirmed Positive Indicator';
 update data_column set data_type = 'boolean_positive_indicator' where data_type = 'Boolean Positive Indicator';
 
+/**
+  silencing_reagent_type
+**/
+update silencing_reagent set silencing_reagent_type = 'sirna' where silencing_reagent_type = 'siRNA';
+update silencing_reagent set silencing_reagent_type = 'mirna' where silencing_reagent_type = 'miRNA';
+
 /** 
 -- moved to python migration 0003
 

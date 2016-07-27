@@ -464,7 +464,6 @@ define([
         
         if ( !_.isEmpty(searchHash)){
           _.each(_.keys(searchHash), function(key){
-            console.log('key: ' + key + ', extrSelectorKey: ' + extraSelectorKey);
             if( key == extraSelectorKey 
                 || key  === extraSelectorKey+ '__exact'
                 || key  === extraSelectorKey+ '__ne'){
@@ -484,9 +483,7 @@ define([
 
         self.listenTo(self.listModel, 'change:search', function(){
           var searchHash = _.clone(self.listModel.get('search'));
-          console.log('extraselector, search changed: ' + JSON.stringify(searchHash));
           _.each(_.keys(searchHash), function(key){
-            console.log('key: ' + key + ', extrSelectorKey: ' + extraSelectorKey);
             if( key === extraSelectorKey || key  === extraSelectorKey+ '__exact'){
                 extraSelectorModel.set({ selection: searchHash[key] });
             }
@@ -496,9 +493,6 @@ define([
           var searchHash = _.clone(self.listModel.get('search'));
           var val = extraSelectorModel.get('selection');
           var value =  _.isUndefined(val.value) ? val: val.value ;
-          
-          console.log('extra selector change:' + value);
-
           delete searchHash[extraSelectorKey + '__exact']
           delete searchHash[extraSelectorKey + '__ne']
           delete searchHash[extraSelectorKey]

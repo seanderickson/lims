@@ -102,8 +102,6 @@ define([
     },
 
     events: {
-      // TODO: how to make this specific to this view? 
-      // (it is also catching clicks on the table paginator)
         'click ul.nav-tabs >li': 'click_tab',
     },
     
@@ -127,7 +125,7 @@ define([
         delete displayed_tabbed_resources['results'];
         delete displayed_tabbed_resources['datacolumns'];
       }
-        return {
+      return {
         'base_url': self.model.resource.key + '/' + self.model.key,
         'tab_resources': displayed_tabbed_resources
       }      
@@ -174,7 +172,7 @@ define([
           }
         }
         
-       if (!_.has(this.tabbed_resources, viewId)){
+        if (!_.has(this.tabbed_resources, viewId)){
           var msg = 'could not find the tabbed resource: ' + viewId;
           appModel.error(msg);
           throw msg;
@@ -184,87 +182,6 @@ define([
       console.log('afterRender, done.');
     },
 
-    /**
-     * Libraries view is a sub-view of Summary
-     */
-    showLibraries: function(delegateStack){
-      var self = this;
-      var url = [self.model.resource.apiUri,self.model.key,'libraries'].join('/');
-      var resource = appModel.getResource('library');
-      var view = new ListView({ options: {
-        uriStack: _.clone(delegateStack),
-        schemaResult: resource,
-        resource: resource,
-        url: url,
-        extraControls: []
-      }});
-      Backbone.Layout.setupView(view);
-      self.reportUriStack([]);
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      self.setView("#tab_container", view ).render();
-      self.listenTo(view, 'afterRender', function(event){
-        view.$el.find('#list-title').show().append(
-          '<H4 id="title">Libraries for screen: ' + self.model.key + '</H4>');
-      });
-      this.$('li').removeClass('active');
-      this.$('#summary').addClass('active');
-
-    },
-    
-    /**
-     * Library Copy Plates view is a sub-view of Summary
-     */
-    showCopyPlates: function(delegateStack){
-      var self = this;
-      var url = [self.model.resource.apiUri,self.model.key,'copyplates'].join('/');
-      var resource = appModel.getResource('librarycopyplate');
-      var view = new ListView({ options: {
-        uriStack: _.clone(delegateStack),
-        schemaResult: resource,
-        resource: resource,
-        url: url,
-        extraControls: []
-      }});
-      Backbone.Layout.setupView(view);
-      self.reportUriStack([]);
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      self.setView("#tab_container", view ).render();
-      self.listenTo(view, 'afterRender', function(event){
-        view.$el.find('#list-title').show().append(
-          '<H4 id="title">Library Copy Plates for Screen: ' + self.model.key + '</H4>');
-      });
-      this.$('li').removeClass('active');
-      this.$('#summary').addClass('active');
-
-    },
-    
-    /**
-     * Library Copy Plates Loaded view is a sub-view of Summary
-     */
-    showCopyPlatesLoaded: function(delegateStack){
-      var self = this;
-      var url = [self.model.resource.apiUri,self.model.key,'copyplatesloaded'].join('/');
-      var resource = appModel.getResource('librarycopyplate');
-      var view = new ListView({ options: {
-        uriStack: _.clone(delegateStack),
-        schemaResult: resource,
-        resource: resource,
-        url: url,
-        extraControls: []
-      }});
-      Backbone.Layout.setupView(view);
-      self.reportUriStack([]);
-      self.listenTo(view , 'uriStack:change', self.reportUriStack);
-      self.setView("#tab_container", view ).render();
-      self.listenTo(view, 'afterRender', function(event){
-        view.$el.find('#list-title').show().append(
-          '<H4 id="title">Library Copy Plates loaded for Screen: ' + self.model.key + '</H4>');
-      });
-      this.$('li').removeClass('active');
-      this.$('#summary').addClass('active');
-
-    },    
-    
     click_tab : function(event){
       var self = this;
       event.preventDefault();
@@ -438,6 +355,87 @@ define([
       this.setView("#tab_container", view ).render();
       return view;
     },
+
+    /**
+     * Libraries view is a sub-view of Summary
+     */
+    showLibraries: function(delegateStack){
+      var self = this;
+      var url = [self.model.resource.apiUri,self.model.key,'libraries'].join('/');
+      var resource = appModel.getResource('library');
+      var view = new ListView({ options: {
+        uriStack: _.clone(delegateStack),
+        schemaResult: resource,
+        resource: resource,
+        url: url,
+        extraControls: []
+      }});
+      Backbone.Layout.setupView(view);
+      self.reportUriStack([]);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView("#tab_container", view ).render();
+      self.listenTo(view, 'afterRender', function(event){
+        view.$el.find('#list-title').show().append(
+          '<H4 id="title">Libraries for screen: ' + self.model.key + '</H4>');
+      });
+      this.$('li').removeClass('active');
+      this.$('#summary').addClass('active');
+
+    },
+    
+    /**
+     * Library Copy Plates view is a sub-view of Summary
+     */
+    showCopyPlates: function(delegateStack){
+      var self = this;
+      var url = [self.model.resource.apiUri,self.model.key,'copyplates'].join('/');
+      var resource = appModel.getResource('librarycopyplate');
+      var view = new ListView({ options: {
+        uriStack: _.clone(delegateStack),
+        schemaResult: resource,
+        resource: resource,
+        url: url,
+        extraControls: []
+      }});
+      Backbone.Layout.setupView(view);
+      self.reportUriStack([]);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView("#tab_container", view ).render();
+      self.listenTo(view, 'afterRender', function(event){
+        view.$el.find('#list-title').show().append(
+          '<H4 id="title">Library Copy Plates for Screen: ' + self.model.key + '</H4>');
+      });
+      this.$('li').removeClass('active');
+      this.$('#summary').addClass('active');
+
+    },
+    
+    /**
+     * Library Copy Plates Loaded view is a sub-view of Summary
+     */
+    showCopyPlatesLoaded: function(delegateStack){
+      var self = this;
+      var url = [self.model.resource.apiUri,self.model.key,'copyplatesloaded'].join('/');
+      var resource = appModel.getResource('librarycopyplate');
+      var view = new ListView({ options: {
+        uriStack: _.clone(delegateStack),
+        schemaResult: resource,
+        resource: resource,
+        url: url,
+        extraControls: []
+      }});
+      Backbone.Layout.setupView(view);
+      self.reportUriStack([]);
+      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+      self.setView("#tab_container", view ).render();
+      self.listenTo(view, 'afterRender', function(event){
+        view.$el.find('#list-title').show().append(
+          '<H4 id="title">Library Copy Plates loaded for Screen: ' + self.model.key + '</H4>');
+      });
+      this.$('li').removeClass('active');
+      this.$('#summary').addClass('active');
+
+    },    
     
     setAttachedFiles: function(delegateStack) {
       var self = this;
@@ -1748,7 +1746,7 @@ define([
           }
         });
       };
-      Iccbl.getSchema(schemaUrl, createResults);
+      appModel.getResourceFromUrl(schemaUrl, createResults);
     },
     
     onClose: function() {

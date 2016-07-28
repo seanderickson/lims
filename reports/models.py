@@ -132,7 +132,7 @@ class ApiLog(models.Model):
     objects = models.Manager()
     
     # FIXME: change to foreign key
-    user_id = models.IntegerField(null=False, blank=False)
+    user_id = models.IntegerField(null=False)
     username = models.CharField(null=False, max_length=128)
 
     # name of the resource, i.e. "apilog" or "screen", "user", etc.
@@ -152,11 +152,11 @@ class ApiLog(models.Model):
     api_action = models.CharField(
         max_length=10, null=False, choices=API_ACTION_CHOICES)
     
-    added_keys = models.TextField(blank=True, null=True)
-    removed_keys = models.TextField(blank=True, null=True)
-    diff_keys = models.TextField(blank=True, null=True)
-    diffs = models.TextField(blank=True, null=True)
-    comment = models.TextField(blank=True, null=True)
+    added_keys = models.TextField(null=True)
+    removed_keys = models.TextField(null=True)
+    diff_keys = models.TextField(null=True)
+    diffs = models.TextField(null=True)
+    comment = models.TextField(null=True)
     
     parent_log = models.ForeignKey('self', related_name='child_logs', null=True)
     
@@ -236,9 +236,9 @@ class MetaHash(models.Model):
     objects                 = MetaManager()
     #    objects                 = models.Manager() # default manager
     
-    scope = models.CharField(max_length=64, blank=True)
-    key = models.CharField(max_length=64, blank=True)
-    alias = models.CharField(max_length=64, blank=True)
+    scope = models.CharField(max_length=64)
+    key = models.CharField(max_length=64)
+    alias = models.CharField(max_length=64)
     ordinal = models.IntegerField();
 
     # required if the record represents a JSON field; choices are from the TastyPie 
@@ -251,7 +251,7 @@ class MetaHash(models.Model):
     # required if the record represents a linked  field; choices are from the TastyPie 
     # field types
     linked_field_type = models.CharField(
-        max_length=128, blank=True, null=True); 
+        max_length=128, null=True); 
     
     loaded_field = None
     
@@ -317,11 +317,11 @@ class Vocabulary(models.Model):
     objects                 = MetaManager()
     #    objects                 = models.Manager() # default manager
     
-    scope                   = models.CharField(max_length=128, blank=True)
-    key                     = models.CharField(max_length=128, blank=True)
-    alias                   = models.CharField(max_length=64, blank=True)
+    scope                   = models.CharField(max_length=128)
+    key                     = models.CharField(max_length=128)
+    alias                   = models.CharField(max_length=64)
     ordinal                 = models.IntegerField();
-    title                   = models.CharField(max_length=512, blank=True)
+    title                   = models.CharField(max_length=512)
     
     # All other fields are "virtual" JSON stored fields, (unless we decide to 
     # migrate them out to real fields for rel db use cases)
@@ -357,8 +357,8 @@ class Vocabulary(models.Model):
 
         
 class Permission(models.Model):
-    scope = models.CharField(max_length=64, blank=True) # scope of the permission
-    key = models.CharField(max_length=64, blank=True)  # key of the permission
+    scope = models.CharField(max_length=64) # scope of the permission
+    key = models.CharField(max_length=64)  # key of the permission
     type = models.CharField(max_length=35)
 
 #     user_permissions = models.ManyToManyField('reports.UserProfile')
@@ -372,8 +372,8 @@ class Permission(models.Model):
    
     
 class UserGroup(models.Model):
-    name = models.TextField(unique=True, blank=False)
-    title = models.TextField(unique=True, blank=True, null=True)
+    name = models.TextField(unique=True)
+    title = models.TextField(unique=True, null=True)
     users = models.ManyToManyField('reports.UserProfile')
     permissions = models.ManyToManyField('reports.Permission')
     
@@ -433,11 +433,11 @@ class UserProfile(models.Model):
     
     # link to django.contrib.auth.models.User, note: allow null so that it
     # can be created at the same time, but it is not allowed to be null in practice
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, null=True, on_delete=models.CASCADE) #, null=True, blank=True) 
-    # user = models.OneToOneField(User, null=True, on_delete=models.SET_NULL) #, null=True, blank=True) 
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, null=True, on_delete=models.CASCADE) #, null=True) 
+    # user = models.OneToOneField(User, null=True, on_delete=models.SET_NULL) #, null=True) 
     
     # will mirror the auth_user.username field
-    username = models.TextField(null=False,blank=False, unique=True) 
+    username = models.TextField(null=False, unique=True) 
     
     # Harvard specific fields
     phone = models.TextField(null=True)
@@ -530,7 +530,7 @@ class Record(models.Model):
     # the scope key points to the particular type of resource represented
     # when joining with the RecordValue table, we will get the field key we 
     # want by finding the "fields" for this scope in the Metahash:fields table
-    scope = models.CharField(max_length=64, blank=True)
+    scope = models.CharField(max_length=64)
     
 class RecordValue(models.Model):
     # name of the parent field will be stored in the meta hash

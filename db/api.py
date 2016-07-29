@@ -1458,7 +1458,7 @@ class ScreenResultResource(ApiResource):
         _dict.update(model_to_dict(dc))
         _dict['title'] = '%s [%s]' % (dc.name, screen_facility_id) 
         _dict['description'] = _dict['description'] or _dict['title']
-        _dict['mouseover'] = '%s: %s - %s' % (screen_facility_id, screen.summary, dc.name)
+        _dict['mouseover'] = '%s: %s - %s' % (screen_facility_id, screen.title, dc.name)
         _dict['comment'] = dc.comments
         _dict['is_datacolumn'] = True
         _dict['key'] = columnName

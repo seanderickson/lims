@@ -1,7 +1,7 @@
 key,scope,table,field,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,data_type,display_type,display_options,edit_type,is_restricted,value_template
 well_id,fields.screenresult,,,0,,TRUE,"The HTS well id","Well ID",TRUE,,,,string,link,"{ 'hrefTemplate': '#library/{short_name}/well/{well_id}' }",,,
-plate_number,fields.screenresult,well,,1,,TRUE,"Plate Number",Plate,TRUE,,,[l;d],integer,link,"{ 'hrefTemplate': '#plate/{plate_number}' }",,,
-well_name,fields.screenresult,well,,2,,TRUE,"Well Name",Well,TRUE,,,[l;d],string,link,"{ 'hrefTemplate': '#screenresult/{screen_facility_id}/{well_id}' }",,,
+plate_number,fields.screenresult,well,,1,,TRUE,"Plate Number",Plate,TRUE,,,[l;d],integer,link,"{ 'hrefTemplate': '#library/{short_name}/plate/{plate_number}' }",,,
+well_name,fields.screenresult,well,,2,,TRUE,"Well Name",Well,TRUE,,,[l;d],string,link,"{ 'hrefTemplate': '#library/{short_name}/well/{well_id}' }",,,
 short_name,fields.screenresult,library,short_name,3,,TRUE,Library,Library,TRUE,,,[l;d],string,link,"{ 'hrefTemplate': '#library/{short_name}' }",,,
 library_well_type,fields.screenresult,well,,4,,TRUE,"Library well type","Library Well Type",TRUE,,library.well_type,[l;d],string,,,select,,
 vendor_name,fields.screenresult,reagent,,5,,TRUE,"The vendor of the reagent of this well.","Reagent Vendor",TRUE,,,[l;d],string,,,,,

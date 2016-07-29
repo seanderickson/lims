@@ -265,7 +265,7 @@ class AssayWell(models.Model):
 #     assay_well_id = models.IntegerField(primary_key=True)
     # version = models.IntegerField()
     assay_well_control_type = models.TextField(null=True,)
-    is_positive = models.BooleanField()
+    is_positive = models.BooleanField(default=False)
     screen_result = models.ForeignKey('ScreenResult')
     well = models.ForeignKey('Well')
     confirmed_positive_value = models.TextField(null=True,)
@@ -687,13 +687,12 @@ class CellLine(models.Model):
 
 class ScreenResult(models.Model):
     screen_result_id = models.AutoField(primary_key=True)
-    # version = models.IntegerField()
     replicate_count = models.IntegerField(default=0)
     experimental_well_count = models.IntegerField(default=0)
     screen = models.OneToOneField(Screen, unique=True)
     date_created = models.DateTimeField(default=timezone.now)
     created_by = models.ForeignKey('ScreensaverUser', null=True)
-    channel_count = models.IntegerField(null=True)
+    channel_count = models.IntegerField(null=True, default=0)
     date_loaded = models.DateTimeField(null=True)
     date_publicly_available = models.DateTimeField(null=True)
     class Meta:
@@ -702,8 +701,10 @@ class ScreenResult(models.Model):
 class ResultValue(models.Model):
     # NOTE: ResultValues will not be created with the ORM, so this definition
     # is for proper database schema creation.
-    # From SS1:
-    # - no primary key (natural key: [well_id,data_column_id])
+    # NOTE: Legacy from SS1:
+    # - no primary key (natural key: [well_id,data_column_id]), although there
+    # is a auto generated sequence result_value_id - the database is currently 
+    # inconsistent, with multiple values for some result value id's
     # - no default sequence (fixed in migrations)
     result_value_id = models.AutoField(primary_key=True)
     assay_well_control_type = models.TextField(null=True)
@@ -723,7 +724,7 @@ class ResultValue(models.Model):
 
 class DataColumn(models.Model):
     data_column_id = models.AutoField(primary_key=True)
-    # version = models.IntegerField()
+    screen_result = models.ForeignKey('ScreenResult')
     ordinal = models.IntegerField()
     replicate_ordinal = models.IntegerField(null=True)
     assay_phenotype = models.TextField()
@@ -731,12 +732,11 @@ class DataColumn(models.Model):
     comments = models.TextField()
     description = models.TextField()
     how_derived = models.TextField()
-    is_follow_up_data = models.BooleanField()
+    is_follow_up_data = models.BooleanField(default=False)
     name = models.TextField()
     time_point = models.TextField()
-    is_derived = models.BooleanField()
+    is_derived = models.BooleanField(default=False)
     positives_count = models.IntegerField(null=True)
-    screen_result = models.ForeignKey('ScreenResult')
     channel = models.IntegerField(null=True)
     time_point_ordinal = models.IntegerField(null=True)
     zdepth_ordinal = models.IntegerField(null=True)
@@ -751,14 +751,6 @@ class DataColumn(models.Model):
     
     class Meta:
         db_table = 'data_column'
-
-# Removed - see manual migration 0002
-# class DataColumnDerivedFromLink(models.Model):
-#     derived_data_column = models.ForeignKey(DataColumn)
-#     derived_from_data_column = models.ForeignKey(DataColumn, related_name='derived_from')
-#     class Meta:
-#         db_table = 'data_column_derived_from_link'
-
 
 # TODO: this table is obsoleted after migration scripts 0002,0003 and 
 # manual/0003_screen_status.sql are run.
@@ -1244,7 +1236,6 @@ class Library(models.Model):
     experimental_well_count = models.IntegerField(null=True)
     is_pool = models.NullBooleanField(null=True)
     created_by = models.ForeignKey('ScreensaverUser', null=True)
-#     owner_screener = models.ForeignKey('ScreeningRoomUser', null=True)
     owner_screener = models.ForeignKey('ScreensaverUser', null=True, 
         related_name='owned_library')
     solvent = models.TextField()

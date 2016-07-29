@@ -108,6 +108,19 @@
                       "project_phase__ne": "annotation" }
         }
     },
+    "studies": {
+        "header_message": "Studies",
+        "title": "Studies",
+        "route": "list/studies",
+        "list_view": "ListView",
+        "detailView": "DetailView",
+        "api_resource": "screen",
+        "url_root": "/db/api/v1",
+        "description": "View studies",
+        "options": { 
+          "search": { "project_phase__exact": "annotation" }
+        }
+    },
     "library": {
         "header_message": "All libraries (Small Molecule and RNAi)",
         "title": "Libraries",

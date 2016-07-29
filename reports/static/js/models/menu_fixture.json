@@ -66,6 +66,9 @@
             "view": "list"
         }
       }
+    },
+    "studies": {
+      "view": "list"
     }
   }
 }

@@ -40,6 +40,15 @@ define([
           }
         }
       });
+      if (self.model.get('project_phase') == 'annotation'){
+        delete self.tabbed_resources['summary'];
+        delete self.tabbed_resources['billingItems'];
+        delete self.tabbed_resources['cherrypicks'];
+        delete self.tabbed_resources['activities'];
+        self.tabbed_resources['results'].title = 'Reagents';
+        self.tabbed_resources['results'].description = 'Reagents studied';
+      }
+
       _.bindAll(this, 'click_tab');
     },
 

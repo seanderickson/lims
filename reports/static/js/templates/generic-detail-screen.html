@@ -19,8 +19,8 @@ if (buttons) {
 _   (informationKeys).each(function(key){
 %>
      <tr>
-        <td class='col-xs-4 dl-title small' id="title-<%=key %>" title='' />
-        <td class='col-xs-8 dl-data small' id="<%=key %>">&nbsp;</td>
+        <td class='col-xs-4 dl-title ' id="title-<%=key %>" title='' />
+        <td class='col-xs-8 dl-data ' id="<%=key %>">&nbsp;</td>
      </tr>
 <%
     });
@@ -28,7 +28,7 @@ _   (informationKeys).each(function(key){
   </table>
   </div>
   <div class='col-sm-3' >
-    <div class='row small' id='screen_extra_information'></div>
+    <div class='row ' id='screen_extra_information'></div>
   </div>
 </div>
 
@@ -43,8 +43,8 @@ _   (informationKeys).each(function(key){
     {
 %>
      <tr>
-        <td class='col-xs-2 dl-title small' id="title-<%=key %>" title='' />
-        <td class='col-xs-6 dl-data small' id="<%=key %>">&nbsp;</td>
+        <td class='col-xs-2 dl-title ' id="title-<%=key %>" title='' />
+        <td class='col-xs-6 dl-data ' id="<%=key %>">&nbsp;</td>
      </tr>
 <% 
     }else{
@@ -55,8 +55,8 @@ _   (informationKeys).each(function(key){
         if(group.title == 'Publishable Protocol'){
           // TODO: create a template to insert for publishable protocol
 %>
-        <td class='col-xs-2 dl-title small' title='' ><%=group.title %></td>
-        <td class='col-xs-10 dl-data small' >
+        <td class='col-xs-2 dl-title ' title='' ><%=group.title %></td>
+        <td class='col-xs-10 dl-data ' >
         <div class='row'>
           <div class='col-xs-12'>
           <table class='table-condensed data-list'>
@@ -90,7 +90,7 @@ _   (informationKeys).each(function(key){
 <% 
         }else if (group.title == 'Information'){
 %>
-        <td class='col-xs-4 small' style='border: none;' >
+        <td class='col-xs-4 ' style='border: none;' >
           <table class=' table-condensed data-list'>
 <% 
         _   .each(group.fields, function(groupKey){
@@ -104,14 +104,14 @@ _   (informationKeys).each(function(key){
 %>
           </table>
         </td>
-        <td class='col-xs-6 dl-data small' >
+        <td class='col-xs-6 dl-data ' >
           <div class='row' id='screen_extra_information'></div>
         </td>        
 <%
         }else{
 %>
-        <td class='col-xs-2 dl-title small' title='' ><%=group.title %></td>
-        <td class='col-xs-10 dl-data small' >
+        <td class='col-xs-2 dl-title ' title='' ><%=group.title %></td>
+        <td class='col-xs-10 dl-data ' >
         <div class='row'>
           <div class='col-xs-12'>
           <table class='table-condensed data-list'>

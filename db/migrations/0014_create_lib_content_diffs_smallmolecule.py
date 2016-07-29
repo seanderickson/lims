@@ -15,7 +15,7 @@ def create_sm_diffs(apps,schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0008_library_controlled_vocabularies'),
+        ('db', '0009_convert_studies_to_screenresult'),
     ]
 
     operations = [

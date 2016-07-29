@@ -26,18 +26,73 @@ class Migration(migrations.Migration):
             field=models.TextField()),
         migrations.RemoveField(
             model_name='attachedfile',name='attached_file_type_id'),
-        
-#         migrations.RunSQL('ALTER TABLE screen DROP COLUMN cell_line_id ; '),
-#         migrations.RunSQL('DROP TABLE screen_cell_line; '),
+
+        # TODO Reinstate: after migration finished
+        # migrations.RunSQL('ALTER TABLE screen DROP COLUMN cell_line_id ; '),
+        # migrations.RunSQL('DROP TABLE screen_cell_line; '),
         migrations.RunSQL('ALTER TABLE screen DROP COLUMN transfection_agent_id ; '),
         migrations.RunSQL('DROP TABLE transfection_agent; '),
         migrations.RunSQL(
             'ALTER TABLE service_activity DROP COLUMN funding_support_id; '),
-        migrations.RunSQL('DROP TABLE screen_funding_support_link; '),
+        migrations.RemoveField(
+            model_name='screenfundingsupportlink',
+            name='funding_support',
+        ),
+        migrations.RemoveField(
+            model_name='screenfundingsupportlink',
+            name='screen',
+        ),
+        migrations.DeleteModel(
+            name='ScreenFundingSupportLink',
+        ),
 
         # TODO: service_activity depends on funding support
         migrations.RunSQL('DROP TABLE funding_support; '),
+        
+        migrations.RemoveField(
+            model_name='datacolumnderivedfromlink',
+            name='derived_data_column',
+        ),
+        migrations.RemoveField(
+            model_name='datacolumnderivedfromlink',
+            name='derived_from_data_column',
+        ),
+        migrations.DeleteModel(
+            name='DataColumnDerivedFromLink',
+        ),
 
+        # Operations already handled in migration 0002
+        migrations.AlterField(
+            model_name='screensaveruser',
+            name='lab_head',
+            field=models.ForeignKey(related_name='lab_member', to='db.ScreensaverUser', null=True),
+        ),
+        migrations.AlterField(
+            model_name='cherrypickrequest',
+            name='volume_approved_by',
+            field=models.ForeignKey(related_name='approved_cherry_pick', to='db.ScreensaverUser', null=True),
+        ),
+        migrations.AlterField(
+            model_name='cherrypickrequest',
+            name='requested_by',
+            field=models.ForeignKey(related_name='requested_cherry_pick', to='db.ScreensaverUser'),
+        ),
+        migrations.AlterField(
+            model_name='cherrypickrequest',
+            name='volume_approved_by',
+            field=models.ForeignKey(related_name='approved_cherry_pick', blank=True, to='db.ScreensaverUser', null=True),
+        ),
+        migrations.AlterField(
+            model_name='screensaveruser',
+            name='lab_head',
+            field=models.ForeignKey(related_name='lab_member', blank=True, to='db.ScreensaverUser', null=True),
+        ),
+        migrations.RemoveField(
+            model_name='attachedfile',
+            name='attached_file_type',
+        ),
+
+        
 #         migrations.DeleteModel('ScreeningRoomUser'),
 #         migrations.DeleteModel('LabHead'),
     ]

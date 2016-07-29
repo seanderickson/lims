@@ -15,9 +15,9 @@ screensaverlims=# select count(r.*) from reagent r join well w using(well_id)
  635410
 (1 row)
 
-  ** NOTE: too big for a transaction **
+** NOTE: too big for a transaction **
   
-  **/
+**/
 
 create temp table temp_reagents_to_delete (
   reagent_id integer not null unique

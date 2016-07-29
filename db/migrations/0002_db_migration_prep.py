@@ -313,32 +313,32 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='screen',
             name='status_date',
-            field=models.DateField(null=True, blank=True),
+            field=models.DateField(null=True),
         ),
         migrations.AddField(
             model_name='screen',
             name='status',
-            field=models.TextField(null=True, blank=True),
+            field=models.TextField(null=True),
         ),
         migrations.AddField(
             model_name='silencingreagent',
             name='vendor_gene',
             field=models.OneToOneField(
-                related_name='vendor_reagent', null=True, blank=True, 
+                related_name='vendor_reagent', null=True, 
                 to='db.Gene', unique=True),
         ),
         migrations.AddField(
             model_name='silencingreagent',
             name='facility_gene',
             field=models.OneToOneField(
-                related_name='facility_reagent', null=True, blank=True, 
+                related_name='facility_reagent', null=True, 
                 to='db.Gene', unique=True),
         ),
         migrations.AddField(
             model_name='library',
             name='loaded_by',
             field=models.ForeignKey(related_name='libraries_loaded', 
-                blank=True, to='db.ScreensaverUser', null=True),
+                to='db.ScreensaverUser', null=True),
         ),
         migrations.RunPython(convert_django_autofields),
         migrations.RemoveField(model_name='reagent',name='facility_batch_id'),
@@ -444,23 +444,23 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='plate',
             name='remaining_volume', 
-            field=models.FloatField(null=True, blank=True)),
+            field=models.FloatField(null=True)),
         migrations.AddField(
             model_name='plate',
             name='avg_remaining_volume', 
-            field=models.FloatField(null=True, blank=True)),
+            field=models.FloatField(null=True)),
         migrations.AddField(
             model_name='plate',
             name='min_remaining_volume', 
-            field=models.FloatField(null=True, blank=True)),
+            field=models.FloatField(null=True)),
         migrations.AddField(
             model_name='plate',
             name='max_remaining_volume', 
-            field=models.FloatField(null=True, blank=True)),
+            field=models.FloatField(null=True)),
         migrations.AddField(
             model_name='plate',
             name='screening_count', 
-            field=models.IntegerField(null=True, blank=True)),
+            field=models.IntegerField(null=True)),
         migrations.AddField(
             model_name='cherrypickassayplate',
             name='status', 
@@ -471,8 +471,8 @@ class Migration(migrations.Migration):
                 ('id', models.AutoField(verbose_name='ID', serialize=False, 
                     auto_created=True, primary_key=True)),
                 ('plate_number', models.IntegerField()),
-                ('volume', models.FloatField(null=True, blank=True)),
-                ('initial_volume', models.FloatField(null=True, blank=True)),
+                ('volume', models.FloatField(null=True)),
+                ('initial_volume', models.FloatField(null=True)),
                 ('adjustments', models.IntegerField()),
                 ('copy', models.ForeignKey(to='db.Copy')),
             ],
@@ -653,12 +653,35 @@ class Migration(migrations.Migration):
             name='title',
             field=models.TextField(null=True),
         ),
-        
-        # TODO: needed?
-#         migrations.AlterField(
-#             model_name='screensaveruser',
-#             name='lab_head',
-#             field=models.ForeignKey(related_name='lab_member', blank=True, to='db.ScreensaverUser', null=True),
-#         ),
+        migrations.AlterField(
+            model_name='screenresult',
+            name='experimental_well_count',
+            field=models.IntegerField(default=0),
+        ),
+        migrations.AlterField(
+            model_name='screenresult',
+            name='replicate_count',
+            field=models.IntegerField(default=0),
+        ),
+        migrations.AlterField(
+            model_name='screenresult',
+            name='channel_count',
+            field=models.IntegerField(default=0, null=True),
+        ),
+        migrations.AlterField(
+            model_name='assaywell',
+            name='is_positive',
+            field=models.BooleanField(default=False),
+        ),
+        migrations.AlterField(
+            model_name='datacolumn',
+            name='is_follow_up_data',
+            field=models.BooleanField(default=False),
+        ),
+        migrations.AlterField(
+            model_name='datacolumn',
+            name='is_derived',
+            field=models.BooleanField(default=False),
+        ),
 
     ]

@@ -6,6 +6,7 @@ import cStringIO
 from collections import OrderedDict
 import copy
 import csv
+import datetime
 import json
 import logging
 import re
@@ -13,18 +14,17 @@ import re
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.backends.utils import CursorDebugWrapper
 from django.http.response import StreamingHttpResponse
-from django.utils.encoding import smart_text
+from django.utils.encoding import smart_text, force_text
 import mimeparse
 from openpyxl.workbook.workbook import Workbook
 from psycopg2.psycopg1 import cursor
 import six
 from tastypie.exceptions import BadRequest
-from tastypie.serializers import Serializer
 import xlrd
 
 from db.support import screen_result_importer
 from reports.serialize import XLSX_MIMETYPE, XLS_MIMETYPE, SDF_MIMETYPE, \
-    JSON_MIMETYPE
+    JSON_MIMETYPE, CSV_MIMETYPE
 from reports.serialize import dict_to_rows
 from reports.serialize.csvutils import LIST_DELIMITER_CSV
 import reports.serialize.csvutils as csvutils
@@ -37,7 +37,49 @@ import reports.serialize.xlsutils as xlsutils
 
 logger = logging.getLogger(__name__)
 
-class BaseSerializer(Serializer):
+class BaseSerializer(object):
+
+    formats = ['json', 'html']
+    content_types = {'json': JSON_MIMETYPE,
+                     'html': 'text/html',
+                     'csv': CSV_MIMETYPE,
+                     'xls': XLS_MIMETYPE,
+                     'xlsx': XLSX_MIMETYPE,
+                     'sdf': SDF_MIMETYPE }
+
+    def __init__(self, content_types=None, formats=None):
+        if content_types is not None:
+            self.content_types = content_types
+
+        if formats is not None:
+            self.formats = formats
+
+    def to_simple(self, data, options):
+        """
+        For a piece of data, attempts to recognize it and provide a simplified
+        form of something complex.
+
+        This brings complex Python data structures down to native types of the
+        serialization format(s).
+        """
+        if isinstance(data, (list, tuple)):
+            return [self.to_simple(item, options) for item in data]
+        if isinstance(data, dict):
+            return dict((key, self.to_simple(val, options)) for (key, val) in data.items())
+        elif isinstance(data, datetime.datetime):
+            return self.format_datetime(data)
+        elif isinstance(data, datetime.date):
+            return self.format_date(data)
+        elif isinstance(data, datetime.time):
+            return self.format_time(data)
+        elif isinstance(data, bool):
+            return data
+        elif isinstance(data, (six.integer_types, float)):
+            return data
+        elif data is None:
+            return None
+        else:
+            return force_text(data)
 
     @staticmethod
     def get_content(resp):
@@ -105,9 +147,8 @@ class BaseSerializer(Serializer):
             else:
                 msg = ( 'unknown format: %r, options: %r' 
                         % (format, self.content_types.keys()))
-                # raise BadRequest(msg)
                 logger.warn(msg)
-                format = None
+                raise BadRequest(msg)
         if not format:
             if request.META.get('HTTP_ACCEPT', '*/*') != '*/*':
                 logger.debug('get_format: Try to HTTP_ACCEPT header %r',
@@ -137,7 +178,7 @@ class BaseSerializer(Serializer):
                     raise BadRequest('Invalid Accept header: %r',
                         request.META['HTTP_ACCEPT'])
             elif request.META.get('CONTENT_TYPE', '*/*') != '*/*':
-                logger.debug('serialize format: HTTP_ACCEPT not specified,'
+                logger.info('serialize format: HTTP_ACCEPT not specified,'
                     ' fallback to CONTENT_TYPE')
                 format = request.META.get('CONTENT_TYPE', '*/*')
 
@@ -197,9 +238,17 @@ class BaseSerializer(Serializer):
             return data
         else:
             return '<br>'.join([str(row) for row in dict_to_rows(data)])
-            
-class BackboneSerializer(BaseSerializer):
-    
+
+    def to_json(self, data, options=None):
+        json_indent = 2
+        data = self.to_simple(data, options)
+        # NOTE, using "ensure_ascii" = True to force encoding of all 
+        # chars to the ascii charset; otherwise, cStringIO has problems
+        return json.dumps(
+            data, cls=DjangoJSONEncoder,
+            sort_keys=True, ensure_ascii=True, indent=json_indent, 
+            encoding="utf-8")
+
     def from_json(self, content):
         """
         Override to quote attributes from the client.
@@ -210,28 +259,16 @@ class BackboneSerializer(BaseSerializer):
         else:
             return None
 
-class PrettyJSONSerializer(BaseSerializer):
-    json_indent = 2
-
-    def to_json(self, data, options=None):
-        data = self.to_simple(data, options)
-        # NOTE, using "ensure_ascii" = True to force encoding of all 
-        # chars to the ascii charset; otherwise, cStringIO has problems
-        return json.dumps(
-            data, cls=DjangoJSONEncoder,
-            sort_keys=True, ensure_ascii=True, indent=self.json_indent, 
-            encoding="utf-8")
-
 class SDFSerializer(BaseSerializer):
     
     def __init__(self, content_types=None, formats=None, **kwargs):
 
         if not content_types:
-            content_types = Serializer.content_types.copy();
+            content_types = BaseSerializer.content_types.copy();
         content_types['sdf'] = SDF_MIMETYPE
         
         if not formats:
-            _formats = Serializer.formats # or []
+            _formats = BaseSerializer.formats # or []
             _formats = copy.copy(_formats)
             formats = _formats
         formats.append('sdf')
@@ -270,12 +307,12 @@ class XLSSerializer(BaseSerializer):
     
     def __init__(self,content_types=None, formats=None, **kwargs):
         if not content_types:
-            content_types = Serializer.content_types.copy();
+            content_types = BaseSerializer.content_types.copy();
         content_types['xls'] = XLS_MIMETYPE
         content_types['xlsx'] = XLSX_MIMETYPE
         
         if not formats:
-            _formats = Serializer.formats # or []
+            _formats = BaseSerializer.formats # or []
             _formats = copy.copy(_formats)
             formats = _formats
         formats.append('xls')
@@ -378,11 +415,11 @@ class CSVSerializer(BaseSerializer):
     def __init__(self, content_types=None, formats=None, **kwargs):
         
         if not content_types:
-            content_types = Serializer.content_types.copy();
+            content_types = BaseSerializer.content_types.copy();
         content_types['csv'] = 'text/csv'
         
         if not formats:
-            _formats = Serializer.formats # or []
+            _formats = BaseSerializer.formats # or []
             _formats = copy.copy(_formats)
             formats = _formats
         formats.append('csv')
@@ -446,12 +483,12 @@ class ScreenResultSerializer(XLSSerializer,SDFSerializer,CSVSerializer):
 
     def __init__(self,content_types=None, formats=None, **kwargs):
         if not content_types:
-            content_types = Serializer.content_types.copy();
+            content_types = BaseSerializer.content_types.copy();
         content_types['xls'] = XLS_MIMETYPE
         content_types['xlsx'] = XLSX_MIMETYPE
         
         if not formats:
-            _formats = Serializer.formats # or []
+            _formats = BaseSerializer.formats # or []
             _formats = copy.copy(_formats)
             formats = _formats
         formats.append('xls')
@@ -648,8 +685,7 @@ class CursorSerializer(BaseSerializer):
 
         logger.info('done, wrote: %d' % i)
 
-class LimsSerializer(PrettyJSONSerializer, BackboneSerializer,CSVSerializer, 
-                        SDFSerializer, XLSSerializer):
+class LimsSerializer(CSVSerializer,SDFSerializer, XLSSerializer):
     ''' 
     Combine all of the Serializers used by the API
     '''

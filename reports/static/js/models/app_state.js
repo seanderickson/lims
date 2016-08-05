@@ -889,14 +889,16 @@ define([
       return uiResources[resourceId];
     },
         
-    getResourceFromUrl: function(schemaUrl, callback){
+    getResourceFromUrl: function(schemaUrl, callback, options){
       var self = this;
+      var options = options || {};
       var ModelClass = Backbone.Model.extend({
         url : schemaUrl,
         defaults : {}
       });
       var instance = new ModelClass();
       instance.fetch({
+        data: options,
         success : function(model) {
           schema = model.toJSON();
           _.each(_.values(schema.fields), self.parseSchemaField );

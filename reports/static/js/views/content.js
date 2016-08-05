@@ -86,14 +86,13 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     
     showDetail: function(uriStack, model){
       var self = this;
-			// TODO: validate cleanup operations
-      self.removeView('#content');
-      self.cleanup();
-      self.off();
-      //
       var uriStack = _.clone(uriStack);
       var resource = model.resource;
       var viewClass = DetailLayout;
+
+      self.removeView('#content');
+      self.cleanup();
+      self.off();
       if (_.has(resource, 'detailView')){
         if (_.has(VIEWS, resource['detailView'])) {
           viewClass = VIEWS[resource['detailView']];
@@ -127,31 +126,14 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     showList: function(resource, uriStack, schemaResult) {
       
       var self = this;
-			// TODO: validate cleanup operations
+      var uriStack = _.clone(uriStack);
+      var viewClass = ListView;
+
+      // TODO: validate cleanup operations
       self.removeView('#content');
       self.cleanup();
       self.off();
       
-      // Disable add button - prefer explicit add controls
-      //var addNewResourceButton = $([
-      //  '<a class="btn btn-default btn-sm pull-down" ',
-      //    'role="button" id="add_button" href="#">',
-      //    'Add</a>'
-      //  ].join(''));
-      //addNewResourceButton.click(function(e){
-      //  e.preventDefault();
-      //  newUriStack = [resource.key,'+add'];
-      //  var route = newUriStack.join('/');
-      //  console.log('history route: ' + route);
-      //  appModel.router.navigate(route, {trigger: true});
-      //});
-      //var extraControls = [];
-      //if (appModel.hasPermission(resource, 'write')){
-      //  extraControls.push(addNewResourceButton);
-      //}
-      
-      var uriStack = _.clone(uriStack);
-      var viewClass = ListView;
       if (_.has(resource, 'listView')){
         if (_.has(VIEWS, resource['listView'])) {
           viewClass = VIEWS[resource['listView']];

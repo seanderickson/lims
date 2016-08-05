@@ -28,7 +28,10 @@ define([
       this.tabViews = {}; // view cache
       this.uriStack = args.uriStack;
       this.consumedStack = [];
-      
+      this.tabbed_resources = _.extend(
+        {}, _.mapObject(this.tabbed_resources_template, function(val,key){
+          return _.clone(val);
+        }));
       _.each(_.keys(this.tabbed_resources), function(key){
         if(key !== 'detail'){
           var permission = self.tabbed_resources[key].permission;
@@ -45,16 +48,29 @@ define([
         delete self.tabbed_resources['billingItems'];
         delete self.tabbed_resources['cherrypicks'];
         delete self.tabbed_resources['activities'];
+        self.tabbed_resources['detail'] = self.study_tab;
         self.tabbed_resources['results'].title = 'Reagents';
         self.tabbed_resources['results'].description = 'Reagents studied';
       }
+
+      
+      self.$loadScreenResultsButton = $(
+        '<button class="btn btn-default btn-sm" role="button" \
+        id="loadScreenResults" >Load Data</button>');
+      self.$deleteScreenResultsButton = $(
+        '<button class="btn btn-default btn-sm" role="button" \
+        id="deleteScreenResults" >Delete Data</button>');
 
       _.bindAll(this, 'click_tab');
     },
 
     template: _.template(tabbedTemplate),
-
-    tabbed_resources: {
+    study_tab: {
+      description: 'Study Details',
+      title: 'Study Details',
+      invoke: 'setDetail'
+    },
+    tabbed_resources_template: {
       detail : {
         description : 'Screen Details',
         title : 'Screen Details',
@@ -111,7 +127,9 @@ define([
     },
 
     events: {
-        'click ul.nav-tabs >li': 'click_tab',
+      'click ul.nav-tabs >li': 'click_tab',
+      'click button#loadScreenResults': 'loadScreenResults',
+      'click button#deleteScreenResults': 'deleteScreenResults',
     },
     
     /**
@@ -127,7 +145,6 @@ define([
      * Layoutmanager hook
      */
     serialize: function() {
-      console.log('serialize called...');
       var self = this;
       var displayed_tabbed_resources = _.extend({},this.tabbed_resources);
       if (! self.model.get('has_screen_result')){
@@ -150,7 +167,6 @@ define([
       if (!_.isEmpty(this.uriStack)){
         viewId = this.uriStack.shift();
         if (viewId == '+add') {
-          console.log('adding screen...');
           this.$('ul.nav-tabs > li').addClass('disabled');
           this.uriStack.unshift(viewId);
           viewId = 'detail';
@@ -246,13 +262,13 @@ define([
       var fields = self.model.resource.fields;
       // set up a custom vocabulary that joins username to name; will be 
       // used as the text of the linklist
-      fields['collaborator_usernames'].vocabulary = (
-          _.object(this.model.get('collaborator_usernames'),
-            this.model.get('collaborator_names')));
-
+      if (this.model.get('project_phase')!= 'annotation'){
+        fields['collaborator_usernames'].vocabulary = (
+            _.object(this.model.get('collaborator_usernames'),
+              this.model.get('collaborator_names')));
+      }
       var editView = EditView.extend({
         afterRender: function(){
-          console.log('override afterRender');
           outerSelf._addVocabularyButton(
             this, 'cell_lines', 'cell_line', 'Cell Line', { description: 'ATCC Designation' });
          
@@ -273,20 +289,31 @@ define([
       var detailView = DetailView.extend({
         afterRender: function(){
           DetailView.prototype.afterRender.apply(this,arguments);
-          self.createStatusHistoryTable($('#screen_extra_information'));
-          self.createActivitySummary($('#screen_extra_information'));
-          self.createCprTable($('#screen_extra_information'));
           
-          // TODO: create a metadata setting for "show if present"
-          if (!self.model.has('perturbagen_molar_concentration')){
-            $('#perturbagen_molar_concentration').closest('tr').remove();
+          if(self.model.get('project_phase')=='annotation'){
+            if (appModel.hasPermission('screenresult','write')){
+              if (self.model.get('has_screen_result')){
+                this.$el.prepend(self.$deleteScreenResultsButton);
+              }
+              this.$el.prepend(self.$loadScreenResultsButton);
+            }
+          }else{
+            self.createStatusHistoryTable($('#screen_extra_information'));
+            self.createActivitySummary($('#screen_extra_information'));
+            self.createCprTable($('#screen_extra_information'));
+            
+            // TODO: create a metadata setting for "show if present"
+            if (!self.model.has('perturbagen_molar_concentration')){
+              $('#perturbagen_molar_concentration').closest('tr').remove();
+            }
+            if (!self.model.has('perturbagen_ug_ml_concentration')){
+              $('#perturbagen_ug_ml_concentration').closest('tr').remove();
+            }
+            if (!self.model.has('transfection_agent')){
+              $('#transfection_agent').closest('tr').remove();
+            }
           }
-          if (!self.model.has('perturbagen_ug_ml_concentration')){
-            $('#perturbagen_ug_ml_concentration').closest('tr').remove();
-          }
-          if (!self.model.has('transfection_agent')){
-            $('#transfection_agent').closest('tr').remove();
-          }
+          
         },
         
         serialize: function() {
@@ -295,7 +322,6 @@ define([
           var informationKeys = [];
           var groupedKeys = [];
           data['groupedKeys'].each(function(groupKey){
-            console.log('groupkey', groupKey);
             if(_.result(groupKey,'title',null) == 'Information'){
               informationKeys = informationKeys.concat(groupKey.fields);
             }else{
@@ -318,7 +344,6 @@ define([
         url: self.model.url,
         parse: self.model.parse,
         validate: function(attrs, options) {
-          console.log('custom validation... ', attrs);
           errs = {};
           if (!_.isEmpty(_.result(attrs,'data_privacy_expiration_notified_date'))){
             if (!_.isEmpty(_.result(attrs,'max_allowed_data_privacy_expiration_date'))){
@@ -637,7 +662,6 @@ define([
       var FormFields = Backbone.Model.extend({
         schema: formSchema,
         validate: function(attrs){
-          console.log('form validate', attrs);
           var errs = {};
           if (_.isEmpty(attrs.pubmed_central_id) 
               && _.isEmpty(attrs.pubmed_id)){
@@ -705,9 +729,6 @@ define([
                 }
               }else{
                 filename = values['filename'];
-              }
-              for(var pair of data.entries()) {
-                 console.log(pair[0]+ ', '+ pair[1]); 
               }
               
               $.ajax({
@@ -1089,6 +1110,7 @@ define([
      */
     loadScreenResults: function(){
       var self = this;
+      var isStudy = self.model.get('project_phase') == 'annotation';
       var form_template = [
          "<div class='form-horizontal container' id='screenresult_form' >",
          "<form data-fieldsets class='form-horizontal container' >",
@@ -1119,7 +1141,6 @@ define([
       var FormFields = Backbone.Model.extend({
         schema: formSchema,
         validate: function(attrs){
-          console.log('form validate', attrs);
           var errs = {};
           var file = $('input[name="fileInput"]')[0].files[0]; 
           if (! file) {
@@ -1179,10 +1200,12 @@ define([
             // and then (during render), will refetch again for the summary view
             self.model.fetch({
               success: function() {
-                self.uriStack = ['summary'];
-                // remove the child view before calling render, to prevent
-                // it from being rendered twice, and calling afterRender twice
-                self.removeView('#tab_container');
+                if (!isStudy){
+                  self.uriStack = ['summary'];
+                  // remove the child view before calling render, to prevent
+                  // it from being rendered twice, and calling afterRender twice
+                  self.removeView('#tab_container');
+                }
                 self.render();
               }
             }).fail(function(){ 
@@ -1201,6 +1224,7 @@ define([
     
     deleteScreenResults: function(){
       var self = this;
+      var isStudy = self.model.get('project_phase') == 'annotation';
       var formSchema = {};
       formSchema['comments'] = {
         title: 'Comments',
@@ -1247,10 +1271,12 @@ define([
                 // and then (during render), will refetch again for the summary view
                 self.model.fetch({
                   success: function() {
-                    self.uriStack = ['summary'];
-                    // remove the child view before calling render, to prevent
-                    // it from being rendered twice
-                    self.removeView('#tab_container');
+                    if (!isStudy){
+                      self.uriStack = ['summary'];
+                      // remove the child view before calling render, to prevent
+                      // it from being rendered twice
+                      self.removeView('#tab_container');
+                    }
                     self.render();
                   }
                 }).fail(function(){ 
@@ -1339,20 +1365,6 @@ define([
         e.preventDefault();
         self.addLibraryScreening();
       });
-      var $loadScreenResultsButton = $(
-        '<a class="btn btn-default btn-sm" role="button" \
-        id="loadScreenResults" href="#">Load Data</a>');
-      $loadScreenResultsButton.click(function(e){
-        e.preventDefault();
-        self.loadScreenResults();
-      });
-      var $deleteScreenResultsButton = $(
-        '<a class="btn btn-default btn-sm" role="button" \
-        id="deleteScreenResults" href="#">Delete Data</a>');
-      $deleteScreenResultsButton.click(function(e){
-        e.preventDefault();
-        self.deleteScreenResults();
-      });
       
       function viewLoadHistory(e){
         e.preventDefault();
@@ -1379,23 +1391,19 @@ define([
             detailKeys: summaryKeys,
             buttons: ['history'],
             afterRender: function(){
-              console.log('setSummary, afterRender');
               DetailView.prototype.afterRender.apply(this);
               this.$el.find('#libraries_screened_count').click(function(e){
                 e.preventDefault();
-                console.log('libraries screened click', e);
                 self.consumedStack = ['libraries'];
                 self.showLibraries(delegateStack);
               });
               this.$el.find('#library_plates_screened').click(function(e){
                 e.preventDefault();
-                console.log('library_plates_screend screened click', e);
                 self.consumedStack = ['copyplates'];
                 self.showCopyPlates(delegateStack);
               });
               this.$el.find('#library_plates_data_loaded').click(function(e){
                 e.preventDefault();
-                console.log('library_plates_data_loaded click', e);
                 self.consumedStack = ['copyplates'];
                 self.showCopyPlatesLoaded(delegateStack);
               });
@@ -1405,9 +1413,9 @@ define([
               }
               if (appModel.hasPermission('screenresult','write')){
                 if (self.model.get('has_screen_result')){
-                  this.$el.prepend($deleteScreenResultsButton);
+                  this.$el.prepend(self.$deleteScreenResultsButton);
                 }
-                this.$el.prepend($loadScreenResultsButton);
+                this.$el.prepend(self.$loadScreenResultsButton);
               }
               if (appModel.hasPermission('libraryscreening','write')){
                 this.$el.prepend($addLibraryScreeningButton);
@@ -1669,7 +1677,7 @@ define([
     
     setResults : function(delegateStack){
       var self = this;
-      var screenResultResource = appModel.getResource('screenresult'); 
+      var screenResultResource = appModel.getResource('screenresult');
       var schemaUrl = [appModel.dbApiUri,
                        'screenresult',
                        self.model.key,
@@ -1682,6 +1690,7 @@ define([
       var screen_facility_id = self.model.get('facility_id');
       
       var createResults = function(schemaResult){
+        var extraControls = [];
         var show_positives_control = $([
           '<label class="checkbox-inline">',
           '  <input type="checkbox">positives',
@@ -1692,12 +1701,15 @@ define([
            '  <input type="checkbox">mutual positives',
            '</label>'
            ].join(''));
+        if (self.model.get('project_phase') != 'annotation'){
+          extraControls = extraControls.concat(
+            show_positives_control, show_mutual_positives_control);
+        }
         // create an option vocab for the exclued col, if needed
         if (_.has(schemaResult['fields'], 'excluded')){
           var options = [];
           _.each(schemaResult['fields'],function(field){
             var dc_col_key = 'dc_' + self.model.key + '_';
-            console.log('consider: ', field);
             if (field['key'].indexOf(dc_col_key)>-1){
               var option_name = field['key'].substring(dc_col_key.length);
               options.unshift([option_name, option_name]);
@@ -1712,13 +1724,14 @@ define([
           schemaResult: schemaResult,
           resource: screenResultResource,
           url: url,
-          extraControls: [show_positives_control, show_mutual_positives_control]
+          extraControls: extraControls
         }});
         Backbone.Layout.setupView(view);
         self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
         self.setView("#tab_container", view ).render();
         initialSearchHash = view.listModel.get('search');
+        
         if(_.has(initialSearchHash, 'is_positive__eq')
             && initialSearchHash.is_positive__eq.toLowerCase()=='true'){
           show_positives_control.find('input[type="checkbox"]').prop('checked',true);
@@ -1728,7 +1741,9 @@ define([
           show_mutual_positives_control.find('input[type="checkbox"]').prop('checked',true);
           view.show_mutual_positives(screen_facility_id, true);
         }
-        
+        if(_.has(initialSearchHash, 'other_screens')){
+          view.show_other_screens(initialSearchHash['other_screens']);
+        }
         show_positives_control.click(function(e){
           if(e.target.checked){
             var searchHash = _.clone(view.listModel.get('search'));
@@ -1754,6 +1769,7 @@ define([
             });
           }
         });
+        
       };
       appModel.getResourceFromUrl(schemaUrl, createResults);
     },

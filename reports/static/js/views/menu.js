@@ -128,7 +128,6 @@ define([
         var self = this;
         event.preventDefault();
 
-        // TODO: 20140618: test remove messages
         appModel.unset('messages');
         
         var ui_resource_id = event.currentTarget.id;
@@ -178,7 +177,12 @@ define([
               appModel.set({'menu':menus});
               this.render();
 
-              appModel.setUriStack([ui_resource_id]);
+              if( ui_resource_id == 'reports'){
+                appModel.setUriStack([]);
+                return;
+              }else{
+                appModel.setUriStack([ui_resource_id]);
+              }
           }
         }
         this.$('li').removeClass('active');

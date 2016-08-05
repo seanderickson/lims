@@ -108,17 +108,16 @@
                       "project_phase__ne": "annotation" }
         }
     },
-    "studies": {
+    "study": {
         "header_message": "Studies",
         "title": "Studies",
         "route": "list/studies",
         "list_view": "ListView",
-        "detailView": "DetailView",
-        "api_resource": "screen",
+        "detailView": "ScreenView",
+        "api_resource": "study",
         "url_root": "/db/api/v1",
-        "description": "View studies",
+        "description": "View Studies",
         "options": { 
-          "search": { "project_phase__exact": "annotation" }
         }
     },
     "library": {

@@ -67,7 +67,7 @@
         }
       }
     },
-    "studies": {
+    "study": {
       "view": "list"
     }
   }

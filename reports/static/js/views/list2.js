@@ -432,13 +432,20 @@ define([
       });
       this.listenTo(rppModel, 'change', function() {
           var rpp = parseInt(rppModel.get('selection'));
+          console.log('===--- rppModel change: ' + rpp );
           self.listModel.set('rpp', String(rpp));
           self.listModel.set('page',1);
-          self.collection.state.currentPage = 1; // set this because of how checkstate is triggered
-          console.log('===--- rppModel change: ' + rpp );
+          // set this because of how checkstate is triggered
+          self.collection.state.currentPage = 1; 
           appModel.set('routing_options', {replace: false});  
           self.collection.setPageSize(rpp, { first: true });
       });
+      this.listenTo(this.listModel, 'change:search', function(){
+        // TODO: this listener should be set in the collection initializer
+        var searchHash = _.clone(self.listModel.get('search'));
+        self.collection.setSearch(searchHash);
+      });
+
 
       if(self.collection instanceof Backbone.PageableCollection){
         var paginator = self.paginator = new Backgrid.Extension.Paginator({
@@ -448,12 +455,6 @@ define([
         this.objects_to_destroy.push(paginator);
       }
       
-      self.listenTo(self.listModel, 'change:search', function(){
-        // TODO: this listener should be set in the collection initializer
-        var searchHash = _.clone(self.listModel.get('search'));
-        self.collection.setSearch(searchHash);
-      });
-
       // Extraselector
       if( _.has(schemaResult, 'extraSelectorOptions')){
         var searchHash = self.listModel.get('search');
@@ -566,6 +567,8 @@ define([
       
     afterRender: function(){
       var self = this;
+      var fetched = false;
+      
       self.listenTo(self.collection, "add", self.checkState);
       self.listenTo(self.collection, "remove", self.checkState);
       self.listenTo(self.collection, "reset", self.checkState);
@@ -592,8 +595,6 @@ define([
       }
 
       this.delegateEvents();
-      
-      var fetched = false;
       
       var searchHash = self.listModel.get('search');
       if(!_.isEmpty(searchHash)){
@@ -622,9 +623,7 @@ define([
       });
       
       if ( !fetched ) {
-        var fetchOptions = { reset: false };
-        self.collection.fetch(
-          fetchOptions
+        self.collection.fetch({ reset: false }
         ).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); }
         ).done(function(){ });      
       }
@@ -705,6 +704,13 @@ define([
             </div>\
           </div>\
         ');
+      var optgroupFieldCheckboxTemplate1 =  _.template('\
+          <div class="form-group sub-resource-field" style="margin-bottom: 0px;" > \
+            <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
+              <label for="<%= editorId %>"><div><span data-editor\></div><%= title %></label>\
+            </div>\
+          </div>\
+        ');
       
       var includes = self.listModel.get('includes') || [];
       var _fields = this._options.schemaResult.fields;
@@ -744,6 +750,18 @@ define([
                 keys: []
               };
           }
+        }
+        else if (prop['scope'] == 'otherscreen.datacolumns'){
+          optGroup = 'otherscreen';
+          if(!_.has(_optGroups, optGroup)){
+            _optGroups[optGroup] = 
+              {
+                title: 'Other Screen',
+                help: 'Other screen data column fields',
+                keys: []
+              }
+          }
+          
         }
         else if (prop['scope'] != defaultScope ){
           optGroup = prop['scope'];
@@ -833,7 +851,10 @@ define([
             help: _fields[key]['description'],
             template: optgroupFieldCheckboxTemplate 
           };
-        
+          if (optGroup == 'otherscreen'){
+            formSchema[key]['template'] = optgroupFieldCheckboxTemplate1;
+          }
+          
           form_template.push( 
             _.template(field_template)({ name: key }) );
           if(already_visible[key]){
@@ -901,6 +922,9 @@ define([
         cancelText: 'Cancel',
         okText: 'Ok',
         ok: function(){
+
+          var new_includes = [];
+          var other_screens =[];
         
           form.commit();
           if(_.isUndefined(
@@ -911,16 +935,23 @@ define([
             return;
           }
           
-          var new_includes = [];
-          console.log('formFields: ' + JSON.stringify(formFields.toJSON()));
           _.each(formFields.keys(), function(key){
             var value = formFields.get(key);
-            
+            var max_ordinal = _.max(_fields, function(field){
+              return field['ordinal'];
+            });
+            var field = _fields[key];
             if(value && !already_visible[key] ){
-              self.grid.insertColumn(
-                  Iccbl.createBackgridColumn(
-                      key,_fields[key],
-                      self.collection.state.orderStack));
+              if (_.result(field, 'is_screen_column')===true){
+                new_includes.unshift(key); 
+                other_screens.push(field['screen_facility_id']);
+                value = false; // stop processing this value
+              }else{
+                self.grid.insertColumn(
+                    Iccbl.createBackgridColumn(
+                        key,field,
+                        self.collection.state.orderStack));
+              }
             }
             if(!value && default_visible[key]){
               new_includes.unshift('-' + key);
@@ -943,24 +974,134 @@ define([
             }
           });
           
-          console.log('new_includes: ' + JSON.stringify(new_includes));
-          self.listModel.set({'includes': new_includes });
-          self.collection.fetch();
-          
-          // trigger an event to notify new header forms to self-display
-          self.collection.trigger("MyServerSideFilter:search", 
-            self.listModel.get('search'), self.collection);
+          if (!_.isEmpty(other_screens)){
+            self.show_other_screens(other_screens);
+          }else{
+            self.listModel.set({'includes': new_includes });
+            self.collection.fetch();
+            
+            // trigger an event to notify new header forms to self-display
+            self.collection.trigger("MyServerSideFilter:search", 
+              self.listModel.get('search'), self.collection);
+            }
         },
         view: _form_el,
         title: 'Select columns'  
       });
       
     },
+    
+    show_other_screens: function(other_screens){
+      console.log('show_other_screens', other_screens);
+      var self = this;
+      var schemaUrl = [self._options.url,'schema'].join('/');
+      appModel.getResourceFromUrl(schemaUrl, function(newSchema){
+        var count = 0;
+        _.each(_.values(newSchema['fields']),function(newField){
+          if (_.result(newField,'is_datacolumn')===true){
+            if (other_screens === newField['screen_facility_id']
+                || _.contains(other_screens, newField['screen_facility_id'])){
+              self.grid.insertColumn(
+                  Iccbl.createBackgridColumn(
+                      newField['key'],newField,
+                      self.collection.state.orderStack));
+            }
+          }
+        });
+
+        self._options.schemaResult = newSchema;                
+        var searchHash = _.clone(self.listModel.get('search'));
+        searchHash['other_screens'] = other_screens;
+        self.listModel.set('search',searchHash);
+        self.collection.fetch();
+        
+        // trigger an event to notify new header forms to self-display
+        self.collection.trigger("MyServerSideFilter:search", 
+          self.listModel.get('search'), self.collection);
+        
+      },
+      { other_screens: other_screens });
+    },
 
     /**
      * Special function for screen result lists
      */
     show_mutual_positives: function(screen_facility_id, show_mutual_positives){
+      var self = this;
+      var _fields = this._options.schemaResult.fields;
+
+      if (show_mutual_positives){
+
+        var schemaUrl = [self._options.url,
+                         'schema'].join('/');
+        appModel.getResourceFromUrl(schemaUrl, function(newSchema){
+          var count = 0;
+          _.each(_.values(newSchema['fields']),function(newField){
+            if (_.result(newField,'is_datacolumn')===true){
+              if (screen_facility_id != newField['screen_facility_id']){
+                console.log('insert: ', newField);
+                self.grid.insertColumn(
+                    Iccbl.createBackgridColumn(
+                        newField['key'],newField,
+                        self.collection.state.orderStack));
+              }
+            }
+          });
+  
+          self._options.schemaResult = newSchema;                
+          var searchHash = _.clone(self.listModel.get('search'));
+          searchHash['show_mutual_positives'] = 'true';
+          self.listModel.set('search',searchHash);
+          self.collection.fetch();
+          
+          // trigger an event to notify new header forms to self-display
+          self.collection.trigger("MyServerSideFilter:search", 
+            self.listModel.get('search'), self.collection);
+          
+        },
+        { show_mutual_positives: true});
+      
+      
+      
+      }else{
+        var searchHash = _.clone(self.listModel.get('search'));
+        var orderStack = self.listModel.get('order') || [];
+        _.each(_.pairs(_fields), function(pair){
+          var key = pair[1]['key'];
+          var prop = pair[1];
+          var fieldType = prop['scope'].split('.')[0]
+          var field_screen_facility_id = _.result(prop,'screen_facility_id', '');
+          // Note: if filtering/ordering on one of the mutual positive columns, 
+          // do not remove it here.
+          if(fieldType == 'datacolumn'
+              && field_screen_facility_id != screen_facility_id 
+              && ! _.findKey(searchHash, function(val,hashkey){
+                return hashkey.indexOf(key) > -1
+              })
+              && ! _.find(orderStack, function(orderkey){
+                return orderkey.indexOf(key) > -1
+              })
+            ){
+            console.log('remove: ', key);
+            prop['visibility'] = _.without(prop['visibility'], 'l');
+            var currentColumn = self.grid.columns.findWhere({ name: key });
+            if(currentColumn){
+              self.grid.removeColumn(currentColumn);
+            }
+          }
+        });
+        if(_.has(searchHash,'show_mutual_positives')){
+          delete searchHash['show_mutual_positives'];
+          self.listModel.set('search',searchHash);
+        }        
+        
+      }    
+    },
+    
+    /**
+     * Special function for screen result lists
+     */
+    show_mutual_positives_bak: function(screen_facility_id, show_mutual_positives){
       var self = this;
       var _fields = this._options.schemaResult.fields;
 

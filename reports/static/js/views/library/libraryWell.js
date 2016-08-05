@@ -163,7 +163,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       if (view) {
         this.removeView(this.tabViews[key]);
       }
-
       
       var detailView = DetailView.extend({
         afterRender: function(){
@@ -173,7 +172,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           if(this.model.has('structure_image')){
             self.$('#content').append(
                 '<img style="position: absolute; top: 8em; right: 3em; height: 16em;" src="' 
-                + model.get('structure_image') + '" alt="image" />')
+                + self.model.get('structure_image') + '" alt="image" />')
           }
         }
       });

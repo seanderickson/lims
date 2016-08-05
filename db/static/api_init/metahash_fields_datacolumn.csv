@@ -1,5 +1,5 @@
 key,scope,resource_uri,table,field,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,required,data_type,display_type,display_options,edit_type,is_restricted,value_template
-name,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/name/,,,0,,TRUE,"The name of the data column",Name,TRUE,,,[l;d],[c],TRUE,string,link,,,,
+name,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/name/,,,0,,TRUE,"The name of the data column",Name,TRUE,,,[l;d],[c],TRUE,string,,,,,
 description,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/description/,,,1,,TRUE,"The description",Description,TRUE,,,[l;d],[c;u],,string,,,,,
 data_type,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/data_type/,,,2,,TRUE,"The data type","Data Type",TRUE,,datacolumn.data_type,[l;d],[c],TRUE,string,,,,,
 decimal_places,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/decimal_places/,,,3,,TRUE,"Number of significant decimal places","Decimal Places",TRUE,,,[l;d],[c;u],,integer,,,,,
@@ -21,9 +21,11 @@ ordinal,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/ordinal/,,,17,
 time_point_ordinal,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/time_point_ordinal/,,,18,,TRUE,"The time point ordinal","Time Point Ordinal",TRUE,,,[d],,,string,,,,,
 screen_facility_id,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/screen_facility_id/,screen,facility_id,19,,TRUE,"The screen facility ID","Screen Facility ID",TRUE,,,[d],,,string,,,,,
 comments,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/comments/,,,20,,TRUE,Comments,Comments,TRUE,,,[l;d],,,string,,,,,
-title,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/title/,,name,21,"meta field",TRUE,"Title and name are synonyms",Title,TRUE,,,[l;d],,,string,,,,,
-key,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/key/,custom,,22,"meta field",FALSE,Key,Key,FALSE,,,[l;d],,,string,,,,,
-scope,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/scope/,custom,,23,meta_field,FALSE,Scope,Key,FALSE,,,[],,,string,,,,,
+title,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/title/,custom,,21,"meta field",FALSE,Title,Title,TRUE,,,[l;d],,,string,,,,,"{name} [{screen_facility_id}]"
+key,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/key/,custom,,22,"meta field",FALSE,Key,Key,FALSE,,,[l;d],,,string,,,,,dc_{name}_{screen_facility_id}
+scope,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/scope/,custom,,23,meta_field,FALSE,Scope,Key,FALSE,,,[],,,string,,,,,datacolumn.screenresult-{screen_facility_id}
+screen_title,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/screen_title/,screen,title,24,,TRUE,"Screen Title ","Screen Title ",TRUE,,,[],,,string,,,,,
+mouseover,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/mouseover/,custom,,25,,FALSE,"Extended description for popup text","Popup Text",FALSE,,,[d],,,string,,,,,"{screen_facility_id}: {screen_title} - {name}"
 visibility,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/visibility/,custom,,24,"meta field",FALSE,Visibility,Visibility,FALSE,,,[],,,string,,,,,
 display_options,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/display_options/,custom,,25,"meta field",FALSE,"Display Options","Display Options",FALSE,,,[],,,string,,,,,
 edit_type,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/edit_type/,custom,,26,"meta field",FALSE,"Edit Type","Edit Type",FALSE,,,[],,,string,,,,,

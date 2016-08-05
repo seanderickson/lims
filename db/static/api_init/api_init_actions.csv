@@ -4,6 +4,7 @@ patch,vocabulary,vocabulary_data.csv
 patch,field,metahash_fields_screensaveruser.csv
 patch,field,metahash_fields_screeningroomuser.csv
 patch,field,metahash_fields_screen.csv
+patch,field,metahash_fields_study.csv
 patch,field,metahash_fields_screenresult.csv
 patch,field,metahash_fields_library.csv
 patch,field,metahash_fields_datacolumn.csv

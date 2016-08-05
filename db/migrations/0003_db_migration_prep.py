@@ -80,6 +80,8 @@ def create_simple_vocabularies(apps):
                     apps.get_model('db', 'Screen').objects.all()],
                 ['assay_type', 'screen.assay_type',
                     apps.get_model('db', 'Screen').objects.all()],
+                ['study_type', 'study.type',
+                    apps.get_model('db', 'Screen').objects.all()],
                 ['assay_readout_type', 'datacolumn.assay_readout_type',
                     apps.get_model('db', 'DataColumn').objects.all()],
                 ['value', 'funding_support',

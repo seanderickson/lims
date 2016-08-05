@@ -924,22 +924,6 @@ class ScreenResultResource(ApiResource):
                 if fi.get('is_datacolumn', None)]:
             custom_columns[fi['key']] = self._build_result_value_column(fi)
             
-        # Alternative: USING CTEs (shown to be slower)
-        # for fi in [
-        #     fi for fi in field_hash.values() 
-        #         if fi.get('is_datacolumn', None)]:
-        #     rv_select = self._build_result_value_cte(fi)
-        #     j = j.join(
-        #         rv_select, _aw.c.well_id==rv_select.c.well_id,
-        #         isouter=True)
-        #     rv_selector = (
-        #         select([rv_select.c.value])
-        #         .select_from(rv_select)
-        #         .where(rv_select.c.well_id==text('assay_well.well_id'))
-        #         )
-        #     rv_selector.label(fi['key'])
-        #     custom_columns[fi['key']] = rv_selector            
-        
         columns = self.build_sqlalchemy_columns(
             field_hash.values(), base_query_tables=base_query_tables,
             custom_columns=custom_columns)
@@ -984,6 +968,8 @@ class ScreenResultResource(ApiResource):
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
+
+        manual_field_includes = set(param_hash.get('includes', []))
         limit = param_hash.get('limit', 0)        
         try:
             limit = int(limit)
@@ -1016,14 +1002,15 @@ class ScreenResultResource(ApiResource):
         screenresult = ScreenResult.objects.get(
             screen__facility_id=screen_facility_id)              
 
-        show_mutual_positives = param_hash.get('show_mutual_positives', False)
+        show_mutual_positives = bool(param_hash.get('show_mutual_positives', False))
+        other_screens = param_hash.get('other_screens', [])
         schema = self.build_schema(
             screenresult=screenresult,
-            show_mutual_positives=show_mutual_positives)
+            show_mutual_positives=show_mutual_positives,
+            other_screens=other_screens)
 
         filename = self._get_filename(schema, kwargs)
         desired_format = self.get_serialize_format(request, **kwargs)
-        manual_field_includes = set(param_hash.get('includes', []))
         
         if desired_format == SDF_MIMETYPE:
             manual_field_includes.add('molfile')
@@ -1312,11 +1299,22 @@ class ScreenResultResource(ApiResource):
                 'The screenresult schema requires a screen facility ID'
                 ' in the URI, as in /screenresult/[facility_id]/schema/')
         facility_id = kwargs.pop('screen_facility_id')
+
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        other_screens = param_hash.get('other_screens', [])
+        show_mutual_positives = bool(param_hash.get('show_mutual_positives', False))
+
         try:
             screenresult = ScreenResult.objects.get(
                 screen__facility_id=facility_id)
             return self.build_response(
-                request, self.build_schema(screenresult), **kwargs)
+                request, self.build_schema(
+                    screenresult, 
+                    show_mutual_positives=show_mutual_positives,
+                    other_screens=other_screens), 
+                **kwargs)
         except ObjectDoesNotExist, e:
             raise Http404(
                 'no screen result found for facility id: %r' % facility_id)
@@ -1337,11 +1335,14 @@ class ScreenResultResource(ApiResource):
             },
     }
             
-    def build_schema(self, screenresult=None, show_mutual_positives=False):
+    def build_schema(
+            self, screenresult=None, show_mutual_positives=False,
+            other_screens=[]):
         
         screen_facility_id = None
         if screenresult:
             screen_facility_id = screenresult.screen.facility_id
+
         cache_key = 'screenresult_schema_%s_mutual_pos_%s' \
             % (screen_facility_id, show_mutual_positives)
         logger.info('build screenresult schema: %s', cache_key)
@@ -1372,39 +1373,27 @@ class ScreenResultResource(ApiResource):
                         if 'facility_entrezgene_symbols' in newfields:
                             newfields['facility_entrezgene_symbols']['visibility'] = ['l','d']
                             newfields['facility_entrezgene_symbols']['ordinal'] = 11
-                    logger.info('find the highest ordinal in the non-data_column fields...')
                     max_ordinal = 0
                     for fi in newfields.values():
                         if fi.get('ordinal', 0) > max_ordinal:
                             max_ordinal = fi['ordinal']
                     logger.info('map datacolumn definitions into field information definitions...')
-                    field_defaults = {
-                        'visibility': ['l', 'd'],
-                        'data_type': 'string',
-                        'filtering': True,
-                        'is_datacolumn': True,
-                        'scope': (
-                            'datacolumn.screenresult-%s' 
-                            % screenresult.screen.facility_id)
-                        }
                     for i, dc in enumerate(
                         DataColumn.objects
                             .filter(screen_result=screenresult)
                             .order_by('ordinal')):
                         
-                        (columnName, _dict) = (
-                            self.create_datacolumn_schema(
-                                dc, field_defaults=field_defaults))
+                        # TODO: refactor to use the DC resource
+                        # _dict = DataColumnResource._create_datacolumn_schema(
+                        #     max_ordinal, model_to_dict(dc))
+                        # newfields[_dict['name']] = _dict
+                        
+                        (columnName, _dict) = self.create_datacolumn_schema(dc)
                         _dict['ordinal'] = max_ordinal + dc.ordinal + 1
+                        _dict['visibility'] = ['l', 'd']
                         newfields[columnName] = _dict
                     
                     max_ordinal += dc.ordinal + 1
-                    field_defaults = {
-                        'visibility': ['api'],
-                        'data_type': 'string',
-                        'filtering': True,
-                        }
-                    
                     _current_sr = None
                     _ordinal = max_ordinal
                     logger.info('get mutual positives columns...')
@@ -1413,31 +1402,39 @@ class ScreenResultResource(ApiResource):
                             screenresult.screen_result_id)
                     logger.info('iterate mutual positives columns %r...',
                         show_mutual_positives)
-                    for i, dc in enumerate(DataColumn.objects
-                        .filter(data_column_id__in=mutual_positives_columns)
-                        .order_by('screen_result__screen__facility_id', 'ordinal')):
-    
-                        if _current_sr != dc.screen_result.screen_result_id:
-                            _current_sr = dc.screen_result.screen_result_id
-                            max_ordinal = _ordinal
-                        _ordinal = max_ordinal + dc.ordinal + 1
-                        
-                        field_defaults['scope'] = (
-                            'mutual_positive.%s' 
-                            % dc.screen_result.screen.facility_id)
-                        (columnName, _dict) = (
-                            self.create_datacolumn_schema(
-                                dc, field_defaults=field_defaults))
-                        _dict['ordinal'] = _ordinal
-                        
+                    if show_mutual_positives is True:
+                        for i, dc in enumerate(DataColumn.objects
+                            .filter(data_column_id__in=mutual_positives_columns)
+                            .order_by('screen_result__screen__facility_id', 'ordinal')):
+        
+                            if _current_sr != dc.screen_result.screen_result_id:
+                                _current_sr = dc.screen_result.screen_result_id
+                                max_ordinal = _ordinal
+                            _ordinal = max_ordinal + dc.ordinal + 1
+                            (columnName, _dict) = self.create_datacolumn_schema(dc)
+                            _dict['ordinal'] = _ordinal
+                            if show_mutual_positives:
+                                _dict['visibility'] = ['l', 'd']
+                            
+                            newfields[columnName] = _dict
+                            
+                            
+                            logger.info('created mutual positive column:%s: %r', dc.name, _dict)    
+                    max_ordinal = _ordinal
+                    # Column selectors for "other screens"
+                    for i, screen in enumerate(Screen.objects
+                        .exclude(screen_id=screenresult.screen_id)
+                        .filter(screen_type=screenresult.screen.screen_type)
+                        .exclude(screenresult__isnull=True)
+                        .order_by('facility_id')):
+                    
+                        (columnName, _dict) = \
+                            self.create_otherscreen_field(screen)
+                        _dict['scope'] = 'otherscreen.datacolumns'
+                        _dict['ordinal'] = max_ordinal + i
                         newfields[columnName] = _dict
+                        logger.debug('created other screenresult column: %r', _dict)    
                         
-                        if show_mutual_positives:
-                            _visibility = set(_dict['visibility'])
-                            _visibility.update(['l', 'd'])
-                            _dict['visibility'] = list(_visibility)
-                        
-                        logger.debug('created mutual positive column: %r', _dict)    
                     data['fields'] = newfields
                 except Exception, e:
                     logger.exception('on build schema')
@@ -1447,14 +1444,46 @@ class ScreenResultResource(ApiResource):
             cache.set(cache_key, data)
         else:
             logger.info('using cached: %s', cache_key)
-        return data
+            
+        if other_screens is not None:
+            logger.info('include other screen columns: %r', other_screens)
+            newfields = {}
+            newfields.update(data['fields'])
+            max_field = max(newfields.itervalues(), key=lambda x: int(x['ordinal']))
+            max_ordinal = int(max_field['ordinal'])
 
-    def create_datacolumn_schema(self, dc, field_defaults={}):
+            for other_screen_facility_id in other_screens:
+                colname = 'screen_%s' % other_screen_facility_id
+                if colname in newfields and newfields[colname].get('is_screen_column',False):
+                    for i,dc in enumerate(DataColumn.objects
+                        .filter(screen_result__screen__facility_id=other_screen_facility_id)):
+                        (columnName, _dict) = self.create_datacolumn_schema(dc)
+                        _ordinal = max_ordinal + dc.ordinal + 1
+                        _dict['ordinal'] = _ordinal
+                        _dict['visibility'] = ['l','d']
+                        
+                        newfields[columnName] = _dict
+            data['fields'] = newfields
+            logger.debug('newfields: %r', newfields.keys())
+        return data
+    
+    def create_otherscreen_field(self,screen):
+        columnName = "screen_%s" % screen.facility_id
+        _dict = {}
+        _dict['title'] = '%s (%s)' % (screen.facility_id, screen.title) 
+        _dict['description'] =  _dict['title']
+        _dict['is_screen_column'] = True
+        _dict['key'] = columnName
+        _dict['screen_facility_id'] = screen.facility_id
+        _dict['visibility'] = ['api']
+        return (columnName, _dict)
+        
+    def create_datacolumn_schema(self, dc):
 
         screen_facility_id = dc.screen_result.screen.facility_id
         screen = Screen.objects.get(facility_id=screen_facility_id)
         columnName = "dc_%s_%s" % (screen_facility_id, default_converter(dc.name))
-        _dict = field_defaults.copy()
+        _dict = {}
         _dict.update(model_to_dict(dc))
         _dict['title'] = '%s [%s]' % (dc.name, screen_facility_id) 
         _dict['description'] = _dict['description'] or _dict['title']
@@ -1466,6 +1495,7 @@ class ScreenResultResource(ApiResource):
         _dict['screen_facility_id'] = screen_facility_id
         _dict['assay_data_type'] = dc.data_type
         _dict['derived_from_columns'] = [x.name for x in dc.derived_from_columns.all()]
+        _dict['visibility'] = ['api']
         if dc.data_type == 'numeric':
             if _dict.get('decimal_places', 0) > 0:
                 _dict['data_type'] = 'decimal'
@@ -1669,9 +1699,10 @@ class ScreenResultResource(ApiResource):
         })
         screenresult_log.save()
         
-        logger.info('pre-generate the mutual positives index...')
-        self.get_mutual_positives_columns(screen_result.screen_result_id)
-        logger.info('done - pre-generate the mutual positives index')
+        if screen.project_phase != 'annotation':
+            logger.info('pre-generate the mutual positives index...')
+            self.get_mutual_positives_columns(screen_result.screen_result_id)
+            logger.info('done - pre-generate the mutual positives index')
              
         if not self._meta.always_return_data:
             response_message = {'success': {'result': 'screen result loaded'}}
@@ -2152,61 +2183,24 @@ class DataColumnResource(ApiResource):
                     ApiResource.create_vocabulary_rowproxy_generator(
                         field_hash)
             
+            max_ordinal = len(field_hash)
             def create_dc_generator(generator):
                 ''' 
                 Transform the DataColumn records into Resource.Fields for the UI
                 '''
                 
                 class DataColumnRow:
-                    data_type_lookup = ScreenResultResource.data_type_lookup
-                    default_field_values = {
-                        'key': 'dc_%s_%s',
-                        'scope': 'datacolumn.screenresult-%s',
-                        'data_type': 'string',
-                        'display_options': None,
-                        'ordinal': 0,
-                        'visibility': ['l', 'd'],
-                        'filtering': True,
-                        'ordering': True,
-                        'is_datacolumn': True
-                    }
                     def __init__(self, row):
-                        self.row = row
-
-                        self.meta = {}
-                        self.meta.update(DataColumnRow.default_field_values)        
-
-                        dc_data_type = self.row['data_type']
-                        
-                        if dc_data_type == 'numeric':
-                            if self.row.has_key('decimal_places'):
-                                if self.row['decimal_places'] > 0:
-                                    self.meta['data_type'] = 'decimal'
-                                    self.meta['display_options'] = (
-                                         '{ "decimals": %s }' 
-                                         % self.row['decimal_places'])
-                                else:
-                                    self.meta['data_type'] = 'integer'
-                        elif dc_data_type in self.data_type_lookup:
-                            self.meta['data_type'] = dc_data_type                            
-                        self.meta['ordinal'] = \
-                            len(field_hash) + self.row['ordinal']
-                        self.meta['key'] = (self.meta['key'] 
-                            % (default_converter(self.row['name']),
-                                self.row['screen_facility_id']))
-                        self.meta['scope'] = (self.meta['scope'] 
-                            % self.row['screen_facility_id'])
-
+                        self._dict = \
+                            DataColumnResource._create_datacolumn_schema(
+                                max_ordinal, row)
                     def has_key(self, key):
-                        return self.row.has_key(key) or key in self.meta
-                    
+                        return key in self._dict
                     def keys(self):
-                        return self.row.keys();
+                        return self._dict.keys();
                     def __getitem__(self, key):
-                        if key in self.meta:
-                            return self.meta[key]
-                        else:
-                            return self.row[key]
+                        if key in self._dict:
+                            return self._dict[key]
 
                 def datacolumn_fields_generator(cursor):
                     if generator:
@@ -2259,6 +2253,8 @@ class DataColumnResource(ApiResource):
             (stmt, count_stmt) = self.wrap_statement(
                 stmt, order_clauses, filter_expression)
             
+            stmt = stmt.order_by('ordinal')
+            
             title_function = None
             if param_hash.get(HTTP_PARAM_USE_TITLES, False):
                 title_function = lambda key: field_hash[key]['title']
@@ -2275,6 +2271,41 @@ class DataColumnResource(ApiResource):
         except Exception, e:
             logger.exception('on get list')
             raise e  
+
+    @staticmethod
+    def _create_datacolumn_schema(max_ordinal, row_or_dict ):
+        logger.info('creating dc schema: %s', row_or_dict)
+        data_type_lookup = ScreenResultResource.data_type_lookup
+        default_field_values = {
+            'data_type': 'string',
+            'display_options': None,
+            'ordinal': 0,
+            'visibility': ['l', 'd'],
+            'filtering': True,
+            'ordering': True,
+            'is_datacolumn': True,
+        }
+        _dict = {}
+        _dict.update(default_field_values)        
+
+        dc_data_type = row_or_dict['data_type']
+        if dc_data_type == 'numeric':
+            if row_or_dict.has_key('decimal_places'):
+                decimal_places = row_or_dict['decimal_places']
+                if decimal_places > 0:
+                    _dict['data_type'] = 'decimal'
+                    _dict['display_options'] = (
+                         '{ "decimals": %s }' % decimal_places)
+                else:
+                    _dict['data_type'] = 'integer'
+        elif dc_data_type in data_type_lookup:
+            _dict['data_type'] = dc_data_type                            
+        _dict['ordinal'] = max_ordinal + row_or_dict['ordinal']
+        for key in row_or_dict.keys():
+            if key not in _dict:
+                _dict[key] = row_or_dict[key]
+        return _dict
+        
 
     @transaction.atomic()    
     def patch_obj(self, deserialized, **kwargs):
@@ -6505,8 +6536,8 @@ class ScreenResource(ApiResource):
                 initializer_dict[key] = parse_val(
                     deserialized.get(key, None), key, fields[key]['data_type']) 
         
-        logger.info('deserialized: %r', deserialized)
-        logger.info('initializer_dict: %r', initializer_dict)
+        logger.debug('deserialized: %r', deserialized)
+        logger.debug('initializer_dict: %r', initializer_dict)
         id_kwargs = self.get_id(deserialized, **kwargs)
         
         # create/update the screen
@@ -6648,6 +6679,35 @@ class ScreenResource(ApiResource):
         except Exception, e:
             logger.exception('on patch detail')
             raise e  
+
+class StudyResource(ScreenResource):
+    
+    class Meta:
+        resource_name = 'study'
+        max_limit = 10000
+        always_return_data = True
+        authentication = MultiAuthentication(BasicAuthentication(),
+                                             SessionAuthentication())
+        authorization = ScreenAuthorization()
+        serializer = ScreenResultSerializer()
+        queryset = Screen.objects.all()  # .order_by('facility_id')
+        
+    def __init__(self, **kwargs):
+        super(StudyResource, self).__init__(**kwargs)
+            
+    def build_schema(self):
+        # Bypass Screen schema
+        schema = ApiResource.build_schema(self)
+        logger.debug('schema: %r', schema)
+        return schema
+
+    
+    @read_authorization
+    def build_list_response(self, request, **kwargs):
+        
+        kwargs['project_phase__exact'] = 'annotation'
+        
+        return super(StudyResource,self).build_list_response(request, **kwargs)
 
 
 class UserChecklistItemResource(ApiResource):    

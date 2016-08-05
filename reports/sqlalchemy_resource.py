@@ -122,8 +122,10 @@ class SqlAlchemyResource(IccblBaseResource):
         
         # check for single-valued known list values
         # Note: Jquery Ajax will post array list params with a "[]" suffix - 20151015
-        known_list_values = ['includes','exact_fields', 'order_by', 'visibilities',
-            'includes[]', 'order_by[]','exact_fields[]', 'visibilities[]']
+        known_list_values = [
+            'includes','exact_fields', 'order_by', 'visibilities','other_screens',  
+            'includes[]', 'order_by[]','exact_fields[]', 'visibilities[]',
+            'other_screens[]']
         for key in known_list_values:
             val = _dict.get(key,[])
             if isinstance(val, basestring):
@@ -676,11 +678,13 @@ class SqlAlchemyResource(IccblBaseResource):
         '''
         includes = kwargs.pop('includes', '*')
         try:
+            logger.debug('get internal list response %s, %s ', self._meta.resource_name, kwargs)
             response = self.get_list(
                 request,
                 format='json',
                 includes=includes,
                 **kwargs)
+            logger.debug('deserializing internal response... %s', self._meta.serializer)
             _data = self._meta.serializer.deserialize(
                 request,
                 LimsSerializer.get_content(response), format='application/json')
@@ -1002,8 +1006,6 @@ class SqlAlchemyResource(IccblBaseResource):
         except Exception, e:
             logger.exception('on stream response')
             raise e
-#         finally:
-#             conn.close()          
         
     def stream_response_from_cursor(self,request,result,output_filename,
             field_hash={}, param_hash={}, 

@@ -43,7 +43,7 @@ define([
       
       // If "hideIfEmpty" then remove null attributes
       _.each(self.model.keys(), function(key){
-        if(! self.model.has(key)){
+        if(! self.model.has(key) && _.has(schema.fields,key)){
           var fi = schema.fields[key];
           if (fi.display_options && fi.display_options.hideIfEmpty === true){
             self.detailKeys = _.without(detailKeys, key);
@@ -57,7 +57,8 @@ define([
           }
         }
       });
-      console.log('final detailKeys', self.detailKeys, self.groupedKeys);
+      if (appModel.DEBUG) 
+        console.log('final detailKeys', self.detailKeys, self.groupedKeys);
       this.createBindings();
 	  },
 	  

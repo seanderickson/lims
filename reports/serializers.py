@@ -38,7 +38,10 @@ import reports.serialize.xlsutils as xlsutils
 logger = logging.getLogger(__name__)
 
 class BaseSerializer(object):
-
+    
+    # Use DjangoJSONEncoder for date,datetime, and time serialization
+    json_encoder = DjangoJSONEncoder()
+    
     formats = ['json', 'html']
     content_types = {'json': JSON_MIMETYPE,
                      'html': 'text/html',
@@ -56,9 +59,6 @@ class BaseSerializer(object):
 
     def to_simple(self, data, options):
         """
-        For a piece of data, attempts to recognize it and provide a simplified
-        form of something complex.
-
         This brings complex Python data structures down to native types of the
         serialization format(s).
         """
@@ -67,11 +67,11 @@ class BaseSerializer(object):
         if isinstance(data, dict):
             return dict((key, self.to_simple(val, options)) for (key, val) in data.items())
         elif isinstance(data, datetime.datetime):
-            return self.format_datetime(data)
+            return self.json_encoder.default(data)
         elif isinstance(data, datetime.date):
-            return self.format_date(data)
+            return self.json_encoder.default(data)
         elif isinstance(data, datetime.time):
-            return self.format_time(data)
+            return self.json_encoder.default(data)
         elif isinstance(data, bool):
             return data
         elif isinstance(data, (six.integer_types, float)):

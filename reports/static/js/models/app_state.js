@@ -800,7 +800,7 @@ define([
     },
         
     isEditable: function(resourceId){
-      return _.contains(this.getResource(resourceId).visibility, 'e');
+      return _.contains(_.result(this.getResource(resourceId),'visibility'), 'e');
     },
     
     /**
@@ -884,7 +884,8 @@ define([
       var uiResources = this.get('ui_resources');
       if(!_.has(uiResources, resourceId)) {
         var msg = "Unknown resource: " + resourceId;
-        Iccbl.appModel.error(msg);
+        console.log('error: ' + msg);
+        //Iccbl.appModel.error(msg);
       }
       return uiResources[resourceId];
     },

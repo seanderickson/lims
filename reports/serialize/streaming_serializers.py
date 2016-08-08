@@ -173,7 +173,7 @@ def json_generator(data, meta, is_for_detail=False):
     # and downstream programs have trouble with mixed encoding (cStringIO)
     if not is_for_detail:
         yield ( '{ "meta": %s, "objects": [' 
-            % json.dumps(meta, ensure_ascii=True, encoding="utf-8"))
+            % json.dumps(meta, cls=DjangoJSONEncoder, ensure_ascii=True, encoding="utf-8"))
     try:
         for rownum, row in enumerate(data):
             try:

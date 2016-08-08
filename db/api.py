@@ -1319,22 +1319,6 @@ class ScreenResultResource(ApiResource):
             raise Http404(
                 'no screen result found for facility id: %r' % facility_id)
     
-    data_type_lookup = {
-        'partition_positive_indicator': {
-            'vocabulary_scope_ref': 'resultvalue.partitioned_positive',
-            'data_type': 'string',
-            'edit_type': 'select'
-            },
-        'boolean_positive_indicator': {
-            'data_type': 'boolean' 
-            },
-        'confirmed_positive_indicator': {
-            'vocabulary_scope_ref': 'resultvalue.confirmed_positive_indicator',
-            'data_type': 'string',
-            'edit_type': 'select' 
-            },
-    }
-            
     def build_schema(
             self, screenresult=None, show_mutual_positives=False,
             other_screens=[]):
@@ -1382,13 +1366,8 @@ class ScreenResultResource(ApiResource):
                         DataColumn.objects
                             .filter(screen_result=screenresult)
                             .order_by('ordinal')):
-                        
-                        # TODO: refactor to use the DC resource
-                        # _dict = DataColumnResource._create_datacolumn_schema(
-                        #     max_ordinal, model_to_dict(dc))
-                        # newfields[_dict['name']] = _dict
-                        
-                        (columnName, _dict) = self.create_datacolumn_schema(dc)
+                        (columnName, _dict) = \
+                            DataColumnResource._create_datacolumn_from_orm(dc)
                         _dict['ordinal'] = max_ordinal + dc.ordinal + 1
                         _dict['visibility'] = ['l', 'd']
                         newfields[columnName] = _dict
@@ -1411,7 +1390,8 @@ class ScreenResultResource(ApiResource):
                                 _current_sr = dc.screen_result.screen_result_id
                                 max_ordinal = _ordinal
                             _ordinal = max_ordinal + dc.ordinal + 1
-                            (columnName, _dict) = self.create_datacolumn_schema(dc)
+                            (columnName, _dict) = \
+                                DataColumnResource._create_datacolumn_from_orm(dc)
                             _dict['ordinal'] = _ordinal
                             if show_mutual_positives:
                                 _dict['visibility'] = ['l', 'd']
@@ -1457,7 +1437,8 @@ class ScreenResultResource(ApiResource):
                 if colname in newfields and newfields[colname].get('is_screen_column',False):
                     for i,dc in enumerate(DataColumn.objects
                         .filter(screen_result__screen__facility_id=other_screen_facility_id)):
-                        (columnName, _dict) = self.create_datacolumn_schema(dc)
+                        (columnName, _dict) = \
+                            DataColumnResource._create_datacolumn_from_orm(dc)
                         _ordinal = max_ordinal + dc.ordinal + 1
                         _dict['ordinal'] = _ordinal
                         _dict['visibility'] = ['l','d']
@@ -1477,38 +1458,6 @@ class ScreenResultResource(ApiResource):
         _dict['screen_facility_id'] = screen.facility_id
         _dict['visibility'] = ['api']
         return (columnName, _dict)
-        
-    def create_datacolumn_schema(self, dc):
-
-        screen_facility_id = dc.screen_result.screen.facility_id
-        screen = Screen.objects.get(facility_id=screen_facility_id)
-        columnName = "dc_%s_%s" % (screen_facility_id, default_converter(dc.name))
-        _dict = {}
-        _dict.update(model_to_dict(dc))
-        _dict['title'] = '%s [%s]' % (dc.name, screen_facility_id) 
-        _dict['description'] = _dict['description'] or _dict['title']
-        _dict['mouseover'] = '%s: %s - %s' % (screen_facility_id, screen.title, dc.name)
-        _dict['comment'] = dc.comments
-        _dict['is_datacolumn'] = True
-        _dict['key'] = columnName
-        _dict['scope'] = 'datacolumn.screenresult-%s' % screen_facility_id
-        _dict['screen_facility_id'] = screen_facility_id
-        _dict['assay_data_type'] = dc.data_type
-        _dict['derived_from_columns'] = [x.name for x in dc.derived_from_columns.all()]
-        _dict['visibility'] = ['api']
-        if dc.data_type == 'numeric':
-            if _dict.get('decimal_places', 0) > 0:
-                _dict['data_type'] = 'decimal'
-                _dict['display_options'] = \
-                    '{ "decimals": %s, "orderSeparator": "" }' % _dict['decimal_places']
-            else:
-                _dict['data_type'] = 'integer'
-        if dc.data_type in self.data_type_lookup:
-            _dict.update(self.data_type_lookup[dc.data_type])
-
-        _dict['data_column_id'] = dc.data_column_id
-        return (columnName, _dict)
-
         
     @write_authorization
     def put_list(self, request, **kwargs):
@@ -2146,7 +2095,7 @@ class DataColumnResource(ApiResource):
     @read_authorization
     def build_list_response(self, request, **kwargs):
         
-        logger.info('build datacolumn2 response...')
+        logger.info('build datacolumn response...')
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
@@ -2192,7 +2141,7 @@ class DataColumnResource(ApiResource):
                 class DataColumnRow:
                     def __init__(self, row):
                         self._dict = \
-                            DataColumnResource._create_datacolumn_schema(
+                            DataColumnResource._create_datacolumn_from_row(
                                 max_ordinal, row)
                     def has_key(self, key):
                         return key in self._dict
@@ -2272,11 +2221,28 @@ class DataColumnResource(ApiResource):
             logger.exception('on get list')
             raise e  
 
+    data_type_lookup = {
+        'partition_positive_indicator': {
+            'vocabulary_scope_ref': 'resultvalue.partitioned_positive',
+            'data_type': 'string',
+            'edit_type': 'select'
+            },
+        'boolean_positive_indicator': {
+            'data_type': 'boolean' 
+            },
+        'confirmed_positive_indicator': {
+            'vocabulary_scope_ref': 'resultvalue.confirmed_positive_indicator',
+            'data_type': 'string',
+            'edit_type': 'select' 
+            },
+    }
+            
     @staticmethod
-    def _create_datacolumn_schema(max_ordinal, row_or_dict ):
-        logger.info('creating dc schema: %s', row_or_dict)
-        data_type_lookup = ScreenResultResource.data_type_lookup
-        default_field_values = {
+    def _create_datacolumn_from_row(max_ordinal, row_or_dict ):
+        ''' Transform a row as defined by the DataColumnResource query into a
+        schema field descriptor.
+        '''
+        _dict = {
             'data_type': 'string',
             'display_options': None,
             'ordinal': 0,
@@ -2285,10 +2251,11 @@ class DataColumnResource(ApiResource):
             'ordering': True,
             'is_datacolumn': True,
         }
-        _dict = {}
-        _dict.update(default_field_values)        
 
+        # FIXME: migrate the data_type of the datacolumn so that it is not 
+        # determined at runtime
         dc_data_type = row_or_dict['data_type']
+        _dict['assay_data_type'] = dc_data_type
         if dc_data_type == 'numeric':
             if row_or_dict.has_key('decimal_places'):
                 decimal_places = row_or_dict['decimal_places']
@@ -2298,14 +2265,52 @@ class DataColumnResource(ApiResource):
                          '{ "decimals": %s }' % decimal_places)
                 else:
                     _dict['data_type'] = 'integer'
-        elif dc_data_type in data_type_lookup:
+        elif dc_data_type in DataColumnResource.data_type_lookup:
             _dict['data_type'] = dc_data_type                            
         _dict['ordinal'] = max_ordinal + row_or_dict['ordinal']
         for key in row_or_dict.keys():
             if key not in _dict:
                 _dict[key] = row_or_dict[key]
         return _dict
-        
+
+    @staticmethod
+    def _create_datacolumn_from_orm(dc):
+        ''' Transform an ORM DataColumn record into a
+        schema field descriptor.
+        '''
+
+        screen_facility_id = dc.screen_result.screen.facility_id
+        screen = Screen.objects.get(facility_id=screen_facility_id)
+        columnName = "dc_%s_%s" % (screen_facility_id, default_converter(dc.name))
+        _dict = {}
+        _dict.update(model_to_dict(dc))
+        _dict['title'] = '%s [%s]' % (dc.name, screen_facility_id) 
+        _dict['description'] = _dict['description'] or _dict['title']
+        _dict['mouseover'] = '%s: %s - %s' % (screen_facility_id, screen.title, dc.name)
+        _dict['comment'] = dc.comments
+        _dict['is_datacolumn'] = True
+        _dict['key'] = columnName
+        _dict['scope'] = 'datacolumn.screenresult-%s' % screen_facility_id
+        _dict['screen_facility_id'] = screen_facility_id
+        _dict['assay_data_type'] = dc.data_type
+        _dict['derived_from_columns'] = [x.name for x in dc.derived_from_columns.all()]
+        _dict['visibility'] = ['api']
+        # FIXME: migrate the data_type of the datacolumn so that it is not 
+        # determined at runtime
+        if dc.data_type == 'numeric':
+            if _dict.get('decimal_places', 0) > 0:
+                _dict['data_type'] = 'decimal'
+                _dict['display_options'] = \
+                    '{ "decimals": %s, "orderSeparator": "" }' % _dict['decimal_places']
+            else:
+                _dict['data_type'] = 'integer'
+        elif dc.data_type in DataColumnResource.data_type_lookup:
+            _dict.update(DataColumnResource.data_type_lookup[dc.data_type])
+        else:
+            _dict['data_type'] = 'string'
+        _dict['data_column_id'] = dc.data_column_id
+        return (columnName, _dict)
+
 
     @transaction.atomic()    
     def patch_obj(self, deserialized, **kwargs):
@@ -8319,17 +8324,79 @@ class WellResource(ApiResource):
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('get_schema'), name="api_get_schema"),
-            url(r"^(?P<resource_name>%s)/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$" 
+            url(r"^(?P<resource_name>%s)"
+                r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)"
+                r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})"
+                r"/annotations%s$" 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_well_annotations_view'), 
+                    name="api_dispatch_well_annotations_view"),
             url((r"^(?P<resource_name>%s)"
                  r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})"
                  r"/duplex_wells%s$" )
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_well_duplex_view'), 
-                name="api_dispatch_well_duplex_view"),
+                    name="api_dispatch_well_duplex_view"),
         ]
 
+    @read_authorization
+    def dispatch_well_annotations_view(self, request, **kwargs):
+        '''
+        All Study annotations for a well
+        Format is:
+        [ { study 1 information, dc_1, dc_2, etc. }, { study 2 information ... }...]
+        - where each study conforms to the study schema
+        - each dc has:
+            { dc_schema, value }
+        '''
+        well_id = kwargs.get('well_id', None)
+        if not well_id:
+            raise NotImplementedError('must provide a well_id parameter')
+        
+        screens = {}        
+        for rv in (ResultValue.objects
+                .filter(well_id=well_id)
+                .filter(data_column__screen_result__screen__project_phase='annotation')):
+            screen = rv.data_column.screen_result.screen
+            if screen.facility_id not in screens:
+                _screen_data = screens.setdefault(
+                    screen.facility_id,
+                    { 
+                        '1-screen_facility_id': screen.facility_id,
+                        'facility_id': screen.facility_id,
+                        'title': screen.title,
+                        'summary': screen.summary,
+                        'lead_screener_username': screen.lead_screener.username,
+                        'lead_screener_name': '%s %s' % (
+                            screen.lead_screener.first_name, screen.lead_screener.last_name),
+                        'lab_head_username': screen.lab_head.username,
+                        'lab_name': '%s %s' % (
+                            screen.lab_head.first_name, screen.lab_head.last_name),
+                        'date_created': screen.date_created,
+                        'study_type': screen.study_type,
+                        'values': {},
+                        'fields': {}
+                    })
+            _screen_data = screens[screen.facility_id]
+            (column_name, _dict) = \
+                DataColumnResource._create_datacolumn_from_orm(rv.data_column)
+            _screen_data['values'][column_name] = rv.value
+            if _dict['data_type'] in ['decimal','integer','numeric']:
+                _screen_data['values'][column_name] = rv.numeric_value
+            _dict['visibility'] = ['l','d']
+            _dict['title'] = _dict['name']
+            _screen_data['fields'][column_name] = _dict
+        
+        final_data = sorted(screens.values(), key=lambda x: x['facility_id'])
+        return HttpResponse(
+            content=self._meta.serializer.serialize(
+                final_data, self.get_serialize_format(request,**kwargs)),
+            content_type=build_content_type(
+                self.get_serialize_format(request,**kwargs)))
+        
     @read_authorization
     def dispatch_well_duplex_view(self, request, **kwargs):
         
@@ -8349,7 +8416,8 @@ class WellResource(ApiResource):
                     _aw.c.is_positive])
                 .select_from(_aw
                     .join(_sr, _aw.c.screen_result_id==_sr.c.screen_result_id)
-                    .join(_s, _sr.c.screen_id==_s.c.screen_id)))
+                    .join(_s, _sr.c.screen_id==_s.c.screen_id))
+                .where(_s.c.project_phase != 'annotation'))
         fields = ['facility_id', 'confirmed_positive_value', 'is_positive']
 
         with get_engine().connect()as conn:
@@ -8366,12 +8434,11 @@ class WellResource(ApiResource):
                 well_info[dw.well_id] = item
                 
                 result = conn.execute(stmt.where(_aw.c.well_id==dw.well_id))
-                compiled_stmt = str(stmt.where(_aw.c.well_id==dw.well_id).compile(
-                    dialect=postgresql.dialect(),
-                    compile_kwargs={"literal_binds": True}))
-                
-                logger.info('stmt: %r', compiled_stmt)
-                
+                if logger.isEnabledFor(logging.DEBUG):
+                    compiled_stmt = str(stmt.where(_aw.c.well_id==dw.well_id).compile(
+                        dialect=postgresql.dialect(),
+                        compile_kwargs={"literal_binds": True}))
+                    logger.info('stmt: %r', compiled_stmt)
                 for x in cursor_generator(result, fields):
                     screen_row = data_per_screen.setdefault(
                         x['facility_id'],

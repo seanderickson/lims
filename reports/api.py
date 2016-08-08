@@ -1318,7 +1318,7 @@ class FieldResource(ApiResource):
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('get_schema'), name="api_get_schema"),
-            url(r"^(?P<resource_name>%s)/(?P<scope>[\w\d_]+)/(?P<key>[\w\d_]+)%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<scope>[\w\d_.]+)/(?P<key>[\w\d_]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
@@ -1416,7 +1416,6 @@ class FieldResource(ApiResource):
         return schema
     
     def get_detail(self, request, **kwargs):
-
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail']=True
         return self.build_list_response(request, **kwargs)
@@ -1440,8 +1439,15 @@ class FieldResource(ApiResource):
         scope = param_hash.get('scope', None)
         if not scope:
             scope = param_hash.get('scope__exact', None)
+        if not scope:
+            scope = param_hash.get('scope__eq', None)
         
         key = param_hash.get('key', None)
+        if not key:
+            key = param_hash.get('key__exact', None)
+        if not key:
+            key = param_hash.get('key__eq', None)
+            
         if not scope:
             scopes = MetaHash.objects.all().filter(
                 scope__icontains='fields.').values_list('scope').distinct()

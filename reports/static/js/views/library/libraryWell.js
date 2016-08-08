@@ -29,6 +29,10 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       this.consumedStack = [];
       this.library = args.library;
       
+      this.tabbed_resources = _.extend(
+        {}, _.mapObject(this.tabbed_resources_template, function(val,key){
+          return _.clone(val);
+        }));
       _.each(_.keys(this.tabbed_resources), function(key){
         if(key !== 'detail'){
           var permission = self.tabbed_resources[key].permission;
@@ -40,10 +44,14 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           }
         }
       });
+      if (! self.model.has('duplex_wells')){
+        delete self.tabbed_resources['duplex_wells'];
+      }
+      
       _.bindAll(this, 'click_tab');
     },
     
-    tabbed_resources: {
+    tabbed_resources_template: {
       detail: { 
         description: 'Well Details', 
         title: 'Well', 
@@ -89,15 +97,11 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
     serialize: function() {
       console.log('serialize called...');
       var self = this;
-      var displayed_tabbed_resources = _.extend({},this.tabbed_resources);
-      if (! self.model.has('duplex_wells')){
-        delete displayed_tabbed_resources['duplex_wells'];
-      }
-        return {
+      return {
         'base_url': [
            self.library.resource.key,self.library.key,self.model.resource.key,
            self.model.key].join('/'),
-        'tab_resources': displayed_tabbed_resources
+        'tab_resources': self.tabbed_resources
       }      
     }, 
 
@@ -189,6 +193,91 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       this.setView("#tab_container", view ).render();
     },
     
+    /** 
+     * Retrieve the Study annotations for a well:
+     *  Format is:
+     *  [ { study 1 information, dc_1, dc_2, etc. }, { study 2 information ... }...]
+     *  - where each study conforms to the study schema
+     *  - each dc has:
+     *      { dc_schema, value }
+    **/
+    setAnnotations: function(delegateStack){
+      console.log('set annotations...');
+      var self = this;
+      var url = [self.model.resource.apiUri,
+                 self.model.get('well_id'), 'annotations'].join('/');
+      var studyResource = appModel.getResource('study'); 
+      studyResource['fields'] = _.pick(studyResource['fields'],
+        ['lead_screener_name','lab_name','title','facility_id', 
+         'date_created', 'summary','study_type'])
+
+      function showAnnotations(data){
+        if (!data|| _.isEmpty(data)){
+          console.log('empty annotation information');
+          return;
+        }
+        console.log('process annotations...');
+        var AnnotationView = Backbone.Layout.extend({
+          template: _.template(genericLayout),
+          afterRender: function(){
+            $('#resource_content_title').html(
+              'Annotations for ' + self.model.get('well_id'));
+            $content = $('<div class="container" id="studies_container"></div>');
+            $('#resource_content').html($content);
+
+            _.each(data, function(studyData){
+
+              var facility_id = data['facility_id']
+              $content = $([
+                '<div class="row">',
+                '<div class="col-xs-6" id="study_info-'+facility_id + '"></div>',
+                '<div class="col-xs-6" id="annotation_info-'+facility_id + '"></div>',
+                '</div>',
+                ].join(''));
+              $('#studies_container').append($content);
+              var model = new Backbone.Model(studyData);
+              model.resource = studyResource;
+              view = new DetailView({
+                model: model,
+                resource: studyResource,
+                buttons: []
+              });
+              $content.find('#study_info-'+facility_id + '').append(view.render().$el);
+              
+              // Create a resource schema on the fly for the annotations
+              var schema = {
+                title_attribute: 'Annotation',
+                key: 'annotation',
+                fields: studyData.fields
+              }
+              _.each(_.values(schema.fields), appModel.parseSchemaField );
+              schema = _.extend(schema, appModel.schemaClass);
+              var model = new Backbone.Model(studyData.values);
+              model.resource = schema;
+              view = new DetailView({
+                model: model,
+                resource: schema,
+                buttons: []
+              });
+              $content.find('#annotation_info-'+facility_id + '').append(view.render().$el);
+            });
+            
+          }
+        });
+        var $el = self.setView('#tab_container', new AnnotationView()).render().$el;
+      };
+      $.ajax({
+        type : "GET",
+        url : url,
+        data : "",
+        dataType : "json",
+        success : showAnnotations,
+        fail: function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); }      
+      });
+      
+      this.reportUriStack();
+    },
+
     setDuplexWells: function(delegateStack){
       var self = this;
       var url = [self.model.resource.apiUri,self.model.key,'duplex_wells'].join('/')

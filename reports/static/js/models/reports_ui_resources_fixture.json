@@ -31,7 +31,7 @@
         "api_resource": "field",
         "url_root": "/reports/api/v1",
         "options": { 
-          "search": {"scope__exact": "fields.field"}},
+          "search": {}},
         "description": "Control field settings"
     },
 

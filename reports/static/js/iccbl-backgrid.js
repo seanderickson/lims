@@ -1786,6 +1786,7 @@ var TextFormFilter = CriteriumFormFilter.extend({
    * TextFormFilter Form submit handler
    */
   _submit: function(){
+    var self = this;
     if(!self.isSet()) return;
     var self  = this;
     var searchHash = {};

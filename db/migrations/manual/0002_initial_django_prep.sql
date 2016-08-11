@@ -441,6 +441,7 @@ TODO: verify that the ldld here is the same as the sr.date_loaded
 update screen_result set date_loaded = TODO: 
 **/
 
+ALTER TABLE assay_well ALTER COLUMN is_positive SET default false;
 
 DROP TABLE cell_lineage;
 DROP TABLE cell_related_projects;

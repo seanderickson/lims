@@ -25,7 +25,9 @@ class Migration(migrations.Migration):
             name='type',
             field=models.TextField()),
         migrations.RemoveField(
-            model_name='attachedfile',name='attached_file_type_id'),
+            model_name='attachedfile',
+            name='attached_file_type',
+        ),
 
         # TODO Reinstate: after migration finished
         # migrations.RunSQL('ALTER TABLE screen DROP COLUMN cell_line_id ; '),
@@ -86,10 +88,6 @@ class Migration(migrations.Migration):
             model_name='screensaveruser',
             name='lab_head',
             field=models.ForeignKey(related_name='lab_member', blank=True, to='db.ScreensaverUser', null=True),
-        ),
-        migrations.RemoveField(
-            model_name='attachedfile',
-            name='attached_file_type',
         ),
 
         

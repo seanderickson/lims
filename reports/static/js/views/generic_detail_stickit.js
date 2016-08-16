@@ -14,7 +14,8 @@ define([
       appModel, DetailView, SimpleListView, detailTemplate) {
 	
 	var DetailView = Backbone.Layout.extend({
-	
+	  
+	  attributes: { id: 'generic-detail-stickit-container' },
 	  /**
 	   * args:
 	   * this.model - implicit as the first argument the constructor
@@ -398,7 +399,7 @@ define([
     serialize: function() {
       return {
         'buttons': _.chain(this.buttons), // TODO: buttons from the schema
-        'title': Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource),
+//        'title': Iccbl.getTitleFromTitleAttribute(this.model, this.model.resource),
         'groupedKeys': _.chain(this.groupedKeys),
         'keys': _.chain(this.detailKeys)
       };      

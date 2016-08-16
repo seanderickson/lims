@@ -1015,8 +1015,9 @@ class ApiResource(SqlAlchemyResource):
                         break # found
             if prev_dict:
                 # if found, then it is modified, not deleted
-                logger.debug('remove from deleted dict %r, %r',
-                    prev_dict, deleted_items)
+                if DEBUG_PATCH_LOG:
+                    logger.info('remove from deleted dict %r, %r',
+                        prev_dict, deleted_items)
                 deleted_items.remove(prev_dict)
                 
             self.log_patch(request, prev_dict, new_dict, **kwargs)    

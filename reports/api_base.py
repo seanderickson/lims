@@ -36,12 +36,12 @@ def un_cache(_func):
     ''' 
     @wraps(_func)
     def _inner(self, *args, **kwargs):
-        logger.debug('decorator un_cache: %s, %s', self, _func )
-        IccblBaseResource.clear_cache(self)
-        IccblBaseResource.set_caching(self,False)
+        logger.info('decorator un_cache: %s, %s', self, _func )
+        self.clear_cache()
+        self.set_caching(False)
         result = _func(self, *args, **kwargs)
-        IccblBaseResource.set_caching(self,True)
-        logger.debug('decorator un_cache done: %s, %s', self, _func )
+        self.set_caching(True)
+        logger.info('decorator un_cache done: %s, %s', self, _func )
         return result
 
     return _inner

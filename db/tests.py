@@ -5,6 +5,7 @@ import filecmp
 import json
 import logging
 import os
+import re
 import sys
 
 from django.contrib.auth.models import User
@@ -29,7 +30,6 @@ from reports.serializers import CSVSerializer, XLSSerializer, LimsSerializer, \
 from reports.tests import IResourceTestCase, equivocal
 from reports.tests import assert_obj1_to_obj2, find_all_obj_in_list, \
     find_obj_in_list, find_in_dict
-import re
 
 
 logger = logging.getLogger(__name__)
@@ -1015,7 +1015,7 @@ class ScreenResultResource(DBResourceTestCase):
         Screen.objects.all().delete()
         Library.objects.all().delete()
         ApiLog.objects.all().delete()
-#         ScreensaverUser.objects.all().filter(username='adminuser').delete()
+        # ScreensaverUser.objects.all().filter(username='adminuser').delete()
 
     def _setup_test_config(self):
         # Setup ScreenResult dependencies

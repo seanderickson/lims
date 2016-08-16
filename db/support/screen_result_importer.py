@@ -190,7 +190,7 @@ def parse_result_values(parsed_columns, sheets):
                 well_ids.add(result['well_id'])
                 yield result
             except ValidationError,e:
-                logger.warn('error: %r', e)
+                logger.exception('error: %r', e)
                 if not parse_error:
                     parse_error = ParseError(errors={})
                 if not sheet.name in parse_error.errors:

@@ -98,156 +98,6 @@ def _get_raw_time_string():
   return timezone.now().strftime("%Y%m%d%H%M%S")
     
 
-# class RoomLocationResource(ApiResource):
-#     class Meta:
-#         authentication = MultiAuthentication(BasicAuthentication(),
-#                                              SessionAuthentication())
-#         authorization = UserGroupAuthorization()
-#         resource_name = 'roomlocation'
-#         serializer = LimsSerializer()
-#         
-#     def __init__(self, **kwargs):
-#         super(PlateLocationResource, self).__init__(**kwargs)
-# 
-#     def prepend_urls(self):
-# 
-#         return [
-#             url(r"^(?P<resource_name>%s)/schema%s$" 
-#                 % (self._meta.resource_name, trailing_slash()),
-#                 self.wrap_view('get_schema'), name="api_get_schema"),
-#             url(r"^(?P<resource_name>%s)/(?P<room>[\w\d_\-]+)"
-#                 r"/(?P<freezer>[\w\d_\-]+)"
-#                 r"/(?P<shelf>[\w\d_\-]+)"
-#                 r"/(?P<bin>[\w\d]+)%s$" 
-#                     % (self._meta.resource_name, trailing_slash()),
-#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-#             url(r"^(?P<resource_name>%s)"
-#                 r"/(?P<copy_name>[\w\d_.\-\+: ]+)"
-#                 r"/(?P<plate_number>[\d]+)%s$" 
-#                     % (self._meta.resource_name, trailing_slash()),
-#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-#         ]
-# 
-#     def get_detail(self, request, **kwargs):
-# 
-#         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
-#         kwargs['is_for_detail'] = True
-#         return self.build_list_response(request, **kwargs)
-#         
-#     @read_authorization
-#     def get_list(self, request, **kwargs):
-# 
-#         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-#         return self.build_list_response(request, **kwargs)
-# 
-#     @read_authorization
-#     def build_list_response(self, request, **kwargs):
-# 
-#         param_hash = {}
-#         param_hash.update(kwargs)
-#         param_hash.update(self._convert_request_to_dict(request))
-#         schema = super(PlateLocationResource, self).build_schema()
-#         is_for_detail = kwargs.pop('is_for_detail', False)
-#         filename = self._get_filename(schema, kwargs)
-#         
-#         room = param_hash.pop('room',
-#             param_hash.get('room__eq', None))
-#         
-#         freezer = param_hash.pop('freezer',
-#             param_hash.get('freezer__eq', None))
-#         
-#         shelf = param_hash.pop('shelf',
-#             param_hash.get('shelf__eq', None))
-#         
-#         bin = param_hash.pop('bin',
-#             param_hash.get('bin__eq', None))
-#         
-#         try:
-#             
-#             # general setup
-#           
-#             manual_field_includes = set(param_hash.get('includes', []))
-# 
-#             (filter_expression, filter_fields) = \
-#                 SqlAlchemyResource.build_sqlalchemy_filters(
-#                     schema, param_hash=param_hash)
-#                  
-#             order_params = param_hash.get('order_by', [])
-#             field_hash = self.get_visible_fields(
-#                 schema['fields'], filter_fields, manual_field_includes,
-#                 param_hash.get('visibilities'),
-#                 exact_fields=set(param_hash.get('exact_fields', [])),
-#                 order_params=order_params)
-#             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
-#                 order_params, field_hash)
-#              
-#             rowproxy_generator = None
-#             if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
-#                 rowproxy_generator = \
-#                     ApiResource.create_vocabulary_rowproxy_generator(field_hash)
-#  
-#             # specific setup 
-#  
-#             _p = self.bridge['plate']
-#             _pl = self.bridge['plate_location']
-#             _c = self.bridge['copy']
-#             _l = self.bridge['library']
-# 
-#             custom_columns = {
-#                 'plates': (
-#                     select([func.count()])
-#                         .select_from(_p)
-#                         .where(
-#                             _p.c.plate_location_id
-#                                 ==literal_column('plate_location.plate_location_id')))
-#                     };
-# 
-#             base_query_tables = ['plate', 'copy', 'plate_location', 'library']
-# 
-#             columns = self.build_sqlalchemy_columns(
-#                 field_hash.values(), base_query_tables=base_query_tables,
-#                 custom_columns=custom_columns)
-#             # build the query statement
-# 
-# #             j = join(_pl, _p, _p.c.plate_location_id == _pl.c.plate_location_id,
-# #                      isouter=True)
-# #             j = join(_p, _c, _p.c.copy_id == _c.c.copy_id)
-# #             j = j.join(_l, _c.c.library_id == _l.c.library_id)
-#             
-#             stmt = select(columns.values()).select_from(_pl)
-# 
-#             # general setup
-#              
-#             (stmt, count_stmt) = self.wrap_statement(
-#                 stmt, order_clauses, filter_expression)
-#  
-#             if not order_clauses:
-#                 stmt = stmt.order_by("room","freezer","shelf","bin")
-# 
-#             if True: 
-#                 logger.info(
-#                     'stmt: %s',
-#                     str(stmt.compile(
-#                         dialect=postgresql.dialect(),
-#                         compile_kwargs={"literal_binds": True})))
-# 
-#             title_function = None
-#             if param_hash.get(HTTP_PARAM_USE_TITLES, False):
-#                 title_function = lambda key: field_hash[key]['title']
-# 
-#             return self.stream_response_from_statement(
-#                 request, stmt, count_stmt, filename,
-#                 field_hash=field_hash, param_hash=param_hash,
-#                 is_for_detail=is_for_detail,
-#                 rowproxy_generator=rowproxy_generator,
-#                 title_function=title_function)
-#             
-#                         
-#         except Exception, e:
-#             logger.exception('on get list')
-#             raise e   
-
-
 class PlateLocationResource(ApiResource):        
     
     class Meta:
@@ -271,11 +121,6 @@ class PlateLocationResource(ApiResource):
                 r"/(?P<freezer>[\w\d_\-]+)"
                 r"/(?P<shelf>[\w\d_\-]+)"
                 r"/(?P<bin>[\w\d]+)%s$" 
-                    % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)"
-                r"/(?P<copy_name>[\w\d_.\-\+: ]+)"
-                r"/(?P<plate_number>[\d]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
@@ -8618,9 +8463,6 @@ class WellResource(ApiResource):
 
     def __init__(self, **kwargs):
         self.library_resource = None
-        self.sr_resource = None
-        self.smr_resource = None
-        self.npr_resource = None
         self.reagent_resource = None
         super(WellResource, self).__init__(**kwargs)
 
@@ -8668,21 +8510,6 @@ class WellResource(ApiResource):
          
         return deserialized
     
-    def get_sr_resource(self):
-        if not self.sr_resource:
-            self.sr_resource = SilencingReagentResource()
-        return self.sr_resource
-    
-    def get_smr_resource(self):
-        if not self.smr_resource:
-            self.smr_resource = SmallMoleculeReagentResource()
-        return self.smr_resource
-    
-    def get_npr_resource(self):
-        if not self.npr_resource:
-            self.npr_resource = NaturalProductReagentResource()
-        return self.npr_resource
-    
     def get_reagent_resource(self):
         if not self.reagent_resource:
             self.reagent_resource = ReagentResource()
@@ -8692,6 +8519,12 @@ class WellResource(ApiResource):
         if not self.library_resource:
             self.library_resource = LibraryResource()
         return self.library_resource
+
+    def set_caching(self,use_cache):
+        logger.info('set_caching: %r', use_cache)
+        super(WellResource, self).set_caching(use_cache)
+        self.get_reagent_resource().set_caching(use_cache)
+
 
     def prepend_urls(self):
         return [
@@ -8900,9 +8733,10 @@ class WellResource(ApiResource):
     @write_authorization
     @un_cache        
     def put_list(self, request, **kwargs):
-
+        
         if 'library_short_name' not in kwargs:
             raise BadRequest('library_short_name is required')
+        logger.info('patch wells for library: %r', kwargs['library_short_name'])
         
         deserialized = self.deserialize(request)
         if not self._meta.collection_name in deserialized:
@@ -8921,12 +8755,13 @@ class WellResource(ApiResource):
             if ids:
                 kwargs_for_log['%s__in' % id_field] = \
                     LIST_DELIMITER_URL_PARAM.join(ids)
-        # get original state, for logging
+        logger.info('get original state, for logging')
         kwargs_for_log['includes'] = ['*', '-molfile']
         # NOTE: consider 'undefined' to be created
         kwargs_for_log['library_well_type__ne'] = 'undefined'
         original_data = self._get_list_response(request, **kwargs_for_log)
         
+        logger.debug('original data: %r', original_data)
         with transaction.atomic():
 
             library = Library.objects.get(
@@ -8952,12 +8787,14 @@ class WellResource(ApiResource):
                     self.get_library_resource()
                         .get_id(model_to_dict(library)).values()))
     
-            # Cache all the wells on the library for use with this process 
+            logger.info('Cache all the wells on the library for use with this process...') 
             well_map = dict((well.well_id, well) 
                 for well in library.well_set.all())
             if len(well_map) == 0:
                 raise BadRequest('Library wells have not been created')
-    
+            
+            logger.info('patch each well, count: %d', len(deserialized))
+            logger.info('patching: %r', deserialized)
             for well_data in deserialized:
                 well_data['library_short_name'] = kwargs['library_short_name']
                 
@@ -8970,7 +8807,9 @@ class WellResource(ApiResource):
                             str(plate_number).zfill(5), well_name)
     
                 if not well_id:
-                    raise BadRequest('well_id is required')
+                    raise ValidationError(
+                        key='well_id',
+                        msg='well_id is required')
                 
                 well = well_map.get(well_id, None)
                 if not well:
@@ -8988,7 +8827,9 @@ class WellResource(ApiResource):
                 except ValidationError, e:
                     logger.exception('Validation error: %r', e)
                     raise e
-
+            
+            logger.info(
+                'put_list: WellResource: library: %r; patch completed', library.short_name)
             experimental_well_count = library.well_set.filter(
                 library_well_type__iexact='experimental').count()
             if library.experimental_well_count != experimental_well_count:
@@ -9000,7 +8841,7 @@ class WellResource(ApiResource):
 
             library_log.save()
                 
-        # get new wells state, for logging
+        logger.info('get new wells state, for logging...')
         new_data = self._get_list_response(request, **kwargs_for_log)
         
         original_data_patches_only = []
@@ -9011,7 +8852,7 @@ class WellResource(ApiResource):
                     original_data_patches_only.append(item)
                     new_data_patches_only.append(new_item)
         
-        logger.debug('new data: %s' % new_data_patches_only)
+        logger.debug('new data: %s', new_data_patches_only)
         logger.info('patch list done, new data: %d' 
             % (len(new_data_patches_only)))
         self.log_patches(

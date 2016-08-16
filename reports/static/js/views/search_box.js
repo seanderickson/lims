@@ -155,30 +155,35 @@ define([
 
       this.listenTo(appModel, 'change:uriStack' , this.uriStackChange );
       this.on("change", function(){
-        var username = self.getValue('username');
-        var screen_facility_id = self.getValue('screen_facility_id');
-        var library_short_name = self.getValue('library_short_name');
-        if(username){
-          var route = 'screensaveruser/' + username;
-          self.setValue('username',null);
-          self.$el.find('[key="username"]')
-              .find('.chosen-select').trigger("chosen:updated");
-          appModel.router.navigate(route, {trigger: true});
-        }
-        else if(screen_facility_id){
-          var route = 'screen/' + screen_facility_id;
-          self.setValue('screen_facility_id',null);
-          self.$el.find('[key="screen_facility_id"]')
-              .find('.chosen-select').trigger("chosen:updated");
-          appModel.router.navigate(route, {trigger: true});
-        }
-        else if(library_short_name){
-          var route = 'library/' + library_short_name;
-          self.setValue('library_short_name',null);
-          self.$el.find('[key="library_short_name"]')
-              .find('.chosen-select').trigger("chosen:updated");
-          appModel.router.navigate(route, {trigger: true});
-        }
+
+        appModel.requestPageChange({
+          ok: function(){
+            var username = self.getValue('username');
+            var screen_facility_id = self.getValue('screen_facility_id');
+            var library_short_name = self.getValue('library_short_name');
+            if(username){
+              var route = 'screensaveruser/' + username;
+              self.setValue('username',null);
+              self.$el.find('[key="username"]')
+                  .find('.chosen-select').trigger("chosen:updated");
+              appModel.router.navigate(route, {trigger: true});
+            }
+            else if(screen_facility_id){
+              var route = 'screen/' + screen_facility_id;
+              self.setValue('screen_facility_id',null);
+              self.$el.find('[key="screen_facility_id"]')
+                  .find('.chosen-select').trigger("chosen:updated");
+              appModel.router.navigate(route, {trigger: true});
+            }
+            else if(library_short_name){
+              var route = 'library/' + library_short_name;
+              self.setValue('library_short_name',null);
+              self.$el.find('[key="library_short_name"]')
+                  .find('.chosen-select').trigger("chosen:updated");
+              appModel.router.navigate(route, {trigger: true});
+            }
+          }
+        });
       });
 
       SearchView.__super__.initialize.apply(this, args);

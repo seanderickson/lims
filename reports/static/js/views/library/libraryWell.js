@@ -54,7 +54,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
     tabbed_resources_template: {
       detail: { 
         description: 'Well Details', 
-        title: 'Well', 
+        title: 'Well Details', 
         invoke: 'setDetail'
       },
       duplex_wells: { 
@@ -159,7 +159,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       }
     },
     
-    
     setDetail: function(delegateStack) {
       var key = 'detail';
       
@@ -220,8 +219,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         var AnnotationView = Backbone.Layout.extend({
           template: _.template(genericLayout),
           afterRender: function(){
-            $('#resource_content_title').html(
-              'Annotations for ' + self.model.get('well_id'));
             $content = $('<div class="container" id="studies_container"></div>');
             $('#resource_content').html($content);
 
@@ -274,7 +271,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         success : showAnnotations,
         fail: function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); }      
       });
-      
+
       this.reportUriStack();
     },
 
@@ -374,8 +371,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         var GridView = Backbone.Layout.extend({
           template: _.template(genericLayout),
           afterRender: function(){
-            $('#resource_content_title').html('Duplex Wells for ' + self.model.get('well_id'));
-            
             $content = $([
               '<div class="row"><div class="col-xs-12" id="legend"></div></div>',
               '<div class="row"><div class="col-xs-12" id="grid"></div></div>'

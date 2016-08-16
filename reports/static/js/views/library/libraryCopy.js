@@ -1,6 +1,3 @@
-/**
- * Library form/view
- */
 define([
   'jquery',
   'underscore',
@@ -24,7 +21,7 @@ define([
     initialize: function(args) {
       var self = this;
       this.library = args.library;
-      this.tabViews = {}; // view cache
+      this.tabViews = {}; 
       this.uriStack = args.uriStack;
       this.consumedStack = [];
       
@@ -111,11 +108,17 @@ define([
     },
     
     click_tab : function(event){
+      var self = this;
       event.preventDefault();
       event.stopPropagation();
       var key = event.currentTarget.id;
       if(_.isEmpty(key)) return;
-      this.change_to_tab(key);
+      appModel.requestPageChange({
+        ok: function(){
+          self.change_to_tab(key);
+        }
+      });
+      
     },
 
     change_to_tab: function(key){
@@ -150,13 +153,10 @@ define([
         view = new DetailLayout({ 
           model: this.model,
           uriStack: delegateStack, 
-          buttons: ['download', 'upload','history'] });
+          buttons: ['download', 'history'] });
         this.tabViews[key] = view;
       } 
-      // NOTE: have to re-listen after removing a view
       this.listenTo(view , 'uriStack:change', this.reportUriStack);
-      // NOTE: if subview doesn't report stack, report it here
-      //      this.reportUriStack([]);
       this.setView("#tab_container", view ).render();
     },
     
@@ -170,7 +170,6 @@ define([
       });
       Backbone.Layout.setupView(view);
 
-      // NOTE: have to re-listen after removing a view
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
       this.$('li').removeClass('active');
@@ -231,7 +230,6 @@ define([
       } else {
         self.reportUriStack([]);
       }
-      // NOTE: have to re-listen after removing a view
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();      
     },
@@ -252,7 +250,6 @@ define([
       } else {
         self.reportUriStack([]);
       }
-      // NOTE: have to re-listen after removing a view
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
     },

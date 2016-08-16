@@ -918,44 +918,29 @@ define([
                  self.model.key,
                  'checklistitems'].join('/');
 
-      var show_save_button = $([
+      var showSaveButton = $([
         '<a class="btn btn-default btn-sm pull-down" ',
           'role="button" id="save_button" href="#">',
           'save</a>'
         ].join(''));
-      var form_template = [
-         "<form  class='form-horizontal container' >",
-         "<div data-fields='comments'/>",
-         "</form>"];
-      var altFieldTemplate =  _.template('\
-        <div class="form-group" > \
-            <label class="control-label col-sm-2" for="<%= editorId %>"><%= title %></label>\
-            <div class="col-sm-10" >\
-              <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />\
-              <div data-error class="text-danger" ></div>\
-              <div><%= help %></div>\
-            </div> \
-          </div>\
-        ');
-      // Build the form model
-      var FormFields = Backbone.Model.extend({
-        schema: {
-          comments: {
-            title: 'Comments',
-            key: 'comments',
-            type: 'TextArea',
-            validators: ['required'], 
-            template: altFieldTemplate
-          }
-        }
+      var showHistoryButton = $([
+      '<a class="btn btn-default btn-sm pull-down" ',
+        'role="button" id="showHistoryButton" href="#">',
+        'History</a>'
+      ].join(''));
+      showHistoryButton.click(function(e){
+        e.preventDefault();
+        var newUriStack = ['apilog','order','-date_time', 'search'];
+        var search = {};
+        search['ref_resource_name'] = 'userchecklistitem';
+        search['changes__icontains'] = '"username": "' + self.model.get('username') + '"';
+        newUriStack.push(appModel.createSearchString(search));
+        var route = newUriStack.join('/');
+        console.log('history route: ' + route);
+        appModel.router.navigate(route, {trigger: true});
+        self.remove();
       });
-      var formFields = new FormFields();
-      var form = new Backbone.Form({
-        model: formFields,
-        template: _.template(form_template.join(''))
-      });
-      var _form_el = form.render().el;
-      
+
       var PostCollection = Backbone.Collection.extend({
         url: url,
         toJSON: function(){
@@ -965,7 +950,7 @@ define([
         }
       });
       var changedCollection = new PostCollection();
-      var MyModel = Backbone.Model.extend({
+      var UserChecklistModel = Backbone.Model.extend({
         url: url,
         initialize : function() {
           this.on('change', function(model, options) {
@@ -991,9 +976,10 @@ define([
       collection = new Collection({
         url: url,
       });
-      collection.model = MyModel;
+      collection.model = UserChecklistModel;
 
-      show_save_button.click(function(e){
+      showSaveButton.click(function(e){
+        
         e.preventDefault();
         console.log('changed collection', changedCollection,changedCollection.url);
         
@@ -1002,39 +988,23 @@ define([
           return;
         }
         
-        appModel.showModal({
-          okText: 'ok',
-          ok: function(e){
-            e.preventDefault();
-            
-            appModel.clearPagePending();
-            
-            var errors = form.commit();
-            if(!_.isEmpty(errors)){
-              console.log('form errors, abort submit: ' + JSON.stringify(errors));
-              return false;
-            }else{
-              var values = form.getValue();
-              console.log('form values', values);
-              var comments = values['comments'];
-              var headers = {};
-              headers[appModel.HEADER_APILOG_COMMENT] = comments;
-              
-              Backbone.sync("patch",changedCollection,
-                {
-                  headers: headers,
-                  error: function(){
-                    appModel.jqXHRfail.apply(this,arguments);
-                    console.log('error, refetch', arguments);
-                    changedCollection.reset();
-                    collection.fetch({ reset: true });
-                  },
-                }
-              );
+        appModel.showSaveWithComments(function(formValues){
+          console.log('form values', formValues);
+          var comments = formValues['comments'];
+          var headers = {};
+          headers[appModel.HEADER_APILOG_COMMENT] = comments;
+          
+          Backbone.sync("patch",changedCollection,
+            {
+              headers: headers,
+              error: function(){
+                appModel.jqXHRfail.apply(this,arguments);
+                console.log('error, refetch', arguments);
+                changedCollection.reset();
+                collection.fetch({ reset: true });
+              },
             }
-          },
-          view: _form_el,
-          title: 'Save changes?'  
+          );
         });
       });
         
@@ -1044,7 +1014,7 @@ define([
         resource: resource,
         url: url,
         collection: collection,
-        extraControls: [show_save_button]
+        extraControls: [showSaveButton, showHistoryButton]
       }});
       Backbone.Layout.setupView(view);
       self.consumedStack = [key]; 
@@ -1052,6 +1022,150 @@ define([
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       self.setView("#tab_container", view ).render();
     },
+
+    
+//    setUserChecklistItems_bak: function(delegateStack) {
+//      var self = this;
+//      var key = 'userchecklistitem';
+//      var resource = appModel.getResource('userchecklistitem');
+//      var url = [self.model.resource.apiUri, 
+//                 self.model.key,
+//                 'checklistitems'].join('/');
+//
+//      var showSaveButton = $([
+//        '<a class="btn btn-default btn-sm pull-down" ',
+//          'role="button" id="save_button" href="#">',
+//          'save</a>'
+//        ].join(''));
+//      var form_template = [
+//         "<form  class='form-horizontal container' >",
+//         "<div data-fields='comments'/>",
+//         "</form>"];
+//      var altFieldTemplate =  _.template('\
+//        <div class="form-group" > \
+//            <label class="control-label col-sm-2" for="<%= editorId %>"><%= title %></label>\
+//            <div class="col-sm-10" >\
+//              <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />\
+//              <div data-error class="text-danger" ></div>\
+//              <div><%= help %></div>\
+//            </div> \
+//          </div>\
+//        ');
+//      // Build the form model
+//      var FormFields = Backbone.Model.extend({
+//        schema: {
+//          comments: {
+//            title: 'Comments',
+//            key: 'comments',
+//            type: 'TextArea',
+//            validators: ['required'], 
+//            template: altFieldTemplate
+//          }
+//        }
+//      });
+//      var formFields = new FormFields();
+//      var form = new Backbone.Form({
+//        model: formFields,
+//        template: _.template(form_template.join(''))
+//      });
+//      var _form_el = form.render().el;
+//      
+//      var PostCollection = Backbone.Collection.extend({
+//        url: url,
+//        toJSON: function(){
+//          return {
+//            objects: Collection.__super__.toJSON.apply(this) 
+//          };
+//        }
+//      });
+//      var changedCollection = new PostCollection();
+//      var MyModel = Backbone.Model.extend({
+//        url: url,
+//        initialize : function() {
+//          this.on('change', function(model, options) {
+//            // Prevent save on update
+//            if (options.save === false)
+//                return;
+//            model.url = url;
+//            if(_.isEmpty(model.get('status_date'))){
+//              model.set('status_date', Iccbl.getISODateString(new Date()));
+//            }
+//            if(_.isEmpty(model.get('admin_username'))){
+//              model.set('admin_username', appModel.getCurrentUser().username);
+//            }
+//            changedCollection.add(model);
+//            appModel.setPagePending();
+//          });
+//        },
+//      });
+//
+//      var Collection = Iccbl.MyCollection.extend({
+//        url: url
+//      });
+//      collection = new Collection({
+//        url: url,
+//      });
+//      collection.model = MyModel;
+//
+//      showSaveButton.click(function(e){
+//        e.preventDefault();
+//        console.log('changed collection', changedCollection,changedCollection.url);
+//        
+//        if(changedCollection.isEmpty()){
+//          appModel.error('No changes to save');
+//          return;
+//        }
+//        
+//        appModel.showModal({
+//          okText: 'ok',
+//          ok: function(e){
+//            e.preventDefault();
+//            
+//            appModel.clearPagePending();
+//            
+//            var errors = form.commit();
+//            if(!_.isEmpty(errors)){
+//              console.log('form errors, abort submit: ' + JSON.stringify(errors));
+//              return false;
+//            }else{
+//              var values = form.getValue();
+//              console.log('form values', values);
+//              var comments = values['comments'];
+//              var headers = {};
+//              headers[appModel.HEADER_APILOG_COMMENT] = comments;
+//              
+//              Backbone.sync("patch",changedCollection,
+//                {
+//                  headers: headers,
+//                  error: function(){
+//                    appModel.jqXHRfail.apply(this,arguments);
+//                    console.log('error, refetch', arguments);
+//                    changedCollection.reset();
+//                    collection.fetch({ reset: true });
+//                  },
+//                }
+//              );
+//            }
+//          },
+//          view: _form_el,
+//          title: 'Save changes?'  
+//        });
+//      });
+//        
+//      view = new ListView({ options: {
+//        uriStack: _.clone(delegateStack),
+//        schemaResult: resource,
+//        resource: resource,
+//        url: url,
+//        collection: collection,
+//        extraControls: [showSaveButton]
+//      }});
+//      Backbone.Layout.setupView(view);
+//      self.consumedStack = [key]; 
+//      self.reportUriStack([]);
+//      self.listenTo(view , 'uriStack:change', self.reportUriStack);
+//      self.setView("#tab_container", view ).render();
+//    },
     
   });
 

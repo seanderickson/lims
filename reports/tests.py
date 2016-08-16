@@ -1019,7 +1019,7 @@ class IResourceTestCase(SimpleTestCase):
         
     def _create_resource(
             self,input_data,resource_uri,resource_test_uri, 
-            data_for_get= None, expect_fail=False
+            data_for_get= None, expect_fail=False, excludes=[]
             ):
         
         _data_for_get = { 
@@ -1058,7 +1058,7 @@ class IResourceTestCase(SimpleTestCase):
                 (resp.status_code, self.get_content(resp)))
         
         new_obj = self.get_single_resource(resource_test_uri)
-        result,msg = assert_obj1_to_obj2(input_data,new_obj)
+        result,msg = assert_obj1_to_obj2(input_data,new_obj, excludes=excludes)
         self.assertTrue(result, msg)
         logger.debug('item created: %r', new_obj)
         return new_obj

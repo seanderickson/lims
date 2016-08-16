@@ -143,17 +143,23 @@ define([
     },    
     
     click_tab : function(event){
+      var self = this;
       event.preventDefault();
       event.stopPropagation();
       var key = event.currentTarget.id;
       if(_.isEmpty(key)) return;
-      this.change_to_tab(key);
+      appModel.requestPageChange({
+        ok: function(){
+          self.change_to_tab(key);
+        }
+      });
     },
 
     change_to_tab: function(key){
       if(_.has(this.tabbed_resources, key)){
         this.$('li').removeClass('active');
         this.$('#' + key).addClass('active');
+        this.$("#tab_container-title").empty();
         if(key !== 'detail'){
           this.consumedStack = [key];
         }else{
@@ -185,7 +191,6 @@ define([
       });
       Backbone.Layout.setupView(view);
 
-      // NOTE: have to re-listen after removing a view
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
       this.$('li').removeClass('active');
@@ -202,7 +207,6 @@ define([
       });
       Backbone.Layout.setupView(view);
 
-      // NOTE: have to re-listen after removing a view
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
       this.$('li').removeClass('active');
@@ -283,6 +287,8 @@ define([
             Backbone.Layout.setupView(view);
             self.listenTo(view , 'uriStack:change', self.reportUriStack);
             self.setView("#tab_container", view ).render();
+            self.$("#tab_container-title").html('Well ' + model.get('well_id'));
+      
           });        
           return;
         }else{
@@ -346,6 +352,9 @@ define([
           Backbone.Layout.setupView(view);
           self.listenTo(view , 'uriStack:change', self.reportUriStack);
           self.setView("#tab_container", view ).render();
+          
+          console.log('title: ', Iccbl.getTitleFromTitleAttribute(model, model.resource));
+          self.$("#tab_container-title").html('Copy ' + model.get('name'));
         });        
         return;
       }else{
@@ -362,7 +371,8 @@ define([
         Backbone.Layout.setupView(view);
         self.reportUriStack([]);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
-        this.setView("#tab_container", view ).render();
+        self.$("#tab_container-title").empty();
+        self.setView("#tab_container", view ).render();
       }
     },
 

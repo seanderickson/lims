@@ -1083,6 +1083,64 @@ define([
       self.unset('messages');
     },
     
+    showSaveWithComments: function(okCallback){
+      var self = this;
+      
+      var form_template = [
+         "<form  class='form-horizontal container' >",
+         "<div data-fields='comments'/>",
+         "</form>"];
+      var altFieldTemplate =  _.template('\
+        <div class="form-group" > \
+            <label class="control-label col-sm-2" for="<%= editorId %>"><%= title %></label>\
+            <div class="col-sm-10" >\
+              <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />\
+              <div data-error class="text-danger" ></div>\
+              <div><%= help %></div>\
+            </div> \
+          </div>\
+        ');
+      // Build the form model
+      var FormFields = Backbone.Model.extend({
+        schema: {
+          comments: {
+            title: 'Comments',
+            key: 'comments',
+            type: 'TextArea',
+            validators: ['required'], 
+            template: altFieldTemplate
+          }
+        }
+      });
+      var formFields = new FormFields();
+      var form = new Backbone.Form({
+        model: formFields,
+        template: _.template(form_template.join(''))
+      });
+      var _form_el = form.render().el;
+
+      self.showModal({
+        okText: 'ok',
+        ok: function(e){
+          e.preventDefault();
+          
+          self.clearPagePending();
+          
+          var errors = form.commit();
+          if(!_.isEmpty(errors)){
+            console.log('form errors, abort submit: ' + JSON.stringify(errors));
+            return false;
+          }else{
+            okCallback(form.getValue());            
+          }
+        },
+        view: _form_el,
+        title: 'Save changes?'  
+      });
+      
+    },
+    
+    
     /** Add a vocabulary term to the editForm & to the server:
      * @param vocabulary_scope_ref
      * @param name or title of the vocabulary

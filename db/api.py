@@ -98,31 +98,306 @@ def _get_raw_time_string():
   return timezone.now().strftime("%Y%m%d%H%M%S")
     
 
-# class PlateLocationResource(ManagedModelResource):
-# 
+# class RoomLocationResource(ApiResource):
 #     class Meta:
-# 
-#         queryset = PlateLocation.objects.all() #.order_by('facility_id')
-#         authentication = MultiAuthentication(BasicAuthentication(), 
+#         authentication = MultiAuthentication(BasicAuthentication(),
 #                                              SessionAuthentication())
-#         authorization= UserGroupAuthorization()
-#         resource_name = 'platelocation'
-#         ordering = []
-#         filtering = {}
+#         authorization = UserGroupAuthorization()
+#         resource_name = 'roomlocation'
 #         serializer = LimsSerializer()
-#         always_return_data = True 
-# 
 #         
 #     def __init__(self, **kwargs):
-#         super(PlateLocationResource,self).__init__(**kwargs)
+#         super(PlateLocationResource, self).__init__(**kwargs)
 # 
 #     def prepend_urls(self):
+# 
 #         return [
-#             url((r"^(?P<resource_name>%s)"
-#                  r"/(?P<plate_id>((?=(schema))__|(?!(schema))[^/]+))%s$")  
-#                     % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),]    
+#             url(r"^(?P<resource_name>%s)/schema%s$" 
+#                 % (self._meta.resource_name, trailing_slash()),
+#                 self.wrap_view('get_schema'), name="api_get_schema"),
+#             url(r"^(?P<resource_name>%s)/(?P<room>[\w\d_\-]+)"
+#                 r"/(?P<freezer>[\w\d_\-]+)"
+#                 r"/(?P<shelf>[\w\d_\-]+)"
+#                 r"/(?P<bin>[\w\d]+)%s$" 
+#                     % (self._meta.resource_name, trailing_slash()),
+#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+#             url(r"^(?P<resource_name>%s)"
+#                 r"/(?P<copy_name>[\w\d_.\-\+: ]+)"
+#                 r"/(?P<plate_number>[\d]+)%s$" 
+#                     % (self._meta.resource_name, trailing_slash()),
+#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+#         ]
+# 
+#     def get_detail(self, request, **kwargs):
+# 
+#         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+#         kwargs['is_for_detail'] = True
+#         return self.build_list_response(request, **kwargs)
+#         
+#     @read_authorization
+#     def get_list(self, request, **kwargs):
+# 
+#         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+#         return self.build_list_response(request, **kwargs)
+# 
+#     @read_authorization
+#     def build_list_response(self, request, **kwargs):
+# 
+#         param_hash = {}
+#         param_hash.update(kwargs)
+#         param_hash.update(self._convert_request_to_dict(request))
+#         schema = super(PlateLocationResource, self).build_schema()
+#         is_for_detail = kwargs.pop('is_for_detail', False)
+#         filename = self._get_filename(schema, kwargs)
+#         
+#         room = param_hash.pop('room',
+#             param_hash.get('room__eq', None))
+#         
+#         freezer = param_hash.pop('freezer',
+#             param_hash.get('freezer__eq', None))
+#         
+#         shelf = param_hash.pop('shelf',
+#             param_hash.get('shelf__eq', None))
+#         
+#         bin = param_hash.pop('bin',
+#             param_hash.get('bin__eq', None))
+#         
+#         try:
+#             
+#             # general setup
+#           
+#             manual_field_includes = set(param_hash.get('includes', []))
+# 
+#             (filter_expression, filter_fields) = \
+#                 SqlAlchemyResource.build_sqlalchemy_filters(
+#                     schema, param_hash=param_hash)
+#                  
+#             order_params = param_hash.get('order_by', [])
+#             field_hash = self.get_visible_fields(
+#                 schema['fields'], filter_fields, manual_field_includes,
+#                 param_hash.get('visibilities'),
+#                 exact_fields=set(param_hash.get('exact_fields', [])),
+#                 order_params=order_params)
+#             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+#                 order_params, field_hash)
+#              
+#             rowproxy_generator = None
+#             if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
+#                 rowproxy_generator = \
+#                     ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+#  
+#             # specific setup 
+#  
+#             _p = self.bridge['plate']
+#             _pl = self.bridge['plate_location']
+#             _c = self.bridge['copy']
+#             _l = self.bridge['library']
+# 
+#             custom_columns = {
+#                 'plates': (
+#                     select([func.count()])
+#                         .select_from(_p)
+#                         .where(
+#                             _p.c.plate_location_id
+#                                 ==literal_column('plate_location.plate_location_id')))
+#                     };
+# 
+#             base_query_tables = ['plate', 'copy', 'plate_location', 'library']
+# 
+#             columns = self.build_sqlalchemy_columns(
+#                 field_hash.values(), base_query_tables=base_query_tables,
+#                 custom_columns=custom_columns)
+#             # build the query statement
+# 
+# #             j = join(_pl, _p, _p.c.plate_location_id == _pl.c.plate_location_id,
+# #                      isouter=True)
+# #             j = join(_p, _c, _p.c.copy_id == _c.c.copy_id)
+# #             j = j.join(_l, _c.c.library_id == _l.c.library_id)
+#             
+#             stmt = select(columns.values()).select_from(_pl)
+# 
+#             # general setup
+#              
+#             (stmt, count_stmt) = self.wrap_statement(
+#                 stmt, order_clauses, filter_expression)
+#  
+#             if not order_clauses:
+#                 stmt = stmt.order_by("room","freezer","shelf","bin")
+# 
+#             if True: 
+#                 logger.info(
+#                     'stmt: %s',
+#                     str(stmt.compile(
+#                         dialect=postgresql.dialect(),
+#                         compile_kwargs={"literal_binds": True})))
+# 
+#             title_function = None
+#             if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+#                 title_function = lambda key: field_hash[key]['title']
+# 
+#             return self.stream_response_from_statement(
+#                 request, stmt, count_stmt, filename,
+#                 field_hash=field_hash, param_hash=param_hash,
+#                 is_for_detail=is_for_detail,
+#                 rowproxy_generator=rowproxy_generator,
+#                 title_function=title_function)
+#             
+#                         
+#         except Exception, e:
+#             logger.exception('on get list')
+#             raise e   
 
+
+class PlateLocationResource(ApiResource):        
+    
+    class Meta:
+        queryset = PlateLocation.objects.all()
+        authentication = MultiAuthentication(BasicAuthentication(),
+                                             SessionAuthentication())
+        authorization = UserGroupAuthorization()
+        resource_name = 'platelocation'
+        serializer = LimsSerializer()
+        
+    def __init__(self, **kwargs):
+        super(PlateLocationResource, self).__init__(**kwargs)
+
+    def prepend_urls(self):
+
+        return [
+            url(r"^(?P<resource_name>%s)/schema%s$" 
+                % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('get_schema'), name="api_get_schema"),
+            url(r"^(?P<resource_name>%s)/(?P<room>[\w\d_\-]+)"
+                r"/(?P<freezer>[\w\d_\-]+)"
+                r"/(?P<shelf>[\w\d_\-]+)"
+                r"/(?P<bin>[\w\d]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+            url(r"^(?P<resource_name>%s)"
+                r"/(?P<copy_name>[\w\d_.\-\+: ]+)"
+                r"/(?P<plate_number>[\d]+)%s$" 
+                    % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+        ]
+
+    def get_detail(self, request, **kwargs):
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+        kwargs['is_for_detail'] = True
+        return self.build_list_response(request, **kwargs)
+        
+    @read_authorization
+    def get_list(self, request, **kwargs):
+
+        kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+        return self.build_list_response(request, **kwargs)
+
+    @read_authorization
+    def build_list_response(self, request, **kwargs):
+
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        schema = super(PlateLocationResource, self).build_schema()
+        is_for_detail = kwargs.pop('is_for_detail', False)
+        filename = self._get_filename(schema, kwargs)
+        
+        room = param_hash.pop('room',
+            param_hash.get('room__eq', None))
+        
+        freezer = param_hash.pop('freezer',
+            param_hash.get('freezer__eq', None))
+        
+        shelf = param_hash.pop('shelf',
+            param_hash.get('shelf__eq', None))
+        
+        bin = param_hash.pop('bin',
+            param_hash.get('bin__eq', None))
+        
+        try:
+            
+            # general setup
+          
+            manual_field_includes = set(param_hash.get('includes', []))
+
+            (filter_expression, filter_fields) = \
+                SqlAlchemyResource.build_sqlalchemy_filters(
+                    schema, param_hash=param_hash)
+                 
+            order_params = param_hash.get('order_by', [])
+            field_hash = self.get_visible_fields(
+                schema['fields'], filter_fields, manual_field_includes,
+                param_hash.get('visibilities'),
+                exact_fields=set(param_hash.get('exact_fields', [])),
+                order_params=order_params)
+            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+                order_params, field_hash)
+             
+            rowproxy_generator = None
+            if param_hash.get(HTTP_PARAM_USE_VOCAB, False):
+                rowproxy_generator = \
+                    ApiResource.create_vocabulary_rowproxy_generator(field_hash)
+ 
+            # specific setup 
+ 
+            _p = self.bridge['plate']
+            _pl = self.bridge['plate_location']
+            _c = self.bridge['copy']
+            _l = self.bridge['library']
+
+            custom_columns = {
+                'plates': (
+                    select([func.count()])
+                        .select_from(_p)
+                        .where(
+                            _p.c.plate_location_id
+                                ==literal_column('plate_location.plate_location_id')))
+                    };
+
+            base_query_tables = ['plate', 'copy', 'plate_location', 'library']
+
+            columns = self.build_sqlalchemy_columns(
+                field_hash.values(), base_query_tables=base_query_tables,
+                custom_columns=custom_columns)
+            # build the query statement
+
+#             j = join(_pl, _p, _p.c.plate_location_id == _pl.c.plate_location_id,
+#                      isouter=True)
+#             j = join(_p, _c, _p.c.copy_id == _c.c.copy_id)
+#             j = j.join(_l, _c.c.library_id == _l.c.library_id)
+            
+            stmt = select(columns.values()).select_from(_pl)
+
+            # general setup
+             
+            (stmt, count_stmt) = self.wrap_statement(
+                stmt, order_clauses, filter_expression)
+ 
+            if not order_clauses:
+                stmt = stmt.order_by("room","freezer","shelf","bin")
+
+            if True: 
+                logger.info(
+                    'stmt: %s',
+                    str(stmt.compile(
+                        dialect=postgresql.dialect(),
+                        compile_kwargs={"literal_binds": True})))
+
+            title_function = None
+            if param_hash.get(HTTP_PARAM_USE_TITLES, False):
+                title_function = lambda key: field_hash[key]['title']
+
+            return self.stream_response_from_statement(
+                request, stmt, count_stmt, filename,
+                field_hash=field_hash, param_hash=param_hash,
+                is_for_detail=is_for_detail,
+                rowproxy_generator=rowproxy_generator,
+                title_function=title_function)
+            
+                        
+        except Exception, e:
+            logger.exception('on get list')
+            raise e   
         
 class LibraryCopyPlateResource(ApiResource):
 
@@ -2430,7 +2705,6 @@ class CopyWellResource(ApiResource):
         param_hash = {}
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
-
         is_for_detail = kwargs.pop('is_for_detail', False)
         schema = super(CopyWellResource, self).build_schema()
         filename = self._get_filename(schema, kwargs)
@@ -2478,9 +2752,21 @@ class CopyWellResource(ApiResource):
             base_query_tables = [
                 'copy_well', 'copy', 'plate', 'well', 'library']
             
+            _cw = self.bridge['copy_well']
+            _c = self.bridge['copy']
+            _l = self.bridge['library']
+            _p = self.bridge['plate']
+            _w = self.bridge['well']
+            
             custom_columns = {
-                'consumed_volume': literal_column(
-                    'initial_volume-volume').label('consumed_volume'),
+                'volume': func.coalesce(_cw.c.volume, _p.c.well_volume),
+                'initial_volume': func.coalesce(
+                    _cw.c.initial_volume,_p.c.well_volume),
+                'consumed_volume': (
+                    func.coalesce(_cw.c.initial_volume,_p.c.well_volume)-
+                    func.coalesce(_cw.c.volume, _p.c.well_volume) 
+                    ),
+                'adjustments': func.coalesce(_cw.c.adjustments, 0),
                 # Note: the query plan makes this faster than the hash join of 
                 # copy-copy_well
                 # 'copy_name': literal_column(
@@ -2494,16 +2780,14 @@ class CopyWellResource(ApiResource):
 
             # build the query statement
 
-            _cw = self.bridge['copy_well']
-            _c = self.bridge['copy']
-            _l = self.bridge['library']
-            _p = self.bridge['plate']
-            _w = self.bridge['well']
-            
-            j = join(_cw, _w, _cw.c.well_id == _w.c.well_id)
-            j = j.join(_p, _cw.c.plate_id == _p.c.plate_id)
-            j = j.join(_c, _cw.c.copy_id == _c.c.copy_id)
-            j = j.join(_l, _w.c.library_id == _l.c.library_id)
+            j = join(_w, _l, _w.c.library_id == _l.c.library_id)
+            j = j.join(_c, _l.c.library_id == _c.c.library_id)
+            j = j.join(_p, and_(
+                _p.c.copy_id == _c.c.copy_id,
+                _w.c.plate_number == _p.c.plate_number))
+            j = j.join(_cw, and_(
+                _cw.c.well_id == _w.c.well_id,
+                _cw.c.copy_id == _c.c.copy_id), isouter=True )
             
             stmt = select(columns.values()).select_from(j)
 
@@ -2530,6 +2814,85 @@ class CopyWellResource(ApiResource):
         except Exception, e:
             logger.exception('on get list')
             raise e  
+
+    @un_cache        
+    def put_detail(self, request, **kwargs):
+        raise NotImplementedError('put_list must be implemented')
+                
+    @transaction.atomic()    
+    def delete_obj(self, deserialized, **kwargs):
+        raise NotImplementedError('delete_obj is not implemented')
+    
+    def patch_obj(self, deserialized, **kwargs):
+
+        logger.info('patch_obj %s', deserialized)
+
+        schema = self.build_schema()
+        fields = schema['fields']
+        initializer_dict = {}
+
+        # TODO: wrapper for parsing
+        logger.debug('fields: %r, deserialized: %r', fields.keys(), deserialized)
+        for key in fields.keys():
+            if deserialized.get(key, None) is not None:
+                initializer_dict[key] = parse_val(
+                    deserialized.get(key, None), key, fields[key]['data_type']) 
+        
+        if 'volume' not in initializer_dict:
+            raise ValidationError(
+                key='volume',
+                msg='must submit a value')
+        
+        id_kwargs = self.get_id(deserialized, **kwargs)
+        
+        try:
+            well_id = id_kwargs['well_id']
+            try:
+                well = Well.objects.get(well_id=well_id)
+                library = well.library
+            except ObjectDoesNotExist:
+                msg = 'well not found: %r' % well_id
+                logger.info(msg);
+                raise Http404(msg)
+            
+            copy_name = id_kwargs['copy_name']
+            try:
+                librarycopy = Copy.objects.get(
+                    name=copy_name, library=library)
+            except ObjectDoesNotExist:
+                msg = 'copy_name not found: %r' % copy_name
+                logger.info(msg);
+                raise Http404(msg)
+
+            try:
+                copywell = CopyWell.objects.get(
+                    well=well, copy=librarycopy)
+                copywell.adjustments += 1
+            except ObjectDoesNotExist:
+                try:
+                    plate = Plate.objects.get(
+                        plate_number=well.plate_number, copy=librarycopy)
+                except ObjectDoesNotExist:
+                    msg = 'plate not found: %r:%r' % (library.short_name,copy_name)
+                    logger.info(msg);
+                    raise Http404(msg)
+                copywell = CopyWell.objects.create(
+                    well=well, copy=librarycopy, plate=plate,
+                    adjustments=1)
+                copywell.save()
+                logger.info('created cw: %r, %r', copywell, copywell.adjustments)
+
+            # Note: only 'remaining volume' may be set at this time
+            copywell.volume = initializer_dict['volume']
+            
+            copywell.save()
+            logger.info('patch_obj done')
+            return copywell
+            
+        except Exception, e:
+            logger.exception('on patch detail')
+            raise e  
+
   
 
 class CherryPickRequestResource(ApiResource):        
@@ -3336,11 +3699,18 @@ class LibraryCopyResource(ApiResource):
             librarycopy.save()
 
             # create librarycopyplates
+            initial_plate_volume = deserialized.get('initial_plate_well_volume', None)
+            if initial_plate_volume:
+                initial_plate_volume = parse_val(
+                    initial_plate_volume, 'initial_plate_volume', 'decimal')
             library = librarycopy.library
             logger.debug('create plates start: %d, end: %d',
                 library.start_plate, library.end_plate)
             for x in range(library.start_plate, library.end_plate + 1):
-                p = Plate.objects.create(copy=librarycopy, plate_number=x)
+                p = Plate.objects.create(
+                    copy=librarycopy, 
+                    plate_number=x,
+                    well_volume=initial_plate_volume )
                 p.save()
                 logger.debug('saved plate: %r', p.plate_number)
             
@@ -6990,7 +7360,8 @@ class UserChecklistItemResource(ApiResource):
         except Exception, e:
             logger.error('on patch_obj')
             raise e
-            
+
+
 class ScreensaverUserResource(ApiResource):    
 
     class Meta:
@@ -7006,6 +7377,9 @@ class ScreensaverUserResource(ApiResource):
         resource_name = 'screensaveruser'
         max_limit = 10000
         always_return_data = True
+        # TODO: utilize the cache_control mechanism to signal cache status
+        # to the client (max-age, etag)
+        # cache = SimpleCache(timeout=10)
 
     def __init__(self, **kwargs):
         
@@ -8579,9 +8953,9 @@ class WellResource(ApiResource):
                         .get_id(model_to_dict(library)).values()))
     
             # Cache all the wells on the library for use with this process 
-            wellMap = dict((well.well_id, well) 
+            well_map = dict((well.well_id, well) 
                 for well in library.well_set.all())
-            if len(wellMap) == 0:
+            if len(well_map) == 0:
                 raise BadRequest('Library wells have not been created')
     
             for well_data in deserialized:
@@ -8598,7 +8972,7 @@ class WellResource(ApiResource):
                 if not well_id:
                     raise BadRequest('well_id is required')
                 
-                well = wellMap.get(well_id, None)
+                well = well_map.get(well_id, None)
                 if not well:
                     raise ValidationError(
                         key='well_id',
@@ -8767,6 +9141,7 @@ class LibraryResource(ApiResource):
                  r"/plate%s$") % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_library_copyplateview'),
                 name="api_dispatch_library_copyplateview"),
+            
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
                  r"/copy/(?P<copy_name>[^/]+)"
                  r"/copywell/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$") 
@@ -8784,6 +9159,7 @@ class LibraryResource(ApiResource):
                  r"/copywell%s$") % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_library_copywellview'),
                 name="api_dispatch_library_copywellview"),
+
             url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
                  r"/copy/(?P<name>[^/]+)%s$") 
                  % (self._meta.resource_name, trailing_slash()),

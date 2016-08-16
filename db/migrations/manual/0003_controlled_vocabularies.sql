@@ -74,6 +74,16 @@ update plate set status = 'not_created' where status='Not created';
 update plate set status = 'not_specified' where status='Not specified';
 update plate set status = 'retired' where status='Retired';
 
+update copy set primary_plate_status = 'available' where primary_plate_status='Available';
+update copy set primary_plate_status = 'discarded' where primary_plate_status='Discarded';
+update copy set primary_plate_status = 'discarded_volume_transferred' where primary_plate_status='Discarded (volume transferred)';
+update copy set primary_plate_status = 'given_away' where primary_plate_status='Given Away';
+update copy set primary_plate_status = 'lost' where primary_plate_status='Lost';
+update copy set primary_plate_status = 'not_available' where primary_plate_status='Not available';
+update copy set primary_plate_status = 'not_created' where primary_plate_status='Not created';
+update copy set primary_plate_status = 'not_specified' where primary_plate_status='Not specified';
+update copy set primary_plate_status = 'retired' where primary_plate_status='Retired';
+
 
 /**
         usage_type         

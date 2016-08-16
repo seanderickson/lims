@@ -291,23 +291,101 @@ class LibraryResource(DBResourceTestCase):
                 ('substance_id not unique', substance_id, substance_ids))
             substance_ids.add(substance_id)
         
+    def test12_update_copy_wells(self):
+    
+        (library_data, copy_data, plate_data) = self.test10_create_library_copy()
+        end_plate = library_data['end_plate']
+        start_plate = library_data['start_plate']
+        short_name = library_data['short_name']
+        
+        logger.info('create and load well data, start_plate: %r...', start_plate)
+        
+        plate = start_plate
+        wells_created = 384
+        input_data = [
+            self.create_small_molecule_test_well(
+                plate,i,library_well_type='experimental') 
+                    for i in range(0,wells_created)]
+        resource_name = 'well'
+        resource_uri = '/'.join([
+            BASE_URI_DB,'library', short_name, resource_name])
+        resp = self.api_client.put(
+            resource_uri, format='sdf', data={ 'objects': input_data } , 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        
+        logger.info('retrieve the copy_wells...')
+        resource_uri = '/'.join([
+            BASE_URI_DB,'library',library_data['short_name'],'copy',
+            copy_data['name'],'copywell'])
+        data_for_get={ 'limit': 0 }        
+        data_for_get.setdefault('includes', ['*'])
+        data_for_get['plate_number__eq'] = start_plate
+        resp = self.api_client.get(
+            resource_uri, format='json', authentication=self.get_credentials(), 
+            data=data_for_get)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code,self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        
+        copywell_data = new_obj['objects']
+        
+        expected_plates = end_plate - start_plate
+        expected_wells = wells_created;
+        
+        logger.info('returned copywell: %r', copywell_data[0])
+        logger.info('returned copywell: %r', copywell_data[-1])
+        self.assertEqual(len(copywell_data),expected_wells)
+        
+        logger.info('patch a copywell...')
+        
+        copywell_input = copywell_data[0]
+        original_volume = float(copywell_input['volume'])
+        volume_adjustment = 0.000008
+        copywell_input['volume'] = round(original_volume-volume_adjustment, 8)
+        
+        patch_uri = '/'.join([resource_uri,copywell_input['well_id']]) 
+        resp = self.api_client.patch(
+            patch_uri, format='json', data={ 'objects': [ copywell_input] }, 
+            authentication=self.get_credentials(), **data_for_get )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        logger.info('new_obj: %r', new_obj)
+        
+        self.assertEqual(len(new_obj['objects']),1)
+        new_copywell = new_obj['objects'][0]
+        
+        self.assertEqual(int(new_copywell['adjustments']), 1)
+        self.assertEqual(volume_adjustment, float(new_copywell['consumed_volume']))
+        self.assertEqual(float(copywell_input['volume']), float(new_copywell['volume']))
+        
+        
     def test10_create_library_copy(self):
         
         library = self.create_library({
             'start_plate': 1000, 
-            'end_plate': 1005})
+            'end_plate': 1005,
+            'screen_type': 'small_molecule' })
 
         logger.info('create library copy...')
         input_data = {
             'library_short_name': library['short_name'],
             'name': "A",
-            'usage_type': "library_screening_plates"
+            'usage_type': "library_screening_plates",
+            'initial_plate_well_volume': '0.000040'
         }        
         resource_uri = BASE_URI_DB + '/librarycopy'
         resource_test_uri = '/'.join([
             resource_uri,input_data['library_short_name'],input_data['name']])
         library_copy = self._create_resource(
-            input_data, resource_uri, resource_test_uri)
+            input_data, resource_uri, resource_test_uri, 
+            excludes=['initial_plate_well_volume'])
         
         logger.info('Verify plates created...')
         uri = '/'.join([resource_test_uri,'plate'])
@@ -327,11 +405,16 @@ class LibraryResource(DBResourceTestCase):
 
         for obj in new_obj['objects']:
             self.assertEqual(library_copy['name'],obj['copy_name'])
+            self.assertEqual(
+                float(input_data['initial_plate_well_volume']),float(obj['well_volume']))
             plate_number = int(obj['plate_number'])
             self.assertTrue(
                 plate_number>=start_plate and plate_number<=end_plate,
                 'wrong plate_number: %r' % obj)
-
+        
+        return (library, library_copy, new_obj['objects'])
+        
+        
     def test11_create_library_copy_invalids(self):
         # TODO: try to create duplicate copy names
         # TODO: try to create invalid types, plate ranges

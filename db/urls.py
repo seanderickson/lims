@@ -14,7 +14,7 @@ from db.api import ScreensaverUserResource, ScreenResource, \
     CherryPickRequestResource, CherryPickPlateResource, \
     AttachedFileResource, ServiceActivityResource, LibraryScreeningResource,\
     CherryPickLiquidTransferResource, CherryPickScreeningResource, \
-    UserAgreementResource, PublicationResource
+    UserAgreementResource, PublicationResource,PlateLocationResource
 
 
 v1_api = Api(api_name='v1')
@@ -26,7 +26,7 @@ v1_api.register(DataColumnResource())
 v1_api.register(LibraryResource())
 v1_api.register(LibraryCopyResource())
 v1_api.register(LibraryCopyPlateResource())
-# v1_api.register(PlateLocationResource())
+v1_api.register(PlateLocationResource())
 v1_api.register(WellResource())
 v1_api.register(ActivityResource())
 v1_api.register(ServiceActivityResource())

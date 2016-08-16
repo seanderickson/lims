@@ -38,12 +38,11 @@ select 'create copy_wells' as action;
 
 /** only create wva/cpap cherry pick copy wells **/
 insert into copy_well
-    ( id, copy_id, plate_id, well_id, plate_number, initial_volume,adjustments)  
+    ( id, copy_id, plate_id, well_id, initial_volume,adjustments)  
     select nextval('copy_well_id_seq'), 
     cp.copy_id, 
     cp.plate_id,
     w.well_id, 
-    cp.plate_number,
     cp.well_volume,
     '0'
     from

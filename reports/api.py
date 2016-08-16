@@ -479,7 +479,7 @@ class ApiResource(SqlAlchemyResource):
             return http.HttpAccepted()
         else:
             response = self.get_list(request, **kwargs)             
-            response.status_code = 201
+            response.status_code = 200
             return response
  
     @write_authorization
@@ -1433,8 +1433,7 @@ class FieldResource(ApiResource):
         param_hash.update(kwargs)
         param_hash.update(self._convert_request_to_dict(request))
         
-        logger.info('param_hash: %r', param_hash)
-        logger.info('1...')
+        logger.debug('param_hash: %r', param_hash)
         # Do not have real filtering, but support the scope filters, manually
         scope = param_hash.get('scope', None)
         if not scope:

@@ -1380,7 +1380,6 @@ class CopyWell(models.Model):
     copy = models.ForeignKey('Copy')
     # FIXME: name should be "well" - also fix db.apy then
     well = models.ForeignKey('Well')
-    plate_number = models.IntegerField()
     volume = models.FloatField(null=True)
     initial_volume = models.FloatField(null=True)
     adjustments = models.IntegerField()

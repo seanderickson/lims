@@ -470,7 +470,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, 
                     auto_created=True, primary_key=True)),
-                ('plate_number', models.IntegerField()),
+                # ('plate_number', models.IntegerField()),
                 ('volume', models.FloatField(null=True)),
                 ('initial_volume', models.FloatField(null=True)),
                 ('adjustments', models.IntegerField()),

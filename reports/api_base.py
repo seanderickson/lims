@@ -198,8 +198,10 @@ class IccblBaseResource(Resource):
                 if DEBUG_WRAPPER:
                     msg = ()
                     if kwargs:
-                        msg = [ (key,kwargs[key]) for key in kwargs.keys() if len(str(kwargs[key]))<50]
+                        msg = [ (key,kwargs[key]) for key in kwargs.keys() 
+                            if len(str(kwargs[key]))<100]
                     logger.info('callback: %r, %r', view, msg)
+                    logger.info('request: %r', request)
                 else:
                     logger.info('callback: %r, %r', callback, view)
 

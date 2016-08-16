@@ -851,7 +851,8 @@ class SqlAlchemyResource(IccblBaseResource):
                         _cache = {
                             'stmt': compiled_stmt,
                             'cached_result': _result,
-                            'count': count }
+                            'count': count,
+                            'key': key }
                         logger.info('add to cache, key: %s, limit: %s, offset: %s',
                             key, limit, new_offset)
                         cache.set( key, _cache, None)
@@ -891,7 +892,7 @@ class SqlAlchemyResource(IccblBaseResource):
         if DEBUG_STREAMING:
             logger.info('stream_response_from_statement: %r, %r', 
                 self._meta.resource_name, param_hash)
-        limit = param_hash.get('limit', 0)        
+        limit = param_hash.get('limit', 25)        
         try:
             limit = int(limit)
         except Exception:

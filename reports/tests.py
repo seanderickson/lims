@@ -1309,7 +1309,8 @@ def setUpModule():
             if 'TestApiInit' in arg:
                 runTestApiInit[0] = True
         if keepdb and runTestApiInit[0]:
-            raise Exception('The TestApiInit test cannot be run with an existing test database')
+            raise Exception(
+                'The TestApiInit test cannot be run with an existing test database')
     
     logger.info('init vars: keepdb: %r, reinit_metahash: %r, TestApiInit: %r', 
         keepdb,reinit_metahash,runTestApiInit[0])
@@ -1326,7 +1327,8 @@ def tearDownModule():
     logger.info('=== teardown Module')
 
 
-@unittest.skipIf(runTestApiInit[0]!=True, "Only run this test if testing the api initialization")        
+@unittest.skipIf(runTestApiInit[0]!=True, 
+                 "Only run this test if testing the api initialization")        
 class TestApiInit(IResourceTestCase):
     
     def setUp(self):
@@ -1646,7 +1648,7 @@ class TestApiInit(IResourceTestCase):
             if outputobj['key'] == 'resource2':
                 resource2 = outputobj
                 
-        logger.info('for resource2, verify that the supertype fields are inherited...')
+        logger.info('for resource2, verify supertype fields are inherited...')
         resource1_fields = resource1['fields'].values()
         resource2_fields = resource2['fields'].values()
         logger.info('fields: %r', resource2_fields)
@@ -1655,16 +1657,17 @@ class TestApiInit(IResourceTestCase):
             'Should have %d fields but found %d' %(4,len(resource2_fields)))
         for resource1_field in resource1_fields:
             resource1_field['scope'] = 'fields.resource2'
-            result, found_field = find_obj_in_list(resource1_field, resource2_fields)
+            result, found_field = find_obj_in_list(
+                resource1_field, resource2_fields)
             self.assertTrue(
                 result, 'cannot find supertype field: %r' % found_field )
             logger.info('found field: %r', found_field)
 
     def test99_api_init(self):
         
-        logger.debug('***================ reports test2_api_init =============== ')
+        logger.debug('================ reports test2_api_init =============== ')
         serializer=CSVSerializer() 
-        # todo: doesn't work for post, see TestApiClient.post() method, it is 
+        # Note: doesn't work for post, see TestApiClient.post() method, it is 
         # incorrectly "serializing" the data before posting
         testApiClient = TestApiClient(serializer=serializer) 
         
@@ -1764,7 +1767,8 @@ class TestApiInit(IResourceTestCase):
                                 'therefore the "post" command is invalid with '
                                 'the initialization scripts'))
                         else:
-                            self.fail('unknown command: ' + command + ', ' + json.dumps(action))
+                            self.fail('unknown command: %r, %r',command,
+                                      json.dumps(action))
         
 
 # class ResourceTest(IResourceTestCase):
@@ -1795,6 +1799,48 @@ class TestApiInit(IResourceTestCase):
 #     def test4_dependency_fields(self):
 #         pass
 
+
+class VocabularyResource(IResourceTestCase):
+    
+    def test1_create_read(self):
+        
+        test_vocabs = [
+            {'scope': 'test.vocab', 'key': 'test1', 'ordinal': 1, 
+             'description': 'test1 vocab', 'title': 'Test 1' },
+            {'scope': 'test.vocab', 'key': 'test2', 'ordinal': 2, 
+             'description': 'test2 vocab', 'title': 'Test 2' },
+            {'scope': 'test.vocab', 'key': 'test3', 'ordinal': 3, 
+             'description': 'test3 vocab', 'title': 'Test 3' },
+        ]
+        try:       
+            uri = BASE_URI + '/vocabulary'
+            resp = self.api_client.patch(uri, 
+                format='json', data={ 'objects': test_vocabs }, 
+                authentication=self.get_credentials())
+            self.assertTrue(
+                resp.status_code <= 204, 
+                (resp.status_code, self.get_content(resp)))
+        except Exception, e:
+            logger.exception('on creating: %r', test_vocabs)
+            raise
+
+        logger.debug('created vocab items, now get them')
+        resp = self.api_client.get(uri, format='json', 
+            authentication=self.get_credentials(), 
+            data={ 
+                'limit': 0,
+                'scope__eq': 'test.vocab' })
+        new_obj = self.deserialize(resp)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        self.assertEqual(
+            len(new_obj['objects']), len(test_vocabs), (new_obj))
+        
+        for i,item in enumerate(test_vocabs):
+            result, obj = find_obj_in_list(item, new_obj['objects'])
+            self.assertTrue(
+                result, ('vocab item not found', item, new_obj['objects']))
 
 class UserUsergroupSharedTest(object):
             

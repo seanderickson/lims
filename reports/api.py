@@ -888,6 +888,9 @@ class ApiResource(SqlAlchemyResource):
                 scope = field.get('vocabulary_scope_ref')
                 vocabularies[key] = \
                     VocabularyResource()._get_vocabularies_by_scope(scope)
+                if not vocabularies[key]:
+                    logger.warn('no vocabulary found for scope: %r, field: %r', 
+                        scope, key)
         def vocabulary_rowproxy_generator(cursor):
             class Row:
                 def __init__(self, row):
@@ -1919,7 +1922,7 @@ class VocabularyResource(ApiResource):
         # FIXME: check request params for caching
         vocabularies = cache.get('vocabularies')
         if not vocabularies  or not self.use_cache:
-            vocabularies =  ApiResource._get_list_response(self, request)
+            vocabularies =  ApiResource._get_list_response(self, request, **kwargs)
             cache.set('vocabularies', vocabularies)
         
         if key:
@@ -2046,7 +2049,6 @@ class VocabularyResource(ApiResource):
             order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
                 order_params, field_hash)
             
-            # PROTOTYPE: use for other json_field resources
             def json_field_rowproxy_generator(cursor):
                 '''
                 Wrap connection cursor to fetch fields embedded in the 'json_field'
@@ -2161,7 +2163,7 @@ class VocabularyResource(ApiResource):
         if scope in vocabularies:
             return deepcopy(vocabularies[scope])
         else:
-            logger.warn('---unknown vocabulary scope: %r', scope)
+            logger.warn('---unknown vocabulary scope: %r, %r', scope, vocabularies.keys())
             return {}
     
     def clear_cache(self):

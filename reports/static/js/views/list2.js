@@ -26,7 +26,7 @@ define([
       'click button#clear_sorts': 'clear_sorts',
       'click button#clear_searches': 'clear_searches'
     },
-
+    
     initialize : function(args) {
       
       var self = this;
@@ -562,7 +562,11 @@ define([
     },
     
     beforeRender: function(){
-      this.$el.html(_.template(listTemplate));
+      // TODO: use the backbone template and serialize attributes
+      var title = _.result(self._options, 'title', '');
+      this.$el.html(_.template(listTemplate)(
+          { title: _.result(self._options, 'title', '')})
+      );
     },
       
     afterRender: function(){
@@ -622,6 +626,10 @@ define([
         self.$('#pagination_message').html(msg);
       });
       
+//      if (self._options.title){
+//        self.$("list-title").html(self._options.title);
+//      }
+//      
       if ( !fetched ) {
         self.collection.fetch({ reset: false }
         ).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); }

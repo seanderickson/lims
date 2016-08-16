@@ -293,9 +293,9 @@ define([
           if(self.model.get('project_phase')=='annotation'){
             if (appModel.hasPermission('screenresult','write')){
               if (self.model.get('has_screen_result')){
-                this.$el.prepend(self.$deleteScreenResultsButton);
+                this.$('#generic-detail-buttonpanel').prepend(self.$deleteScreenResultsButton);
               }
-              this.$el.prepend(self.$loadScreenResultsButton);
+              this.$('#generic-detail-buttonpanel').prepend(self.$loadScreenResultsButton);
             }
           }else{
             self.createStatusHistoryTable($('#screen_extra_information'));
@@ -1413,12 +1413,12 @@ define([
               }
               if (appModel.hasPermission('screenresult','write')){
                 if (self.model.get('has_screen_result')){
-                  this.$el.prepend(self.$deleteScreenResultsButton);
+                  this.$('#generic-detail-buttonpanel').prepend(self.$deleteScreenResultsButton);
                 }
-                this.$el.prepend(self.$loadScreenResultsButton);
+                this.$('#generic-detail-buttonpanel').prepend(self.$loadScreenResultsButton);
               }
               if (appModel.hasPermission('libraryscreening','write')){
-                this.$el.prepend($addLibraryScreeningButton);
+                this.$('#generic-detail-buttonpanel').prepend($addLibraryScreeningButton);
               }
             }
           });
@@ -1569,7 +1569,8 @@ define([
               uriStack: delegateStack,
               detailKeys: billingKeys,
               editKeys: billingKeys,
-              editableKeys: billingKeys
+              editableKeys: billingKeys,
+              buttons: ['download']
             });
             self.tabViews[key] = view;
             

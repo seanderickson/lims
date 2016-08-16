@@ -320,7 +320,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           }catch(e){
             var msg = 'Unable to display resource: ' + uiResourceId;
             console.log(msg,e);
-            this.error(msg);
+            appModel.error(msg);
           }
         }
       } else {

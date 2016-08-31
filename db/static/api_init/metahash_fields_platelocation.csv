@@ -1,7 +1,9 @@
-key,scope,table,field,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,data_type,display_type,display_options,edit_type,is_restricted
-room,fields.platelocation,,,1,,TRUE,Room,Room,TRUE,,,[l;d],string,link,"{ 'hrefTemplate': '#platelocation/{room}/{freezer}/{shelf}/{bin}' }",,
-freezer,fields.platelocation,,,2,,TRUE,Freezer,Freezer,TRUE,,,[l;d],string,,,,
-shelf,fields.platelocation,,,3,,TRUE,Shelf,Shelf,TRUE,,,[l;d],string,,,,
-bin,fields.platelocation,,,4,,TRUE,Bin,Bin,TRUE,,,[l;d],string,,,,
-plates,fields.platelocation,custom,,5,,TRUE,"Number of plates in this location","Plate count",TRUE,,,[l;d],integer,link,"{ 'hrefTemplate': '#platelocation/{room}/{freezer}/{shelf}/{bin}/plates' }",,
-libraries,fields.platelocation,custom,,6,,TRUE,"Libraries in this location",Libraries,TRUE,,,[l;d],list,,,,
+key,scope,table,field,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,data_type,display_type,display_options,edit_type,is_restricted,regex
+room,fields.platelocation,,,1,,TRUE,Room,Room,TRUE,,,[l;d],[c],string,,,,,
+freezer,fields.platelocation,,,2,,TRUE,Freezer,Freezer,TRUE,,,[l;d],[c],string,,,,,
+shelf,fields.platelocation,,,3,,TRUE,Shelf,Shelf,TRUE,,,[l;d],[c],string,,,,,
+bin,fields.platelocation,,,4,,TRUE,Bin,Bin,TRUE,,,[l;d],[c],string,link,"{ 'hrefTemplate': '#platelocation/{room}/{freezer}/{shelf}/{bin}' }",,,
+plate_count,fields.platelocation,custom,,5,,TRUE,"Number of plates in this location","Plate count",TRUE,,,[l;d],,integer,link,"{ 'hrefTemplate': '#librarycopyplate/search/room__eq={room};freezer__eq={freezer};shelf__eq={shelf};bin__eq={bin}' }",,,
+copy_plate_ranges,fields.platelocation,custom,,6,,FALSE,"Plate Ranges in Bin","Copy Plates",FALSE,,,[d],[c;u],list,,,custom,,(([^:]+):)?([^:]+):(\d+)(-(\d+))?
+libraries,fields.platelocation,custom,,7,,TRUE,"Libraries in this location",Libraries,TRUE,,,[d],,list,,,,,
+plate_location_id,fields.platelocation,,,8,,TRUE,"Internal Plate Location ID","Plate Location ID",TRUE,,,[],,integer,,,,,

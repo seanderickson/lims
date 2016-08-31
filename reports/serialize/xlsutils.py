@@ -151,10 +151,10 @@ def write_xls_image(worksheet, filerow, col, val, request):
     try:
         image = reports.serialize.resolve_image(request, val)
         fullpath = request.build_absolute_uri(val)
-#         view, args, kwargs = resolve(val)
-#         kwargs['request'] = request
-#         response = view(*args, **kwargs)
-#         image = Image.open(io.BytesIO(response.content))
+        # view, args, kwargs = resolve(val)
+        # kwargs['request'] = request
+        # response = view(*args, **kwargs)
+        # image = Image.open(io.BytesIO(response.content))
         height = image.size[1]
         width = image.size[0]
         worksheet.set_row(filerow, height)

@@ -36,7 +36,8 @@ from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     LIST_BRACKETS, MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE, \
     HTTP_PARAM_RAW_LISTS
 from reports.api_base import IccblBaseResource, un_cache
-from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE
+from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE,\
+    JSON_MIMETYPE, CSV_MIMETYPE
 from reports.serialize.csvutils import LIST_DELIMITER_CSV, csv_convert
 from reports.serialize.streaming_serializers import sdf_generator, \
     json_generator, get_xls_response, csv_generator, ChunkIterWrapper, \
@@ -241,16 +242,15 @@ class SqlAlchemyResource(IccblBaseResource):
             columns = OrderedDict()
             for field in fields:
                 key = field['key']
-                if DEBUG_BUILD_COLUMNS:
-                    logger.info(str(('field:', key)))
                 if key in custom_columns:
                     if DEBUG_BUILD_COLUMNS: 
-                        logger.info(str(('custom field', key,custom_columns[key])))
+                        logger.info(
+                            'custom field: %r, %r', key,custom_columns[key])
                     columns[key] = custom_columns[key].label(key)
                     continue
                 
                 if DEBUG_BUILD_COLUMNS: 
-                    logger.info(str(('build column', field['key'], field)))
+                    logger.info('build column: %r, %r', field['key'], field)
                 field_name = field.get('field', None)
                 if not field_name:
                     field_name = field['key']
@@ -258,11 +258,13 @@ class SqlAlchemyResource(IccblBaseResource):
                 field_table = field.get('table', None)
                 
                 if not field_table and DEBUG_BUILD_COLUMNS:
-                    logger.info(str(('skipping field because there is no '
-                        '"field_table" value set',key,field)))
+                    logger.info(
+                        'field: %r, val: %r, skipping field because there is no '
+                        '"field_table" value set',key,field)
                     continue
                 if DEBUG_BUILD_COLUMNS: 
-                    logger.info(str(('field', field['key'], 'field_table', field_table )))
+                    logger.info(
+                        'field: %r, field_table: %r', field['key'], field_table )
                 
                 if field_table in base_query_tables:
                     # simple case: table.fields already selected in the base query:
@@ -270,8 +272,9 @@ class SqlAlchemyResource(IccblBaseResource):
                     if field_name in get_tables()[field_table].c:
                         col = get_tables()[field_table].c[field_name]
                     else:
-                        raise Exception(str(('field', field_name, 
-                            'not found in table', field_table)))
+                        raise Exception(
+                            'field: %r, not found in table: %r'
+                            % (field_name, field_table))
                     col = col.label(key)
                     columns[key] = col
                     
@@ -329,7 +332,8 @@ class SqlAlchemyResource(IccblBaseResource):
                         logger.info(
                             'field is not in the base tables %r, nor in a linked field, '
                             'and is not custom: %s', base_query_tables, key)
-            if DEBUG_BUILD_COLUMNS: logger.info(str(('columns', columns.keys())))
+            if DEBUG_BUILD_COLUMNS: 
+                logger.info('columns: %r', columns.keys())
             return columns
         except Exception, e:
             logger.exception('on build sqlalchemy columns')
@@ -362,8 +366,9 @@ class SqlAlchemyResource(IccblBaseResource):
             if field_name in visible_fields:
                 order_clauses.append(order_clause)
             else:
-                logger.warn(str(('order_by field not in visible fields, skipping: ', 
-                    order_by )))
+                logger.warn(
+                    'order_by field %r not in visible fields, skipping: ', 
+                    order_by)
         if DEBUG_ORDERING:
             logger.info('order_clauses %s',order_clauses)     
         return order_clauses
@@ -395,7 +400,6 @@ class SqlAlchemyResource(IccblBaseResource):
                     value.extend(part.split(LIST_DELIMITER_URL_PARAM))
             else:
                 value = value.split(LIST_DELIMITER_URL_PARAM)
-        logger.debug(str(('filter value', filter_expr, value)))
         return value
 
     @staticmethod
@@ -414,10 +418,13 @@ class SqlAlchemyResource(IccblBaseResource):
         search_data = param_hash.get('search_data', None)
         if search_data:
             logger.info('search_data: %r', search_data)
-            if search_data and isinstance(search_data, basestring):
+            if isinstance(search_data, basestring):
                 # standard, convert single valued list params
                 search_data = [search_data]
-        
+            if isinstance(search_data, dict):
+                # standard, convert single valued list params
+                search_data = [search_data]
+
             # each item in the search data array is a search hash, to be or'd
             search_expressions = []
             filter_fields = set(filter_fields)
@@ -463,20 +470,23 @@ class SqlAlchemyResource(IccblBaseResource):
             _values = [] # store values for debug
             for filter_expr, value in param_hash.items():
                 if lookup_sep not in filter_expr:
-                    continue;
-                filter_bits = filter_expr.split(lookup_sep)
-                if len(filter_bits) != 2:
-                    logger.warn(
-                        'filter expression %r must be of the form '
-                        '"field_name__expression"' % filter_expr )
-                field_name = filter_bits[0]
-                filter_type = filter_bits[1]
+                    # treat as a field__eq
+                    field_name = filter_expr
+                    filter_type = 'exact'
+                else:
+                    filter_bits = filter_expr.split(lookup_sep)
+                    if len(filter_bits) != 2:
+                        logger.warn(
+                            'filter expression %r must be of the form '
+                            '"field_name__expression"' % filter_expr )
+                    field_name = filter_bits[0]
+                    filter_type = filter_bits[1]
                 inverted = False
                 if field_name and field_name[0] == '-':
                     inverted = True
                     field_name = field_name[1:]
                 if not field_name in schema['fields']:
-                    logger.warn(str(('unknown filter field', field_name, filter_expr)))
+                    logger.debug('unknown filter field: %r, %r', field_name, filter_expr)
                     continue
                 if DEBUG_FILTERS:
                     logger.info('build filter expr: field_name, %r, '
@@ -502,7 +512,8 @@ class SqlAlchemyResource(IccblBaseResource):
                 # ])
                 
                 if DEBUG_FILTERS:
-                    logger.info(str(('find filter', field_name, filter_type, value, type(value))))
+                    logger.info('find filter: %r, %r, %r, %r', 
+                        field_name, filter_type, value, type(value))
                 
                 expression = None
                 col = column(field_name)
@@ -527,9 +538,9 @@ class SqlAlchemyResource(IccblBaseResource):
                         decimals = len(value.split('.')[1])
                     expression = func.round(col,decimals) == value
                     if DEBUG_FILTERS:
-                        logger.info(str(('create "about" expression for term:',
-                            filter_expr,
-                            value,'decimals',decimals)))
+                        logger.info(
+                            'create "about" expression for term: %r, %r, decimals %r',
+                            filter_expr,value,'decimals',decimals)
                 elif filter_type == 'contains':
                     if field['data_type'] == 'string':
                         value = str(value)
@@ -583,17 +594,18 @@ class SqlAlchemyResource(IccblBaseResource):
                     expression = col != value
                 elif filter_type == 'range':
                     if len(value) != 2:
-                        logger.error(str((
-                            'value for range expression must be list of length 2', 
-                            field_name, filter_expr, value)))
+                        logger.error(
+                            'field: %r, expr: %r, val: %r, '
+                            'range expression must be list of length 2',
+                            field_name, filter_expr, value)
                         continue
                     else:
                         expression = col.between(
                             value[0],value[1],symmetric=True)
                 else:
-                    logger.error(str(('--- unknown filter type: ', 
-                        field_name, filter_type,
-                        'filter_expr',filter_expr )))
+                    logger.error(
+                        'field: %r, unknown filter type: %r, expr: %r ', 
+                        field_name, filter_type, filter_expr)
                     continue
     
                 if inverted:
@@ -605,7 +617,7 @@ class SqlAlchemyResource(IccblBaseResource):
                 
             logger.debug('filtered_fields: %s', filtered_fields)
             if DEBUG_FILTERS:
-                logger.info(str(('values', _values)))
+                logger.info('values %r', _values)
                 
             if len(expressions) > 1: 
                 return (and_(*expressions), filtered_fields)
@@ -657,7 +669,7 @@ class SqlAlchemyResource(IccblBaseResource):
         search_data = json.loads(search_data)   
         param_hash['search_data'] = search_data
         if DEBUG_SEARCH:
-            logger.info(str(('search', param_hash, kwargs)))
+            logger.info('search: %r, kwargs: %r', param_hash, kwargs)
  
         response = self.build_list_response(request,param_hash=param_hash, **kwargs)
         
@@ -665,10 +677,10 @@ class SqlAlchemyResource(IccblBaseResource):
         # are implementing the downloadID cookie here, for now.
         downloadID = param_hash.get('downloadID', None)
         if downloadID:
-            logger.info(str(('set cookie','downloadID', downloadID )))
+            logger.info('set cookie downloadID: %r', downloadID)
             response.set_cookie('downloadID', downloadID)
         else:
-            logger.info(str(('no downloadID')))
+            logger.info('no downloadID')
         
         return response
 
@@ -678,16 +690,17 @@ class SqlAlchemyResource(IccblBaseResource):
         '''
         includes = kwargs.pop('includes', '*')
         try:
-            logger.debug('get internal list response %s, %s ', self._meta.resource_name, kwargs)
+            logger.debug(
+                'get internal list response %s, %s ', 
+                self._meta.resource_name, kwargs)
             response = self.get_list(
                 request,
                 format='json',
                 includes=includes,
                 **kwargs)
-            logger.debug('deserializing internal response... %s', self._meta.serializer)
+            logger.debug('response: %r', response)
             _data = self._meta.serializer.deserialize(
-                request,
-                LimsSerializer.get_content(response), format='application/json')
+                LimsSerializer.get_content(response), response['Content-Type'])
             _data = _data[self._meta.collection_name]
             logger.debug(' data: %s'% _data)
             return _data
@@ -696,6 +709,29 @@ class SqlAlchemyResource(IccblBaseResource):
         except Exception as e:
             # FIXME: temporary travis debug
             logger.exception('on get list')
+            return []
+        
+    def _get_detail_response(self,request,**kwargs):
+        '''
+        Return the detail response as a dict
+        '''
+        logger.info('_get_detail_response: %r, %r', self._meta.resource_name, kwargs)
+        try:
+            response = self.get_detail(
+                request,
+                format='json',
+                includes='*',
+                **kwargs)
+            _data = []
+            if response.status_code == 200:
+                _data = self._meta.serializer.deserialize(
+                    LimsSerializer.get_content(response), response['Content-Type'])
+            else:
+                logger.info(
+                    'no data found for %r, %r', self._meta.resource_name, kwargs)
+            logger.debug(' data: %s'% _data)
+            return _data
+        except Http404:
             return []
         
     #@un_cache
@@ -720,43 +756,19 @@ class SqlAlchemyResource(IccblBaseResource):
         result = self._get_list_response(request, **kwargs)
         return result
     
-    def _get_detail_response(self,request,**kwargs):
-        '''
-        Return the detail response as a dict
-        '''
-        logger.info('_get_detail_response: %r', kwargs)
-        try:
-            response = self.get_detail(
-                request,
-                format='json',
-                includes='*',
-                **kwargs)
-            _data = []
-            if response.status_code == 200:
-                _data = self._meta.serializer.deserialize(
-                    request,
-                    LimsSerializer.get_content(response), format='application/json')
-            else:
-                logger.info(
-                    'no data found for %r, %r', self._meta.resource_name, kwargs)
-            logger.debug(' data: %s'% _data)
-            return _data
-        except Http404:
-            return []
-        
     def get_list(self, request, **kwargs):
         '''
         Override the Tastypie/Django ORM get_list method - list/reporting 
         operations will be handled using SqlAlchemy
         '''
-        raise NotImplemented(str((
-            'get_list must be implemented for the SqlAlchemyResource', 
-            self._meta.resource_name)) )
+        raise NotImplemented(
+            'get_list must be implemented for the SqlAlchemyResource: %r' 
+            % self._meta.resource_name)
         
     def build_list_response(self,request, param_hash={}, **kwargs):
-        raise NotImplemented(str((
-            'get_list_response must be implemented for the SqlAlchemyResource', 
-            self._meta.resource_name)) )
+        raise NotImplemented(
+            'build_list_response must be implemented for the SqlAlchemyResource: %r' 
+            % self._meta.resource_name)
     
     def _cached_resultproxy(self, conn, stmt, count_stmt, param_hash, limit, offset):
         ''' 
@@ -801,7 +813,7 @@ class SqlAlchemyResource(IccblBaseResource):
                 if ('stmt' not in cache_hit or
                         cache_hit['stmt'] != compiled_stmt):
                     cache_hit = None
-                    logger.warn(str(('cache collision for key', key, stmt)))
+                    logger.warn('cache collision for key: %r, %r', key, stmt)
             
             if cache_hit is None:
                 logger.info('no cache hit for key: %r, executing stmt', key)
@@ -837,8 +849,9 @@ class SqlAlchemyResource(IccblBaseResource):
                 for y in range(prefetch_number):
                     new_offset = offset + limit*y;
                     _start = limit*y
-                    logger.info('new_offset: %d, start: %d, len: %d', 
-                        new_offset, _start, len(prefetched_result))
+                    if DEBUG_CACHE:
+                        logger.info('new_offset: %d, start: %d, len: %d', 
+                            new_offset, _start, len(prefetched_result))
                     if _start < len(prefetched_result):
                         key_digest = '%s_%s_%s' %(compiled_stmt, str(limit), str(new_offset))
                         m = hashlib.md5()
@@ -853,8 +866,9 @@ class SqlAlchemyResource(IccblBaseResource):
                             'cached_result': _result,
                             'count': count,
                             'key': key }
-                        logger.info('add to cache, key: %s, limit: %s, offset: %s',
-                            key, limit, new_offset)
+                        if DEBUG_CACHE:
+                            logger.info('add to cache, key: %s, limit: %s, offset: %s',
+                                key, limit, new_offset)
                         cache.set( key, _cache, None)
                         if y == 0:
                             cache_hit = _cache
@@ -926,13 +940,16 @@ class SqlAlchemyResource(IccblBaseResource):
                             dialect=postgresql.dialect(), 
                             compile_kwargs={"literal_binds": True})), 
                     param_hash)
-                logger.info(str(('count stmt', str(count_stmt.compile(
-                    dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})))))
+                logger.info(
+                    'count stmt %s', 
+                    str(count_stmt.compile(
+                        dialect=postgresql.dialect(), 
+                        compile_kwargs={"literal_binds": True})))
             
-            desired_format = self.get_serialize_format(request, **param_hash)
-            logger.debug('---- desired_format: %r, hash: %r', desired_format, param_hash)
+            content_type = self.get_accept_content_type(request, format=param_hash.get('format', None))
+            logger.debug('---- content_type: %r, hash: %r', content_type, param_hash)
             result = None
-            if desired_format == 'application/json':
+            if content_type == JSON_MIMETYPE:
                 logger.info(
                     'streaming json, use_caching: %r, self.use_cache: %r, limit: %d, %r', 
                     use_caching, self.use_cache, limit, is_for_detail)
@@ -949,7 +966,7 @@ class SqlAlchemyResource(IccblBaseResource):
                         logger.error('error, cache not set: execute stmt')
                         count = conn.execute(count_stmt).scalar()
                         result = conn.execute(stmt)
-                    logger.info(str(('====count====', count)))
+                    logger.info('====count: %d====', count)
                     
                 else:
                     logger.info('not cached, execute count stmt...')
@@ -991,7 +1008,6 @@ class SqlAlchemyResource(IccblBaseResource):
                 result = conn.execute(stmt)
                 logger.info('excuted stmt')
                 
-                logger.debug(str(('rowproxy_generator', rowproxy_generator)))
                 if rowproxy_generator:
                     result = rowproxy_generator(result)
                     # FIXME: test this for generators other than json generator        
@@ -1019,10 +1035,9 @@ class SqlAlchemyResource(IccblBaseResource):
             if request.GET.get(HTTP_PARAM_RAW_LISTS, False):
                 list_brackets = None
     
-            desired_format = self.get_serialize_format(request, **param_hash)
-            content_type=build_content_type(desired_format)
-            logger.debug('desired_format: %s, content_type: %s', 
-                desired_format, content_type)
+            content_type = self.get_accept_content_type(
+                request, format=param_hash.get('format', None))
+            logger.debug('content_type: %s',content_type)
             
             image_keys = [key for key,field in field_hash.items()
                 if field.get('display_type', None) == 'image']
@@ -1038,7 +1053,7 @@ class SqlAlchemyResource(IccblBaseResource):
                 result,ordered_keys,list_fields=list_fields,
                 value_templates=value_templates)
             response = None
-            if desired_format == 'application/json':
+            if content_type == JSON_MIMETYPE:
                 
                 response = StreamingHttpResponse(
                     ChunkIterWrapper(
@@ -1047,8 +1062,8 @@ class SqlAlchemyResource(IccblBaseResource):
                             meta, is_for_detail=is_for_detail)))
                 response['Content-Type'] = content_type
             
-            elif( desired_format == XLS_MIMETYPE or
-                desired_format == XLSX_MIMETYPE ): 
+            elif( content_type == XLS_MIMETYPE or
+                content_type == XLSX_MIMETYPE ): 
 
                 data = {
                     'data': data 
@@ -1058,7 +1073,7 @@ class SqlAlchemyResource(IccblBaseResource):
                     title_function=title_function, image_keys=image_keys,
                     list_brackets=list_brackets)
 
-            elif desired_format == SDF_MIMETYPE:
+            elif content_type == SDF_MIMETYPE:
                 
                 response = StreamingHttpResponse(
                     ChunkIterWrapper(
@@ -1069,7 +1084,7 @@ class SqlAlchemyResource(IccblBaseResource):
                 response['Content-Disposition'] = \
                     'attachment; filename=%s.sdf' % output_filename
             
-            elif desired_format == 'text/csv':
+            elif content_type == CSV_MIMETYPE:
                 response = StreamingHttpResponse(
                     ChunkIterWrapper(
                         csv_generator(
@@ -1080,7 +1095,7 @@ class SqlAlchemyResource(IccblBaseResource):
                 response['Content-Disposition'] = \
                     'attachment; filename=%s.csv' % output_filename
             else:
-                msg = 'unknown format: %r' % desired_format
+                msg = 'unknown content_type: %r' % content_type
                 raise BadRequest(msg)
             return response
 

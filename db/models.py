@@ -1372,6 +1372,9 @@ class Plate(models.Model):
     date_publicly_available = models.DateTimeField(null=True)
     class Meta:
         db_table = 'plate'
+        
+    def __repr__(self):
+        return u'%s:%d' % (self.copy.name, self.plate_number)
 
 
 class CopyWell(models.Model):

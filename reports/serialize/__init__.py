@@ -19,7 +19,6 @@ CSV_MIMETYPE = 'text/csv'
 XLS_MIMETYPE = 'application/xls'
 XLSX_MIMETYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 SDF_MIMETYPE = 'chemical/x-mdl-sdfile'
-
 def dict_to_rows(_dict):
     ''' Utility that converts a dict into a table for writing to a spreadsheet
     '''

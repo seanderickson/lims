@@ -45,7 +45,7 @@ from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
 from reports import ValidationError, _now
 from reports.api_base import IccblBaseResource, un_cache
 from reports.models import MetaHash, Vocabulary, ApiLog, ListLog, Permission, \
-                           UserGroup, UserProfile, Record, API_ACTION_DELETE, \
+                           UserGroup, UserProfile, API_ACTION_DELETE, \
                            API_ACTION_CREATE
 from reports.serialize import parse_val, parse_json_field, XLSX_MIMETYPE, \
     SDF_MIMETYPE, XLS_MIMETYPE
@@ -101,8 +101,9 @@ class UserGroupAuthorization(Authorization):
                 % (permission_str, user, user.is_superuser))
         
         if user.is_superuser:
-            logger.debug('%s:%s access allowed for super user: %s' 
-                % (resource_name,permission_type,user))
+            if DEBUG_AUTHORIZATION:
+                logger.info('%s:%s access allowed for super user: %s' 
+                    % (resource_name,permission_type,user))
             return True
         
         # FIXME: 20150708 - rewrite this using the UserResource 
@@ -201,6 +202,7 @@ def compare_dicts(dict1, dict2, excludes=['resource_uri'], full=False):
     whereas "not full" only logs the creation; with this strategy, logs 
     must be played backwards to recreate an entity state.
     '''
+    logger.debug('compare dicts: %r, %r, %r', dict1, dict2, full)
     original_keys = set(dict1.keys())-set(excludes)
     updated_keys = set(dict2.keys())-set(excludes)
     
@@ -356,25 +358,24 @@ class ApiResource(SqlAlchemyResource):
         return self.get_resource_resource().get_resource_schema(
             self._meta.resource_name)
 
-    def deserialize(self, request, data=None, format=None):
-        logger.debug('apiResource deserialize: %r, format: %r', 
-                     self._meta.resource_name, format)
-        return self._meta.serializer.deserialize(
-            request,
-            data, 
-            format=format)
-
     def get_resource_uri(self, deserialized, **kwargs):
         ids = [self._meta.resource_name]
         ids.extend(self.get_id(deserialized,**kwargs).values())
         return '/'.join(ids)
         
-    def get_id(self,deserialized,**kwargs):
+    def get_id(self,deserialized,validate=False,**kwargs):
+        ''' 
+        return the full ID for the resource, as defined by the "id_attribute"
+        - return None if some or all keys are missing
+        '''
         schema = self.build_schema()
         id_attribute = schema['id_attribute']
         fields = schema['fields']
+
         kwargs_for_id = {}
+        not_found = []
         for id_field in id_attribute:
+            logger.debug('id_field: %r', id_field)
             if deserialized and deserialized.get(id_field,None):
                 kwargs_for_id[id_field] = parse_val(
                     deserialized.get(
@@ -386,9 +387,19 @@ class ApiResource(SqlAlchemyResource):
             elif 'resource_uri' in deserialized:
                 return self.find_key_from_resource_uri(
                     deserialized['resource_uri'])
+            else:
+                not_found.append(id_field)
+        if not_found:
+            logger.debug(
+                'not all id fields found: %r: in %r', not_found,deserialized)
+            if validate:
+                raise ValidationError({
+                    k:'required' for k in not_found })
+        logger.debug('kwargs_for_id: %r', kwargs_for_id)   
         return kwargs_for_id
 
     def find_key_from_resource_uri(self,resource_uri):
+        
         schema = self.build_schema()
         id_attribute = schema['id_attribute']
         resource_name = self._meta.resource_name + '/'
@@ -409,6 +420,8 @@ class ApiResource(SqlAlchemyResource):
             return dict(zip(id_attribute,keys))
 
     def parse(self,deserialized):
+        ''' parse schema fields from the deserialized dict '''
+        
         schema = self.build_schema()
         fields = schema['fields']
         mutable_fields = [ field for field in fields.values() 
@@ -432,21 +445,23 @@ class ApiResource(SqlAlchemyResource):
             % ( request.user.username, self._meta.resource_name))
         logger.debug('patch list: %r' % kwargs)
 
-        deserialized = self.deserialize(request)
-        if not self._meta.collection_name in deserialized:
-            raise BadRequest("Invalid data sent, must be nested in '%s'" 
-                % self._meta.collection_name)
-        deserialized = deserialized[self._meta.collection_name]
-        logger.debug('-----deserialized: %r', deserialized)
+        if kwargs.get('data', None):
+            # allow for internal data to be passed
+            deserialized = kwargs['data']
+        else:
+            deserialized = self.deserialize(
+                request, format=kwargs.get('format', None))
+
+        if self._meta.collection_name in deserialized:
+            deserialized = deserialized[self._meta.collection_name]
         
-        # Look for id's kwargs, to limit the potential candidates for logging
+        # Limit the potential candidates for logging to found id_kwargs
         schema = self.build_schema()
         id_attribute = schema['id_attribute']
         kwargs_for_log = kwargs.copy()
         logger.debug('id_attribute: %r', id_attribute)
         for id_field in id_attribute:
             ids = set()
-            # Test for each id key; it's ok on create for ids to be None
             for _dict in [x for x in deserialized if x.get(id_field, None)]:
                 ids.add(_dict.get(id_field))
             if ids:
@@ -459,24 +474,27 @@ class ApiResource(SqlAlchemyResource):
         except Exception as e:
             logger.exception('original state not obtained')
             original_data = []
+
         try:
             with transaction.atomic():
+                if 'parent_log' not in kwargs:
+                    parent_log = self.make_log(request)
+                    parent_log.save()
+                    kwargs['parent_log'] = parent_log
                 
                 for _dict in deserialized:
-                    self.patch_obj(_dict)
+                    self.patch_obj(request, _dict, **kwargs)
         except ValidationError as e:
             logger.exception('Validation error: %r', e)
             raise e
             
-        # get new state, for logging
+        # Get new state, for logging
         new_data = self._get_list_response(request,**kwargs_for_log)
-        logger.debug('new data: %s'% new_data)
-        logger.debug('patch list done, new data: %d' 
-            % (len(new_data)))
+        logger.debug('patch list done, new data: %d', len(new_data))
         self.log_patches(request, original_data,new_data,**kwargs)
         
         if not self._meta.always_return_data:
-            return http.HttpAccepted()
+            return HttpResponse(status=202)
         else:
             response = self.get_list(request, **kwargs)             
             response.status_code = 200
@@ -491,19 +509,22 @@ class ApiResource(SqlAlchemyResource):
         logger.info('put list, user: %r, resource: %r' 
             % ( request.user.username, self._meta.resource_name))
 
-        deserialized = self.deserialize(request)
-        if not self._meta.collection_name in deserialized:
-            raise BadRequest("Invalid data sent, must be nested in '%s'" 
-                % self._meta.collection_name)
-        deserialized = deserialized[self._meta.collection_name]
+        if kwargs.get('data', None):
+            # allow for internal data to be passed
+            deserialized = kwargs['data']
+        else:
+            deserialized = self.deserialize(
+                request, format=kwargs.get('format', None))
+
+        if self._meta.collection_name in deserialized:
+            deserialized = deserialized[self._meta.collection_name]
         
-        # Look for id's kwargs, to limit the potential candidates for logging
+        # Limit the potential candidates for logging to found id_kwargs
         schema = self.build_schema()
         id_attribute = resource = schema['id_attribute']
         kwargs_for_log = kwargs.copy()
         for id_field in id_attribute:
             ids = set()
-            # Test for each id key; it's ok on create for ids to be None
             for _dict in [x for x in deserialized if x.get(id_field, None)]:
                 ids.add(_dict.get(id_field))
             if ids:
@@ -511,7 +532,7 @@ class ApiResource(SqlAlchemyResource):
                     LIST_DELIMITER_URL_PARAM.join(ids)
         try:
             logger.info('get original state, for logging...')
-            logger.info('kwargs_for_log: %r', kwargs_for_log)
+            logger.debug('kwargs_for_log: %r', kwargs_for_log)
             original_data = self._get_list_response(request,**kwargs_for_log)
         except Exception as e:
             logger.exception('original state not obtained')
@@ -523,16 +544,21 @@ class ApiResource(SqlAlchemyResource):
                 
                 # TODO: review REST actions:
                 # PUT deletes the endpoint
+
+                if 'parent_log' not in kwargs:
+                    parent_log = self.make_log(request)
+                    parent_log.save()
+                    kwargs['parent_log'] = parent_log
                 
                 self._meta.queryset.delete()
                 
                 for _dict in deserialized:
-                    self.put_obj(_dict)
+                    self.put_obj(request, _dict)
         except ValidationError as e:
             logger.exception('Validation error: %r', e)
             raise e
 
-        logger.info('get new state, for logging...')
+        # Get new state, for logging
         kwargs_for_log = kwargs.copy()
         for id_field in id_attribute:
             ids = set()
@@ -544,22 +570,18 @@ class ApiResource(SqlAlchemyResource):
                     LIST_DELIMITER_URL_PARAM.join(ids)
         try:
             logger.info('get new state, for logging...')
-            logger.info('kwargs_for_log: %r', kwargs_for_log)
+            logger.debug('kwargs_for_log: %r', kwargs_for_log)
             new_data = self._get_list_response(request,**kwargs_for_log)
         except Exception as e:
             logger.exception('original state not obtained')
             new_data = []
-
-#         new_data = self._get_list_response(request,**kwargs_for_log)
         
-        logger.debug('new data: %s'% new_data)
-        logger.debug('patch list done, new data: %d' 
-            % (len(new_data)))
+        logger.debug('patch list done, new data: %d', len(new_data))
         self.log_patches(request, original_data,new_data,**kwargs)
         
         logger.info('put_list done.')
         if not self._meta.always_return_data:
-            return http.HttpAccepted()
+            return HttpResponse(status=202)
         else:
             response = self.get_list(request, **kwargs)             
             response.status_code = 200
@@ -584,7 +606,12 @@ class ApiResource(SqlAlchemyResource):
         # TODO: enforce a policy that either objects are patched or deleted
         raise NotImplementedError('put_detail must be implemented')
 
-        deserialized = self.deserialize(request)
+        if kwargs.get('data', None):
+            # allow for internal data to be passed
+            deserialized = kwargs['data']
+        else:
+            deserialized = self.deserialize(
+                request, format=kwargs.get('format', None))
 
         logger.debug('put detail: %r, %r' % (deserialized,kwargs))
         
@@ -612,9 +639,8 @@ class ApiResource(SqlAlchemyResource):
             original_data = []
         
         try:
-#             with transaction.atomic():
             logger.debug('call put_obj')
-            obj = self.put_obj(deserialized, **kwargs)
+            obj = self.put_obj(request, deserialized, **kwargs)
         except ValidationError as e:
             logger.exception('Validation error: %r', e)
             raise e
@@ -623,21 +649,28 @@ class ApiResource(SqlAlchemyResource):
             for id_field in id_attribute:
                 val = getattr(obj, id_field,None)
                 kwargs_for_log['%s' % id_field] = val
+
         # get new state, for logging
         new_data = self._get_list_response(request,**kwargs_for_log)
         self.log_patches(request, original_data,new_data,**kwargs)
         
         if not self._meta.always_return_data:
-            return http.HttpAccepted()
+            return HttpResponse(status=202)
         else:
             response.status_code = 200
             return response
 
     @write_authorization
-    @un_cache        
+    @un_cache  
+    @transaction.atomic      
     def patch_detail(self, request, **kwargs):
-
-        deserialized = self.deserialize(request)
+        
+        if kwargs.get('data', None):
+            # allow for internal data to be passed
+            deserialized = kwargs['data']
+        else:
+            deserialized = self.deserialize(
+                request, format=kwargs.get('format', None))
 
         logger.debug('patch detail %s, %s', deserialized,kwargs)
 
@@ -666,8 +699,9 @@ class ApiResource(SqlAlchemyResource):
                     kwargs_for_log)
                 original_data = []
         try:
-#             with transaction.atomic():
-            obj = self.patch_obj(deserialized, **kwargs)
+            log = self.make_log(request)
+            log.save()
+            obj = self.patch_obj(request, deserialized, **kwargs)
             for id_field in id_attribute:
                 val = getattr(obj, id_field,None)
                 if val:
@@ -679,13 +713,13 @@ class ApiResource(SqlAlchemyResource):
         # get new state, for logging
         try:
             new_data = [self._get_detail_response(request,**kwargs_for_log)]
-            self.log_patches(request, original_data,new_data,**kwargs)
+            self.log_patches(request, original_data,new_data,log=log, **kwargs)
         except Exception, e: 
             logger.exception('exception when querying for new data for logging: %s', 
                 kwargs_for_log)
 
         if not self._meta.always_return_data:
-            return http.HttpAccepted()
+            return HttpResponse(status=202)
         else:
             response = self.get_detail(request,**kwargs_for_log)
             response.status_code = 201
@@ -724,7 +758,7 @@ class ApiResource(SqlAlchemyResource):
 
         with transaction.atomic():
             
-            self.delete_obj(**kwargs_for_log)
+            self.delete_obj(request, {}, **kwargs_for_log)
 
         # Log
         # TODO: consider log_patches
@@ -755,19 +789,18 @@ class ApiResource(SqlAlchemyResource):
 
     @un_cache        
     @transaction.atomic()    
-    def put_obj(self,deserialized, **kwargs):
+    def put_obj(self,request, deserialized, **kwargs):
         try:
-            self.delete_obj(deserialized, **kwargs)
+            self.delete_obj(request, deserialized, **kwargs)
         except ObjectDoesNotExist,e:
             pass 
         
-        return self.patch_obj(deserialized, **kwargs)            
+        return self.patch_obj(request, deserialized, **kwargs)            
 
-    def delete_obj(self, deserialized, **kwargs):
+    def delete_obj(self, request, deserialized, **kwargs):
         raise NotImplementedError('delete obj must be implemented')
     
-    @transaction.atomic()
-    def patch_obj(self,deserialized, **kwargs):
+    def patch_obj(self, request, deserialized, **kwargs):
         raise NotImplementedError('patch obj must be implemented')
 
     def validate(self, _dict, patch=False):
@@ -933,27 +966,17 @@ class ApiResource(SqlAlchemyResource):
                 prev_dict, new_dict)
 
         if log is None:
-            log = ApiLog()
-        log.ref_resource_name = self._meta.resource_name
-        log.username = request.user.username 
-        log.user_id = request.user.id 
-        log.date_time = _now()
+            log = self.make_log(request)
+
         log.key = '/'.join([str(new_dict[x]) for x in id_attribute])
         log.uri = '/'.join([self._meta.resource_name,log.key])
-        
-        # user can specify any valid, escaped json for this field
-        # if 'apilog_json_field' in bundle.data:
-        #     log.json_field = bundle.data['apilog_json_field']
-        
-        log.comment = log_comment
 
         if 'parent_log' in kwargs:
             log.parent_log = kwargs.get('parent_log', None)
         if prev_dict:
-            difflog = compare_dicts(prev_dict,new_dict)
-            if 'diff_keys' in difflog:
-                # log = ApiLog.objects.create()
-                log.api_action = str((request.method)).upper()
+            full = kwargs.get('full', False)
+            difflog = compare_dicts(prev_dict,new_dict, full=full)
+            if difflog.get('diff_keys',None) or difflog.get('diffs',None):
                 log.diff_dict_to_api_log(difflog)
                 log.save()
                 if DEBUG_PATCH_LOG:
@@ -973,6 +996,26 @@ class ApiResource(SqlAlchemyResource):
         
         return log
 
+    def make_log(self, request, **kwargs):
+
+        log = ApiLog()
+        log.api_action = str((request.method)).upper()
+        log.ref_resource_name = self._meta.resource_name
+        log.username = request.user.username 
+        log.user_id = request.user.id 
+        log.date_time = _now()
+ 
+        # TODO: how do we feel about passing form data in the headers?
+        # TODO: abstract the form field name
+        if HEADER_APILOG_COMMENT in request.META:
+            log.comment = request.META[HEADER_APILOG_COMMENT]
+     
+        if kwargs:
+            for key, value in kwargs.items():
+                if hasattr(log, key):
+                    setattr(log, key, value)
+        return log
+
     def log_patches(self,request, original_data, new_data, **kwargs):
         '''
         log differences between dicts having the same identity in the arrays:
@@ -982,7 +1025,8 @@ class ApiResource(SqlAlchemyResource):
         value.
         '''
         DEBUG_PATCH_LOG = False or logger.isEnabledFor(logging.DEBUG)
-
+        logs = []
+        
         log_comment = None
         if HEADER_APILOG_COMMENT in request.META:
             log_comment = request.META[HEADER_APILOG_COMMENT]
@@ -1020,16 +1064,13 @@ class ApiResource(SqlAlchemyResource):
                         prev_dict, deleted_items)
                 deleted_items.remove(prev_dict)
                 
-            self.log_patch(request, prev_dict, new_dict, **kwargs)    
+            logs.append(
+                self.log_patch(
+                    request, prev_dict, new_dict, **kwargs))   
                 
         for deleted_dict in deleted_items:
             
-            log = ApiLog()
-            log.ref_resource_name = self._meta.resource_name
-            log.comment = log_comment
-            log.username = request.user.username 
-            log.user_id = request.user.id 
-            log.date_time = _now()
+            log = self.make_log(request)
             log.key = '/'.join([str(deleted_dict[x]) for x in id_attribute])
             log.uri = '/'.join([self._meta.resource_name,log.key])
         
@@ -1037,8 +1078,6 @@ class ApiResource(SqlAlchemyResource):
             # if 'apilog_json_field' in bundle.data:
             #     log.json_field = bundle.data['apilog_json_field']
             
-            log.comment = log_comment
-    
             if 'parent_log' in kwargs:
                 log.parent_log = kwargs.get('parent_log', None)
 
@@ -1046,10 +1085,11 @@ class ApiResource(SqlAlchemyResource):
             log.diff_keys = json.dumps(deleted_dict.keys())
             log.diffs = json.dumps(deleted_dict,cls=DjangoJSONEncoder)
             log.save()
+            logs.append(log)
             if DEBUG_PATCH_LOG:
                 logger.info('delete, api log: %r',log)
-
-
+        return logs
+                
 class ApiLogResource(ApiResource):
     
     class Meta:
@@ -1084,7 +1124,8 @@ class ApiLogResource(ApiResource):
                     % (self._meta.resource_name, trailing_slash()), 
                 self.wrap_view('dispatch_apilog_childview'), 
                 name="api_dispatch_apilog_childview"),
-            url((r"^(?P<resource_name>%s)/children/(?P<ref_resource_name>[\w\d_.\-:]+)"
+            url((r"^(?P<resource_name>%s)/children"
+                 r"/(?P<ref_resource_name>[\w\d_.\-:]+)"
                  r"/(?P<key>[\w\d_.\-\+: \/]+)"
                  r"/(?P<date_time>[\w\d_.\-\+:]+)%s$")
                     % (self._meta.resource_name, trailing_slash()), 
@@ -1182,7 +1223,9 @@ class ApiLogResource(ApiResource):
                 build_sqlalchemy_filters(schema, param_hash=param_hash)
 
             if filter_expression is None and 'parent_log_id' not in kwargs:
-                raise BadRequest('can only service requests with filter expressions')
+                raise InformationError(
+                    key='Filter Data',
+                    msg='Please enter a filter expression to begin')
                                   
             order_params = param_hash.get('order_by',[])
             field_hash = self.get_visible_fields(
@@ -1488,6 +1531,7 @@ class FieldResource(ApiResource):
                 'meta': { 'limit': 0, 'offset': 0, 'total_count': len(fields) }, 
                 self._meta.collection_name: fields 
             }
+        logger.debug('build response...')
         return self.build_response(request, response_hash, **kwargs)
 
     @write_authorization
@@ -1497,14 +1541,14 @@ class FieldResource(ApiResource):
 
     @transaction.atomic()    
     @un_cache        
-    def delete_obj(self, deserialized, **kwargs):
+    def delete_obj(self, request, deserialized, **kwargs):
         
         id_kwargs = self.get_id(deserialized,**kwargs)
         logger.info('delete: %r', id_kwargs)
         MetaHash.objects.get(**id_kwargs).delete()
     
     @transaction.atomic()    
-    def patch_obj(self,deserialized, **kwargs):
+    def patch_obj(self, request, deserialized, **kwargs):
         
         logger.debug('deserialized: %r', deserialized)
         schema = self.build_schema()
@@ -1611,6 +1655,7 @@ class ResourceResource(ApiResource):
         
         cached = cache.get('resources')
         if not cached  or not self.use_cache:
+            logger.debug('not cached, get %r, %r', key, kwargs)
             resources = super(ResourceResource,self)._get_list_response(
                 request, **kwargs)
         else: 
@@ -1624,7 +1669,7 @@ class ResourceResource(ApiResource):
 
     @read_authorization
     def get_list(self,request,**kwargs):
- 
+        
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         # return self.build_list_response(request, **kwargs)
          
@@ -1638,6 +1683,7 @@ class ResourceResource(ApiResource):
             cache.set('resources', cached_content)
         else:
             logger.debug('using cached resources...')
+        logger.debug('kwargs: %r', kwargs)
         return self.build_response(request, cached_content, **kwargs)
         
     def get_resource_schema(self,key):
@@ -1770,7 +1816,7 @@ class ResourceResource(ApiResource):
                         'supertype: %r, not found in resources: %r', 
                         supertype, resources.keys())
             
-            resource['content_types'].append('csv')
+            resource.get('content_types',[]).append('csv')
         # TODO: extend with class specific implementations
             
         # TODO: pagination, sort, filter
@@ -1798,7 +1844,7 @@ class ResourceResource(ApiResource):
 
     @transaction.atomic()    
     @un_cache        
-    def delete_obj(self, deserialized, **kwargs):
+    def delete_obj(self, request, deserialized, **kwargs):
         
         id_kwargs = self.get_id(deserialized,**kwargs)
         logger.info('delete: %r', id_kwargs)
@@ -1806,7 +1852,7 @@ class ResourceResource(ApiResource):
     
     @transaction.atomic()    
     @un_cache        
-    def patch_obj(self,deserialized, **kwargs):
+    def patch_obj(self, request, deserialized, **kwargs):
         
         logger.info('patch_obj: %r', deserialized)
         schema = self.build_schema()
@@ -1819,7 +1865,7 @@ class ResourceResource(ApiResource):
                     fields[key].get('data_type','string')) 
         
         id_kwargs = self.get_id(deserialized,**kwargs)
-        logger.info('id_kwargs: %r', id_kwargs)
+        logger.debug('id_kwargs: %r', id_kwargs)
         try:
             field = None
             try:
@@ -2184,14 +2230,14 @@ class VocabularyResource(ApiResource):
         return result
     
     @transaction.atomic()    
-    def delete_obj(self, deserialized, **kwargs):
+    def delete_obj(self, request, deserialized, **kwargs):
         
         id_kwargs = self.get_id(deserialized,**kwargs)
         logger.debug('delete: %r', id_kwargs)
         MetaHash.objects.get(**id_kwargs).delete()
     
     @transaction.atomic()    
-    def patch_obj(self,deserialized, **kwargs):
+    def patch_obj(self, request, deserialized, **kwargs):
         
         schema = self.build_schema()
         fields = schema['fields']
@@ -2545,12 +2591,12 @@ class UserResource(ApiResource):
         return id_kwargs
     
     @transaction.atomic()    
-    def delete_obj(self, deserialized, **kwargs):
+    def delete_obj(self, request, deserialized, **kwargs):
         id_kwargs = self.get_id(deserialized,**kwargs)
         UserProfile.objects.get(**id_kwargs).delete()
     
     @transaction.atomic()    
-    def patch_obj(self,deserialized, **kwargs):
+    def patch_obj(self, request, deserialized, **kwargs):
 
         logger.debug('patch_obj: %r, %r', deserialized,kwargs)
         
@@ -2733,31 +2779,36 @@ class UserGroupResource(ApiResource):
         return name
     
     @transaction.atomic()    
-    def put_obj(self,deserialized, **kwargs):
+    def put_obj(self,request, deserialized, **kwargs):
         
         try:
-            self.delete_obj(deserialized, **kwargs)
+            self.delete_obj(request, deserialized, **kwargs)
         except ObjectDoesNotExist,e:
             pass 
         
-        return self.patch_obj(deserialized, **kwargs)
+        return self.patch_obj(request, deserialized, **kwargs)
     
     @write_authorization
     def delete_detail(self,deserialized, **kwargs):
-        deserialized = self._meta.serializer.deserialize(request)
+        if kwargs.get('data', None):
+            # allow for internal data to be passed
+            deserialized = kwargs['data']
+        else:
+            deserialized = self.deserialize(
+                request, format=kwargs.get('format', None))
         try:
-            self.delete_obj(deserialized, **kwargs)
+            self.delete_obj(request, deserialized, **kwargs)
             return HttpResponse(status=204)
         except ObjectDoesNotExist,e:
             return HttpResponse(status=404)
     
     @transaction.atomic()    
-    def delete_obj(self, deserialized, **kwargs):
+    def delete_obj(self, request, deserialized, **kwargs):
         name = self.find_name(deserialized,**kwargs)
         UserGroup.objects.get(name=name).delete()
     
     @transaction.atomic()    
-    def patch_obj(self,deserialized, **kwargs):
+    def patch_obj(self, request, deserialized, **kwargs):
 
         name = self.find_name(deserialized,**kwargs)
         
@@ -3491,623 +3542,9 @@ class PermissionResource(ApiResource):
             logger.exception('on get list')
             raise e  
 
-    def delete_obj(self, deserialized, **kwargs):
+    def delete_obj(self, request, deserialized, **kwargs):
         raise NotImplementedError('delete obj is not implemented for Permission')
     
-    def patch_obj(self,deserialized, **kwargs):
+    def patch_obj(self, request, deserialized, **kwargs):
         raise NotImplementedError('patch obj is not implemented for Permission')
     
-    
-    
-# class PermissionResourceOld(ManagedModelResource):
-#     
-#     usergroups = fields.ToManyField(
-#         'reports.api.UserGroupResource', 'usergroup_set', 
-#         related_name='permissions', blank=True, null=True)
-#     users = fields.ToManyField(
-#         'reports.api.UserResource', 'userprofile_set', 
-#         related_name='permissions', blank=True, null=True)
-#     
-#     groups = fields.CharField(attribute='groups', blank=True, null=True)
-# 
-#     is_for_group = fields.BooleanField(
-#         attribute='is_for_group', blank=True, null=True)
-#     is_for_user = fields.BooleanField(
-#         attribute='is_for_user', blank=True, null=True)
-# 
-#     class Meta:
-#         # note: the queryset for this resource is actually the permissions
-#         queryset = Permission.objects.all().order_by('scope', 'key')
-#         authentication = MultiAuthentication(
-#             BasicAuthentication(), SessionAuthentication())
-#         authorization= UserGroupAuthorization() #SuperUserAuthorization()        
-#         object_class = object
-#         
-#         ordering = []
-#         filtering = {}
-#         serializer = LimsSerializer()
-#         excludes = [] #['json_field']
-#         includes = [] 
-#         always_return_data = True # this makes Backbone happy
-#         resource_name='permission' 
-#     
-#     def __init__(self, **kwargs):
-#         super(PermissionResource,self).__init__(**kwargs)
-#         
-#         # create all of the permissions on startup
-#         resources = MetaHash.objects.filter(
-#             Q(scope='resource')|Q(scope__contains='fields.'))
-#         query = self._meta.queryset._clone()
-#         permissionTypes = Vocabularies.objects.all().filter(
-#             scope='permission.type')
-#         for r in resources:
-#             found = False
-#             for perm in query:
-#                 if perm.scope==r.scope and perm.key==r.key:
-#                     found = True
-#             if not found:
-#                 logger.debug('initialize permission: %r:%r'
-#                     % (r.scope, r.key))
-#                 for ptype in permissionTypes:
-#                     p = Permission.objects.create(
-#                         scope=r.scope, key=r.key, type=ptype.key)
-#                     logger.debug('bootstrap created permission %s' % p)
-# 
-#     def prepend_urls(self):
-#         return [
-#             url(r"^(?P<resource_name>%s)/(?P<id>[\d]+)%s$" 
-#                     % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-#             url((r"^(?P<resource_name>%s)/(?P<scope>[\w\d_.\-:]+)/"
-#                  r"(?P<key>[\w\d_.\-\+:]+)/(?P<type>[\w\d_.\-\+:]+)%s$" ) 
-#                         % (self._meta.resource_name, trailing_slash()), 
-#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-#             ]
-#     
-#     def get_object_list(self, request, **kwargs): #username=None, groupname=None):
-#         ''' 
-#         Called immediately before filtering, actually grabs the (ModelResource) 
-#         query - 
-#         Override this and apply_filters, so that we can control the 
-#         extra column "is_for_group":
-#         This extra column is present when navigating to permissions from a 
-#         usergroup; see prepend_urls.
-#         TODO: we could programmatically create the "is_for_group" column by 
-#         grabbing the entire queryset, converting to an array of dicts, and 
-#         adding this field    
-#         '''
-#         query = super(PermissionResource, self).get_object_list(request);
-#         if 'groupname' in kwargs:
-#             groupname = kwargs.pop('groupname')
-#             logger.info(str(('get_obj_list', groupname)))
-#             query = query.extra(select = {
-#                 'is_for_group': (
-#                     '( select count(*)>0 '
-#                     '  from reports_usergroup ug '
-#                     '  join reports_usergroup_permissions rup '
-#                        '  on(ug.id=rup.usergroup_id) '
-#                     ' where rup.permission_id=reports_permission.id '
-#                     ' and ug.name = %s )' ),
-#               },
-#               select_params = [groupname] )
-#             query = query.order_by('-is_for_group')
-#         if 'username' in kwargs:
-#             username = kwargs.pop('username')
-#             query = query.extra(select = {
-#                 'is_for_user': (
-#                     '( select count(*)>0 '
-#                     '  from reports_userprofile up '
-#                     '  join reports_userprofile_permissions rup '
-#                        '  on(up.id=rup.userprofile_id) '
-#                     ' where rup.permission_id=reports_permission.id '
-#                     ' and up.username = %s )' ),
-#               },
-#               select_params = [username] )
-#             query = query.order_by('-is_for_user')
-#         return query
-#     
-#     def apply_filters(self, request, applicable_filters, **kwargs):
-#         
-#         query = self.get_object_list(request, **kwargs)
-#         logger.info(str(('applicable_filters', applicable_filters)))
-#         filters = applicable_filters.get('filter')
-#         if filters:
-#             
-#             # Grab the groups/users filter out of the dict
-#             groups_filter_val = None
-#             users_filter_val = None
-#             for f in filters.keys():
-#                 if 'groups' in f:
-#                     groups_filter_val = filters.pop(f)
-#                 if 'userprofile' in f:
-#                     users_filter_val = filters.pop(f)
-# 
-#             query = query.filter(**filters)
-#             
-#             # then add the groups filter back in
-#             if groups_filter_val:
-#                 ids = [x.id for x in Permission.objects.filter(
-#                         usergroup__name__iexact=groups_filter_val)]
-#                 query = query.filter(id__in=ids)
-#             if users_filter_val:
-#                 ids = [x.id for x in Permission.objects.filter(
-#                         userprofile__username__iexact=users_filter_val)]
-#                 query = query.filter(id__in=ids)
-#             
-#         e = applicable_filters.get('exclude')
-#         if e:
-#             groups_filter_val = None
-#             users_filter_val = None
-#             for x in e.keys():
-#                 if 'userprofile' in x:
-#                     users_filter_val = e.pop(x)
-#                 if 'groups' in x:
-#                     groups_filter_val = e.pop(x)
-#             for exclusion_filter, value in e.items():
-#                 query = query.exclude(**{exclusion_filter: value})
-# 
-#             # then add the user/groups filter back in
-#             if groups_filter_val:
-#                 ids = [x.id for x in Permission.objects.filter(
-#                         usergroup__name__iexact=groups_filter_val)]
-#                 query = query.exclude(id__in=ids)
-#             if users_filter_val:
-#                 ids = [x.id for x in Permission.objects.filter(
-#                         userprofile__username__iexact=users_filter_val)]
-#                 query = query.exclude(id__in=ids)
-# 
-#         return query         
-# 
-#     def apply_sorting(self, obj_list, options):
-#         options = options.copy()
-#         # Override to exclude this field in the PostgresSortingResource 
-#         options['non_null_fields'] = ['groups','is_for_group','users','is_for_user'] 
-#         obj_list = super(PermissionResource, self).apply_sorting(
-#             obj_list, options)
-#         return obj_list
-# 
-#     def get_resource_uri(self, bundle_or_obj=None, url_name='api_dispatch_list'):
-#         return self.get_local_resource_uri(
-#             bundle_or_obj=bundle_or_obj, url_name=url_name)
-#     
-#     def obj_get(self, bundle, **kwargs):
-#         ''' 
-#         basically, if a permission is requested that does not exist, 
-#         it is created
-#         '''
-#         try:
-# #             logger.info(str(('lookup with kwargs', kwargs)))
-#             return super(PermissionResource, self).obj_get(bundle, **kwargs)
-#         except ObjectDoesNotExist:
-#             logger.info(str(('create permission on the fly', kwargs)))
-#             p = Permission(**kwargs)
-#             p.save()
-#             return p
-#     
-#     def build_schema(self):
-#         schema = super(PermissionResource,self).build_schema()
-#         temp = [ x.scope for x in self.Meta.queryset.distinct('scope')]
-#         schema['extraSelectorOptions'] = { 
-#             'label': 'Resource', 'searchColumn': 'scope', 'options': temp }
-#         return schema
-#         
-# 
-# KEY_QUERY_ALIAS_PATTERN = '_{key}'
-#
-# class ManagedLinkedResource(ManagedModelResource):
-#     ''' store resource virtual fields in a related table
-#     '''
-# 
-#     def __init__(self, **kwargs):
-#         super(ManagedLinkedResource,self).__init__(**kwargs)
-#         self.linked_field_defs = None
-#             
-#     def get_linked_fields(self, scope=None):
-#         '''
-#         Generate the resource fields that will be stored in the linked table
-#         '''
-#         if not self.linked_field_defs:
-#             
-#             schema = self.build_schema()
-#             _fields = schema['fields']
-#             resource = schema['resource_definition']
-#             
-#             self.linked_field_defs = { x: _fields[x] 
-#                 for x,y in _fields.items() 
-#                     if y.get('linked_field_value_field',None) }
-# 
-#             logger.debug(str(('lookup the module.model for each linked field', 
-#                 self.linked_field_defs.keys() )))
-#             for key,field_def in self.linked_field_defs.items():
-#                 
-#                 # Turn off dehydration for any of these fields that correspond 
-#                 # to the automatic ModelResource fields
-#                 if key in self.fields:
-#                     self.fields[key].use_in = None
-#                 
-#                 linked_field_module = field_def.get('linked_field_module', None)
-#                 if not linked_field_module:
-#                     linked_field_module = resource.get('linked_table_module', None)
-#                 if not linked_field_module:
-#                     raise Exception(str((
-#                         'no "linked_field_module" found in the field def', 
-#                         field_def, 
-#                         'no "linked_table_module" found in the resource def', 
-#                         resource)))
-#                     
-#                 if '.' in linked_field_module:
-#                     # Try to import.
-#                     module_bits = linked_field_module.split('.')
-#                     module_path, class_name = '.'.join(module_bits[:-1]), module_bits[-1]
-#                     module = importlib.import_module(module_path)
-#                 else:
-#                     # We've got a bare class name here, which won't work (No AppCache
-#                     # to rely on). Try to throw a useful error.
-#                     raise ImportError(
-#                         "linked_field_module requires a Python-style path "
-#                         "(<module.module.Class>) to lazy load related resources. "
-#                         "Only given '%s'." % linked_field_module )
-#         
-#                 module_class = getattr(module, class_name, None)
-#         
-#                 if module_class is None:
-#                     raise ImportError(
-#                         "Module '%s' does not appear to have a class called '%s'."
-#                              % (module_path, class_name))
-#                 else:
-#                     field_def['linked_field_model'] = module_class
-#                     field_def['meta_field_instance'] = \
-#                             MetaHash.objects.get(key=field_def['key'])
-# 
-#         return self.linked_field_defs
-#     
-#     @log_obj_create
-#     @transaction.atomic()
-#     def obj_create(self, bundle, **kwargs):
-#         
-#         bundle.obj = self._meta.object_class()
-# 
-#         for key, value in kwargs.items():
-#             setattr(bundle.obj, key, value)
-# 
-#         bundle = self.full_hydrate(bundle)
-#         
-#         # TODO: == make sure follows is in a transaction block
-#         ## OK if called in "patch list"; not in "put list", TP's implementation of
-#         ## "put list" has a "rollback" function instead of a tx block; so they
-#         ## are implementing their own tx: see:
-#         ## "Attempt to be transactional, deleting any previously created
-#         ##  objects if validation fails."
-#         
-#         bundle = self.save(bundle)
-# 
-#         logger.debug(str(('==== save_linked_fields', self.get_linked_fields().keys() )))
-#         
-#         simple_linked_fields = {
-#             k:v for (k,v) in self.get_linked_fields().items() if v.get('linked_field_module',None)}
-#         for key,item in simple_linked_fields.items():
-#             linkedModel = item.get('linked_field_model')
-#             val = bundle.data.get(key,None)
-#             field = self.fields[key]
-#             if val:
-#                 val = self._safe_get_field_val(key,field, val)
-#                 if item['linked_field_type'] != 'fields.ListField':
-#                     linkedObj = linkedModel()
-#                     self._set_value_field(linkedObj, bundle.obj, item, val)
-#                 else:
-#                     self._set_multivalue_field(linkedModel, bundle.obj, item, val)
-# 
-#         # complex fields: 
-#         # TODO: using a blank in 'linked_field_module' to indicate, this is abstruse
-#         complex_linked_fields = {
-#             k:v for (k,v) in self.get_linked_fields().items() if not v.get('linked_field_module',None)}
-#         if len(complex_linked_fields):
-#             # setup the linked model instance: some magic here - grab the model
-#             # from the *first* field, since -all- the complex fields have the same one
-#             linkedModel = complex_linked_fields.values()[0]['linked_field_model']
-#             linkedObj = linkedModel()
-#             setattr( linkedObj, 
-#                 complex_linked_fields.values()[0]['linked_field_parent'], bundle.obj)
-#             
-#             for key,item in complex_linked_fields.items():
-#                 val = bundle.data.get(key,None)
-#                 field = self.fields[key]
-#                 if val:
-#                     val = self._safe_get_field_val(key,field, val)
-#                     setattr( linkedObj, item['linked_field_value_field'], val)
-#             linkedObj.save()
-#                 
-#         
-#         return bundle
-#     
-#     def _safe_get_field_val(self, key,field, val):
-#         try:
-#             if hasattr(val, "strip"): # test if it is a string
-#                 val = smart_text(val,'utf-8', errors='ignore')
-#                 if isinstance( field, fields.ListField): 
-#                     val = (val,)
-#                 val = field.convert(val)
-#             # test if it is a sequence - only string lists are supported
-#             elif hasattr(val, "__getitem__") or hasattr(val, "__iter__"): 
-#                 val = [smart_text(x,'utf-8',errors='ignore') for x in val]
-#             return val
-#         except Exception, e:
-#             logger.exception('failed to convert %s with value "%s"' % (key,val))
-#             raise e
-# 
-#     def _set_value_field(self, linkedObj, parent, item, val):
-#         ## TODO: updates should be able to set fields to None
-#         
-#         setattr( linkedObj, item['linked_field_parent'], parent)
-#         
-#         if item.get('linked_field_meta_field', None):
-#             setattr( linkedObj,item['linked_field_meta_field'], item['meta_field_instance'])
-#         
-#         setattr( linkedObj, item['linked_field_value_field'], val)
-#         linkedObj.save()
-# 
-#     def _set_multivalue_field(self, linkedModel, parent, item, val):
-#         logger.info(str(('_set_multivalue_field', item['key'], linkedModel, parent, item, val)))
-#         if isinstance(val, six.string_types):
-#             val = (val) 
-#         for i,entry in enumerate(val):
-#             linkedObj = linkedModel()
-#             setattr( linkedObj, item['linked_field_parent'], parent)
-#             if item.get('linked_field_meta_field', None):
-#                 setattr( linkedObj,item['linked_field_meta_field'], item['meta_field_instance'])
-#             setattr( linkedObj, item['linked_field_value_field'], entry)
-#             if hasattr(linkedObj, 'ordinal'):
-#                 linkedObj.ordinal = i
-#             linkedObj.save()
-#     
-#     @log_obj_update
-#     def obj_update(self, bundle, skip_errors=False, **kwargs):
-#         """
-#         A linked_field specific version
-#         """
-#         bundle = self._locate_obj(bundle)
-#         
-#         bundle = self.full_hydrate(bundle)
-#         self.is_valid(bundle)
-#         if bundle.errors and not skip_errors:
-#             raise ImmediateHttpResponse(response=self.error_response(bundle.request, bundle.errors))
-# 
-#         bundle.obj.save()
-#         
-#         logger.info(str(('==== update_linked_fields', self.get_linked_fields().keys() )))
-# 
-#         simple_linked_fields = {
-#             k:v for (k,v) in self.get_linked_fields().items() if v.get('linked_field_module',None)}
-#         for key,item in simple_linked_fields.items():
-#             val = bundle.data.get(key,None)
-#             field = self.fields[key]
-#             
-#             if val:
-#                 val = self._safe_get_field_val(key,field, val)
-#                 linkedModel = item.get('linked_field_model')
-# 
-#                 params = { item['linked_field_parent']: bundle.obj }
-#                 if item.get('linked_field_meta_field', None):
-#                     params[item['linked_field_meta_field']] = item['meta_field_instance']
-# 
-#                 if item['linked_field_type'] != 'fields.ListField':
-#                     linkedObj = None
-#                     try: 
-#                         linkedObj = linkedModel.objects.get(**params)
-#                     except ObjectDoesNotExist:
-#                         logger.warn(str((
-#                             'update, could not find extant linked field for', 
-#                             bundle.obj, item['meta_field_instance'])))
-#                         linkedObj = linkedModel()
-#                     
-#                     self._set_value_field(linkedObj, bundle.obj, item, val)
-#                 else:
-#                     query = linkedModel.objects.filter( **params ) #.order_by('ordinal')
-#                     values = query.values_list(
-#                             item['linked_field_value_field'], flat=True)
-#                     if values == val:
-#                         pass
-#                     else:
-#                         query.delete()
-#                     self._set_multivalue_field(linkedModel, bundle.obj, item, val)
-#         
-#         # complex fields: 
-#         # TODO: using a blank in 'linked_field_module' to indicate, this is abstruse
-#         complex_linked_fields = {
-#             k:v for (k,v) in self.get_linked_fields().items() if not v.get('linked_field_module',None)}
-#         if len(complex_linked_fields):
-#             # setup the linked model instance: some magic here - grab the model
-#             # from the *first* field, since -all- the complex fields have the same one
-#             linkedModel = complex_linked_fields.values()[0]['linked_field_model']
-#             linkedObj = None
-#             try: 
-#                 linkedObj = linkedModel.objects.get(**{ 
-#                     item['linked_field_parent']: bundle.obj })
-#             except ObjectDoesNotExist:
-#                 logger.warn(str((
-#                     'update, could not find extant linked complex module for', 
-#                     bundle.obj)))
-#                 linkedObj = linkedModel()
-#                 setattr( linkedObj, item['linked_field_parent'], bundle.obj)
-#             
-#             for key,item in complex_linked_fields.items():
-#                 val = bundle.data.get(key,None)
-#                 field = self.fields[key]
-#                 if val:
-#                     val = self._safe_get_field_val(key,field, val)
-#                     setattr( linkedObj, item['linked_field_value_field'], val)
-#             linkedObj.save()
-#         
-#         return bundle
-#                 
-#     @log_obj_delete
-#     def obj_delete(self, bundle, **kwargs):
-#         if not hasattr(bundle.obj, 'delete'):
-#             try:
-#                 bundle.obj = self.obj_get(bundle=bundle, **kwargs)
-#             except ObjectDoesNotExist:
-#                 raise NotFound("A model instance matching the provided arguments could not be found.")
-# 
-#         self.authorized_delete_detail(self.get_object_list(bundle.request), bundle)
-# 
-#         # TODO: TEST
-#         logger.info(str(('==== delete_linked_fields', self.get_linked_fields().keys() )))
-#         linkedModel = item.get('linked_field_model')
-#         linkedModel.objects.filter(**{
-#             item['linked_field_parent']: bundle.obj }).delete()
-#         bundle.obj.delete()
-# 
-#     def full_dehydrate(self, bundle, for_list=False):
-#         # trigger get_linked_fields to turn off "use_in" for model fields
-#         self.get_linked_fields()
-#         bundle =  ManagedModelResource.full_dehydrate(self, bundle, for_list=for_list)
-#         return bundle
-#     
-#     def get_object_list(self, request):
-#         query = super(ManagedLinkedResource,self).get_object_list(request)
-#         
-#         # FIXME: SQL injection attack through metadata.  (at least to avoid inadvertant actions)
-#         # TODO: use SqlAlchemy http://docs.sqlalchemy.org/en/latest/core/expression_api.html
-#         extra_select = OrderedDict()
-#         # NOTE extra_tables cannot be used, because it creates an inner join
-#         #         extra_tables = set()
-#         extra_where = []
-#         extra_params = []
-#         for key,item in self.get_linked_fields().items():
-#             key_query_alias = KEY_QUERY_ALIAS_PATTERN.format(key=key)
-#             
-#             field_name = item.get('field_name', None)
-#             if not field_name:
-#                 field_name = item.get('linked_field_value_field',key)
-#             
-#             linkedModel = item.get('linked_field_model')
-#             field_table = linkedModel._meta.db_table
-#             
-#             parent_table = query.model._meta.db_table
-#             parent_table_key = query.model._meta.pk.name
-# 
-#             format_dict = {
-#                 'field_name': field_name, 
-#                 'field_table': field_table,
-#                 'linked_field_parent': item['linked_field_parent'],
-#                 'parent_table': parent_table,
-#                 'parent_table_key': parent_table_key }
-#             
-#             if item['linked_field_type'] != 'fields.ListField':
-#                 sql = ( 'select {field_name} from {field_table} {where}')
-#                 where = ('WHERE {field_table}.{linked_field_parent}_id'
-#                             '={parent_table}.{parent_table_key} ')
-#                 
-#                 if item.get('linked_field_meta_field', None):
-#                     format_dict['meta_field'] = item['linked_field_meta_field']
-#                     meta_field_id = getattr(item['meta_field_instance'], 'pk')
-#                     where += ' and {field_table}.{meta_field}_id=%s '
-#                     extra_params.append(meta_field_id)
-#                 format_dict['where'] = where.format(**format_dict)
-#                 sql = sql.format(**format_dict)
-#                 extra_select[key_query_alias] = sql
-#             if item['linked_field_type'] == 'fields.ListField':
-#                 sql = \
-# '''    (select $$["$$ || array_to_string(array_agg({field_name}), $$","$$) || $$"]$$
-#         from (select {field_name} from {field_table} 
-#         {where} {order_by}) a) '''
-#                 
-#                 where = ('WHERE {field_table}.{linked_field_parent}_id'
-#                             '={parent_table}.{parent_table_key} ')
-# 
-#                 if item.get('linked_field_meta_field', None):
-#                     format_dict['meta_field'] = item['linked_field_meta_field']
-#                     meta_field_id = getattr(item['meta_field_instance'], 'pk')
-#                     where += ' and {field_table}.{meta_field}_id=%s '
-#                     extra_params.append(meta_field_id)
-#                 else:
-#                     pass
-#                 
-#                 format_dict['order_by'] = ''
-#                 ordinal_field = item.get('ordinal_field', None)
-#                 if ordinal_field:
-#                     format_dict['order_by'] = ' ORDER BY %s ' % ordinal_field
-#                 format_dict['where'] = where.format(**format_dict)
-#                 sql = sql.format(**format_dict)
-#                 extra_select[key_query_alias] = sql
-# 
-#         query = query.extra(
-#             select=extra_select, where=extra_where,select_params=extra_params )
-#         logger.debug(str(('==== query', query.query.sql_with_params())))
-#         return query
-#      
-#     def dehydrate(self, bundle):
-#         try:
-#             keys_not_available = []
-#             for key,item in self.get_linked_fields().items():
-#                 key_query_alias = KEY_QUERY_ALIAS_PATTERN.format(key=key)
-#                 bundle.data[key] = None
-#                 if hasattr(bundle.obj, key_query_alias):
-#                     bundle.data[key] = getattr(bundle.obj, key_query_alias)
-#                     if bundle.data[key] and item['linked_field_type'] == 'fields.ListField':
-#                         bundle.data[key] = json.loads(bundle.data[key])
-#                 else:
-#                     keys_not_available.append(key_query_alias)
-#             if keys_not_available:
-#                 logger.error(str(('keys not available', keys_not_available)))
-#             return bundle
-#         except Exception, e:
-#             logger.exception('on dehydrate')
-#             raise e
-#         return bundle
-#             
-#     def dehydrate_inefficient(self, bundle):
-#         '''
-#         Note - dehydrate only to be used for small sets. 
-#         Looks each of the the fields up as separare query; should be able to modify
-#         the parent query and find these fields in it using ORM methods 
-#         (TODO: we will implement obj-get-list methods)
-#         '''
-#         try:
-#             for key,item in self.get_linked_fields().items():
-#                 bundle.data[key] = None
-#                 linkedModel = item.get('linked_field_model')
-#                 queryparams = { item['linked_field_parent']: bundle.obj }
-#                 if item.get('linked_field_meta_field', None):
-#                     queryparams[item['linked_field_meta_field']] = item['meta_field_instance']
-#                 if item['linked_field_type'] != 'fields.ListField':
-#                     try:
-#                         linkedObj = linkedModel.objects.get(**queryparams)
-#                         bundle.data[key] = getattr( linkedObj, item['linked_field_value_field'])
-#                     except ObjectDoesNotExist:
-#                         pass
-#                 else:
-#                     query = linkedModel.objects.filter(**queryparams)
-#                     if hasattr(linkedModel, 'ordinal'):
-#                         query = query.order_by('ordinal')
-#                     values = query.values_list(
-#                             item['linked_field_value_field'], flat=True)
-#                     if values and len(values)>0:
-#                         bundle.data[key] = list(values)
-#             return bundle
-#         except Exception, e:
-#             logger.exception('dehydrate')
-#             raise
-#         return bundle
-#     
-#     
-# class RecordResource(ManagedLinkedResource):
-#     ''' poc: store resource virtual fields in a related table
-#     '''
-#     class Meta:
-#         queryset = Record.objects.all()
-#         authentication = MultiAuthentication(
-#             BasicAuthentication(), SessionAuthentication())
-#         authorization= SuperUserAuthorization()        
-# 
-#         ordering = []
-#         filtering = {'scope':ALL}
-#         serializer = LimsSerializer()
-#         excludes = [] #['json_field']
-#         always_return_data = True # this makes Backbone happy
-#         resource_name='record' 
-# 
-#     def __init__(self, **kwargs):
-#         super(RecordResource,self).__init__(**kwargs)
-            
-

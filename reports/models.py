@@ -1,16 +1,17 @@
 from __future__ import unicode_literals
+
+from collections import OrderedDict
 import json
 import logging
 
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.cache import cache
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 from django.utils import timezone
-from tastypie.utils.dict import dict_strip_unicode_keys
 from django.utils.encoding import python_2_unicode_compatible
-from collections import OrderedDict
-from django.core.serializers.json import DjangoJSONEncoder
+from tastypie.utils.dict import dict_strip_unicode_keys
 
 
 logger = logging.getLogger(__name__)
@@ -26,8 +27,9 @@ class GetOrNoneManager(models.Manager):
                 return function(x)
             else:
                 return x
-        except self.model.DoesNotExist: # todo: check for better err to catch
+        except self.model.DoesNotExist: 
             return None
+
 
 class MetaManager(GetOrNoneManager):
 
@@ -38,7 +40,7 @@ class MetaManager(GetOrNoneManager):
                       clear=False):
         '''
         @param scope - i.e. the table to get field definitions for
-        @param field_definition_scope - i.e. where the field properties are defined
+        @param field_definition_scope - where the field properties are defined
         @param clear to clear the cache
 
         Query the metahash table for data identified by "scope", and fields 
@@ -59,7 +61,8 @@ class MetaManager(GetOrNoneManager):
                 scope=scope, field_definition_scope=field_definition_scope)
             cache.set('metahash:'+scope, metahash);
             logger.debug(
-                'get_and_parse done, for %r, hash found: %r', scope, metahash.keys())
+                'get_and_parse done, for %r, hash found: %r', 
+                scope, metahash.keys())
         else:
             logger.debug('retrieve the cached field definitions for %r',scope)
         return metahash
@@ -75,7 +78,8 @@ class MetaManager(GetOrNoneManager):
         this hash;
             e.g. "fields.field", or "fields.resource, or fields.vocabulary"
         '''
-        logger.debug('get_and_parse table field definitions for scope: %r, fds: %r',
+        logger.debug(
+            'get_and_parse table field definitions for scope: %r, fds: %r',
             scope, field_definition_scope)
         # try to make clear that the field definitions, though stored in the 
         # metahash as well, could be in a separate table
@@ -87,7 +91,8 @@ class MetaManager(GetOrNoneManager):
             return {}
         logger.debug('field_definition_table: %r', field_definition_table)
         # the objects themselves are stored in the metahash table as well
-        unparsed_objects = MetaHash.objects.all().filter(scope=scope).order_by('ordinal')
+        unparsed_objects = \
+            MetaHash.objects.all().filter(scope=scope).order_by('ordinal')
         logger.debug('unparsed_objects: %r', unparsed_objects)
         parsed_objects = OrderedDict()
         for unparsed_object in unparsed_objects:
@@ -99,10 +104,6 @@ class MetaManager(GetOrNoneManager):
             
             # NOTE: choices for the "vocabulary_scope_ref" are being stored 
             # here for convenience
-            # now check if the field uses controlled vocabulary, look that up now.  
-            # TODO: "vocabulary_scope_ref" should be a constant
-            # TODO: "vocabulary_scope_ref" needs to be created by default as a 
-            # metahash:field; this argues for making it a "real" field
             
             if parsed_object.get(u'vocabulary_scope_ref'):
                 vocab_ref = parsed_object['vocabulary_scope_ref']
@@ -111,14 +112,15 @@ class MetaManager(GetOrNoneManager):
                     x.key for x in Vocabulary.objects.all().filter(
                         scope=vocab_ref)]
             
-            parsed_objects[unparsed_object.key] = dict_strip_unicode_keys(parsed_object)
+            parsed_objects[unparsed_object.key] = \
+                dict_strip_unicode_keys(parsed_object)
 
         return parsed_objects
 
 
 API_ACTION_POST = 'POST'
 API_ACTION_PUT = 'PUT'
-# NOTE: "CREATE" is not a REST verb - use to distinguish PATCH/modify, PATCH/create
+# NOTE: "CREATE" - to distinguish PATCH/modify, PATCH/create
 API_ACTION_CREATE = 'CREATE' 
 API_ACTION_PATCH = 'PATCH'
 API_ACTION_DELETE = 'DELETE'
@@ -135,18 +137,19 @@ class ApiLog(models.Model):
     user_id = models.IntegerField(null=False)
     username = models.CharField(null=False, max_length=128)
 
-    # name of the resource, i.e. "apilog" or "screen", "user", etc.
-    ref_resource_name = models.CharField(null=False, max_length=128, db_index=True)
+    # Name of the resource, i.e. "apilog" or "screen", "user", etc.
+    ref_resource_name = models.CharField(
+        null=False, max_length=128, db_index=True)
 
-    # full public key of the resource instance being logged (may be composite, 
+    # Full public key of the resource instance being logged (may be composite, 
     # separted by '/')
     key = models.CharField(null=False, max_length=128, db_index=True)
     
-    # the full uri of the resource instance being logged, so a combination of 
-    # [base api uri]/[resource_name]/[key]
+    # Full uri of the resource instance being logged, 
+    # a combination of [base api uri]/[resource_name]/[key]
     uri = models.TextField(null=False)
     
-    # date and time of the update; this is the key for the apilog record
+    # Date and time of the update; this is the key for the apilog record
     date_time = models.DateTimeField(null=False)
     
     api_action = models.CharField(
@@ -204,7 +207,10 @@ class ApiLog(models.Model):
             self.removed_keys = self.json_dumps(log['removed_keys'])
         if 'diff_keys' in log:
             self.diff_keys = self.json_dumps(log['diff_keys'])
+        if 'diffs' in log:
             self.diffs = self.json_dumps(log['diffs'])
+
+        logger.debug('added: %r, log: %r', self.added_keys, log)
 
 
 class ListLog(models.Model):
@@ -241,15 +247,15 @@ class MetaHash(models.Model):
     alias = models.CharField(max_length=64)
     ordinal = models.IntegerField();
 
-    # required if the record represents a JSON field; choices are from the TastyPie 
-    # field types
+    # Required if the record represents a JSON field; 
+    # choices are from the TastyPie field types
     json_field_type = models.CharField(max_length=128, null=True); 
     
     # This is the "meta" field, it contains "virtual" json fields
     json_field = models.TextField(null=True) 
 
-    # required if the record represents a linked  field; choices are from the TastyPie 
-    # field types
+    # Required if the record represents a linked field; 
+    # choices are from the TastyPie field types
     linked_field_type = models.CharField(
         max_length=128, null=True); 
     
@@ -301,7 +307,8 @@ class MetaHash(models.Model):
             json or 'real'
         '''
         assert scope, (
-            'Must define the scope (used to query the field definitions in the metahash)')
+            'Must define the scope (used to query the field definitions '
+            'in the metahash)')
         fields = MetaHash.objects.get_and_parse(scope=scope)
         dict = {}
         for key in fields.keys():
@@ -380,9 +387,10 @@ class UserGroup(models.Model):
     # Super Groups: 
     # - inherit permissions from super_groups, this group is a sub_group to them
     # - inherit users from sub_groups, this group is a super_group to them
-    # NOTE: we are creating an "adjacency-tree" here; this can be non-performant
+    # NOTE: Creates an "adjacency-tree" here; this can be non-performant
     # for large trees - which is not expected here; and it also requires use
-    # of postgres-specific "array" types and operators (see reports.api.UserGroupResource)
+    # of postgres-specific "array" types and operators 
+    # (see reports.api.UserGroupResource).
     # The trade-off here is in simplicity of maintenance.
     # see "SQL antipatterns" for more discussion.
     super_groups = models.ManyToManyField('self', symmetrical=False, 
@@ -432,9 +440,9 @@ class UserProfile(models.Model):
     objects = MetaManager()
     
     # link to django.contrib.auth.models.User, note: allow null so that it
-    # can be created at the same time, but it is not allowed to be null in practice
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, null=True, on_delete=models.CASCADE) #, null=True) 
-    # user = models.OneToOneField(User, null=True, on_delete=models.SET_NULL) #, null=True) 
+    # can be created at the same time, but not null in practice
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.CASCADE) 
     
     # will mirror the auth_user.username field
     username = models.TextField(null=False, unique=True) 
@@ -475,10 +483,6 @@ class UserProfile(models.Model):
         return ('UserProfile: { ecommons_id: %r, username: %r, auth_user: %r }'
             % (self.ecommons_id, self.username, self.user )) 
     
-#     def __unicode__(self):
-#         return ('UserProfile: { ecommons_id: %r, username: %r, auth_user: %r }'
-#             % (self.ecommons_id, self.username, self.user )) 
-#     
     def get_field_hash(self):
         if self.json_field:
             return json.loads(self.json_field)
@@ -514,87 +518,87 @@ class UserProfile(models.Model):
     
 
 
+# # 
+# ## proof-of-concept: Typed Record table with virtual field support:
+# # 
+# # This is a particular case of the Metahash:fields/resources tables.  
+# # Instead of having "virtual" fields be in the json_field, in this case they will
+# # stored in the child RecordValue table
+# ## There will be one "Record" or Parent table for every node in the schema graph.
+# ## Each RecordTable will have a RecordValue table
+# class Record(models.Model):
+#     # some fields will always be better to store on the Record table.  we'll want
+#     # to indicate this as well in the Metahash.  
+#     base_value1 = models.TextField()
+#     
+#     # the scope key points to the particular type of resource represented
+#     # when joining with the RecordValue table, we will get the field key we 
+#     # want by finding the "fields" for this scope in the Metahash:fields table
+#     scope = models.CharField(max_length=64)
+#     
+# class RecordValue(models.Model):
+#     # name of the parent field will be stored in the meta hash
+#     parent = models.ForeignKey('Record')
+#     # this field links to the column definition
+#     field_meta = models.ForeignKey('Metahash')
+#     # name of the value field will be stored in the meta hash
+#     value = models.TextField(null=True)
 # 
-## proof-of-concept: Typed Record table with virtual field support:
+#     
+# class RecordMultiValue(models.Model):
+#     # name of the parent field will be stored in the meta hash
+#     parent = models.ForeignKey('Record')
+#     # this field links to the column definition
+#     field_meta = models.ForeignKey('Metahash')
+#     # name of the value field will be stored in the meta hash
+#     value = models.TextField()
+#     ordinal = models.IntegerField()
 # 
-# This is a particular case of the Metahash:fields/resources tables.  
-# Instead of having "virtual" fields be in the json_field, in this case they will
-# stored in the child RecordValue table
-## There will be one "Record" or Parent table for every node in the schema graph.
-## Each RecordTable will have a RecordValue table
-class Record(models.Model):
-    # some fields will always be better to store on the Record table.  we'll want
-    # to indicate this as well in the Metahash.  
-    base_value1 = models.TextField()
-    
-    # the scope key points to the particular type of resource represented
-    # when joining with the RecordValue table, we will get the field key we 
-    # want by finding the "fields" for this scope in the Metahash:fields table
-    scope = models.CharField(max_length=64)
-    
-class RecordValue(models.Model):
-    # name of the parent field will be stored in the meta hash
-    parent = models.ForeignKey('Record')
-    # this field links to the column definition
-    field_meta = models.ForeignKey('Metahash')
-    # name of the value field will be stored in the meta hash
-    value = models.TextField(null=True)
-
-    
-class RecordMultiValue(models.Model):
-    # name of the parent field will be stored in the meta hash
-    parent = models.ForeignKey('Record')
-    # this field links to the column definition
-    field_meta = models.ForeignKey('Metahash')
-    # name of the value field will be stored in the meta hash
-    value = models.TextField()
-    ordinal = models.IntegerField()
-
-    class Meta:
-        unique_together = (('field_meta', 'parent', 'ordinal'))    
-    
-class RecordValueComplex(models.Model):
-    '''
-    This class exists to model extant complex linked tables, i.e. SMR, RNAi
-    '''
-    
-    # name of the parent field will be stored in the meta hash
-    parent = models.OneToOneField('Record', unique=True)
-    # name of the value field will be stored in the meta hash
-    value1 = models.TextField(null=True)
-    value2 = models.TextField(null=True)
-
-class Job(models.Model):
-    # POC: 20141128
-    # Version 0.1: for processing large uploaded files
-    
-    # Client information
-    remote_addr = models.TextField(null=True)
-    request_method = models.TextField(null=True)
-    
-    # original path info, used by job process to submit full job to endpoint
-    path_info = models.TextField(null=True)
-    
-    # user comment on post
-    comment = models.TextField(null=True);
-    
-    # 0.1: original POST input is saved to this file
-    input_filename = models.TextField(null=True)
-    
-    date_time_fullfilled = models.DateTimeField(null=True) 
-    date_time_processing = models.DateTimeField(null=True) 
-    date_time_requested = models.DateTimeField(null=False, default=timezone.now) 
-
-    # if the response is large, save to a temp file
-    response_filename = models.TextField(null=True)
-    
-    # store response to field
-    response_content = models.TextField(null=True)
-    
-    # HTTP response code, saved from the endpoint job submission on completion
-    response_code = models.IntegerField();
-    
-    def __unicode__(self):
-        return unicode(str((self.id, self.path_info, self.date_time_requested)))
-    
-    
+#     class Meta:
+#         unique_together = (('field_meta', 'parent', 'ordinal'))    
+#     
+# class RecordValueComplex(models.Model):
+#     '''
+#     This class exists to model extant complex linked tables, i.e. SMR, RNAi
+#     '''
+#     
+#     # name of the parent field will be stored in the meta hash
+#     parent = models.OneToOneField('Record', unique=True)
+#     # name of the value field will be stored in the meta hash
+#     value1 = models.TextField(null=True)
+#     value2 = models.TextField(null=True)
+# 
+# class Job(models.Model):
+#     # POC: 20141128
+#     # Version 0.1: for processing large uploaded files
+#     
+#     # Client information
+#     remote_addr = models.TextField(null=True)
+#     request_method = models.TextField(null=True)
+#     
+#     # original path info, used by job process to submit full job to endpoint
+#     path_info = models.TextField(null=True)
+#     
+#     # user comment on post
+#     comment = models.TextField(null=True);
+#     
+#     # 0.1: original POST input is saved to this file
+#     input_filename = models.TextField(null=True)
+#     
+#     date_time_fullfilled = models.DateTimeField(null=True) 
+#     date_time_processing = models.DateTimeField(null=True) 
+#     date_time_requested = models.DateTimeField(null=False, default=timezone.now) 
+# 
+#     # if the response is large, save to a temp file
+#     response_filename = models.TextField(null=True)
+#     
+#     # store response to field
+#     response_content = models.TextField(null=True)
+#     
+#     # HTTP response code, saved from the endpoint job submission on completion
+#     response_code = models.IntegerField();
+#     
+#     def __unicode__(self):
+#         return unicode(str((self.id, self.path_info, self.date_time_requested)))
+#     
+#     

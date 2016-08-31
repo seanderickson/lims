@@ -9,8 +9,8 @@ vendor_identifier,fields.screenresult,reagent,,6,,TRUE,"The vendor-assigned iden
 assay_well_control_type,fields.screenresult,assay_well,,20,,TRUE,"The type of assay well control","Assay Well Control Type",TRUE,,assaywell.control_type,[l;d],string,,,select,,
 screen_facility_id,fields.screenresult,screen,facility_id,21,,TRUE,"The facility-assigned ID of the cherry pick request's screen","Screen ID",TRUE,,,[d],string,link,"{ 'hrefTemplate': '#screen/{screen_facility_id}' }",,,
 screen_title,fields.screenresult,screen,title,22,,TRUE,"The screen title","Screen Title",TRUE,,,,string,,,,,
-mouseover,fields.screenresult,custom,,22,"Note that this field is calculated in the ScreenResultResource as well",FALSE,"Pop up text","Pop up text",FALSE,,,,string,,,,,"{screen_facility_id}: {screen_title} - {name}"
+mouseover,fields.screenresult,custom,,22,"Note that this field is calculated in the ScreenResultResource as well",FALSE,"Pop up text","Pop up text",FALSE,,,,string,,,,,
 is_positive,fields.screenresult,assay_well,,22,,TRUE,"Is the Assay Well flagged as positive","Assay Well Positive",TRUE,,,[d],boolean,,,,,
-confirmed_positive_value,fields.screenresult,assay_well,,23,,TRUE,"Confirmed positive indicator","Confirmed Positive",TRUE,,assaywell.confirmed_positive_indicator,[d],string,,,,,
+confirmed_positive_value,fields.screenresult,assay_well,,23,,TRUE,"Confirmed positive indicator","Confirmed Positive",TRUE,,resultvalue.confirmed_positive_indicator,[d],string,,,,,
 resource_uri,fields.screenresult,custom,,24,,TRUE,"Resource URI","Resource URI",TRUE,,,,string,,,,,/screenresult/{screen_facility_id}/{well_id}
 exclude,fields.screenresult,custom,,25,,TRUE,"Excluded Cols",Excluded,TRUE,,,[d],list,,,select,,

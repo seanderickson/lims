@@ -65,7 +65,7 @@ from db.support.screen_result_importer import PARTITION_POSITIVE_MAPPING, \
     CONFIRMED_POSITIVE_MAPPING
 from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, \
-    LIST_BRACKETS, HTTP_PARAM_RAW_LISTS, HEADER_APILOG_COMMENT
+    LIST_BRACKETS, HTTP_PARAM_RAW_LISTS, HEADER_APILOG_COMMENT, ValidationError
 from reports import ValidationError, InformationError, _now
 from reports.api import ApiLogResource, \
     UserGroupAuthorization, \
@@ -75,7 +75,7 @@ from reports.api import ApiLogResource, \
     write_authorization, read_authorization
 from reports.api_base import un_cache
 from reports.models import Vocabulary, ApiLog, UserProfile, \
-    API_ACTION_DELETE, API_ACTION_PUT, API_ACTION_PATCH
+    API_ACTION_DELETE, API_ACTION_PUT, API_ACTION_PATCH, API_ACTION_CREATE
 from reports.serialize import parse_val, XLSX_MIMETYPE, SDF_MIMETYPE, \
     XLS_MIMETYPE, JSON_MIMETYPE, CSV_MIMETYPE
 from reports.serialize.csvutils import string_convert
@@ -107,28 +107,43 @@ class PlateLocationResource(ApiResource):
         authorization = UserGroupAuthorization()
         resource_name = 'platelocation'
         serializer = LimsSerializer()
+        always_return_data = True 
         
     def __init__(self, **kwargs):
         super(PlateLocationResource, self).__init__(**kwargs)
-
+        
+        self.lcp_resource = None
+        
+    def get_librarycopyplate_resource(self):
+        if not self.lcp_resource:
+            self.lcp_resource = LibraryCopyPlateResource()
+        return self.lcp_resource
+    
     def prepend_urls(self):
 
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('get_schema'), name="api_get_schema"),
-            url(r"^(?P<resource_name>%s)/(?P<room>[\w\d_\-]+)"
-                r"/(?P<freezer>[\w\d_\-]+)"
-                r"/(?P<shelf>[\w\d_\-]+)"
-                r"/(?P<bin>[\w\d]+)%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<room>[\w \-<>]+)"
+                r"/(?P<freezer>[\w \-<>]+)"
+                r"/(?P<shelf>[\w \-<>]+)"
+                r"/(?P<bin>[\w <>]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()),
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-        ]
+                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),]
 
     def get_detail(self, request, **kwargs):
-
+        
+        logger.info('kwargs: %r', kwargs)
+        
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
         kwargs['is_for_detail'] = True
+
+        kwargs['room__eq'] = kwargs.pop('room', None)
+        kwargs['freezer__eq'] = kwargs.pop('freezer', None)
+        kwargs['shelf__eq'] = kwargs.pop('shelf', None)
+        kwargs['bin__eq'] = kwargs.pop('bin', None)
+        
         return self.build_list_response(request, **kwargs)
         
     @read_authorization
@@ -147,24 +162,13 @@ class PlateLocationResource(ApiResource):
         is_for_detail = kwargs.pop('is_for_detail', False)
         filename = self._get_filename(schema, kwargs)
         
-        room = param_hash.pop('room',
-            param_hash.get('room__eq', None))
-        
-        freezer = param_hash.pop('freezer',
-            param_hash.get('freezer__eq', None))
-        
-        shelf = param_hash.pop('shelf',
-            param_hash.get('shelf__eq', None))
-        
-        bin = param_hash.pop('bin',
-            param_hash.get('bin__eq', None))
-        
         try:
             
             # general setup
           
             manual_field_includes = set(param_hash.get('includes', []))
-
+            manual_field_includes.add('plate_location_id')
+            
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
@@ -191,13 +195,21 @@ class PlateLocationResource(ApiResource):
             _l = self.bridge['library']
 
             custom_columns = {
-                'plates': (
+                'plate_count': (
                     select([func.count()])
                         .select_from(_p)
-                        .where(
-                            _p.c.plate_location_id
-                                ==literal_column('plate_location.plate_location_id')))
-                    };
+                        .where(_p.c.plate_location_id
+                            ==literal_column('plate_location.plate_location_id'))),
+                'libraries': (
+                    select([func.array_to_string(
+                        func.array_agg(distinct(_l.c.short_name)), 
+                        LIST_DELIMITER_SQL_ARRAY)])
+                        .select_from(
+                            _l.join(_c,_l.c.library_id==_c.c.library_id)
+                                .join(_p,_p.c.copy_id==_c.c.copy_id))
+                        .where(_p.c.plate_location_id
+                            ==literal_column('plate_location.plate_location_id')))
+            };
 
             base_query_tables = ['plate', 'copy', 'plate_location', 'library']
 
@@ -206,11 +218,6 @@ class PlateLocationResource(ApiResource):
                 custom_columns=custom_columns)
             # build the query statement
 
-#             j = join(_pl, _p, _p.c.plate_location_id == _pl.c.plate_location_id,
-#                      isouter=True)
-#             j = join(_p, _c, _p.c.copy_id == _c.c.copy_id)
-#             j = j.join(_l, _c.c.library_id == _l.c.library_id)
-            
             stmt = select(columns.values()).select_from(_pl)
 
             # general setup
@@ -228,6 +235,94 @@ class PlateLocationResource(ApiResource):
                         dialect=postgresql.dialect(),
                         compile_kwargs={"literal_binds": True})))
 
+
+            # create a generator to wrap the cursor and expand copy_plates ranges
+            def create_copy_plate_ranges_gen(generator):
+                bridge = self.bridge
+                _library = self.bridge['library']
+                _lcp = self.bridge['plate']
+                _cp = self.bridge['copy']
+                lcp_query = (
+                    select([ 
+                        _library.c.short_name,
+                        _cp.c.name,
+                        _lcp.c.plate_number
+                     ])
+                    .select_from(
+                        _lcp.join(_cp, _cp.c.copy_id == _lcp.c.copy_id)
+                            .join(
+                                _library,
+                                _library.c.library_id == _cp.c.library_id))
+                    .where(_lcp.c.plate_location_id == text(':plate_location_id'))
+                    .group_by(
+                        _library.c.short_name, _cp.c.name, _lcp.c.plate_number)
+                    .order_by(
+                        _library.c.short_name, _cp.c.name, _lcp.c.plate_number))
+                logger.debug('lcp_query: %r', str(lcp_query.compile()))
+                
+
+                def copy_plate_ranges_generator(cursor):
+                    if generator:
+                        cursor = generator(cursor)
+                    class Row:
+                        def __init__(self, row):
+                            self.row = row
+                            self.entries = []
+                            plate_location_id = row['plate_location_id']
+                            query = conn.execute(
+                                lcp_query, plate_location_id=plate_location_id)
+                            copy = None
+                            start_plate = None
+                            end_plate = None
+                            for x in query:
+                                if not copy:
+                                    copy = x[1]
+                                    library = x[0]
+                                if not start_plate:
+                                    start_plate = end_plate = x[2]
+                                if (x[0] != library 
+                                    or x[1] != copy 
+                                    or x[2] > end_plate + 1):
+                                    # start a new range, save old range
+                                    if start_plate != end_plate:
+                                        self.entries.append('%s:%s:%s-%s'
+                                            % (library, copy, start_plate, end_plate))
+                                    else:
+                                        self.entries.append('%s:%s:%s'
+                                            % (library, copy, start_plate))
+                                    start_plate = end_plate = x[2]
+                                    copy = x[1]
+                                    library = x[0]
+                                else:
+                                    end_plate = x[2]
+                            if copy: 
+                                self.entries.append('%s:%s:%s-%s'
+                                    % (library, copy, start_plate, end_plate))
+                                    
+                        def has_key(self, key):
+                            if key == 'copy_plate_ranges': 
+                                return True
+                            return self.row.has_key(key)
+                        def keys(self):
+                            return self.row.keys();
+                        def __getitem__(self, key):
+                            if key == 'copy_plate_ranges':
+                                return self.entries
+                            else:
+                                return self.row[key]
+                    conn = get_engine().connect()
+                    try:
+                        for row in cursor:
+                            yield Row(row)
+                    finally:
+                        conn.close()
+                        
+                return copy_plate_ranges_generator
+            
+            if 'copy_plate_ranges' in field_hash:
+                
+                rowproxy_generator = create_copy_plate_ranges_gen(rowproxy_generator)
+
             title_function = None
             if param_hash.get(HTTP_PARAM_USE_TITLES, False):
                 title_function = lambda key: field_hash[key]['title']
@@ -238,11 +333,147 @@ class PlateLocationResource(ApiResource):
                 is_for_detail=is_for_detail,
                 rowproxy_generator=rowproxy_generator,
                 title_function=title_function)
-            
-                        
+
         except Exception, e:
             logger.exception('on get list')
             raise e   
+
+    @un_cache        
+    def put_detail(self, request, **kwargs):
+        raise NotImplementedError('put_detail must be implemented')
+
+    def patch_obj(self, request, deserialized, **kwargs):
+
+        logger.info('patch platelocation, kwargs: %r', kwargs)
+        
+        schema = self.build_schema()
+        fields = schema['fields']
+        initializer_dict = {}
+
+        for key in fields.keys():
+            if deserialized.get(key, None) is not None:
+                initializer_dict[key] = parse_val(
+                    deserialized.get(key, None), key, fields[key]['data_type']) 
+
+        logger.debug('initializer_dict: %r', initializer_dict)
+
+        id_kwargs = self.get_id(deserialized, **kwargs)
+        lookup = ['room','freezer','shelf','bin']
+        if not id_kwargs:
+            raise ValidationError({
+                k:'required' for k in lookup })
+        with transaction.atomic():
+            try:
+                plate_location = PlateLocation.objects.get(**id_kwargs)
+            except ObjectDoesNotExist:
+                logger.info('plate location does not exist, creating: %r',
+                    id_kwargs)
+                plate_location = PlateLocation.objects.create(**id_kwargs)
+            
+            copy_plate_ranges = deserialized.get(
+                'copy_plate_ranges', [])
+            if copy_plate_ranges:
+                all_plates = self._find_plates(copy_plate_ranges)
+                # get the old plate locations, for logging
+                old_copyplate_data = []
+                
+                for plate in set(all_plates) | set(plate_location.plate_set.all()):
+                    plate_dict = {
+                        'copy_name': plate.copy.name,
+                        'plate_number': str(plate.plate_number).zfill(5)
+                    }
+                    if plate.plate_location:
+                        plate_dict.update(model_to_dict(plate.plate_location))
+                    old_copyplate_data.append(plate_dict)
+                
+                plate_location.plate_set = all_plates
+                plate_location.save()
+                
+                new_copyplate_data = []
+                for plate in set(all_plates) | set(plate_location.plate_set.all()):
+                    plate_dict = {
+                        'copy_name': plate.copy.name,
+                        'plate_number': str(plate.plate_number).zfill(5)
+                    }
+                    if plate.plate_location:
+                        plate_dict.update(model_to_dict(plate.plate_location))
+                    new_copyplate_data.append(plate_dict)
+
+                logger.info('log copyplate patches for platelocation...')
+                self.get_librarycopyplate_resource().log_patches( 
+                    request,old_copyplate_data, new_copyplate_data, 
+                    **{'full': True } )
+            else:
+                raise ValidationError(key='copy_plate_ranges', msg='required')
+
+        return plate_location
+
+    def _find_plates(self, copy_plate_ranges):
+        logger.info('find copy_plate_ranges: %r', copy_plate_ranges)
+        # parse library_plate_ranges
+        schema = self.build_schema()
+        
+        # E.G. Regex: /(([^:]+):)?(\w+):(\d+)-(\d+)/
+        regex_string = schema['fields']['copy_plate_ranges']['regex']
+        matcher = re.compile(regex_string)
+        
+        # Expand the copy_plate_ranges
+        new_copy_plate_ranges = []
+        for copy_plate_range in copy_plate_ranges:
+            match = matcher.match(copy_plate_range)
+            if not match:
+                raise ValidationError(
+                    key='copy_plate_ranges',
+                    msg=('%r does not match pattern: %s' 
+                        % (copy_plate_range, regex_string)))
+                break
+            else:
+                start_plate = int(match.group(4))
+                if match.group(6):
+                    end_plate = int(match.group(6))
+                else:
+                    end_plate = start_plate
+                new_copy_plate_ranges.append({
+                    'library_short_name': match.group(2),
+                    'copy_name': match.group(3),
+                    'start_plate': start_plate,
+                    'end_plate': end_plate,
+                     })
+        copy_plate_ranges = new_copy_plate_ranges
+        
+        # validate/find the plate ranges
+        logger.info(
+            'get the referenced plates for: %r', copy_plate_ranges)
+        all_plates = set()
+        plates_changed_location = {}
+        for _data in copy_plate_ranges:
+            try:
+                copy_name = _data['copy_name']
+                library_short_name = _data['library_short_name']
+                copy = Copy.objects.get(
+                    name=copy_name,
+                    library__short_name=library_short_name)
+            except ObjectDoesNotExist:
+                raise ValidationError(
+                    key='library_plates_screened',
+                    msg='{copy} does not exist: {val}'.format(
+                        copy=copy_name,
+                        val=str(_data)))
+            try:
+                plate_range = Plate.objects.all().filter(
+                    copy=copy,
+                    plate_number__range=[_data['start_plate'],_data['end_plate']])
+                for plate in plate_range:
+                    all_plates.add(plate)
+            except ObjectDoesNotExist:
+                raise ValidationError(
+                    key='copy_plate_ranges',
+                    msg=('plate range not found: {start_plate}-{end_plate}'
+                        ).format(**_data))
+        
+        logger.debug('all plate keys: %r', [
+            x for x in sorted(all_plates,key=lambda x: x.plate_number)])
+        return all_plates
         
 class LibraryCopyPlateResource(ApiResource):
 
@@ -259,31 +490,44 @@ class LibraryCopyPlateResource(ApiResource):
         always_return_data = True 
 
     def __init__(self, **kwargs):
+        
         super(LibraryCopyPlateResource, self).__init__(**kwargs)
-
+        self.plate_location_resource = None
+        
+    def get_platelocation_resource(self):
+        
+        if not self.plate_location_resource:
+            self.plate_location_resource = PlateLocationResource()
+        return self.plate_location_resource
+        
+        
     def prepend_urls(self):
 
         return [
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('get_schema'), name="api_get_schema"),
+            url(r"^(?P<resource_name>%s)/batch_edit%s$" 
+                % (self._meta.resource_name, trailing_slash()),
+                self.wrap_view('batch_edit'), name="api_lcp_batch_edit"),
             url(r"^(?P<resource_name>%s)/search/(?P<search_ID>[\d]+)%s$" 
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('search'), name="api_search"),
-            url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w\d_.\-\+: ]+)"
-                r"/(?P<copy_name>[\w\d_.\-\+: ]+)"
+            url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w.\-\+: ]+)"
+                r"/(?P<copy_name>[\w.\-\+: ]+)"
                 r"/(?P<plate_number>[\d]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url(r"^(?P<resource_name>%s)"
-                r"/(?P<copy_name>[\w\d_.\-\+: ]+)"
+                r"/(?P<copy_name>[\w.\-\+: ]+)"
                 r"/(?P<plate_number>[\d]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
 
     def get_detail(self, request, **kwargs):
-
+        
+        logger.info('kwargs: %r', kwargs)
         library_short_name = kwargs.get('library_short_name', None)
         if not library_short_name:
             logger.info('no library_short_name provided')
@@ -346,14 +590,15 @@ class LibraryCopyPlateResource(ApiResource):
             (filter_expression, filter_fields) = \
                 SqlAlchemyResource.build_sqlalchemy_filters(
                     schema, param_hash=param_hash)
-            logger.info(
-                'filter_expression: %r, loaded_for_screen_id: %r, for_screen_id: %r',
+            logger.debug(
+                'filter_expression: %r, loaded_for_screen_id: %r, '
+                'for_screen_id: %r',
                 filter_expression, loaded_for_screen_id, for_screen_id)
             if (filter_expression is None
                     and for_screen_id is None and loaded_for_screen_id is None):
                 raise InformationError(
-                    key='Input filters ',
-                    msg='can only service requests with filter expressions')
+                    key='Filter Data',
+                    msg='Please enter a filter expression to begin')
                  
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
@@ -514,6 +759,228 @@ class LibraryCopyPlateResource(ApiResource):
             schema['extraSelectorOptions'] = { 
                 'label': 'Type', 'searchColumn': 'status', 'options': temp }
         return schema
+
+    @un_cache
+    @transaction.atomic
+    def batch_edit(self, request, **kwargs):
+        '''
+        Batch edit is like patch, except:
+        - bypasses the "dispatch" framework call
+        -- must be authenticated and authorized
+        '''
+        self.is_authenticated(request)
+        if not self._meta.authorization._is_resource_authorized(
+                self._meta.resource_name,request.user,'write'):
+            raise ImmediateHttpResponse(
+                response=HttpForbidden(
+                    'user: %s, permission: %s/%s not found' 
+                    % (request.user,self._meta.resource_name,'write')))
+
+        param_hash = {}
+        param_hash.update(kwargs)
+        param_hash.update(self._convert_request_to_dict(request))
+        schema = super(LibraryCopyPlateResource, self).build_schema()
+        deserialized = self.deserialize(request)
+        
+        if 'data' not in deserialized:
+            raise BadRequest('must submit "data" on the request')
+        location_data = deserialized['data']
+        plate_location_fields = ['room', 'freezer', 'shelf', 'bin']
+        if (not location_data 
+                or not set(plate_location_fields) | set(location_data.keys())):
+            raise ValidationError(
+                key='data', msg='must contain plate location fields')
+
+
+        logger.info('find or create the location: %r', location_data)
+        original_location_data = (
+            self.get_platelocation_resource()
+                ._get_detail_response_internal(**location_data))
+        if not original_location_data:
+            logger.info('plate location not found: %r', location_data)
+        else:
+            location_data['copy_plate_ranges'] = \
+                original_location_data.get('copy_plate_ranges',None)
+
+        # Find all of the plates
+        kwargs['search_data'] = deserialized.pop('search_data', {})
+        logger.info('batch_edit: %r, %r, %r', 
+            param_hash, deserialized, request)
+        # get all of the search plates:
+        original_data = self._get_list_response(request, **kwargs)
+        logger.info('get the plate objects for search data: %d', len(original_data))
+        
+        logger.info('convert the plates into ranges...')
+        library_copy_ranges = {}
+        for plate_data in original_data:
+            library_copy = '{library_short_name}:{copy_name}'.format(**plate_data)
+            plate_range = library_copy_ranges.get(library_copy, [])
+            plate_range.append(int(plate_data['plate_number']))
+            library_copy_ranges[library_copy] = plate_range
+        copy_plate_ranges = []
+        for library_copy,plate_range in library_copy_ranges.items():
+            if not plate_range:
+                raise ValidationError(
+                    key='library_copy', 
+                    msg='no plates found for %r' % library_copy)
+            plate_range = sorted(plate_range)
+            copy_plate_ranges.append(
+                '%s:%s-%s' 
+                % (library_copy, 
+                   str(plate_range[0]).zfill(5),
+                   str(plate_range[-1]).zfill(5) ))
+
+        logger.info(
+            'patch location: %r, with copy_ranges: %r', 
+            location_data, copy_plate_ranges) 
+        location_copy_ranges = \
+            location_data.get('copy_plate_ranges', [])
+        location_copy_ranges.extend(copy_plate_ranges)
+        location_data['copy_plate_ranges'] = location_copy_ranges
+        
+        self.get_platelocation_resource().patch_detail(
+            request, 
+            data=location_data,
+            format='json')
+
+        if not self._meta.always_return_data:
+            return HttpResponse(status=200)
+        else:
+            response = self.get_list(request, **kwargs)             
+            response.status_code = 200
+            return response
+
+    @write_authorization
+    @un_cache        
+    def patch_list(self, request, **kwargs):
+
+        logger.info('patch list: %r' % kwargs)
+
+        if kwargs.get('data', None):
+            # allow for internal data to be passed
+            deserialized = kwargs['data']
+        else:
+            deserialized = self.deserialize(
+                request, format=kwargs.get('format', None))
+        if self._meta.collection_name in deserialized:
+            deserialized = deserialized[self._meta.collection_name]
+        
+        # Look for id's kwargs, to limit the potential candidates for logging
+        schema = self.build_schema()
+        id_attribute = schema['id_attribute']
+        kwargs_for_log = kwargs.copy()
+        logger.debug('id_attribute: %r', id_attribute)
+        for id_field in id_attribute:
+            ids = set()
+            # Test for each id key; it's ok on create for ids to be None
+            for _dict in [x for x in deserialized if x.get(id_field, None)]:
+                ids.add(_dict.get(id_field))
+            if ids:
+                kwargs_for_log['%s__in'%id_field] = \
+                    LIST_DELIMITER_URL_PARAM.join(ids)
+        try:
+            logger.debug('get original state, for logging...')
+            logger.debug('kwargs_for_log: %r', kwargs_for_log)
+            original_data = self._get_list_response(request,**kwargs_for_log)
+        except Exception as e:
+            logger.exception('original state not obtained')
+            original_data = []
+        try:
+            with transaction.atomic():
+                
+                parent_log = self.make_log(request)
+                parent_log.save()
+                kwargs['parent_log'] = parent_log
+                
+                for _dict in deserialized:
+                    logger.debug('patch: %r', deserialized)
+                    self.patch_obj(
+                        request, _dict, **{'parent_log': parent_log })
+
+        except ValidationError as e:
+            logger.exception('Validation error: %r', e)
+            raise e
+            
+        # get new state, for logging
+        new_data = self._get_list_response(request,**kwargs_for_log)
+        logger.debug('new data: %s'% new_data)
+        logger.debug('patch list done, new data: %d' 
+            % (len(new_data)))
+        self.log_patches(request, original_data,new_data,**kwargs)
+        
+        if not self._meta.always_return_data:
+            return HttpResponse(status=202)
+        else:
+            response = self.get_list(request, **kwargs_for_log)             
+            response.status_code = 200
+            return response
+    
+    def patch_obj(self, request, deserialized, **kwargs):
+        logger.info('patch obj, kwargs: %r', kwargs)
+        schema = self.build_schema()
+        fields = schema['fields']
+        initializer_dict = {}
+
+        for key in fields.keys():
+            if deserialized.get(key, None) is not None:
+                initializer_dict[key] = parse_val(
+                    deserialized.get(key, None), key, fields[key]['data_type']) 
+
+        logger.debug('initializer_dict: %r', initializer_dict)
+
+        id_kwargs = self.get_id(deserialized, **kwargs)
+        logger.info('id_kwargs: %r', id_kwargs)
+        required_kwargs_check = ['copy_name', 'plate_number']
+        if ( not id_kwargs 
+                or not set(required_kwargs_check) & set(id_kwargs.keys())):
+            raise ValidationError({
+                k:'required' for k in required_kwargs_check if k not in id_kwargs })
+        logger.info('1')
+        try:
+            plate = Plate.objects.get(
+                copy__name=id_kwargs['copy_name'],
+                plate_number=id_kwargs['plate_number'])
+        except ObjectDoesNotExist:
+            logger.info('plate does not exist: %r',
+                id_kwargs)
+            raise
+         
+        plate_location_fields = ['room', 'freezer', 'shelf', 'bin']
+        location_data = {}
+        found = False
+        for k in plate_location_fields:
+            location_data[k] = deserialized.get(k,None)
+            if location_data[k]:
+                found = True
+        if found:
+            original_location_data = (
+                self.get_platelocation_resource()
+                    ._get_detail_response_internal(**location_data))
+            try:
+                plate_location = PlateLocation.objects.get(**location_data)
+                logger.info('plate location found: %r', plate_location)
+                
+            except ObjectDoesNotExist:
+                logger.info('plate location not found: %r', location_data)
+                logger.info(
+                    'plate location does not exist, creating: %r',
+                    location_data)
+                plate_location = PlateLocation.objects.create(**location_data)
+                plate_location.save()
+                
+            if plate.plate_location != plate_location:
+                logger.info('update plate location: %r, to %r', plate,  plate_location)
+                plate.plate_location = plate_location
+                plate.save()
+        
+            new_location_data = (
+                self.get_platelocation_resource()
+                    ._get_detail_response_internal(**location_data))
+            log = self.get_platelocation_resource().log_patch(
+                request, original_location_data, new_location_data,**kwargs)
+            logger.info('log created; %r', log)
+                    
+            return plate
     
 
 class ScreenResultResource(ApiResource):
@@ -551,7 +1018,38 @@ class ScreenResultResource(ApiResource):
                 logger.info('creating the well_data_column_positive_index table')
                 self._create_well_data_column_positive_index_table(conn)
         self.reagent_resource = None
+        self.screen_resource = None
         self._well_data_column_positive_index = None
+
+    def deserialize(self, request, **kwargs):
+        '''
+        Override deserialize to access the multipart/form-data content.
+        '''
+        content_type = self.get_content_type(request, format=format)
+        
+        if content_type.startswith('multipart'):
+            if len(request.FILES.keys()) != 1:
+                raise BadRequest(
+                    'File upload supports only one file at a time',
+                    'filenames sent: %r' % request.FILES.keys())
+            if 'xls' in request.FILES:
+                file = request.FILES['xls']
+                deserialized = self._meta.serializer.deserialize(
+                    file.read(), XLS_MIMETYPE)
+                
+#                 wb = xlrd.open_workbook(file_contents=file.read())
+#                 deserialized = screen_result_importer.read_workbook(wb)
+# #                 deserialized = screen_result_importer.read_file(file)
+            else:
+                msg = ( 'ScreenResult deserialization: multipart/form-data key '
+                        'must be "xls", received: %r' % request.FILES.keys())
+                raise BadRequest(msg)
+
+        else:
+            deserialized = super(ScreenResultResource, self).deserialize(request)    
+         
+        return deserialized
+
         
     def get_well_data_column_positive_index_table(self):
         ''' Work around method; create the well_data_column_positive_index 
@@ -570,6 +1068,11 @@ class ScreenResultResource(ApiResource):
         if not self.reagent_resource:
             self.reagent_resource = ReagentResource()
         return self.reagent_resource
+    
+    def get_screen_resource(self):
+        if not self.screen_resource:
+            self.screen_resource = ScreenResource()
+        return self.screen_resource
     
     def _create_well_query_index_table(self, conn):
        
@@ -696,6 +1199,8 @@ class ScreenResultResource(ApiResource):
             get_engine().execute(delete(self.get_well_data_column_positive_index_table()))
             logger.info(
                 'cleared all cached well_data_column_positive_indexes')
+        
+        self.get_screen_resource().clear_cache()
             
     def prepend_urls(self):
 
@@ -1130,9 +1635,10 @@ class ScreenResultResource(ApiResource):
             other_screens=other_screens)
 
         filename = self._get_filename(schema, kwargs)
-        desired_format = self.get_serialize_format(request, **kwargs)
+        content_type = self.get_accept_content_type(
+            request, format=kwargs.get('format', None))
         
-        if desired_format == SDF_MIMETYPE:
+        if content_type == SDF_MIMETYPE:
             manual_field_includes.add('molfile')
         else:
             manual_field_includes.discard('molfile')
@@ -1148,10 +1654,6 @@ class ScreenResultResource(ApiResource):
                     limit,
                     offset)
             # Custom screen result serialization
-            
-            content_type = build_content_type(desired_format)
-            logger.info('desired_format: %s, content_type: %s',
-                desired_format, content_type)
             
             def is_excluded_gen(rows):
                 '''
@@ -1207,7 +1709,7 @@ class ScreenResultResource(ApiResource):
                         return key
             rowproxy_generator = None
             if (param_hash.get(HTTP_PARAM_USE_VOCAB, False) 
-                    or desired_format != JSON_MIMETYPE):
+                    or content_type != JSON_MIMETYPE):
                 rowproxy_generator = \
                     ApiResource.create_vocabulary_rowproxy_generator(field_hash)
             
@@ -1227,7 +1729,8 @@ class ScreenResultResource(ApiResource):
                 result,ordered_keys,list_fields=list_fields,
                 value_templates=value_templates)
             data = closing_iterator_wrapper(data, conn.close)
-            if desired_format == JSON_MIMETYPE:
+            logger.info('content_type: %r', content_type)
+            if content_type == JSON_MIMETYPE:
                 meta = {
                     'limit': limit,
                     'offset': offset,
@@ -1242,8 +1745,8 @@ class ScreenResultResource(ApiResource):
                         json_generator(data, meta, is_for_detail=is_for_detail)))
                 response['Content-Type'] = content_type
                 return response
-            elif(desired_format == XLS_MIMETYPE or
-                desired_format == XLSX_MIMETYPE): 
+            elif(content_type == XLS_MIMETYPE or
+                content_type == XLSX_MIMETYPE): 
                 data = is_excluded_gen(data)
                 response = get_xls_response(
                     screen_result_importer.create_output_data(
@@ -1252,7 +1755,7 @@ class ScreenResultResource(ApiResource):
                     title_function=title_function, image_keys=image_keys,
                     list_brackets=list_brackets)
                 return response
-            elif desired_format == SDF_MIMETYPE:
+            elif content_type == SDF_MIMETYPE:
                 data = image_generator(
                     is_excluded_gen(data),image_keys, request)
                 response = StreamingHttpResponse(
@@ -1262,7 +1765,7 @@ class ScreenResultResource(ApiResource):
                 response['Content-Disposition'] = \
                     'attachment; filename=%s.sdf' % filename
                 return response
-            elif desired_format == CSV_MIMETYPE:
+            elif content_type == CSV_MIMETYPE:
                 data = image_generator(
                     is_excluded_gen(data),image_keys, request)
                 response = StreamingHttpResponse(
@@ -1275,7 +1778,7 @@ class ScreenResultResource(ApiResource):
                     'attachment; filename=%s.csv' % filename
                 return response
             else: 
-                raise BadRequest('format not implemented: %r' % desired_format)
+                raise BadRequest('content_type not implemented: %r' % content_type)
         except Exception, e:
             logger.exception('on get list: %r', e)
             raise e  
@@ -1718,7 +2221,7 @@ class ScreenResultResource(ApiResource):
                     
                 column_info['screen_result'] = screen_result
                 try:
-                    dc = DataColumnResource().patch_obj(column_info, **kwargs)
+                    dc = DataColumnResource().patch_obj(request, column_info, **kwargs)
                     sheet_col_to_datacolumn[sheet_column] = dc
                     derived_from_columns = column_info.get(
                         'derived_from_columns', None)
@@ -2433,7 +2936,7 @@ class DataColumnResource(ApiResource):
 
 
     @transaction.atomic()    
-    def patch_obj(self, deserialized, **kwargs):
+    def patch_obj(self, request, deserialized, **kwargs):
 
         logger.debug('patch_obj %s', deserialized)
         
@@ -2506,17 +3009,17 @@ class CopyWellResource(ApiResource):
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('search'), name="api_search"),
             url(r"^(?P<resource_name>%s)"
-                r"/(?P<copy_name>[\w\d_.\-\+ ]+)" 
+                r"/(?P<copy_name>[\w.\-\+ ]+)" 
                 r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w\d_.\-\+: ]+)"
-                r"/(?P<copy_name>[\w\d_.\-\+ ]+)" 
+            url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w.\-\+: ]+)"
+                r"/(?P<copy_name>[\w.\-\+ ]+)" 
                 r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w\d_.\-\+: ]+)"
-                r"/(?P<copy_name>[\w\d_.\-\+: ]+)%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<library_short_name>[\w.\-\+: ]+)"
+                r"/(?P<copy_name>[\w.\-\+: ]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
         ]
@@ -2576,7 +3079,7 @@ class CopyWellResource(ApiResource):
             if filter_expression is None:
                 raise InformationError(
                     key='Input filters ',
-                    msg='can only service requests with filter expressions')
+                    msg='Please enter a filter expression to begin')
                                   
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
@@ -2665,10 +3168,10 @@ class CopyWellResource(ApiResource):
         raise NotImplementedError('put_list must be implemented')
                 
     @transaction.atomic()    
-    def delete_obj(self, deserialized, **kwargs):
+    def delete_obj(self, request, deserialized, **kwargs):
         raise NotImplementedError('delete_obj is not implemented')
     
-    def patch_obj(self, deserialized, **kwargs):
+    def patch_obj(self, request, deserialized, **kwargs):
 
         logger.info('patch_obj %s', deserialized)
 
@@ -3219,7 +3722,7 @@ class LibraryCopyResource(ApiResource):
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('get_schema'), name="api_get_schema"),
            url((r"^(?P<resource_name>%s)"
-                 r"/(?P<library_short_name>[\w\d_.\-\+: ]+)"
+                 r"/(?P<library_short_name>[\w.\-\+: ]+)"
                  r"/(?P<name>[^/]+)%s$")  
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
@@ -3227,7 +3730,7 @@ class LibraryCopyResource(ApiResource):
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('search'), name="api_search"),
             url((r"^(?P<resource_name>%s)"
-                 r"/(?P<library_short_name>[\w\d_.\-\+: ]+)"
+                 r"/(?P<library_short_name>[\w.\-\+: ]+)"
                  r"/(?P<name>[^/]+)"
                  r"/plate%s$") 
                     % (self._meta.resource_name, trailing_slash()),
@@ -3292,7 +3795,7 @@ class LibraryCopyResource(ApiResource):
             if filter_expression is None:
                 raise InformationError(
                     key='Input filters ',
-                    msg='can only service requests with filter expressions')
+                    msg='Please enter a filter expression to begin')
 
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
@@ -3480,13 +3983,13 @@ class LibraryCopyResource(ApiResource):
         raise NotImplementedError('put_list must be implemented')
                 
     @transaction.atomic()    
-    def delete_obj(self, deserialized, **kwargs):
+    def delete_obj(self, request, deserialized, **kwargs):
 
         id_kwargs = self.get_id(deserialized, **kwargs)
         ScreensaverUser.objects.get(**id_kwargs).delete()
     
     @transaction.atomic()    
-    def patch_obj(self, deserialized, **kwargs):
+    def patch_obj(self, request, deserialized, **kwargs):
 
         logger.debug('patch_obj %s', deserialized)
 
@@ -3911,10 +4414,10 @@ class AttachedFileResource(ApiResource):
                  r"(?P<attached_file_id>([\d]+))%s$")
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/user/(?P<username>([\w\d_]+))%s$" 
+            url(r"^(?P<resource_name>%s)/user/(?P<username>([\w]+))%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-            url((r"^(?P<resource_name>%s)/user/(?P<username>([\w\d_]+))" 
+            url((r"^(?P<resource_name>%s)/user/(?P<username>([\w]+))" 
                  r"/(?P<attached_file_id>([\d]+))%s$")
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
@@ -4268,10 +4771,10 @@ class UserAgreementResource(AttachedFileResource):
                  r"(?P<attached_file_id>([\d]+))%s$")
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/user/(?P<username>([\w\d_]+))%s$" 
+            url(r"^(?P<resource_name>%s)/user/(?P<username>([\w]+))%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-            url((r"^(?P<resource_name>%s)/user/(?P<username>([\w\d_]+))" 
+            url((r"^(?P<resource_name>%s)/user/(?P<username>([\w]+))" 
                  r"/(?P<attached_file_id>([\d]+))%s$")
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
@@ -4384,7 +4887,7 @@ class UserAgreementResource(AttachedFileResource):
         
         user_data['usergroups'] = list(current_groups)
         logger.info('patch user with data: %r', user_data)
-        user_resource.patch_obj(user_data)
+        user_resource.patch_obj(request, user_data)
 
         # create a checklist item for the user agreement
         user_checklist_item_resource = self.get_userchecklistitem_resource()
@@ -4397,7 +4900,7 @@ class UserAgreementResource(AttachedFileResource):
             'status_date': timezone.now().strftime("%Y%m%d") 
             }
         
-        user_checklist_item_resource.patch_obj(checklist_data)
+        user_checklist_item_resource.patch_obj(request, checklist_data)
 
         return tastypie.http.HttpCreated()
 
@@ -5306,66 +5809,6 @@ class LibraryScreeningResource(ActivityResource):
     @un_cache        
     def put_detail(self, request, **kwargs):
         raise NotImplementedError('put_detail must be implemented')
-
-
-#     ## TODO: override; removing transaction block
-#     @write_authorization
-#     @un_cache        
-#     def patch_detail(self, request, **kwargs):
-# 
-#         deserialized = self.deserialize(request)
-# 
-#         logger.debug('patch detail %s, %s', deserialized,kwargs)
-# 
-#         # cache state, for logging
-#         # Look for id's kwargs, to limit the potential candidates for logging
-#         schema = self.build_schema()
-#         id_attribute = schema['id_attribute']
-#         kwargs_for_log = {}
-#         try:
-#             kwargs_for_log = self.get_id(deserialized,**kwargs)
-#             logger.debug('patch detail: %s, %s' %(deserialized,kwargs_for_log))
-#         except Exception:
-#             # this can be ok, if the ID is generated
-#             logger.info('object id not posted')
-#         if not kwargs_for_log:
-#             # then this is a create
-#             original_data = []
-#         else:
-#             original_data = []
-#             try:
-#                 item = self._get_detail_response(request,**kwargs_for_log)
-#                 if item:
-#                     original_data = [item]
-#             except Exception, e: 
-#                 logger.exception('exception when querying for existing obj: %s', 
-#                     kwargs_for_log)
-#                 original_data = []
-#         try:
-# #             with transaction.atomic():
-#             obj = self.patch_obj(deserialized, **kwargs)
-#             for id_field in id_attribute:
-#                 val = getattr(obj, id_field,None)
-#                 if val:
-#                     kwargs_for_log['%s' % id_field] = val
-#         except ValidationError as e:
-#             logger.exception('Validation error: %r', e)
-#             raise e
-# 
-#         # get new state, for logging
-#         try:
-#             new_data = [self._get_detail_response(request,**kwargs_for_log)]
-#             self.log_patches(request, original_data,new_data,**kwargs)
-#         except Exception, e: 
-#             logger.exception('exception when querying for new data for logging: %s', 
-#                 kwargs_for_log)
-# 
-#         if not self._meta.always_return_data:
-#             return http.HttpAccepted()
-#         else:
-#             response = self.get_detail(request,**kwargs_for_log)
-#             response.status_code = 201
-#             return response
     
     def validate(self, _dict, patch=False):
 
@@ -5378,7 +5821,7 @@ class LibraryScreeningResource(ActivityResource):
         
         return errors
         
-    def patch_obj(self, deserialized, **kwargs):
+    def patch_obj(self, request, deserialized, **kwargs):
 
         schema = self.build_schema()
         fields = schema['fields']
@@ -5505,6 +5948,8 @@ class LibraryScreeningResource(ActivityResource):
             library_screening, library_plates_screened)
         # parse library_plate_ranges
         schema = self.build_schema()
+        
+        # E.G. Regex: /(([^:]+):)?(\w+):(\d+)-(\d+)/
         regex_string = schema['fields']['library_plates_screened']['regex']
         matcher = re.compile(regex_string)
         
@@ -5518,11 +5963,17 @@ class LibraryScreeningResource(ActivityResource):
                         % (lps, regex_string)))
                 break
             else:
+                start_plate = int(match.group(4))
+                if match.group(6):
+                    end_plate = int(match.group(6))
+                else:
+                    end_plate = start_plate
                 new_library_plates_screened.append({
-                    'library_short_name': match.group(1),
-                    'copy_name': match.group(2),
-                    'start_plate': int(match.group(3)),
-                    'end_plate': int(match.group(4)) })
+                    'library_short_name': match.group(2),
+                    'copy_name': match.group(3),
+                    'start_plate': start_plate,
+                    'end_plate': end_plate,
+                     })
         library_plates_screened = new_library_plates_screened
         
         # validate the plate ranges
@@ -5634,7 +6085,7 @@ class LibraryScreeningResource(ActivityResource):
         logger.info('plates_created: %r', created_plates)
     
     @transaction.atomic()    
-    def delete_obj(self, deserialized, **kwargs):
+    def delete_obj(self, request, deserialized, **kwargs):
 
         activity_id = kwargs.get('activity_id', None)
         if activity_id:
@@ -5681,10 +6132,10 @@ class ServiceActivityResource(ActivityResource):
                  r"(?P<activity_id>([\d]+))%s$")
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/for_user/(?P<serviced_username>([\w\d_]+))%s$" 
+            url(r"^(?P<resource_name>%s)/for_user/(?P<serviced_username>([\w]+))%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-            url(r"^(?P<resource_name>%s)/for_user/(?P<serviced_username>([\w\d_]+))%s$" 
+            url(r"^(?P<resource_name>%s)/for_user/(?P<serviced_username>([\w]+))%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
         ]    
@@ -5693,7 +6144,7 @@ class ServiceActivityResource(ActivityResource):
         return ApiResource.build_schema(self)
 
     @transaction.atomic()
-    def patch_obj(self, deserialized, **kwargs):
+    def patch_obj(self, request, deserialized, **kwargs):
 
         schema = self.build_schema()
         fields = schema['fields']
@@ -5777,7 +6228,7 @@ class ServiceActivityResource(ActivityResource):
             logger.exception('on patch_obj')
             raise e
     
-    def delete_obj(self, deserialized, **kwargs):
+    def delete_obj(self, request, deserialized, **kwargs):
 
         activity_id = kwargs.get('activity_id', None)
         if activity_id:
@@ -5915,68 +6366,68 @@ class ScreenResource(ApiResource):
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('get_schema'), name="api_get_schema"),
             url((r"^(?P<resource_name>%s)/"
-                 r"(?P<facility_id>([\w\d_]+))%s$") 
+                 r"(?P<facility_id>([\w]+))%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url((r"^(?P<resource_name>%s)/"
-                 r"(?P<facility_id>([\w\d_]+))/ui%s$") 
+                 r"(?P<facility_id>([\w]+))/ui%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_screen_detail_uiview'), 
                 name="api_dispatch_screen_detail_uiview"),
             url((r"^(?P<resource_name>%s)/"
-                 r"(?P<facility_id>([\w\d_]+))/libraries%s$") 
+                 r"(?P<facility_id>([\w]+))/libraries%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_screen_libraryview'),
                 name="api_dispatch_screen_libraryview"),
             url((r"^(?P<resource_name>%s)/"
-                 r"(?P<facility_id>([\w\d_]+))/cherrypicks%s$") 
+                 r"(?P<facility_id>([\w]+))/cherrypicks%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_screen_cherrypickview'),
                 name="api_dispatch_screen_cherrypickview"),
             url((r"^(?P<resource_name>%s)/"
-                 r"(?P<facility_id>([\w\d_]+))/copyplates%s$") 
+                 r"(?P<facility_id>([\w]+))/copyplates%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_screen_librarycopyplateview'),
                 name="api_dispatch_screen_librarycopyplateview"),
             url((r"^(?P<resource_name>%s)/"
-                 r"(?P<facility_id>([\w\d_]+))/copyplatesloaded%s$") 
+                 r"(?P<facility_id>([\w]+))/copyplatesloaded%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_screen_lcp_loadedview'),
                 name="api_dispatch_screen_lcp_loadedview"),
             url((r"^(?P<resource_name>%s)/"
-                 r"(?P<facility_id>([\w\d_]+))/billing%s$") 
+                 r"(?P<facility_id>([\w]+))/billing%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_screen_billingview'),
                 name="api_dispatch_screen_billingview"),
             url((r"^(?P<resource_name>%s)/"
-                 r"(?P<facility_id>([\w\d_]+))/datacolumns%s$") 
+                 r"(?P<facility_id>([\w]+))/datacolumns%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_screen_datacolumnview'),
                 name="api_dispatch_screen_datacolumnview"),
             url((r"^(?P<resource_name>%s)/"
-                 r"(?P<facility_id>([\w\d_]+))/activities%s$") 
+                 r"(?P<facility_id>([\w]+))/activities%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_screen_activityview'),
                 name="api_dispatch_screen_activityview"),
             url((r"^(?P<resource_name>%s)/"
-                 r"(?P<facility_id>([\w\d_]+))/screenresult%s$") 
+                 r"(?P<facility_id>([\w]+))/screenresult%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_screen_screenresultview'),
                 name="api_dispatch_screen_screenresultview"),
-            url(r"^(?P<resource_name>%s)/(?P<facility_id>([\w\d_]+))/attachedfiles%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<facility_id>([\w]+))/attachedfiles%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_screen_attachedfileview'),
                 name="api_dispatch_screen_attachedfileview"),
-            url((r"^(?P<resource_name>%s)/(?P<facility_id>([\w\d_]+))"
+            url((r"^(?P<resource_name>%s)/(?P<facility_id>([\w]+))"
                  r"/attachedfiles/(?P<attached_file_id>([\d]+))%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_screen_attachedfiledetailview'),
                 name="api_dispatch_screen_attachedfiledetailview"),
-            url(r"^(?P<resource_name>%s)/(?P<facility_id>([\w\d_]+))/publications%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<facility_id>([\w]+))/publications%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_screen_publicationview'),
                 name="api_dispatch_screen_publicationview"),
-            url((r"^(?P<resource_name>%s)/(?P<facility_id>([\w\d_]+))"
+            url((r"^(?P<resource_name>%s)/(?P<facility_id>([\w]+))"
                  r"/publications/(?P<publication_id>([\d]+))%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_screen_publicationdetailview'),
@@ -5988,8 +6439,8 @@ class ScreenResource(ApiResource):
         response = self.dispatch('detail', request, **kwargs )
         if response.status_code == 200:
             _data = self._meta.serializer.deserialize(
-                request,
-                LimsSerializer.get_content(response), format='application/json')
+                LimsSerializer.get_content(response), 
+                response['Content-Type'])
             
             _status_data = \
                 self.get_apilog_resource()._get_list_response_internal(**{
@@ -6019,11 +6470,12 @@ class ScreenResource(ApiResource):
                     })
             _data['latest_activities_data'] = _latest_activities_data
 
+            content_type = self.get_accept_content_type(
+                request,format=kwargs.get('format', None))
             return HttpResponse(
                 content=self._meta.serializer.serialize(
-                    _data, self.get_serialize_format(request,**kwargs)),
-                content_type=build_content_type(
-                    self.get_serialize_format(request,**kwargs)))
+                    _data, content_type),
+                content_type=content_type)
         
         return response;
         
@@ -6117,6 +6569,7 @@ class ScreenResource(ApiResource):
         manual_field_includes = set(param_hash.get('includes', []))
         # for joins
         manual_field_includes.add('screen_id')
+        manual_field_includes.add('has_screen_result')
         
         if screens_for_username:
             screener_role_cte = ScreenResource.get_screener_role_cte().cte(
@@ -6719,7 +7172,7 @@ class ScreenResource(ApiResource):
         return schema
 
     @transaction.atomic()    
-    def delete_obj(self, deserialized, **kwargs):
+    def delete_obj(self, request, deserialized, **kwargs):
         
         id_kwargs = self.get_id(deserialized, **kwargs)
         Screen.objects.get(**id_kwargs).delete()
@@ -6746,7 +7199,7 @@ class ScreenResource(ApiResource):
         return errors
     
     @transaction.atomic()    
-    def patch_obj(self, deserialized, **kwargs):
+    def patch_obj(self, request, deserialized, **kwargs):
         
         schema = self.build_schema()
         fields = schema['fields']
@@ -6962,7 +7415,7 @@ class UserChecklistItemResource(ApiResource):
                  r"(?P<item_name>([\d\w_]+))%s$")
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w]+))%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
         ]    
@@ -7137,12 +7590,12 @@ class UserChecklistItemResource(ApiResource):
             logger.exception('on get list')
             raise e  
 
-    def delete_obj(self, deserialized, **kwargs):
+    def delete_obj(self, request, deserialized, **kwargs):
         raise NotImplementedError(
             'delete obj is not implemented for UserChecklistItem')
     
     @transaction.atomic()
-    def patch_obj(self, deserialized, **kwargs):
+    def patch_obj(self, request, deserialized, **kwargs):
         logger.info('patch checklist item: %r', deserialized)
         schema = self.build_schema()
         fields = schema['fields']
@@ -7237,40 +7690,40 @@ class ScreensaverUserResource(ApiResource):
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('get_schema'), name="api_get_schema"),
-            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w]+))%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))/groups%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w]+))/groups%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_user_groupview'),
                 name="api_dispatch_user_groupview"),
-            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))/checklistitems%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w]+))/checklistitems%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_user_checklistitemview'),
                 name="api_dispatch_user_checklistitemview"),
-            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))/attachedfiles%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w]+))/attachedfiles%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_user_attachedfileview'),
                 name="api_dispatch_user_attachedfileview"),
-            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))/useragreement%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w]+))/useragreement%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_useragreement_view'),
                 name="api_dispatch_useragreement_view"),
-            url((r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))"
+            url((r"^(?P<resource_name>%s)/(?P<username>([\w]+))"
                  r"/attachedfiles/(?P<attached_file_id>([\d]+))%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_user_attachedfiledetailview'),
                 name="api_dispatch_user_attachedfiledetailview"),
-            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))/serviceactivities%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w]+))/serviceactivities%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_user_serviceactivityview'),
                 name="api_dispatch_user_serviceactivityview"),
-            url((r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))"
+            url((r"^(?P<resource_name>%s)/(?P<username>([\w]+))"
                  r"/serviceactivities/(?P<activity_id>([\d]+))%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_user_serviceactivitydetailview'),
                 name="api_dispatch_user_serviceactivitydetailview"),
-            url(r"^(?P<resource_name>%s)/(?P<username>([\w\d_]+))/screens%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w]+))/screens%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_user_screenview'),
                 name="api_dispatch_user_screenview"),
@@ -7567,7 +8020,7 @@ class ScreensaverUserResource(ApiResource):
         raise NotImplementedError('put_list must be implemented')
                 
     @transaction.atomic()    
-    def delete_obj(self, deserialized, **kwargs):
+    def delete_obj(self, request, deserialized, **kwargs):
         
         id_kwargs = self.get_id(deserialized, **kwargs)
         ScreensaverUser.objects.get(**id_kwargs).delete()
@@ -7588,7 +8041,7 @@ class ScreensaverUserResource(ApiResource):
         return id_kwargs
                 
     @transaction.atomic()    
-    def patch_obj(self, deserialized, **kwargs):
+    def patch_obj(self, request, deserialized, **kwargs):
 
         schema = self.build_schema()
         fields = schema['fields']
@@ -7609,7 +8062,7 @@ class ScreensaverUserResource(ApiResource):
         logger.debug('fields.screensaveruser fields: %s', fields.keys())
         try:
             # create/get userprofile
-            user = self.get_user_resource().patch_obj(deserialized, **kwargs)
+            user = self.get_user_resource().patch_obj(request, deserialized, **kwargs)
             logger.info('patched userprofile %s', user)
 
             # create the screensaver_user
@@ -7758,7 +8211,7 @@ class NaturalProductReagentResource(ApiResource):
         super(NaturalProductReagentResource, self).__init__(**kwargs)
 
     @transaction.atomic()    
-    def patch_obj(self, deserialized, **kwargs):
+    def patch_obj(self, request, deserialized, **kwargs):
 
         well = kwargs.get('well', None)
         if not well:
@@ -7946,12 +8399,12 @@ class SilencingReagentResource(ApiResource):
                     logger.info(str((select_stmt)))
                 
         if DEBUG_BUILD_COLS: 
-            logger.info(str(('sirna columns', columns.keys())))
+            logger.info('sirna columns: %r', columns.keys())
         
         return columns 
 
     @transaction.atomic()    
-    def patch_obj(self, deserialized, **kwargs):
+    def patch_obj(self, request, deserialized, **kwargs):
 
         well = kwargs.get('well', None)
         if not well:
@@ -8057,7 +8510,7 @@ class SmallMoleculeReagentResource(ApiResource):
         super(SmallMoleculeReagentResource, self).__init__(**kwargs)
 
     @transaction.atomic()    
-    def patch_obj(self, deserialized, **kwargs):
+    def patch_obj(self, request, deserialized, **kwargs):
         
         well = kwargs.get('well', None)
         if not well:
@@ -8190,7 +8643,7 @@ class ReagentResource(ApiResource):
             if filter_expression is None:
                 raise InformationError(
                     key='Input filters ',
-                    msg='can only service requests with filter expressions')
+                    msg='Please enter a filter expression to begin')
                  
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
@@ -8333,8 +8786,9 @@ class ReagentResource(ApiResource):
         filename = self._get_filename(schema, kwargs, filename=filename)
 
         manual_field_includes = set(param_hash.get('includes', []))
-        desired_format = self.get_serialize_format(request, **kwargs)
-        if desired_format == SDF_MIMETYPE:
+        content_type = self.get_accept_content_type(
+            request, format=kwargs.get('format', None))
+        if content_type == SDF_MIMETYPE:
             manual_field_includes.add('molfile')
             param_hash['includes'] = manual_field_includes
             
@@ -8405,8 +8859,9 @@ class ReagentResource(ApiResource):
             return self.build_response(request, self.build_schema(library.classification), **kwargs)
             
         except Library.DoesNotExist, e:
-            raise Http404(str(('cannot build schema - library def needed'
-                'no library found for short_name', library_short_name)))
+            raise Http404(
+                'cannot build schema - library def needed'
+                'no library found for short_name: %r' % library_short_name)
                 
     def build_schema(self, library_classification=None):
         logger.info('build reagent schema for library_classification: %r',
@@ -8432,14 +8887,14 @@ class ReagentResource(ApiResource):
         return schema
 
     @transaction.atomic()    
-    def patch_obj(self, deserialized, **kwargs):
+    def patch_obj(self, request, deserialized, **kwargs):
         well = kwargs.get('well', None)
         if not well:
             raise ValidationError(key='well', msg='required')
         
         reagent_resource = self.get_reagent_resource(
             well.library.classification)
-        reagent = reagent_resource.patch_obj(deserialized, **kwargs)
+        reagent = reagent_resource.patch_obj(request, deserialized, **kwargs)
         
         reagent.well = well
         reagent.save()
@@ -8466,13 +8921,13 @@ class WellResource(ApiResource):
         self.reagent_resource = None
         super(WellResource, self).__init__(**kwargs)
 
-    def deserialize(self, request):
+    def deserialize(self, request, **kwargs):
         '''
         Override deserialize to access the multipart/form-data content.
         '''
-        format = self.get_deserialize_format(request)
-        logger.info('well deserialize format: %r', format)
-        if format.startswith('multipart'):
+        content_type = self.get_content_type(request, format=kwargs.get('format', None))
+        logger.info('well deserialize content_type: %r', content_type)
+        if content_type.startswith('multipart'):
             logger.info('request.Files.keys: %r', request.FILES.keys())
             if len(request.FILES.keys()) != 1:
                 raise BadRequest({ 
@@ -8489,7 +8944,7 @@ class WellResource(ApiResource):
                 # grabs it again from the Request headers 
                 # (which is "multipart...")
                 deserialized = self._meta.serializer.deserialize(
-                    file.read(), format=SDF_MIMETYPE)
+                    file.read(), SDF_MIMETYPE)
  
             elif 'xls' in request.FILES:
                 # TP cannot handle binary file formats - it is calling 
@@ -8500,7 +8955,7 @@ class WellResource(ApiResource):
                 raise BadRequest(
                     'Unsupported multipart file key: %r', request.FILES.keys())
          
-        elif format == 'application/xls':
+        elif content_type == 'application/xls':
             # TP cannot handle binary file formats - it is calling 
             # django.utils.encoding.force_text on all input
             deserialized = self._meta.xls_serializer.from_xls(request.body)
@@ -8598,11 +9053,12 @@ class WellResource(ApiResource):
             _screen_data['fields'][column_name] = _dict
         
         final_data = sorted(screens.values(), key=lambda x: x['facility_id'])
+        content_type = self.get_accept_content_type(
+            request,format=kwargs.get('format', None))
         return HttpResponse(
             content=self._meta.serializer.serialize(
-                final_data, self.get_serialize_format(request,**kwargs)),
-            content_type=build_content_type(
-                self.get_serialize_format(request,**kwargs)))
+                final_data, content_type),
+            content_type=content_type)
         
     @read_authorization
     def dispatch_well_duplex_view(self, request, **kwargs):
@@ -8655,11 +9111,12 @@ class WellResource(ApiResource):
             data = { 'duplex_wells': well_info,
                      'confirmed_positive_values': data_per_screen.values() }
                 
+        content_type = self.get_accept_content_type(
+            request,format=kwargs.get('format', None))
         return HttpResponse(
             content=self._meta.serializer.serialize(
-                data, self.get_serialize_format(request,**kwargs)),
-            content_type=build_content_type(
-                self.get_serialize_format(request,**kwargs)))
+                final_data, content_type),
+            content_type=content_type)
         
     def get_schema(self, request, **kwargs):
         if not 'library_short_name' in kwargs:
@@ -8672,8 +9129,9 @@ class WellResource(ApiResource):
                 request, self.build_schema(library.classification),**kwargs)
             
         except Library.DoesNotExist, e:
-            raise Http404(str(('cannot build schema - library def needed'
-                'no library found for short_name', library_short_name)))
+            raise Http404(
+                'cannot build schema - library def needed'
+                'no library found for short_name: %r' % library_short_name)
                 
     def build_schema(self, library_classification=None):
         data = super(WellResource, self).build_schema()
@@ -8794,7 +9252,7 @@ class WellResource(ApiResource):
                 raise BadRequest('Library wells have not been created')
             
             logger.info('patch each well, count: %d', len(deserialized))
-            logger.info('patching: %r', deserialized)
+            logger.debug('patching: %r', deserialized)
             for well_data in deserialized:
                 well_data['library_short_name'] = kwargs['library_short_name']
                 
@@ -8805,6 +9263,7 @@ class WellResource(ApiResource):
                     if well_name and plate_number:                
                         well_id = '%s:%s' % (
                             str(plate_number).zfill(5), well_name)
+                        well_data['well_id'] = well_id
     
                 if not well_id:
                     raise ValidationError(
@@ -8823,7 +9282,7 @@ class WellResource(ApiResource):
                 kwargs.update({ 'well': well })
                 kwargs.update({ 'parent_log': library_log })
                 try:
-                    self.patch_obj(well_data, **kwargs)
+                    self.patch_obj(request, well_data, **kwargs)
                 except ValidationError, e:
                     logger.exception('Validation error: %r', e)
                     raise e
@@ -8867,7 +9326,7 @@ class WellResource(ApiResource):
             return response 
     
     @transaction.atomic()    
-    def patch_obj(self, deserialized, **kwargs):
+    def patch_obj(self, request, deserialized, **kwargs):
         logger.debug('patch: %r', deserialized)
         library = kwargs.get('library', None)
         if not library:
@@ -8920,7 +9379,7 @@ class WellResource(ApiResource):
             kwargs['duplex_wells'] = duplex_wells
         # lookup/create the reagent
         # TODO: delegate this to the ReagentResource
-        self.get_reagent_resource().patch_obj(deserialized, **kwargs)
+        self.get_reagent_resource().patch_obj(request, deserialized, **kwargs)
         
         return well
     
@@ -8968,76 +9427,76 @@ class LibraryResource(ApiResource):
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('get_schema'), name="api_get_schema"),
-            url(r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)%s$" 
+            url(r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)%s$" 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/copy/(?P<copy_name>[^/]+)"
                  r"/plate/(?P<plate_number>[^/]+)%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_library_copyplateview'),
                 name="api_dispatch_library_copyplateview"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/copy/(?P<copy_name>[^/]+)"
                  r"/plate%s$") % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_library_copyplateview'),
                 name="api_dispatch_library_copyplateview"),
             
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/copy/(?P<copy_name>[^/]+)"
                  r"/copywell/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_library_copywellview'),
                 name="api_dispatch_library_copywellview"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/copy/(?P<copy_name>[^/]+)"
                  r"/copywellhistory/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_library_copywellhistoryview'),
                 name="api_dispatch_library_copywellhistoryview"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/copy/(?P<copy_name>[^/]+)"
                  r"/copywell%s$") % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_library_copywellview'),
                 name="api_dispatch_library_copywellview"),
 
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/copy/(?P<name>[^/]+)%s$") 
                  % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_library_copyview'),
                 name="api_dispatch_library_copyview"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/copy%s$") % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_library_copyview'),
                 name="api_dispatch_library_copyview"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/plate%s$") % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_library_copyplateview'),
                 name="api_dispatch_library_copyplateview"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/plate/(?P<plate_number>[^/]+)%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_library_copyplateview'),
                 name="api_dispatch_library_copyplateview"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/well%s$") % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_library_wellview'),
                 name="api_dispatch_library_wellview"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/reagent%s$") % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_library_reagentview'),
                 name="api_dispatch_library_reagentview"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/reagent/schema%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('get_reagent_schema'),
                 name="api_get_reagent_schema"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/well/schema%s$") 
                     % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('get_well_schema'),
                 name="api_get_well_schema"),
-            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w\d_.\-\+: ]+)"
+            url((r"^(?P<resource_name>%s)/(?P<short_name>[\w.\-\+: ]+)"
                  r"/version%s$") % (self._meta.resource_name, trailing_slash()),
                 self.wrap_view('dispatch_libraryversionview'),
                 name="api_dispatch_libraryversionview"),
@@ -9045,9 +9504,9 @@ class LibraryResource(ApiResource):
     
     def get_well_schema(self, request, **kwargs):
         if not 'short_name' in kwargs:
-            raise Http404(str((
+            raise Http404(
                 'The well schema requires a library short name'
-                ' in the URI, as in /library/[short_name]/well/schema/')))
+                ' in the URI, as in /library/[short_name]/well/schema/')
         kwargs['library_short_name'] = kwargs.pop('short_name')
         return self.get_well_resource().get_schema(request, **kwargs)    
   
@@ -9065,6 +9524,7 @@ class LibraryResource(ApiResource):
  
     def dispatch_library_copyplateview(self, request, **kwargs):
         kwargs['library_short_name'] = kwargs.pop('short_name')
+        logger.info('kwargs: %r', kwargs)
         return LibraryCopyPlateResource().dispatch('list', request, **kwargs)   
 
     def dispatch_library_copywellview(self, request, **kwargs):
@@ -9299,13 +9759,13 @@ class LibraryResource(ApiResource):
     
 
     @transaction.atomic()    
-    def delete_obj(self, deserialized, **kwargs):
+    def delete_obj(self, request, deserialized, **kwargs):
         
         id_kwargs = self.get_id(deserialized, **kwargs)
         Library.objects.get(**id_kwargs).delete()
     
     @transaction.atomic()    
-    def patch_obj(self, deserialized, **kwargs):
+    def patch_obj(self, request, deserialized, **kwargs):
         
         initializer_dict = self.parse(deserialized)
         id_kwargs = self.get_id(deserialized, **kwargs)
@@ -9429,12 +9889,12 @@ class LibraryResource(ApiResource):
 #                 % (self._meta.resource_name, trailing_slash()), 
 #                 self.wrap_view('search'), name="api_search"),
 #             url(r"^(?P<resource_name>%s)"
-#                 r"/(?P<copy_name>[\w\d_.\-\+ ]+)" 
+#                 r"/(?P<copy_name>[\w.\-\+ ]+)" 
 #                 r"/(?P<well_id>\d{1,5}\:[a-zA-Z]{1,2}\d{1,2})%s$" 
 #                     % (self._meta.resource_name, trailing_slash()), 
 #                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
 #             url(r"^(?P<resource_name>%s)"
-#                 r"/(?P<copy_name>[\w\d_.\-\+: ]+)%s$" 
+#                 r"/(?P<copy_name>[\w.\-\+: ]+)%s$" 
 #                     % (self._meta.resource_name, trailing_slash()), 
 #                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
 #         ]

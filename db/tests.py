@@ -15,9 +15,11 @@ from django.test import TestCase
 from django.test.client import MULTIPART_CONTENT
 from django.utils.timezone import now
 from tastypie.test import ResourceTestCase, TestApiClient
+import xlrd
 
 from db.models import Reagent, Substance, Library, ScreensaverUser, \
-    UserChecklistItem, AttachedFile, ServiceActivity, Screen, Well, Publication
+    UserChecklistItem, AttachedFile, ServiceActivity, Screen, Well, Publication, \
+    PlateLocation
 import db.models
 from db.support import lims_utils, screen_result_importer
 from db.test.factories import LibraryFactory, ScreenFactory, \
@@ -43,6 +45,7 @@ try:
 except:
     APP_ROOT_DIR = os.path.abspath(os.path.dirname(db.__path__))
 BASE_URI_DB = '/db/api/v1'
+
 
 class DBResourceTestCase(IResourceTestCase):
     """
@@ -101,12 +104,17 @@ class DBResourceTestCase(IResourceTestCase):
         lab_head = self.create_screensaveruser({ 
             'username': 'lab_head_1'
         })
+        lead_screener = self.create_screensaveruser({ 
+            'username': 'lead_screener_1'
+        })
         input_data = ScreenFactory.attributes()
         logger.info('input_data: %r', input_data)
         if data:
             input_data.update(data)
         if 'lab_head_username' not in input_data:
             input_data['lab_head_username'] = lab_head['username']
+        if 'lead_screener_username' not in input_data:
+            input_data['lead_screener_username'] = lead_screener['username']
             
         resource_uri = '/'.join([BASE_URI_DB, 'screen'])
         _data_for_get = { 
@@ -176,6 +184,7 @@ def tearDownModule():
     # bridge.get_engine().dispose()
     # bridge = None
 
+
 class LibraryResource(DBResourceTestCase):
 
     def setUp(self):
@@ -188,6 +197,7 @@ class LibraryResource(DBResourceTestCase):
         logger.info('delete library resources')
         Library.objects.all().delete()
         Well.objects.all().delete()
+        PlateLocation.objects.all().delete()
         ApiLog.objects.all().delete()
     
     def test1_create_library(self):
@@ -291,6 +301,60 @@ class LibraryResource(DBResourceTestCase):
                 ('substance_id not unique', substance_id, substance_ids))
             substance_ids.add(substance_id)
         
+    def test10_create_library_copy(self):
+        
+        library = self.create_library({
+            'start_plate': 1000, 
+            'end_plate': 1005,
+            'screen_type': 'small_molecule' })
+
+        logger.info('create library copy...')
+        input_data = {
+            'library_short_name': library['short_name'],
+            'name': "A",
+            'usage_type': "library_screening_plates",
+            'initial_plate_well_volume': '0.000040'
+        }        
+        resource_uri = BASE_URI_DB + '/librarycopy'
+        resource_test_uri = '/'.join([
+            resource_uri,input_data['library_short_name'],input_data['name']])
+        library_copy = self._create_resource(
+            input_data, resource_uri, resource_test_uri, 
+            excludes=['initial_plate_well_volume'])
+        
+        logger.info('Verify plates created...')
+        uri = '/'.join([resource_test_uri,'plate'])
+        data_for_get={ 'limit': 0 }        
+        data_for_get.setdefault('includes', ['*'])
+        resp = self.api_client.get(
+            uri, format='json', authentication=self.get_credentials(), 
+            data=data_for_get)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code,self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        start_plate = int(library['start_plate'])
+        end_plate = int(library['end_plate'])
+        number_of_plates = end_plate-start_plate+1
+        self.assertEqual(len(new_obj['objects']),number_of_plates)
+
+        for obj in new_obj['objects']:
+            self.assertEqual(library_copy['name'],obj['copy_name'])
+            self.assertEqual(
+                float(input_data['initial_plate_well_volume']),float(obj['well_volume']))
+            plate_number = int(obj['plate_number'])
+            self.assertTrue(
+                plate_number>=start_plate and plate_number<=end_plate,
+                'wrong plate_number: %r' % obj)
+        
+        return (library, library_copy, new_obj['objects'])
+        
+    def test11_create_library_copy_invalids(self):
+        # TODO: try to create duplicate copy names
+        # TODO: try to create invalid types, plate ranges
+        
+        pass
+    
     def test12_update_copy_wells(self):
     
         (library_data, copy_data, plate_data) = self.test10_create_library_copy()
@@ -362,65 +426,384 @@ class LibraryResource(DBResourceTestCase):
         new_copywell = new_obj['objects'][0]
         
         self.assertEqual(int(new_copywell['adjustments']), 1)
-        self.assertEqual(volume_adjustment, float(new_copywell['consumed_volume']))
-        self.assertEqual(float(copywell_input['volume']), float(new_copywell['volume']))
-        
-        
-    def test10_create_library_copy(self):
-        
-        library = self.create_library({
-            'start_plate': 1000, 
-            'end_plate': 1005,
-            'screen_type': 'small_molecule' })
+        self.assertEqual(
+            volume_adjustment, float(new_copywell['consumed_volume']))
+        self.assertEqual(
+            float(copywell_input['volume']), float(new_copywell['volume']))
+    
+    def test13_plate_locations(self):
 
-        logger.info('create library copy...')
-        input_data = {
-            'library_short_name': library['short_name'],
-            'name': "A",
-            'usage_type': "library_screening_plates",
-            'initial_plate_well_volume': '0.000040'
-        }        
-        resource_uri = BASE_URI_DB + '/librarycopy'
-        resource_test_uri = '/'.join([
-            resource_uri,input_data['library_short_name'],input_data['name']])
-        library_copy = self._create_resource(
-            input_data, resource_uri, resource_test_uri, 
-            excludes=['initial_plate_well_volume'])
+        (library_data, copy_data, plate_data) = self.test10_create_library_copy()
         
-        logger.info('Verify plates created...')
-        uri = '/'.join([resource_test_uri,'plate'])
-        data_for_get={ 'limit': 0 }        
-        data_for_get.setdefault('includes', ['*'])
+        end_plate = library_data['end_plate']
+        start_plate = library_data['start_plate']
+        short_name = library_data['short_name']
+        
+        # 1. Simple test
+        lps_format = '{library_short_name}:{name}:{start_plate}-{end_plate}'
+        copy_plate_ranges = [
+            lps_format.format(
+                library_short_name=library_data['short_name'],
+                name=copy_data['name'],
+                start_plate=start_plate,
+                end_plate=end_plate,)
+        ]
+        
+        plate_location_input = {
+            'room': 'room1', 'freezer': 'freezer1', 'shelf': 'shelf1',
+            'bin': 'bin1',
+            'copy_plate_ranges': copy_plate_ranges,
+        }
+        
+        resource_uri = BASE_URI_DB + '/platelocation'
+        resource_test_uri = resource_uri
+        plate_location = self._create_resource(
+            plate_location_input, resource_uri, resource_test_uri,)
+        self.assertEqual(
+            plate_location['copy_plate_ranges'],
+            plate_location_input['copy_plate_ranges'],
+            'plate ranges not equal: %r - %r' % (
+                plate_location['copy_plate_ranges'],
+                plate_location_input['copy_plate_ranges']))
+
+        # Verify that plates have the location set as well
+        resource_uri = BASE_URI_DB + '/librarycopyplate'
         resp = self.api_client.get(
-            uri, format='json', authentication=self.get_credentials(), 
-            data=data_for_get)
+            resource_uri,format='json', 
+            data={ 
+                'plate_number__range': [start_plate,end_plate],
+                'copy_name__eq': copy_data['name']
+                }, 
+            authentication=self.get_credentials(),)
         self.assertTrue(
             resp.status_code in [200], 
-            (resp.status_code,self.get_content(resp)))
+            (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
-        start_plate = int(library['start_plate'])
-        end_plate = int(library['end_plate'])
-        number_of_plates = end_plate-start_plate+1
-        self.assertEqual(len(new_obj['objects']),number_of_plates)
+        plates_data = new_obj['objects']
+        self.assertTrue(len(plates_data)==end_plate-start_plate+1, 
+            'could not find all of the plates in the range: %r, %r'
+            % ([start_plate,end_plate],plates_data))
+        location_fields = ['room','freezer','shelf','bin']
+        for plate_data in plates_data:
+            for field in location_fields:
+                self.assertTrue(
+                    plate_data[field]==plate_location_input[field],
+                    'plate location: expected: %r, rcvd: %r'
+                    % (plate_location_input, plate_data))
+        
+        # Test apilogs
+        resource_uri = BASE_REPORTS_URI + '/apilog'
+        
+        # Test platelocation apilog
+        resp = self.api_client.get(
+            resource_uri, format='json', 
+            authentication=self.get_credentials(), 
+            data={ 
+                'limit': 0, 
+                'ref_resource_name': 'platelocation'})
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        expected_count = 1 # create
+        self.assertEqual( 
+            len(new_obj['objects']), expected_count , 
+            str((len(new_obj['objects']), expected_count, new_obj)))
+        
+        # Test librarycopyplate apilogs
+        resp = self.api_client.get(
+            resource_uri, format='json', 
+            authentication=self.get_credentials(), 
+            data={ 
+                'limit': 0, 
+                'ref_resource_name': 'librarycopyplate',
+                'includes': ['added_keys']})
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        expected_count = 6 # one for each plate in the copy_range
+        self.assertEqual( 
+            len(new_obj['objects']), expected_count , 
+            str((len(new_obj['objects']), expected_count, new_obj)))
+        for logvalue in new_obj['objects']:
+            diffs = json.loads(logvalue['diffs'])
+            self.assertTrue(diffs['bin']==[None, 'bin1'],
+                'wrong diff: %r' % diffs )
 
-        for obj in new_obj['objects']:
-            self.assertEqual(library_copy['name'],obj['copy_name'])
-            self.assertEqual(
-                float(input_data['initial_plate_well_volume']),float(obj['well_volume']))
-            plate_number = int(obj['plate_number'])
-            self.assertTrue(
-                plate_number>=start_plate and plate_number<=end_plate,
-                'wrong plate_number: %r' % obj)
+        # 2. remove plates from the range
+        copy_plate_ranges = [
+            lps_format.format(
+                library_short_name=library_data['short_name'],
+                name=copy_data['name'],
+                start_plate=start_plate,
+                end_plate=end_plate-2,)
+        ]
+        plate_location_input = {
+            'room': 'room1', 'freezer': 'freezer1', 'shelf': 'shelf1',
+            'bin': 'bin1',
+            'copy_plate_ranges': copy_plate_ranges,
+        }
+        resource_uri = BASE_URI_DB + '/platelocation'
+        resp = self.api_client.patch(
+            resource_uri,format='json', 
+            data={'objects': [plate_location_input],}, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        resp = self.api_client.get(
+            resource_uri,format='json', 
+            data={ 'includes': ['copy_plate_ranges'],}, 
+            authentication=self.get_credentials(),)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        logger.info('resp: %r', new_obj)
+        new_obj = new_obj['objects'][0]
+        self.assertEqual(
+            new_obj['copy_plate_ranges'],
+            plate_location_input['copy_plate_ranges'],
+            'plate ranges not equal: %r - %r' % (
+                new_obj['copy_plate_ranges'],
+                plate_location_input['copy_plate_ranges']))
         
-        return (library, library_copy, new_obj['objects'])
+        # Verify that removed plates have a location set to null
+        resource_uri = BASE_URI_DB + '/librarycopyplate'
+        data_for_get={ 
+            'plate_number__range': [end_plate-1,end_plate],
+            'copy_name__eq': copy_data['name']
+            } 
+        resp = self.api_client.get(
+            resource_uri,format='json', data=data_for_get,
+            authentication=self.get_credentials(),)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        self.assertTrue(len(new_obj['objects'])==2, 
+            'could not find all modified plates for %r, %r'
+            %(data_for_get, new_obj))
+        for plate_data in new_obj['objects']:
+            for field in location_fields:
+                self.assertTrue(
+                    plate_data[field]==None,
+                    'plate location: %r should be None, %r'
+                    % (field, plate_data))
         
-        
-    def test11_create_library_copy_invalids(self):
-        # TODO: try to create duplicate copy names
-        # TODO: try to create invalid types, plate ranges
-        
-        pass
     
+    def test15_batch_edit_copy_plates(self):
+        
+        (library_data, copy_data, plate_data) = self.test10_create_library_copy()
+        end_plate = library_data['end_plate']
+        start_plate = library_data['start_plate']
+        short_name = library_data['short_name']
+        
+        plate_location_input = {
+            'room': 'room1', 'freezer': 'freezer1', 'shelf': 'shelf1',
+            'bin': 'bin1',
+        }
+        
+        resource_uri = BASE_URI_DB + '/librarycopyplate/batch_edit'
+        
+        data = {
+            'data': plate_location_input, 
+            'search_data': {
+                'library_short_name': library_data['short_name'],
+                'copy_name': copy_data['name'] }
+            }
+        
+        logger.info('Patch batch_edit: cred: %r', self.username)
+        resp = self.api_client.patch(
+            resource_uri,format='json', 
+            data=data, 
+            authentication=self.get_credentials())
+        
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        
+        # Get plates as defined
+        resource_uri = BASE_URI_DB + '/librarycopyplate'
+        resp = self.api_client.get(
+            resource_uri,format='json', 
+            data={ 
+                'library_short_name__eq': library_data['short_name'],
+                'copy_name__eq': copy_data['name']
+                }, 
+            authentication=self.get_credentials(),)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        
+        plates_data = new_obj['objects']
+        self.assertTrue(len(plates_data)==end_plate-start_plate+1, 
+            'could not find all of the plates in the range: %r, %r'
+            % ([start_plate,end_plate],plates_data))
+        
+        plates_data_input = plates_data
+        for plate_data in plates_data_input:
+            for field in plate_location_input.keys():
+                self.assertTrue(
+                    plate_data[field]==plate_location_input[field],
+                    'plate location: expected: %r, rcvd: %r'
+                    % (plate_location_input[field],plate_data))
+                plate_data[field] = plate_location_input[field]
+
+        # check ApiLogs
+        # one for each plate, one parent_log, one for each location
+        resource_uri = BASE_REPORTS_URI + '/apilog'
+        
+        # Test platelocation apilog
+        resp = self.api_client.get(
+            resource_uri, format='json', 
+            authentication=self.get_credentials(), 
+            data={ 
+                'limit': 0, 
+                'ref_resource_name': 'platelocation'})
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        expected_count = 1 # created
+        self.assertEqual( 
+            len(new_obj['objects']), expected_count , 
+            str((len(new_obj['objects']), expected_count, new_obj)))
+        
+        # Test librarycopyplate apilogs
+        resp = self.api_client.get(
+            resource_uri, format='json', 
+            authentication=self.get_credentials(), 
+            data={ 
+                'limit': 0, 
+                'ref_resource_name': 'librarycopyplate',
+                'includes': ['added_keys']})
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        expected_count = 6 # one for each plate in the copy_range
+        self.assertEqual( 
+            len(new_obj['objects']), expected_count , 
+            str((len(new_obj['objects']), expected_count, new_obj)))
+        for logvalue in new_obj['objects']:
+            logger.info('logvalue: %r', logvalue)
+            if logvalue.get('diffs', None):
+                diffs = json.loads(logvalue['diffs'])
+                self.assertTrue(diffs['bin']==[None, 'bin1'],
+                    'wrong diff: %r' % diffs )
+            else:
+                # parent log
+                logger.info('parent log: %r', logvalue)
+    
+    def test14_modify_copy_plate_locations(self):
+        (library_data, copy_data, plate_data) = self.test10_create_library_copy()
+        end_plate = library_data['end_plate']
+        start_plate = library_data['start_plate']
+        short_name = library_data['short_name']
+
+        plate_location_input = {
+            'room': 'Room1', 'freezer': 'Freezer1', 'shelf': 'Shelf1', 
+            'bin': 'Bin1' }
+
+        # Get plates as defined
+        resource_uri = BASE_URI_DB + '/librarycopyplate'
+        resp = self.api_client.get(
+            resource_uri,format='json', 
+            data={ 
+                'plate_number__range': [start_plate,end_plate],
+                'copy_name__eq': copy_data['name']
+                }, 
+            authentication=self.get_credentials(),)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        
+        plates_data = new_obj['objects']
+        self.assertTrue(len(plates_data)==end_plate-start_plate+1, 
+            'could not find all of the plates in the range: %r, %r'
+            % ([start_plate,end_plate],plates_data))
+        
+        plates_data_input = plates_data
+        for plate_data in plates_data_input:
+            for field in plate_location_input.keys():
+                self.assertTrue(
+                    plate_data[field]==None,
+                    'plate location: expected: None, rcvd: %r'
+                    % (plate_data))
+                plate_data[field] = plate_location_input[field]
+
+        # Patch the plates
+        logger.info('Patch the plates: cred: %r', self.username)
+        resp = self.api_client.patch(
+            resource_uri,format='json', 
+            data={'objects': plates_data_input,}, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+
+        # Verify that the plates have the expected location
+        resp = self.api_client.get(
+            resource_uri,format='json', 
+            data={ 
+                'plate_number__range': [start_plate,end_plate],
+                'copy_name__eq': copy_data['name']
+                }, 
+            authentication=self.get_credentials(),)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        plates_data = new_obj['objects']
+        self.assertTrue(len(plates_data)==end_plate-start_plate+1, 
+            'could not find all of the plates in the range: %r, %r'
+            % ([start_plate,end_plate],plates_data))
+        for plate_data in plates_data:
+            for field in plate_location_input.keys():
+                self.assertTrue(
+                    plate_data[field]==plate_location_input[field],
+                    'plate location: expected: None, rcvd: %r'
+                    % (plate_location_input))
+
+        # Verify that the plate range is set on the location:
+        lps_format = '{library_short_name}:{name}:{start_plate}-{end_plate}'
+        expected_copy_plate_ranges = [
+            lps_format.format(
+                library_short_name=library_data['short_name'],
+                name=copy_data['name'],
+                start_plate=start_plate,
+                end_plate=end_plate)]
+        
+        plate_location_input['copy_plate_ranges'] = expected_copy_plate_ranges
+        resource_uri = BASE_URI_DB + '/platelocation'
+        resp = self.api_client.get(
+            resource_uri,format='json', 
+            data={ 'includes': ['copy_plate_ranges'],}, 
+            authentication=self.get_credentials(),)
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        new_obj = self.deserialize(resp)
+        logger.info('resp: %r', new_obj)
+        self.assertTrue(
+            len(new_obj['objects'])==1, 'too many locations were created')
+        new_obj = new_obj['objects'][0]
+        self.assertEqual(
+            new_obj['copy_plate_ranges'],
+            plate_location_input['copy_plate_ranges'],
+            'plate ranges not equal: %r - %r' % (
+                new_obj['copy_plate_ranges'],
+                plate_location_input['copy_plate_ranges']))
+        
+        # Test ApiLogs:
+        # plate - one for each plate
+        # plate_location - one for each plate addition to the range
+        
     def test4_create_library_invalids(self):
         ''' Test Library schema "required" validations'''
          
@@ -830,7 +1213,8 @@ class ScreenResultSerializerTest(TestCase):
             '%s/db/static/test_data/screens/%s' %(APP_ROOT_DIR,file_out) )
         
         with open(filename, 'rb') as input_file:
-            input_data = screen_result_importer.read_file(input_file)
+            wb = xlrd.open_workbook(file_contents=input_file.read())
+            input_data = screen_result_importer.read_workbook(wb)
             logger.info('input_data: keys: %r', input_data.keys())
             
         lookup_key = 'meta'
@@ -891,8 +1275,10 @@ class ScreenResultSerializerTest(TestCase):
                         % filename)
             except ValidationError, e:
                 logger.info('errors reported: %r', e.errors)
-                self.assertTrue(len(e.errors.keys())==3, 
-                    'should be 3 errors, one for each plate sheet without a "plate" field')
+                self.assertTrue(
+                    len(e.errors.keys())==3, 
+                    'should be 3 errors, one for each plate sheet without '
+                    'a "plate" field')
                 
     @staticmethod
     def validate(testinstance,input_data,output_data):
@@ -1093,7 +1479,8 @@ class ScreenResultResource(DBResourceTestCase):
         data_for_get['CONTENT_TYPE'] = JSON_MIMETYPE
         logger.info('PUT library well data ...')
         resp = self.django_client.put(
-            resource_uri, data=json.dumps({ 'objects': input_data }) , **data_for_get)
+            resource_uri, data=json.dumps({ 'objects': input_data }) ,
+            **data_for_get)
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
@@ -1141,7 +1528,7 @@ class ScreenResultResource(DBResourceTestCase):
             resp.status_code in [200,201,202], 
             (resp.status_code, self.get_content(resp)))
         output_data = self.sr_serializer.deserialize(
-            content=self.get_content(resp), format=XLSX_MIMETYPE)
+            self.get_content(resp), XLSX_MIMETYPE)
         
         ScreenResultSerializerTest.validate(self, input_data, output_data)    
     
@@ -1295,7 +1682,7 @@ class ScreenResultResource(DBResourceTestCase):
             input_data['fields'], 
             input_data['objects'] )
         input_data_put = self.sr_serializer.serialize(
-            input_data_put, format=XLSX_MIMETYPE)
+            input_data_put, XLSX_MIMETYPE)
         data_for_get = {}
         data_for_get.update(default_data_for_get)
         data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
@@ -1314,7 +1701,8 @@ class ScreenResultResource(DBResourceTestCase):
             content = self.get_content(resp)
             if content:
                 logger.info('resp: %r', 
-                    [[str(y) for y in x] for x in self.serializer.from_xlsx(content)])
+                    [[str(y) for y in x] 
+                        for x in self.serializer.from_xlsx(content)])
         self.assertTrue(
             resp.status_code in [200, 204], resp.status_code)
 
@@ -1327,10 +1715,11 @@ class ScreenResultResource(DBResourceTestCase):
             content = self.get_content(resp)
             if content:
                 logger.info('resp: %r', 
-                    [[str(y) for y in x] for x in self.serializer.from_xlsx(content)])
+                    [[str(y) for y in x] 
+                        for x in self.serializer.from_xlsx(content)])
         self.assertTrue(resp.status_code in [200,201,202],resp.status_code)
         output_data = self.sr_serializer.deserialize(
-            content=self.get_content(resp), format=XLSX_MIMETYPE)
+            self.get_content(resp), XLSX_MIMETYPE)
         ScreenResultSerializerTest.validate(self, input_data, output_data)
         
         # Test statistics:
@@ -1452,7 +1841,7 @@ class ScreenResultResource(DBResourceTestCase):
             input_data['fields'], 
             input_data['objects'] )
         input_data_put = self.sr_serializer.serialize(
-            input_data_put, format=XLSX_MIMETYPE)
+            input_data_put, XLSX_MIMETYPE)
         data_for_get = {}
         data_for_get.update(default_data_for_get)
         data_for_get['CONTENT_TYPE'] = XLSX_MIMETYPE
@@ -1471,7 +1860,8 @@ class ScreenResultResource(DBResourceTestCase):
             content = self.get_content(resp)
             if content:
                 logger.info('resp: %r', 
-                    [[str(y) for y in x] for x in self.serializer.from_xlsx(content)])
+                    [[str(y) for y in x] 
+                        for x in self.serializer.from_xlsx(content)])
         self.assertTrue(
             resp.status_code in [200, 204], resp.status_code)
 
@@ -1484,10 +1874,11 @@ class ScreenResultResource(DBResourceTestCase):
             content = self.get_content(resp)
             if content:
                 logger.info('resp: %r', 
-                    [[str(y) for y in x] for x in self.serializer.from_xlsx(content)])
+                    [[str(y) for y in x] 
+                        for x in self.serializer.from_xlsx(content)])
         self.assertTrue(resp.status_code in [200,201,202],resp.status_code)
         output_data = self.sr_serializer.deserialize(
-            content=self.get_content(resp), format=XLSX_MIMETYPE)
+            self.get_content(resp), XLSX_MIMETYPE)
         ScreenResultSerializerTest.validate(self, input_data, output_data)
         
         # verify that the screen1 mutual columns = screen 2 mutual columns
@@ -1497,21 +1888,27 @@ class ScreenResultResource(DBResourceTestCase):
             BASE_URI_DB,resource_name,screen_facility_id])
          # use JSON to retrieve the data, mutual positives columns would be 
          # ignored when deserializing from XLSX
+        data_for_get = {}
+        data_for_get.update(default_data_for_get)
         data_for_get['HTTP_ACCEPT'] = JSON_MIMETYPE
         data = {}
         data['includes'] = '*'
         data['show_mutual_positives'] = True
+        logger.info('get the screen result: %r', data_for_get)
         resp = self.django_client.get(resource_uri, data=data, **data_for_get)
         if resp.status_code not in [200, 204]:
             content = self.get_content(resp)
             if content:
                 logger.info('resp: %r', 
-                    [[str(y) for y in x] for x in self.serializer.from_xlsx(content)])
+                    [[str(y) for y in x] 
+                        for x in self.serializer.from_xlsx(content)])
         self.assertTrue(resp.status_code in [200,201,202],resp.status_code)
-        logger.info('deserialize to json and check for mutual positives columns...')
+        logger.info('deserialize to json and check mutual positives columns...')
         # use generic deserialization to show all of the fields
+        content = self.get_content(resp)
+#         logger.info('content: %r', content)
         output_data = self.serializer.deserialize(
-            content=self.get_content(resp), format=JSON_MIMETYPE)
+            content, JSON_MIMETYPE)
         
         try:
             # save output data generator to a list
@@ -1538,7 +1935,8 @@ class ScreenResultResource(DBResourceTestCase):
                     self.assertTrue(this_screen_colname in row, 
                         'could not find %r in row: %r' % (this_screen_colname, row))
                     if row[this_screen_colname] is not None:
-                        self.assertTrue(row[col] is not None,
+                        self.assertTrue(
+                            row[col] is not None,
                             ('mutual positive column %r is missing data in row: %r' 
                              % (col, row)))
                 
@@ -1608,7 +2006,7 @@ class ScreenResultResource(DBResourceTestCase):
             screen_facility_id = screen['facility_id']
             resource_uri = '/'.join([
                 BASE_URI_DB,resource_name,screen_facility_id])
-            logger.info('PUT screen result to the server...')
+            logger.info('PUT screen result to the server... %r', data_for_get)
             django_test_client = self.api_client.client
             resp = django_test_client.post(
                 resource_uri, content_type='application/xls', 
@@ -1628,18 +2026,24 @@ class ScreenResultResource(DBResourceTestCase):
             key = '00001:A01-G'
             self.assertTrue(key in sheet_errors, 
                 'key: %r should be in errors: %r' % (key, sheet_errors))
-            self.assertTrue('could not convert' in str(sheet_errors[key]),
-                'error should be a conversion error: %r, %r' %(key,sheet_errors[key]) )
+            self.assertTrue(
+                'could not convert' in str(sheet_errors[key]),
+                'error should be a conversion error: %r, %r' 
+                    % (key,sheet_errors[key]) )
             key = '00001:A03'
             self.assertTrue(key in sheet_errors, 
                 'key: %r should be in errors: %r' % (key, sheet_errors))
-            self.assertTrue('unknown exclude' in str(sheet_errors[key]),
-                'error should be a excluded cols error: %r, %r' %(key,sheet_errors[key]) )
+            self.assertTrue(
+                'unknown exclude' in str(sheet_errors[key]),
+                'error should be a excluded cols error: %r, %r' 
+                    % (key,sheet_errors[key]) )
             key = '00001:A05-E'
             self.assertTrue(key in sheet_errors, 
                 'key: %r should be in errors: %r' % (key, sheet_errors))
-            self.assertTrue('could not convert' in str(sheet_errors[key]),
-                'error should be a conversion error: %r, %r' %(key,sheet_errors[key]) )
+            self.assertTrue(
+                'could not convert' in str(sheet_errors[key]),
+                'error should be a conversion error: %r, %r' 
+                    % (key,sheet_errors[key]) )
 
     def test5_data_column_errors(self):
         # Make a ScreensaverUser entry for the admin user
@@ -1764,8 +2168,10 @@ class ScreenResultResource(DBResourceTestCase):
         self.assertTrue(find_in_dict(key, content), 
             'key: %r should be in errors: %r' % (key, content))
         col_errors = find_in_dict(key, content)
-        self.assertTrue('derived_from_columns' in str(col_errors),
-            'error should be a "derived_from_columns" error: %r, %r' %(key,col_errors) )
+        self.assertTrue(
+            'derived_from_columns' in str(col_errors),
+            'error should be a "derived_from_columns" error: %r, %r' 
+                % (key,col_errors) )
         
 
 class ScreenResource(DBResourceTestCase):
@@ -1840,7 +2246,8 @@ class ScreenResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
         logger.info('new obj: %s ' % new_obj)
-        self.assertTrue(len(new_obj['objects'])==1,'wrong number of publications returned')
+        self.assertTrue(
+            len(new_obj['objects'])==1,'wrong number of publications returned')
     
         publication_received = new_obj['objects'][0]
         result,msgs = assert_obj1_to_obj2(
@@ -2038,13 +2445,16 @@ class ScreenResource(DBResourceTestCase):
         errors, resp = self._create_resource(
             input, resource_uri, resource_test_uri, expect_fail=True)
         self.assertTrue(resp.status_code==400, msg)
-        self.assertTrue(find_in_dict(key, errors), 'test: %s, not in errors: %r' %(msg,errors))
+        self.assertTrue(
+            find_in_dict(key, errors), 
+            'test: %s, not in errors: %r' %(msg,errors))
         
         key = 'library_plates_screened' 
         # 2. create a library_plate_range with invalid library name:
         # even though the plate range is correct, this should fail,
         # and the transaction should cancel the creation of the libraryscreening
-        value = [lps_format.format(library_short_name='**',name='A').format(**library1)]
+        value = [ lps_format.format(
+            library_short_name='**',name='A').format(**library1)]
         msg = 'invalid format for %r should fail' % key
         logger.info('test %r', msg)
         input = library_screening_input.copy()
@@ -2089,7 +2499,7 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(find_in_dict(key, errors), 
             'test: %s, not in errors: %r' %(key,errors))
 
-        # Finally, create valid input
+        # 5. Finally, create valid input
         logger.info('test valid input...')
         library_screening = self._create_resource(
             library_screening_input, resource_uri, resource_test_uri)
@@ -2124,10 +2534,11 @@ class ScreenResource(DBResourceTestCase):
             (key,'expected_value',expected_value,
                 'returned value',screen[key]))
 
-        # Test - add a plate_range
+        # 7. Test - add a plate_range
         input = { 
             'activity_id': library_screening['activity_id'],
-            'library_plates_screened': library_screening['library_plates_screened'] 
+            'library_plates_screened': 
+                library_screening['library_plates_screened'] 
             }
         input['library_plates_screened'].append(
             lps_format.format(**library_copy2).format(
@@ -2136,14 +2547,65 @@ class ScreenResource(DBResourceTestCase):
         library_screening = self._create_resource(
             input, resource_uri, resource_test_uri)
 
-        # Test - delete a plate_range
+        # 8. Test - delete a plate_range
         input = { 
             'activity_id': library_screening['activity_id'],
-            'library_plates_screened': library_screening['library_plates_screened'][:-1] 
+            'library_plates_screened': 
+                library_screening['library_plates_screened'][:-1] 
             }
         logger.info('input: %r', input)
         library_screening = self._create_resource(
             input, resource_uri, resource_test_uri)
+        
+        # 9. test valid input with start_plate==end_plate (no end plate)
+        
+        single_plate_lps_format = '{library_short_name}:{name}:{{start_plate}}'
+        single_plate_lps_return_format = \
+            '{library_short_name}:{name}:{{start_plate}}-{{start_plate}}'
+        library_plates_screened = [
+            single_plate_lps_format.format(**library_copy1).format(**library1),
+            single_plate_lps_format.format(**library_copy2).format(
+                start_plate=library2['start_plate'])
+        ]
+        library_plates_screened_return_formatted = [
+            single_plate_lps_return_format.format(**library_copy1).format(**library1),
+            single_plate_lps_return_format.format(**library_copy2).format(
+                start_plate=library2['start_plate'])
+        ]
+        input = library_screening_input.copy()
+        input['date_of_activity'] = '2016-08-01'
+        input['library_plates_screened'] =  library_plates_screened
+        
+        logger.info('test valid single plate input...')
+        data_for_get = { 'date_of_activity__eq': input['date_of_activity']}
+        library_screening = self._create_resource(
+            input, resource_uri, resource_test_uri,
+            data_for_get=data_for_get, excludes=['library_plates_screened'])
+        logger.info('created library screening, with single-plate range: %r',
+            library_screening)
+        found_count = 0
+        for lps in library_screening['library_plates_screened']:
+            for lps_expected in library_plates_screened_return_formatted:
+                if lps_expected==lps:
+                    found_count += 1
+        self.assertTrue(found_count==2, 
+            'single plate test, returned ranges, expected: %r, returned: %r'
+            %(library_plates_screened_return_formatted,
+                library_screening['library_plates_screened']))
+        # Test Screen statistics
+        screen = self.get_screen(screen['facility_id'])
+
+        key = 'library_screenings'
+        expected_value = 2
+        self.assertTrue(screen[key] == expected_value,
+            (key,'expected_value',expected_value,
+                'returned value',screen[key]))
+        
+        
+        
+        
+        
+        
         
     
     def test1_create_screen(self):
@@ -2201,19 +2663,22 @@ class ScreensaverUserResource(DBResourceTestCase):
             'harvard_id_expiration_date': '2018-05-01',
         }
         resource_uri = BASE_URI_DB + '/screensaveruser'
-        resource_test_uri = '/'.join([resource_uri,simple_user_input['ecommons_id']])
+        resource_test_uri = '/'.join([
+            resource_uri,simple_user_input['ecommons_id']])
         created_user = self._create_resource(
             simple_user_input, resource_uri, resource_test_uri)
         self.assertTrue(
             simple_user_input['ecommons_id']==created_user['username'],
-            'username should equal the ecommons id if only ecommons is provided: %r, %r' 
-                % (simple_user_input,created_user))
+            'username should equal the ecommons id if only ecommons is'
+            ' provided: %r, %r' % (simple_user_input,created_user))
         
     def test0_create_user(self):
         
         self.user1 = self.create_screensaveruser({ 'username': 'st1'})
-        self.screening_user = self.create_screensaveruser({ 'username': 'screening1'})
-        self.admin_user = self.create_screensaveruser({ 'username': 'adminuser'})
+        self.screening_user = self.create_screensaveruser(
+            { 'username': 'screening1'})
+        self.admin_user = self.create_screensaveruser(
+            { 'username': 'adminuser'})
 
         # create an admin
         
@@ -2254,7 +2719,8 @@ class ScreensaverUserResource(DBResourceTestCase):
         try:       
             resource_uri = BASE_REPORTS_URI + '/usergroup/'
             resp = self.api_client.put(resource_uri, 
-                format='json', data=group_patch, authentication=self.get_credentials())
+                format='json', data=group_patch, 
+                authentication=self.get_credentials())
             self.assertTrue(
                 resp.status_code in [200,201,202], 
                 (resp.status_code, self.get_content(resp)))
@@ -2295,7 +2761,8 @@ class ScreensaverUserResource(DBResourceTestCase):
         try:       
             resource_uri = BASE_URI_DB + '/screensaveruser'
             resp = self.api_client.patch(resource_uri, 
-                format='json', data=userpatch, authentication=self.get_credentials())
+                format='json', data=userpatch, 
+                authentication=self.get_credentials())
             self.assertTrue(
                 resp.status_code in [200,201,202], 
                 (resp.status_code, self.get_content(resp)))
@@ -2338,9 +2805,11 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         try:       
             resource_uri = BASE_URI_DB + '/userchecklistitem/%s' % test_username
-            resp = self.api_client.patch(resource_uri, 
-                format='json', 
-                data=checklist_item_patch, authentication=self.get_credentials())
+            resp = self.api_client.patch(
+                resource_uri, 
+                format = 'json', 
+                data = checklist_item_patch, 
+                authentication=self.get_credentials())
             self.assertTrue(
                 resp.status_code in [200,201,202], 
                 (resp.status_code, self.get_content(resp)))
@@ -2418,7 +2887,8 @@ class ScreensaverUserResource(DBResourceTestCase):
             logger.info('attached_file request view result: %r',result)
             self.assertEqual(
                 result.content, attachedfile_item_post['contents'], 
-                'download file view returns wrong contents: %r' % result.content)
+                'download file view returns wrong contents: %r' 
+                    % result.content)
         except Exception, e:
             logger.info('no file found at: %r', uri)
             raise
@@ -2437,12 +2907,14 @@ class ScreensaverUserResource(DBResourceTestCase):
         }
 
         content_type = MULTIPART_CONTENT
-        resource_uri = BASE_URI_DB + '/screensaveruser/%s/attachedfiles/' % test_username
+        resource_uri = \
+            BASE_URI_DB + '/screensaveruser/%s/attachedfiles/' % test_username
         authentication=self.get_credentials()
         kwargs = {}
         kwargs['HTTP_AUTHORIZATION'] = authentication
         file = 'iccbl_sm_user_agreement_march2015.pdf'
-        filename = '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,file)
+        filename = \
+            '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,file)
         with open(filename) as input_file:
 
             logger.info('POST with attached_file to the server')
@@ -2506,8 +2978,10 @@ class ScreensaverUserResource(DBResourceTestCase):
             { 'name': 'rnaiDsl3SharedScreens' },
         ]}
         resource_uri = BASE_REPORTS_URI + '/usergroup/'
-        resp = self.api_client.put(resource_uri, 
-            format='json', data=group_patch, authentication=self.get_credentials())
+        resp = self.api_client.put(
+            resource_uri, 
+            format='json', data=group_patch, 
+            authentication=self.get_credentials())
         self.assertTrue(
             resp.status_code in [200,201,202], 
             (resp.status_code, self.get_content(resp)))
@@ -2525,7 +2999,8 @@ class ScreensaverUserResource(DBResourceTestCase):
             }
         test_comment = 'test update comment for user agreement'
         content_type = MULTIPART_CONTENT
-        resource_uri = BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_username
+        resource_uri = \
+            BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_username
         
         authentication=self.get_credentials()
         kwargs = { 'limit': 0, 'includes': ['*'] }
@@ -2533,7 +3008,8 @@ class ScreensaverUserResource(DBResourceTestCase):
         kwargs[HEADER_APILOG_COMMENT] = test_comment
         
         file = 'iccbl_sm_user_agreement_march2015.pdf'
-        filename = '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,file)
+        filename = \
+            '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,file)
         with open(filename) as input_file:
 
             logger.info('PUT user agreement to the server...')
@@ -2544,7 +3020,9 @@ class ScreensaverUserResource(DBResourceTestCase):
                 resource_uri, content_type=MULTIPART_CONTENT, 
                 data=useragreement_item_post, **kwargs)
             if resp.status_code not in [201]:
-                logger.info('resp code: %d, resp: %r, content: %r', resp.status_code, resp, resp.content)
+                logger.info(
+                    'resp code: %d, resp: %r, content: %r', 
+                    resp.status_code, resp, resp.content)
             self.assertTrue(
                 resp.status_code in [201], 
                 (resp.status_code))
@@ -2599,7 +3077,8 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         resource_uri = BASE_URI_DB + '/userchecklistitem'
         resource_uri = '/'.join([resource_uri,self.user1['username']])
-        checklist_items = self.get_list_resource(resource_uri, {'status__eq': 'completed'})
+        checklist_items = self.get_list_resource(
+            resource_uri, {'status__eq': 'completed'})
         logger.info('checklist_items: %r', checklist_items)
         self.assertTrue(len(checklist_items)==1)
         val = 'current_small_molecule_user_agreement_active'
@@ -2616,9 +3095,11 @@ class ScreensaverUserResource(DBResourceTestCase):
             'key': self.user1['username'],
             'diff_keys__contains': 'data_sharing_level' 
         }
-        apilogs = self.get_list_resource(resource_uri, data_for_get=data_for_get )
+        apilogs = self.get_list_resource(
+            resource_uri, data_for_get=data_for_get )
         logger.info('logs: %r', apilogs)
-        self.assertTrue(len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
+        self.assertTrue(
+            len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
         apilog = apilogs[0]
         self.assertTrue(apilog['comment']==test_comment,
             'comment %r should be: %r' % (apilog['comment'], test_comment))
@@ -2635,7 +3116,8 @@ class ScreensaverUserResource(DBResourceTestCase):
             }
         test_comment = 'test update rna comment for user agreement'
         content_type = MULTIPART_CONTENT
-        resource_uri = BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_username
+        resource_uri = \
+            BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_username
         
         authentication=self.get_credentials()
         kwargs = { 'limit': 0, 'includes': ['*'] }
@@ -2643,7 +3125,8 @@ class ScreensaverUserResource(DBResourceTestCase):
         kwargs[HEADER_APILOG_COMMENT] = test_comment
         
         file = 'iccbl_rnai_ua_march2015.pdf'
-        filename = '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,file)
+        filename = \
+            '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,file)
         with open(filename) as input_file:
 
             logger.info('PUT user agreement to the server...')
@@ -2654,7 +3137,9 @@ class ScreensaverUserResource(DBResourceTestCase):
                 resource_uri, content_type=MULTIPART_CONTENT, 
                 data=useragreement_item_post, **kwargs)
             if resp.status_code not in [201]:
-                logger.info('resp code: %d, resp: %r, content: %r', resp.status_code, resp, resp.content)
+                logger.info(
+                    'resp code: %d, resp: %r, content: %r', 
+                    resp.status_code, resp, resp.content)
             self.assertTrue(
                 resp.status_code in [201], 
                 (resp.status_code))
@@ -2695,7 +3180,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             logger.exception('no file found at: %r', uri)
             raise
 
-        # TEST 2 - check that the data sharing level group is assigned to the user
+        # TEST 2 - check that the data sharing level group is assigned to user
         
         resource_uri = BASE_URI_DB + '/screensaveruser'
         resource_uri = '/'.join([resource_uri,self.user1['username']])
@@ -2710,7 +3195,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             'usergroups returned: %r does not contain %r' 
             % (user_data['usergroups'], second_usergroup_to_add))
 
-        # TEST 2 - check that a checklist item has been created for the user agreement
+        # TEST 2 - check that checklist item has been created for user agreement
         
         resource_uri = BASE_URI_DB + '/userchecklistitem'
         resource_uri = '/'.join([resource_uri,self.user1['username']])
@@ -2734,9 +3219,11 @@ class ScreensaverUserResource(DBResourceTestCase):
             'diff_keys__contains': 'data_sharing_level',
             'order_by': 'date_created' 
         }
-        apilogs = self.get_list_resource(resource_uri, data_for_get=data_for_get )
+        apilogs = self.get_list_resource(
+            resource_uri, data_for_get=data_for_get )
         logger.info('logs: %r', apilogs)
-        self.assertTrue(len(apilogs) == 2, 'too many apilogs found: %r' % apilogs)
+        self.assertTrue(
+            len(apilogs) == 2, 'too many apilogs found: %r' % apilogs)
         apilog = apilogs[1]
         self.assertTrue(apilog['comment']==test_comment,
             'comment %r should be: %r' % (apilog['comment'], test_comment))
@@ -2765,9 +3252,11 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         try:       
             resource_uri = BASE_URI_DB + '/serviceactivity'
-            resp = self.api_client.post(resource_uri, 
+            resp = self.api_client.post(
+                resource_uri, 
                 format='json', 
-                data=service_activity_post, authentication=self.get_credentials())
+                data=service_activity_post, 
+                authentication=self.get_credentials())
             self.assertTrue(
                 resp.status_code in [200,201,202], 
                 (resp.status_code, self.get_content(resp)))

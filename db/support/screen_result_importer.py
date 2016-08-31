@@ -608,29 +608,29 @@ def create_output_data(screen_facility_id, fields, result_values ):
     return data
 
    
-def read_file(input_file):
-    '''Read a serialized (xlsx) screen result:
-    - sheets:
-       "Screen Info" - two columns: A - attribute, B - value
-       "Data Columns 
-           - A - data column attribute name
-           - [B-n] - data columns 
-       "Data Sheets: old format ["PL_0001", "PL_0002, etc ]
-       - new format: one sheet with a plate number column
-    '''
-    # FIXME: use openpyxl for memory optimization
-    # from openpyxl import load_workbook
-    # wb = load_workbook(filename='large_file.xlsx', read_only=True)
-    # ws = wb['big_data'] # ws is now an IterableWorksheet
-    # 
-    # for row in ws.rows:
-    #     for cell in row:
-    #         print(cell.value)    
-    
-    
-    logger.info('open screen result file for loading...')
-    wb = xlrd.open_workbook(file_contents=input_file.read())
-    return read_workbook(wb)
+# def read_file(input_file):
+#     '''Read a serialized (xlsx) screen result:
+#     - sheets:
+#        "Screen Info" - two columns: A - attribute, B - value
+#        "Data Columns 
+#            - A - data column attribute name
+#            - [B-n] - data columns 
+#        "Data Sheets: old format ["PL_0001", "PL_0002, etc ]
+#        - new format: one sheet with a plate number column
+#     '''
+#     # FIXME: use openpyxl for memory optimization
+#     # from openpyxl import load_workbook
+#     # wb = load_workbook(filename='large_file.xlsx', read_only=True)
+#     # ws = wb['big_data'] # ws is now an IterableWorksheet
+#     # 
+#     # for row in ws.rows:
+#     #     for cell in row:
+#     #         print(cell.value)    
+#     
+#     
+#     logger.info('open screen result file for loading...')
+#     wb = xlrd.open_workbook(file_contents=input_file.read())
+#     return read_workbook(wb)
 
         
 def json_printer(data):
@@ -669,7 +669,8 @@ if __name__ == "__main__":
         format='%(msecs)d:%(module)s:%(lineno)d:%(levelname)s: %(message)s')        
 
     with open(args.screen_result_file) as input_file:
-        print json_printer(read_file(input_file))
+        wb = xlrd.open_workbook(file_contents=input_file.read())
+        print json_printer(read_workbook(wb))
         
 # def parse_result_row_orig(i,parsed_columns,result_row):    
 #     

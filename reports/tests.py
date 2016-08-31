@@ -53,40 +53,35 @@ import cStringIO
 import json
 import logging
 import os
+import sys
 import unittest
 from unittest.util import safe_repr
+import urlparse
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.utils import ProgrammingError
 from django.http.response import StreamingHttpResponse
 from django.test import TestCase
-# from django.test.simple import DjangoTestSuiteRunner
+from django.test.client import Client, FakePayload
+from django.test.runner import DiscoverRunner
 from django.test.testcases import SimpleTestCase
 from django.utils.encoding import force_text
 from tastypie import fields
-from tastypie.fields import BooleanField
-from tastypie.test import ResourceTestCase, TestApiClient
-from tastypie.utils.dict import dict_strip_unicode_keys
 
 from reports import dump_obj, HEADER_APILOG_COMMENT
 from reports.api import compare_dicts
 from reports.dump_obj import dumpObj
 from reports.models import API_ACTION_CREATE, MetaHash
+from reports.serialize import parse_val
+import reports.serialize.csvutils as csvutils
+from reports.serialize.sdfutils import MOLDATAKEY
 from reports.serializers import CSVSerializer, SDFSerializer, \
     LimsSerializer, XLSSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource
 import reports.utils.log_utils
-from reports.serialize.sdfutils import MOLDATAKEY
-import reports.serialize.csvutils as csvutils
-from reports.serialize import parse_val
-
-from django.test.runner import DiscoverRunner
-import sys
-from django.test.client import Client
 
 
-# _ = reports.utils.log_utils.LogMessageFormatter   # optional, to improve readability
 logger = logging.getLogger(__name__)
 
 BASE_URI = '/reports/api/v1'
@@ -278,7 +273,7 @@ def find_all_obj_in_list(list1, list2, **kwargs):
     return True, msgs
 
 
-# To Run tests without a database:
+# Run tests without a database:
 # Example:
 # ./manage.py test reports.SDFSerializerTest.test2_clean_data_sdf \
 #      --settings=lims.settings_testing_debug --verbosity=2 \
@@ -996,7 +991,8 @@ class IResourceTestCase(SimpleTestCase):
                 self.username, '1testsuperuser@example.com', self.password)
  
     def _bootstrap_init_files(self):
-
+        
+        logger.info('_bootstrap_init_files...')
         self.directory = os.path.join(APP_ROOT_DIR, 'reports/static/api_init')
         serializer=CSVSerializer() 
         testApiClient = TestApiClient(serializer=serializer) 
@@ -1030,7 +1026,8 @@ class IResourceTestCase(SimpleTestCase):
             _data_for_get.update(data_for_get)
             
         logger.info('input_data to create: %r', input_data)
-        logger.debug('resource: %r, resource_test_uri: %r', 
+        logger.info('data_for_get: %r', data_for_get)
+        logger.info('resource: %r, resource_test_uri: %r', 
             resource_uri,resource_test_uri)
 
         logger.info('post to %r...', resource_uri)
@@ -1057,7 +1054,7 @@ class IResourceTestCase(SimpleTestCase):
                 resp.status_code in [200,201], 
                 (resp.status_code, self.get_content(resp)))
         
-        new_obj = self.get_single_resource(resource_test_uri)
+        new_obj = self.get_single_resource(resource_test_uri, data_for_get=_data_for_get)
         result,msg = assert_obj1_to_obj2(input_data,new_obj, excludes=excludes)
         self.assertTrue(result, msg)
         logger.debug('item created: %r', new_obj)
@@ -1172,15 +1169,15 @@ class IResourceTestCase(SimpleTestCase):
                     excludes=keys_not_to_check)
                 self.assertTrue(result,
                     ('not equal', msg, inputobj, outputobj))
-#                 self.assertTrue(
-#                     resource_name in outputobj['resource_uri'], 
-#                     ('wrong resource_uri returned:', filename, outputobj['resource_uri'],
-#                          'should contain', resource_name))
-#                 for id_key in id_keys_to_check:
-#                     self.assertTrue(
-#                         inputobj[id_key] in outputobj['resource_uri'], 
-#                         ('wrong resource_uri returned:', filename, outputobj['resource_uri'],
-#                              'should contain id key', id_key, 'val', inputobj[id_key]))
+                # self.assertTrue(
+                #     resource_name in outputobj['resource_uri'], 
+                #     ('wrong resource_uri returned:', filename, outputobj['resource_uri'],
+                #          'should contain', resource_name))
+                # for id_key in id_keys_to_check:
+                #     self.assertTrue(
+                #         inputobj[id_key] in outputobj['resource_uri'], 
+                #         ('wrong resource_uri returned:', filename, outputobj['resource_uri'],
+                #              'should contain id key', id_key, 'val', inputobj[id_key]))
             #TODO: GET the apilogs expected and test them
             
             # return both collections for further testing
@@ -1267,27 +1264,17 @@ class IResourceTestCase(SimpleTestCase):
                         raise AssertionError('Unknown API command %s' % command)
                     
     def get_content(self, resp):
+        
         return self.serializer.get_content(resp);
     
     def deserialize(self, resp):
-        """
-        Given a ``HttpResponse`` coming back from using the ``client``, this method
-        checks the ``Content-Type`` header & attempts to deserialize the data based on
-        that.
 
-        It returns a Python datastructure (typically a ``dict``) of the serialized data.
-        """
-        # Override to allow for use of the StreamingHttpResponse or the HttpResponse
-        return self.serializer.deserialize(
-            content=self.get_content(resp), 
-            format=resp['Content-Type'])
+        return self.serializer.deserialize(self.get_content(resp), resp['Content-Type'])
 
-    def serialize(self, data, format='application/json'):
-        """
-        Given a Python datastructure (typically a ``dict``) & a desired content-type,
-        this method will return a serialized string of that data.
-        """
-        return self.serializer.serialize(data, format=format)
+    def serialize(self, data, format):
+        content_type = self.serializer.get_content_type(None, format)
+        return self.serializer.serialize(data, content_type)
+
 
 runTestApiInit = [False]
 def setUpModule():
@@ -1318,6 +1305,7 @@ def setUpModule():
         testContext = IResourceTestCase(methodName='_bootstrap_init_files')
         testContext.setUp()
         testContext._bootstrap_init_files()
+        logger.info('database initialization finished')
     else:
         print 'skip database metahash initialization when using keepdb'
 
@@ -1327,8 +1315,118 @@ def tearDownModule():
     logger.info('=== teardown Module')
 
 
+class TestApiClient(object):
+
+    def __init__(self, serializer=None):
+        """
+        """
+        self.client = Client()
+        self.serializer = serializer
+
+        if not self.serializer:
+            self.serializer = LimsSerializer()
+
+    def get(self, uri, format='json', data=None, authentication=None, **kwargs):
+        """
+        Performs a simulated ``GET`` request to the provided URI.
+        """
+        content_type = self.serializer.get_content_type(None, format=format)
+        kwargs['HTTP_ACCEPT'] = content_type
+
+        # GET & DELETE are the only times we don't serialize the data.
+        if data is not None:
+            kwargs['data'] = data
+
+        if authentication is not None:
+            kwargs['HTTP_AUTHORIZATION'] = authentication
+
+        return self.client.get(uri, **kwargs)
+
+    def post(self, uri, format='json', data=None, authentication=None, **kwargs):
+        """
+        Performs a simulated ``POST`` request to the provided URI.
+
+        Optionally accepts a ``data`` kwarg. **Unlike** ``GET``, in ``POST`` the
+        ``data`` gets serialized & sent as the body instead of becoming part of the URI.
+        """
+        content_type = self.serializer.get_content_type(None, format)
+        kwargs['content_type'] = content_type
+
+        if data is not None:
+            kwargs['data'] = self.serializer.serialize(data, content_type)
+
+        if authentication is not None:
+            kwargs['HTTP_AUTHORIZATION'] = authentication
+
+        return self.client.post(uri, **kwargs)
+
+    def put(self, uri, format='json', data=None, authentication=None, **kwargs):
+        """
+        Performs a simulated ``PUT`` request to the provided URI.
+
+        Optionally accepts a ``data`` kwarg. **Unlike** ``GET``, in ``PUT`` the
+        ``data`` gets serialized & sent as the body instead of becoming part of the URI.
+        """
+        content_type = self.serializer.get_content_type(None, format)
+        kwargs['content_type'] = content_type
+
+        if data is not None:
+            kwargs['data'] = self.serializer.serialize(data, content_type)
+
+        if authentication is not None:
+            kwargs['HTTP_AUTHORIZATION'] = authentication
+
+        return self.client.put(uri, **kwargs)
+
+    def patch(self, uri, format='json', data=None, authentication=None, **kwargs):
+        """
+        Performs a simulated ``PATCH`` request to the provided URI.
+
+        Optionally accepts a ``data`` kwarg. **Unlike** ``GET``, in ``PATCH`` the
+        ``data`` gets serialized & sent as the body instead of becoming part of the URI.
+        """
+        content_type = self.serializer.get_content_type(None, format)
+        kwargs['content_type'] = content_type
+
+        if data is not None:
+            kwargs['data'] = self.serializer.serialize(data, content_type)
+
+        if authentication is not None:
+            kwargs['HTTP_AUTHORIZATION'] = authentication
+
+        # Django doesn't support PATCH natively.
+        parsed = urlparse.urlparse(uri)
+        r = {
+            'CONTENT_LENGTH': len(kwargs['data']),
+            'CONTENT_TYPE': content_type,
+            'PATH_INFO': self.client._get_path(parsed),
+            'QUERY_STRING': parsed[4],
+            'REQUEST_METHOD': 'PATCH',
+            'wsgi.input': FakePayload(kwargs['data']),
+        }
+        r.update(kwargs)
+        return self.client.request(**r)
+
+    def delete(self, uri, format='json', data=None, authentication=None, **kwargs):
+        """
+        Performs a simulated ``DELETE`` request to the provided URI.
+
+        """
+        content_type = self.serializer.get_content_type(None,format)
+        kwargs['content_type'] = content_type
+
+        # GET & DELETE are the only times we don't serialize the data.
+        if data is not None:
+            kwargs['data'] = data
+
+        if authentication is not None:
+            kwargs['HTTP_AUTHORIZATION'] = authentication
+
+        return self.client.delete(uri, **kwargs)
+    
+
 @unittest.skipIf(runTestApiInit[0]!=True, 
-                 "Only run this test if testing the api initialization")        
+                 "Only run this test if testing the api initialization")   
 class TestApiInit(IResourceTestCase):
     
     def setUp(self):
@@ -1338,9 +1436,6 @@ class TestApiInit(IResourceTestCase):
         self.directory = os.path.join(APP_ROOT_DIR, 'reports/static/api_init')
         self.csv_serializer=CSVSerializer() 
         
-        self.serializer = LimsSerializer()
-        self.api_client = TestApiClient(serializer=self.serializer)
-        
     def tearDown(self):
         super(TestApiInit, self).tearDown()
         
@@ -1348,6 +1443,8 @@ class TestApiInit(IResourceTestCase):
         MetaHash.objects.all().delete()
 
     def test0_bootstrap_metahash(self):
+        
+        logger.info('run test0_bootstrap_metahash....')
         
         resource_uri = BASE_URI + '/field'
         # in order for the metahash resource to work, the metahash itself must 
@@ -1437,7 +1534,7 @@ class TestApiInit(IResourceTestCase):
             resource_uri, format='json', data={ 'objects': bootstrap_items }, 
             authentication=self.get_credentials())
         self.assertTrue(
-            resp.status_code in [201,202], 
+            resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
             
         logger.debug('created items, now get them')
@@ -1464,6 +1561,8 @@ class TestApiInit(IResourceTestCase):
     def test2_create_resource_fields(self):
         
         self.test0_bootstrap_metahash()
+
+        logger.info('run test2_create_resource_fields....')
         
         resource_uri = BASE_URI + '/field'
         bootstrap_items =  [   
@@ -1526,7 +1625,7 @@ class TestApiInit(IResourceTestCase):
             resource_uri, format='json', data={ 'objects': bootstrap_items }, 
             authentication=self.get_credentials())
         self.assertTrue(
-            resp.status_code in [201,202], 
+            resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
             
         logger.debug('created items, now get them')
@@ -1552,6 +1651,7 @@ class TestApiInit(IResourceTestCase):
             self.assertTrue(result, ('not found', inputobj, outputobj ) )
     
     def test3_create_resources(self):
+
         self.test2_create_resource_fields()
 
         logger.info('create the fields for each resource...')
@@ -1591,7 +1691,7 @@ class TestApiInit(IResourceTestCase):
             resource_uri, format='json', data={ 'objects': bootstrap_items }, 
             authentication=self.get_credentials())
             
-        self.assertTrue(resp.status_code in [201,202], 
+        self.assertTrue(resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         
         logger.info('create the resource table entries...')
@@ -1620,7 +1720,7 @@ class TestApiInit(IResourceTestCase):
             resource_uri, format='json', data={ 'objects': bootstrap_items }, 
             authentication=self.get_credentials())
             
-        self.assertTrue(resp.status_code in [201,202], 
+        self.assertTrue(resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
             
         logger.debug('created items, now get them')
@@ -1741,7 +1841,7 @@ class TestApiInit(IResourceTestCase):
                                 resource_uri, format='csv', data=input_data, 
                                 authentication=self.get_credentials() )
                             self.assertTrue(
-                                resp.status_code in [201], 
+                                resp.status_code in [200], 
                                 (resp.status_code, self.get_content(resp)))
                             resp = testApiClient.get(
                                 resource_uri, format='json', 
@@ -1841,6 +1941,7 @@ class VocabularyResource(IResourceTestCase):
             result, obj = find_obj_in_list(item, new_obj['objects'])
             self.assertTrue(
                 result, ('vocab item not found', item, new_obj['objects']))
+
 
 class UserUsergroupSharedTest(object):
             
@@ -2073,6 +2174,7 @@ class UserResource(IResourceTestCase, UserUsergroupSharedTest):
 
         logger.debug('==== test4_user_write_permissions done =====')
         
+
 class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
 
     def setUp(self):
@@ -2302,346 +2404,3 @@ class UserGroupResource(IResourceTestCase, UserUsergroupSharedTest):
         # TODO: could also test that testGroup2 now has super_group=testGroup5
         
         
-# @unittest.skip('TODO: remove or restore')
-# class RecordResource(IResourceTestCase):
-#     
-#     def setUp(self):
-#         super(RecordResource, self).setUp()
-#         
-#     def test0_bootstrap_metahash(self):
-#         
-#         logger.debug('================ reports test0_bootstrap_metahash =============== ')
-#         
-#         # TODO: fields for the "metahash:fields.field" definitions input file
-#         bootstrap_items = [   
-#             {
-#                 'key': 'linked_field_type',
-#                 'scope': 'fields.field',
-#                 'json_field_type': 'fields.CharField',
-#                 'ordinal': 4,
-#                 'description': 'The tastypie field used to serialize'    
-#             },
-#             {
-#                 'key': 'linked_field_module',
-#                 'scope': 'fields.field',
-#                 'json_field_type': 'fields.CharField',
-#                 'ordinal': 6,
-#                 'description': 'The table model used to hold the linked field',
-#                 'comment': 'Use the full Python style path, i.e. <module.module.Class>'
-#             },
-#             {
-#                 'key': 'linked_field_value_field',
-#                 'scope': 'fields.field',
-#                 'json_field_type': 'fields.CharField',
-#                 'ordinal': 7,
-#                 'description': 'The field name in the linked field module that holds the value'
-#             },
-#             {
-#                 'key': 'linked_field_parent',
-#                 'scope': 'fields.field',
-#                 'json_field_type': 'fields.CharField',
-#                 'ordinal': 6,
-#                 'description': 'The name of the field linking back to the parent table/resource'
-#             },
-#         ]
-#         resource_uri = BASE_URI + '/field'
-#          
-#         resp = self.api_client.patch(
-#             resource_uri, format='json', data={ 'objects': bootstrap_items }, 
-#             authentication=self.get_credentials())
-#         self.assertTrue(
-#             resp.status_code <= 204, 
-#             (resp.status_code, resp, 'resource_uri', self.resource_uri,
-#                 'item', bootstrap_items))
-#              
-#         logger.debug('created items, now get them')
-#         resp = self.api_client.get(
-#             resource_uri, format='json', 
-#             authentication=self.get_credentials(), data={ 'limit': 999 })
-#         self.assertTrue(
-#             resp.status_code in [200], 
-#             (resp.status_code, self.get_content(resp)))
-#         new_obj = self.deserialize(resp)
-#         for inputobj in bootstrap_items:
-#             result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
-#             self.assertTrue(result, ('not found', inputobj, outputobj ) )
-# 
-#         # TODO: add this to the "metahash:fields.resource" file 
-#         # for the complex linked table instance (SMR, RNAi)
-#         # Can use either the resource-level "linked_table_module" or the 
-#         # field level "linked_field_module"
-#         bootstrap_items = [   
-#             {
-#                 'key': 'linked_table_module',
-#                 'scope': 'fields.resource',
-#                 'ordinal': 4,    
-#                 'json_field_type': 'fields.CharField'    
-#             },
-#         ]
-#         resource_uri = BASE_URI + '/metahash'
-#         resp = self.api_client.patch(
-#             resource_uri, format='json', data={ 'objects': bootstrap_items }, 
-#             authentication=self.get_credentials())
-#         self.assertTrue(
-#             resp.status_code <= 204, 
-#             (resp.status_code, resp, 'resource_uri', self.resource_uri,
-#                 'item', bootstrap_items))
-# 
-#         # create a resource for the RecordResource
-#         resource_data = [
-#             {   'key':  'record',
-#                 'scope': 'resource',
-#                 'ordinal': '0',
-#                 'api_name': 'reports',
-#                 # TODO: use either this or the "linked_field_module" value on the field defs
-#                 # TODO: this is not used at the moment
-#                 'linked_table_module': 'reports.models.RecordValueComplex', 
-#                 'id_attribute': ['id'],
-#             },
-#         ]
-#         resource_uri = BASE_URI + '/resource'
-#         
-#         for item in resource_data:         
-#             resp = self.api_client.post(
-#                 resource_uri, format='json', data=item, 
-#                 authentication=self.get_credentials())
-#             self.assertTrue(
-#                 resp.status_code in [201], 
-#                 (resp.status_code, resp, 'resource_uri', self.resource_uri,
-#                     'item', item))
-# 
-#         logger.debug('created items, now get them')
-#         resp = self.api_client.get(
-#             resource_uri, format='json', 
-#             authentication=self.get_credentials(), data={ 'limit': 999 })
-#         self.assertTrue(
-#             resp.status_code in [200], 
-#             (resp.status_code, self.get_content(resp)))
-#         new_obj = self.deserialize(resp)
-#         for inputobj in resource_data:
-#             result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
-#             self.assertTrue(result, ('not found', inputobj, outputobj ) )
-#  
-#         logger.debug('================ test0_bootstrap_metahash done ========== ')
-#     
-#     def test1_persist_to_store(self):
-#     
-#         logger.debug('================ setup =============== ')
-#         self.test0_bootstrap_metahash()
-#         
-#         logger.debug('================ reports test1_persist_to_store =============== ')
-#         
-#         # simplest test, create the data manually, then try to retrieve it.
-#         
-#         # create field definitions in the metahash for the record resource
-#         resource_uri = BASE_URI + '/metahash'
-#         record_fields = [
-#             {   'key':  'id',
-#                 'scope': 'fields.record',
-#                 'ordinal': '0',
-#             },
-#             {   'key':  'scope',
-#                 'scope': 'fields.record',
-#                 'ordinal': '1',
-#                 'filtering': 'true',
-#             },
-#             {   'key':  'base_value1',
-#                 'scope': 'fields.record',
-#                 'ordinal': '2',
-#                 'filtering': 'true',
-#             },
-#             {   'key':  'field1',
-#                 'scope': 'fields.record',
-#                 'ordinal': '2',
-#                 'linked_field_type': 'fields.CharField',
-#                 'linked_field_module': 'reports.models.RecordValue',
-#                 'linked_field_value_field': 'value',
-#                 'linked_field_parent': 'parent',
-#                 'linked_field_meta_field': 'field_meta',
-#             },
-#             {   'key':  'field2',
-#                 'scope': 'fields.record',
-#                 'ordinal': '2',
-#                 'linked_field_type': 'fields.CharField',
-#                 'linked_field_module': 'reports.models.RecordValue',
-#                 'linked_field_value_field': 'value',
-#                 'linked_field_parent': 'parent',
-#                 'linked_field_meta_field': 'field_meta',
-#             },
-#             {   'key':  'field3',
-#                 'scope': 'fields.record',
-#                 'ordinal': '3',
-#                 'linked_field_type': 'fields.ListField',
-#                 'linked_field_module': 'reports.models.RecordMultiValue',
-#                 'linked_field_value_field': 'value',
-#                 'linked_field_parent': 'parent',
-#                 'linked_field_meta_field': 'field_meta',
-#             },
-#             # complex type storing both field4 and field5
-#             {   'key':  'field4',
-#                 'scope': 'fields.record',
-#                 'ordinal': '4',
-#                 'linked_field_type': 'fields.CharField',
-#                 # Omit the linked_field_modele, so that this will use the 
-#                 # "linked_table_module" value from the resource definition
-#                 # 'linked_field_module': 'reports.models.RecordMultiValue',
-#                 # also omit the 'linked_field_meta_field': 'field_meta', because
-#                 # the complex type will have only one entry per parent
-#                 'linked_field_value_field': 'value1',
-#                 'linked_field_parent': 'parent'
-#             },
-#             {   'key':  'field5',
-#                 'scope': 'fields.record',
-#                 'ordinal': '5',
-#                 'linked_field_type': 'fields.CharField',
-#                 # Omit the linked_field_module, so that this will use the 
-#                 # "linked_table_module" value from the resource definition
-#                 # 'linked_field_module': 'reports.models.RecordMultiValue',
-#                 # also omit the 'linked_field_meta_field': 'field_meta', because
-#                 # the complex type will have only one entry per parent
-#                 'linked_field_value_field': 'value2',
-#                 'linked_field_parent': 'parent'
-#             },
-#         ]
-# 
-#         resp = self.api_client.patch(
-#             resource_uri, format='json', data={ 'objects': record_fields}, 
-#             authentication=self.get_credentials())
-#         self.assertTrue(
-#             resp.status_code <= 204, 
-#             (resp.status_code, resp, 'resource_uri', self.resource_uri,
-#                 'item', record_fields))
-#             
-#         logger.debug('created items, now get them')
-#         resp = self.api_client.get(
-#             resource_uri, format='json', 
-#             authentication=self.get_credentials(), 
-#                 data={ 'limit': 999, 'scope':'fields.record' })
-#         self.assertTrue(
-#             resp.status_code in [200], 
-#             (resp.status_code, self.get_content(resp)))
-#         new_obj = self.deserialize(resp)
-#         self.assertEqual(len(new_obj['objects']), len(record_fields), 
-#             str((len(new_obj['objects']), new_obj)))
-#         
-#         for inputobj in record_fields:
-#             result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
-#             self.assertTrue(result, ('not found', inputobj, outputobj ) )
-#         
-#         logger.debug('==== now create datapoints in the record table')
-#         
-#         datapoints = [
-#             {   'scope': 'record',
-#                 'base_value1': 'base value 1 1',
-#                 'field1': 'test value to store/retrieve',
-#                 'field2': '2nd field test value to store/retrieve',
-#                 'field3': ['valueC','ValueE','ValueA'],
-#                 'field4': '1st recordvaluecomplex',
-#                 'field5': '2nd recordvaluecomplex',
-#             },
-#             {   'scope': 'record',  # vanilla 'record'
-#                 'field1': 'test value to store/retrieve',
-#                 'field2': '2b field test value to store/retrieve',
-#                 'field3': ['valueA','ValueB','ValueC'],
-#                 'field4': '1st recordvaluecomplex 2',
-#                 'field5': '2nd recordvaluecomplex 2',
-#             }
-#         ]
-#         self.datapoints = datapoints
-#         resource_uri = BASE_URI + '/record'
-#         
-#         for item in datapoints:         
-#             resp = self.api_client.post(
-#                 resource_uri, format='json', data=item, 
-#                 authentication=self.get_credentials())
-#             self.assertTrue(
-#                 resp.status_code in [201], 
-#                 (resp.status_code, resp, 'resource_uri', self.resource_uri,
-#                     'item', item))
-# 
-#         logger.debug('=== get the datapoints created in the record table')
-#         resp = self.api_client.get(
-#             resource_uri, format='json', 
-#             authentication=self.get_credentials(), data={ 'limit': 999, }) #'scope':'record' })
-#         self.assertTrue(
-#             resp.status_code in [200], 
-#             (resp.status_code, self.get_content(resp)))
-#         new_obj = self.deserialize(resp)
-#         self.assertEqual(len(new_obj['objects']), len(datapoints))
-#         for inputobj in datapoints:
-#             result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
-#             self.assertTrue(result, ('not found', inputobj, outputobj ) )
-#         
-#         logger.debug('================ done: reports test1_persist_to_store =============== ')
-# 
-#         #### NOTE: combining the two tests into one:
-#         #### although the django.test.TransactionTestCase isolates the tests in transactions,
-#         #### it does not rollback the sequence values; so the ID for the first and 
-#         #### the second record are "1" and "2" on the first run, if test2 re-runs
-#         #### test1, then the ID's for the second run will be "3" and "4"
-#         #### since we don't know if test1 is run before test2, we'll need to find
-#         #### the records before we can update them, unless we create a natural key for them.
-# 
-#         logger.debug('================ reports test2_update =============== ')
-#             
-#         logger.debug('==== now update datapoints in the record table')
-#         
-#         datapoints = [
-#             {   'resource_uri':'record/2',
-#                 'base_value1': 'updated base value 1 1',
-#                 'field1': 'xxx updated',
-#                 'field3': ['valueA','ValueE','ValueC'],
-#                 'field4': 'xxx updated field 4 1',
-#             },
-#             {   'resource_uri':'record/1',
-#                 'field2': 'xxx updated',
-#                 'field3': ['valueA','ValueB','ValueC'],
-#                 'field5': 'xxx updated field 5 2',
-#             }
-#         ]
-#         
-#         resource_uri = BASE_URI + '/record'
-#         resp = self.api_client.patch(
-#             resource_uri, format='json', data={ 'objects': datapoints }, 
-#             authentication=self.get_credentials())
-#         self.assertTrue(
-#             resp.status_code <= 204, 
-#             (resp.status_code, resp, 'resource_uri', self.resource_uri))
-# 
-#         logger.debug('=== get the datapoints patched in the record table')
-#         
-#         resp = self.api_client.get(
-#             resource_uri, format='json', 
-#             authentication=self.get_credentials(), data={ 'limit': 999, }) #'scope':'record' })
-#         self.assertTrue(
-#             resp.status_code in [200], 
-#             (resp.status_code, self.get_content(resp)))
-#         new_obj = self.deserialize(resp)
-#         self.assertEqual(len(new_obj['objects']), len(datapoints), 
-#             str((len(new_obj['objects']), len(datapoints),new_obj)))
-#         
-#         for inputobj in datapoints:
-#             result, outputobj = find_obj_in_list(inputobj,new_obj['objects'])
-#             self.assertTrue(result, (outputobj,new_obj['objects'] ) )
-#             self.assertTrue(
-#                 inputobj['resource_uri'] in outputobj['resource_uri'],
-#                 (inputobj['resource_uri'] ,outputobj['resource_uri']))
-#         
-#         # test the logs
-#         resource_uri = BASE_URI + '/apilog' #?ref_resource_name=record'
-#         resp = self.api_client.get(
-#             resource_uri, format='json', 
-#             authentication=self.get_credentials(), 
-#             data={ 'limit': 999, 'ref_resource_name': 'record' })
-#         self.assertTrue(
-#             resp.status_code in [200], 
-#             (resp.status_code, self.get_content(resp)))
-#         new_obj = self.deserialize(resp)
-#         logger.debug('===apilogs: %r', json.dumps(new_obj))
-#         
-#         # look for 5 logs; 2 for create, two for update, one for patch list
-#         self.assertEqual( len(new_obj['objects']), len(datapoints)*2+1, 
-#             str((len(new_obj['objects']), len(datapoints)*2+1,new_obj)))
-#         
-#         logger.debug('================ done: reports test2_update =============== ')
-            

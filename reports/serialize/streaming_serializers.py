@@ -126,8 +126,8 @@ def interpolate_value_template(value_template, row):
             return str(row[val])
         else:
             logger.error(
-                'field needed for value template %r is not available: %r', 
-                val, row)
+                'field %r needed for value template %r is not available: %r', 
+                val, value_template, dict(zip(row.keys(),row)))
             return ''
     return re.sub(r'{([^}]+)}', get_value_from_template, value_template)
 
@@ -247,7 +247,7 @@ def sdf_generator(data, title_function=None):
     - value_template
     '''
     try:
-        
+        rownum = 0
         for rownum,row in enumerate(data):
 
             if row.get(MOLDATAKEY, None):

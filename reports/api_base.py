@@ -15,7 +15,6 @@ from tastypie.exceptions import ImmediateHttpResponse, BadRequest, NotFound
 from tastypie.http import HttpBadRequest, HttpNotImplemented, HttpNoContent,\
     HttpApplicationError
 from tastypie.resources import Resource, convert_post_to_put, sanitize
-from tastypie.utils.mime import build_content_type
 
 from reports import HEADER_APILOG_COMMENT, ValidationError, InformationError, _now
 from reports.models import ApiLog
@@ -36,12 +35,12 @@ def un_cache(_func):
     ''' 
     @wraps(_func)
     def _inner(self, *args, **kwargs):
-        logger.info('decorator un_cache: %s, %s', self, _func )
+        logger.debug('decorator un_cache: %s, %s', self, _func )
         self.clear_cache()
         self.set_caching(False)
         result = _func(self, *args, **kwargs)
         self.set_caching(True)
-        logger.info('decorator un_cache done: %s, %s', self, _func )
+        logger.debug('decorator un_cache done: %s, %s', self, _func )
         return result
 
     return _inner
@@ -52,16 +51,15 @@ class IccblBaseResource(Resource):
     Override tastypie.resources.Resource:
     -- use StreamingHttpResponse or the HttpResponse
     -- control application specific caching
-    -- serialization cleanup
     """
 
-    content_types = {
-                     'xls': XLS_MIMETYPE,
-                     'xlsx': XLSX_MIMETYPE,
-                     'csv': CSV_MIMETYPE,
-                     'sdf': SDF_MIMETYPE,
-                     'json': JSON_MIMETYPE,
-                     }
+#     content_types = {
+#                      'xls': XLS_MIMETYPE,
+#                      'xlsx': XLSX_MIMETYPE,
+#                      'csv': CSV_MIMETYPE,
+#                      'sdf': SDF_MIMETYPE,
+#                      'json': JSON_MIMETYPE,
+#                      }
 
     def clear_cache(self):
         logger.debug('clearing the cache from resource: %s (all caches cleared)' 
@@ -71,30 +69,17 @@ class IccblBaseResource(Resource):
     def set_caching(self,use_cache):
         self.use_cache = use_cache
 
-    def serialize(self, request, data, **kwargs):
-        desired_format = self.get_serialize_format(request, **kwargs)
-        return self._meta.serializer.serialize(data, desired_format)
+    def deserialize(self, request, format=None):
+        
+        content_type = self._meta.serializer.get_content_type(request, format)
+        return self._meta.serializer.deserialize(request.body,content_type)
 
-    def deserialize(self, request, data, **kwargs):
-        return self._meta.serializer.deserialize(request, data, **kwargs)
+    def serialize(self, request, data, format=None):
+        content_type = self._meta.serializer.get_accept_content_type(request, format)
+        return self._meta.serializer.serialize(data, content_type)
 
-    def make_log(self, request, **kwargs):
-        log = ApiLog()
-        log.username = request.user.username 
-        log.user_id = request.user.id 
-        log.date_time = _now()
-        log.api_action = str((request.method)).upper()
- 
-        # TODO: how do we feel about passing form data in the headers?
-        # TODO: abstract the form field name
-        if HEADER_APILOG_COMMENT in request.META:
-            log.comment = request.META[HEADER_APILOG_COMMENT]
-     
-        if kwargs:
-            for key, value in kwargs.items():
-                if hasattr(log, key):
-                    setattr(log, key, value)
-        return log
+#     def deserialize(self, request, data, **kwargs):
+#         return self._meta.serializer.deserialize(request, data, **kwargs)
 
     def _get_filename(self, schema, kwargs, filename=''):
         filekeys = [filename]
@@ -118,21 +103,26 @@ class IccblBaseResource(Resource):
         logger.debug('get_filename: %r, %r' % (filename, kwargs))
         return filename
     
-    def get_deserialize_format(self, request, **kwargs):
+    def get_content_type(self, request, format=None):
+         
+        return self._meta.serializer.get_content_type(request,format=format)
+ 
+    def get_accept_content_type(self, request, format=None):
+         
+        return self._meta.serializer.get_accept_content_type(request,format=format)
         
-        return self._meta.serializer.get_deserialize_format(request,**kwargs)
-
-    def get_serialize_format(self, request, **kwargs):
-        
-        return self._meta.serializer.get_serialize_format(request,**kwargs)
+#     def get_serialize_format(self, request, format=None):
+#         
+#         return self._meta.serializer.get_serialize_format(request, format=format)
 
     def build_response(self, request, data, response_class=HttpResponse, **kwargs):
         
-        serialized = self.serialize(request, data, **kwargs)
-        desired_format = self.get_serialize_format(request,**kwargs)
+        content_type = self._meta.serializer.get_content_type(
+            request, format=kwargs.get('format', None))
+        serialized = self.serialize(request, data, format=kwargs.get('format', None))
         return response_class(
             content=serialized, 
-            content_type=build_content_type(desired_format))
+            content_type=content_type)
 
     def build_error_response(self, request, data, response_class=HttpBadRequest, **kwargs):
         format = 'json'
@@ -229,10 +219,11 @@ class IccblBaseResource(Resource):
                 return response
             except BadRequest as e:
                 # for BadRequest, the message is the first/only arg
+                logger.exception('Bad request exception: %r', e)
                 data = {"error": sanitize(e.args[0]) if getattr(e, 'args') else ''}
                 return self.build_error_response(request, data, **kwargs)
             except InformationError as e:
-                logger.info('information error: %r', e)
+                logger.exception('Information error: %r', e)
                 response = self.build_error_response(
                     request, { 'Messages': e.errors }, **kwargs)
                 if 'xls' in response['Content-Type']:
@@ -247,6 +238,7 @@ class IccblBaseResource(Resource):
                 return response
             
             except ValidationError as e:
+                logger.exception('Validation error')
                 response = self.build_error_response(
                     request, { 'errors': e.errors }, **kwargs)
                 if 'xls' in response['Content-Type']:
@@ -260,7 +252,7 @@ class IccblBaseResource(Resource):
                         logger.debug('no downloadID: %s' % request.GET )
                 return response
             except django.core.exceptions.ValidationError as e:
-                logger.exception('django validation error: %r, %r', e, e.message_dict)
+                logger.exception('Django validation error: %r, %r', e, e.message_dict)
                 response = self.build_error_response(
                     request, { 'errors': e.message_dict }, **kwargs)
                 if 'xls' in response['Content-Type']:
@@ -278,6 +270,8 @@ class IccblBaseResource(Resource):
                 if hasattr(e, 'response'):
                     # A specific response was specified
                     return e.response
+
+                logger.exception('Unhandled exception: %r', e)
 
                 # A real, non-expected exception.
                 # Handle the case where the full traceback is more helpful
@@ -325,7 +319,8 @@ class IccblBaseResource(Resource):
 
         # All clear. Process the request.
         convert_post_to_put(request)
-        logger.info('calling method: %r', "%s_%s" % (request_method, request_type))
+        logger.info('calling method: %s_%s, kwargs: %r',
+            request_method, request_type,kwargs)
         response = method(request, **kwargs)
 
         # Add the throttled request.

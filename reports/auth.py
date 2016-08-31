@@ -62,7 +62,7 @@ class CustomAuthenticationBackend():
         if username is None:
             raise ValidationError('username not set')
         username = username.lower()
-        logger.info('inner_authenticate: %r', username)
+        logger.debug('inner_authenticate: %r', username)
         try:
             user = User.objects.get(username=username)
             if user.has_usable_password():

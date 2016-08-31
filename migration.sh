@@ -228,6 +228,9 @@ function django_syncdb {
   echo "- Create the adminuser: $adminuser"
   # update, as of Django >1.7, initial_data is no longer used to initialize superuser
   # try this method instead
+  
+  # FIXME: echo password vulnerability
+  
   _adminuser="'"$adminuser"'"
   _adminpass="'"$adminpass"'"
   _adminemail="'"$adminemail"'"
